@@ -26,7 +26,16 @@ class TestCLI:
 
     def test_custom_config(self, tmp_path, capsys):
         cfg = tmp_path / "custom.yaml"
-        cfg.write_text("mcp:\n  url: http://custom\ntiers:\n  default: 3\nlogging:\n  level: WARN\n")
+        cfg.write_text(
+            "mcp_servers:\n"
+            "  - name: test\n"
+            "    transport: stdio\n"
+            "    command: echo\n"
+            "tiers:\n"
+            "  default: 3\n"
+            "logging:\n"
+            "  level: WARN\n"
+        )
         main(["--config", str(cfg)])
         out = capsys.readouterr().out
         assert "Configuration loaded:" in out

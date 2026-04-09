@@ -1,19 +1,36 @@
-# Default configuration for AI Incident Manager
+# AI Incident Manager — Default Configuration
 #
-# This file is parsed by the config loader during runtime.
+# MCP Servers
+# -----------
+# Each entry defines an MCP server the agent can connect to.
 #
-# Example structure:
-#   mcp:
-#     url: "http://localhost:8000"
-#     token: "<YOUR_TOKEN>"
-#   tiers:
-#     default: 2
-#   logging:
-#     level: "INFO"
+#   transport: "stdio" or "sse"
+#
+#   stdio  — launches a local subprocess
+#     command:   executable to run
+#     args:      list of arguments (optional)
+#     env:       extra environment variables passed to the process (optional)
+#
+#   sse    — connects to a running HTTP server
+#     url:       server URL (e.g. http://localhost:8080/sse)
+#     token_env: name of the env var holding the bearer token (optional)
+#
+# To add a server, append an entry under mcp_servers below.
+# Example — local Kubernetes MCP server (stdio):
+#
+#   - name: kubernetes
+#     transport: stdio
+#     command: "npx"
+#     args: ["-y", "@anthropic/mcp-server-k8s"]
+#
+# Example — remote MCP server with auth (sse):
+#
+#   - name: remote-k8s
+#     transport: sse
+#     url: "http://mcp.internal:8080/sse"
+#     token_env: "MCP_K8S_TOKEN"   # export MCP_K8S_TOKEN=<token> before running aim
 
-mcp:
-  url: "http://localhost:8000"
-  token: ""
+mcp_servers: []
 
 tiers:
   default: 2

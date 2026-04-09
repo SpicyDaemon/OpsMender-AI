@@ -1,0 +1,28 @@
+[project]
+name = "ai-incident-manager"
+version = "0.1.0"
+description = "AI Incident Manager – CLI and backend scaffolding"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Your Name", email = "you@example.com"}]
+
+[project.scripts]
+aim = "cli.aim:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "pylint",
+    "black",
+    "mypy",
+]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]

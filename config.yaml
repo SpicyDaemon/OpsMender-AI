@@ -1,0 +1,22 @@
+# Default configuration for AI Incident Manager
+#
+# This file is parsed by the config loader during runtime.
+#
+# Example structure:
+#   mcp:
+#     url: "http://localhost:8000"
+#     token: "<YOUR_TOKEN>"
+#   tiers:
+#     default: 2
+#   logging:
+#     level: "INFO"
+
+mcp:
+  url: "http://localhost:8000"
+  token: ""
+
+tiers:
+  default: 2
+
+logging:
+  level: "INFO"

@@ -18,3 +18,4 @@ uv run aim        # Run the CLI
 
 Feel free to extend the CLI with additional sub‑commands as the project
 progresses.
+# OpsMender-AI

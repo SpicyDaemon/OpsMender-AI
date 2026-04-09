@@ -1,6 +1,30 @@
+# Environment
 .env
-__pycache__/
 .venv/
-uv.lock
-logs/
+
+# Python
+__pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Tools
+.mypy_cache/
+uv.lock
+
+# Logs
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Files
+.claude/

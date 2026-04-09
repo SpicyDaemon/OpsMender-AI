@@ -1,0 +1,19 @@
+services:
+  aim-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aim-dev
+    volumes:
+      # Mount local project into container so edits sync both ways
+      - .:/app
+      # Persist uv cache between rebuilds
+      - uv-cache:/root/.cache/uv
+    env_file:
+      - .env.example
+    stdin_open: true
+    tty: true
+    working_dir: /app
+
+volumes:
+  uv-cache:

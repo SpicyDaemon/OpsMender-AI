@@ -17,28 +17,28 @@ class MCPServerConfig:
     """Configuration for a single MCP server."""
 
     name: str
-    transport: str  # "stdio" or "sse"
+    transport: str  # "stdio", "sse", or "http"
     # stdio fields
     command: Optional[str] = None
     args: Optional[List[str]] = None
     env: Optional[Dict[str, str]] = None
-    # sse fields
+    # sse / http fields
     url: Optional[str] = None
-    token_env: Optional[str] = None
+    token: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if self.transport not in ("stdio", "sse"):
+        if self.transport not in ("stdio", "sse", "http"):
             raise ValueError(
-                f"MCP server '{self.name}': transport must be 'stdio' or 'sse', "
+                f"MCP server '{self.name}': transport must be 'stdio', 'sse', or 'http', "
                 f"got '{self.transport}'"
             )
         if self.transport == "stdio" and not self.command:
             raise ValueError(
                 f"MCP server '{self.name}': stdio transport requires 'command'"
             )
-        if self.transport == "sse" and not self.url:
+        if self.transport in ("sse", "http") and not self.url:
             raise ValueError(
-                f"MCP server '{self.name}': sse transport requires 'url'"
+                f"MCP server '{self.name}': {self.transport} transport requires 'url'"
             )
 
 
@@ -70,7 +70,7 @@ class Config:
                     args=entry.get("args"),
                     env=entry.get("env"),
                     url=entry.get("url"),
-                    token_env=entry.get("token_env"),
+                    token=entry.get("token"),
                 )
             )
 

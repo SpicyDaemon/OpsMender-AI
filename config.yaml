@@ -4,16 +4,20 @@
 # -----------
 # Each entry defines an MCP server the agent can connect to.
 #
-#   transport: "stdio" or "sse"
+#   transport: "stdio", "sse", or "http"
 #
 #   stdio  — launches a local subprocess
 #     command:   executable to run
 #     args:      list of arguments (optional)
 #     env:       extra environment variables passed to the process (optional)
 #
-#   sse    — connects to a running HTTP server
+#   sse    — connects via Server-Sent Events
 #     url:       server URL (e.g. http://localhost:8080/sse)
-#     token_env: name of the env var holding the bearer token (optional)
+#     token:     bearer token for authentication (optional)
+#
+#   http   — connects via streamable HTTP (used by Sourcebot, etc.)
+#     url:       server URL (e.g. https://sb.example.com/api/mcp)
+#     token:     bearer token for authentication (optional)
 #
 # To add a server, append an entry under mcp_servers below.
 # Example — local Kubernetes MCP server (stdio):
@@ -23,12 +27,18 @@
 #     command: "npx"
 #     args: ["-y", "@anthropic/mcp-server-k8s"]
 #
-# Example — remote MCP server with auth (sse):
+# Example — remote MCP server (sse-legacy):
 #
 #   - name: remote-k8s
 #     transport: sse
 #     url: "http://mcp.internal:8080/sse"
-#     token_env: "MCP_K8S_TOKEN"   # export MCP_K8S_TOKEN=<token> before running aim
+#
+# Example — Sourcebot or other HTTP MCP server (Streamable HTTP):
+#
+#   - name: sourcebot
+#     transport: http
+#     url: "https://sb.example.com/api/mcp"
+#     token: "your-bearer-token-here"
 
 mcp_servers: []
 

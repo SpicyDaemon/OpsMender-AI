@@ -1,7 +1,7 @@
 """MCP client wrapper for AI Incident Manager.
 
-Provides a unified interface for connecting to MCP servers over stdio or SSE
-transport, listing available tools, and calling tools.
+Provides a unified interface for connecting to MCP servers over stdio, SSE,
+or streamable HTTP transport, listing available tools, and calling tools.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import Any, AsyncIterator
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import CallToolResult, Tool
 
 from backend.config_loader import MCPServerConfig
@@ -44,13 +45,29 @@ async def _connect_sse(
 ) -> AsyncIterator[ClientSession]:
     """Open an SSE connection to a remote MCP server."""
     headers: dict[str, str] = {}
-    if server.token_env:
-        token = os.environ.get(server.token_env, "")
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+    if server.token:
+        headers["Authorization"] = f"Bearer {server.token}"
     async with sse_client(server.url, headers=headers) as (
         read_stream,
         write_stream,
+    ):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            yield session
+
+
+@asynccontextmanager
+async def _connect_http(
+    server: MCPServerConfig,
+) -> AsyncIterator[ClientSession]:
+    """Open a streamable HTTP connection to a remote MCP server."""
+    headers: dict[str, str] = {}
+    if server.token:
+        headers["Authorization"] = f"Bearer {server.token}"
+    async with streamablehttp_client(server.url, headers=headers) as (
+        read_stream,
+        write_stream,
+        _get_session_id,
     ):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
@@ -71,6 +88,9 @@ async def connect(server: MCPServerConfig) -> AsyncIterator[ClientSession]:
             yield session
     elif server.transport == "sse":
         async with _connect_sse(server) as session:
+            yield session
+    elif server.transport == "http":
+        async with _connect_http(server) as session:
             yield session
     else:
         raise MCPClientError(f"Unknown transport: {server.transport}")

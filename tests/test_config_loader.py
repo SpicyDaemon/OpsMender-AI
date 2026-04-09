@@ -18,7 +18,6 @@ def valid_yaml(tmp_path):
         "  - name: remote\n"
         "    transport: sse\n"
         "    url: http://localhost:8080/sse\n"
-        "    token_env: MCP_TOKEN\n"
         "tiers:\n"
         "  default: 2\n"
         "logging:\n"
@@ -37,7 +36,6 @@ class TestConfigLoad:
         assert cfg.mcp_servers[1].name == "remote"
         assert cfg.mcp_servers[1].transport == "sse"
         assert cfg.mcp_servers[1].url == "http://localhost:8080/sse"
-        assert cfg.mcp_servers[1].token_env == "MCP_TOKEN"
         assert cfg.tiers["default"] == 2
         assert cfg.logging["level"] == "DEBUG"
 
@@ -64,7 +62,7 @@ class TestConfigLoad:
 class TestMCPServerConfig:
     def test_invalid_transport_raises(self):
         with pytest.raises(ValueError, match="transport must be"):
-            MCPServerConfig(name="bad", transport="http")
+            MCPServerConfig(name="bad", transport="grpc")
 
     def test_stdio_without_command_raises(self):
         with pytest.raises(ValueError, match="requires 'command'"):
@@ -73,6 +71,10 @@ class TestMCPServerConfig:
     def test_sse_without_url_raises(self):
         with pytest.raises(ValueError, match="requires 'url'"):
             MCPServerConfig(name="bad", transport="sse")
+
+    def test_http_without_url_raises(self):
+        with pytest.raises(ValueError, match="requires 'url'"):
+            MCPServerConfig(name="bad", transport="http")
 
     def test_valid_stdio(self):
         s = MCPServerConfig(name="k8s", transport="stdio", command="npx", args=["-y", "server"])
@@ -83,4 +85,12 @@ class TestMCPServerConfig:
     def test_valid_sse(self):
         s = MCPServerConfig(name="remote", transport="sse", url="http://localhost:8080/sse")
         assert s.url == "http://localhost:8080/sse"
-        assert s.token_env is None
+
+    def test_valid_http(self):
+        s = MCPServerConfig(
+            name="sourcebot", transport="http",
+            url="https://sb.example.com/api/mcp", token="secret"
+        )
+        assert s.transport == "http"
+        assert s.url == "https://sb.example.com/api/mcp"
+        assert s.token == "secret"

@@ -34,7 +34,6 @@ class TestConnect:
         server.args = None
         server.env = None
         server.url = None
-        server.token_env = None
         with pytest.raises(MCPClientError, match="Unknown transport"):
             asyncio.run(_use_connect(server))
 

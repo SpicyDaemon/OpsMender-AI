@@ -39,6 +39,7 @@ dev = [
     "black",
     "mypy",
     "aiosqlite",
+    "httpx",
 ]
 
 [tool.pytest.ini_options]

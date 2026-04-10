@@ -6,14 +6,16 @@ An AI-powered incident response framework with tiered access controls. Connects 
 
 ```bash
 uv sync --dev
-.venv/bin/aim --version
-.venv/bin/aim check
+uv run aim --version
+uv run aim check
 ```
 
 ## Running Tests
 
 ```bash
-.venv/bin/pytest tests/ -v
+uv run pytest              # all tests
+uv run pytest -xvs         # verbose, stop on first failure
+uv run pytest tests/test_workflow.py  # single test file
 ```
 
 ## CLI Commands
@@ -23,6 +25,10 @@ uv sync --dev
 | `aim` | Load config and print it |
 | `aim --version` | Show version |
 | `aim check` | Validate config and test MCP server connectivity |
+| `aim audit` | View the audit log (human-readable table) |
+| `aim audit --last N` | Show the last N audit entries |
+| `aim audit --session ID` | Filter audit entries by session ID |
+| `aim audit --json` | Output audit entries as raw JSONL |
 
 ## Configuration
 
@@ -46,7 +52,30 @@ mcp_servers:
     transport: http
     url: "https://sb.example.com/api/mcp"
     token: "your-bearer-token"
+
+audit:
+  output: ./logs/audit.jsonl
 ```
+
+## Workflow
+
+AIM uses a LangGraph-powered incident response workflow:
+
+```
+observe → diagnose → plan → tier_gate → execute → verify → summarize
+```
+
+| Node | Role | Powered by |
+|------|------|------------|
+| `observe` | Gather initial observations | LLM |
+| `diagnose` | Root cause analysis | LLM |
+| `plan` | Propose remediation actions (JSON) | LLM |
+| `tier_gate` | Enforce tier/skill permissions | **Programmatic** (never LLM) |
+| `execute` | Call MCP tools via audited executor | MCP + audit log |
+| `verify` | Assess whether incident is resolved | LLM |
+| `summarize` | Generate incident summary | LLM |
+
+The `tier_gate` is a hard programmatic check — it cannot be bypassed by agent reasoning.
 
 ## Skill Definitions
 
@@ -78,17 +107,19 @@ The tier enforcement layer uses these classifications to permit or block tool ca
 ```
 ai-incident-manager/
 ├── backend/
-│   ├── config_loader.py   # YAML config -> typed dataclasses
-│   ├── mcp/               # MCP client wrapper (stdio, sse, http)
-│   ├── skills/            # Skill definition parser (SKILL.md)
-│   └── tiers/             # Tier enforcement layer
+│   ├── agent/              # LangGraph workflow, nodes, state, LLM interface
+│   ├── audit/              # JSONL audit logger + audited tool executor
+│   ├── config_loader.py    # YAML config → typed dataclasses
+│   ├── mcp/                # MCP client wrapper (stdio, sse, http)
+│   ├── skills/             # Skill definition parser (SKILL.md)
+│   └── tiers/              # Tier enforcement layer
 ├── cli/
-│   └── aim.py             # CLI entry point
+│   └── aim.py              # CLI entry point (check, audit)
 ├── examples/
-│   └── SKILL.md           # Reference Kubernetes skill definition
-├── tests/                 # 50 tests
-├── config.yaml            # Default configuration
-└── docs/                  # Project documentation
+│   └── SKILL.md            # Reference Kubernetes skill definition
+├── tests/                  # 148 tests
+├── config.yaml             # Default configuration
+└── docs/                   # Project documentation
 ```
 
 See `docs/REFERENCE.md` for full architecture details.

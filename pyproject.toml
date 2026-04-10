@@ -9,6 +9,7 @@ authors = [{name = "Your Name", email = "you@example.com"}]
 dependencies = [
     "pyyaml>=6.0",
     "mcp>=1.0",
+    "langgraph>=0.2",
 ]
 
 [project.scripts]

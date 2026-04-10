@@ -43,12 +43,20 @@ class MCPServerConfig:
 
 
 @dataclasses.dataclass
+class AuditConfig:
+    """Audit logger configuration."""
+
+    output: str  # path to JSONL log file
+
+
+@dataclasses.dataclass
 class Config:
     """Top-level configuration container."""
 
     mcp_servers: List[MCPServerConfig]
     tiers: Dict[str, Any]
     logging: Dict[str, Any]
+    audit: AuditConfig
 
     @classmethod
     def load(cls, path: pathlib.Path | str = "config.yaml") -> Config:
@@ -74,8 +82,14 @@ class Config:
                 )
             )
 
+        raw_audit = data.get("audit", {})
+        audit = AuditConfig(
+            output=raw_audit.get("output", "./logs/audit.jsonl"),
+        )
+
         return cls(
             mcp_servers=servers,
             tiers=data.get("tiers", {}),
             logging=data.get("logging", {}),
+            audit=audit,
         )

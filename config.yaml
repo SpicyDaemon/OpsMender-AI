@@ -47,3 +47,6 @@ tiers:
 
 logging:
   level: "INFO"
+
+audit:
+  output: ./logs/audit.jsonl

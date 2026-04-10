@@ -1,0 +1,234 @@
+"""Tests for backend.db.models — verify ORM models can be created and queried.
+
+Uses an in-memory SQLite database (via aiosqlite) so no Postgres is needed.
+JSONB columns fall back to SQLAlchemy's JSON type on SQLite automatically.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import JSON, event
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from backend.db.models import (
+    ApprovalRequest,
+    AuditEntry,
+    Base,
+    Incident,
+    ModelConfig,
+    Session,
+    User,
+)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+async def db():
+    """Yield an async session backed by an in-memory SQLite DB."""
+    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with factory() as session:
+        yield session
+
+    await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# User model
+# ---------------------------------------------------------------------------
+
+class TestUserModel:
+
+    async def test_create_user(self, db: AsyncSession):
+        user = User(
+            username="testuser",
+            email="test@example.com",
+            password_hash="hashed123",
+            role="operator",
+        )
+        db.add(user)
+        await db.flush()
+
+        assert user.id is not None
+        assert user.username == "testuser"
+        assert user.role == "operator"
+        assert user.is_active is True
+
+    async def test_user_defaults(self, db: AsyncSession):
+        user = User(
+            username="default_user",
+            email="default@example.com",
+            password_hash="hashed",
+        )
+        db.add(user)
+        await db.flush()
+
+        assert user.role == "viewer"
+        assert user.is_active is True
+        assert user.created_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Incident model
+# ---------------------------------------------------------------------------
+
+class TestIncidentModel:
+
+    async def test_create_incident(self, db: AsyncSession):
+        inc = Incident(
+            title="Test incident",
+            description="Something broke",
+            severity="high",
+        )
+        db.add(inc)
+        await db.flush()
+
+        assert inc.id is not None
+        assert inc.status == "open"
+        assert inc.severity == "high"
+
+    async def test_incident_defaults(self, db: AsyncSession):
+        inc = Incident(
+            title="Minimal",
+            description="desc",
+        )
+        db.add(inc)
+        await db.flush()
+
+        assert inc.status == "open"
+        assert inc.severity is None
+        assert inc.created_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Session model
+# ---------------------------------------------------------------------------
+
+class TestSessionModel:
+
+    async def test_create_session(self, db: AsyncSession):
+        sess = Session(tier=2, model_provider="anthropic", model_id="claude-sonnet")
+        db.add(sess)
+        await db.flush()
+
+        assert sess.id is not None
+        assert sess.tier == 2
+        assert sess.status == "active"
+        assert sess.ended_at is None
+
+    async def test_session_with_incident(self, db: AsyncSession):
+        inc = Incident(title="Parent", description="d")
+        db.add(inc)
+        await db.flush()
+
+        sess = Session(tier=3, incident_id=inc.id)
+        db.add(sess)
+        await db.flush()
+
+        assert sess.incident_id == inc.id
+
+
+# ---------------------------------------------------------------------------
+# AuditEntry model
+# ---------------------------------------------------------------------------
+
+class TestAuditEntryModel:
+
+    async def test_create_audit_entry(self, db: AsyncSession):
+        sess = Session(tier=2)
+        db.add(sess)
+        await db.flush()
+
+        entry = AuditEntry(
+            session_id=sess.id,
+            tier=2,
+            entry_type="tool_call_start",
+            tool_name="get_pods",
+            tool_parameters={"namespace": "default"},
+            permitted=True,
+        )
+        db.add(entry)
+        await db.flush()
+
+        assert entry.id is not None
+        assert entry.tool_name == "get_pods"
+        assert entry.permitted is True
+
+    async def test_blocked_entry(self, db: AsyncSession):
+        sess = Session(tier=2)
+        db.add(sess)
+        await db.flush()
+
+        entry = AuditEntry(
+            session_id=sess.id,
+            tier=2,
+            entry_type="tool_call_blocked",
+            tool_name="delete_pod",
+            permitted=False,
+            block_reason="Tier 2 denies destructive operations",
+        )
+        db.add(entry)
+        await db.flush()
+
+        assert entry.permitted is False
+        assert entry.block_reason == "Tier 2 denies destructive operations"
+
+
+# ---------------------------------------------------------------------------
+# ApprovalRequest model
+# ---------------------------------------------------------------------------
+
+class TestApprovalRequestModel:
+
+    async def test_create_approval_request(self, db: AsyncSession):
+        sess = Session(tier=1)
+        db.add(sess)
+        await db.flush()
+
+        req = ApprovalRequest(
+            session_id=sess.id,
+            action={"tool": "delete_pod", "params": {"pod": "web-1"}},
+            justification="Pod is stuck in CrashLoopBackOff",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        )
+        db.add(req)
+        await db.flush()
+
+        assert req.id is not None
+        assert req.status == "pending"
+        assert req.resolved_at is None
+
+
+# ---------------------------------------------------------------------------
+# ModelConfig model
+# ---------------------------------------------------------------------------
+
+class TestModelConfigModel:
+
+    async def test_create_model_config(self, db: AsyncSession):
+        cfg = ModelConfig(
+            name="test-model",
+            provider="anthropic",
+            model_id="claude-sonnet-4-20250514",
+            api_key_env_var="ANTHROPIC_API_KEY",
+            is_default=True,
+        )
+        db.add(cfg)
+        await db.flush()
+
+        assert cfg.id is not None
+        assert cfg.provider == "anthropic"
+        assert cfg.max_tokens == 4096
+        assert cfg.temperature == 0.0
+        assert cfg.is_default is True

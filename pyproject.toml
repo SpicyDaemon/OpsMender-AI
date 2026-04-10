@@ -11,6 +11,14 @@ dependencies = [
     "mcp>=1.0",
     "langgraph>=0.2",
     "anthropic>=0.93.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30.0",
+    "alembic>=1.15.0",
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+    "websockets>=15.0",
 ]
 
 [project.scripts]
@@ -30,6 +38,7 @@ dev = [
     "pylint",
     "black",
     "mypy",
+    "aiosqlite",
 ]
 
 [tool.pytest.ini_options]

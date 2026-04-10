@@ -10,6 +10,7 @@ dependencies = [
     "pyyaml>=6.0",
     "mcp>=1.0",
     "langgraph>=0.2",
+    "anthropic>=0.93.0",
 ]
 
 [project.scripts]
@@ -33,6 +34,9 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "integration: live integration tests requiring K8s cluster + MCP server",
+]
 
 [tool.mypy]
 python_version = "3.11"

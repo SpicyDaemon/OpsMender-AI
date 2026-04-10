@@ -18,6 +18,7 @@ Usage in nodes::
 from __future__ import annotations
 
 import dataclasses
+import os
 from typing import Protocol, runtime_checkable
 
 
@@ -63,3 +64,49 @@ class StubLLM:
         if self.echo:
             return prompt
         return self.response
+
+
+# ---------------------------------------------------------------------------
+# Anthropic implementation (Phase 1 default)
+# ---------------------------------------------------------------------------
+
+@dataclasses.dataclass
+class AnthropicLLM:
+    """LLM backed by the Anthropic Messages API.
+
+    Requires the ``anthropic`` package and ``ANTHROPIC_API_KEY`` env var.
+
+    Parameters
+    ----------
+    model:
+        Model ID to use (default: ``claude-sonnet-4-20250514``).
+    max_tokens:
+        Maximum tokens in the response.
+    """
+
+    model: str = "claude-sonnet-4-20250514"
+    max_tokens: int = 4096
+
+    def __post_init__(self) -> None:
+        try:
+            import anthropic  # noqa: F811
+        except ImportError as exc:
+            raise ImportError(
+                "The 'anthropic' package is required for AnthropicLLM. "
+                "Install it with: uv add anthropic"
+            ) from exc
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise EnvironmentError(
+                "ANTHROPIC_API_KEY environment variable is not set. "
+                "Set it to your Anthropic API key."
+            )
+        self._client = anthropic.Anthropic(api_key=api_key)
+
+    def invoke(self, prompt: str) -> str:
+        message = self._client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text

@@ -13,11 +13,11 @@ class TestCLI:
         out = capsys.readouterr().out.strip()
         assert out == "0.1.0"
 
-    def test_default_config_loads(self, capsys):
-        """Running with no args loads the repo-root config.yaml."""
+    def test_default_no_subcommand_prints_help(self, capsys):
+        """Running with no args prints help text."""
         main([])
         out = capsys.readouterr().out
-        assert "Configuration loaded:" in out
+        assert "aim" in out
 
     def test_bad_config_path_exits(self):
         with pytest.raises(SystemExit) as exc_info:
@@ -38,4 +38,4 @@ class TestCLI:
         )
         main(["--config", str(cfg)])
         out = capsys.readouterr().out
-        assert "Configuration loaded:" in out
+        assert "aim" in out

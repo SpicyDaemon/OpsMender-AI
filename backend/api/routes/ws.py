@@ -8,6 +8,7 @@ support Authorization headers on connect).
 Sends JSON messages to the client as events occur:
 - ``node_transition`` — workflow node changed
 - ``tool_call``       — MCP tool call started/completed/blocked
+- ``approval_requested`` / ``approval_resolved`` — Tier 1 approval lifecycle
 - ``session_end``     — session finished
 - ``error``           — something went wrong
 

@@ -175,6 +175,16 @@ class TestSessionRepo:
         assert sess.summary == "done"
         assert sess.ended_at is not None
 
+    async def test_set_status(self, db: AsyncSession):
+        sess = await SessionRepo.create(db, tier=1)
+        await db.flush()
+
+        await SessionRepo.set_status(db, sess.id, status="awaiting_approval")
+        await db.flush()
+        await db.refresh(sess)
+
+        assert sess.status == "awaiting_approval"
+
 
 # ---------------------------------------------------------------------------
 # AuditEntryRepo
@@ -322,6 +332,49 @@ class TestApprovalRequestRepo:
 
         pending = await ApprovalRequestRepo.list_pending(db)
         assert len(pending) == 0
+
+    async def test_list_filters(self, db: AsyncSession):
+        sess1 = await SessionRepo.create(db, tier=1)
+        sess2 = await SessionRepo.create(db, tier=1)
+        await db.flush()
+
+        req1 = await ApprovalRequestRepo.create(
+            db,
+            session_id=sess1.id,
+            action={"tool": "delete_pod"},
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        )
+        req2 = await ApprovalRequestRepo.create(
+            db,
+            session_id=sess2.id,
+            action={"tool": "restart_pod"},
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        )
+        await db.flush()
+        await ApprovalRequestRepo.resolve(db, req2.id, status="approved")
+        await db.flush()
+
+        pending = await ApprovalRequestRepo.list(db, status="pending", session_id=sess1.id)
+        assert len(pending) == 1
+        assert pending[0].id == req1.id
+
+    async def test_resolve_returns_false_for_non_pending(self, db: AsyncSession):
+        sess = await SessionRepo.create(db, tier=1)
+        await db.flush()
+
+        req = await ApprovalRequestRepo.create(
+            db,
+            session_id=sess.id,
+            action={"tool": "restart_pod"},
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        )
+        await db.flush()
+
+        first = await ApprovalRequestRepo.resolve(db, req.id, status="approved")
+        second = await ApprovalRequestRepo.resolve(db, req.id, status="rejected")
+
+        assert first is True
+        assert second is False
 
 
 # ---------------------------------------------------------------------------

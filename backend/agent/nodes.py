@@ -20,10 +20,12 @@ Design rules
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from backend.agent.llm import LLM
 from backend.agent.state import IncidentState
+from backend.approvals import ApprovalService
 from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import check as tier_check
 
@@ -243,7 +245,19 @@ def plan(state: IncidentState) -> dict:
 # tier_gate  (HARD PROGRAMMATIC CHECK — not an LLM decision)
 # ---------------------------------------------------------------------------
 
-def _build_tier_gate(tier: int, skill_def: SkillDefinition):
+def _tier_block_reason(status: str) -> str:
+    if status == "rejected":
+        return "Approval rejected by human operator"
+    if status == "expired":
+        return "Approval timed out before human response"
+    return "Action blocked by tier policy"
+
+
+def _build_tier_gate(
+    tier: int,
+    skill_def: SkillDefinition,
+    approval_service: ApprovalService | None = None,
+):
     """Return a tier_gate node function closed over *tier* and *skill_def*.
 
     The tier gate is deterministic: it reads the proposed actions from
@@ -253,14 +267,92 @@ def _build_tier_gate(tier: int, skill_def: SkillDefinition):
     This function is **never** delegated to an LLM.
     """
 
-    def tier_gate(state: IncidentState) -> dict:
+    if approval_service is None:
+
+        def tier_gate(state: IncidentState) -> dict:
+            proposed = state.get("plan", [])
+            approved: list[dict[str, Any]] = []
+            blocked: list[dict[str, Any]] = []
+
+            for action in proposed:
+                tool_name = action.get("tool_name", "")
+                enforcement = tier_check(tool_name, tier, skill_def)
+                if (
+                    tier == 1
+                    and enforcement.classification == "destructive"
+                    and enforcement.permitted
+                ):
+                    blocked.append({
+                        **action,
+                        "block_reason": "Tier 1 destructive operations require an approval service",
+                        "classification": enforcement.classification,
+                    })
+                    continue
+
+                if enforcement.permitted:
+                    approved.append(action)
+                else:
+                    blocked.append({
+                        **action,
+                        "block_reason": enforcement.reason,
+                        "classification": enforcement.classification,
+                    })
+
+            return {
+                "approved_actions": approved,
+                "blocked_actions": blocked,
+                "approval_requests": [],
+            }
+
+        return tier_gate
+
+    async def tier_gate(state: IncidentState) -> dict:
         proposed = state.get("plan", [])
         approved: list[dict[str, Any]] = []
         blocked: list[dict[str, Any]] = []
+        approval_requests: list[dict[str, Any]] = []
+        status = state.get("status")
+        error = state.get("error")
+        session_id = uuid.UUID(state["session_id"])
 
         for action in proposed:
             tool_name = action.get("tool_name", "")
             enforcement = tier_check(tool_name, tier, skill_def)
+
+            if (
+                tier == 1
+                and enforcement.classification == "destructive"
+                and enforcement.permitted
+            ):
+                resolution = await approval_service.request_and_wait(
+                    session_id=session_id,
+                    action=action,
+                    justification=action.get("justification"),
+                )
+                approval_requests.append({
+                    "request_id": str(resolution.request.id),
+                    "status": resolution.request.status,
+                    "action": resolution.request.action,
+                    "expires_at": resolution.request.expires_at.isoformat(),
+                })
+                if resolution.request.status == "approved":
+                    approved.append({
+                        **action,
+                        "approval_request_id": str(resolution.request.id),
+                    })
+                else:
+                    blocked.append({
+                        **action,
+                        "block_reason": resolution.block_reason
+                        or _tier_block_reason(resolution.request.status),
+                        "classification": enforcement.classification,
+                        "approval_request_id": str(resolution.request.id),
+                    })
+                    if resolution.request.status == "expired":
+                        status = "timed_out"
+                        error = resolution.block_reason
+                continue
+
             if enforcement.permitted:
                 approved.append(action)
             else:
@@ -273,6 +365,9 @@ def _build_tier_gate(tier: int, skill_def: SkillDefinition):
         return {
             "approved_actions": approved,
             "blocked_actions": blocked,
+            "approval_requests": approval_requests,
+            "status": status,
+            "error": error,
         }
 
     return tier_gate
@@ -403,9 +498,10 @@ def _build_summarize(llm: LLM):
             blocked_count=len(state.get("blocked_actions", [])),
         )
         summary = llm.invoke(prompt)
+        status = state.get("status")
         return {
             "summary": summary,
-            "status": "completed",
+            "status": status if status in {"failed", "timed_out"} else "completed",
         }
 
     return summarize
@@ -415,8 +511,9 @@ def summarize(state: IncidentState) -> dict:
     """Stub summarize node (no LLM).  Use ``_build_summarize`` for real logic."""
     diagnosis = state.get("diagnosis", "")
     verification = state.get("verification", "")
+    status = state.get("status")
     return {
         "summary": f"[summarize] Incident session complete. "
                    f"Diagnosis: {diagnosis} | Verification: {verification}",
-        "status": "completed",
+        "status": status if status in {"failed", "timed_out"} else "completed",
     }

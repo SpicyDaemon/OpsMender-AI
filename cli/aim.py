@@ -15,9 +15,15 @@ import sys
 import contextlib
 import os
 import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.audit.logger import AuditEntry, AuditLogger
+from backend.approvals import ApprovalService
 from backend.config_loader import Config
+from backend.db.engine import get_engine, get_session_factory
+from backend.db.repos import ApprovalRequestRepo, SessionRepo
 from backend.mcp.client import MCPClientError, connect, list_tools
 
 
@@ -111,6 +117,66 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="json_output",
         help="Output entries as JSON lines instead of a table",
+    )
+
+    # -- approvals ----------------------------------------------------------
+    approvals_parser = sub.add_parser(
+        "approvals",
+        help="List or resolve Tier 1 approval requests",
+    )
+    approvals_sub = approvals_parser.add_subparsers(dest="approvals_command")
+
+    approvals_list = approvals_sub.add_parser("list", help="List approval requests")
+    approvals_list.add_argument(
+        "--status",
+        default=None,
+        choices=["pending", "approved", "rejected", "expired"],
+        help="Filter by approval status",
+    )
+    approvals_list.add_argument(
+        "--session",
+        type=str,
+        metavar="ID",
+        default=None,
+        help="Filter by session ID",
+    )
+    approvals_list.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output approval requests as JSON",
+    )
+
+    approvals_approve = approvals_sub.add_parser(
+        "approve", help="Approve a pending request"
+    )
+    approvals_approve.add_argument("request_id", help="Approval request ID")
+    approvals_approve.add_argument(
+        "--user-id",
+        default=None,
+        help="Resolver user ID to record on the approval",
+    )
+    approvals_approve.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output the resolved request as JSON",
+    )
+
+    approvals_reject = approvals_sub.add_parser(
+        "reject", help="Reject a pending request"
+    )
+    approvals_reject.add_argument("request_id", help="Approval request ID")
+    approvals_reject.add_argument(
+        "--user-id",
+        default=None,
+        help="Resolver user ID to record on the approval",
+    )
+    approvals_reject.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output the resolved request as JSON",
     )
 
     return parser
@@ -216,6 +282,149 @@ def _run_audit(cfg: Config, args: argparse.Namespace) -> int:
         print()
 
     return 0
+
+
+def _database_url() -> str:
+    return os.environ.get(
+        "AIM_DATABASE_URL",
+        "postgresql+asyncpg://aim:aim@localhost:5432/aim",
+    )
+
+
+def _as_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _approval_to_dict(request) -> dict[str, object]:
+    return {
+        "id": str(request.id),
+        "session_id": str(request.session_id),
+        "action": request.action,
+        "justification": request.justification,
+        "status": request.status,
+        "requested_at": request.requested_at.isoformat(),
+        "resolved_at": request.resolved_at.isoformat() if request.resolved_at else None,
+        "resolved_by": str(request.resolved_by) if request.resolved_by else None,
+        "expires_at": _as_utc(request.expires_at).isoformat(),
+    }
+
+
+def _format_approval(request) -> str:
+    expires = _as_utc(request.expires_at).isoformat(timespec="seconds")
+    return (
+        f"{str(request.id)[:12]}  status={request.status:<8s}  "
+        f"session={str(request.session_id)[:12]}  expires={expires}  "
+        f"tool={request.action.get('tool_name', '?')}"
+    )
+
+
+async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
+    if not args.approvals_command:
+        print("Usage: aim approvals {list,approve,reject} ...", file=sys.stderr)
+        return 1
+
+    engine = get_engine(_database_url())
+    factory = get_session_factory(engine)
+
+    try:
+        async with factory() as db:
+            if args.approvals_command == "list":
+                session_id = uuid.UUID(args.session) if args.session else None
+                items = await ApprovalRequestRepo.list(
+                    db,
+                    status=args.status,
+                    session_id=session_id,
+                )
+                if args.json_output:
+                    print(json.dumps([_approval_to_dict(item) for item in items], indent=2))
+                elif not items:
+                    print("No approval requests found.")
+                else:
+                    for item in items:
+                        print(_format_approval(item))
+                return 0
+
+            request_id = uuid.UUID(args.request_id)
+            resolved_by = uuid.UUID(args.user_id) if args.user_id else None
+            decision = (
+                "approved" if args.approvals_command == "approve" else "rejected"
+            )
+            request = await ApprovalRequestRepo.get_by_id(db, request_id)
+            if request is None:
+                print(f"Approval request not found: {request_id}", file=sys.stderr)
+                return 1
+            if datetime.now(timezone.utc) >= _as_utc(request.expires_at):
+                await ApprovalRequestRepo.resolve(db, request_id, status="expired")
+                await SessionRepo.set_status(
+                    db,
+                    request.session_id,
+                    status="timed_out",
+                    ended_at=datetime.now(timezone.utc),
+                )
+                await db.commit()
+                print(
+                    f"Approval request expired before it could be resolved: {request_id}",
+                    file=sys.stderr,
+                )
+                return 1
+
+            updated = await ApprovalRequestRepo.resolve(
+                db,
+                request_id,
+                status=decision,
+                resolved_by=resolved_by,
+            )
+            if not updated:
+                request = await ApprovalRequestRepo.get_by_id(db, request_id)
+                if request is None:
+                    print(f"Approval request not found: {request_id}", file=sys.stderr)
+                    return 1
+                print(
+                    f"Approval request is already {request.status}: {request_id}",
+                    file=sys.stderr,
+                )
+                return 1
+
+            request = await ApprovalRequestRepo.get_by_id(db, request_id)
+            if request is None:
+                print(f"Approval request not found: {request_id}", file=sys.stderr)
+                return 1
+
+            if request.status == "expired":
+                await SessionRepo.set_status(
+                    db,
+                    request.session_id,
+                    status="timed_out",
+                    ended_at=datetime.now(timezone.utc),
+                )
+            else:
+                await SessionRepo.set_status(db, request.session_id, status="active")
+            await db.commit()
+            await db.refresh(request)
+
+            if args.json_output:
+                print(json.dumps(_approval_to_dict(request), indent=2))
+            else:
+                print(_format_approval(request))
+            return 0
+    except ValueError as exc:
+        print(f"Invalid UUID: {exc}", file=sys.stderr)
+        return 1
+    except (OSError, SQLAlchemyError) as exc:
+        print(
+            "Approval command failed: database unavailable. "
+            "Set AIM_DATABASE_URL to a reachable database for approval commands. "
+            f"Details: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+    except Exception as exc:
+        print(f"Approval command failed: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        await engine.dispose()
 
 
 # -- config subcommand -------------------------------------------------------
@@ -329,6 +538,37 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     # 3. Session setup
     session_id = str(uuid.uuid4())
     audit_logger = AuditLogger(cfg.audit.output)
+    db_engine = None
+    session_factory = None
+    approval_service = None
+
+    if tier == 1:
+        try:
+            db_engine = get_engine(_database_url())
+            session_factory = get_session_factory(db_engine)
+            async with session_factory() as db:
+                db_session = await SessionRepo.create(
+                    db,
+                    tier=tier,
+                    model_provider="stub" if args.dry_run else "anthropic",
+                    model_id=args.model or "claude-sonnet-4-20250514",
+                )
+                await db.commit()
+                await db.refresh(db_session)
+                session_id = str(db_session.id)
+            approval_service = ApprovalService(
+                session_factory,
+                timeout_seconds=cfg.approvals.timeout_seconds,
+            )
+        except Exception as exc:
+            if db_engine is not None:
+                await db_engine.dispose()
+            print(
+                "Tier 1 approval flow requires a reachable database. "
+                f"Connection/setup failed: {exc}",
+                file=sys.stderr,
+            )
+            return 1
 
     # 4. Create LLM
     if args.dry_run:
@@ -378,6 +618,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             llm=llm,
             mcp_session=mcp_session,
             audit_logger=audit_logger if mcp_session else None,
+            approval_service=approval_service,
         )
 
         print("Running workflow: observe → diagnose → plan → tier_gate → execute → verify → summarize\n")
@@ -391,6 +632,25 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
         # 8. Log session end
         audit_logger.log_session_end(session_id, tier)
+        if session_factory is not None:
+            async with session_factory() as db:
+                final_status = result.get("status", "completed")
+                if final_status == "timed_out":
+                    await SessionRepo.set_status(
+                        db,
+                        uuid.UUID(session_id),
+                        status="timed_out",
+                        summary=result.get("summary"),
+                        ended_at=datetime.now(timezone.utc),
+                    )
+                else:
+                    await SessionRepo.end_session(
+                        db,
+                        uuid.UUID(session_id),
+                        status=final_status,
+                        summary=result.get("summary"),
+                    )
+                await db.commit()
 
         # 9. Display results
         _print_result(result)
@@ -407,10 +667,21 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
     except Exception as exc:
         audit_logger.log_session_end(session_id, tier)
+        if session_factory is not None:
+            async with session_factory() as db:
+                await SessionRepo.end_session(
+                    db,
+                    uuid.UUID(session_id),
+                    status="failed",
+                    summary=str(exc),
+                )
+                await db.commit()
         print(f"\nWorkflow failed: {exc}", file=sys.stderr)
         return 1
     finally:
         await mcp_ctx.__aexit__(None, None, None)
+        if db_engine is not None:
+            await db_engine.dispose()
 
 
 def _print_result(result: dict) -> None:
@@ -487,6 +758,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "audit":
         rc = _run_audit(cfg, args)
+        sys.exit(rc)
+
+    if args.command == "approvals":
+        rc = asyncio.run(_run_approvals(cfg, args))
         sys.exit(rc)
 
     # No subcommand — print help

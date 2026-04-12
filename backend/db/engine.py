@@ -28,7 +28,10 @@ def get_engine(
     pool_size: int = 5,
 ) -> AsyncEngine:
     """Create an async SQLAlchemy engine from a database URL."""
-    return create_async_engine(url, echo=echo, pool_size=pool_size)
+    kwargs = {"echo": echo}
+    if not url.startswith("sqlite"):
+        kwargs["pool_size"] = pool_size
+    return create_async_engine(url, **kwargs)
 
 
 def get_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

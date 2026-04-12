@@ -50,6 +50,7 @@ class TestConfigLoad:
         assert cfg.mcp_servers == []
         assert cfg.tiers == {}
         assert cfg.logging == {}
+        assert cfg.approvals.timeout_seconds == 900
 
     def test_empty_mcp_servers(self, tmp_path):
         cfg_file = tmp_path / "no_servers.yaml"
@@ -57,6 +58,16 @@ class TestConfigLoad:
         cfg = Config.load(cfg_file)
         assert cfg.mcp_servers == []
         assert cfg.tiers["default"] == 3
+
+    def test_loads_approval_timeout(self, tmp_path):
+        cfg_file = tmp_path / "approvals.yaml"
+        cfg_file.write_text(
+            "mcp_servers: []\n"
+            "approvals:\n"
+            "  timeout_seconds: 120\n"
+        )
+        cfg = Config.load(cfg_file)
+        assert cfg.approvals.timeout_seconds == 120
 
 
 class TestMCPServerConfig:

@@ -56,6 +56,7 @@ class IncidentState(TypedDict, total=False):
     # -- tier gate -----------------------------------------------------------
     approved_actions: list[dict[str, Any]]   # actions that passed the gate
     blocked_actions: list[dict[str, Any]]    # actions that were blocked
+    approval_requests: list[dict[str, Any]]  # approval records created at Tier 1
 
     # -- execution -----------------------------------------------------------
     tool_calls: Annotated[list[ToolCallRecord], operator.add]
@@ -65,5 +66,5 @@ class IncidentState(TypedDict, total=False):
     summary: str                   # output of the summarize node
 
     # -- control flow --------------------------------------------------------
-    status: str                    # active | completed | failed
+    status: str                    # active | awaiting_approval | completed | failed | timed_out
     error: str | None

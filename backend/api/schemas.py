@@ -125,6 +125,29 @@ class AuditListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Approvals
+# ---------------------------------------------------------------------------
+
+class ApprovalRequestResponse(BaseModel):
+    id: uuid.UUID
+    session_id: uuid.UUID
+    action: dict[str, Any]
+    justification: Optional[str]
+    status: str
+    requested_at: datetime
+    resolved_at: Optional[datetime]
+    resolved_by: Optional[uuid.UUID]
+    expires_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ApprovalListResponse(BaseModel):
+    items: list[ApprovalRequestResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
@@ -148,5 +171,5 @@ class ConfigUpdate(BaseModel):
 
 class WSMessage(BaseModel):
     """Outbound WebSocket message."""
-    type: str  # node_transition | tool_call | error | session_end
+    type: str  # node_transition | tool_call | approval_requested | approval_resolved | error | session_end
     data: dict[str, Any] = Field(default_factory=dict)

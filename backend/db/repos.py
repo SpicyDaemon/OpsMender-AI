@@ -194,6 +194,24 @@ class SessionRepo:
         )
         await db.execute(stmt)
 
+    @staticmethod
+    async def set_status(
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        *,
+        status: str,
+        summary: str | None = None,
+        ended_at: datetime | None = None,
+    ) -> None:
+        values: dict[str, Any] = {"status": status}
+        if summary is not None:
+            values["summary"] = summary
+        if ended_at is not None:
+            values["ended_at"] = ended_at
+
+        stmt = update(Session).where(Session.id == session_id).values(**values)
+        await db.execute(stmt)
+
 
 # ---------------------------------------------------------------------------
 # Audit entries
@@ -306,12 +324,33 @@ class ApprovalRequestRepo:
         return await db.get(ApprovalRequest, request_id)
 
     @staticmethod
-    async def list_pending(db: AsyncSession) -> Sequence[ApprovalRequest]:
-        stmt = (
-            select(ApprovalRequest)
-            .where(ApprovalRequest.status == "pending")
-            .order_by(ApprovalRequest.requested_at)
-        )
+    async def list_pending(
+        db: AsyncSession,
+        *,
+        session_id: uuid.UUID | None = None,
+    ) -> Sequence[ApprovalRequest]:
+        stmt = select(ApprovalRequest).where(ApprovalRequest.status == "pending")
+        if session_id is not None:
+            stmt = stmt.where(ApprovalRequest.session_id == session_id)
+        stmt = stmt.order_by(ApprovalRequest.requested_at)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def list(
+        db: AsyncSession,
+        *,
+        status: str | None = None,
+        session_id: uuid.UUID | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[ApprovalRequest]:
+        stmt = select(ApprovalRequest).order_by(ApprovalRequest.requested_at.desc())
+        if status is not None:
+            stmt = stmt.where(ApprovalRequest.status == status)
+        if session_id is not None:
+            stmt = stmt.where(ApprovalRequest.session_id == session_id)
+        stmt = stmt.limit(limit).offset(offset)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -322,17 +361,21 @@ class ApprovalRequestRepo:
         *,
         status: str,
         resolved_by: uuid.UUID | None = None,
-    ) -> None:
+    ) -> bool:
         stmt = (
             update(ApprovalRequest)
-            .where(ApprovalRequest.id == request_id)
+            .where(
+                ApprovalRequest.id == request_id,
+                ApprovalRequest.status == "pending",
+            )
             .values(
                 status=status,
                 resolved_at=datetime.now(timezone.utc),
                 resolved_by=resolved_by,
             )
         )
-        await db.execute(stmt)
+        result = await db.execute(stmt)
+        return bool(result.rowcount)
 
 
 # ---------------------------------------------------------------------------

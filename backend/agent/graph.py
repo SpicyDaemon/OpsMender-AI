@@ -34,6 +34,7 @@ from langgraph.graph import StateGraph, START, END
 
 from backend.agent.llm import LLM
 from backend.agent.state import IncidentState
+from backend.approvals import ApprovalService
 from backend.agent.nodes import (
     # Stub versions (no LLM / no MCP)
     observe,
@@ -61,6 +62,7 @@ def build_graph(
     llm: LLM | None = None,
     mcp_session=None,
     audit_logger=None,
+    approval_service: ApprovalService | None = None,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -110,7 +112,7 @@ def build_graph(
     builder.add_node("observe", observe_fn)
     builder.add_node("diagnose", diagnose_fn)
     builder.add_node("plan", plan_fn)
-    builder.add_node("tier_gate", _build_tier_gate(tier, skill_def))
+    builder.add_node("tier_gate", _build_tier_gate(tier, skill_def, approval_service))
     builder.add_node("execute", execute_fn)
     builder.add_node("verify", verify_fn)
     builder.add_node("summarize", summarize_fn)

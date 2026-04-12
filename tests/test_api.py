@@ -17,6 +17,7 @@ from backend.api.app import create_app
 from backend.api.deps import get_db, set_session_factory
 from backend.db.models import Base
 from backend.db.repos import (
+    ApprovalRequestRepo,
     AuditEntryRepo,
     IncidentRepo,
     SessionRepo,
@@ -52,6 +53,7 @@ async def app(tmp_path):
     set_config_path(tmp_config)
 
     application = create_app()
+    application.state.session_factory = factory
 
     # Override the DB dependency to use our in-memory factory
     application.dependency_overrides[get_db] = _override_get_db(factory)
@@ -112,6 +114,23 @@ async def viewer_headers(client: AsyncClient, auth_headers) -> dict[str, str]:
     })
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+async def _create_approval_request(app, *, tier: int = 1, expires_delta_minutes: int = 15):
+    factory = app.state.session_factory
+    async with factory() as db:
+        session = await SessionRepo.create(db, tier=tier)
+        request = await ApprovalRequestRepo.create(
+            db,
+            session_id=session.id,
+            action={"tool_name": "delete_pod", "tool_parameters": {"pod": "api"}},
+            justification="Pod is causing the incident",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=expires_delta_minutes),
+        )
+        await db.commit()
+        await db.refresh(session)
+        await db.refresh(request)
+        return session, request
 
 
 # ===========================================================================
@@ -447,6 +466,77 @@ class TestConfig:
 
 
 # ===========================================================================
+# Approvals
+# ===========================================================================
+
+class TestApprovals:
+
+    async def test_list_approvals(self, client: AsyncClient, app, auth_headers):
+        _, request = await _create_approval_request(app)
+
+        resp = await client.get("/approvals", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["id"] == str(request.id)
+
+    async def test_list_approvals_filtered_by_status(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        _, request = await _create_approval_request(app)
+
+        resp = await client.get("/approvals?status=pending", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["status"] == "pending"
+        assert data["items"][0]["id"] == str(request.id)
+
+    async def test_approve_request(self, client: AsyncClient, app, auth_headers):
+        _, request = await _create_approval_request(app)
+
+        resp = await client.post(
+            f"/approvals/{request.id}/approve",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "approved"
+        assert data["resolved_by"] is not None
+
+    async def test_reject_request(self, client: AsyncClient, app, auth_headers):
+        _, request = await _create_approval_request(app)
+
+        resp = await client.post(
+            f"/approvals/{request.id}/reject",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "rejected"
+
+    async def test_viewer_cannot_approve(self, client: AsyncClient, app, viewer_headers):
+        _, request = await _create_approval_request(app)
+
+        resp = await client.post(
+            f"/approvals/{request.id}/approve",
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
+    async def test_expired_request_cannot_be_approved(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        _, request = await _create_approval_request(app, expires_delta_minutes=-1)
+
+        resp = await client.post(
+            f"/approvals/{request.id}/approve",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        assert "expired" in resp.json()["detail"].lower()
+
+
+# ===========================================================================
 # WebSocket
 # ===========================================================================
 
@@ -487,3 +577,25 @@ class TestWebSocket:
 
         msg = WSMessage(type="session_end", data={})
         await publish(uuid.uuid4(), msg)  # should not raise
+
+    async def test_approval_resolution_publishes_ws_event(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        import asyncio
+        from backend.api.routes.ws import get_channel, remove_channel
+
+        session, request = await _create_approval_request(app)
+        queue = get_channel(session.id)
+        try:
+            resp = await client.post(
+                f"/approvals/{request.id}/approve",
+                headers=auth_headers,
+            )
+            assert resp.status_code == 200
+
+            msg = await asyncio.wait_for(queue.get(), timeout=1.0)
+            assert msg["type"] == "approval_resolved"
+            assert msg["data"]["id"] == str(request.id)
+            assert msg["data"]["status"] == "approved"
+        finally:
+            remove_channel(session.id, queue)

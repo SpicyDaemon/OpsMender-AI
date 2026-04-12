@@ -28,3 +28,7 @@ logs/
 
 # Claude Files
 .claude/
+
+# local DB Files
+*.db
+*.db/

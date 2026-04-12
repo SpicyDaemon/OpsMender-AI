@@ -12,11 +12,14 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import pathlib
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.agent.graph import build_graph
 from backend.agent.llm import LLM, StubLLM
@@ -36,7 +39,10 @@ from backend.agent.nodes import (
     verify,
 )
 from backend.agent.state import IncidentState
+from backend.approvals import ApprovalService
 from backend.audit.logger import AuditLogger
+from backend.db.models import Base
+from backend.db.repos import ApprovalRequestRepo, SessionRepo
 from backend.skills.parser import OperationClassification, SkillDefinition
 
 
@@ -385,6 +391,109 @@ class TestTierGate:
         result = gate(state)
         assert len(result["approved_actions"]) == 0
         assert len(result["blocked_actions"]) == 3
+
+    def test_tier_1_without_approval_service_blocks_destructive_action(self):
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def())
+        state = _base_state(plan=[
+            {"tool_name": "delete_pod", "tool_parameters": {}},
+        ])
+        result = gate(state)
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 1
+        assert "approval service" in result["blocked_actions"][0]["block_reason"].lower()
+
+    async def test_tier_1_approved_action_waits_and_executes(self):
+        engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        async with factory() as db:
+            session = await SessionRepo.create(db, tier=1)
+            await db.commit()
+            await db.refresh(session)
+
+        service = ApprovalService(factory, poll_interval_seconds=0.01)
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        state = _base_state(
+            session_id=str(session.id),
+            tier=1,
+            plan=[{"tool_name": "delete_pod", "tool_parameters": {}}],
+        )
+
+        task = asyncio.create_task(gate(state))
+        await asyncio.sleep(0.05)
+
+        async with factory() as db:
+            pending = await ApprovalRequestRepo.list_pending(db, session_id=session.id)
+            assert len(pending) == 1
+            await ApprovalRequestRepo.resolve(db, pending[0].id, status="approved")
+            await db.commit()
+
+        result = await task
+        assert len(result["approved_actions"]) == 1
+        assert len(result["blocked_actions"]) == 0
+        assert result["approval_requests"][0]["status"] == "approved"
+
+        await engine.dispose()
+
+    async def test_tier_1_rejected_action_is_blocked(self):
+        engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        async with factory() as db:
+            session = await SessionRepo.create(db, tier=1)
+            await db.commit()
+            await db.refresh(session)
+
+        service = ApprovalService(factory, poll_interval_seconds=0.01)
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        state = _base_state(
+            session_id=str(session.id),
+            tier=1,
+            plan=[{"tool_name": "delete_pod", "tool_parameters": {}}],
+        )
+
+        task = asyncio.create_task(gate(state))
+        await asyncio.sleep(0.05)
+
+        async with factory() as db:
+            pending = await ApprovalRequestRepo.list_pending(db, session_id=session.id)
+            await ApprovalRequestRepo.resolve(db, pending[0].id, status="rejected")
+            await db.commit()
+
+        result = await task
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 1
+        assert "rejected" in result["blocked_actions"][0]["block_reason"].lower()
+
+        await engine.dispose()
+
+    async def test_tier_1_timeout_marks_state_timed_out(self):
+        engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        async with factory() as db:
+            session = await SessionRepo.create(db, tier=1)
+            await db.commit()
+            await db.refresh(session)
+
+        service = ApprovalService(factory, timeout_seconds=0, poll_interval_seconds=0.01)
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        result = await gate(_base_state(
+            session_id=str(session.id),
+            tier=1,
+            plan=[{"tool_name": "delete_pod", "tool_parameters": {}}],
+        ))
+        assert result["status"] == "timed_out"
+        assert len(result["blocked_actions"]) == 1
+        assert "timed out" in result["blocked_actions"][0]["block_reason"].lower()
+
+        await engine.dispose()
 
 
 # ---------------------------------------------------------------------------

@@ -112,7 +112,7 @@ class Session(Base):
     model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="active"
-    )  # active | completed | failed | timed_out
+    )  # active | awaiting_approval | completed | failed | timed_out
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

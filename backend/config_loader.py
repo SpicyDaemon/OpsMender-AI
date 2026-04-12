@@ -50,6 +50,13 @@ class AuditConfig:
 
 
 @dataclasses.dataclass
+class ApprovalConfig:
+    """Approval-flow configuration."""
+
+    timeout_seconds: int = 900
+
+
+@dataclasses.dataclass
 class Config:
     """Top-level configuration container."""
 
@@ -57,6 +64,7 @@ class Config:
     tiers: Dict[str, Any]
     logging: Dict[str, Any]
     audit: AuditConfig
+    approvals: ApprovalConfig
 
     @classmethod
     def load(cls, path: pathlib.Path | str = "config.yaml") -> Config:
@@ -86,10 +94,15 @@ class Config:
         audit = AuditConfig(
             output=raw_audit.get("output", "./logs/audit.jsonl"),
         )
+        raw_approvals = data.get("approvals", {})
+        approvals = ApprovalConfig(
+            timeout_seconds=raw_approvals.get("timeout_seconds", 900),
+        )
 
         return cls(
             mcp_servers=servers,
             tiers=data.get("tiers", {}),
             logging=data.get("logging", {}),
             audit=audit,
+            approvals=approvals,
         )

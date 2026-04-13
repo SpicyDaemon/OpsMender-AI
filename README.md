@@ -23,10 +23,21 @@ uv run aim run --dry-run --incident "High CPU on api-server-01"
 
 > **How `aim` works:** `uv sync` installs the project as a Python package, which registers `aim` as a CLI entry point (defined in `pyproject.toml` → `[project.scripts]`). You run it via `uv run aim` or by activating the venv directly (`. .venv/bin/activate && aim`).
 
+### Runtime Inputs
+
+In practice, an AIM deployment is driven by three operator-owned inputs:
+
+- `.env` for secrets and environment-specific variables
+- `config.yaml` for runtime configuration such as tier, audit output, MCP servers, and skill path
+- `skills/` for your environment-specific `SKILL.md` files that define what counts as safe, caution, or destructive
+
+This is intentional: AIM does not hardcode what "destructive" means for your infrastructure. The operator defines that through skills.
+
 ### Local Dev Notes
 
-- The repo was verified in a local `.venv` on 2026-04-12 with `266 passed, 2 skipped`.
+- The repo was verified in a local `.venv` on 2026-04-12 with `312 passed, 2 skipped`.
 - `aim approvals ...` requires a reachable database because approval requests are persisted.
+- `aim config model set ...` also requires a reachable database because model configs are persisted.
 - If you are not running Postgres locally yet, SQLite works for local approval-flow testing:
 
 ```bash
@@ -44,7 +55,7 @@ export AIM_DATABASE_URL="sqlite+aiosqlite:///$(pwd)/aim.db"
 ## Running Tests
 
 ```bash
-uv run pytest              # all tests (266 passed, 2 skipped)
+uv run pytest              # all tests (312 passed, 2 skipped)
 uv run pytest -xvs         # verbose, stop on first failure
 uv run pytest tests/test_api.py       # API layer tests
 uv run pytest tests/test_workflow.py  # workflow tests
@@ -67,6 +78,8 @@ uv run pytest tests/test_workflow.py  # workflow tests
 | `aim config` | Show current configuration summary |
 | `aim config --json` | Output config as JSON |
 | `aim config --validate` | Validate the current configuration |
+| `aim config model list` | Discover provider availability and reported models |
+| `aim config model set --provider ... --model-id ...` | Validate and persist the default model config |
 | `aim approvals list` | List approval requests |
 | `aim approvals approve ID` | Approve a pending Tier 1 request |
 | `aim approvals reject ID` | Reject a pending Tier 1 request |
@@ -97,9 +110,11 @@ uv run uvicorn backend.api.app:create_app --factory --reload
 | `GET` | `/approvals` | any | List approval requests |
 | `POST` | `/approvals/{id}/approve` | admin/operator | Approve pending request |
 | `POST` | `/approvals/{id}/reject` | admin/operator | Reject pending request |
+| `GET` | `/models` | any | Discover provider availability and reported models |
 | `GET` | `/audit` | any | Query audit entries (filters + pagination) |
 | `GET` | `/config` | admin/operator | Read system config |
 | `PUT` | `/config` | admin | Update system config |
+| `PUT` | `/config/model` | admin | Validate and persist the default model config |
 | `WS` | `/sessions/{id}/stream?token=JWT` | JWT query param | Live session streaming |
 
 ### Roles
@@ -114,9 +129,11 @@ The first registered user is automatically assigned the `admin` role.
 
 ## Configuration
 
-Edit `config.yaml` to add MCP servers. Three transport types are supported:
+Edit `config.yaml` to define runtime behavior. In addition to MCP servers, this should point at the skill definition for the environment you are operating in.
 
 ```yaml
+skill_definition: ./skills/production/SKILL.md
+
 mcp_servers:
   # Local process (stdio)
   - name: kubernetes
@@ -142,6 +159,48 @@ approvals:
   timeout_seconds: 900
 ```
 
+`skill_definition` should point to an operator-owned `SKILL.md` file. Different environments can use different skill files, for example:
+
+```text
+skills/
+├── production/SKILL.md
+├── staging/SKILL.md
+└── sandbox/SKILL.md
+```
+
+## Model Providers
+
+Sprint 10 added a provider abstraction layer for:
+
+- Anthropic
+- OpenAI
+- Azure OpenAI
+- Ollama
+
+You can inspect provider availability from the CLI:
+
+```bash
+aim config model list
+aim config model list --provider ollama --base-url http://localhost:11434
+```
+
+You can persist the default model config into the database:
+
+```bash
+aim config model set --provider openai --model-id gpt-4o --api-key-env-var OPENAI_API_KEY
+aim config model set --provider azure_openai --model-id my-deployment \
+  --base-url https://example-resource.openai.azure.com/ \
+  --api-version 2024-10-21 \
+  --api-key-env-var AZURE_OPENAI_API_KEY
+aim config model set --provider ollama --model-id llama3.2 --base-url http://localhost:11434
+```
+
+Notes:
+
+- `aim config model list` is discovery-only and does not write to the database.
+- `aim config model set` validates the provider config first, then stores it in `model_configs` and marks it as default.
+- If you want to run a local Hugging Face model with AIM, the clean path is to serve it through a local runtime such as Ollama or another OpenAI-compatible endpoint rather than loading raw checkpoints directly inside AIM.
+
 ## Workflow
 
 AIM uses a LangGraph-powered incident response workflow:
@@ -164,7 +223,11 @@ The `tier_gate` is a hard programmatic check — it cannot be bypassed by agent 
 
 ## Skill Definitions
 
-Organizations define what's safe, cautious, or destructive in a `SKILL.md` file. See `examples/SKILL.md` for a Kubernetes reference template.
+Organizations define what's safe, cautious, or destructive in a `SKILL.md` file. This is one of the core design constraints of AIM: the framework enforces the skill definition you provide rather than deciding destructiveness itself.
+
+That means users can bring their own skills to match their environment. For example, deleting a pod in production might be classified as `destructive`, while the same action in a sandbox environment might be treated differently.
+
+See `examples/SKILL.md` for a Kubernetes reference template.
 
 ```yaml
 operations:
@@ -177,6 +240,8 @@ operations:
 ```
 
 The tier enforcement layer uses these classifications to permit or block tool calls at runtime. Unknown operations are denied at all tiers (fail-closed).
+
+This is how AIM supports operator-defined destructive actions: your `SKILL.md` files define the policy boundary for your environment, and AIM enforces that boundary programmatically.
 
 ## Tier System
 
@@ -211,20 +276,23 @@ ai-incident-manager/
 │   │   ├── auth.py         # JWT auth, bcrypt hashing, RBAC dependencies
 │   │   ├── deps.py         # DB session dependency injection
 │   │   ├── schemas.py      # Pydantic request/response models
-│   │   └── routes/         # Route modules (auth, incidents, sessions, approvals, audit, config, ws)
+│   │   └── routes/         # Route modules (auth, incidents, sessions, approvals, audit, config, models, ws)
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic
 │   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
 │   ├── config_loader.py    # YAML config → typed dataclasses
 │   ├── db/                 # SQLAlchemy models, async repos, Alembic migrations
+│   ├── llm/                # Provider abstraction, registry, and factories
 │   ├── mcp/                # MCP client wrapper (stdio, sse, http)
 │   ├── skills/             # Skill definition parser (SKILL.md)
 │   └── tiers/              # Tier enforcement layer
 ├── cli/
-│   └── aim.py              # CLI entry point (run, check, audit, config)
+│   └── aim.py              # CLI entry point (run, check, audit, config, approvals)
 ├── examples/
 │   └── SKILL.md            # Reference Kubernetes skill definition
-├── tests/                  # 266 tests, 2 skipped
-├── config.yaml             # Default configuration
+├── skills/                 # Operator-owned environment skill files
+├── tests/                  # 312 tests, 2 skipped
+├── config.yaml             # Runtime config (tier, MCP servers, skill path)
+├── .env                    # Secrets and environment variables
 └── docs/                   # Project documentation
 ```
 
@@ -235,7 +303,7 @@ ai-incident-manager/
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
   - Sprint 8: ✅ FastAPI REST + WebSocket layer (JWT auth, RBAC, all CRUD endpoints)
   - Sprint 9: ✅ Tier 1 approval flow
-  - Sprint 10: ⬜ BYOM provider abstraction
+  - Sprint 10: ✅ BYOM provider abstraction
   - Sprint 11: ⬜ Next.js frontend
   - Sprint 12: ⬜ Polish + binary build
 
@@ -245,8 +313,9 @@ The end goal is a standalone binary (via PyInstaller or Nuitka) that requires on
 
 ```
 aim                  # standalone binary
-config.yaml          # MCP servers, tier, audit config
+config.yaml          # runtime config: tier, MCP servers, skill path
 .env                 # API keys, database URL, JWT secret
+skills/              # operator-owned skill definitions for each environment
 ```
 
 No Python install, no `uv`, no virtualenv — just download, configure, and run. This is planned for Sprint 12.

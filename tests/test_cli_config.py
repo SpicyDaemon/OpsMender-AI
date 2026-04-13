@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cli.aim import main, _parse_args
+from backend.db.models import Base
+from backend.db.repos import ModelConfigRepo
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +65,31 @@ class TestConfigArgParsing:
     def test_config_validate_with_skill(self):
         args = _parse_args(["config", "--validate", "--skill-file", "foo.md"])
         assert args.skill_file == "foo.md"
+
+    def test_config_model_list_subcommand(self):
+        args = _parse_args(["config", "model", "list", "--provider", "openai"])
+        assert args.command == "config"
+        assert args.config_command == "model"
+        assert args.model_command == "list"
+        assert args.provider == "openai"
+
+    def test_config_model_set_subcommand(self):
+        args = _parse_args(
+            [
+                "config",
+                "model",
+                "set",
+                "--provider",
+                "ollama",
+                "--model-id",
+                "llama3.2",
+            ]
+        )
+        assert args.command == "config"
+        assert args.config_command == "model"
+        assert args.model_command == "set"
+        assert args.provider == "ollama"
+        assert args.model_id == "llama3.2"
 
 
 # ---------------------------------------------------------------------------
@@ -182,3 +211,129 @@ class TestConfigValidate:
         assert exc_info.value.code == 1
         out = capsys.readouterr().out
         assert "Skill file not found" in out
+
+
+def _create_sqlite_schema(database_url: str) -> None:
+    async def _run() -> None:
+        engine = create_async_engine(database_url, echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
+class TestConfigModel:
+    def test_model_list_json_output(self, tmp_path, capsys, monkeypatch):
+        cfg_path = _write_cfg(tmp_path)
+
+        def _discover_models(self, **kwargs):
+            assert kwargs["provider"] == "openai"
+            return [
+                {
+                    "provider": "openai",
+                    "label": "OpenAI",
+                    "default_model_id": "gpt-4o",
+                    "default_api_key_env_var": "OPENAI_API_KEY",
+                    "requires_api_key": True,
+                    "requires_base_url": False,
+                    "requires_api_version": False,
+                    "available": True,
+                    "models": ["gpt-4o", "gpt-4o-mini"],
+                    "error": None,
+                }
+            ]
+
+        monkeypatch.setattr("cli.aim.ProviderRegistry.discover_models", _discover_models)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "model",
+                    "list",
+                    "--provider",
+                    "openai",
+                    "--json",
+                ]
+            )
+        assert exc_info.value.code == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["total"] == 1
+        assert data["items"][0]["provider"] == "openai"
+        assert data["items"][0]["models"] == ["gpt-4o", "gpt-4o-mini"]
+
+    def test_model_set_persists_default_config(self, tmp_path, capsys, monkeypatch):
+        cfg_path = _write_cfg(tmp_path)
+        db_path = tmp_path / "aim.db"
+        database_url = f"sqlite+aiosqlite:///{db_path}"
+        _create_sqlite_schema(database_url)
+        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        monkeypatch.setattr(
+            "cli.aim.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: None,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "model",
+                    "set",
+                    "--provider",
+                    "ollama",
+                    "--model-id",
+                    "llama3.2",
+                    "--base-url",
+                    "http://localhost:11434",
+                    "--json",
+                ]
+            )
+        assert exc_info.value.code == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["provider"] == "ollama"
+        assert data["model_id"] == "llama3.2"
+        assert data["is_default"] is True
+
+        async def _verify() -> None:
+            engine = create_async_engine(database_url, echo=False)
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            async with factory() as session:
+                default = await ModelConfigRepo.get_default(session)
+                assert default is not None
+                assert default.provider == "ollama"
+                assert default.model_id == "llama3.2"
+                assert default.base_url == "http://localhost:11434"
+            await engine.dispose()
+
+        asyncio.run(_verify())
+
+    def test_model_set_validation_error_returns_nonzero(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        cfg_path = _write_cfg(tmp_path)
+        monkeypatch.setattr(
+            "cli.aim.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: (_ for _ in ()).throw(ValueError("bad model")),
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "model",
+                    "set",
+                    "--provider",
+                    "openai",
+                    "--model-id",
+                    "bad-model",
+                ]
+            )
+        assert exc_info.value.code == 1
+        assert "bad model" in capsys.readouterr().err

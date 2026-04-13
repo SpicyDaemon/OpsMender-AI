@@ -20,6 +20,7 @@ from backend.db.repos import (
     ApprovalRequestRepo,
     AuditEntryRepo,
     IncidentRepo,
+    ModelConfigRepo,
     SessionRepo,
     UserRepo,
 )
@@ -462,6 +463,118 @@ class TestConfig:
         resp = await client.put("/config", json={
             "tier": 1,
         }, headers=viewer_headers)
+        assert resp.status_code == 403
+
+
+class TestModelConfigAPI:
+
+    async def test_list_models(self, client: AsyncClient, auth_headers, monkeypatch):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.discover_models",
+            lambda self, **kwargs: [
+                {
+                    "provider": "openai",
+                    "label": "OpenAI",
+                    "default_model_id": "gpt-4o",
+                    "default_api_key_env_var": "OPENAI_API_KEY",
+                    "requires_api_key": True,
+                    "requires_base_url": False,
+                    "requires_api_version": False,
+                    "available": True,
+                    "models": ["gpt-4o", "gpt-4o-mini"],
+                    "error": None,
+                }
+            ],
+        )
+
+        resp = await client.get("/models?provider=openai", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["provider"] == "openai"
+        assert data["items"][0]["models"] == ["gpt-4o", "gpt-4o-mini"]
+
+    async def test_viewer_can_list_models(
+        self, client: AsyncClient, viewer_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.discover_models",
+            lambda self, **kwargs: [],
+        )
+
+        resp = await client.get("/models", headers=viewer_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {"items": [], "total": 0}
+
+    async def test_update_model_config_admin(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.config.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: None,
+        )
+
+        resp = await client.put(
+            "/config/model",
+            json={
+                "name": "primary-openai",
+                "provider": "openai",
+                "model_id": "gpt-4o",
+                "api_key_env_var": "OPENAI_API_KEY",
+                "max_tokens": 8192,
+                "temperature": 0.1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "primary-openai"
+        assert data["provider"] == "openai"
+        assert data["model_id"] == "gpt-4o"
+        assert data["max_tokens"] == 8192
+        assert data["temperature"] == 0.1
+        assert data["is_default"] is True
+
+        async with app.state.session_factory() as db:
+            default = await ModelConfigRepo.get_default(db)
+            assert default is not None
+            assert default.name == "primary-openai"
+
+    async def test_update_model_config_validation_error(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        def _raise(self, **kwargs):
+            raise ValueError("unsupported deployment")
+
+        monkeypatch.setattr(
+            "backend.api.routes.config.ProviderRegistry.validate_model_config",
+            _raise,
+        )
+
+        resp = await client.put(
+            "/config/model",
+            json={
+                "provider": "azure_openai",
+                "model_id": "bad-deployment",
+                "base_url": "https://example-resource.openai.azure.com/",
+                "api_version": "2024-10-21",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "unsupported deployment" in resp.json()["detail"]
+
+    async def test_update_model_config_viewer_forbidden(
+        self, client: AsyncClient, viewer_headers
+    ):
+        resp = await client.put(
+            "/config/model",
+            json={
+                "provider": "openai",
+                "model_id": "gpt-4o",
+            },
+            headers=viewer_headers,
+        )
         assert resp.status_code == 403
 
 

@@ -422,3 +422,66 @@ class TestModelConfigRepo:
         await db.refresh(c2)
         assert c1.is_default is False
         assert c2.is_default is True
+
+    async def test_get_by_name(self, db: AsyncSession):
+        await ModelConfigRepo.create(
+            db,
+            name="azure-prod",
+            provider="azure_openai",
+            model_id="gpt-4o",
+            api_version="2024-10-21",
+        )
+        await db.flush()
+
+        cfg = await ModelConfigRepo.get_by_name(db, "azure-prod")
+        assert cfg is not None
+        assert cfg.provider == "azure_openai"
+        assert cfg.api_version == "2024-10-21"
+
+    async def test_upsert_creates_when_missing(self, db: AsyncSession):
+        cfg = await ModelConfigRepo.upsert(
+            db,
+            name="local",
+            provider="ollama",
+            model_id="llama3.2",
+            base_url="http://localhost:11434",
+        )
+        await db.flush()
+
+        assert cfg.name == "local"
+        assert cfg.provider == "ollama"
+        assert cfg.base_url == "http://localhost:11434"
+
+    async def test_upsert_updates_existing(self, db: AsyncSession):
+        created = await ModelConfigRepo.create(
+            db,
+            name="shared",
+            provider="openai",
+            model_id="gpt-4o-mini",
+            api_key_env_var="OPENAI_API_KEY",
+        )
+        await db.flush()
+
+        updated = await ModelConfigRepo.upsert(
+            db,
+            name="shared",
+            provider="azure_openai",
+            model_id="deployment-gpt4",
+            api_key_env_var="AZURE_OPENAI_API_KEY",
+            base_url="https://example-resource.openai.azure.com/",
+            api_version="2024-10-21",
+            max_tokens=8192,
+            temperature=0.2,
+            is_default=True,
+        )
+        await db.flush()
+
+        assert updated.id == created.id
+        assert updated.provider == "azure_openai"
+        assert updated.model_id == "deployment-gpt4"
+        assert updated.api_key_env_var == "AZURE_OPENAI_API_KEY"
+        assert updated.base_url == "https://example-resource.openai.azure.com/"
+        assert updated.api_version == "2024-10-21"
+        assert updated.max_tokens == 8192
+        assert updated.temperature == 0.2
+        assert updated.is_default is True

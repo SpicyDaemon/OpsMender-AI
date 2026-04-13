@@ -23,7 +23,8 @@ from backend.audit.logger import AuditEntry, AuditLogger
 from backend.approvals import ApprovalService
 from backend.config_loader import Config
 from backend.db.engine import get_engine, get_session_factory
-from backend.db.repos import ApprovalRequestRepo, SessionRepo
+from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
+from backend.llm import ProviderRegistry
 from backend.mcp.client import MCPClientError, connect, list_tools
 
 
@@ -94,6 +95,101 @@ def _build_parser() -> argparse.ArgumentParser:
         "--skill-file",
         default=None,
         help="Skill file to validate (used with --validate)",
+    )
+    config_sub = config_parser.add_subparsers(dest="config_command")
+
+    model_parser = config_sub.add_parser(
+        "model",
+        help="Discover providers or set the default model configuration",
+    )
+    model_sub = model_parser.add_subparsers(dest="model_command")
+
+    model_list = model_sub.add_parser("list", help="List available provider models")
+    model_list.add_argument(
+        "--provider",
+        choices=["anthropic", "openai", "azure_openai", "ollama"],
+        default=None,
+        help="Filter to one provider",
+    )
+    model_list.add_argument(
+        "--model-id",
+        default=None,
+        help="Override the probe model ID",
+    )
+    model_list.add_argument(
+        "--api-key-env-var",
+        default=None,
+        help="Override the API key environment variable used for discovery",
+    )
+    model_list.add_argument(
+        "--base-url",
+        default=None,
+        help="Override the provider base URL",
+    )
+    model_list.add_argument(
+        "--api-version",
+        default=None,
+        help="Override the provider API version",
+    )
+    model_list.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output provider discovery results as JSON",
+    )
+
+    model_set = model_sub.add_parser(
+        "set",
+        help="Validate and save the default model configuration",
+    )
+    model_set.add_argument(
+        "--name",
+        default=None,
+        help="Config name to create or update (default: provider:model_id)",
+    )
+    model_set.add_argument(
+        "--provider",
+        required=True,
+        choices=["anthropic", "openai", "azure_openai", "ollama"],
+        help="LLM provider to configure",
+    )
+    model_set.add_argument(
+        "--model-id",
+        required=True,
+        help="Model identifier or deployment name",
+    )
+    model_set.add_argument(
+        "--api-key-env-var",
+        default=None,
+        help="Environment variable containing the provider API key",
+    )
+    model_set.add_argument(
+        "--base-url",
+        default=None,
+        help="Provider base URL or local runtime endpoint",
+    )
+    model_set.add_argument(
+        "--api-version",
+        default=None,
+        help="Azure/OpenAI API version override",
+    )
+    model_set.add_argument(
+        "--max-tokens",
+        type=int,
+        default=4096,
+        help="Default max_tokens value to persist",
+    )
+    model_set.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Default temperature value to persist",
+    )
+    model_set.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output the saved model config as JSON",
     )
 
     # -- audit --------------------------------------------------------------
@@ -320,6 +416,40 @@ def _format_approval(request) -> str:
     )
 
 
+def _model_config_to_dict(config) -> dict[str, object]:
+    return {
+        "id": str(config.id),
+        "name": config.name,
+        "provider": config.provider,
+        "model_id": config.model_id,
+        "api_key_env_var": config.api_key_env_var,
+        "base_url": config.base_url,
+        "api_version": config.api_version,
+        "max_tokens": config.max_tokens,
+        "temperature": config.temperature,
+        "is_default": config.is_default,
+        "created_at": config.created_at.isoformat(),
+    }
+
+
+def _format_provider_models(item: dict[str, object]) -> str:
+    models = item.get("models") or []
+    model_text = ", ".join(str(model) for model in models[:8]) if models else "(none)"
+    if len(models) > 8:
+        model_text = f"{model_text}, ..."
+    status = "available" if item.get("available") else "unavailable"
+    detail = model_text if item.get("available") else item.get("error") or "unknown error"
+    return f"{item['provider']:<13s} {status:<11s} {detail}"
+
+
+def _format_model_config(config) -> str:
+    default = " default" if config.is_default else ""
+    return (
+        f"{config.name}  provider={config.provider}  model={config.model_id}"
+        f"{default}"
+    )
+
+
 async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
     if not args.approvals_command:
         print("Usage: aim approvals {list,approve,reject} ...", file=sys.stderr)
@@ -432,6 +562,9 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
 
 def _run_config(cfg: Config, args: argparse.Namespace) -> int:
     """Display or validate the current configuration."""
+    if getattr(args, "config_command", None) == "model":
+        return asyncio.run(_run_config_model(cfg, args))
+
     if args.json_output:
         import dataclasses as _dc
 
@@ -510,6 +643,88 @@ def _validate_config(cfg: Config, args: argparse.Namespace) -> int:
         return 1
 
     print("Validation OK — configuration is valid.")
+    return 0
+
+
+async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
+    if not args.model_command:
+        print("Usage: aim config model {list,set} ...", file=sys.stderr)
+        return 1
+
+    registry = ProviderRegistry()
+
+    if args.model_command == "list":
+        try:
+            items = registry.discover_models(
+                provider=args.provider,
+                model_id=args.model_id,
+                api_key_env_var=args.api_key_env_var,
+                base_url=args.base_url,
+                api_version=args.api_version,
+            )
+        except ValueError as exc:
+            print(f"Model discovery failed: {exc}", file=sys.stderr)
+            return 1
+
+        if args.json_output:
+            print(json.dumps({"items": items, "total": len(items)}, indent=2))
+        elif not items:
+            print("No providers found.")
+        else:
+            for item in items:
+                print(_format_provider_models(item))
+        return 0
+
+    try:
+        registry.validate_model_config(
+            provider=args.provider,
+            model_id=args.model_id,
+            api_key_env_var=args.api_key_env_var,
+            base_url=args.base_url,
+            api_version=args.api_version,
+        )
+    except ValueError as exc:
+        print(f"Model config validation failed: {exc}", file=sys.stderr)
+        return 1
+
+    engine = get_engine(_database_url())
+    factory = get_session_factory(engine)
+    try:
+        async with factory() as db:
+            name = args.name or f"{args.provider}:{args.model_id}"
+            saved = await ModelConfigRepo.upsert(
+                db,
+                name=name,
+                provider=args.provider,
+                model_id=args.model_id,
+                api_key_env_var=args.api_key_env_var,
+                base_url=args.base_url,
+                api_version=args.api_version,
+                max_tokens=args.max_tokens,
+                temperature=args.temperature,
+            )
+            await ModelConfigRepo.set_default(db, saved.id)
+            await db.commit()
+            refreshed = await ModelConfigRepo.get_by_id(db, saved.id)
+            if refreshed is None:
+                print("Saved model config could not be reloaded.", file=sys.stderr)
+                return 1
+            await db.refresh(refreshed)
+    except (OSError, SQLAlchemyError) as exc:
+        print(
+            "Model config command failed: database unavailable. "
+            "Set AIM_DATABASE_URL to a reachable database for model config commands. "
+            f"Details: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+    finally:
+        await engine.dispose()
+
+    if args.json_output:
+        print(json.dumps(_model_config_to_dict(refreshed), indent=2))
+    else:
+        print(_format_model_config(refreshed))
     return 0
 
 

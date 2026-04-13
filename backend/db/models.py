@@ -210,6 +210,7 @@ class ModelConfig(Base):
     model_id: Mapped[str] = mapped_column(String(200), nullable=False)
     api_key_env_var: Mapped[str | None] = mapped_column(String(100), nullable=True)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    api_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096, nullable=False)
     temperature: Mapped[float] = mapped_column(default=0.0, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

@@ -222,6 +222,7 @@ class TestModelConfigModel:
             provider="anthropic",
             model_id="claude-sonnet-4-20250514",
             api_key_env_var="ANTHROPIC_API_KEY",
+            api_version="2024-10-21",
             is_default=True,
         )
         db.add(cfg)
@@ -229,6 +230,7 @@ class TestModelConfigModel:
 
         assert cfg.id is not None
         assert cfg.provider == "anthropic"
+        assert cfg.api_version == "2024-10-21"
         assert cfg.max_tokens == 4096
         assert cfg.temperature == 0.0
         assert cfg.is_default is True

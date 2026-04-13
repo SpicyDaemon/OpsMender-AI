@@ -1,0 +1,211 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft, Play } from "lucide-react";
+import { createSession, getIncident, listProviders } from "@/lib/api";
+import type {
+  IncidentResponse,
+  ProviderModelsResponse,
+  SessionCreate,
+} from "@/lib/types";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Label, Select, FormError } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { PageSpinner } from "@/components/ui/Spinner";
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString();
+}
+
+export default function IncidentDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const [incident, setIncident] = useState<IncidentResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showSession, setShowSession] = useState(false);
+
+  useEffect(() => {
+    getIncident(id)
+      .then(setIncident)
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <PageSpinner />;
+  if (!incident) return <p className="text-red-600">Incident not found.</p>;
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      {/* Back */}
+      <Link
+        href="/dashboard/incidents"
+        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6"
+      >
+        <ArrowLeft size={14} /> Incidents
+      </Link>
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{incident.title}</h1>
+          <div className="flex items-center gap-2 mt-2">
+            <Badge variant={incident.status as Parameters<typeof Badge>[0]["variant"]}>
+              {incident.status.replace("_", " ")}
+            </Badge>
+            {incident.severity && (
+              <Badge variant={incident.severity}>{incident.severity}</Badge>
+            )}
+          </div>
+        </div>
+        <Button onClick={() => setShowSession(true)}>
+          <Play size={14} />
+          Start Session
+        </Button>
+      </div>
+
+      {/* Detail card */}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
+        <div>
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Description</p>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{incident.description}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Created</p>
+            <p className="text-gray-700">{fmtDate(incident.created_at)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Updated</p>
+            <p className="text-gray-700">{fmtDate(incident.updated_at)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Start session modal */}
+      <StartSessionModal
+        open={showSession}
+        onClose={() => setShowSession(false)}
+        incidentId={incident.id}
+        onStarted={(sid) => router.push(`/dashboard/sessions/${sid}`)}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Start session modal
+// ---------------------------------------------------------------------------
+
+function StartSessionModal({
+  open,
+  onClose,
+  incidentId,
+  onStarted,
+}: {
+  open: boolean;
+  onClose: () => void;
+  incidentId: string;
+  onStarted: (sessionId: string) => void;
+}) {
+  const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
+  const [form, setForm] = useState<SessionCreate>({
+    incident_id: incidentId,
+    tier: 2,
+    model_provider: undefined,
+    model_id: undefined,
+  });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      listProviders()
+        .then((res) => setProviders(res.items))
+        .catch(() => {});
+    }
+  }, [open]);
+
+  const selectedProvider = providers.find((p) => p.provider === form.model_provider);
+
+  async function handleStart() {
+    setError("");
+    setLoading(true);
+    try {
+      const session = await createSession(form);
+      onStarted(session.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start session");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Start Session">
+      <div className="space-y-4">
+        <div>
+          <Label htmlFor="ss-tier">Tier</Label>
+          <Select
+            id="ss-tier"
+            value={form.tier}
+            onChange={(e) => setForm((f) => ({ ...f, tier: Number(e.target.value) }))}
+          >
+            <option value={0}>Tier 0 — Full sandbox (all ops permitted)</option>
+            <option value={1}>Tier 1 — Approval gate (destructive ops need approval)</option>
+            <option value={2}>Tier 2 — Safe + caution only (no destructive ops)</option>
+            <option value={3}>Tier 3 — Advise-only (no execution)</option>
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="ss-provider">Model Provider (optional)</Label>
+          <Select
+            id="ss-provider"
+            value={form.model_provider ?? ""}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                model_provider: e.target.value || undefined,
+                model_id: undefined,
+              }))
+            }
+          >
+            <option value="">Default</option>
+            {providers.map((p) => (
+              <option key={p.provider} value={p.provider} disabled={!p.available}>
+                {p.label}{!p.available ? " (unavailable)" : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        {selectedProvider && selectedProvider.models.length > 0 && (
+          <div>
+            <Label htmlFor="ss-model">Model</Label>
+            <Select
+              id="ss-model"
+              value={form.model_id ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, model_id: e.target.value || undefined }))}
+            >
+              <option value="">Default ({selectedProvider.default_model_id})</option>
+              {selectedProvider.models.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </Select>
+          </div>
+        )}
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleStart} loading={loading}>
+            <Play size={13} /> Start
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

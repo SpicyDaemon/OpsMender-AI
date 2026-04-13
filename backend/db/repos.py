@@ -393,6 +393,7 @@ class ModelConfigRepo:
         model_id: str,
         api_key_env_var: str | None = None,
         base_url: str | None = None,
+        api_version: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
         is_default: bool = False,
@@ -403,6 +404,7 @@ class ModelConfigRepo:
             model_id=model_id,
             api_key_env_var=api_key_env_var,
             base_url=base_url,
+            api_version=api_version,
             max_tokens=max_tokens,
             temperature=temperature,
             is_default=is_default,
@@ -410,6 +412,16 @@ class ModelConfigRepo:
         db.add(cfg)
         await db.flush()
         return cfg
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, config_id: uuid.UUID) -> ModelConfig | None:
+        return await db.get(ModelConfig, config_id)
+
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str) -> ModelConfig | None:
+        stmt = select(ModelConfig).where(ModelConfig.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
     @staticmethod
     async def get_default(db: AsyncSession) -> ModelConfig | None:
@@ -437,3 +449,53 @@ class ModelConfigRepo:
             .where(ModelConfig.id == config_id)
             .values(is_default=True)
         )
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        *,
+        name: str,
+        provider: str,
+        model_id: str,
+        api_key_env_var: str | None = None,
+        base_url: str | None = None,
+        api_version: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.0,
+        is_default: bool = False,
+    ) -> ModelConfig:
+        existing = await ModelConfigRepo.get_by_name(db, name)
+        if existing is None:
+            return await ModelConfigRepo.create(
+                db,
+                name=name,
+                provider=provider,
+                model_id=model_id,
+                api_key_env_var=api_key_env_var,
+                base_url=base_url,
+                api_version=api_version,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                is_default=is_default,
+            )
+
+        stmt = (
+            update(ModelConfig)
+            .where(ModelConfig.id == existing.id)
+            .values(
+                provider=provider,
+                model_id=model_id,
+                api_key_env_var=api_key_env_var,
+                base_url=base_url,
+                api_version=api_version,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                is_default=is_default,
+            )
+        )
+        await db.execute(stmt)
+        await db.flush()
+        refreshed = await ModelConfigRepo.get_by_id(db, existing.id)
+        if refreshed is None:
+            raise RuntimeError(f"ModelConfig disappeared during upsert: {existing.id}")
+        return refreshed

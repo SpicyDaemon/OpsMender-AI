@@ -165,6 +165,51 @@ class ConfigUpdate(BaseModel):
     )
 
 
+class ModelConfigResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    provider: str
+    model_id: str
+    api_key_env_var: Optional[str]
+    base_url: Optional[str]
+    api_version: Optional[str]
+    max_tokens: int
+    temperature: float
+    is_default: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ModelConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    provider: str = Field(pattern="^(anthropic|openai|azure_openai|ollama)$")
+    model_id: str = Field(..., min_length=1, max_length=200)
+    api_key_env_var: Optional[str] = Field(default=None, max_length=100)
+    base_url: Optional[str] = Field(default=None, max_length=500)
+    api_version: Optional[str] = Field(default=None, max_length=50)
+    max_tokens: int = Field(default=4096, ge=1, le=200000)
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+
+
+class ProviderModelsResponse(BaseModel):
+    provider: str
+    label: str
+    default_model_id: str
+    default_api_key_env_var: Optional[str]
+    requires_api_key: bool
+    requires_base_url: bool
+    requires_api_version: bool
+    available: bool
+    models: list[str]
+    error: Optional[str]
+
+
+class ProviderModelsListResponse(BaseModel):
+    items: list[ProviderModelsResponse]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------

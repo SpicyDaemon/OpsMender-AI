@@ -73,7 +73,14 @@ async def seed(database_url: str) -> None:
             model_id="gpt-4o",
             api_key_env_var="OPENAI_API_KEY",
         )
-        print(f"  Created model configs: claude-sonnet (default), gpt-4o")
+        ollama_cfg = await ModelConfigRepo.create(
+            db,
+            name="llama3-local",
+            provider="ollama",
+            model_id="llama3.2",
+            base_url="http://localhost:11434",
+        )
+        print(f"  Created model configs: claude-sonnet (default), gpt-4o, llama3-local")
 
         # -- Incidents -------------------------------------------------------
         inc1 = await IncidentRepo.create(

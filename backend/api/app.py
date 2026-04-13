@@ -57,10 +57,12 @@ def create_app() -> FastAPI:
 
     # -- CORS ---------------------------------------------------------------
     allowed_origins = os.environ.get("AIM_CORS_ORIGINS", "*").split(",")
+    # allow_credentials=True is incompatible with wildcard origins per CORS spec
+    allow_credentials = "*" not in allowed_origins
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
-        allow_credentials=True,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -70,6 +72,7 @@ def create_app() -> FastAPI:
     from backend.api.routes.incidents import router as incidents_router
     from backend.api.routes.sessions import router as sessions_router
     from backend.api.routes.approvals import router as approvals_router
+    from backend.api.routes.models import router as models_router
     from backend.api.routes.audit import router as audit_router
     from backend.api.routes.config import router as config_router
     from backend.api.routes.ws import router as ws_router
@@ -78,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(incidents_router)
     app.include_router(sessions_router)
     app.include_router(approvals_router)
+    app.include_router(models_router)
     app.include_router(audit_router)
     app.include_router(config_router)
     app.include_router(ws_router)

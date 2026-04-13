@@ -9,11 +9,20 @@ from __future__ import annotations
 import pathlib
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user, require_role
-from backend.api.schemas import ConfigResponse, ConfigUpdate
+from backend.api.deps import get_db
+from backend.api.schemas import (
+    ConfigResponse,
+    ConfigUpdate,
+    ModelConfigResponse,
+    ModelConfigUpdate,
+)
 from backend.config_loader import Config
 from backend.db.models import User
+from backend.db.repos import ModelConfigRepo
+from backend.llm import ProviderRegistry
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -110,3 +119,50 @@ async def update_config(
     # Re-load and return updated config
     updated = Config.load(_config_path)
     return _config_to_response(updated)
+
+
+@router.put(
+    "/model",
+    response_model=ModelConfigResponse,
+    summary="Set default model configuration",
+)
+async def update_model_config(
+    body: ModelConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    registry = ProviderRegistry()
+    try:
+        registry.validate_model_config(
+            provider=body.provider,
+            model_id=body.model_id,
+            api_key_env_var=body.api_key_env_var,
+            base_url=body.base_url,
+            api_version=body.api_version,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    name = body.name or f"{body.provider}:{body.model_id}"
+    cfg = await ModelConfigRepo.upsert(
+        db,
+        name=name,
+        provider=body.provider,
+        model_id=body.model_id,
+        api_key_env_var=body.api_key_env_var,
+        base_url=body.base_url,
+        api_version=body.api_version,
+        max_tokens=body.max_tokens,
+        temperature=body.temperature,
+    )
+    await ModelConfigRepo.set_default(db, cfg.id)
+    refreshed = await ModelConfigRepo.get_by_id(db, cfg.id)
+    if refreshed is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Model config could not be reloaded",
+        )
+    return refreshed

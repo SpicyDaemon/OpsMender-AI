@@ -84,15 +84,66 @@ uv run pytest tests/test_workflow.py  # workflow tests
 | `aim approvals approve ID` | Approve a pending Tier 1 request |
 | `aim approvals reject ID` | Reject a pending Tier 1 request |
 
-## API Server
+## Running Locally (Full Stack)
 
-Sprint 8 introduced a FastAPI REST + WebSocket layer. To start the API server (requires PostgreSQL):
+AIM is split into two services that run independently in development:
+
+- **Backend** — FastAPI on `http://localhost:8000` (REST + WebSocket + auth + DB)
+- **Frontend** — Next.js on `http://localhost:3000` (UI only; calls the backend via `NEXT_PUBLIC_API_URL`)
+
+Both services must be running for the UI to work. Use two terminal tabs.
+
+### Terminal 1 — Backend
+
+From the **project root**:
+
+```bash
+uv run python scripts/dev_server.py
+```
+
+This launcher is the easiest way to run AIM locally — it creates a SQLite dev DB (`aim-dev.db`), seeds an `admin` / `admin123` user, sets a dev JWT secret and permissive CORS, and starts Uvicorn on port 8000. No Postgres required.
+
+Sanity check:
+
+```bash
+curl http://localhost:8000/docs -o /dev/null -w "%{http_code}\n"   # expect 200
+```
+
+### Terminal 2 — Frontend
+
+From the **`frontend/` directory**:
+
+```bash
+npm install      # first time only
+npm run dev
+```
+
+The frontend reads `frontend/.env.local` (`NEXT_PUBLIC_API_URL=http://localhost:8000`). Open `http://localhost:3000` and log in with `admin` / `admin123`.
+
+### Shutting down cleanly
+
+Always stop both services with **Ctrl-C** — do not just close the terminal tab. A detached Next.js or Uvicorn process will keep holding its port and the next `npm run dev` / dev_server will either fail or silently exit.
+
+If a previous run got orphaned:
+
+```bash
+lsof -i :3000              # find the PID holding port 3000
+kill <PID>                 # or: kill -9 <PID> if it ignores SIGTERM
+lsof -i :8000              # same check for the backend
+```
+
+### Production-style backend (Postgres)
+
+For running against Postgres instead of the dev SQLite DB:
 
 ```bash
 export AIM_DATABASE_URL="postgresql+asyncpg://aim:aim@localhost:5432/aim"
 export AIM_JWT_SECRET="your-secret-key"
+uv run alembic upgrade head
 uv run uvicorn backend.api.app:create_app --factory --reload
 ```
+
+Note: the ASGI target is `backend.api.app:create_app` **with `--factory`** — there is no `backend.api.main` module.
 
 ### API Endpoints
 
@@ -299,13 +350,14 @@ ai-incident-manager/
 ## Progress
 
 - **Phase 1 (Sprints 1–6):** ✅ Complete — CLI, MCP, skills, tiers, audit, LangGraph workflow
-- **Phase 2 (Sprints 7–12):** In progress
+- **Phase 2 (Sprints 7–13):** In progress
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
   - Sprint 8: ✅ FastAPI REST + WebSocket layer (JWT auth, RBAC, all CRUD endpoints)
   - Sprint 9: ✅ Tier 1 approval flow
   - Sprint 10: ✅ BYOM provider abstraction
-  - Sprint 11: ⬜ Next.js frontend
-  - Sprint 12: ⬜ Polish + binary build
+  - Sprint 11: ✅ Next.js frontend + Docker setup
+  - Sprint 12: ⬜ Config consolidation + UI self-service (Models, MCP, Skills, Co-pilot chat)
+  - Sprint 13: ⬜ Polish + binary build
 
 ## Distribution (Planned — Sprint 12)
 

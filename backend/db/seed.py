@@ -15,8 +15,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-from passlib.hash import bcrypt
-
+from backend.api.auth import hash_password
 from backend.db.engine import get_engine, get_session_factory
 from backend.db.models import Base
 from backend.db.repos import (
@@ -38,21 +37,21 @@ async def seed(database_url: str) -> None:
             db,
             username="admin",
             email="admin@aim.local",
-            password_hash=bcrypt.hash("admin123"),
+            password_hash=hash_password("admin123"),
             role="admin",
         )
         operator = await UserRepo.create(
             db,
             username="operator",
             email="operator@aim.local",
-            password_hash=bcrypt.hash("operator123"),
+            password_hash=hash_password("operator123"),
             role="operator",
         )
         viewer = await UserRepo.create(
             db,
             username="viewer",
             email="viewer@aim.local",
-            password_hash=bcrypt.hash("viewer123"),
+            password_hash=hash_password("viewer123"),
             role="viewer",
         )
         print(f"  Created users: admin, operator, viewer")

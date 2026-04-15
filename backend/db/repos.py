@@ -437,6 +437,49 @@ class ModelConfigRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def update(
+        db: AsyncSession,
+        config_id: uuid.UUID,
+        *,
+        name: str,
+        provider: str,
+        model_id: str,
+        api_key_env_var: str | None = None,
+        base_url: str | None = None,
+        api_version: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.0,
+    ) -> ModelConfig | None:
+        stmt = (
+            update(ModelConfig)
+            .where(ModelConfig.id == config_id)
+            .values(
+                name=name,
+                provider=provider,
+                model_id=model_id,
+                api_key_env_var=api_key_env_var,
+                base_url=base_url,
+                api_version=api_version,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await ModelConfigRepo.get_by_id(db, config_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, config_id: uuid.UUID) -> bool:
+        cfg = await ModelConfigRepo.get_by_id(db, config_id)
+        if cfg is None:
+            return False
+        await db.delete(cfg)
+        await db.flush()
+        return True
+
+    @staticmethod
     async def set_default(
         db: AsyncSession, config_id: uuid.UUID
     ) -> None:

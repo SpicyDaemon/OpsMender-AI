@@ -24,7 +24,6 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY backend/ ./backend/
 COPY cli/ ./cli/
-COPY config.yaml ./config.yaml
 COPY alembic.ini ./alembic.ini
 
 # Activate venv

@@ -181,6 +181,11 @@ class ModelConfigResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ModelConfigListResponse(BaseModel):
+    items: list[ModelConfigResponse]
+    total: int
+
+
 class ModelConfigUpdate(BaseModel):
     name: Optional[str] = None
     provider: str = Field(pattern="^(anthropic|openai|azure_openai|ollama)$")

@@ -3,6 +3,8 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       POSTGRES_USER: aim
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aim}
@@ -23,22 +25,18 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.backend
     restart: unless-stopped
+    env_file:
+      - ../.env
     depends_on:
       db:
         condition: service_healthy
     environment:
       AIM_DATABASE_URL: postgresql+asyncpg://aim:${POSTGRES_PASSWORD:-aim}@db:5432/aim
-      AIM_JWT_SECRET: ${AIM_JWT_SECRET:-change-me-in-production}
       AIM_CORS_ORIGINS: http://localhost:3000
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     ports:
       - "8000:8000"
     volumes:
-      # Mount config and skills so they can be updated without rebuilding
-      - ../config.yaml:/app/config.yaml:ro
       - ../logs:/app/logs
 
   # ── Frontend ───────────────────────────────────────────────────────────────
@@ -49,6 +47,8 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     restart: unless-stopped
+    env_file:
+      - ../.env
     depends_on:
       - backend
     ports:

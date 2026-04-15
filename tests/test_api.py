@@ -580,6 +580,147 @@ class TestModelConfigAPI:
         )
         assert resp.status_code == 403
 
+    async def test_list_saved_model_configs(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            await ModelConfigRepo.create(
+                db,
+                name="openai-primary",
+                provider="openai",
+                model_id="gpt-4o",
+                api_key_env_var="OPENAI_API_KEY",
+                is_default=True,
+            )
+            await db.commit()
+
+        resp = await client.get("/models/configs", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["name"] == "openai-primary"
+
+    async def test_create_saved_model_config_admin(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: None,
+        )
+
+        resp = await client.post(
+            "/models/configs",
+            json={
+                "name": "ollama-local",
+                "provider": "ollama",
+                "model_id": "llama3.2",
+                "base_url": "http://localhost:11434",
+                "max_tokens": 4096,
+                "temperature": 0.0,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["name"] == "ollama-local"
+        assert data["provider"] == "ollama"
+
+    async def test_update_saved_model_config_admin(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: None,
+        )
+
+        async with app.state.session_factory() as db:
+            cfg = await ModelConfigRepo.create(
+                db,
+                name="openai-primary",
+                provider="openai",
+                model_id="gpt-4o",
+                api_key_env_var="OPENAI_API_KEY",
+            )
+            await db.commit()
+            await db.refresh(cfg)
+            config_id = cfg.id
+
+        resp = await client.put(
+            f"/models/configs/{config_id}",
+            json={
+                "name": "openai-primary-v2",
+                "provider": "openai",
+                "model_id": "gpt-4o-mini",
+                "api_key_env_var": "OPENAI_API_KEY",
+                "max_tokens": 2048,
+                "temperature": 0.3,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "openai-primary-v2"
+        assert data["model_id"] == "gpt-4o-mini"
+        assert data["max_tokens"] == 2048
+
+    async def test_delete_saved_model_config_admin(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            cfg = await ModelConfigRepo.create(
+                db,
+                name="delete-me",
+                provider="ollama",
+                model_id="llama3.2",
+            )
+            await db.commit()
+            await db.refresh(cfg)
+            config_id = cfg.id
+
+        resp = await client.delete(
+            f"/models/configs/{config_id}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 204
+
+        async with app.state.session_factory() as db:
+            deleted = await ModelConfigRepo.get_by_id(db, config_id)
+            assert deleted is None
+
+    async def test_set_default_saved_model_config_admin(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            first = await ModelConfigRepo.create(
+                db,
+                name="first",
+                provider="openai",
+                model_id="gpt-4o",
+                is_default=True,
+            )
+            second = await ModelConfigRepo.create(
+                db,
+                name="second",
+                provider="ollama",
+                model_id="llama3.2",
+            )
+            await db.commit()
+            await db.refresh(first)
+            await db.refresh(second)
+            second_id = second.id
+
+        resp = await client.post(
+            f"/models/configs/{second_id}/set-default",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["is_default"] is True
+
+        async with app.state.session_factory() as db:
+            default = await ModelConfigRepo.get_default(db)
+            assert default is not None
+            assert default.id == second_id
+
 
 # ===========================================================================
 # Approvals

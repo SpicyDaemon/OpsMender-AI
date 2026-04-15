@@ -348,14 +348,14 @@ function ModelSection() {
 }
 
 // ---------------------------------------------------------------------------
-// MCP servers section (read-only — edited via config.yaml)
+// MCP servers section (temporary read-only view until DB-backed manager lands)
 // ---------------------------------------------------------------------------
 
 function MCPSection({ config }: { config: ConfigResponse }) {
   return (
     <Section
       title="MCP Servers"
-      description="Configured in config.yaml — restart the backend to apply changes."
+      description="Loaded from the active runtime config. Full MCP server management will move here in Sprint 12."
     >
       {config.mcp_servers.length === 0 ? (
         <p className="text-sm text-gray-400">No MCP servers configured.</p>

@@ -219,6 +219,8 @@ export async function updateConfig(body: ConfigUpdate): Promise<ConfigResponse> 
 // ---------------------------------------------------------------------------
 
 import type {
+  ModelConfigListResponse,
+  ModelConfigResponse,
   ModelConfigUpdate,
   ProviderModelsListResponse,
 } from "./types";
@@ -229,6 +231,33 @@ export async function listProviders(): Promise<ProviderModelsListResponse> {
 
 export async function setModelConfig(body: ModelConfigUpdate): Promise<unknown> {
   return api.put("/config/model", body);
+}
+
+export async function listModelConfigs(): Promise<ModelConfigListResponse> {
+  return api.get<ModelConfigListResponse>("/models/configs");
+}
+
+export async function createModelConfig(
+  body: ModelConfigUpdate,
+): Promise<ModelConfigResponse> {
+  return api.post<ModelConfigResponse>("/models/configs", body);
+}
+
+export async function updateModelConfigById(
+  id: string,
+  body: ModelConfigUpdate,
+): Promise<ModelConfigResponse> {
+  return api.put<ModelConfigResponse>(`/models/configs/${id}`, body);
+}
+
+export async function deleteModelConfig(id: string): Promise<void> {
+  return api.del<void>(`/models/configs/${id}`);
+}
+
+export async function setDefaultModelConfig(
+  id: string,
+): Promise<ModelConfigResponse> {
+  return api.post<ModelConfigResponse>(`/models/configs/${id}/set-default`);
 }
 
 // ---------------------------------------------------------------------------

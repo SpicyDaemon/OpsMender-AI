@@ -147,6 +147,11 @@ export interface ModelConfigResponse {
   created_at: string;
 }
 
+export interface ModelConfigListResponse {
+  items: ModelConfigResponse[];
+  total: number;
+}
+
 export interface ModelConfigUpdate {
   name?: string;
   provider: string;

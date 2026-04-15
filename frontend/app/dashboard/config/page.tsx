@@ -1,25 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Save } from "lucide-react";
+import { Pencil, Plus, Save, Star, Trash2 } from "lucide-react";
 import {
+  createModelConfig,
+  deleteModelConfig,
   getConfig,
+  listModelConfigs,
   listProviders,
-  setModelConfig,
+  setDefaultModelConfig,
   updateConfig,
+  updateModelConfigById,
 } from "@/lib/api";
 import type {
   ConfigResponse,
+  ModelConfigResponse,
   ModelConfigUpdate,
   ProviderModelsResponse,
 } from "@/lib/types";
+import { useAuth } from "@/context/auth";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FormError } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { PageSpinner } from "@/components/ui/Spinner";
-
-// ---------------------------------------------------------------------------
-// Section wrapper
-// ---------------------------------------------------------------------------
 
 function Section({
   title,
@@ -32,33 +36,36 @@ function Section({
 }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="px-6 py-4 border-b border-gray-100">
+      <div className="border-b border-gray-100 px-6 py-4">
         <h2 className="text-base font-semibold text-gray-900">{title}</h2>
         {description && (
-          <p className="text-sm text-gray-500 mt-0.5">{description}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{description}</p>
         )}
       </div>
-      <div className="px-6 py-5 space-y-4">{children}</div>
+      <div className="space-y-4 px-6 py-5">{children}</div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Tier config section
-// ---------------------------------------------------------------------------
-
 function TierSection({
   config,
   onSaved,
+  canEdit,
 }: {
   config: ConfigResponse;
-  onSaved: () => void;
+  onSaved: () => Promise<void>;
+  canEdit: boolean;
 }) {
   const [tier, setTier] = useState(String(config.tier));
   const [logLevel, setLogLevel] = useState(config.logging_level);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    setTier(String(config.tier));
+    setLogLevel(config.logging_level);
+  }, [config]);
 
   async function handleSave() {
     setSaving(true);
@@ -67,7 +74,7 @@ function TierSection({
     try {
       await updateConfig({ tier: Number(tier), logging_level: logLevel });
       setSuccess(true);
-      onSaved();
+      await onSaved();
       setTimeout(() => setSuccess(false), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -81,13 +88,14 @@ function TierSection({
       title="Runtime Config"
       description="Global tier controls the maximum action tier allowed without explicit override."
     >
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <Label htmlFor="cfg-tier">Global Tier</Label>
           <Select
             id="cfg-tier"
             value={tier}
             onChange={(e) => setTier(e.target.value)}
+            disabled={!canEdit}
           >
             <option value="0">Tier 0 — Full sandbox (all ops permitted)</option>
             <option value="1">Tier 1 — Approval gate (destructive ops need approval)</option>
@@ -101,6 +109,7 @@ function TierSection({
             id="cfg-log"
             value={logLevel}
             onChange={(e) => setLogLevel(e.target.value)}
+            disabled={!canEdit}
           >
             <option value="DEBUG">DEBUG</option>
             <option value="INFO">INFO</option>
@@ -112,18 +121,21 @@ function TierSection({
 
       <div>
         <Label>Audit Output</Label>
-        <p className="text-sm text-gray-500 bg-gray-50 rounded-md px-3 py-2 font-mono">
+        <p className="rounded-md bg-gray-50 px-3 py-2 font-mono text-sm text-gray-500">
           {config.audit_output}
         </p>
       </div>
 
-      {error && <FormError message={error} />}
-      {success && (
-        <p className="text-sm text-green-600">Saved successfully.</p>
+      {!canEdit && (
+        <p className="text-sm text-gray-500">
+          Admin role required to edit runtime config.
+        </p>
       )}
+      {error && <FormError message={error} />}
+      {success && <p className="text-sm text-green-600">Saved successfully.</p>}
 
       <div className="flex justify-end">
-        <Button onClick={handleSave} loading={saving}>
+        <Button onClick={handleSave} loading={saving} disabled={!canEdit}>
           <Save size={13} /> Save
         </Button>
       </div>
@@ -131,63 +143,298 @@ function TierSection({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Model config section
-// ---------------------------------------------------------------------------
+type ModelFormState = {
+  name: string;
+  provider: string;
+  model_id: string;
+  api_key_env_var: string;
+  base_url: string;
+  api_version: string;
+  max_tokens: number;
+  temperature: number;
+};
 
-function ModelSection() {
-  const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
-  const [loadingProviders, setLoadingProviders] = useState(true);
+function createModelFormState(
+  providers: ProviderModelsResponse[],
+  current?: ModelConfigResponse | null,
+): ModelFormState {
+  const fallbackProvider = providers[0];
+  const selectedProvider =
+    providers.find((item) => item.provider === current?.provider) ?? fallbackProvider;
 
-  const [form, setForm] = useState<ModelConfigUpdate>({
-    provider: "anthropic",
-    model_id: "",
-    api_key_env_var: "",
-    base_url: "",
-    api_version: "",
-    max_tokens: 4096,
-    temperature: 0.0,
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  return {
+    name: current?.name ?? "",
+    provider: current?.provider ?? selectedProvider?.provider ?? "anthropic",
+    model_id:
+      current?.model_id ??
+      selectedProvider?.default_model_id ??
+      "",
+    api_key_env_var:
+      current?.api_key_env_var ??
+      selectedProvider?.default_api_key_env_var ??
+      "",
+    base_url: current?.base_url ?? "",
+    api_version: current?.api_version ?? "",
+    max_tokens: current?.max_tokens ?? 4096,
+    temperature: current?.temperature ?? 0,
+  };
+}
+
+function ModelConfigModal({
+  open,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+  providers,
+  initialConfig,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (form: ModelFormState) => Promise<void>;
+  saving: boolean;
+  error: string;
+  providers: ProviderModelsResponse[];
+  initialConfig: ModelConfigResponse | null;
+}) {
+  const [form, setForm] = useState<ModelFormState>(() =>
+    createModelFormState(providers, initialConfig),
+  );
 
   useEffect(() => {
-    listProviders()
-      .then((res) => {
-        setProviders(res.items);
-        const first = res.items[0];
-        if (first) {
-          setForm((f) => ({
-            ...f,
-            provider: first.provider,
-            model_id: first.default_model_id,
-            api_key_env_var: first.default_api_key_env_var ?? "",
-          }));
-        }
-      })
-      .finally(() => setLoadingProviders(false));
-  }, []);
+    if (!open) return;
+    setForm(createModelFormState(providers, initialConfig));
+  }, [open, providers, initialConfig]);
 
-  const selectedProvider = providers.find((p) => p.provider === form.provider);
+  const selectedProvider = providers.find(
+    (provider) => provider.provider === form.provider,
+  );
 
-  function setField<K extends keyof ModelConfigUpdate>(k: K, v: ModelConfigUpdate[K]) {
-    setForm((f) => ({ ...f, [k]: v }));
+  function setField<K extends keyof ModelFormState>(
+    key: K,
+    value: ModelFormState[K],
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
   }
 
-  async function handleSave() {
+  function handleProviderChange(providerName: string) {
+    const nextProvider = providers.find((item) => item.provider === providerName);
+    setForm((current) => ({
+      ...current,
+      provider: providerName,
+      model_id: nextProvider?.default_model_id ?? current.model_id,
+      api_key_env_var:
+        nextProvider?.default_api_key_env_var ?? current.api_key_env_var,
+      base_url: "",
+      api_version: "",
+    }));
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await onSubmit(form);
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={initialConfig ? "Edit Model Config" : "Add Model Config"}
+      maxWidth="max-w-2xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="model-name">Display Name</Label>
+            <Input
+              id="model-name"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              placeholder="primary-openai"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="model-provider">Provider</Label>
+            <Select
+              id="model-provider"
+              value={form.provider}
+              onChange={(e) => handleProviderChange(e.target.value)}
+            >
+              {providers.map((provider) => (
+                <option key={provider.provider} value={provider.provider}>
+                  {provider.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="model-id">Model ID</Label>
+            {selectedProvider && selectedProvider.models.length > 0 ? (
+              <Select
+                id="model-id"
+                value={form.model_id}
+                onChange={(e) => setField("model_id", e.target.value)}
+              >
+                {selectedProvider.models.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input
+                id="model-id"
+                value={form.model_id}
+                onChange={(e) => setField("model_id", e.target.value)}
+                placeholder="gpt-4o"
+                required
+              />
+            )}
+          </div>
+          <div>
+            <Label htmlFor="model-key">API Key Env Var</Label>
+            <Input
+              id="model-key"
+              value={form.api_key_env_var}
+              onChange={(e) => setField("api_key_env_var", e.target.value)}
+              placeholder={selectedProvider?.default_api_key_env_var ?? "OPENAI_API_KEY"}
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Store the secret in `.env`; this field saves the variable name only.
+            </p>
+          </div>
+        </div>
+
+        {(selectedProvider?.requires_base_url || form.base_url) && (
+          <div>
+            <Label htmlFor="model-url">Base URL</Label>
+            <Input
+              id="model-url"
+              value={form.base_url}
+              onChange={(e) => setField("base_url", e.target.value)}
+              placeholder="http://localhost:11434"
+            />
+          </div>
+        )}
+
+        {(selectedProvider?.requires_api_version || form.api_version) && (
+          <div>
+            <Label htmlFor="model-version">API Version</Label>
+            <Input
+              id="model-version"
+              value={form.api_version}
+              onChange={(e) => setField("api_version", e.target.value)}
+              placeholder="2024-10-21"
+            />
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="model-max-tokens">Max Tokens</Label>
+            <Input
+              id="model-max-tokens"
+              type="number"
+              min={1}
+              max={200000}
+              value={form.max_tokens}
+              onChange={(e) => setField("max_tokens", Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="model-temperature">Temperature</Label>
+            <Input
+              id="model-temperature"
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={form.temperature}
+              onChange={(e) => setField("temperature", Number(e.target.value))}
+            />
+          </div>
+        </div>
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={saving} disabled={!form.name || !form.model_id}>
+            <Save size={13} /> {initialConfig ? "Save Changes" : "Create Config"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ModelSection({
+  providers,
+  configs,
+  onReload,
+  canEdit,
+}: {
+  providers: ProviderModelsResponse[];
+  configs: ModelConfigResponse[];
+  onReload: () => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ModelConfigResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  function openCreateModal() {
+    setEditing(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEditModal(config: ModelConfigResponse) {
+    setEditing(config);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setEditing(null);
+    setError("");
+  }
+
+  async function handleSubmit(form: ModelFormState) {
     setSaving(true);
     setError("");
-    setSuccess(false);
+    setNotice("");
     try {
-      await setModelConfig({
-        ...form,
+      const payload: ModelConfigUpdate = {
+        name: form.name,
+        provider: form.provider,
+        model_id: form.model_id,
         api_key_env_var: form.api_key_env_var || undefined,
         base_url: form.base_url || undefined,
         api_version: form.api_version || undefined,
-      });
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 2000);
+        max_tokens: form.max_tokens,
+        temperature: form.temperature,
+      };
+      if (editing) {
+        await updateModelConfigById(editing.id, payload);
+        setNotice("Model config updated.");
+      } else {
+        await createModelConfig(payload);
+        setNotice("Model config created.");
+      }
+      setModalOpen(false);
+      setEditing(null);
+      await onReload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -195,161 +442,166 @@ function ModelSection() {
     }
   }
 
-  if (loadingProviders) return <PageSpinner />;
+  async function handleDelete(config: ModelConfigResponse) {
+    const confirmed = window.confirm(
+      `Delete model config "${config.name}"?`,
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    try {
+      await deleteModelConfig(config.id);
+      setNotice("Model config deleted.");
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  async function handleSetDefault(config: ModelConfigResponse) {
+    setError("");
+    setNotice("");
+    try {
+      await setDefaultModelConfig(config.id);
+      setNotice(`"${config.name}" is now the default model.`);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Default update failed");
+    }
+  }
 
   return (
     <Section
-      title="Model Provider"
-      description="Configure the default LLM provider and model used for new sessions."
+      title="Model Manager"
+      description="Saved model configs are reusable profiles for new sessions. Set one as default, or keep multiple providers ready to switch."
     >
-      {/* Provider availability chips */}
       <div className="flex flex-wrap gap-2">
-        {providers.map((p) => (
+        {providers.map((provider) => (
           <span
-            key={p.provider}
-            className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium ${
-              p.available
+            key={provider.provider}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+              provider.available
                 ? "border-green-200 bg-green-50 text-green-700"
                 : "border-gray-200 bg-gray-50 text-gray-400"
             }`}
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${p.available ? "bg-green-500" : "bg-gray-300"}`}
+              className={`h-1.5 w-1.5 rounded-full ${
+                provider.available ? "bg-green-500" : "bg-gray-300"
+              }`}
             />
-            {p.label}
+            {provider.label}
           </span>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <Label htmlFor="mp-provider">Provider</Label>
-          <Select
-            id="mp-provider"
-            value={form.provider}
-            onChange={(e) => {
-              const p = providers.find((x) => x.provider === e.target.value);
-              setForm((f) => ({
-                ...f,
-                provider: e.target.value,
-                model_id: p?.default_model_id ?? "",
-                api_key_env_var: p?.default_api_key_env_var ?? "",
-                base_url: "",
-                api_version: "",
-              }));
-            }}
-          >
-            {providers.map((p) => (
-              <option key={p.provider} value={p.provider}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div>
-          <Label htmlFor="mp-model">Model ID</Label>
-          {selectedProvider && selectedProvider.models.length > 0 ? (
-            <Select
-              id="mp-model"
-              value={form.model_id}
-              onChange={(e) => setField("model_id", e.target.value)}
-            >
-              {selectedProvider.models.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </Select>
-          ) : (
-            <Input
-              id="mp-model"
-              value={form.model_id}
-              onChange={(e) => setField("model_id", e.target.value)}
-              placeholder="model-id"
-            />
+          <p className="text-sm text-gray-600">
+            {configs.length} saved config{configs.length === 1 ? "" : "s"}
+          </p>
+          {!canEdit && (
+            <p className="text-sm text-gray-500">
+              Admin role required to add or edit saved model configs.
+            </p>
           )}
         </div>
-      </div>
-
-      {selectedProvider?.requires_api_key && (
-        <div>
-          <Label htmlFor="mp-key">API Key Env Var</Label>
-          <Input
-            id="mp-key"
-            value={form.api_key_env_var ?? ""}
-            onChange={(e) => setField("api_key_env_var", e.target.value)}
-            placeholder="ANTHROPIC_API_KEY"
-          />
-          <p className="mt-1 text-xs text-gray-400">
-            Name of the environment variable holding the API key (not the key itself).
-          </p>
-        </div>
-      )}
-
-      {selectedProvider?.requires_base_url && (
-        <div>
-          <Label htmlFor="mp-url">Base URL</Label>
-          <Input
-            id="mp-url"
-            value={form.base_url ?? ""}
-            onChange={(e) => setField("base_url", e.target.value)}
-            placeholder="http://localhost:11434"
-          />
-        </div>
-      )}
-
-      {selectedProvider?.requires_api_version && (
-        <div>
-          <Label htmlFor="mp-ver">API Version</Label>
-          <Input
-            id="mp-ver"
-            value={form.api_version ?? ""}
-            onChange={(e) => setField("api_version", e.target.value)}
-            placeholder="2024-02-01"
-          />
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="mp-maxtok">Max Tokens</Label>
-          <Input
-            id="mp-maxtok"
-            type="number"
-            min={1}
-            max={200000}
-            value={form.max_tokens}
-            onChange={(e) => setField("max_tokens", Number(e.target.value))}
-          />
-        </div>
-        <div>
-          <Label htmlFor="mp-temp">Temperature</Label>
-          <Input
-            id="mp-temp"
-            type="number"
-            min={0}
-            max={2}
-            step={0.1}
-            value={form.temperature}
-            onChange={(e) => setField("temperature", Number(e.target.value))}
-          />
-        </div>
+        <Button onClick={openCreateModal} disabled={!canEdit}>
+          <Plus size={14} /> Add Model Config
+        </Button>
       </div>
 
       {error && <FormError message={error} />}
-      {success && <p className="text-sm text-green-600">Model config saved.</p>}
+      {notice && <p className="text-sm text-green-600">{notice}</p>}
 
-      <div className="flex justify-end">
-        <Button onClick={handleSave} loading={saving} disabled={!form.model_id}>
-          <Save size={13} /> Save
-        </Button>
-      </div>
+      {configs.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+          No saved model configs yet. Create one to make provider switching easier for operators.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-3">Config</th>
+                <th className="px-4 py-3">Provider</th>
+                <th className="px-4 py-3">Model</th>
+                <th className="px-4 py-3">Runtime</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {configs.map((config) => (
+                <tr key={config.id}>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900">{config.name}</span>
+                      {config.is_default && <Badge>Default</Badge>}
+                    </div>
+                    <p className="mt-1 font-mono text-xs text-gray-400">
+                      {config.api_key_env_var ?? "No API key env var"}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 align-top capitalize text-gray-700">
+                    {config.provider.replace("_", " ")}
+                  </td>
+                  <td className="px-4 py-3 align-top font-mono text-xs text-gray-600">
+                    {config.model_id}
+                  </td>
+                  <td className="px-4 py-3 align-top text-gray-600">
+                    <div>Max tokens: {config.max_tokens}</div>
+                    <div>Temp: {config.temperature}</div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex justify-end gap-2">
+                      {!config.is_default && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleSetDefault(config)}
+                          disabled={!canEdit}
+                        >
+                          <Star size={13} /> Default
+                        </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openEditModal(config)}
+                        disabled={!canEdit}
+                      >
+                        <Pencil size={13} /> Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleDelete(config)}
+                        disabled={!canEdit}
+                      >
+                        <Trash2 size={13} /> Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <ModelConfigModal
+        open={modalOpen}
+        onClose={closeModal}
+        onSubmit={handleSubmit}
+        saving={saving}
+        error={error}
+        providers={providers}
+        initialConfig={editing}
+      />
     </Section>
   );
 }
-
-// ---------------------------------------------------------------------------
-// MCP servers section (temporary read-only view until DB-backed manager lands)
-// ---------------------------------------------------------------------------
 
 function MCPSection({ config }: { config: ConfigResponse }) {
   return (
@@ -361,13 +613,13 @@ function MCPSection({ config }: { config: ConfigResponse }) {
         <p className="text-sm text-gray-400">No MCP servers configured.</p>
       ) : (
         <div className="space-y-2">
-          {config.mcp_servers.map((srv, i) => (
+          {config.mcp_servers.map((server, index) => (
             <div
-              key={i}
-              className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3"
+              key={index}
+              className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"
             >
-              <pre className="text-xs text-gray-700 font-mono overflow-x-auto">
-                {JSON.stringify(srv, null, 2)}
+              <pre className="overflow-x-auto font-mono text-xs text-gray-700">
+                {JSON.stringify(server, null, 2)}
               </pre>
             </div>
           ))}
@@ -377,32 +629,48 @@ function MCPSection({ config }: { config: ConfigResponse }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
 export default function ConfigPage() {
+  const { user } = useAuth();
+  const canEdit = user?.role === "admin";
+
   const [config, setConfig] = useState<ConfigResponse | null>(null);
+  const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
+  const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    try {
-      const c = await getConfig();
-      setConfig(c);
-    } finally {
-      setLoading(false);
-    }
+  const loadPageData = useCallback(async () => {
+    const [runtimeConfig, providerList, savedConfigs] = await Promise.all([
+      getConfig(),
+      listProviders(),
+      listModelConfigs(),
+    ]);
+    setConfig(runtimeConfig);
+    setProviders(providerList.items);
+    setModelConfigs(savedConfigs.items);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    loadPageData().finally(() => setLoading(false));
+  }, [loadPageData]);
 
   if (loading || !config) return <PageSpinner />;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Config</h1>
-      <TierSection config={config} onSaved={load} />
-      <ModelSection />
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Config</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Manage runtime defaults, saved model profiles, and upcoming operator self-service tools.
+        </p>
+      </div>
+
+      <TierSection config={config} onSaved={loadPageData} canEdit={canEdit} />
+      <ModelSection
+        providers={providers}
+        configs={modelConfigs}
+        onReload={loadPageData}
+        canEdit={canEdit}
+      />
       <MCPSection config={config} />
     </div>
   );

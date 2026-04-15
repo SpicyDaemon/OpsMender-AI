@@ -229,14 +229,13 @@ class TestSimulatedEndToEnd:
         We shell out to a subprocess instead.
         """
         out_file = tmp_path / "result.json"
-        cfg_file = tmp_path / "cfg.yaml"
+        cfg_file = tmp_path / ".env"
         audit_file = tmp_path / "audit.jsonl"
 
         cfg_file.write_text(
-            f"mcp_servers: []\n"
-            f"tiers:\n  default: 2\n"
-            f"logging:\n  level: INFO\n"
-            f"audit:\n  output: {audit_file}\n"
+            "AIM_TIER=2\n"
+            "AIM_LOG_LEVEL=INFO\n"
+            f"AIM_AUDIT_LOG={audit_file}\n"
         )
 
         import subprocess, sys

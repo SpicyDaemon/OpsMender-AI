@@ -25,6 +25,7 @@ from backend.db.models import (
     AuditEntry,
     Incident,
     ModelConfig,
+    RuntimeConfig,
     Session,
     User,
 )
@@ -499,3 +500,47 @@ class ModelConfigRepo:
         if refreshed is None:
             raise RuntimeError(f"ModelConfig disappeared during upsert: {existing.id}")
         return refreshed
+
+
+# ---------------------------------------------------------------------------
+# Runtime config
+# ---------------------------------------------------------------------------
+
+class RuntimeConfigRepo:
+
+    @staticmethod
+    async def get(db: AsyncSession, key: str) -> RuntimeConfig | None:
+        return await db.get(RuntimeConfig, key)
+
+    @staticmethod
+    async def get_value(db: AsyncSession, key: str) -> str | None:
+        item = await RuntimeConfigRepo.get(db, key)
+        return None if item is None else item.value
+
+    @staticmethod
+    async def get_many(
+        db: AsyncSession, keys: Sequence[str]
+    ) -> dict[str, str]:
+        stmt = select(RuntimeConfig).where(RuntimeConfig.key.in_(list(keys)))
+        result = await db.execute(stmt)
+        return {item.key: item.value for item in result.scalars().all()}
+
+    @staticmethod
+    async def list_all(db: AsyncSession) -> Sequence[RuntimeConfig]:
+        stmt = select(RuntimeConfig).order_by(RuntimeConfig.key)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def set(db: AsyncSession, *, key: str, value: str) -> RuntimeConfig:
+        item = await RuntimeConfigRepo.get(db, key)
+        if item is None:
+            item = RuntimeConfig(key=key, value=value)
+            db.add(item)
+            await db.flush()
+            return item
+
+        item.value = value
+        item.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return item

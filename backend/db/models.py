@@ -7,6 +7,7 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``audit_entries``      — every agent action (replaces JSONL backend)
 - ``approval_requests``  — Tier 1 human-approval queue
 - ``model_configs``      — BYOM provider configurations
+- ``runtime_config``     — DB-backed UI overrides for runtime settings
 """
 
 from __future__ import annotations
@@ -216,4 +217,18 @@ class ModelConfig(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Runtime config
+# ---------------------------------------------------------------------------
+
+class RuntimeConfig(Base):
+    __tablename__ = "runtime_config"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )

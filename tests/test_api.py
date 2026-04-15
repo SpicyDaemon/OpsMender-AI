@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+import json
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_session_factory
+from backend.config_loader import set_env_path
 from backend.db.models import Base
 from backend.db.repos import (
     ApprovalRequestRepo,
@@ -42,16 +44,16 @@ async def app(tmp_path):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     set_session_factory(factory)
 
-    # Use a temp config file so tests don't mutate the real one
-    tmp_config = tmp_path / "config.yaml"
-    tmp_config.write_text(
-        "mcp_servers: []\n"
-        "tiers:\n  default: 2\n"
-        "logging:\n  level: INFO\n"
-        "audit:\n  output: ./logs/audit.jsonl\n"
+    tmp_env = tmp_path / ".env"
+    tmp_env.write_text(
+        "AIM_TIER=2\n"
+        "AIM_LOG_LEVEL=INFO\n"
+        "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
+        "AIM_JWT_SECRET=test-secret\n"
+        "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
+        f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
     )
-    from backend.api.routes.config import set_config_path
-    set_config_path(tmp_config)
+    set_env_path(tmp_env)
 
     application = create_app()
     application.state.session_factory = factory
@@ -61,6 +63,7 @@ async def app(tmp_path):
 
     yield application
 
+    set_env_path(None)
     await engine.dispose()
 
 

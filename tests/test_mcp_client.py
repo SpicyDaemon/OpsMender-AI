@@ -88,7 +88,7 @@ class TestCheckCommand:
         from cli.aim import main
 
         with pytest.raises(SystemExit) as exc_info:
-            main(["--config", "/tmp/nonexistent.yaml", "check"])
+            main(["--config", "/tmp/nonexistent.env", "check"])
         assert exc_info.value.code == 1
 
 

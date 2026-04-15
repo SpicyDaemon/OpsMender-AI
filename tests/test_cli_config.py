@@ -18,26 +18,32 @@ from backend.db.repos import ModelConfigRepo
 # ---------------------------------------------------------------------------
 
 MINIMAL_CFG = (
-    "mcp_servers: []\n"
-    "tiers:\n  default: 2\n"
-    "logging:\n  level: INFO\n"
-    "audit:\n  output: ./logs/audit.jsonl\n"
+    "AIM_TIER=2\n"
+    "AIM_LOG_LEVEL=INFO\n"
+    "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
 )
 
 CFG_WITH_SERVER = (
-    "mcp_servers:\n"
-    "  - name: k8s\n"
-    "    transport: stdio\n"
-    "    command: npx\n"
-    "    args: ['-y', '@anthropic/mcp-server-k8s']\n"
-    "tiers:\n  default: 2\n"
-    "logging:\n  level: DEBUG\n"
-    "audit:\n  output: ./logs/audit.jsonl\n"
+    "AIM_MCP_SERVERS_JSON="
+    + json.dumps(
+        [
+            {
+                "name": "k8s",
+                "transport": "stdio",
+                "command": "npx",
+                "args": ["-y", "@anthropic/mcp-server-k8s"],
+            }
+        ]
+    )
+    + "\n"
+    + "AIM_TIER=2\n"
+    + "AIM_LOG_LEVEL=DEBUG\n"
+    + "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
 )
 
 
 def _write_cfg(tmp_path, content=MINIMAL_CFG):
-    cfg = tmp_path / "config.yaml"
+    cfg = tmp_path / ".env"
     cfg.write_text(content)
     return str(cfg)
 
@@ -161,10 +167,9 @@ class TestConfigValidate:
 
     def test_invalid_tier_fails(self, tmp_path, capsys):
         bad_cfg = (
-            "mcp_servers: []\n"
-            "tiers:\n  default: 9\n"
-            "logging:\n  level: INFO\n"
-            "audit:\n  output: ./logs/audit.jsonl\n"
+            "AIM_TIER=9\n"
+            "AIM_LOG_LEVEL=INFO\n"
+            "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
         )
         cfg_path = _write_cfg(tmp_path, bad_cfg)
         with pytest.raises(SystemExit) as exc_info:
@@ -173,19 +178,13 @@ class TestConfigValidate:
         out = capsys.readouterr().out
         assert "tiers.default must be 0-3" in out
 
-    def test_missing_tier_fails(self, tmp_path, capsys):
-        no_tier_cfg = (
-            "mcp_servers: []\n"
-            "tiers: {}\n"
-            "logging:\n  level: INFO\n"
-            "audit:\n  output: ./logs/audit.jsonl\n"
-        )
-        cfg_path = _write_cfg(tmp_path, no_tier_cfg)
+    def test_missing_tier_uses_default(self, tmp_path, capsys):
+        cfg_path = _write_cfg(tmp_path, "AIM_LOG_LEVEL=INFO\n")
         with pytest.raises(SystemExit) as exc_info:
             main(["--config", cfg_path, "config", "--validate"])
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        assert "tiers.default is not set" in out
+        assert "Validation OK" in out
 
     def test_validate_with_valid_skill_file(self, tmp_path, capsys):
         cfg_path = _write_cfg(tmp_path)

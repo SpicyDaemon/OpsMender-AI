@@ -27,8 +27,8 @@ uv run aim run --dry-run --incident "High CPU on api-server-01"
 
 In practice, an AIM deployment is driven by three operator-owned inputs:
 
-- `.env` for secrets and environment-specific variables
-- `config.yaml` for runtime configuration such as tier, audit output, MCP servers, and skill path
+- `.env` for deployment defaults such as tier, audit path, DB/JWT settings, provider defaults, and local fallbacks
+- `runtime_config` DB overrides for UI-editable runtime settings such as tier and log level
 - `skills/` for your environment-specific `SKILL.md` files that define what counts as safe, caution, or destructive
 
 This is intentional: AIM does not hardcode what "destructive" means for your infrastructure. The operator defines that through skills.
@@ -101,7 +101,7 @@ From the **project root**:
 uv run python scripts/dev_server.py
 ```
 
-This launcher is the easiest way to run AIM locally — it creates a SQLite dev DB (`aim-dev.db`), seeds an `admin` / `admin123` user, sets a dev JWT secret and permissive CORS, and starts Uvicorn on port 8000. No Postgres required.
+This launcher is the easiest way to run AIM locally — it loads `.env`, uses the shared DB fallback chain (`AIM_DATABASE_URL` → local Postgres → SQLite), seeds an `admin` / `admin123` user, and starts Uvicorn on port 8000.
 
 Sanity check:
 
@@ -180,37 +180,21 @@ The first registered user is automatically assigned the `admin` role.
 
 ## Configuration
 
-Edit `config.yaml` to define runtime behavior. In addition to MCP servers, this should point at the skill definition for the environment you are operating in.
+Runtime defaults now live in `.env`, and UI edits to tier/log level are persisted in the `runtime_config` table.
 
-```yaml
-skill_definition: ./skills/production/SKILL.md
+Example `.env` keys:
 
-mcp_servers:
-  # Local process (stdio)
-  - name: kubernetes
-    transport: stdio
-    command: "npx"
-    args: ["-y", "@anthropic/mcp-server-k8s"]
-
-  # Server-Sent Events (sse)
-  - name: remote-k8s
-    transport: sse
-    url: "http://mcp.internal:8080/sse"
-
-  # Streamable HTTP (Sourcebot, etc.)
-  - name: sourcebot
-    transport: http
-    url: "https://sb.example.com/api/mcp"
-    token: "your-bearer-token"
-
-audit:
-  output: ./logs/audit.jsonl
-
-approvals:
-  timeout_seconds: 900
+```dotenv
+AIM_TIER=2
+AIM_LOG_LEVEL=INFO
+AIM_AUDIT_LOG=./logs/audit.jsonl
+AIM_APPROVAL_TIMEOUT_SECONDS=900
+AIM_SKILL_DEFINITION=./skills/production/SKILL.md
+AIM_DATABASE_URL=postgresql+asyncpg://aim:aim@localhost:5432/aim
+AIM_JWT_SECRET=change-me-in-production
 ```
 
-`skill_definition` should point to an operator-owned `SKILL.md` file. Different environments can use different skill files, for example:
+`AIM_SKILL_DEFINITION` should point to an operator-owned `SKILL.md` file. Different environments can use different skill files, for example:
 
 ```text
 skills/
@@ -314,7 +298,7 @@ Sprint 9 added a persisted approval flow for destructive Tier 1 actions:
 5. If approved, AIM executes the action.
 6. If rejected or expired, the action is blocked.
 
-Default approval timeout is 15 minutes (`approvals.timeout_seconds: 900`).
+Default approval timeout is 15 minutes (`AIM_APPROVAL_TIMEOUT_SECONDS=900`).
 
 ## Project Structure
 
@@ -330,7 +314,7 @@ ai-incident-manager/
 │   │   └── routes/         # Route modules (auth, incidents, sessions, approvals, audit, config, models, ws)
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic
 │   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
-│   ├── config_loader.py    # YAML config → typed dataclasses
+│   ├── config_loader.py    # .env/AppConfig loader + typed dataclasses
 │   ├── db/                 # SQLAlchemy models, async repos, Alembic migrations
 │   ├── llm/                # Provider abstraction, registry, and factories
 │   ├── mcp/                # MCP client wrapper (stdio, sse, http)
@@ -342,8 +326,7 @@ ai-incident-manager/
 │   └── SKILL.md            # Reference Kubernetes skill definition
 ├── skills/                 # Operator-owned environment skill files
 ├── tests/                  # 312 tests, 2 skipped
-├── config.yaml             # Runtime config (tier, MCP servers, skill path)
-├── .env                    # Secrets and environment variables
+├── .env                    # Deployment defaults / secrets / local fallbacks
 └── docs/                   # Project documentation
 ```
 
@@ -356,20 +339,19 @@ ai-incident-manager/
   - Sprint 9: ✅ Tier 1 approval flow
   - Sprint 10: ✅ BYOM provider abstraction
   - Sprint 11: ✅ Next.js frontend + Docker setup
-  - Sprint 12: ⬜ Config consolidation + UI self-service (Models, MCP, Skills, Co-pilot chat)
+  - Sprint 12: 🚧 Config consolidation + UI self-service (foundation complete; model/MCP/skills/chat next)
   - Sprint 13: ⬜ Polish + binary build
 
-## Distribution (Planned — Sprint 12)
+## Distribution (Planned — Sprint 13)
 
 The end goal is a standalone binary (via PyInstaller or Nuitka) that requires only two files to run:
 
 ```
 aim                  # standalone binary
-config.yaml          # runtime config: tier, MCP servers, skill path
-.env                 # API keys, database URL, JWT secret
+.env                 # deployment defaults, API keys, database URL, JWT secret
 skills/              # operator-owned skill definitions for each environment
 ```
 
-No Python install, no `uv`, no virtualenv — just download, configure, and run. This is planned for Sprint 12.
+No Python install, no `uv`, no virtualenv — just download, configure, and run. This is planned for Sprint 13.
 
 See `docs/REFERENCE.md` for full architecture details.

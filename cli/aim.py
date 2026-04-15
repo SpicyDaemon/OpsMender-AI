@@ -22,7 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from backend.audit.logger import AuditEntry, AuditLogger
 from backend.approvals import ApprovalService
 from backend.config_loader import Config
-from backend.db.engine import get_engine, get_session_factory
+from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
 from backend.mcp.client import MCPClientError, connect, list_tools
@@ -32,8 +32,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aim", description="AI Incident Manager CLI")
     parser.add_argument(
         "--config",
-        default="config.yaml",
-        help="Path to configuration file (default: config.yaml)",
+        default=None,
+        help="Path to environment file (default: .env)",
     )
     parser.add_argument(
         "--version",
@@ -309,8 +309,8 @@ async def _run_check(cfg: Config) -> int:
 
     if not cfg.mcp_servers:
         print(
-            "No MCP servers configured. Add entries under 'mcp_servers' in config.yaml.\n"
-            "See config.yaml comments for examples."
+            "No MCP servers configured. Set AIM_MCP_SERVERS_JSON in your .env file\n"
+            "until the DB-backed MCP manager is in place."
         )
         return 0
 
@@ -380,11 +380,8 @@ def _run_audit(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
-def _database_url() -> str:
-    return os.environ.get(
-        "AIM_DATABASE_URL",
-        "postgresql+asyncpg://aim:aim@localhost:5432/aim",
-    )
+def _database_url(cfg: Config) -> str:
+    return resolve_database_url(cfg.db)
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -455,7 +452,7 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
         print("Usage: aim approvals {list,approve,reject} ...", file=sys.stderr)
         return 1
 
-    engine = get_engine(_database_url())
+    engine = get_engine(_database_url(cfg))
     factory = get_session_factory(engine)
 
     try:
@@ -545,7 +542,7 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
     except (OSError, SQLAlchemyError) as exc:
         print(
             "Approval command failed: database unavailable. "
-            "Set AIM_DATABASE_URL to a reachable database for approval commands. "
+            "Set AIM_DATABASE_URL or use the local DB fallback for approval commands. "
             f"Details: {exc}",
             file=sys.stderr,
         )
@@ -584,7 +581,7 @@ def _run_config(cfg: Config, args: argparse.Namespace) -> int:
         return _validate_config(cfg, args)
 
     # Default: human-readable summary
-    print(f"Config file: {args.config}")
+    print(f"Env file:     {args.config or '.env'}")
     print(f"Tier:        {cfg.tiers.get('default', '(not set)')}")
     print(f"Log level:   {cfg.logging.get('level', '(not set)')}")
     print(f"Audit log:   {cfg.audit.output}")
@@ -603,9 +600,7 @@ def _validate_config(cfg: Config, args: argparse.Namespace) -> int:
 
     # Tier validation
     default_tier = cfg.tiers.get("default")
-    if default_tier is None:
-        errors.append("tiers.default is not set")
-    elif default_tier not in (0, 1, 2, 3):
+    if default_tier not in (0, 1, 2, 3):
         errors.append(f"tiers.default must be 0-3, got {default_tier}")
 
     # Audit path writable check
@@ -687,7 +682,7 @@ async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
         print(f"Model config validation failed: {exc}", file=sys.stderr)
         return 1
 
-    engine = get_engine(_database_url())
+    engine = get_engine(_database_url(cfg))
     factory = get_session_factory(engine)
     try:
         async with factory() as db:
@@ -713,7 +708,7 @@ async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
     except (OSError, SQLAlchemyError) as exc:
         print(
             "Model config command failed: database unavailable. "
-            "Set AIM_DATABASE_URL to a reachable database for model config commands. "
+            "Set AIM_DATABASE_URL or use the local DB fallback for model config commands. "
             f"Details: {exc}",
             file=sys.stderr,
         )
@@ -759,7 +754,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
     if tier == 1:
         try:
-            db_engine = get_engine(_database_url())
+            db_engine = get_engine(_database_url(cfg))
             session_factory = get_session_factory(db_engine)
             async with session_factory() as db:
                 db_session = await SessionRepo.create(

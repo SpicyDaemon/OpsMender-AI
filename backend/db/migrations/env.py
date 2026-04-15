@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from backend.config_loader import AppConfig
+from backend.db.engine import resolve_database_url
 from backend.db.models import Base
 
 config = context.config
@@ -19,11 +20,8 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Override sqlalchemy.url from environment variable
-database_url = os.environ.get(
-    "AIM_DATABASE_URL",
-    "postgresql+asyncpg://aim:aim@localhost:5432/aim",
-)
+# Override sqlalchemy.url from AppConfig / environment
+database_url = resolve_database_url(AppConfig.load().db)
 config.set_main_option("sqlalchemy.url", database_url)
 
 

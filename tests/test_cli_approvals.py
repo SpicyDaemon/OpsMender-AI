@@ -62,8 +62,8 @@ class TestApprovalsArgParsing:
 
 class TestApprovalsCLI:
     def test_list_approvals(self, tmp_path, monkeypatch, capsys):
-        cfg = tmp_path / "config.yaml"
-        cfg.write_text("mcp_servers: []\n")
+        cfg = tmp_path / ".env"
+        cfg.write_text("AIM_TIER=2\n")
         db_url = f"sqlite+aiosqlite:///{tmp_path / 'approvals.db'}"
         request_id = asyncio.run(_seed_db(db_url))
         monkeypatch.setenv("AIM_DATABASE_URL", db_url)
@@ -76,8 +76,8 @@ class TestApprovalsCLI:
         assert "pending" in out
 
     def test_approve_request(self, tmp_path, monkeypatch):
-        cfg = tmp_path / "config.yaml"
-        cfg.write_text("mcp_servers: []\n")
+        cfg = tmp_path / ".env"
+        cfg.write_text("AIM_TIER=2\n")
         db_url = f"sqlite+aiosqlite:///{tmp_path / 'approvals.db'}"
         request_id = asyncio.run(_seed_db(db_url))
         monkeypatch.setenv("AIM_DATABASE_URL", db_url)

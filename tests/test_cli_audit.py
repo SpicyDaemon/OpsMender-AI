@@ -16,16 +16,12 @@ from cli.aim import main
 # ---------------------------------------------------------------------------
 
 def _write_config(tmp_path: pathlib.Path, audit_path: pathlib.Path) -> pathlib.Path:
-    """Write a minimal config.yaml that points to *audit_path*."""
-    cfg = tmp_path / "config.yaml"
+    """Write a minimal .env file that points to *audit_path*."""
+    cfg = tmp_path / ".env"
     cfg.write_text(
-        "mcp_servers: []\n"
-        "tiers:\n"
-        "  default: 2\n"
-        "logging:\n"
-        "  level: INFO\n"
-        f"audit:\n"
-        f"  output: {audit_path}\n"
+        "AIM_TIER=2\n"
+        "AIM_LOG_LEVEL=INFO\n"
+        f"AIM_AUDIT_LOG={audit_path}\n"
     )
     return cfg
 

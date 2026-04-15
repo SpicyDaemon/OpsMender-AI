@@ -11,14 +11,14 @@ Usage::
 
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.config_loader import AppConfig
 from backend.api.deps import set_session_factory
-from backend.db.engine import get_engine, get_session_factory
+from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 
 
 @asynccontextmanager
@@ -32,31 +32,33 @@ async def _lifespan(app: FastAPI):
     On shutdown:
     - Dispose the engine and connection pool
     """
-    database_url = os.environ.get(
-        "AIM_DATABASE_URL",
-        "postgresql+asyncpg://aim:aim@localhost:5432/aim",
-    )
+    config: AppConfig = app.state.config
+    database_url = resolve_database_url(config.db)
 
     engine = get_engine(database_url)
     factory = get_session_factory(engine)
     set_session_factory(factory)
+    app.state.database_url = database_url
 
     yield
 
     await engine.dispose()
 
 
-def create_app() -> FastAPI:
+def create_app(config: AppConfig | None = None) -> FastAPI:
     """Build and return the fully-configured FastAPI application."""
+    config = config or AppConfig.load()
+
     app = FastAPI(
-        title="AI Incident Manager",
+        title=config.app.name,
         description="AI-powered incident response with tiered access controls",
-        version="0.2.0",
+        version=config.app.version,
         lifespan=_lifespan,
     )
+    app.state.config = config
 
     # -- CORS ---------------------------------------------------------------
-    allowed_origins = os.environ.get("AIM_CORS_ORIGINS", "*").split(",")
+    allowed_origins = config.cors.origins
     # allow_credentials=True is incompatible with wildcard origins per CORS spec
     allow_credentials = "*" not in allowed_origins
     app.add_middleware(

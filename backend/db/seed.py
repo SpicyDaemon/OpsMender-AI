@@ -11,13 +11,11 @@ Requires: running Postgres with migrations applied.
 from __future__ import annotations
 
 import asyncio
-import os
-import sys
 from datetime import datetime, timedelta, timezone
 
 from backend.api.auth import hash_password
-from backend.db.engine import get_engine, get_session_factory
-from backend.db.models import Base
+from backend.config_loader import AppConfig
+from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.db.repos import (
     AuditEntryRepo,
     IncidentRepo,
@@ -156,10 +154,7 @@ async def seed(database_url: str) -> None:
 
 
 def main() -> None:
-    url = os.environ.get(
-        "AIM_DATABASE_URL",
-        "postgresql+asyncpg://aim:aim@localhost:5432/aim",
-    )
+    url = resolve_database_url(AppConfig.load().db)
     print(f"Seeding database: {url.split('@')[-1]}")
     asyncio.run(seed(url))
 

@@ -14,7 +14,6 @@ Configuration is driven by environment variables:
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -25,17 +24,13 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config_loader import AppConfig
 from backend.api.deps import get_db
 from backend.db.models import User
 from backend.db.repos import UserRepo
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
-JWT_SECRET = os.environ.get("AIM_JWT_SECRET", "dev-secret-change-in-production")
-JWT_ALGORITHM = os.environ.get("AIM_JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_MINUTES = int(os.environ.get("AIM_JWT_EXPIRE_MINUTES", "60"))
+def _auth_config():
+    return AppConfig.load().auth
 
 # ---------------------------------------------------------------------------
 # Password hashing (bcrypt directly — passlib broken on Python 3.12+)
@@ -63,20 +58,32 @@ def create_access_token(
     expires_delta: timedelta | None = None,
 ) -> str:
     """Create a signed JWT containing ``sub`` (user_id) and ``role``."""
+    settings = _auth_config()
     now = datetime.now(timezone.utc)
-    expire = now + (expires_delta or timedelta(minutes=JWT_EXPIRE_MINUTES))
+    expire = now + (
+        expires_delta or timedelta(minutes=settings.jwt_expire_minutes)
+    )
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "role": role,
         "iat": now,
         "exp": expire,
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return jwt.encode(
+        payload,
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
     """Decode and validate a JWT.  Raises ``JWTError`` on failure."""
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    settings = _auth_config()
+    return jwt.decode(
+        token,
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+    )
 
 
 # ---------------------------------------------------------------------------

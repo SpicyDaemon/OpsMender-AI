@@ -1,5 +1,7 @@
 """Tests for cli.aim."""
 
+import json
+
 import pytest
 
 from cli.aim import main
@@ -21,20 +23,25 @@ class TestCLI:
 
     def test_bad_config_path_exits(self):
         with pytest.raises(SystemExit) as exc_info:
-            main(["--config", "/tmp/no_such_file.yaml"])
+            main(["--config", "/tmp/no_such_file.env"])
         assert exc_info.value.code == 1
 
     def test_custom_config(self, tmp_path, capsys):
-        cfg = tmp_path / "custom.yaml"
+        cfg = tmp_path / "custom.env"
         cfg.write_text(
-            "mcp_servers:\n"
-            "  - name: test\n"
-            "    transport: stdio\n"
-            "    command: echo\n"
-            "tiers:\n"
-            "  default: 3\n"
-            "logging:\n"
-            "  level: WARN\n"
+            "AIM_MCP_SERVERS_JSON="
+            + json.dumps(
+                [
+                    {
+                        "name": "test",
+                        "transport": "stdio",
+                        "command": "echo",
+                    }
+                ]
+            )
+            + "\n"
+            + "AIM_TIER=3\n"
+            + "AIM_LOG_LEVEL=WARNING\n"
         )
         main(["--config", str(cfg)])
         out = capsys.readouterr().out

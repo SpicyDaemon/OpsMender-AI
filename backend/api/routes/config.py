@@ -6,12 +6,10 @@ PUT  /config — update config (admin only)
 
 from __future__ import annotations
 
-import pathlib
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     ConfigResponse,
@@ -19,60 +17,46 @@ from backend.api.schemas import (
     ModelConfigResponse,
     ModelConfigUpdate,
 )
-from backend.config_loader import Config
+from backend.config_loader import Config, set_env_path
 from backend.db.models import User
-from backend.db.repos import ModelConfigRepo
+from backend.db.repos import ModelConfigRepo, RuntimeConfigRepo
 from backend.llm import ProviderRegistry
 
 router = APIRouter(prefix="/config", tags=["config"])
 
-# ---------------------------------------------------------------------------
-# Configurable path (can be overridden for tests)
-# ---------------------------------------------------------------------------
 
-_config_path: pathlib.Path = pathlib.Path("config.yaml")
-
-
-def set_config_path(path: pathlib.Path | str) -> None:
-    """Override the config file path (useful for testing)."""
-    global _config_path
-    _config_path = pathlib.Path(path)
+def set_config_path(path) -> None:
+    """Backward-compatible test helper: point config loading at a .env file."""
+    set_env_path(path)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _load_config() -> Config:
-    """Load the current config from disk."""
-    try:
-        return Config.load(_config_path)
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="config.yaml not found",
-        )
-
-
-def _config_to_response(cfg: Config) -> ConfigResponse:
-    """Convert a Config object to the API response schema."""
+def _config_to_response(
+    cfg: Config,
+    *,
+    tier: int,
+    logging_level: str,
+) -> ConfigResponse:
     servers = []
-    for s in cfg.mcp_servers:
-        entry: dict = {"name": s.name, "transport": s.transport}
-        if s.url:
-            entry["url"] = s.url
-        if s.command:
-            entry["command"] = s.command
-        if s.args:
-            entry["args"] = s.args
+    for server in cfg.mcp_servers:
+        entry: dict = {"name": server.name, "transport": server.transport}
+        if server.url:
+            entry["url"] = server.url
+        if server.command:
+            entry["command"] = server.command
+        if server.args:
+            entry["args"] = server.args
         servers.append(entry)
 
     return ConfigResponse(
-        tier=cfg.tiers.get("default", 2),
+        tier=tier,
         mcp_servers=servers,
         audit_output=cfg.audit.output,
-        logging_level=cfg.logging.get("level", "INFO"),
+        logging_level=logging_level,
     )
+
+
+async def _read_runtime_config(db: AsyncSession) -> dict[str, str]:
+    return await RuntimeConfigRepo.get_many(db, ["tier", "logging_level"])
 
 
 # ---------------------------------------------------------------------------
@@ -85,10 +69,21 @@ def _config_to_response(cfg: Config) -> ConfigResponse:
     summary="Get current system config",
 )
 async def get_config(
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    cfg = _load_config()
-    return _config_to_response(cfg)
+    try:
+        cfg = Config.load()
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
+
+    overrides = await _read_runtime_config(db)
+    tier = int(overrides.get("tier", cfg.tiers.get("default", 2)))
+    logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
+    return _config_to_response(cfg, tier=tier, logging_level=logging_level)
 
 
 @router.put(
@@ -98,27 +93,30 @@ async def get_config(
 )
 async def update_config(
     body: ConfigUpdate,
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("admin")),
 ):
-    import yaml
-
-    _load_config()  # validate current config is loadable
-
-    # Read raw YAML so we can patch and re-write
-    with _config_path.open("r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
-
     if body.tier is not None:
-        raw.setdefault("tiers", {})["default"] = body.tier
+        await RuntimeConfigRepo.set(db, key="tier", value=str(body.tier))
     if body.logging_level is not None:
-        raw.setdefault("logging", {})["level"] = body.logging_level
+        await RuntimeConfigRepo.set(
+            db,
+            key="logging_level",
+            value=body.logging_level,
+        )
+    await db.commit()
 
-    with _config_path.open("w", encoding="utf-8") as f:
-        yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
-
-    # Re-load and return updated config
-    updated = Config.load(_config_path)
-    return _config_to_response(updated)
+    try:
+        cfg = Config.load()
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
+    overrides = await _read_runtime_config(db)
+    tier = int(overrides.get("tier", cfg.tiers.get("default", 2)))
+    logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
+    return _config_to_response(cfg, tier=tier, logging_level=logging_level)
 
 
 @router.put(

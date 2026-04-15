@@ -86,16 +86,13 @@ def _extract_yaml_front_matter(text: str) -> str:
     return text
 
 
-def load(path: pathlib.Path | str) -> SkillDefinition:
-    """Parse a SKILL.md or SKILL.yaml file and return a SkillDefinition."""
-    p = pathlib.Path(path)
-    if not p.is_file():
-        raise FileNotFoundError(f"Skill definition not found: {p}")
+def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
+    """Parse a raw skill definition string and return a SkillDefinition.
 
-    raw = p.read_text(encoding="utf-8")
-
-    # If .yaml/.yml, parse directly; otherwise extract front-matter
-    if p.suffix in (".yaml", ".yml"):
+    ``fmt`` accepts ``"md"`` (markdown with YAML front-matter, the default)
+    or ``"yaml"`` (raw YAML).
+    """
+    if fmt in ("yaml", "yml"):
         data = yaml.safe_load(raw) or {}
     else:
         front_matter = _extract_yaml_front_matter(raw)
@@ -116,3 +113,14 @@ def load(path: pathlib.Path | str) -> SkillDefinition:
         environment=data.get("environment", "default"),
         operations=operations,
     )
+
+
+def load(path: pathlib.Path | str) -> SkillDefinition:
+    """Parse a SKILL.md or SKILL.yaml file and return a SkillDefinition."""
+    p = pathlib.Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"Skill definition not found: {p}")
+
+    raw = p.read_text(encoding="utf-8")
+    fmt = "yaml" if p.suffix in (".yaml", ".yml") else "md"
+    return loads(raw, fmt=fmt)

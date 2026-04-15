@@ -29,14 +29,14 @@ In practice, an AIM deployment is driven by four operator-owned inputs:
 
 - `.env` for deployment defaults such as tier, audit path, DB/JWT settings, provider defaults, and local fallbacks
 - `runtime_config` DB overrides for UI-editable runtime settings such as tier and log level
-- `model_configs` and `mcp_servers` DB tables for saved model profiles and MCP connection definitions managed through the API/UI
-- `skills/` for your environment-specific `SKILL.md` files that define what counts as safe, caution, or destructive
+- `model_configs`, `mcp_servers`, and `skills` DB tables for saved model profiles, MCP connection definitions, and operator-owned skill definitions — all managed through the API/UI
+- `skills/` directory for your environment-specific `SKILL.md` files that define what counts as safe, caution, or destructive. Files placed here are auto-imported into the `skills` DB table on backend startup (existing rows are skipped by name, so UI edits are preserved across restarts). `examples/SKILL.md` is a reference template only and is never auto-imported.
 
 This is intentional: AIM does not hardcode what "destructive" means for your infrastructure. The operator defines that through skills.
 
 ### Local Dev Notes
 
-- The repo was verified in a local `.venv` on 2026-04-14 with `328 passed, 2 skipped`.
+- The repo was verified in a local `.venv` on 2026-04-15 with `367 passed, 2 skipped`.
 - `aim approvals ...` requires a reachable database because approval requests are persisted.
 - `aim config model set ...` also requires a reachable database because model configs are persisted.
 - If you are not running Postgres locally yet, SQLite works for local approval-flow testing:
@@ -56,7 +56,7 @@ export AIM_DATABASE_URL="sqlite+aiosqlite:///$(pwd)/aim.db"
 ## Running Tests
 
 ```bash
-uv run pytest              # all tests (328 passed, 2 skipped)
+uv run pytest              # all tests (367 passed, 2 skipped)
 uv run pytest -xvs         # verbose, stop on first failure
 uv run pytest tests/test_api.py       # API layer tests
 uv run pytest tests/test_workflow.py  # workflow tests
@@ -173,6 +173,13 @@ Note: the ASGI target is `backend.api.app:create_app` **with `--factory`** — t
 | `PUT` | `/mcp-servers/{id}` | admin | Update saved MCP server |
 | `DELETE` | `/mcp-servers/{id}` | admin | Delete saved MCP server |
 | `POST` | `/mcp-servers/{id}/test` | admin | Test live connectivity to a saved MCP server |
+| `GET` | `/skills` | any | List saved skills (optional `?mcp_server_id=` filter) |
+| `GET` | `/skills/{id}` | any | Get a saved skill |
+| `POST` | `/skills` | admin | Create a saved skill |
+| `PUT` | `/skills/{id}` | admin | Update a saved skill |
+| `DELETE` | `/skills/{id}` | admin | Delete a saved skill |
+| `POST` | `/skills/{id}/clone` | admin | Clone a saved skill (optionally rebind to MCP server) |
+| `POST` | `/skills/import` | admin | Upload and import a `SKILL.md` file |
 | `GET` | `/audit` | any | Query audit entries (filters + pagination) |
 | `GET` | `/config` | admin/operator | Read system config |
 | `PUT` | `/config` | admin | Update system config |
@@ -292,6 +299,15 @@ The tier enforcement layer uses these classifications to permit or block tool ca
 
 This is how AIM supports operator-defined destructive actions: your `SKILL.md` files define the policy boundary for your environment, and AIM enforces that boundary programmatically.
 
+### Skill Manager (UI + DB)
+
+As of Sprint 12 Feature 3, skills are also managed from the dashboard:
+
+- `/dashboard/skills` groups skills by MCP server with a "Global (unassigned)" section for the fallback skill.
+- Admins can **Import** `.md` files, **Clone** a skill to a different MCP server, and create/edit/delete skills inline.
+- Skills in `skills/` are auto-imported on backend startup — existing rows are skipped by name, so edits made in the UI are preserved across restarts.
+- Enforcement looks up the skill bound to the session's MCP server first, then falls back to the global (unassigned) skill. If neither exists, behavior falls back to file-path loading via `AIM_SKILL_DEFINITION`.
+
 ## Tier System
 
 | Tier | Mode | Destructive Actions |
@@ -325,21 +341,21 @@ ai-incident-manager/
 │   │   ├── auth.py         # JWT auth, bcrypt hashing, RBAC dependencies
 │   │   ├── deps.py         # DB session dependency injection
 │   │   ├── schemas.py      # Pydantic request/response models
-│   │   └── routes/         # Route modules (auth, incidents, sessions, approvals, audit, config, models, mcp_servers, ws)
+│   │   └── routes/         # Route modules (auth, incidents, sessions, approvals, audit, config, models, mcp_servers, skills, ws)
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic
 │   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
 │   ├── config_loader.py    # .env/AppConfig loader + typed dataclasses
 │   ├── db/                 # SQLAlchemy models, async repos, Alembic migrations
 │   ├── llm/                # Provider abstraction, registry, and factories
 │   ├── mcp/                # MCP client wrapper (stdio/sse/http) + dynamic server pool
-│   ├── skills/             # Skill definition parser (SKILL.md)
+│   ├── skills/             # Skill definition parser (SKILL.md) + startup auto-importer
 │   └── tiers/              # Tier enforcement layer
 ├── cli/
 │   └── aim.py              # CLI entry point (run, check, audit, config, approvals)
 ├── examples/
 │   └── SKILL.md            # Reference Kubernetes skill definition
-├── skills/                 # Operator-owned environment skill files
-├── tests/                  # 336 tests, 2 skipped
+├── skills/                 # Operator-owned environment skill files (auto-imported on startup)
+├── tests/                  # 367 tests, 2 skipped
 ├── .env                    # Deployment defaults / secrets / local fallbacks
 └── docs/                   # Project documentation
 ```
@@ -353,7 +369,7 @@ ai-incident-manager/
   - Sprint 9: ✅ Tier 1 approval flow
   - Sprint 10: ✅ BYOM provider abstraction
   - Sprint 11: ✅ Next.js frontend + Docker setup
-  - Sprint 12: 🚧 Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, and `/dashboard/config` MCP manager complete; skills and chat next)
+  - Sprint 12: 🚧 Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, and Skill Manager `/dashboard/skills` complete; co-pilot chat next)
   - Sprint 13: ⬜ Polish + binary build
 
 ## Distribution (Planned — Sprint 13)

@@ -28,6 +28,7 @@ from backend.db.models import (
     ModelConfig,
     RuntimeConfig,
     Session,
+    Skill,
     User,
 )
 
@@ -639,6 +640,126 @@ class MCPServerRepo:
         if server is None:
             return False
         await db.delete(server)
+        await db.flush()
+        return True
+
+
+# ---------------------------------------------------------------------------
+# Skills
+# ---------------------------------------------------------------------------
+
+class SkillRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        content_md: str,
+        description: str | None = None,
+        mcp_server_id: uuid.UUID | None = None,
+    ) -> Skill:
+        skill = Skill(
+            name=name,
+            description=description,
+            mcp_server_id=mcp_server_id,
+            content_md=content_md,
+        )
+        db.add(skill)
+        await db.flush()
+        return skill
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, skill_id: uuid.UUID) -> Skill | None:
+        return await db.get(Skill, skill_id)
+
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str) -> Skill | None:
+        stmt = select(Skill).where(Skill.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(db: AsyncSession) -> Sequence[Skill]:
+        stmt = select(Skill).order_by(Skill.name)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def list_for_mcp_server(
+        db: AsyncSession, mcp_server_id: uuid.UUID
+    ) -> Sequence[Skill]:
+        stmt = (
+            select(Skill)
+            .where(Skill.mcp_server_id == mcp_server_id)
+            .order_by(Skill.name)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_for_mcp_server(
+        db: AsyncSession, mcp_server_id: uuid.UUID | None
+    ) -> Skill | None:
+        """Return the most relevant skill for a given MCP server.
+
+        Falls back to a global skill (``mcp_server_id IS NULL``) when no
+        server-specific skill exists. Returns ``None`` if no skill matches.
+        """
+        if mcp_server_id is not None:
+            stmt = (
+                select(Skill)
+                .where(Skill.mcp_server_id == mcp_server_id)
+                .order_by(Skill.created_at)
+                .limit(1)
+            )
+            result = await db.execute(stmt)
+            found = result.scalar_one_or_none()
+            if found is not None:
+                return found
+
+        stmt = (
+            select(Skill)
+            .where(Skill.mcp_server_id.is_(None))
+            .order_by(Skill.created_at)
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        skill_id: uuid.UUID,
+        *,
+        name: str,
+        content_md: str,
+        description: str | None = None,
+        mcp_server_id: uuid.UUID | None = None,
+    ) -> Skill | None:
+        stmt = (
+            update(Skill)
+            .where(Skill.id == skill_id)
+            .values(
+                name=name,
+                content_md=content_md,
+                description=description,
+                mcp_server_id=mcp_server_id,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await SkillRepo.get_by_id(db, skill_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, skill_id: uuid.UUID) -> bool:
+        skill = await SkillRepo.get_by_id(db, skill_id)
+        if skill is None:
+            return False
+        await db.delete(skill)
         await db.flush()
         return True
 

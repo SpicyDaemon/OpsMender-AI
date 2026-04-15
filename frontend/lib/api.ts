@@ -299,6 +299,95 @@ export async function testMCPServer(
 }
 
 // ---------------------------------------------------------------------------
+// Skills
+// ---------------------------------------------------------------------------
+
+import type {
+  SkillCloneRequest,
+  SkillCreate,
+  SkillListResponse,
+  SkillResponse,
+  SkillUpdate,
+} from "./types";
+
+export async function listSkills(params?: {
+  mcp_server_id?: string;
+}): Promise<SkillListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.mcp_server_id) qs.set("mcp_server_id", params.mcp_server_id);
+  const q = qs.toString();
+  return api.get<SkillListResponse>(`/skills${q ? `?${q}` : ""}`);
+}
+
+export async function getSkill(id: string): Promise<SkillResponse> {
+  return api.get<SkillResponse>(`/skills/${id}`);
+}
+
+export async function createSkill(body: SkillCreate): Promise<SkillResponse> {
+  return api.post<SkillResponse>("/skills", body);
+}
+
+export async function updateSkill(
+  id: string,
+  body: SkillUpdate,
+): Promise<SkillResponse> {
+  return api.put<SkillResponse>(`/skills/${id}`, body);
+}
+
+export async function deleteSkill(id: string): Promise<void> {
+  return api.del<void>(`/skills/${id}`);
+}
+
+export async function cloneSkill(
+  id: string,
+  body: SkillCloneRequest,
+): Promise<SkillResponse> {
+  return api.post<SkillResponse>(`/skills/${id}/clone`, body);
+}
+
+export async function importSkill(params: {
+  file: File;
+  name?: string;
+  description?: string;
+  mcp_server_id?: string;
+}): Promise<SkillResponse> {
+  const form = new FormData();
+  form.append("file", params.file);
+  if (params.name) form.append("name", params.name);
+  if (params.description) form.append("description", params.description);
+  if (params.mcp_server_id) form.append("mcp_server_id", params.mcp_server_id);
+
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE_URL}/skills/import`, {
+    method: "POST",
+    body: form,
+    headers,
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? JSON.stringify(body);
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+  return res.json() as Promise<SkillResponse>;
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket helper
 // ---------------------------------------------------------------------------
 

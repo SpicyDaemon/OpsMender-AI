@@ -20,6 +20,7 @@ from backend.config_loader import AppConfig
 from backend.api.deps import set_mcp_pool, set_session_factory
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.mcp.pool import MCPServerPool
+from backend.skills.importer import auto_import as auto_import_skills
 
 
 @asynccontextmanager
@@ -44,6 +45,16 @@ async def _lifespan(app: FastAPI):
     pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
     set_mcp_pool(pool)
     app.state.mcp_pool = pool
+
+    # Import any SKILL.md files under ./skills/ that aren't already in the DB.
+    # Best-effort: failures are logged but do not block startup.
+    try:
+        await auto_import_skills(factory, skills_dir="skills")
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "skills.auto_import: startup scan failed: %s", exc
+        )
 
     yield
 
@@ -81,6 +92,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.approvals import router as approvals_router
     from backend.api.routes.models import router as models_router
     from backend.api.routes.mcp_servers import router as mcp_servers_router
+    from backend.api.routes.skills import router as skills_router
     from backend.api.routes.audit import router as audit_router
     from backend.api.routes.config import router as config_router
     from backend.api.routes.ws import router as ws_router
@@ -91,6 +103,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(approvals_router)
     app.include_router(models_router)
     app.include_router(mcp_servers_router)
+    app.include_router(skills_router)
     app.include_router(audit_router)
     app.include_router(config_router)
     app.include_router(ws_router)

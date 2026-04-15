@@ -9,6 +9,7 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``model_configs``      — BYOM provider configurations
 - ``mcp_servers``        — persisted MCP connection definitions
 - ``runtime_config``     — DB-backed UI overrides for runtime settings
+- ``skills``             — operator-owned skill definitions (optionally bound to an MCP server)
 """
 
 from __future__ import annotations
@@ -239,6 +240,28 @@ class MCPServer(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Skills
+# ---------------------------------------------------------------------------
+
+class Skill(Base):
+    __tablename__ = "skills"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("mcp_servers.id", ondelete="SET NULL"), nullable=True
+    )
+    content_md: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
 

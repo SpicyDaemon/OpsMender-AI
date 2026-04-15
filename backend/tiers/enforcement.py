@@ -20,9 +20,12 @@ of autonomous execution.
 from __future__ import annotations
 
 import dataclasses
+import uuid
 from typing import Optional
 
-from backend.skills.parser import SkillDefinition
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.skills.parser import SkillDefinition, loads
 
 
 @dataclasses.dataclass
@@ -97,3 +100,26 @@ def check_and_explain(
     result = check(tool_name, tier, skill_def)
     status = "PERMIT" if result.permitted else "DENY"
     return f"[{status}] {tool_name} (classification={result.classification}, tier={result.tier}): {result.reason}"
+
+
+async def load_skill_for_mcp_server(
+    db: AsyncSession,
+    mcp_server_id: uuid.UUID | None,
+) -> SkillDefinition | None:
+    """Return the effective ``SkillDefinition`` for an MCP server.
+
+    Lookup order:
+
+    1. A skill bound to ``mcp_server_id`` (the most recently created wins).
+    2. A global skill with ``mcp_server_id IS NULL`` as the fallback.
+
+    Returns ``None`` if neither is present — callers decide whether to
+    treat that as fail-closed (deny all) or fall back to a file-based
+    skill definition.
+    """
+    from backend.db.repos import SkillRepo  # local import avoids cycles
+
+    skill = await SkillRepo.get_for_mcp_server(db, mcp_server_id)
+    if skill is None:
+        return None
+    return loads(skill.content_md)

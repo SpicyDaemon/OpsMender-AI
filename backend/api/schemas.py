@@ -234,6 +234,43 @@ class MCPServerTestResponse(BaseModel):
     tool_names: list[str] = Field(default_factory=list)
 
 
+class SkillResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str]
+    mcp_server_id: Optional[uuid.UUID]
+    content_md: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SkillListResponse(BaseModel):
+    items: list[SkillResponse]
+    total: int
+
+
+class SkillCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    content_md: str = Field(..., min_length=1)
+    description: Optional[str] = None
+    mcp_server_id: Optional[uuid.UUID] = None
+
+
+class SkillUpdate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    content_md: str = Field(..., min_length=1)
+    description: Optional[str] = None
+    mcp_server_id: Optional[uuid.UUID] = None
+
+
+class SkillCloneRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    mcp_server_id: Optional[uuid.UUID] = None
+    description: Optional[str] = None
+
+
 class ProviderModelsResponse(BaseModel):
     provider: str
     label: str

@@ -225,6 +225,45 @@ export interface MCPServerTestResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Skills
+// ---------------------------------------------------------------------------
+
+export interface SkillResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  mcp_server_id: string | null;
+  content_md: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SkillListResponse {
+  items: SkillResponse[];
+  total: number;
+}
+
+export interface SkillCreate {
+  name: string;
+  content_md: string;
+  description?: string | null;
+  mcp_server_id?: string | null;
+}
+
+export interface SkillUpdate {
+  name: string;
+  content_md: string;
+  description?: string | null;
+  mcp_server_id?: string | null;
+}
+
+export interface SkillCloneRequest {
+  name: string;
+  mcp_server_id?: string | null;
+  description?: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket messages
 // ---------------------------------------------------------------------------
 

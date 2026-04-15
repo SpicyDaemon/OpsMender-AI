@@ -18,6 +18,7 @@ from backend.db.models import (
     AuditEntry,
     Base,
     Incident,
+    MCPServer,
     ModelConfig,
     Session,
     User,
@@ -234,3 +235,30 @@ class TestModelConfigModel:
         assert cfg.max_tokens == 4096
         assert cfg.temperature == 0.0
         assert cfg.is_default is True
+
+
+# ---------------------------------------------------------------------------
+# MCPServer model
+# ---------------------------------------------------------------------------
+
+class TestMCPServerModel:
+
+    async def test_create_mcp_server(self, db: AsyncSession):
+        server = MCPServer(
+            name="k8s-prod",
+            transport="stdio",
+            command="npx",
+            args=["-y", "@anthropic/mcp-server-k8s"],
+            env_vars={"KUBECONFIG": "/tmp/config"},
+            is_active=True,
+        )
+        db.add(server)
+        await db.flush()
+
+        assert server.id is not None
+        assert server.name == "k8s-prod"
+        assert server.transport == "stdio"
+        assert server.command == "npx"
+        assert server.args == ["-y", "@anthropic/mcp-server-k8s"]
+        assert server.env_vars == {"KUBECONFIG": "/tmp/config"}
+        assert server.is_active is True

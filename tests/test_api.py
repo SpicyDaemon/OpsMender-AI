@@ -7,6 +7,7 @@ Tests the full API surface: auth, incidents, sessions, audit, config.
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import json
 
@@ -22,6 +23,7 @@ from backend.db.repos import (
     ApprovalRequestRepo,
     AuditEntryRepo,
     IncidentRepo,
+    MCPServerRepo,
     ModelConfigRepo,
     SessionRepo,
     UserRepo,
@@ -720,6 +722,188 @@ class TestModelConfigAPI:
             default = await ModelConfigRepo.get_default(db)
             assert default is not None
             assert default.id == second_id
+
+
+class TestMCPServerAPI:
+
+    async def test_list_mcp_servers(self, client: AsyncClient, app, auth_headers):
+        async with app.state.session_factory() as db:
+            await MCPServerRepo.create(
+                db,
+                name="k8s",
+                transport="stdio",
+                command="npx",
+                args=["-y", "@anthropic/mcp-server-k8s"],
+            )
+            await db.commit()
+
+        resp = await client.get("/mcp-servers", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["name"] == "k8s"
+        assert data["items"][0]["has_token"] is False
+
+    async def test_create_mcp_server_admin(self, client: AsyncClient, auth_headers):
+        resp = await client.post(
+            "/mcp-servers",
+            json={
+                "name": "sourcebot",
+                "transport": "http",
+                "url": "https://sb.example.com/api/mcp",
+                "token": "secret-token",
+                "env_vars": {"DEBUG": "1"},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["name"] == "sourcebot"
+        assert data["transport"] == "http"
+        assert data["has_token"] is True
+        assert "token" not in data
+
+    async def test_create_mcp_server_viewer_forbidden(
+        self, client: AsyncClient, viewer_headers
+    ):
+        resp = await client.post(
+            "/mcp-servers",
+            json={
+                "name": "denied",
+                "transport": "stdio",
+                "command": "echo",
+            },
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
+    async def test_update_mcp_server_admin(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                name="remote",
+                transport="sse",
+                url="http://localhost:8080/sse",
+                token="secret",
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        resp = await client.put(
+            f"/mcp-servers/{server_id}",
+            json={
+                "name": "remote-prod",
+                "transport": "http",
+                "url": "https://mcp.example.com/api/mcp",
+                "env_vars": {"DEBUG": "1"},
+                "is_active": False,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "remote-prod"
+        assert data["transport"] == "http"
+        assert data["is_active"] is False
+        assert data["has_token"] is True
+
+    async def test_delete_mcp_server_admin(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                name="delete-me",
+                transport="stdio",
+                command="echo",
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        resp = await client.delete(
+            f"/mcp-servers/{server_id}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 204
+
+        async with app.state.session_factory() as db:
+            deleted = await MCPServerRepo.get_by_id(db, server_id)
+            assert deleted is None
+
+    async def test_test_mcp_server_success(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                name="k8s",
+                transport="stdio",
+                command="npx",
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        @asynccontextmanager
+        async def _fake_connect(server_cfg):
+            class _Session:
+                pass
+
+            yield _Session()
+
+        class _Tool:
+            def __init__(self, name: str):
+                self.name = name
+
+        async def _fake_list_tools(session):
+            return [_Tool("get_pods"), _Tool("describe_pod")]
+
+        monkeypatch.setattr("backend.api.routes.mcp_servers.connect", _fake_connect)
+        monkeypatch.setattr("backend.api.routes.mcp_servers.list_tools", _fake_list_tools)
+
+        resp = await client.post(
+            f"/mcp-servers/{server_id}/test",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["tool_count"] == 2
+        assert data["tool_names"] == ["get_pods", "describe_pod"]
+
+    async def test_test_mcp_server_failure(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                name="broken",
+                transport="http",
+                url="https://broken.example.com/mcp",
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        @asynccontextmanager
+        async def _failing_connect(server_cfg):
+            raise RuntimeError("connection refused")
+            yield None
+
+        monkeypatch.setattr("backend.api.routes.mcp_servers.connect", _failing_connect)
+
+        resp = await client.post(
+            f"/mcp-servers/{server_id}/test",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "connection refused" in data["detail"]
 
 
 # ===========================================================================

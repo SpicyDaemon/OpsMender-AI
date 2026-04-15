@@ -24,6 +24,7 @@ from backend.db.models import (
     ApprovalRequest,
     AuditEntry,
     Incident,
+    MCPServer,
     ModelConfig,
     RuntimeConfig,
     Session,
@@ -543,6 +544,103 @@ class ModelConfigRepo:
         if refreshed is None:
             raise RuntimeError(f"ModelConfig disappeared during upsert: {existing.id}")
         return refreshed
+
+
+# ---------------------------------------------------------------------------
+# MCP servers
+# ---------------------------------------------------------------------------
+
+class MCPServerRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        transport: str,
+        command: str | None = None,
+        args: list[str] | None = None,
+        url: str | None = None,
+        token: str | None = None,
+        env_vars: dict[str, str] | None = None,
+        is_active: bool = True,
+    ) -> MCPServer:
+        server = MCPServer(
+            name=name,
+            transport=transport,
+            command=command,
+            args=args,
+            url=url,
+            token=token,
+            env_vars=env_vars,
+            is_active=is_active,
+        )
+        db.add(server)
+        await db.flush()
+        return server
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, server_id: uuid.UUID) -> MCPServer | None:
+        return await db.get(MCPServer, server_id)
+
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str) -> MCPServer | None:
+        stmt = select(MCPServer).where(MCPServer.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession, *, active_only: bool = False
+    ) -> Sequence[MCPServer]:
+        stmt = select(MCPServer).order_by(MCPServer.name)
+        if active_only:
+            stmt = stmt.where(MCPServer.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        server_id: uuid.UUID,
+        *,
+        name: str,
+        transport: str,
+        command: str | None = None,
+        args: list[str] | None = None,
+        url: str | None = None,
+        token: str | None = None,
+        env_vars: dict[str, str] | None = None,
+        is_active: bool = True,
+    ) -> MCPServer | None:
+        stmt = (
+            update(MCPServer)
+            .where(MCPServer.id == server_id)
+            .values(
+                name=name,
+                transport=transport,
+                command=command,
+                args=args,
+                url=url,
+                token=token,
+                env_vars=env_vars,
+                is_active=is_active,
+            )
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await MCPServerRepo.get_by_id(db, server_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, server_id: uuid.UUID) -> bool:
+        server = await MCPServerRepo.get_by_id(db, server_id)
+        if server is None:
+            return False
+        await db.delete(server)
+        await db.flush()
+        return True
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``audit_entries``      — every agent action (replaces JSONL backend)
 - ``approval_requests``  — Tier 1 human-approval queue
 - ``model_configs``      — BYOM provider configurations
+- ``mcp_servers``        — persisted MCP connection definitions
 - ``runtime_config``     — DB-backed UI overrides for runtime settings
 """
 
@@ -215,6 +216,27 @@ class ModelConfig(Base):
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096, nullable=False)
     temperature: Mapped[float] = mapped_column(default=0.0, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# MCP servers
+# ---------------------------------------------------------------------------
+
+class MCPServer(Base):
+    __tablename__ = "mcp_servers"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    transport: Mapped[str] = mapped_column(String(20), nullable=False)
+    command: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    args: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    env_vars: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

@@ -16,6 +16,7 @@ from backend.db.repos import (
     ApprovalRequestRepo,
     AuditEntryRepo,
     IncidentRepo,
+    MCPServerRepo,
     ModelConfigRepo,
     SessionRepo,
     UserRepo,
@@ -485,3 +486,76 @@ class TestModelConfigRepo:
         assert updated.max_tokens == 8192
         assert updated.temperature == 0.2
         assert updated.is_default is True
+
+
+# ---------------------------------------------------------------------------
+# MCPServerRepo
+# ---------------------------------------------------------------------------
+
+class TestMCPServerRepo:
+
+    async def test_create_and_list(self, db: AsyncSession):
+        await MCPServerRepo.create(
+            db,
+            name="k8s",
+            transport="stdio",
+            command="npx",
+            args=["-y", "@anthropic/mcp-server-k8s"],
+        )
+        await MCPServerRepo.create(
+            db,
+            name="sourcebot",
+            transport="http",
+            url="https://sb.example.com/api/mcp",
+            is_active=False,
+        )
+        await db.flush()
+
+        servers = await MCPServerRepo.list_all(db)
+        assert len(servers) == 2
+
+        active_servers = await MCPServerRepo.list_all(db, active_only=True)
+        assert len(active_servers) == 1
+        assert active_servers[0].name == "k8s"
+
+    async def test_update_server(self, db: AsyncSession):
+        server = await MCPServerRepo.create(
+            db,
+            name="remote",
+            transport="sse",
+            url="http://localhost:8080/sse",
+        )
+        await db.flush()
+
+        updated = await MCPServerRepo.update(
+            db,
+            server.id,
+            name="remote-prod",
+            transport="http",
+            url="https://mcp.example.com/api/mcp",
+            token="secret",
+            env_vars={"DEBUG": "1"},
+            is_active=True,
+        )
+        await db.flush()
+
+        assert updated is not None
+        assert updated.name == "remote-prod"
+        assert updated.transport == "http"
+        assert updated.token == "secret"
+        assert updated.env_vars == {"DEBUG": "1"}
+
+    async def test_delete_server(self, db: AsyncSession):
+        server = await MCPServerRepo.create(
+            db,
+            name="delete-me",
+            transport="stdio",
+            command="echo",
+        )
+        await db.flush()
+
+        deleted = await MCPServerRepo.delete(db, server.id)
+        await db.flush()
+
+        assert deleted is True
+        assert await MCPServerRepo.get_by_id(db, server.id) is None

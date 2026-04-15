@@ -75,6 +75,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.sessions import router as sessions_router
     from backend.api.routes.approvals import router as approvals_router
     from backend.api.routes.models import router as models_router
+    from backend.api.routes.mcp_servers import router as mcp_servers_router
     from backend.api.routes.audit import router as audit_router
     from backend.api.routes.config import router as config_router
     from backend.api.routes.ws import router as ws_router
@@ -84,6 +85,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(approvals_router)
     app.include_router(models_router)
+    app.include_router(mcp_servers_router)
     app.include_router(audit_router)
     app.include_router(config_router)
     app.include_router(ws_router)

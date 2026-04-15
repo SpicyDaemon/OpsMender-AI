@@ -197,6 +197,43 @@ class ModelConfigUpdate(BaseModel):
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
 
 
+class MCPServerResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    transport: str
+    command: Optional[str]
+    args: Optional[list[str]]
+    url: Optional[str]
+    env_vars: Optional[dict[str, str]]
+    is_active: bool
+    created_at: datetime
+    has_token: bool
+
+
+class MCPServerListResponse(BaseModel):
+    items: list[MCPServerResponse]
+    total: int
+
+
+class MCPServerUpsert(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    transport: str = Field(pattern="^(stdio|sse|http)$")
+    command: Optional[str] = Field(default=None, max_length=500)
+    args: Optional[list[str]] = None
+    url: Optional[str] = Field(default=None, max_length=1000)
+    token: Optional[str] = None
+    clear_token: bool = False
+    env_vars: Optional[dict[str, str]] = None
+    is_active: bool = True
+
+
+class MCPServerTestResponse(BaseModel):
+    success: bool
+    detail: str
+    tool_count: int = 0
+    tool_names: list[str] = Field(default_factory=list)
+
+
 class ProviderModelsResponse(BaseModel):
     provider: str
     label: str

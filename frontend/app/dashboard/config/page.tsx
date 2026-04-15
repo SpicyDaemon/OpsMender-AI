@@ -1,19 +1,37 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Plus, Save, Star, Trash2 } from "lucide-react";
 import {
+  CheckCircle2,
+  Pencil,
+  Plug,
+  Plus,
+  Save,
+  Star,
+  Trash2,
+  XCircle,
+} from "lucide-react";
+import {
+  createMCPServer,
   createModelConfig,
+  deleteMCPServer,
   deleteModelConfig,
   getConfig,
+  listMCPServers,
   listModelConfigs,
   listProviders,
   setDefaultModelConfig,
+  testMCPServer,
   updateConfig,
+  updateMCPServer,
   updateModelConfigById,
 } from "@/lib/api";
 import type {
   ConfigResponse,
+  MCPServerResponse,
+  MCPServerTestResponse,
+  MCPServerUpsert,
+  MCPTransport,
   ModelConfigResponse,
   ModelConfigUpdate,
   ProviderModelsResponse,
@@ -21,7 +39,7 @@ import type {
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select, FormError } from "@/components/ui/Input";
+import { Input, Label, Select, FormError, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageSpinner } from "@/components/ui/Spinner";
 
@@ -603,28 +621,579 @@ function ModelSection({
   );
 }
 
-function MCPSection({ config }: { config: ConfigResponse }) {
+// ---------------------------------------------------------------------------
+// MCP Servers
+// ---------------------------------------------------------------------------
+
+type TokenMode = "keep" | "replace" | "clear";
+
+type MCPFormState = {
+  name: string;
+  transport: MCPTransport;
+  command: string;
+  argsText: string;
+  url: string;
+  token: string;
+  tokenMode: TokenMode;
+  envText: string;
+  is_active: boolean;
+};
+
+function createMCPFormState(current?: MCPServerResponse | null): MCPFormState {
+  const envText = current?.env_vars
+    ? Object.entries(current.env_vars)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("\n")
+    : "";
+  return {
+    name: current?.name ?? "",
+    transport: current?.transport ?? "stdio",
+    command: current?.command ?? "",
+    argsText: current?.args?.join("\n") ?? "",
+    url: current?.url ?? "",
+    token: "",
+    tokenMode: current?.has_token ? "keep" : "replace",
+    envText,
+    is_active: current?.is_active ?? true,
+  };
+}
+
+function parseArgs(text: string): string[] | null {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length ? lines : null;
+}
+
+function parseEnv(text: string): { env: Record<string, string> | null; error?: string } {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return { env: null };
+  const env: Record<string, string> = {};
+  for (const line of lines) {
+    const eq = line.indexOf("=");
+    if (eq <= 0) return { env: null, error: `Env var line "${line}" must be KEY=value.` };
+    const key = line.slice(0, eq).trim();
+    const value = line.slice(eq + 1);
+    if (!key) return { env: null, error: `Env var line "${line}" is missing a key.` };
+    env[key] = value;
+  }
+  return { env };
+}
+
+function buildMCPPayload(
+  form: MCPFormState,
+): { payload?: MCPServerUpsert; error?: string } {
+  if (!form.name.trim()) return { error: "Name is required." };
+  if (form.transport === "stdio" && !form.command.trim()) {
+    return { error: "stdio transport requires a command." };
+  }
+  if ((form.transport === "sse" || form.transport === "http") && !form.url.trim()) {
+    return { error: `${form.transport} transport requires a URL.` };
+  }
+
+  const { env, error: envError } = parseEnv(form.envText);
+  if (envError) return { error: envError };
+
+  const payload: MCPServerUpsert = {
+    name: form.name.trim(),
+    transport: form.transport,
+    command: form.transport === "stdio" ? form.command.trim() : null,
+    args: form.transport === "stdio" ? parseArgs(form.argsText) : null,
+    url: form.transport === "stdio" ? null : form.url.trim(),
+    env_vars: env,
+    is_active: form.is_active,
+  };
+
+  if (form.transport === "stdio") {
+    payload.clear_token = true;
+  } else if (form.tokenMode === "replace" && form.token.trim()) {
+    payload.token = form.token;
+  } else if (form.tokenMode === "clear") {
+    payload.clear_token = true;
+  }
+
+  return { payload };
+}
+
+function MCPServerModal({
+  open,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+  initialServer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (form: MCPFormState) => Promise<void>;
+  saving: boolean;
+  error: string;
+  initialServer: MCPServerResponse | null;
+}) {
+  const [form, setForm] = useState<MCPFormState>(() =>
+    createMCPFormState(initialServer),
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(createMCPFormState(initialServer));
+  }, [open, initialServer]);
+
+  function setField<K extends keyof MCPFormState>(
+    key: K,
+    value: MCPFormState[K],
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await onSubmit(form);
+  }
+
+  const showTokenField = form.transport !== "stdio";
+  const hasExistingToken = Boolean(initialServer?.has_token);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={initialServer ? "Edit MCP Server" : "Add MCP Server"}
+      maxWidth="max-w-2xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="mcp-name">Name</Label>
+            <Input
+              id="mcp-name"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              placeholder="kubernetes-prod"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="mcp-transport">Transport</Label>
+            <Select
+              id="mcp-transport"
+              value={form.transport}
+              onChange={(e) => setField("transport", e.target.value as MCPTransport)}
+            >
+              <option value="stdio">stdio (local process)</option>
+              <option value="sse">sse (server-sent events)</option>
+              <option value="http">http</option>
+            </Select>
+          </div>
+        </div>
+
+        {form.transport === "stdio" ? (
+          <>
+            <div>
+              <Label htmlFor="mcp-command">Command</Label>
+              <Input
+                id="mcp-command"
+                value={form.command}
+                onChange={(e) => setField("command", e.target.value)}
+                placeholder="uvx"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="mcp-args">Args (one per line)</Label>
+              <Textarea
+                id="mcp-args"
+                rows={4}
+                value={form.argsText}
+                onChange={(e) => setField("argsText", e.target.value)}
+                placeholder="mcp-server-kubernetes"
+                className="font-mono text-xs"
+              />
+            </div>
+          </>
+        ) : (
+          <div>
+            <Label htmlFor="mcp-url">URL</Label>
+            <Input
+              id="mcp-url"
+              value={form.url}
+              onChange={(e) => setField("url", e.target.value)}
+              placeholder="https://example.com/sse"
+              required
+            />
+          </div>
+        )}
+
+        {showTokenField && (
+          <div>
+            <Label htmlFor="mcp-token">Bearer Token</Label>
+            {hasExistingToken && form.tokenMode === "keep" ? (
+              <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                <span className="font-mono tracking-widest">••••••••</span>
+                <span className="text-xs text-gray-400">saved</span>
+                <div className="ml-auto flex gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setField("tokenMode", "replace")}
+                  >
+                    Replace
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setField("tokenMode", "clear")}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ) : form.tokenMode === "clear" ? (
+              <div className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <span>Token will be removed on save.</span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setField("tokenMode", "keep")}
+                >
+                  Undo
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Input
+                  id="mcp-token"
+                  type="password"
+                  value={form.token}
+                  onChange={(e) => setField("token", e.target.value)}
+                  placeholder={hasExistingToken ? "Enter a new token" : "Optional"}
+                  autoComplete="off"
+                />
+                {hasExistingToken && (
+                  <button
+                    type="button"
+                    className="mt-1 text-xs text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline"
+                    onClick={() => setField("tokenMode", "keep")}
+                  >
+                    Keep existing token
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        <div>
+          <Label htmlFor="mcp-env">Env Vars (KEY=value, one per line)</Label>
+          <Textarea
+            id="mcp-env"
+            rows={3}
+            value={form.envText}
+            onChange={(e) => setField("envText", e.target.value)}
+            placeholder="KUBECONFIG=/etc/k8s/config"
+            className="font-mono text-xs"
+          />
+        </div>
+
+        <div>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) => setField("is_active", e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Active (available for sessions)
+          </label>
+        </div>
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={saving} disabled={!form.name.trim()}>
+            <Save size={13} /> {initialServer ? "Save Changes" : "Create Server"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+type TestState = {
+  status: "idle" | "running" | "success" | "failure";
+  result?: MCPServerTestResponse;
+};
+
+function TestPill({ state }: { state: TestState }) {
+  if (state.status === "idle") return null;
+  if (state.status === "running") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+        Testing…
+      </span>
+    );
+  }
+  if (state.status === "success") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700"
+        title={state.result?.tool_names.join(", ")}
+      >
+        <CheckCircle2 size={12} /> {state.result?.tool_count ?? 0} tool
+        {state.result?.tool_count === 1 ? "" : "s"}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-700"
+      title={state.result?.detail}
+    >
+      <XCircle size={12} /> Failed
+    </span>
+  );
+}
+
+function MCPSection({
+  servers,
+  onReload,
+  canEdit,
+}: {
+  servers: MCPServerResponse[];
+  onReload: () => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<MCPServerResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [testStates, setTestStates] = useState<Record<string, TestState>>({});
+
+  function openCreateModal() {
+    setEditing(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEditModal(server: MCPServerResponse) {
+    setEditing(server);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setEditing(null);
+    setError("");
+  }
+
+  async function handleSubmit(form: MCPFormState) {
+    const { payload, error: buildError } = buildMCPPayload(form);
+    if (buildError || !payload) {
+      setError(buildError ?? "Invalid form values.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      if (editing) {
+        await updateMCPServer(editing.id, payload);
+        setNotice("MCP server updated.");
+      } else {
+        await createMCPServer(payload);
+        setNotice("MCP server created.");
+      }
+      setModalOpen(false);
+      setEditing(null);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(server: MCPServerResponse) {
+    const confirmed = window.confirm(`Delete MCP server "${server.name}"?`);
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    try {
+      await deleteMCPServer(server.id);
+      setNotice("MCP server deleted.");
+      setTestStates((current) => {
+        const next = { ...current };
+        delete next[server.id];
+        return next;
+      });
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  async function handleTest(server: MCPServerResponse) {
+    setTestStates((current) => ({
+      ...current,
+      [server.id]: { status: "running" },
+    }));
+    try {
+      const result = await testMCPServer(server.id);
+      setTestStates((current) => ({
+        ...current,
+        [server.id]: {
+          status: result.success ? "success" : "failure",
+          result,
+        },
+      }));
+    } catch (err) {
+      setTestStates((current) => ({
+        ...current,
+        [server.id]: {
+          status: "failure",
+          result: {
+            success: false,
+            detail: err instanceof Error ? err.message : "Request failed",
+            tool_count: 0,
+            tool_names: [],
+          },
+        },
+      }));
+    }
+  }
+
   return (
     <Section
       title="MCP Servers"
-      description="Loaded from the active runtime config. Full MCP server management will move here in Sprint 12."
+      description="Saved MCP servers are resolved dynamically. New servers are immediately available to running sessions."
     >
-      {config.mcp_servers.length === 0 ? (
-        <p className="text-sm text-gray-400">No MCP servers configured.</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-gray-600">
+          {servers.length} saved server{servers.length === 1 ? "" : "s"}
+        </p>
+        <Button onClick={openCreateModal} disabled={!canEdit}>
+          <Plus size={14} /> Add MCP Server
+        </Button>
+      </div>
+
+      {!canEdit && (
+        <p className="text-sm text-gray-500">
+          Admin role required to add, edit, or test MCP servers.
+        </p>
+      )}
+
+      {error && <FormError message={error} />}
+      {notice && <p className="text-sm text-green-600">{notice}</p>}
+
+      {servers.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+          No MCP servers yet. Add one so agents can reach your infrastructure.
+        </div>
       ) : (
-        <div className="space-y-2">
-          {config.mcp_servers.map((server, index) => (
-            <div
-              key={index}
-              className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"
-            >
-              <pre className="overflow-x-auto font-mono text-xs text-gray-700">
-                {JSON.stringify(server, null, 2)}
-              </pre>
-            </div>
-          ))}
+        <div className="overflow-hidden rounded-xl border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Transport</th>
+                <th className="px-4 py-3">Target</th>
+                <th className="px-4 py-3">State</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {servers.map((server) => {
+                const target =
+                  server.transport === "stdio"
+                    ? [server.command, ...(server.args ?? [])]
+                        .filter(Boolean)
+                        .join(" ")
+                    : server.url ?? "";
+                const testState: TestState =
+                  testStates[server.id] ?? { status: "idle" };
+                return (
+                  <tr key={server.id}>
+                    <td className="px-4 py-3 align-top">
+                      <div className="font-medium text-gray-900">
+                        {server.name}
+                      </div>
+                      {server.has_token && (
+                        <p className="mt-1 text-xs text-gray-400">
+                          Bearer token stored
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <Badge>{server.transport}</Badge>
+                    </td>
+                    <td className="px-4 py-3 align-top font-mono text-xs text-gray-600">
+                      <span className="line-clamp-2 break-all">{target}</span>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        <Badge variant={server.is_active ? "resolved" : "closed"}>
+                          {server.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                        <TestPill state={testState} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleTest(server)}
+                          loading={testState.status === "running"}
+                          disabled={!canEdit}
+                        >
+                          <Plug size={13} /> Test
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openEditModal(server)}
+                          disabled={!canEdit}
+                        >
+                          <Pencil size={13} /> Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDelete(server)}
+                          disabled={!canEdit}
+                        >
+                          <Trash2 size={13} /> Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
+
+      <MCPServerModal
+        open={modalOpen}
+        onClose={closeModal}
+        onSubmit={handleSubmit}
+        saving={saving}
+        error={error}
+        initialServer={editing}
+      />
     </Section>
   );
 }
@@ -636,17 +1205,20 @@ export default function ConfigPage() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
   const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
+  const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadPageData = useCallback(async () => {
-    const [runtimeConfig, providerList, savedConfigs] = await Promise.all([
+    const [runtimeConfig, providerList, savedConfigs, mcpList] = await Promise.all([
       getConfig(),
       listProviders(),
       listModelConfigs(),
+      listMCPServers(),
     ]);
     setConfig(runtimeConfig);
     setProviders(providerList.items);
     setModelConfigs(savedConfigs.items);
+    setMcpServers(mcpList.items);
   }, []);
 
   useEffect(() => {
@@ -660,7 +1232,7 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Config</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Manage runtime defaults, saved model profiles, and upcoming operator self-service tools.
+          Manage runtime defaults, saved model profiles, and MCP server connections.
         </p>
       </div>
 
@@ -671,7 +1243,11 @@ export default function ConfigPage() {
         onReload={loadPageData}
         canEdit={canEdit}
       />
-      <MCPSection config={config} />
+      <MCPSection
+        servers={mcpServers}
+        onReload={loadPageData}
+        canEdit={canEdit}
+      />
     </div>
   );
 }

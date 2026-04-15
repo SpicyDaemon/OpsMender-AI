@@ -261,6 +261,44 @@ export async function setDefaultModelConfig(
 }
 
 // ---------------------------------------------------------------------------
+// MCP Servers
+// ---------------------------------------------------------------------------
+
+import type {
+  MCPServerListResponse,
+  MCPServerResponse,
+  MCPServerTestResponse,
+  MCPServerUpsert,
+} from "./types";
+
+export async function listMCPServers(): Promise<MCPServerListResponse> {
+  return api.get<MCPServerListResponse>("/mcp-servers");
+}
+
+export async function createMCPServer(
+  body: MCPServerUpsert,
+): Promise<MCPServerResponse> {
+  return api.post<MCPServerResponse>("/mcp-servers", body);
+}
+
+export async function updateMCPServer(
+  id: string,
+  body: MCPServerUpsert,
+): Promise<MCPServerResponse> {
+  return api.put<MCPServerResponse>(`/mcp-servers/${id}`, body);
+}
+
+export async function deleteMCPServer(id: string): Promise<void> {
+  return api.del<void>(`/mcp-servers/${id}`);
+}
+
+export async function testMCPServer(
+  id: string,
+): Promise<MCPServerTestResponse> {
+  return api.post<MCPServerTestResponse>(`/mcp-servers/${id}/test`);
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket helper
 // ---------------------------------------------------------------------------
 

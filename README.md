@@ -353,7 +353,7 @@ ai-incident-manager/
   - Sprint 9: ✅ Tier 1 approval flow
   - Sprint 10: ✅ BYOM provider abstraction
   - Sprint 11: ✅ Next.js frontend + Docker setup
-  - Sprint 12: 🚧 Config consolidation + UI self-service (foundation, model manager, and MCP backend foundation complete; dynamic MCP reload, frontend MCP manager, skills, and chat next)
+  - Sprint 12: 🚧 Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, and `/dashboard/config` MCP manager complete; skills and chat next)
   - Sprint 13: ⬜ Polish + binary build
 
 ## Distribution (Planned — Sprint 13)

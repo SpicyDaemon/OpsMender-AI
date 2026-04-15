@@ -182,6 +182,49 @@ export interface ProviderModelsListResponse {
 }
 
 // ---------------------------------------------------------------------------
+// MCP Servers
+// ---------------------------------------------------------------------------
+
+export type MCPTransport = "stdio" | "sse" | "http";
+
+export interface MCPServerResponse {
+  id: string;
+  name: string;
+  transport: MCPTransport;
+  command: string | null;
+  args: string[] | null;
+  url: string | null;
+  env_vars: Record<string, string> | null;
+  is_active: boolean;
+  created_at: string;
+  has_token: boolean;
+}
+
+export interface MCPServerListResponse {
+  items: MCPServerResponse[];
+  total: number;
+}
+
+export interface MCPServerUpsert {
+  name: string;
+  transport: MCPTransport;
+  command?: string | null;
+  args?: string[] | null;
+  url?: string | null;
+  token?: string | null;
+  clear_token?: boolean;
+  env_vars?: Record<string, string> | null;
+  is_active?: boolean;
+}
+
+export interface MCPServerTestResponse {
+  success: boolean;
+  detail: string;
+  tool_count: number;
+  tool_names: string[];
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket messages
 // ---------------------------------------------------------------------------
 

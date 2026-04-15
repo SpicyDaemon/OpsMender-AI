@@ -17,8 +17,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config_loader import AppConfig
-from backend.api.deps import set_session_factory
+from backend.api.deps import set_mcp_pool, set_session_factory
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
+from backend.mcp.pool import MCPServerPool
 
 
 @asynccontextmanager
@@ -39,6 +40,10 @@ async def _lifespan(app: FastAPI):
     factory = get_session_factory(engine)
     set_session_factory(factory)
     app.state.database_url = database_url
+
+    pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
+    set_mcp_pool(pool)
+    app.state.mcp_pool = pool
 
     yield
 

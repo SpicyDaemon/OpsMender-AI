@@ -81,7 +81,7 @@ class TestCheckCommand:
             main(["check"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        assert "0 MCP server(s) configured" in out
+        assert "0 MCP server(s) available" in out
         assert "No MCP servers configured" in out
 
     def test_check_bad_config_exits(self):

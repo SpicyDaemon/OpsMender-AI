@@ -26,6 +26,7 @@ from backend.db.engine import get_engine, get_session_factory, resolve_database_
 from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
 from backend.mcp.client import MCPClientError, connect, list_tools
+from backend.mcp.pool import MCPServerPool
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -65,6 +66,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         default=None,
         help="Anthropic model ID (default: claude-sonnet-4-20250514)",
+    )
+    run_parser.add_argument(
+        "--mcp-server",
+        default=None,
+        help="Name of the MCP server to use (default: first active server in DB/env)",
     )
     run_parser.add_argument(
         "--dry-run",
@@ -304,30 +310,50 @@ async def _check_server(server_cfg, timeout: float = 10.0) -> tuple[str, bool, s
 
 
 async def _run_check(cfg: Config) -> int:
-    """Validate config and test connectivity to all configured MCP servers."""
-    print(f"Config OK — {len(cfg.mcp_servers)} MCP server(s) configured\n")
+    """Validate config and test connectivity to all configured MCP servers.
 
-    if not cfg.mcp_servers:
-        print(
-            "No MCP servers configured. Set AIM_MCP_SERVERS_JSON in your .env file\n"
-            "until the DB-backed MCP manager is in place."
-        )
-        return 0
+    Servers are resolved through :class:`MCPServerPool` so newly added DB
+    entries appear without a restart.  Env-defined servers act as fallback
+    only when the database is unreachable.
+    """
+    session_factory = None
+    engine = None
+    try:
+        engine = get_engine(_database_url(cfg))
+        session_factory = get_session_factory(engine)
+    except Exception:
+        session_factory = None
 
-    all_ok = True
-    for server in cfg.mcp_servers:
-        name, ok, detail = await _check_server(server)
-        status = "OK" if ok else "FAIL"
-        print(f"  [{status}] {name} ({server.transport}) — {detail}")
-        if not ok:
-            all_ok = False
+    pool = MCPServerPool(session_factory, env_fallback=cfg.mcp_servers)
+    try:
+        servers = await pool.list_servers(active_only=True)
+        print(f"Config OK — {len(servers)} MCP server(s) available\n")
 
-    print()
-    if all_ok:
-        print("All servers reachable.")
-    else:
-        print("Some servers failed. Check config and server availability.")
-    return 0 if all_ok else 1
+        if not servers:
+            print(
+                "No MCP servers configured. Add one from the dashboard "
+                "(/dashboard/config) or seed AIM_MCP_SERVERS_JSON in your .env "
+                "as a fallback."
+            )
+            return 0
+
+        all_ok = True
+        for server in servers:
+            name, ok, detail = await _check_server(server)
+            status = "OK" if ok else "FAIL"
+            print(f"  [{status}] {name} ({server.transport}) — {detail}")
+            if not ok:
+                all_ok = False
+
+        print()
+        if all_ok:
+            print("All servers reachable.")
+        else:
+            print("Some servers failed. Check config and server availability.")
+        return 0 if all_ok else 1
+    finally:
+        if engine is not None:
+            await engine.dispose()
 
 
 # -- audit subcommand --------------------------------------------------------
@@ -752,10 +778,23 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     session_factory = None
     approval_service = None
 
+    # The MCP pool needs a session factory.  Create one eagerly so the pool
+    # can resolve DB-backed servers even when tier != 1.
+    try:
+        db_engine = get_engine(_database_url(cfg))
+        session_factory = get_session_factory(db_engine)
+    except Exception:
+        db_engine = None
+        session_factory = None
+
     if tier == 1:
+        if session_factory is None:
+            print(
+                "Tier 1 approval flow requires a reachable database.",
+                file=sys.stderr,
+            )
+            return 1
         try:
-            db_engine = get_engine(_database_url(cfg))
-            session_factory = get_session_factory(db_engine)
             async with session_factory() as db:
                 db_session = await SessionRepo.create(
                     db,
@@ -800,23 +839,37 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     print(f"Incident: {args.incident}")
     print()
 
-    # 5. Connect to MCP server(s) if available
+    # 5. Connect to MCP server(s) if available.  We resolve through the
+    # MCPServerPool so DB-backed servers and `.env` fallbacks both work.
     mcp_session = None
     mcp_ctx = contextlib.AsyncExitStack()
 
     try:
         await mcp_ctx.__aenter__()
 
-        if cfg.mcp_servers and not args.dry_run:
-            server = cfg.mcp_servers[0]
-            print(f"Connecting to MCP server: {server.name} ({server.transport})...")
-            try:
-                mcp_session = await mcp_ctx.enter_async_context(connect(server))
-                print(f"Connected to {server.name}.\n")
-            except Exception as exc:
-                print(f"MCP connection failed: {exc}", file=sys.stderr)
-                print("Continuing without MCP (no tool execution).\n")
-                mcp_session = None
+        if not args.dry_run:
+            pool = MCPServerPool(session_factory, env_fallback=cfg.mcp_servers)
+            if args.mcp_server:
+                server = await pool.get_server(args.mcp_server)
+                if server is None:
+                    print(
+                        f"MCP server '{args.mcp_server}' not found in DB or env.",
+                        file=sys.stderr,
+                    )
+                    return 1
+            else:
+                servers = await pool.list_servers(active_only=True)
+                server = servers[0] if servers else None
+
+            if server is not None:
+                print(f"Connecting to MCP server: {server.name} ({server.transport})...")
+                try:
+                    mcp_session = await mcp_ctx.enter_async_context(connect(server))
+                    print(f"Connected to {server.name}.\n")
+                except Exception as exc:
+                    print(f"MCP connection failed: {exc}", file=sys.stderr)
+                    print("Continuing without MCP (no tool execution).\n")
+                    mcp_session = None
 
         # 6. Log session start
         audit_logger.log_session_start(session_id, tier)

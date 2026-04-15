@@ -194,6 +194,8 @@ The first registered user is automatically assigned the `admin` role.
 Runtime defaults now live in `.env`, and UI edits to tier/log level are persisted in the `runtime_config` table.
 Saved model profiles and MCP server definitions are also persisted in the database, with `.env` remaining the source of truth for deployment defaults and secrets.
 
+MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-reads the DB on every lookup — servers added via `POST /mcp-servers` or the dashboard are visible to already-running sessions with no reload. `AIM_MCP_SERVERS_JSON` stays supported as a read-only fallback for bootstrapping before any DB entries exist.
+
 Example `.env` keys:
 
 ```dotenv
@@ -329,7 +331,7 @@ ai-incident-manager/
 │   ├── config_loader.py    # .env/AppConfig loader + typed dataclasses
 │   ├── db/                 # SQLAlchemy models, async repos, Alembic migrations
 │   ├── llm/                # Provider abstraction, registry, and factories
-│   ├── mcp/                # MCP client wrapper (stdio, sse, http)
+│   ├── mcp/                # MCP client wrapper (stdio/sse/http) + dynamic server pool
 │   ├── skills/             # Skill definition parser (SKILL.md)
 │   └── tiers/              # Tier enforcement layer
 ├── cli/
@@ -337,7 +339,7 @@ ai-incident-manager/
 ├── examples/
 │   └── SKILL.md            # Reference Kubernetes skill definition
 ├── skills/                 # Operator-owned environment skill files
-├── tests/                  # 328 tests, 2 skipped
+├── tests/                  # 336 tests, 2 skipped
 ├── .env                    # Deployment defaults / secrets / local fallbacks
 └── docs/                   # Project documentation
 ```

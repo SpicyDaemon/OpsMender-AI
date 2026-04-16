@@ -36,7 +36,7 @@ This is intentional: AIM does not hardcode what "destructive" means for your inf
 
 ### Local Dev Notes
 
-- The repo was verified in a local `.venv` on 2026-04-15 with `367 passed, 2 skipped`.
+- The repo was verified in a local `.venv` on 2026-04-15 with `381 passed, 2 skipped`.
 - `aim approvals ...` requires a reachable database because approval requests are persisted.
 - `aim config model set ...` also requires a reachable database because model configs are persisted.
 - If you are not running Postgres locally yet, SQLite works for local approval-flow testing:
@@ -56,7 +56,7 @@ export AIM_DATABASE_URL="sqlite+aiosqlite:///$(pwd)/aim.db"
 ## Running Tests
 
 ```bash
-uv run pytest              # all tests (367 passed, 2 skipped)
+uv run pytest              # all tests (381 passed, 2 skipped)
 uv run pytest -xvs         # verbose, stop on first failure
 uv run pytest tests/test_api.py       # API layer tests
 uv run pytest tests/test_workflow.py  # workflow tests
@@ -184,6 +184,8 @@ Note: the ASGI target is `backend.api.app:create_app` **with `--factory`** — t
 | `GET` | `/config` | admin/operator | Read system config |
 | `PUT` | `/config` | admin | Update system config |
 | `PUT` | `/config/model` | admin | Validate and persist the default model config |
+| `GET` | `/sessions/{id}/messages` | any | List co-pilot chat messages |
+| `POST` | `/sessions/{id}/messages` | admin/operator | Send user message to co-pilot |
 | `WS` | `/sessions/{id}/stream?token=JWT` | JWT query param | Live session streaming |
 
 ### Roles
@@ -341,7 +343,8 @@ ai-incident-manager/
 │   │   ├── auth.py         # JWT auth, bcrypt hashing, RBAC dependencies
 │   │   ├── deps.py         # DB session dependency injection
 │   │   ├── schemas.py      # Pydantic request/response models
-│   │   └── routes/         # Route modules (auth, incidents, sessions, approvals, audit, config, models, mcp_servers, skills, ws)
+│   │   └── routes/         # Route modules (auth, incidents, sessions + chat, approvals, audit, config, models, mcp_servers, skills, ws)
+│   ├── chat/               # Async co-pilot chat responder (parallel LLM call + WS push)
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic
 │   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
 │   ├── config_loader.py    # .env/AppConfig loader + typed dataclasses
@@ -355,7 +358,7 @@ ai-incident-manager/
 ├── examples/
 │   └── SKILL.md            # Reference Kubernetes skill definition
 ├── skills/                 # Operator-owned environment skill files (auto-imported on startup)
-├── tests/                  # 367 tests, 2 skipped
+├── tests/                  # 381 tests, 2 skipped
 ├── .env                    # Deployment defaults / secrets / local fallbacks
 └── docs/                   # Project documentation
 ```
@@ -369,7 +372,7 @@ ai-incident-manager/
   - Sprint 9: ✅ Tier 1 approval flow
   - Sprint 10: ✅ BYOM provider abstraction
   - Sprint 11: ✅ Next.js frontend + Docker setup
-  - Sprint 12: 🚧 Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, and Skill Manager `/dashboard/skills` complete; co-pilot chat next)
+  - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, and Co-pilot Chat complete)
   - Sprint 13: ⬜ Polish + binary build
 
 ## Distribution (Planned — Sprint 13)

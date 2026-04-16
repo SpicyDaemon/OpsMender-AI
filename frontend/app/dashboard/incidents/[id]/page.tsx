@@ -12,7 +12,7 @@ import type {
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Label, Select, FormError } from "@/components/ui/Input";
+import { Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageSpinner } from "@/components/ui/Spinner";
 
@@ -115,6 +115,7 @@ function StartSessionModal({
     tier: 2,
     model_provider: undefined,
     model_id: undefined,
+    initial_briefing: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -133,7 +134,11 @@ function StartSessionModal({
     setError("");
     setLoading(true);
     try {
-      const session = await createSession(form);
+      const payload: SessionCreate = {
+        ...form,
+        initial_briefing: form.initial_briefing?.trim() || undefined,
+      };
+      const session = await createSession(payload);
       onStarted(session.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start session");
@@ -196,6 +201,22 @@ function StartSessionModal({
             </Select>
           </div>
         )}
+
+        <div>
+          <Label htmlFor="ss-briefing">Initial briefing (optional)</Label>
+          <Textarea
+            id="ss-briefing"
+            rows={4}
+            placeholder="What do you already know about this incident? Any context, hypotheses, or logs you want the co-pilot to start with…"
+            value={form.initial_briefing ?? ""}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, initial_briefing: e.target.value }))
+            }
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Seeded as the first user message in the co-pilot chat before the workflow begins.
+          </p>
+        </div>
 
         {error && <FormError message={error} />}
 

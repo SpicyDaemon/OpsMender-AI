@@ -32,6 +32,18 @@ def set_session_factory(factory: async_sessionmaker[AsyncSession]) -> None:
     _session_factory = factory
 
 
+def get_current_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Return the process-wide session factory (for background tasks).
+
+    Unlike ``get_db`` this returns the raw factory — useful when a
+    coroutine needs to open its own short-lived session outside a
+    request/response cycle (e.g. the chat responder).
+    """
+    if _session_factory is None:
+        raise RuntimeError("Database session factory not initialised")
+    return _session_factory
+
+
 def set_mcp_pool(pool: MCPServerPool) -> None:
     """Called once during app startup to publish the MCP server pool."""
     global _mcp_pool

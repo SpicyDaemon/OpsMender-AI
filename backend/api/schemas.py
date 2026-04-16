@@ -83,6 +83,7 @@ class SessionCreate(BaseModel):
     tier: int = Field(..., ge=0, le=3)
     model_provider: Optional[str] = None
     model_id: Optional[str] = None
+    initial_briefing: Optional[str] = Field(default=None, max_length=10000)
 
 
 class SessionResponse(BaseModel):
@@ -290,10 +291,35 @@ class ProviderModelsListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Session messages (co-pilot chat)
+# ---------------------------------------------------------------------------
+
+class SessionMessageCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=10000)
+
+
+class SessionMessageResponse(BaseModel):
+    id: uuid.UUID
+    session_id: uuid.UUID
+    role: str  # user | assistant
+    content: str
+    created_at: datetime
+    consumed_by_workflow: bool
+    node_context: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class SessionMessageListResponse(BaseModel):
+    items: list[SessionMessageResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------
 
 class WSMessage(BaseModel):
     """Outbound WebSocket message."""
-    type: str  # node_transition | tool_call | approval_requested | approval_resolved | error | session_end
+    type: str  # node_transition | tool_call | approval_requested | approval_resolved | chat_message_user | chat_message_assistant | error | session_end
     data: dict[str, Any] = Field(default_factory=dict)

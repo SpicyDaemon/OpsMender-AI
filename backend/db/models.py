@@ -10,6 +10,7 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``mcp_servers``        — persisted MCP connection definitions
 - ``runtime_config``     — DB-backed UI overrides for runtime settings
 - ``skills``             — operator-owned skill definitions (optionally bound to an MCP server)
+- ``session_messages``   — co-pilot chat history (user ↔ assistant), parallel to the workflow
 """
 
 from __future__ import annotations
@@ -263,6 +264,30 @@ class Skill(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# Session messages (co-pilot chat)
+# ---------------------------------------------------------------------------
+
+class SessionMessage(Base):
+    __tablename__ = "session_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # user | assistant
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    consumed_by_workflow: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    node_context: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
 
 # ---------------------------------------------------------------------------

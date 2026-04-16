@@ -65,6 +65,32 @@ export interface SessionCreate {
   tier: number;
   model_provider?: string;
   model_id?: string;
+  initial_briefing?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Session messages (co-pilot chat)
+// ---------------------------------------------------------------------------
+
+export type SessionMessageRole = "user" | "assistant";
+
+export interface SessionMessageResponse {
+  id: string;
+  session_id: string;
+  role: SessionMessageRole;
+  content: string;
+  created_at: string;
+  consumed_by_workflow: boolean;
+  node_context: string | null;
+}
+
+export interface SessionMessageListResponse {
+  items: SessionMessageResponse[];
+  total: number;
+}
+
+export interface SessionMessageCreate {
+  content: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +298,8 @@ export type WSMessageType =
   | "tool_call"
   | "approval_requested"
   | "approval_resolved"
+  | "chat_message_user"
+  | "chat_message_assistant"
   | "error"
   | "session_end";
 

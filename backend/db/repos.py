@@ -28,6 +28,7 @@ from backend.db.models import (
     ModelConfig,
     RuntimeConfig,
     Session,
+    SessionMessage,
     Skill,
     User,
 )
@@ -762,6 +763,101 @@ class SkillRepo:
         await db.delete(skill)
         await db.flush()
         return True
+
+
+# ---------------------------------------------------------------------------
+# Session messages (co-pilot chat)
+# ---------------------------------------------------------------------------
+
+class SessionMessageRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        session_id: uuid.UUID,
+        role: str,
+        content: str,
+        consumed_by_workflow: bool = False,
+        node_context: str | None = None,
+    ) -> SessionMessage:
+        message = SessionMessage(
+            session_id=session_id,
+            role=role,
+            content=content,
+            consumed_by_workflow=consumed_by_workflow,
+            node_context=node_context,
+        )
+        db.add(message)
+        await db.flush()
+        return message
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, message_id: uuid.UUID
+    ) -> SessionMessage | None:
+        return await db.get(SessionMessage, message_id)
+
+    @staticmethod
+    async def list_by_session(
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        *,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> Sequence[SessionMessage]:
+        stmt = (
+            select(SessionMessage)
+            .where(SessionMessage.session_id == session_id)
+            .order_by(SessionMessage.created_at)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def list_pending_user(
+        db: AsyncSession, session_id: uuid.UUID
+    ) -> Sequence[SessionMessage]:
+        """Unread user messages that the workflow has not yet consumed."""
+        stmt = (
+            select(SessionMessage)
+            .where(
+                SessionMessage.session_id == session_id,
+                SessionMessage.role == "user",
+                SessionMessage.consumed_by_workflow.is_(False),
+            )
+            .order_by(SessionMessage.created_at)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def mark_consumed(
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        *,
+        node_context: str | None = None,
+    ) -> int:
+        """Mark all unread user messages for a session as consumed.
+
+        Returns the number of messages updated.
+        """
+        values: dict[str, Any] = {"consumed_by_workflow": True}
+        if node_context is not None:
+            values["node_context"] = node_context
+        stmt = (
+            update(SessionMessage)
+            .where(
+                SessionMessage.session_id == session_id,
+                SessionMessage.role == "user",
+                SessionMessage.consumed_by_workflow.is_(False),
+            )
+            .values(**values)
+        )
+        result = await db.execute(stmt)
+        return int(result.rowcount or 0)
 
 
 # ---------------------------------------------------------------------------

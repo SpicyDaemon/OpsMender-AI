@@ -142,7 +142,13 @@ export async function createIncident(body: IncidentCreate): Promise<IncidentResp
 // Sessions
 // ---------------------------------------------------------------------------
 
-import type { SessionCreate, SessionResponse } from "./types";
+import type {
+  SessionCreate,
+  SessionMessageCreate,
+  SessionMessageListResponse,
+  SessionMessageResponse,
+  SessionResponse,
+} from "./types";
 
 export async function getSession(id: string): Promise<SessionResponse> {
   return api.get<SessionResponse>(`/sessions/${id}`);
@@ -150,6 +156,19 @@ export async function getSession(id: string): Promise<SessionResponse> {
 
 export async function createSession(body: SessionCreate): Promise<SessionResponse> {
   return api.post<SessionResponse>("/sessions", body);
+}
+
+export async function listSessionMessages(
+  id: string,
+): Promise<SessionMessageListResponse> {
+  return api.get<SessionMessageListResponse>(`/sessions/${id}/messages`);
+}
+
+export async function sendSessionMessage(
+  id: string,
+  body: SessionMessageCreate,
+): Promise<SessionMessageResponse> {
+  return api.post<SessionMessageResponse>(`/sessions/${id}/messages`, body);
 }
 
 // ---------------------------------------------------------------------------

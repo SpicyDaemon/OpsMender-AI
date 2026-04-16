@@ -33,6 +33,26 @@ class ToolCallRecord(TypedDict, total=False):
     block_reason: str | None
 
 
+class IncidentContext(TypedDict, total=False):
+    """Full incident record embedded in state at session start."""
+
+    id: str
+    title: str
+    description: str
+    status: str                  # open | investigating | resolved | closed
+    severity: str | None         # critical | high | medium | low | None
+
+
+class ChatMessage(TypedDict, total=False):
+    """One turn of the co-pilot chat, serialised into state."""
+
+    id: str
+    role: str                    # user | assistant
+    content: str
+    created_at: str              # ISO-8601
+    node_context: str | None
+
+
 class IncidentState(TypedDict, total=False):
     """State schema for the incident response workflow.
 
@@ -46,7 +66,8 @@ class IncidentState(TypedDict, total=False):
     skill_definition_path: str
 
     # -- incident context (set by user / observe node) -----------------------
-    incident_description: str
+    incident_description: str     # kept for back-compat with existing nodes
+    incident: IncidentContext     # full record fed into the system prompt
 
     # -- node outputs --------------------------------------------------------
     observations: str              # output of the observe node
@@ -60,6 +81,10 @@ class IncidentState(TypedDict, total=False):
 
     # -- execution -----------------------------------------------------------
     tool_calls: Annotated[list[ToolCallRecord], operator.add]
+
+    # -- co-pilot chat -------------------------------------------------------
+    message_history: list[ChatMessage]          # full transcript seeded at start
+    pending_user_messages: list[ChatMessage]    # unread user messages for next node
 
     # -- verification & summary ---------------------------------------------
     verification: str              # output of the verify node

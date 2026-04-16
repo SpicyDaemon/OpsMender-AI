@@ -19,11 +19,15 @@ services:
     ports:
       - "5432:5432"
 
-  # ── Backend ────────────────────────────────────────────────────────────────
-  backend:
+  # ── App (frontend + backend, single container) ────────────────────────────
+  app:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.backend
+      dockerfile: docker/Dockerfile
+      args:
+        # Empty = frontend calls the backend same-origin. Override if the
+        # frontend is hosted separately from the backend.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     restart: unless-stopped
     env_file:
       - ../.env
@@ -32,27 +36,17 @@ services:
         condition: service_healthy
     environment:
       AIM_DATABASE_URL: postgresql+asyncpg://aim:${POSTGRES_PASSWORD:-aim}@db:5432/aim
-      AIM_CORS_ORIGINS: http://localhost:3000
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     ports:
       - "8000:8000"
     volumes:
       - ../logs:/app/logs
-
-  # ── Frontend ───────────────────────────────────────────────────────────────
-  frontend:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.frontend
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-    restart: unless-stopped
-    env_file:
-      - ../.env
-    depends_on:
-      - backend
-    ports:
-      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
 volumes:
   postgres_data:

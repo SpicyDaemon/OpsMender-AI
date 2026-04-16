@@ -1,0 +1,77 @@
+"""Serve the Next.js static export from FastAPI.
+
+The frontend is built with ``output: 'export'`` which produces one HTML file
+per route under ``frontend/out/``. This module registers a catch-all GET
+handler that resolves incoming paths to those files:
+
+* ``/`` → ``index.html``
+* ``/login`` → ``login.html``
+* ``/dashboard/incidents`` → ``dashboard/incidents.html``
+* ``/dashboard/incidents/detail`` → ``dashboard/incidents/detail.html``
+* ``/_next/static/...`` → the matching chunk file
+* anything unresolved → ``404.html`` with a 404 status
+
+The handler is registered AFTER the API routers, so specific API routes
+(``/auth/login``, ``/incidents``, ``/ws/sessions/{id}/stream``, etc.) win on
+match. Any GET request that isn't claimed by an API route falls through here.
+"""
+
+from __future__ import annotations
+
+import logging
+import pathlib
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+
+_LOG = logging.getLogger(__name__)
+
+
+def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
+    """Register the catch-all handler if ``static_dir`` exists.
+
+    Silently skips registration in dev mode where the frontend is served
+    separately (e.g. ``next dev`` on :3000).
+    """
+    root = pathlib.Path(static_dir).resolve()
+    if not root.is_dir():
+        _LOG.info(
+            "frontend static dir not found at %s — skipping SPA mount (dev mode?)",
+            root,
+        )
+        return
+
+    index_file = root / "index.html"
+    not_found_file = root / "404.html"
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _serve_frontend(full_path: str, request: Request):  # noqa: ARG001
+        safe_path = full_path.lstrip("/")
+        # Reject traversal attempts up-front.
+        if ".." in safe_path.split("/"):
+            raise HTTPException(status_code=400, detail="invalid path")
+
+        candidates: list[pathlib.Path] = []
+        if not safe_path:
+            candidates.append(index_file)
+        else:
+            candidates.append(root / safe_path)
+            candidates.append(root / f"{safe_path}.html")
+            candidates.append(root / safe_path / "index.html")
+
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+            except (OSError, RuntimeError):
+                continue
+            # Ensure we never escape the static root via symlinks.
+            if root not in resolved.parents and resolved != root:
+                continue
+            if resolved.is_file():
+                return FileResponse(resolved)
+
+        if not_found_file.is_file():
+            return FileResponse(not_found_file, status_code=404)
+        raise HTTPException(status_code=404, detail="not found")
+
+    _LOG.info("frontend mounted from %s", root)

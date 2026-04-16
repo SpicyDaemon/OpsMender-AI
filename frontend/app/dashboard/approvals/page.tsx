@@ -152,7 +152,7 @@ export default function ApprovalsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <Link
-                      href={`/dashboard/sessions/${a.session_id}`}
+                      href={`/dashboard/sessions/detail?id=${a.session_id}`}
                       className="font-mono text-xs text-gray-500 hover:text-indigo-600"
                     >
                       {a.session_id.slice(0, 8)}…
@@ -223,7 +223,7 @@ export default function ApprovalsPage() {
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Session</p>
                 <Link
-                  href={`/dashboard/sessions/${selected.session_id}`}
+                  href={`/dashboard/sessions/detail?id=${selected.session_id}`}
                   className="font-mono text-xs text-indigo-600 hover:underline"
                 >
                   {selected.session_id}

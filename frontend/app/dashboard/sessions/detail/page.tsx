@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -158,7 +158,16 @@ function chatMessageFromWS(msg: WSMessage): SessionMessageResponse | null {
 // ---------------------------------------------------------------------------
 
 export default function SessionPage() {
-  const { id } = useParams<{ id: string }>();
+  return (
+    <Suspense fallback={<PageSpinner />}>
+      <SessionPageContent />
+    </Suspense>
+  );
+}
+
+function SessionPageContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id") ?? "";
   const { user } = useAuth();
   const canChat = user?.role === "admin" || user?.role === "operator";
 
@@ -181,6 +190,7 @@ export default function SessionPage() {
   const idGen = useCallback(() => ++counterRef.current, []);
 
   const refreshApprovals = useCallback(async () => {
+    if (!id) return;
     try {
       const res = await listApprovals({ status: "pending", limit: 50 });
       setPendingApprovals(res.items.filter((a) => a.session_id === id));
@@ -196,6 +206,10 @@ export default function SessionPage() {
 
   // Initial load — session + incident + chat history
   useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     async function load() {
       try {
@@ -224,6 +238,7 @@ export default function SessionPage() {
 
   // WebSocket
   useEffect(() => {
+    if (!id) return;
     const ws = connectSessionStream(
       id,
       (msg) => {
@@ -278,7 +293,7 @@ export default function SessionPage() {
 
   async function handleSend() {
     const content = draft.trim();
-    if (!content || sending) return;
+    if (!content || sending || !id) return;
     setSendError("");
     setSending(true);
     try {
@@ -299,6 +314,7 @@ export default function SessionPage() {
   }, [canChat, session?.status]);
 
   if (loading) return <PageSpinner />;
+  if (!id) return <p className="text-red-600">Missing session id.</p>;
   if (!session) return <p className="text-red-600">Session not found.</p>;
 
   return (
@@ -318,7 +334,7 @@ export default function SessionPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 {incident ? (
                   <Link
-                    href={`/dashboard/incidents/${incident.id}`}
+                    href={`/dashboard/incidents/detail?id=${incident.id}`}
                     className="text-sm font-semibold text-gray-900 truncate hover:underline"
                   >
                     {incident.title}

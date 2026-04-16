@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Play } from "lucide-react";
 import { createSession, getIncident, listProviders } from "@/lib/api";
@@ -21,19 +21,33 @@ function fmtDate(iso: string) {
 }
 
 export default function IncidentDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  return (
+    <Suspense fallback={<PageSpinner />}>
+      <IncidentDetailContent />
+    </Suspense>
+  );
+}
+
+function IncidentDetailContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id") ?? "";
   const router = useRouter();
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSession, setShowSession] = useState(false);
 
   useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
     getIncident(id)
       .then(setIncident)
       .finally(() => setLoading(false));
   }, [id]);
 
   if (loading) return <PageSpinner />;
+  if (!id) return <p className="text-red-600">Missing incident id.</p>;
   if (!incident) return <p className="text-red-600">Incident not found.</p>;
 
   return (
@@ -88,7 +102,7 @@ export default function IncidentDetailPage() {
         open={showSession}
         onClose={() => setShowSession(false)}
         incidentId={incident.id}
-        onStarted={(sid) => router.push(`/dashboard/sessions/${sid}`)}
+        onStarted={(sid) => router.push(`/dashboard/sessions/detail?id=${sid}`)}
       />
     </div>
   );

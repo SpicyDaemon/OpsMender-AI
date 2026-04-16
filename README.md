@@ -36,7 +36,8 @@ This is intentional: AIM does not hardcode what "destructive" means for your inf
 
 ### Local Dev Notes
 
-- The repo was verified in a local `.venv` on 2026-04-15 with `381 passed, 2 skipped`.
+- Sprint 13 verification (`tests/test_e2e.py` + `tests/test_frontend_mount.py`) is green using a file-backed temp SQLite DB. See [End-to-End Verification](#end-to-end-verification) below for how to run it.
+- On Python 3.14.x, async SQLite hangs if the engine is opened against an in-memory URL (`sqlite+aiosqlite://`). Use a file URL (`sqlite+aiosqlite:///path/to/file.db`) — the E2E fixture already does this via `tmp_path`.
 - `aim approvals ...` requires a reachable database because approval requests are persisted.
 - `aim config model set ...` also requires a reachable database because model configs are persisted.
 - If you are not running Postgres locally yet, SQLite works for local approval-flow testing:
@@ -56,11 +57,47 @@ export AIM_DATABASE_URL="sqlite+aiosqlite:///$(pwd)/aim.db"
 ## Running Tests
 
 ```bash
-uv run pytest              # all tests (381 passed, 2 skipped)
+uv run pytest              # full suite
 uv run pytest -xvs         # verbose, stop on first failure
 uv run pytest tests/test_api.py       # API layer tests
 uv run pytest tests/test_workflow.py  # workflow tests
 ```
+
+### End-to-End Verification
+
+`tests/test_e2e.py` is the canonical "does AIM still work?" check — it drives the full single-container chain that operators actually use, with no external services touched:
+
+```
+register/login → POST /incidents → POST /sessions → tier gate creates approval
+            → POST /approvals/{id}/approve (or /reject) → gate resumes
+            → mocked MCP call → PgAuditLogger writes rows → GET /audit
+```
+
+`tests/test_frontend_mount.py` covers the static frontend mount + SPA fallback served by FastAPI (the same path the binary and Docker image use).
+
+Run both together:
+
+```bash
+uv run pytest tests/test_e2e.py tests/test_frontend_mount.py -v
+```
+
+Expected: 9 passed (2 E2E flows — approve + reject — plus 7 frontend mount cases).
+
+What it actually exercises end-to-end:
+- JWT auth + RBAC (admin vs operator vs viewer)
+- Incident + session creation through the REST API
+- LangGraph tier gate persisting an `approval_request` and waiting on it
+- `POST /approvals/{id}/approve` and `/reject` resuming the gate
+- `PgAuditLogger` writing `tool_call_start` + `tool_call_end` rows for every executed tool
+- `GET /audit?entry_type=tool_call_end` returning the post-execution view an operator sees
+- Frontend static export mounted at `/` with SPA fallback for unknown paths
+
+Notes:
+- The fixture uses a file-backed `tmp_path/e2e.db` SQLite file. **Do not switch it to `sqlite+aiosqlite://` (in-memory)** — that hangs on Python 3.14.x.
+- MCP is mocked (`AsyncMock`); no real cluster or network is contacted.
+- The `SKILL_MD` constant must stay in YAML frontmatter form (matching `examples/SKILL.md`) — the parser ignores markdown bullet lists, which would silently make every action "unknown" and break the gate.
+
+If you change anything in the API layer, the workflow, the approval service, the audit logger, or the static frontend mount, this is the test that proves the whole chain still composes.
 
 ## CLI Commands
 
@@ -69,6 +106,7 @@ uv run pytest tests/test_workflow.py  # workflow tests
 | `aim` | Show help |
 | `aim --version` | Show version |
 | `aim check` | Validate config and test MCP server connectivity |
+| `aim serve` | Start the API and embedded static frontend |
 | `aim run --incident "desc"` | Run a full incident response session |
 | `aim run --dry-run --incident "desc"` | Dry-run (no LLM, no MCP) |
 | `aim run --tier 2 --incident "desc"` | Override tier level |
@@ -87,22 +125,52 @@ uv run pytest tests/test_workflow.py  # workflow tests
 
 ## Running Locally (Full Stack)
 
-AIM is split into two services that run independently in development:
+There are two ways to run the full app. Pick one — don't run them simultaneously, they both want port 8000.
 
-- **Backend** — FastAPI on `http://localhost:8000` (REST + WebSocket + auth + DB)
-- **Frontend** — Next.js on `http://localhost:3000` (UI only; calls the backend via `NEXT_PUBLIC_API_URL`)
+| Option | Processes | Ports | DB | Auth |
+|---|---|---|---|---|
+| **A — `aim serve`** (single-process) | 1 | 8000 only | **Postgres only** today (see note) | Register the first user via UI → auto-promoted to admin |
+| **B — Dev mode** (recommended for local hacking) | 2 | 8000 (backend) + 3000 (frontend) | SQLite or Postgres | Pre-seeded `admin` / `admin123` |
 
-Both services must be running for the UI to work. Use two terminal tabs.
+> **Known limitation:** the Alembic migrations in `backend/db/migrations/versions/` use Postgres-specific types (`postgresql.UUID`, `postgresql.JSONB`), so `aim serve` currently only works against Postgres. Option B sidesteps Alembic by using `Base.metadata.create_all`, which is dialect-aware and works on SQLite. Making `aim serve` work on SQLite requires rewriting the migrations to be dialect-portable.
 
-### Terminal 1 — Backend
+### Option A — `aim serve` (single process, Postgres)
 
-From the **project root**:
+This is the Sprint 13 single-container path: one Python process serves the FastAPI API and the embedded static frontend export on port 8000.
+
+```bash
+# 1. Start Postgres (one-time)
+docker run -d --name aim-pg \
+  -e POSTGRES_USER=aim -e POSTGRES_PASSWORD=aim -e POSTGRES_DB=aim \
+  -p 5432:5432 postgres:16
+
+# 2. Point AIM at it
+echo "AIM_DATABASE_URL=postgresql+asyncpg://aim:aim@localhost:5432/aim" >> .env
+
+# 3. Build the static frontend (only when the frontend changes)
+cd frontend && npm install && npm run build && cd ..
+
+# 4. Start the app
+uv run aim serve
+```
+
+Open **http://localhost:8000** → click **Register** → first registered user becomes admin automatically.
+
+### Option B — Dev mode (two processes, hot reload, SQLite OK)
+
+Best for active development. Backend on 8000, frontend dev server on 3000 with hot reload.
+
+**One-time setup** — point the frontend at the backend:
+
+```bash
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
+```
+
+**Terminal 1 — Backend** (from project root). Loads `.env`, follows the DB fallback chain (`AIM_DATABASE_URL` → local Postgres → SQLite `aim-local.db`), seeds `admin` / `admin123`, and starts Uvicorn on port 8000:
 
 ```bash
 uv run python scripts/dev_server.py
 ```
-
-This launcher is the easiest way to run AIM locally — it loads `.env`, uses the shared DB fallback chain (`AIM_DATABASE_URL` → local Postgres → SQLite), seeds an `admin` / `admin123` user, and starts Uvicorn on port 8000.
 
 Sanity check:
 
@@ -110,32 +178,30 @@ Sanity check:
 curl http://localhost:8000/docs -o /dev/null -w "%{http_code}\n"   # expect 200
 ```
 
-### Terminal 2 — Frontend
-
-From the **`frontend/` directory**:
+**Terminal 2 — Frontend** (from `frontend/`):
 
 ```bash
 npm install      # first time only
 npm run dev
 ```
 
-The frontend reads `frontend/.env.local` (`NEXT_PUBLIC_API_URL=http://localhost:8000`). Open `http://localhost:3000` and log in with `admin` / `admin123`.
+Open **http://localhost:3000** and log in with `admin` / `admin123`.
 
 ### Shutting down cleanly
 
-Always stop both services with **Ctrl-C** — do not just close the terminal tab. A detached Next.js or Uvicorn process will keep holding its port and the next `npm run dev` / dev_server will either fail or silently exit.
+Always stop services with **Ctrl-C** — don't just close the terminal tab. A detached Uvicorn or Next.js process will keep holding its port and the next start will fail or silently exit.
 
 If a previous run got orphaned:
 
 ```bash
-lsof -i :3000              # find the PID holding port 3000
+lsof -i :8000              # find the PID holding the port
 kill <PID>                 # or: kill -9 <PID> if it ignores SIGTERM
-lsof -i :8000              # same check for the backend
+lsof -i :3000              # same check for the frontend dev server
 ```
 
-### Production-style backend (Postgres)
+### Production-style backend (raw Uvicorn against Postgres)
 
-For running against Postgres instead of the dev SQLite DB:
+If you want to skip the dev launcher and run Uvicorn directly:
 
 ```bash
 export AIM_DATABASE_URL="postgresql+asyncpg://aim:aim@localhost:5432/aim"
@@ -145,6 +211,25 @@ uv run uvicorn backend.api.app:create_app --factory --reload
 ```
 
 Note: the ASGI target is `backend.api.app:create_app` **with `--factory`** — there is no `backend.api.main` module.
+
+## Distribution
+
+Sprint 13 closed out the single-container distribution path:
+
+- `aim serve` starts the FastAPI API and the embedded static frontend from one Python process
+- `docker/Dockerfile` builds a single container image that serves both backend and frontend on port `8000`
+- `docker/docker-compose.yml` runs the app with Postgres, health checks, and a logs volume
+- `aim.spec` plus `scripts/build_binary.sh` define the PyInstaller path for a standalone `aim` binary
+
+Build the binary locally with:
+
+```bash
+./scripts/build_binary.sh
+./dist/aim --version
+./dist/aim serve
+```
+
+Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (see [End-to-End Verification](#end-to-end-verification)).
 
 ### API Endpoints
 
@@ -358,7 +443,7 @@ ai-incident-manager/
 ├── examples/
 │   └── SKILL.md            # Reference Kubernetes skill definition
 ├── skills/                 # Operator-owned environment skill files (auto-imported on startup)
-├── tests/                  # 381 tests, 2 skipped
+├── tests/                  # full unit + integration suite, plus tests/test_e2e.py + tests/test_frontend_mount.py for the single-container chain
 ├── .env                    # Deployment defaults / secrets / local fallbacks
 └── docs/                   # Project documentation
 ```
@@ -366,18 +451,18 @@ ai-incident-manager/
 ## Progress
 
 - **Phase 1 (Sprints 1–6):** ✅ Complete — CLI, MCP, skills, tiers, audit, LangGraph workflow
-- **Phase 2 (Sprints 7–13):** In progress
+- **Phase 2 (Sprints 7–13):** ✅ Complete
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
   - Sprint 8: ✅ FastAPI REST + WebSocket layer (JWT auth, RBAC, all CRUD endpoints)
   - Sprint 9: ✅ Tier 1 approval flow
   - Sprint 10: ✅ BYOM provider abstraction
   - Sprint 11: ✅ Next.js frontend + Docker setup
-  - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, and Co-pilot Chat complete)
-  - Sprint 13: ⬜ Polish + binary build
+  - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, Co-pilot Chat)
+  - Sprint 13: ✅ Single-container app — `aim serve` + unified `docker/Dockerfile` + PyInstaller binary, E2E + frontend-mount verification green
 
-## Distribution (Planned — Sprint 13)
+## Distribution Status
 
-The end goal is a standalone binary (via PyInstaller or Nuitka) that requires only two files to run:
+The current target is a standalone binary plus operator-owned config/assets:
 
 ```
 aim                  # standalone binary
@@ -385,6 +470,6 @@ aim                  # standalone binary
 skills/              # operator-owned skill definitions for each environment
 ```
 
-No Python install, no `uv`, no virtualenv — just download, configure, and run. This is planned for Sprint 13.
+The repo ships the PyInstaller spec/build script and the unified `aim serve` entrypoint; the full chain (auth → incident → session → approval → execute → audit, plus the static frontend mount) is covered by `tests/test_e2e.py` and `tests/test_frontend_mount.py`.
 
 See `docs/REFERENCE.md` for full architecture details.

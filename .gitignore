@@ -26,8 +26,9 @@ logs/
 .vscode/
 .idea/
 
-# Claude Files
+# AI Agent Files
 .claude/
+.codex/
 
 # local DB Files
 *.db

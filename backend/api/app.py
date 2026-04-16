@@ -113,4 +113,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    # -- Frontend (static export) — MUST be registered last so API routes win
+    from backend.api.static import mount_frontend
+    mount_frontend(app, config.app.frontend_static_dir)
+
     return app

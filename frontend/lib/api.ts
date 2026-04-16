@@ -3,7 +3,10 @@
  * All functions throw on non-2xx responses with the API's detail message.
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Defaults to empty string (same-origin) when the frontend is served by the
+// backend itself. Override via NEXT_PUBLIC_API_URL at build time if the
+// frontend is hosted separately.
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // ---------------------------------------------------------------------------
 // Token storage (browser only)
@@ -415,7 +418,16 @@ export function connectSessionStream(
   onMessage: (msg: import("./types").WSMessage) => void,
   onClose?: () => void,
 ): WebSocket {
-  const wsBase = BASE_URL.replace(/^http/, "ws");
+  let wsBase: string;
+  if (BASE_URL) {
+    wsBase = BASE_URL.replace(/^http/, "ws");
+  } else if (typeof window !== "undefined") {
+    // Same-origin: derive ws(s):// from the current page.
+    const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+    wsBase = `${scheme}//${window.location.host}`;
+  } else {
+    wsBase = "";
+  }
   const token = getToken();
   const url = `${wsBase}/sessions/${sessionId}/stream${token ? `?token=${token}` : ""}`;
   const ws = new WebSocket(url);

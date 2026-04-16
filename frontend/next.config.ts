@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Enables standalone output for Docker deployment.
-  // Produces a minimal server bundle in .next/standalone/
-  output: "standalone",
+  // Static export — the Python backend serves the built files from `out/`.
+  // One process, one container, one binary.
+  output: "export",
+  images: { unoptimized: true },
 };
 
 export default nextConfig;

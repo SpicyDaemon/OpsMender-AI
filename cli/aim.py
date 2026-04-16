@@ -44,6 +44,33 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("check", help="Validate config and MCP server connectivity")
 
+    # -- serve --------------------------------------------------------------
+    serve_parser = sub.add_parser(
+        "serve",
+        help="Start the HTTP + WebSocket API (and embedded frontend)",
+    )
+    serve_parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Bind host (default: 0.0.0.0)",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Bind port (default: 8000)",
+    )
+    serve_parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable auto-reload (dev only; ignored in a frozen binary)",
+    )
+    serve_parser.add_argument(
+        "--skip-migrations",
+        action="store_true",
+        help="Don't run `alembic upgrade head` before starting the server",
+    )
+
     # -- run ----------------------------------------------------------------
     run_parser = sub.add_parser("run", help="Run an incident response session")
     run_parser.add_argument(
@@ -991,15 +1018,76 @@ def _print_result(result: dict) -> None:
     print(f"Session: {result.get('session_id', 'unknown')}")
 
 
+# -- serve -------------------------------------------------------------------
+
+
+def _run_serve(args: argparse.Namespace) -> int:
+    """Start uvicorn against ``backend.api.app:create_app``.
+
+    Runs Alembic migrations first unless ``--skip-migrations`` is set. In a
+    frozen binary ``backend.resource.bootstrap_bundled_env`` has already
+    pointed the config at the embedded static-export and skill files.
+    """
+    import uvicorn
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+
+    from backend.resource import is_frozen, resource_path
+
+    if not args.skip_migrations:
+        alembic_ini = resource_path("alembic.ini")
+        if alembic_ini.is_file():
+            cfg = AlembicConfig(str(alembic_ini))
+            # When frozen, migrations/ is packaged next to alembic.ini.
+            cfg.set_main_option(
+                "script_location",
+                str(resource_path("backend/db/migrations")),
+            )
+            try:
+                command.upgrade(cfg, "head")
+            except Exception as exc:  # noqa: BLE001
+                print(f"Alembic upgrade failed: {exc}", file=sys.stderr)
+                return 1
+        else:
+            print(
+                f"Warning: alembic.ini not found at {alembic_ini}; "
+                "skipping migrations",
+                file=sys.stderr,
+            )
+
+    # Reload only makes sense when running from source.
+    reload = bool(args.reload) and not is_frozen()
+
+    uvicorn.run(
+        "backend.api.app:create_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+        reload=reload,
+    )
+    return 0
+
+
 # -- main --------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> None:
+    # When running as a PyInstaller bundle, point env vars at the extracted
+    # resources (frontend/out, examples/SKILL.md). Must run BEFORE Config.load.
+    from backend.resource import bootstrap_bundled_env
+    bootstrap_bundled_env()
+
     args = _parse_args(argv)
 
     if args.version:
         print(importlib.metadata.version("ai-incident-manager"))
         sys.exit(0)
+
+    # `serve` doesn't need the Config object loaded eagerly — the FastAPI app
+    # factory reads its own AppConfig inside uvicorn's worker. Loading it here
+    # would couple CLI startup to ~optional dependencies like asyncpg.
+    if args.command == "serve":
+        sys.exit(_run_serve(args))
 
     try:
         cfg = Config.load(args.config)

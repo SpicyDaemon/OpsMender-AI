@@ -123,6 +123,7 @@ class AppSettings:
     log_level: str = "INFO"
     skill_definition_path: str = "./examples/SKILL.md"
     audit_output: str = "./logs/audit.jsonl"
+    frontend_static_dir: str = "./frontend/out"
 
 
 @dataclasses.dataclass
@@ -223,6 +224,12 @@ class AppConfig:
             or "./examples/SKILL.md",
             audit_output=_env_str(env, "AIM_AUDIT_LOG", "./logs/audit.jsonl")
             or "./logs/audit.jsonl",
+            frontend_static_dir=_env_str(
+                env,
+                "AIM_FRONTEND_STATIC_DIR",
+                "./frontend/out",
+            )
+            or "./frontend/out",
         )
         audit = AuditConfig(output=app.audit_output)
         approvals = ApprovalConfig(

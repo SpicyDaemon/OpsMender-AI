@@ -103,7 +103,7 @@ export default function IncidentsPage() {
                 <tr key={inc.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
                     <Link
-                      href={`/dashboard/incidents/${inc.id}`}
+                      href={`/dashboard/incidents/detail?id=${inc.id}`}
                       className="font-medium text-gray-900 hover:text-indigo-600"
                     >
                       {inc.title}

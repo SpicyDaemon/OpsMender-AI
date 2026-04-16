@@ -43,6 +43,9 @@ dev = [
     "aiosqlite",
     "httpx",
 ]
+build = [
+    "pyinstaller>=6.11",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

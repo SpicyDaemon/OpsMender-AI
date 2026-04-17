@@ -410,6 +410,42 @@ export async function importSkill(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Ingest Tokens (Sprint 14)
+// ---------------------------------------------------------------------------
+
+import type {
+  IngestProviderListResponse,
+  IngestTokenCreate,
+  IngestTokenCreatedResponse,
+  IngestTokenListResponse,
+  IngestTokenResponse,
+} from "./types";
+
+export async function listIngestTokens(): Promise<IngestTokenListResponse> {
+  return api.get<IngestTokenListResponse>("/ingest-tokens");
+}
+
+export async function createIngestToken(
+  body: IngestTokenCreate,
+): Promise<IngestTokenCreatedResponse> {
+  return api.post<IngestTokenCreatedResponse>("/ingest-tokens", body);
+}
+
+export async function revokeIngestToken(
+  id: string,
+): Promise<IngestTokenResponse> {
+  return api.post<IngestTokenResponse>(`/ingest-tokens/${id}/revoke`);
+}
+
+export async function deleteIngestToken(id: string): Promise<void> {
+  return api.del<void>(`/ingest-tokens/${id}`);
+}
+
+export async function listIngestProviders(): Promise<IngestProviderListResponse> {
+  return api.get<IngestProviderListResponse>("/ingest-providers");
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket helper
 // ---------------------------------------------------------------------------
 

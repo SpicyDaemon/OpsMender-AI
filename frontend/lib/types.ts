@@ -290,6 +290,49 @@ export interface SkillCloneRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Ingest Tokens (Sprint 14)
+// ---------------------------------------------------------------------------
+
+export type IngestProvider = "cloudwatch" | "azure_monitor" | "legacy_alert_vendor" | "generic";
+
+export interface IngestTokenResponse {
+  id: string;
+  name: string;
+  provider: IngestProvider;
+  is_active: boolean;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface IngestTokenCreatedResponse {
+  id: string;
+  name: string;
+  provider: IngestProvider;
+  token: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface IngestTokenListResponse {
+  items: IngestTokenResponse[];
+  total: number;
+}
+
+export interface IngestTokenCreate {
+  name: string;
+  provider: IngestProvider;
+}
+
+export interface IngestProviderItem {
+  key: string;
+  label: string;
+}
+
+export interface IngestProviderListResponse {
+  items: IngestProviderItem[];
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket messages
 // ---------------------------------------------------------------------------
 

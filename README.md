@@ -125,18 +125,27 @@ If you change anything in the API layer, the workflow, the approval service, the
 
 ## Running Locally (Full Stack)
 
-There are two ways to run the full app. Pick one — don't run them simultaneously, they both want port 8000.
+AIM runs on a **single port (8000)** — backend API + static frontend export served by one Python process. There is no separate frontend port.
 
-| Option | Processes | Ports | DB | Auth |
-|---|---|---|---|---|
-| **A — `aim serve`** (single-process) | 1 | 8000 only | **Postgres only** today (see note) | Register the first user via UI → auto-promoted to admin |
-| **B — Dev mode** (recommended for local hacking) | 2 | 8000 (backend) + 3000 (frontend) | SQLite or Postgres | Pre-seeded `admin` / `admin123` |
+> **Known limitation:** the Alembic migrations use Postgres-specific types, so `aim serve` currently only works against Postgres. The dev server (`scripts/dev_server.py`) sidesteps Alembic by using `Base.metadata.create_all`, which is dialect-aware and works on SQLite.
 
-> **Known limitation:** the Alembic migrations in `backend/db/migrations/versions/` use Postgres-specific types (`postgresql.UUID`, `postgresql.JSONB`), so `aim serve` currently only works against Postgres. Option B sidesteps Alembic by using `Base.metadata.create_all`, which is dialect-aware and works on SQLite. Making `aim serve` work on SQLite requires rewriting the migrations to be dialect-portable.
+### Dev mode (recommended)
 
-### Option A — `aim serve` (single process, Postgres)
+One terminal, one port. Loads `.env`, follows the DB fallback chain (`AIM_DATABASE_URL` → local Postgres → SQLite `aim-local.db`), seeds `admin` / `admin123`, and starts Uvicorn on port 8000 serving both the API and the embedded static frontend.
 
-This is the Sprint 13 single-container path: one Python process serves the FastAPI API and the embedded static frontend export on port 8000.
+```bash
+# 1. Build the static frontend (only when the frontend changes)
+cd frontend && npm install && npm run build && cd ..
+
+# 2. Start the app
+uv run python scripts/dev_server.py
+```
+
+Open **http://localhost:8000** and log in with `admin` / `admin123`.
+
+When you change frontend code, run `cd frontend && npm run build && cd ..` and restart the dev server.
+
+### Production mode (`aim serve` with Postgres)
 
 ```bash
 # 1. Start Postgres (one-time)
@@ -156,52 +165,7 @@ uv run aim serve
 
 Open **http://localhost:8000** → click **Register** → first registered user becomes admin automatically.
 
-### Option B — Dev mode (two processes, hot reload, SQLite OK)
-
-Best for active development. Backend on 8000, frontend dev server on 3000 with hot reload.
-
-**One-time setup** — point the frontend at the backend:
-
-```bash
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
-```
-
-**Terminal 1 — Backend** (from project root). Loads `.env`, follows the DB fallback chain (`AIM_DATABASE_URL` → local Postgres → SQLite `aim-local.db`), seeds `admin` / `admin123`, and starts Uvicorn on port 8000:
-
-```bash
-uv run python scripts/dev_server.py
-```
-
-Sanity check:
-
-```bash
-curl http://localhost:8000/docs -o /dev/null -w "%{http_code}\n"   # expect 200
-```
-
-**Terminal 2 — Frontend** (from `frontend/`):
-
-```bash
-npm install      # first time only
-npm run dev
-```
-
-Open **http://localhost:3000** and log in with `admin` / `admin123`.
-
-### Shutting down cleanly
-
-Always stop services with **Ctrl-C** — don't just close the terminal tab. A detached Uvicorn or Next.js process will keep holding its port and the next start will fail or silently exit.
-
-If a previous run got orphaned:
-
-```bash
-lsof -i :8000              # find the PID holding the port
-kill <PID>                 # or: kill -9 <PID> if it ignores SIGTERM
-lsof -i :3000              # same check for the frontend dev server
-```
-
-### Production-style backend (raw Uvicorn against Postgres)
-
-If you want to skip the dev launcher and run Uvicorn directly:
+### Raw Uvicorn (alternative)
 
 ```bash
 export AIM_DATABASE_URL="postgresql+asyncpg://aim:aim@localhost:5432/aim"
@@ -211,6 +175,17 @@ uv run uvicorn backend.api.app:create_app --factory --reload
 ```
 
 Note: the ASGI target is `backend.api.app:create_app` **with `--factory`** — there is no `backend.api.main` module.
+
+### Shutting down cleanly
+
+Always stop with **Ctrl-C**. If a previous run got orphaned:
+
+```bash
+lsof -i :8000              # find the PID holding the port
+kill <PID>                 # or: kill -9 <PID> if it ignores SIGTERM
+```
+
+
 
 ## Distribution
 

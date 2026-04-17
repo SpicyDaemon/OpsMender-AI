@@ -3,23 +3,31 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   CheckCircle2,
+  ClipboardCopy,
+  Key,
   Pencil,
   Plug,
   Plus,
   Save,
+  ShieldOff,
   Star,
   Trash2,
   XCircle,
 } from "lucide-react";
 import {
+  createIngestToken,
   createMCPServer,
   createModelConfig,
+  deleteIngestToken,
   deleteMCPServer,
   deleteModelConfig,
   getConfig,
+  listIngestProviders,
+  listIngestTokens,
   listMCPServers,
   listModelConfigs,
   listProviders,
+  revokeIngestToken,
   setDefaultModelConfig,
   testMCPServer,
   updateConfig,
@@ -28,6 +36,10 @@ import {
 } from "@/lib/api";
 import type {
   ConfigResponse,
+  IngestProviderItem,
+  IngestTokenCreate,
+  IngestTokenCreatedResponse,
+  IngestTokenResponse,
   MCPServerResponse,
   MCPServerTestResponse,
   MCPServerUpsert,
@@ -42,6 +54,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FormError, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageSpinner } from "@/components/ui/Spinner";
+
 
 function Section({
   title,
@@ -1198,6 +1211,370 @@ function MCPSection({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Ingest Tokens (Sprint 14)
+// ---------------------------------------------------------------------------
+
+const PROVIDER_COLORS: Record<string, string> = {
+  cloudwatch: "border-orange-200 bg-orange-50 text-orange-700",
+  azure_monitor: "border-blue-200 bg-blue-50 text-blue-700",
+  legacy_alert_vendor: "border-green-200 bg-green-50 text-green-700",
+  generic: "border-gray-200 bg-gray-50 text-gray-600",
+};
+
+function ProviderBadge({ provider }: { provider: string }) {
+  const label = provider.replace(/_/g, " ");
+  const colors = PROVIDER_COLORS[provider] ?? PROVIDER_COLORS.generic;
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${colors}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function IngestTokenSection({
+  tokens,
+  ingestProviders,
+  onReload,
+  canEdit,
+}: {
+  tokens: IngestTokenResponse[];
+  ingestProviders: IngestProviderItem[];
+  onReload: () => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  // One-time token reveal
+  const [createdToken, setCreatedToken] = useState<IngestTokenCreatedResponse | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Create form
+  const [form, setForm] = useState<IngestTokenCreate>({
+    name: "",
+    provider: "generic",
+  });
+
+  function openCreateModal() {
+    setForm({ name: "", provider: "generic" });
+    setError("");
+    setCreatedToken(null);
+    setCopied(false);
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setCreatedToken(null);
+    setCopied(false);
+    setError("");
+  }
+
+  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await createIngestToken(form);
+      setCreatedToken(result);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Create failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (!createdToken) return;
+    try {
+      await navigator.clipboard.writeText(createdToken.token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for non-HTTPS
+      const ta = document.createElement("textarea");
+      ta.value = createdToken.token;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  async function handleRevoke(token: IngestTokenResponse) {
+    const confirmed = window.confirm(
+      `Revoke token "${token.name}"? External systems using this token will be rejected.`,
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    try {
+      await revokeIngestToken(token.id);
+      setNotice(`Token "${token.name}" revoked.`);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Revoke failed");
+    }
+  }
+
+  async function handleDelete(token: IngestTokenResponse) {
+    const confirmed = window.confirm(
+      `Permanently delete token "${token.name}"? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    try {
+      await deleteIngestToken(token.id);
+      setNotice(`Token "${token.name}" deleted.`);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  function formatLastUsed(ts: string | null): string {
+    if (!ts) return "Never";
+    const d = new Date(ts);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHrs = Math.floor(diffMins / 60);
+    if (diffHrs < 24) return `${diffHrs}h ago`;
+    const diffDays = Math.floor(diffHrs / 24);
+    return `${diffDays}d ago`;
+  }
+
+  return (
+    <Section
+      title="Ingest Tokens"
+      description="Manage webhook tokens for external alerting systems (CloudWatch, Azure Monitor, LegacyAlertVendor, etc.)."
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-gray-600">
+            {tokens.length} token{tokens.length === 1 ? "" : "s"}
+            {tokens.filter((t) => t.is_active).length < tokens.length &&
+              ` (${tokens.filter((t) => t.is_active).length} active)`}
+          </p>
+          {!canEdit && (
+            <p className="text-sm text-gray-500">
+              Admin role required to manage ingest tokens.
+            </p>
+          )}
+        </div>
+        <Button onClick={openCreateModal} disabled={!canEdit}>
+          <Plus size={14} /> New Token
+        </Button>
+      </div>
+
+      {error && <FormError message={error} />}
+      {notice && <p className="text-sm text-green-600">{notice}</p>}
+
+      {tokens.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+          No ingest tokens yet. Create one to start receiving incidents from external monitoring tools.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Provider</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Last Used</th>
+                <th className="px-4 py-3">Created</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {tokens.map((token) => (
+                <tr
+                  key={token.id}
+                  className={!token.is_active ? "bg-gray-50 opacity-60" : ""}
+                >
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex items-center gap-2">
+                      <Key size={14} className="text-gray-400" />
+                      <span className="font-medium text-gray-900">
+                        {token.name}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <ProviderBadge provider={token.provider} />
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <Badge
+                      variant={token.is_active ? "resolved" : "closed"}
+                    >
+                      {token.is_active ? "Active" : "Revoked"}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 align-top text-gray-600">
+                    {formatLastUsed(token.last_used_at)}
+                  </td>
+                  <td className="px-4 py-3 align-top text-gray-500 text-xs">
+                    {new Date(token.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex justify-end gap-2">
+                      {token.is_active && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleRevoke(token)}
+                          disabled={!canEdit}
+                        >
+                          <ShieldOff size={13} /> Revoke
+                        </Button>
+                      )}
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleDelete(token)}
+                        disabled={!canEdit}
+                      >
+                        <Trash2 size={13} /> Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Create Token Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        title={createdToken ? "Token Created" : "New Ingest Token"}
+        maxWidth="max-w-lg"
+      >
+        {createdToken ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-800">
+                ⚠️ Copy this token now — it will never be shown again.
+              </p>
+            </div>
+            <div>
+              <Label>Token Name</Label>
+              <p className="text-sm font-medium text-gray-900">
+                {createdToken.name}
+              </p>
+            </div>
+            <div>
+              <Label>Provider</Label>
+              <ProviderBadge provider={createdToken.provider} />
+            </div>
+            <div>
+              <Label>Raw Token</Label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 break-all select-all">
+                  {createdToken.token}
+                </code>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleCopy}
+                >
+                  <ClipboardCopy size={13} />{" "}
+                  {copied ? "Copied!" : "Copy"}
+                </Button>
+              </div>
+            </div>
+            <div>
+              <Label>Usage</Label>
+              <code className="block rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-600">
+                curl -H &quot;X-AIM-Token: {createdToken.token.slice(0, 20)}...&quot; \<br />
+                &nbsp;&nbsp;-H &quot;Content-Type: application/json&quot; \<br />
+                &nbsp;&nbsp;-d &apos;{`{"title":"...","description":"..."}`}&apos; \<br />
+                &nbsp;&nbsp;{typeof window !== "undefined" ? window.location.origin : "http://localhost:8000"}/incidents/ingest
+              </code>
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={closeModal}>Done</Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div>
+              <Label htmlFor="ingest-name">Token Name</Label>
+              <Input
+                id="ingest-name"
+                value={form.name}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }
+                placeholder="cloudwatch-production"
+                required
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                A descriptive name for this token source.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="ingest-provider">Provider Adapter</Label>
+              <Select
+                id="ingest-provider"
+                value={form.provider}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    provider: e.target.value as IngestTokenCreate["provider"],
+                  }))
+                }
+              >
+                {ingestProviders.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-xs text-gray-400">
+                Determines how inbound JSON payloads are parsed into incidents.
+              </p>
+            </div>
+
+            {error && <FormError message={error} />}
+
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={closeModal}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                loading={saving}
+                disabled={!form.name.trim()}
+              >
+                <Key size={13} /> Create Token
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+    </Section>
+  );
+}
+
 export default function ConfigPage() {
   const { user } = useAuth();
   const canEdit = user?.role === "admin";
@@ -1206,19 +1583,26 @@ export default function ConfigPage() {
   const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
   const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
+  const [ingestTokens, setIngestTokens] = useState<IngestTokenResponse[]>([]);
+  const [ingestProviderList, setIngestProviderList] = useState<IngestProviderItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadPageData = useCallback(async () => {
-    const [runtimeConfig, providerList, savedConfigs, mcpList] = await Promise.all([
-      getConfig(),
-      listProviders(),
-      listModelConfigs(),
-      listMCPServers(),
-    ]);
+    const [runtimeConfig, providerList, savedConfigs, mcpList, tokenList, ipList] =
+      await Promise.all([
+        getConfig(),
+        listProviders(),
+        listModelConfigs(),
+        listMCPServers(),
+        listIngestTokens().catch(() => ({ items: [], total: 0 })),
+        listIngestProviders().catch(() => ({ items: [] })),
+      ]);
     setConfig(runtimeConfig);
     setProviders(providerList.items);
     setModelConfigs(savedConfigs.items);
     setMcpServers(mcpList.items);
+    setIngestTokens(tokenList.items);
+    setIngestProviderList(ipList.items);
   }, []);
 
   useEffect(() => {
@@ -1232,7 +1616,7 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Config</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Manage runtime defaults, saved model profiles, and MCP server connections.
+          Manage runtime defaults, saved model profiles, MCP server connections, and external ingest tokens.
         </p>
       </div>
 
@@ -1248,6 +1632,13 @@ export default function ConfigPage() {
         onReload={loadPageData}
         canEdit={canEdit}
       />
+      <IngestTokenSection
+        tokens={ingestTokens}
+        ingestProviders={ingestProviderList}
+        onReload={loadPageData}
+        canEdit={canEdit}
+      />
     </div>
   );
 }
+

@@ -400,18 +400,21 @@ Default approval timeout is 15 minutes (`AIM_APPROVAL_TIMEOUT_SECONDS=900`).
 
 ## External Incident Ingestion
 
-Sprint 14 added a webhook-based ingestion system that lets external monitoring/alerting tools create incidents in AIM automatically.
+Sprints 14 + 15 added a webhook-based ingestion system that lets external monitoring/alerting tools create incidents in AIM automatically.
+
+Sprint 15's **universal (`auto`) adapter** is now the default: a single endpoint accepts any JSON webhook — Slack, Datadog, Teams, Sumo Logic, Grafana, Prometheus Alertmanager, custom scripts — without requiring a per-platform adapter. Heuristics match common field names and envelopes first; unrecognized shapes fall back to an LLM that returns the field **paths** (cached per-token by a shape hash so the same payload shape pays the LLM cost only once).
 
 ### How It Works
 
-1. An admin creates an **ingest token** via `POST /ingest-tokens`, specifying which provider adapter to use.
+1. An admin creates an **ingest token** via `POST /ingest-tokens`, specifying which provider adapter to use (default: `auto`).
 2. The raw token (starts with `aim_ingest_...`) is returned **once** — save it. AIM stores only the SHA-256 hash.
 3. External systems send JSON payloads to `POST /incidents/ingest` with the token in an `X-AIM-Token` header (or `Authorization: Bearer`).
-4. AIM routes the payload through the provider-specific adapter, which normalizes it into an incident.
-5. Dedup by `(external_source, external_id)` — repeated alerts update or skip instead of creating duplicates.
-6. Every inbound payload is logged raw in the `ingest_log` table for replay/debugging.
-7. Per-token rate limiting enforced (default: 60 req/min). Returns `429` with `Retry-After` header when exceeded.
-8. Optional auto-start can create one session automatically for newly created incidents that match a configured source + minimum severity rule.
+4. AIM routes the payload through the chosen adapter (`auto` for universal, or a strict shape-specific adapter), which normalizes it into an incident.
+5. For `auto` tokens: heuristic parse → LLM fallback on unrecognized shapes → per-token shape cache so the same payload shape skips the LLM next time. Admins can pre-train via `sample_payload` at creation, or `POST /ingest-tokens/{id}/learn-shape` later.
+6. Dedup by `(external_source, external_id)` — repeated alerts update or skip instead of creating duplicates. `auto` tokens scope `external_source = "auto:<token-name>"` so cross-token ID collisions don't merge.
+7. Every inbound payload is logged raw in the `ingest_log` table for replay/debugging.
+8. Per-token rate limiting enforced (default: 60 req/min). Returns `429` with `Retry-After` header when exceeded.
+9. Optional auto-start can create one session automatically for newly created incidents that match a configured source + minimum severity rule.
 
 **Rate limit config** (in `.env`):
 ```dotenv
@@ -432,11 +435,12 @@ When enabled, AIM auto-creates a single session only for newly created incidents
 
 | Provider | Key | Handles |
 |----------|-----|---------|
+| **Universal (auto-detect)** | `auto` | **Default.** Any JSON webhook — Slack, Datadog, Teams, Sumo Logic, Grafana, Alertmanager, custom scripts. Heuristics + LLM fallback with per-token shape cache. |
 | CloudWatch | `cloudwatch` | SNS `SubscriptionConfirmation` + `Notification` envelopes with embedded alarm JSON |
 | Azure Monitor | `azure_monitor` | Common alert schema v2 — maps severity (Sev0–4) and monitor condition |
 | LegacyAlertVendor | `legacy_alert_vendor` | v2 webhooks — `incident.triggered`, `.acknowledged`, `.resolved` |
 | LegacyAlertRelay | `legacy_alert_relay` | Webhook integration payloads — `Create`, `Acknowledge`, `Close`, and update-style alert actions |
-| Generic JSON | `generic` | Configurable dot-path field mapping — works with Grafana, Datadog, Prometheus, custom scripts |
+| Generic JSON | `generic` | Configurable dot-path field mapping — works with tools needing strict, deterministic parsing |
 
 ### Quick Test (curl)
 
@@ -446,11 +450,11 @@ TOKEN=$(curl -s http://localhost:8000/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"admin123"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-# 2. Create an ingest token
+# 2. Create an ingest token (default provider = auto, accepts any JSON)
 INGEST=$(curl -s http://localhost:8000/ingest-tokens \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"test-source","provider":"generic"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+  -d '{"name":"test-source","provider":"auto"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 
 # 3. Send an incident
 curl -s http://localhost:8000/incidents/ingest \

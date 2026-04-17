@@ -410,6 +410,13 @@ Sprint 14 added a webhook-based ingestion system that lets external monitoring/a
 4. AIM routes the payload through the provider-specific adapter, which normalizes it into an incident.
 5. Dedup by `(external_source, external_id)` — repeated alerts update or skip instead of creating duplicates.
 6. Every inbound payload is logged raw in the `ingest_log` table for replay/debugging.
+7. Per-token rate limiting enforced (default: 60 req/min). Returns `429` with `Retry-After` header when exceeded.
+
+**Rate limit config** (in `.env`):
+```dotenv
+AIM_INGEST_RATE_LIMIT=60     # max requests per window per token (0 = disabled)
+AIM_INGEST_RATE_WINDOW=60    # window size in seconds
+```
 
 ### Supported Provider Adapters
 
@@ -448,6 +455,8 @@ curl -s http://localhost:8000/incidents/ingest \
   -d '{"title":"Disk Full","description":"98% on /data","severity":"high","id":"alert-001"}'
 # → {"success":true,"dedup_action":"skipped",...}
 ```
+
+For full curl recipes covering all four providers (CloudWatch SNS, Azure Monitor, LegacyAlertVendor, Generic), including lifecycle examples (alarm→recovery, trigger→acknowledge→resolve), severity mapping tables, and dedup behavior, see [`docs/REFERENCE.md`](docs/REFERENCE.md#external-incident-ingestion).
 
 ## Project Structure
 
@@ -495,7 +504,7 @@ ai-incident-manager/
   - Sprint 11: ✅ Next.js frontend + Docker setup
   - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, Co-pilot Chat)
   - Sprint 13: ✅ Single-container app — `aim serve` + unified `docker/Dockerfile` + PyInstaller binary, E2E + frontend-mount verification green
-  - Sprint 14: 🔧 External incident ingestion — core API + 4 provider adapters + dedup + ingest audit log done; admin UI, rate limiting, MCP-driven detector remaining
+  - Sprint 14: 🔧 External incident ingestion — core API + 4 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting done; MCP-driven detector remaining
 
 ## Distribution Status
 

@@ -14,6 +14,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user, require_role
@@ -29,6 +30,7 @@ from backend.api.schemas import (
 )
 from backend.db.models import User
 from backend.db.repos import IngestTokenRepo
+from backend.ingest.rate_limiter import IngestRateLimiter
 from backend.ingest.registry import list_providers
 from backend.ingest.service import (
     authenticate_token,
@@ -83,6 +85,24 @@ async def ingest_webhook(
             detail="Invalid or revoked ingest token",
         )
 
+    # ── Rate limiting ──────────────────────────────────────────────────
+    limiter: IngestRateLimiter = request.app.state.ingest_limiter
+    rl = await limiter.check(token.id)
+
+    if not rl.allowed:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Rate limit exceeded",
+                "retry_after": round(rl.retry_after or 0, 1),
+            },
+            headers={
+                "Retry-After": str(int(rl.retry_after or 1)),
+                "X-RateLimit-Limit": str(rl.limit),
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+
     # Parse body
     try:
         payload: dict[str, Any] = await request.json()
@@ -99,7 +119,6 @@ async def ingest_webhook(
         # Commit the session so the audit log entry is preserved,
         # then return the error as a normal response.
         await db.commit()
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=422,
             content=IngestResponse(

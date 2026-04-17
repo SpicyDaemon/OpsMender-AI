@@ -73,6 +73,13 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     )
     app.state.config = config
 
+    # -- Ingest rate limiter ------------------------------------------------
+    from backend.ingest.rate_limiter import IngestRateLimiter
+    app.state.ingest_limiter = IngestRateLimiter(
+        max_requests=config.ingest.rate_limit,
+        window_seconds=config.ingest.rate_window,
+    )
+
     # -- CORS ---------------------------------------------------------------
     allowed_origins = config.cors.origins
     # allow_credentials=True is incompatible with wildcard origins per CORS spec

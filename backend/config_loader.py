@@ -114,6 +114,18 @@ class ApprovalConfig:
 
 
 @dataclasses.dataclass
+class IngestConfig:
+    """External incident ingestion rate-limiting.
+
+    rate_limit: max requests per window per token (0 = disabled)
+    rate_window: window size in seconds
+    """
+
+    rate_limit: int = 60
+    rate_window: int = 60
+
+
+@dataclasses.dataclass
 class AppSettings:
     """General app runtime settings."""
 
@@ -202,6 +214,7 @@ class AppConfig:
     logging: dict[str, Any]
     audit: AuditConfig
     approvals: ApprovalConfig
+    ingest: IngestConfig
     app: AppSettings
     db: DatabaseConfig
     auth: AuthConfig
@@ -236,12 +249,18 @@ class AppConfig:
             timeout_seconds=_env_int(env, "AIM_APPROVAL_TIMEOUT_SECONDS", 900)
         )
 
+        ingest = IngestConfig(
+            rate_limit=_env_int(env, "AIM_INGEST_RATE_LIMIT", 60),
+            rate_window=_env_int(env, "AIM_INGEST_RATE_WINDOW", 60),
+        )
+
         return cls(
             mcp_servers=_parse_mcp_servers(env),
             tiers={"default": app.tier},
             logging={"level": app.log_level},
             audit=audit,
             approvals=approvals,
+            ingest=ingest,
             app=app,
             db=DatabaseConfig(
                 url=_env_str(env, "AIM_DATABASE_URL"),

@@ -684,3 +684,126 @@ class TestAdaptersUnit:
         from backend.ingest.adapters.generic import GenericAdapter
         adapter = get_adapter("unknown_provider")
         assert isinstance(adapter, GenericAdapter)
+
+
+# ===========================================================================
+# Rate limiter — unit tests
+# ===========================================================================
+
+class TestRateLimiterUnit:
+
+    async def test_allows_under_limit(self):
+        from backend.ingest.rate_limiter import IngestRateLimiter
+        limiter = IngestRateLimiter(max_requests=5, window_seconds=60)
+        token_id = uuid.uuid4()
+
+        for _ in range(5):
+            result = await limiter.check(token_id)
+            assert result.allowed is True
+
+    async def test_blocks_over_limit(self):
+        from backend.ingest.rate_limiter import IngestRateLimiter
+        limiter = IngestRateLimiter(max_requests=3, window_seconds=60)
+        token_id = uuid.uuid4()
+
+        for _ in range(3):
+            result = await limiter.check(token_id)
+            assert result.allowed is True
+
+        # 4th request should be blocked
+        result = await limiter.check(token_id)
+        assert result.allowed is False
+        assert result.remaining == 0
+        assert result.retry_after is not None
+        assert result.retry_after > 0
+
+    async def test_remaining_decreases(self):
+        from backend.ingest.rate_limiter import IngestRateLimiter
+        limiter = IngestRateLimiter(max_requests=5, window_seconds=60)
+        token_id = uuid.uuid4()
+
+        r1 = await limiter.check(token_id)
+        assert r1.remaining == 4
+
+        r2 = await limiter.check(token_id)
+        assert r2.remaining == 3
+
+    async def test_separate_tokens_independent(self):
+        from backend.ingest.rate_limiter import IngestRateLimiter
+        limiter = IngestRateLimiter(max_requests=2, window_seconds=60)
+        t1 = uuid.uuid4()
+        t2 = uuid.uuid4()
+
+        # Exhaust t1
+        await limiter.check(t1)
+        await limiter.check(t1)
+        assert (await limiter.check(t1)).allowed is False
+
+        # t2 is unaffected
+        assert (await limiter.check(t2)).allowed is True
+
+    async def test_reset_clears_bucket(self):
+        from backend.ingest.rate_limiter import IngestRateLimiter
+        limiter = IngestRateLimiter(max_requests=2, window_seconds=60)
+        token_id = uuid.uuid4()
+
+        await limiter.check(token_id)
+        await limiter.check(token_id)
+        assert (await limiter.check(token_id)).allowed is False
+
+        # Reset clears the bucket
+        await limiter.reset(token_id)
+        assert (await limiter.check(token_id)).allowed is True
+
+    async def test_disabled_when_zero(self):
+        from backend.ingest.rate_limiter import IngestRateLimiter
+        limiter = IngestRateLimiter(max_requests=0, window_seconds=60)
+        token_id = uuid.uuid4()
+
+        assert limiter.disabled is True
+        # Always allowed
+        for _ in range(100):
+            result = await limiter.check(token_id)
+            assert result.allowed is True
+
+
+# ===========================================================================
+# Rate limiter — integration test via webhook
+# ===========================================================================
+
+class TestRateLimitIntegration:
+
+    async def test_rate_limit_returns_429(self, client: AsyncClient, app):
+        """Hit the webhook endpoint until rate limited, verify 429 + headers."""
+        # Set a very low limit on the app's limiter
+        from backend.ingest.rate_limiter import IngestRateLimiter
+        app.state.ingest_limiter = IngestRateLimiter(
+            max_requests=2, window_seconds=60,
+        )
+
+        raw, tok = await _create_token(app, name="rl-test")
+
+        # First 2 should succeed
+        for _ in range(2):
+            resp = await client.post(
+                "/incidents/ingest",
+                json={"title": "RL test", "description": "d"},
+                headers={"X-AIM-Token": raw},
+            )
+            assert resp.status_code == 200
+
+        # 3rd should be rate-limited
+        resp = await client.post(
+            "/incidents/ingest",
+            json={"title": "RL test", "description": "d"},
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp.status_code == 429
+        body = resp.json()
+        assert "Rate limit exceeded" in body["detail"]
+        assert "retry_after" in body
+        assert "Retry-After" in resp.headers
+        assert "X-RateLimit-Limit" in resp.headers
+        assert resp.headers["X-RateLimit-Limit"] == "2"
+        assert resp.headers["X-RateLimit-Remaining"] == "0"
+

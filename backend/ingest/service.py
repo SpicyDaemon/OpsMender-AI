@@ -22,6 +22,7 @@ from backend.ingest.autostart import (
     load_auto_start_policy,
     should_auto_start_session,
 )
+from backend.ingest.llm_extractor import apply_shape_cache, parse_with_paths
 from backend.ingest.registry import get_adapter
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,15 @@ async def ingest_incident(
     Always creates an ``ingest_log`` entry regardless of outcome.
     """
     provider = token.provider
-    adapter = get_adapter(provider)
+    # For "auto" tokens, seed the adapter with any pre-learned paths for this payload shape.
+    seeded_paths: dict[str, str] | None = None
+    if provider == "auto" and isinstance(token.shape_cache, dict):
+        from backend.ingest.llm_extractor import compute_shape_hash
+
+        cached = token.shape_cache.get(compute_shape_hash(payload))
+        if isinstance(cached, dict):
+            seeded_paths = cached
+    adapter = get_adapter(provider, field_mapping=seeded_paths)
 
     try:
         parsed = adapter.parse(payload)
@@ -112,6 +121,29 @@ async def ingest_incident(
             error=error_msg,
         )
         return IngestResult(success=False, error=error_msg)
+
+    # ── LLM fallback for the Universal adapter ─────────────────────────
+    # If the heuristics couldn't find a title, consult the LLM to learn
+    # which paths hold the incident fields, then re-parse with those paths.
+    if provider == "auto" and parsed.needs_llm:
+        learned_paths, cache_hit = await apply_shape_cache(
+            db,
+            token=token,
+            payload=payload,
+            config=config,
+        )
+        if learned_paths:
+            logger.info(
+                "ingest.auto: used %s paths for token=%s",
+                "cached" if cache_hit else "llm-learned",
+                token.id,
+            )
+            parsed = parse_with_paths(payload, learned_paths)
+
+    # Namespace auto-provider dedup per-token so two tools sharing an
+    # external_id but coming through different tokens don't collide.
+    if provider == "auto":
+        parsed.external_source = f"auto:{token.name}"
 
     # ── Dedup by external fingerprint ──────────────────────────────────
     dedup_action = "created"

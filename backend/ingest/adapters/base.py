@@ -22,6 +22,8 @@ class ParsedIncident:
     external_id: str | None = None  # unique within the source
     external_source: str | None = None  # e.g. "cloudwatch", "legacy_alert_vendor"
     status: str = "open"  # open | resolved
+    needs_llm: bool = False  # True when heuristics were too weak to trust
+    extracted_paths: dict[str, str] | None = None  # resolved JSON paths per field (for shape cache)
 
 
 class IngestAdapter(ABC):

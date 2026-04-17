@@ -333,8 +333,13 @@ class SessionMessageListResponse(BaseModel):
 class IngestTokenCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     provider: str = Field(
-        ..., pattern="^(cloudwatch|azure_monitor|legacy_alert_vendor|legacy_alert_relay|generic)$"
+        default="auto",
+        pattern="^(auto|cloudwatch|azure_monitor|legacy_alert_vendor|legacy_alert_relay|generic)$",
     )
+    # Optional sample payload from the source tool — if supplied, the
+    # server parses it on create so future payloads with the same shape
+    # skip the LLM fallback.
+    sample_payload: Optional[dict] = None
 
 
 class IngestTokenResponse(BaseModel):
@@ -345,6 +350,7 @@ class IngestTokenResponse(BaseModel):
     is_active: bool
     created_at: datetime
     last_used_at: Optional[datetime]
+    shape_cache_size: int = 0  # number of learned payload shapes
 
     model_config = {"from_attributes": True}
 
@@ -357,6 +363,26 @@ class IngestTokenCreatedResponse(BaseModel):
     token: str  # raw token — shown once, never stored
     is_active: bool
     created_at: datetime
+
+
+class IngestTokenLearnShapeRequest(BaseModel):
+    payload: dict
+
+
+class IngestLearnPreview(BaseModel):
+    title: str
+    description: str
+    severity: Optional[str] = None
+    external_id: Optional[str] = None
+    status: str
+
+
+class IngestTokenLearnShapeResponse(BaseModel):
+    """Result of training a token on a sample payload."""
+    shape_hash: str
+    paths: dict[str, str]
+    cache_hit: bool
+    preview: IngestLearnPreview
 
 
 class IngestTokenListResponse(BaseModel):

@@ -888,11 +888,11 @@ class TestAdaptersUnit:
         assert result.severity == "critical"
         assert result.external_id == "OG-UNIT-002"
 
-    def test_registry_fallback_to_generic(self):
+    def test_registry_fallback_to_universal(self):
         from backend.ingest.registry import get_adapter
-        from backend.ingest.adapters.generic import GenericAdapter
+        from backend.ingest.adapters.universal import UniversalAdapter
         adapter = get_adapter("unknown_provider")
-        assert isinstance(adapter, GenericAdapter)
+        assert isinstance(adapter, UniversalAdapter)
 
 
 # ===========================================================================
@@ -1015,3 +1015,449 @@ class TestRateLimitIntegration:
         assert "X-RateLimit-Limit" in resp.headers
         assert resp.headers["X-RateLimit-Limit"] == "2"
         assert resp.headers["X-RateLimit-Remaining"] == "0"
+
+
+# ===========================================================================
+# Universal adapter — heuristic + LLM fallback + shape cache
+# ===========================================================================
+
+class TestUniversalAdapterUnit:
+    """Pure unit tests for the heuristic parser — no DB, no HTTP."""
+
+    def test_flat_standard_fields(self):
+        from backend.ingest.adapters.universal import UniversalAdapter
+
+        result = UniversalAdapter().parse(
+            {
+                "title": "Disk full",
+                "description": "Node01 at 98%",
+                "severity": "critical",
+                "id": "alert-xyz",
+                "status": "triggered",
+            }
+        )
+        assert result.title == "Disk full"
+        assert result.description == "Node01 at 98%"
+        assert result.severity == "critical"
+        assert result.external_id == "alert-xyz"
+        assert result.status == "investigating"
+        assert result.needs_llm is False
+        assert result.extracted_paths == {
+            "title": "title",
+            "description": "description",
+            "severity": "severity",
+            "external_id": "id",
+            "status": "status",
+        }
+
+    def test_datadog_shape(self):
+        """Datadog-ish webhook payload: alert_title, alert_priority, etc."""
+        from backend.ingest.adapters.universal import UniversalAdapter
+
+        result = UniversalAdapter().parse(
+            {
+                "alert_title": "[P2] High CPU on web-01",
+                "body": "CPU sustained above 90% for 5 minutes",
+                "priority": "P2",
+                "alert_id": "dd-12345",
+                "alert_status": "Alert",
+            }
+        )
+        # "alert_title" isn't in TITLE_KEYS but "name"/"subject" aren't either;
+        # expect LLM fallback signal when title isn't resolved.
+        assert result.needs_llm is True or result.title == "[P2] High CPU on web-01"
+
+    def test_grafana_style_envelope(self):
+        """Grafana 9+ wraps payload under `alerts[0]` with commonName."""
+        from backend.ingest.adapters.universal import UniversalAdapter
+
+        result = UniversalAdapter().parse(
+            {
+                "alerts": [
+                    {
+                        "status": "firing",
+                        "labels": {"alertname": "DBConnPoolFull"},
+                        "annotations": {"summary": "Connection pool is saturated"},
+                    }
+                ],
+                "alert": {
+                    "alertname": "DBConnPoolFull",
+                    "summary": "Connection pool is saturated",
+                    "severity": "high",
+                    "fingerprint": "abc123",
+                    "status": "firing",
+                },
+            }
+        )
+        assert result.title == "DBConnPoolFull"
+        assert result.description == "Connection pool is saturated"
+        assert result.severity == "high"
+        assert result.external_id == "abc123"
+        assert result.status == "investigating"
+        assert result.needs_llm is False
+
+    def test_severity_mapping(self):
+        """Sev labels and numeric priorities should map to AIM's 4 levels."""
+        from backend.ingest.adapters.universal import UniversalAdapter
+
+        assert (
+            UniversalAdapter().parse({"title": "x", "severity": "P1"}).severity
+            == "critical"
+        )
+        assert (
+            UniversalAdapter().parse({"title": "x", "severity": "warning"}).severity
+            == "medium"
+        )
+        assert (
+            UniversalAdapter().parse({"title": "x", "severity": "2"}).severity
+            == "high"
+        )
+        assert (
+            UniversalAdapter().parse({"title": "x", "severity": "notice"}).severity
+            == "low"
+        )
+
+    def test_status_mapping(self):
+        from backend.ingest.adapters.universal import UniversalAdapter
+
+        assert (
+            UniversalAdapter().parse({"title": "x", "status": "recovery"}).status
+            == "resolved"
+        )
+        assert (
+            UniversalAdapter().parse({"title": "x", "status": "firing"}).status
+            == "investigating"
+        )
+        assert (
+            UniversalAdapter().parse({"title": "x", "state": "acknowledged"}).status
+            == "investigating"
+        )
+
+    def test_unknown_shape_signals_llm_fallback(self):
+        """A payload with no recognizable keys should set needs_llm=True."""
+        from backend.ingest.adapters.universal import UniversalAdapter
+
+        result = UniversalAdapter().parse(
+            {"foo": {"bar": {"baz": "some content"}}, "weird_key": "xyz"}
+        )
+        assert result.needs_llm is True
+        assert result.title == "Untitled Incident"
+
+    def test_field_mapping_short_circuits(self):
+        """Pre-learned paths should take precedence over heuristics."""
+        from backend.ingest.adapters.universal import UniversalAdapter
+
+        payload = {"alerts": [{"name": "MyAlert", "details": "boom"}]}
+        adapter = UniversalAdapter(
+            field_mapping={
+                "title": "alerts.0.name",
+                "description": "alerts.0.details",
+            }
+        )
+        result = adapter.parse(payload)
+        assert result.title == "MyAlert"
+        assert result.description == "boom"
+        assert result.needs_llm is False
+
+
+class TestShapeHash:
+
+    def test_same_shape_same_hash(self):
+        from backend.ingest.llm_extractor import compute_shape_hash
+
+        a = {"title": "one", "severity": "high", "id": "abc"}
+        b = {"title": "two", "severity": "low", "id": "xyz"}
+        assert compute_shape_hash(a) == compute_shape_hash(b)
+
+    def test_different_keys_different_hash(self):
+        from backend.ingest.llm_extractor import compute_shape_hash
+
+        a = {"title": "one", "id": "abc"}
+        b = {"title": "one", "alert_id": "abc"}
+        assert compute_shape_hash(a) != compute_shape_hash(b)
+
+    def test_nested_shape_stable(self):
+        from backend.ingest.llm_extractor import compute_shape_hash
+
+        a = {"alert": {"name": "x", "sev": "p1"}}
+        b = {"alert": {"name": "y", "sev": "p3"}}
+        assert compute_shape_hash(a) == compute_shape_hash(b)
+
+
+class TestUniversalIngestIntegration:
+    """End-to-end webhook tests through the /incidents/ingest endpoint."""
+
+    async def test_auto_token_accepts_any_payload(self, client: AsyncClient, app):
+        raw, _ = await _create_token(app, provider="auto", name="auto-token")
+
+        resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Redis cluster degraded",
+                "description": "Two replicas out of sync",
+                "severity": "high",
+                "id": "universal-001",
+            },
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["dedup_action"] == "created"
+
+        # Dedup namespaced per token
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(
+                db, uuid.UUID(body["incident_id"])
+            )
+            assert incident.external_source == "auto:auto-token"
+            assert incident.external_id == "universal-001"
+
+    async def test_auto_token_envelope_payload(self, client: AsyncClient, app):
+        raw, _ = await _create_token(app, provider="auto", name="auto-envelope")
+
+        resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "alert": {
+                    "alertname": "QueueDepthHigh",
+                    "summary": "Queue backed up",
+                    "severity": "p2",
+                    "fingerprint": "env-001",
+                    "status": "firing",
+                }
+            },
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(
+                db, uuid.UUID(body["incident_id"])
+            )
+            assert incident.title == "QueueDepthHigh"
+            assert incident.severity == "high"
+            assert incident.external_id == "env-001"
+
+    async def test_auto_token_dedup_across_calls(self, client: AsyncClient, app):
+        raw, _ = await _create_token(app, provider="auto", name="auto-dedup")
+        payload = {
+            "title": "Same Alert",
+            "description": "ongoing",
+            "severity": "high",
+            "id": "dedup-001",
+        }
+        first = await client.post(
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
+        )
+        second = await client.post(
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
+        )
+        assert first.json()["dedup_action"] == "created"
+        assert second.json()["dedup_action"] == "skipped"
+        assert first.json()["incident_id"] == second.json()["incident_id"]
+
+    async def test_auto_invokes_llm_on_unknown_shape(
+        self, client: AsyncClient, app, monkeypatch
+    ):
+        """LLM extractor is called when heuristics can't find a title."""
+        from backend.ingest import service as svc
+
+        called: list[dict] = []
+
+        async def fake_apply(db, *, token, payload, config):
+            called.append(payload)
+            # Return paths that reach into the weird payload
+            paths = {
+                "title": "custom.eventName",
+                "description": "custom.rawBody",
+                "severity": "custom.prio",
+                "external_id": "custom.uid",
+            }
+            return paths, False
+
+        monkeypatch.setattr(svc, "apply_shape_cache", fake_apply)
+
+        raw, _ = await _create_token(app, provider="auto", name="auto-llm")
+
+        resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "custom": {
+                    "eventName": "StrangeAlert",
+                    "rawBody": "something tripped",
+                    "prio": "P2",
+                    "uid": "weird-42",
+                }
+            },
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert len(called) == 1
+
+        async with app.state.session_factory() as db:
+            inc = await IncidentRepo.get_by_id(
+                db, uuid.UUID(body["incident_id"])
+            )
+            assert inc.title == "StrangeAlert"
+            assert inc.severity == "high"
+            assert inc.external_id == "weird-42"
+
+    async def test_auto_shape_cache_skips_llm_on_repeat(
+        self, client: AsyncClient, app, monkeypatch
+    ):
+        """A second payload with the same shape should not call the LLM."""
+        from backend.ingest import llm_extractor
+        from backend.ingest import service as svc
+
+        call_count = {"llm": 0}
+
+        async def fake_llm(db, *, payload, config):
+            call_count["llm"] += 1
+            return {
+                "title": "weird.name",
+                "description": "weird.detail",
+            }
+
+        monkeypatch.setattr(llm_extractor, "extract_paths_via_llm", fake_llm)
+
+        raw, _ = await _create_token(app, provider="auto", name="auto-cache")
+
+        payload_one = {"weird": {"name": "AlertA", "detail": "first"}}
+        payload_two = {"weird": {"name": "AlertB", "detail": "second"}}
+
+        resp1 = await client.post(
+            "/incidents/ingest",
+            json=payload_one,
+            headers={"X-AIM-Token": raw},
+        )
+        resp2 = await client.post(
+            "/incidents/ingest",
+            json=payload_two,
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+        assert call_count["llm"] == 1  # cached on 2nd call
+
+        # The second incident reuses the same learned paths and is a distinct incident
+        async with app.state.session_factory() as db:
+            inc2 = await IncidentRepo.get_by_id(
+                db, uuid.UUID(resp2.json()["incident_id"])
+            )
+            assert inc2.title == "AlertB"
+
+    async def test_llm_fallback_failure_degrades_gracefully(
+        self, client: AsyncClient, app, monkeypatch
+    ):
+        """If the LLM returns nothing, we still create an Untitled incident rather than 500."""
+        from backend.ingest import service as svc
+
+        async def fake_apply(db, *, token, payload, config):
+            return None, False
+
+        monkeypatch.setattr(svc, "apply_shape_cache", fake_apply)
+
+        raw, _ = await _create_token(app, provider="auto", name="auto-llm-fail")
+
+        resp = await client.post(
+            "/incidents/ingest",
+            json={"foo": {"bar": "baz"}},
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+
+        async with app.state.session_factory() as db:
+            inc = await IncidentRepo.get_by_id(
+                db, uuid.UUID(body["incident_id"])
+            )
+            assert inc.title == "Untitled Incident"
+
+
+class TestLearnShapeAPI:
+
+    async def test_learn_shape_endpoint_persists_paths(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        # Create an auto token via the API
+        resp = await client.post(
+            "/ingest-tokens",
+            json={"name": "learn-test", "provider": "auto"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+        token_id = resp.json()["id"]
+
+        # Train it on a sample
+        sample = {
+            "title": "SampleAlert",
+            "description": "sample body",
+            "severity": "medium",
+            "id": "sample-7",
+        }
+        learn = await client.post(
+            f"/ingest-tokens/{token_id}/learn-shape",
+            json={"payload": sample},
+            headers=admin_headers,
+        )
+        assert learn.status_code == 200
+        body = learn.json()
+        assert body["preview"]["title"] == "SampleAlert"
+        assert body["preview"]["severity"] == "medium"
+        assert body["paths"].get("title") == "title"
+
+        # Listing now shows shape_cache_size=1
+        lst = await client.get("/ingest-tokens", headers=admin_headers)
+        match = next(i for i in lst.json()["items"] if i["id"] == token_id)
+        assert match["shape_cache_size"] == 1
+
+    async def test_learn_shape_rejects_non_auto_provider(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        resp = await client.post(
+            "/ingest-tokens",
+            json={"name": "generic-learn", "provider": "generic"},
+            headers=admin_headers,
+        )
+        token_id = resp.json()["id"]
+
+        learn = await client.post(
+            f"/ingest-tokens/{token_id}/learn-shape",
+            json={"payload": {"title": "x"}},
+            headers=admin_headers,
+        )
+        assert learn.status_code == 400
+
+    async def test_create_token_with_sample_payload_prewarms_cache(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        resp = await client.post(
+            "/ingest-tokens",
+            json={
+                "name": "pre-warmed",
+                "provider": "auto",
+                "sample_payload": {
+                    "title": "Prewarm",
+                    "severity": "low",
+                    "id": "pw-1",
+                },
+            },
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+
+        lst = await client.get("/ingest-tokens", headers=admin_headers)
+        match = next(
+            i for i in lst.json()["items"] if i["name"] == "pre-warmed"
+        )
+        assert match["shape_cache_size"] == 1

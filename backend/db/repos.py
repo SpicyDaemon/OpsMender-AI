@@ -941,15 +941,32 @@ class IngestTokenRepo:
         name: str,
         provider: str,
         token_hash: str,
+        shape_cache: dict | None = None,
     ) -> IngestToken:
         token = IngestToken(
             name=name,
             provider=provider,
             token_hash=token_hash,
+            shape_cache=shape_cache,
         )
         db.add(token)
         await db.flush()
         return token
+
+    @staticmethod
+    async def update_shape_cache(
+        db: AsyncSession,
+        token_id: uuid.UUID,
+        shape_cache: dict,
+    ) -> bool:
+        """Replace the full shape_cache dict for a token."""
+        stmt = (
+            update(IngestToken)
+            .where(IngestToken.id == token_id)
+            .values(shape_cache=shape_cache)
+        )
+        result = await db.execute(stmt)
+        return bool(result.rowcount)
 
     @staticmethod
     async def get_by_id(db: AsyncSession, token_id: uuid.UUID) -> IngestToken | None:

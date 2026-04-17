@@ -320,6 +320,12 @@ class IngestToken(Base):
 
     The raw token is returned **only** on creation.  Subsequent reads
     expose ``token_hash`` metadata but never the secret.
+
+    ``shape_cache`` holds learned field-path mappings keyed by a hash of
+    the payload's top-level structure. Populated either by LLM fallback
+    on first-sighting of a payload shape, or by operator-supplied sample
+    payloads during token creation — the Universal adapter uses it to
+    skip heuristics on repeat traffic.
     """
     __tablename__ = "ingest_tokens"
 
@@ -327,9 +333,10 @@ class IngestToken(Base):
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # cloudwatch | azure_monitor | legacy_alert_vendor | legacy_alert_relay | generic
+    )  # auto | cloudwatch | azure_monitor | legacy_alert_vendor | legacy_alert_relay | generic
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    shape_cache: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

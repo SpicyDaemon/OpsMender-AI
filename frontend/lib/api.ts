@@ -466,6 +466,7 @@ import type {
   IngestProviderListResponse,
   IngestTokenCreate,
   IngestTokenCreatedResponse,
+  IngestTokenLearnShapeResponse,
   IngestTokenListResponse,
   IngestTokenResponse,
 } from "./types";
@@ -492,6 +493,16 @@ export async function deleteIngestToken(id: string): Promise<void> {
 
 export async function listIngestProviders(): Promise<IngestProviderListResponse> {
   return api.get<IngestProviderListResponse>("/ingest-providers");
+}
+
+export async function learnIngestTokenShape(
+  id: string,
+  payload: Record<string, unknown>,
+): Promise<IngestTokenLearnShapeResponse> {
+  return api.post<IngestTokenLearnShapeResponse>(
+    `/ingest-tokens/${id}/learn-shape`,
+    { payload },
+  );
 }
 
 // ---------------------------------------------------------------------------

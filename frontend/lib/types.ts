@@ -300,6 +300,7 @@ export interface SkillCloneRequest {
 // ---------------------------------------------------------------------------
 
 export type IngestProvider =
+  | "auto"
   | "cloudwatch"
   | "azure_monitor"
   | "legacy_alert_vendor"
@@ -313,6 +314,7 @@ export interface IngestTokenResponse {
   is_active: boolean;
   created_at: string;
   last_used_at: string | null;
+  shape_cache_size: number;
 }
 
 export interface IngestTokenCreatedResponse {
@@ -332,6 +334,7 @@ export interface IngestTokenListResponse {
 export interface IngestTokenCreate {
   name: string;
   provider: IngestProvider;
+  sample_payload?: Record<string, unknown> | null;
 }
 
 export interface IngestProviderItem {
@@ -341,6 +344,21 @@ export interface IngestProviderItem {
 
 export interface IngestProviderListResponse {
   items: IngestProviderItem[];
+}
+
+export interface IngestLearnPreview {
+  title: string;
+  description: string;
+  severity: string | null;
+  external_id: string | null;
+  status: string;
+}
+
+export interface IngestTokenLearnShapeResponse {
+  shape_hash: string;
+  paths: Record<string, string>;
+  cache_hit: boolean;
+  preview: IngestLearnPreview;
 }
 
 // ---------------------------------------------------------------------------

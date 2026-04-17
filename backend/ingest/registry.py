@@ -8,8 +8,10 @@ from backend.ingest.adapters.azure_monitor import AzureMonitorAdapter
 from backend.ingest.adapters.legacy_alert_vendor import LegacyAlertVendorAdapter
 from backend.ingest.adapters.generic import GenericAdapter
 from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
+from backend.ingest.adapters.universal import UniversalAdapter
 
 _ADAPTERS: dict[str, type[IngestAdapter]] = {
+    "auto": UniversalAdapter,
     "cloudwatch": CloudWatchAdapter,
     "azure_monitor": AzureMonitorAdapter,
     "legacy_alert_vendor": LegacyAlertVendorAdapter,
@@ -18,17 +20,28 @@ _ADAPTERS: dict[str, type[IngestAdapter]] = {
 }
 
 
-def get_adapter(provider: str) -> IngestAdapter:
+def get_adapter(
+    provider: str,
+    *,
+    field_mapping: dict[str, str] | None = None,
+) -> IngestAdapter:
     """Return an adapter instance for the given provider key.
 
-    Falls back to ``GenericAdapter`` for unknown providers.
+    Falls back to ``UniversalAdapter`` for unknown providers. When
+    ``field_mapping`` is supplied it is passed through to adapters that
+    support learned-path injection (universal + generic).
     """
-    cls = _ADAPTERS.get(provider, GenericAdapter)
+    cls = _ADAPTERS.get(provider, UniversalAdapter)
+    if cls in (UniversalAdapter, GenericAdapter):
+        return cls(field_mapping=field_mapping)
     return cls()
 
 
 def list_providers() -> list[dict[str, str]]:
-    """Return all registered provider adapters with labels."""
+    """Return all registered provider adapters with labels.
+
+    ``auto`` is listed first so UIs surface it as the default.
+    """
     return [
         {"key": key, "label": cls.label}
         for key, cls in _ADAPTERS.items()

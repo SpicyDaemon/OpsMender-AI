@@ -20,16 +20,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    IngestLearnPreview,
     IngestProviderListResponse,
     IngestProviderResponse,
     IngestResponse,
     IngestTokenCreate,
     IngestTokenCreatedResponse,
+    IngestTokenLearnShapeRequest,
+    IngestTokenLearnShapeResponse,
     IngestTokenListResponse,
     IngestTokenResponse,
 )
-from backend.db.models import User
+from backend.db.models import IngestToken, User
 from backend.db.repos import IngestTokenRepo
+from backend.ingest.llm_extractor import (
+    apply_shape_cache,
+    compute_shape_hash,
+    parse_with_paths,
+)
 from backend.ingest.rate_limiter import IngestRateLimiter
 from backend.ingest.registry import list_providers
 from backend.ingest.service import (
@@ -40,6 +48,20 @@ from backend.ingest.service import (
 )
 
 router = APIRouter(tags=["ingest"])
+
+
+def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
+    """Build a token response including the shape-cache size."""
+    cache = tok.shape_cache or {}
+    return IngestTokenResponse(
+        id=tok.id,
+        name=tok.name,
+        provider=tok.provider,
+        is_active=tok.is_active,
+        created_at=tok.created_at,
+        last_used_at=tok.last_used_at,
+        shape_cache_size=len(cache) if isinstance(cache, dict) else 0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +179,7 @@ async def list_ingest_tokens(
 ):
     tokens = await IngestTokenRepo.list_all(db)
     return IngestTokenListResponse(
-        items=[IngestTokenResponse.model_validate(t) for t in tokens],
+        items=[_to_token_response(t) for t in tokens],
         total=len(tokens),
     )
 
@@ -170,6 +192,7 @@ async def list_ingest_tokens(
 )
 async def create_ingest_token(
     body: IngestTokenCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("admin")),
 ):
@@ -182,11 +205,34 @@ async def create_ingest_token(
         )
 
     raw = generate_token()
+    shape_cache: dict[str, dict[str, str]] | None = None
+
+    # Pre-train the token on a sample payload when provided — so the
+    # first real webhook of this shape doesn't pay the LLM tax.
+    if body.sample_payload and body.provider == "auto":
+        from backend.ingest.adapters.universal import UniversalAdapter
+        from backend.ingest.llm_extractor import extract_paths_via_llm
+
+        parsed = UniversalAdapter().parse(body.sample_payload)
+        paths = parsed.extracted_paths or {}
+        if parsed.needs_llm:
+            llm_paths = await extract_paths_via_llm(
+                db,
+                payload=body.sample_payload,
+                config=request.app.state.config,
+            )
+            if llm_paths:
+                paths = llm_paths
+        if paths:
+            shape = compute_shape_hash(body.sample_payload)
+            shape_cache = {shape: paths}
+
     token_obj = await IngestTokenRepo.create(
         db,
         name=body.name,
         provider=body.provider,
         token_hash=hash_token(raw),
+        shape_cache=shape_cache,
     )
 
     return IngestTokenCreatedResponse(
@@ -196,6 +242,71 @@ async def create_ingest_token(
         token=raw,
         is_active=token_obj.is_active,
         created_at=token_obj.created_at,
+    )
+
+
+@router.post(
+    "/ingest-tokens/{token_id}/learn-shape",
+    response_model=IngestTokenLearnShapeResponse,
+    summary="Train a token on a sample payload (auto-provider only)",
+)
+async def learn_ingest_token_shape(
+    token_id: uuid.UUID,
+    body: IngestTokenLearnShapeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    """Run the heuristic+LLM extractor on a sample payload and save the paths.
+
+    Returns the resolved paths and a preview of the incident that would
+    be created. Safe to call repeatedly — idempotent per payload shape.
+    """
+    tok = await IngestTokenRepo.get_by_id(db, token_id)
+    if tok is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ingest token not found",
+        )
+    if tok.provider != "auto":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Shape learning only applies to tokens with provider='auto'",
+        )
+
+    paths, cache_hit = await apply_shape_cache(
+        db,
+        token=tok,
+        payload=body.payload,
+        config=request.app.state.config,
+    )
+    # apply_shape_cache persists paths on LLM success; it does not persist when the
+    # payload matched heuristics directly, so we also save the adapter-derived paths.
+    if not paths:
+        from backend.ingest.adapters.universal import UniversalAdapter
+
+        adapter_parsed = UniversalAdapter().parse(body.payload)
+        paths = adapter_parsed.extracted_paths or {}
+        if paths:
+            shape = compute_shape_hash(body.payload)
+            next_cache = dict(tok.shape_cache or {})
+            next_cache[shape] = paths
+            await IngestTokenRepo.update_shape_cache(db, tok.id, next_cache)
+            tok.shape_cache = next_cache
+
+    # Build a preview of what the incident would look like
+    parsed_preview = parse_with_paths(body.payload, paths)
+    return IngestTokenLearnShapeResponse(
+        shape_hash=compute_shape_hash(body.payload),
+        paths=paths or {},
+        cache_hit=cache_hit,
+        preview=IngestLearnPreview(
+            title=parsed_preview.title,
+            description=parsed_preview.description,
+            severity=parsed_preview.severity,
+            external_id=parsed_preview.external_id,
+            status=parsed_preview.status,
+        ),
     )
 
 
@@ -219,7 +330,7 @@ async def revoke_ingest_token(
     await IngestTokenRepo.revoke(db, token_id)
     # Re-fetch after update
     tok = await IngestTokenRepo.get_by_id(db, token_id)
-    return IngestTokenResponse.model_validate(tok)
+    return _to_token_response(tok)
 
 
 @router.delete(

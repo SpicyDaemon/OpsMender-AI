@@ -1339,6 +1339,7 @@ function MCPSection({
 // ---------------------------------------------------------------------------
 
 const PROVIDER_COLORS: Record<string, string> = {
+  auto: "border-indigo-200 bg-indigo-50 text-indigo-700",
   cloudwatch: "border-orange-200 bg-orange-50 text-orange-700",
   azure_monitor: "border-blue-200 bg-blue-50 text-blue-700",
   legacy_alert_vendor: "border-green-200 bg-green-50 text-green-700",
@@ -1381,11 +1382,15 @@ function IngestTokenSection({
   // Create form
   const [form, setForm] = useState<IngestTokenCreate>({
     name: "",
-    provider: "generic",
+    provider: "auto",
   });
+  const [sampleText, setSampleText] = useState("");
+  const [sampleError, setSampleError] = useState("");
 
   function openCreateModal() {
-    setForm({ name: "", provider: "generic" });
+    setForm({ name: "", provider: "auto" });
+    setSampleText("");
+    setSampleError("");
     setError("");
     setCreatedToken(null);
     setCopied(false);
@@ -1405,8 +1410,30 @@ function IngestTokenSection({
     setSaving(true);
     setError("");
     setNotice("");
+    setSampleError("");
+
+    let samplePayload: Record<string, unknown> | null = null;
+    if (form.provider === "auto" && sampleText.trim()) {
+      try {
+        const parsed = JSON.parse(sampleText);
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          setSampleError("Sample payload must be a JSON object.");
+          setSaving(false);
+          return;
+        }
+        samplePayload = parsed as Record<string, unknown>;
+      } catch {
+        setSampleError("Sample payload is not valid JSON.");
+        setSaving(false);
+        return;
+      }
+    }
+
     try {
-      const result = await createIngestToken(form);
+      const result = await createIngestToken({
+        ...form,
+        sample_payload: samplePayload,
+      });
       setCreatedToken(result);
       await onReload();
     } catch (err) {
@@ -1521,6 +1548,7 @@ function IngestTokenSection({
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Provider</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Shapes</th>
                 <th className="px-4 py-3">Last Used</th>
                 <th className="px-4 py-3">Created</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -1549,6 +1577,18 @@ function IngestTokenSection({
                     >
                       {token.is_active ? "Active" : "Revoked"}
                     </Badge>
+                  </td>
+                  <td className="px-4 py-3 align-top text-gray-600">
+                    {token.provider === "auto" ? (
+                      <span
+                        className="text-xs"
+                        title="Unique payload shapes this token has learned"
+                      >
+                        {token.shape_cache_size} learned
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 align-top text-gray-600">
                     {formatLastUsed(token.last_used_at)}
@@ -1675,8 +1715,34 @@ function IngestTokenSection({
               </Select>
               <p className="mt-1 text-xs text-gray-400">
                 Determines how inbound JSON payloads are parsed into incidents.
+                Use <strong>Auto-detect</strong> for any webhook — the token
+                learns the payload shape on first use.
               </p>
             </div>
+
+            {form.provider === "auto" && (
+              <div>
+                <Label htmlFor="ingest-sample">Sample payload (optional JSON)</Label>
+                <textarea
+                  id="ingest-sample"
+                  value={sampleText}
+                  onChange={(e) => {
+                    setSampleText(e.target.value);
+                    setSampleError("");
+                  }}
+                  rows={6}
+                  placeholder={'{\n  "alerts": [{"labels": {"alertname": "..."}}]\n}'}
+                  className="mt-1 block w-full rounded-md border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-800 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  Paste a sample alert JSON to pre-train the token. Skips the
+                  LLM call on the first real webhook of this shape.
+                </p>
+                {sampleError && (
+                  <p className="mt-1 text-xs text-red-600">{sampleError}</p>
+                )}
+              </div>
+            )}
 
             {error && <FormError message={error} />}
 

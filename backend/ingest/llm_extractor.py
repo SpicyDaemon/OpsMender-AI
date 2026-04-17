@@ -1,0 +1,231 @@
+"""LLM-based field extractor for the Universal ingest adapter.
+
+When the heuristic pass cannot resolve a title from an inbound webhook
+payload, this module asks the configured LLM to identify the JSON paths
+for the incident fields. The resolved paths are cached on the token's
+``shape_cache`` column keyed by a hash of the payload's top-level shape
+— so the next payload with the same shape skips the LLM call entirely.
+
+Design notes:
+- The LLM is asked for *paths*, not values, so the cache is meaningful
+  across different alerts from the same source.
+- The prompt includes an abbreviated view of the payload (value previews
+  trimmed) so small-context models still work.
+- Extraction is best-effort: if the LLM is unavailable or returns
+  malformed JSON, the extractor returns ``None`` and the heuristic
+  result is used as-is.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.config_loader import AppConfig
+from backend.db.models import IngestToken
+from backend.db.repos import IngestTokenRepo, ModelConfigRepo
+from backend.ingest.adapters.universal import (
+    UniversalAdapter,
+    _resolve_path,
+)
+from backend.llm.factory import create_provider
+
+logger = logging.getLogger(__name__)
+
+FIELD_NAMES = ("title", "description", "severity", "external_id", "status")
+
+EXTRACT_PROMPT = """\
+You receive an unknown webhook payload from an alerting tool (CloudWatch, Datadog, \
+Grafana, LegacyAlertVendor, Sumo Logic, Slack, custom script, etc.). Identify the JSON \
+dot-paths that hold each incident field.
+
+Return ONLY a JSON object with these keys (omit a key if nothing reasonable exists):
+
+{{
+  "title": "path.to.title",
+  "description": "path.to.description",
+  "severity": "path.to.severity",
+  "external_id": "path.to.unique_id",
+  "status": "path.to.status"
+}}
+
+Rules:
+- Paths use dots for nested objects and integer indexes for arrays (e.g. \
+"records.0.alert.name").
+- title should be a short human-readable label for the alert.
+- external_id should uniquely identify this alerting condition within its source \
+so AIM can deduplicate repeated notifications — prefer stable IDs over timestamps.
+- severity should be a path to a field whose value maps to critical/high/medium/low \
+(priority numbers, sev labels, etc. are fine).
+- status should be a path to a field whose value indicates whether the alert is \
+firing, resolved, or acknowledged.
+- If no path fits a field, omit the key rather than guessing.
+
+Payload (abbreviated):
+{payload_preview}
+"""
+
+
+def compute_shape_hash(payload: Any) -> str:
+    """Hash the *structure* of a payload — keys and types, not values.
+
+    Two payloads from the same alerting tool will share a hash even
+    when values differ, so cached paths can be reused.
+    """
+    skeleton = _skeleton(payload)
+    serialized = json.dumps(skeleton, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:24]
+
+
+def _skeleton(value: Any) -> Any:
+    """Reduce a payload to structure only: dicts → key→type, lists → [type]."""
+    if isinstance(value, dict):
+        return {k: _skeleton(v) for k, v in sorted(value.items())}
+    if isinstance(value, list):
+        if not value:
+            return []
+        # Use the first element's skeleton as representative
+        return [_skeleton(value[0])]
+    if value is None:
+        return "null"
+    return type(value).__name__
+
+
+def _abbreviate(value: Any, *, max_str: int = 200, max_items: int = 5) -> Any:
+    """Shrink a payload so long values don't blow the LLM context."""
+    if isinstance(value, dict):
+        return {k: _abbreviate(v, max_str=max_str, max_items=max_items) for k, v in value.items()}
+    if isinstance(value, list):
+        out = [_abbreviate(v, max_str=max_str, max_items=max_items) for v in value[:max_items]]
+        if len(value) > max_items:
+            out.append(f"…(+{len(value) - max_items} more)")
+        return out
+    if isinstance(value, str) and len(value) > max_str:
+        return value[:max_str] + "…"
+    return value
+
+
+def _parse_llm_json(text: str) -> dict[str, str] | None:
+    """Extract a JSON object of field→path pairs from LLM output."""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        try:
+            data = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+
+    if not isinstance(data, dict):
+        return None
+
+    result: dict[str, str] = {}
+    for field in FIELD_NAMES:
+        value = data.get(field)
+        if isinstance(value, str) and value.strip():
+            result[field] = value.strip()
+    return result
+
+
+def _resolve_model_kwargs(config: AppConfig, model_cfg) -> dict[str, Any]:
+    if model_cfg is not None:
+        return {
+            "provider": model_cfg.provider,
+            "model_id": model_cfg.model_id,
+            "api_key_env_var": model_cfg.api_key_env_var,
+            "base_url": model_cfg.base_url,
+            "api_version": model_cfg.api_version,
+            "max_tokens": model_cfg.max_tokens,
+        }
+
+    return {
+        "provider": config.providers.active_provider,
+        "model_id": config.providers.active_model_id,
+        "base_url": config.providers.ollama_base_url
+        if config.providers.active_provider == "ollama"
+        else config.providers.azure_openai_endpoint,
+        "api_version": config.providers.azure_openai_api_version,
+    }
+
+
+async def extract_paths_via_llm(
+    db: AsyncSession,
+    *,
+    payload: dict[str, Any],
+    config: AppConfig,
+) -> dict[str, str] | None:
+    """Ask the default LLM which paths hold the incident fields.
+
+    Returns a ``{field: json_path}`` dict, or None on any failure.
+    """
+    try:
+        model_cfg = await ModelConfigRepo.get_default(db)
+        provider = create_provider(**_resolve_model_kwargs(config, model_cfg))
+    except Exception as exc:
+        logger.warning("ingest.llm_extract: provider init failed: %s", exc)
+        return None
+
+    preview = json.dumps(_abbreviate(payload), indent=2, default=str)
+    prompt = EXTRACT_PROMPT.format(payload_preview=preview)
+
+    try:
+        text = await asyncio.to_thread(provider.complete, prompt)
+    except Exception as exc:
+        logger.warning("ingest.llm_extract: completion failed: %s", exc)
+        return None
+
+    paths = _parse_llm_json(text)
+    if not paths:
+        logger.warning("ingest.llm_extract: could not parse JSON from LLM output")
+        return None
+
+    # Validate each path actually resolves against the payload. Drop bad ones.
+    validated: dict[str, str] = {}
+    for field, path in paths.items():
+        if _resolve_path(payload, path) not in (None, "", [], {}):
+            validated[field] = path
+
+    return validated or None
+
+
+async def apply_shape_cache(
+    db: AsyncSession,
+    *,
+    token: IngestToken,
+    payload: dict[str, Any],
+    config: AppConfig,
+) -> tuple[dict[str, str] | None, bool]:
+    """Return field paths for this payload shape, using cache or LLM.
+
+    Returns ``(paths, cache_hit)``. When no cache entry exists, falls
+    back to LLM extraction and persists the result on the token.
+    """
+    shape = compute_shape_hash(payload)
+    cached = (token.shape_cache or {}).get(shape)
+    if isinstance(cached, dict):
+        return cached, True
+
+    paths = await extract_paths_via_llm(db, payload=payload, config=config)
+    if paths:
+        next_cache = dict(token.shape_cache or {})
+        next_cache[shape] = paths
+        await IngestTokenRepo.update_shape_cache(db, token.id, next_cache)
+        token.shape_cache = next_cache  # refresh in-memory too
+    return paths, False
+
+
+def parse_with_paths(
+    payload: dict[str, Any],
+    paths: dict[str, str] | None,
+):
+    """Run the Universal adapter with pre-resolved paths injected."""
+    adapter = UniversalAdapter(field_mapping=paths or {})
+    return adapter.parse(payload)

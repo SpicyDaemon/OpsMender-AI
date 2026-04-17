@@ -24,6 +24,8 @@ from backend.db.models import (
     ApprovalRequest,
     AuditEntry,
     Incident,
+    IngestLog,
+    IngestToken,
     MCPServer,
     ModelConfig,
     RuntimeConfig,
@@ -136,6 +138,26 @@ class IncidentRepo:
             .values(status=status, updated_at=datetime.now(timezone.utc))
         )
         await db.execute(stmt)
+
+    @staticmethod
+    async def get_by_external_fingerprint(
+        db: AsyncSession,
+        *,
+        external_source: str,
+        external_id: str,
+    ) -> Incident | None:
+        """Look up an incident by its external fingerprint for dedup."""
+        stmt = (
+            select(Incident)
+            .where(
+                Incident.external_source == external_source,
+                Incident.external_id == external_id,
+            )
+            .order_by(Incident.created_at.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
 
 # ---------------------------------------------------------------------------
@@ -902,3 +924,122 @@ class RuntimeConfigRepo:
         item.updated_at = datetime.now(timezone.utc)
         await db.flush()
         return item
+
+
+# ---------------------------------------------------------------------------
+# Ingest tokens (Sprint 14)
+# ---------------------------------------------------------------------------
+
+class IngestTokenRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        provider: str,
+        token_hash: str,
+    ) -> IngestToken:
+        token = IngestToken(
+            name=name,
+            provider=provider,
+            token_hash=token_hash,
+        )
+        db.add(token)
+        await db.flush()
+        return token
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, token_id: uuid.UUID) -> IngestToken | None:
+        return await db.get(IngestToken, token_id)
+
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str) -> IngestToken | None:
+        stmt = select(IngestToken).where(IngestToken.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession, *, active_only: bool = False
+    ) -> Sequence[IngestToken]:
+        stmt = select(IngestToken).order_by(IngestToken.created_at.desc())
+        if active_only:
+            stmt = stmt.where(IngestToken.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def revoke(db: AsyncSession, token_id: uuid.UUID) -> bool:
+        """Deactivate a token (soft-delete)."""
+        stmt = (
+            update(IngestToken)
+            .where(IngestToken.id == token_id)
+            .values(is_active=False)
+        )
+        result = await db.execute(stmt)
+        return bool(result.rowcount)
+
+    @staticmethod
+    async def touch(db: AsyncSession, token_id: uuid.UUID) -> None:
+        """Update last_used_at to now."""
+        stmt = (
+            update(IngestToken)
+            .where(IngestToken.id == token_id)
+            .values(last_used_at=datetime.now(timezone.utc))
+        )
+        await db.execute(stmt)
+
+    @staticmethod
+    async def delete(db: AsyncSession, token_id: uuid.UUID) -> bool:
+        tok = await IngestTokenRepo.get_by_id(db, token_id)
+        if tok is None:
+            return False
+        await db.delete(tok)
+        await db.flush()
+        return True
+
+
+# ---------------------------------------------------------------------------
+# Ingest log (Sprint 14)
+# ---------------------------------------------------------------------------
+
+class IngestLogRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        ingest_token_id: uuid.UUID,
+        provider: str,
+        raw_payload: dict,
+        incident_id: uuid.UUID | None = None,
+        dedup_action: str | None = None,
+        error: str | None = None,
+    ) -> IngestLog:
+        entry = IngestLog(
+            ingest_token_id=ingest_token_id,
+            provider=provider,
+            raw_payload=raw_payload,
+            incident_id=incident_id,
+            dedup_action=dedup_action,
+            error=error,
+        )
+        db.add(entry)
+        await db.flush()
+        return entry
+
+    @staticmethod
+    async def list_recent(
+        db: AsyncSession,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        token_id: uuid.UUID | None = None,
+    ) -> Sequence[IngestLog]:
+        stmt = select(IngestLog).order_by(IngestLog.created_at.desc())
+        if token_id is not None:
+            stmt = stmt.where(IngestLog.ingest_token_id == token_id)
+        stmt = stmt.limit(limit).offset(offset)
+        result = await db.execute(stmt)
+        return result.scalars().all()

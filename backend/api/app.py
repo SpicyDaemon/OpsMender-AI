@@ -96,6 +96,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.audit import router as audit_router
     from backend.api.routes.config import router as config_router
     from backend.api.routes.ws import router as ws_router
+    from backend.api.routes.ingest import router as ingest_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -107,6 +108,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(audit_router)
     app.include_router(config_router)
     app.include_router(ws_router)
+    app.include_router(ingest_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

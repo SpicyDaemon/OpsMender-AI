@@ -11,6 +11,8 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``runtime_config``     — DB-backed UI overrides for runtime settings
 - ``skills``             — operator-owned skill definitions (optionally bound to an MCP server)
 - ``session_messages``   — co-pilot chat history (user ↔ assistant), parallel to the workflow
+- ``ingest_tokens``      — per-source webhook credentials for external incident ingestion
+- ``ingest_log``         — raw payloads from external ingest for replay/debugging
 """
 
 from __future__ import annotations
@@ -88,6 +90,9 @@ class Incident(Base):
         String(20), nullable=False, default="open"
     )  # open | investigating | resolved | closed
     severity: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # External ingestion fingerprint — dedup by (external_source, external_id)
+    external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    external_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -301,4 +306,57 @@ class RuntimeConfig(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ingest tokens (external incident ingestion — Sprint 14)
+# ---------------------------------------------------------------------------
+
+class IngestToken(Base):
+    """Per-source credentials for the ``POST /incidents/ingest`` webhook.
+
+    The raw token is returned **only** on creation.  Subsequent reads
+    expose ``token_hash`` metadata but never the secret.
+    """
+    __tablename__ = "ingest_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    provider: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # cloudwatch | azure_monitor | legacy_alert_vendor | generic
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ingest log (raw payload audit trail)
+# ---------------------------------------------------------------------------
+
+class IngestLog(Base):
+    """Every inbound webhook payload stored raw for replay/debugging."""
+    __tablename__ = "ingest_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    ingest_token_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("ingest_tokens.id"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    raw_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("incidents.id"), nullable=True
+    )
+    dedup_action: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # created | updated | skipped
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
     )

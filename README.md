@@ -242,6 +242,7 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `POST` | `/incidents` | admin/operator | Create incident |
 | `GET` | `/incidents` | any | List incidents (pagination, status filter) |
 | `GET` | `/incidents/{id}` | any | Get single incident |
+| `POST` | `/incidents/ingest` | Ingest token | Webhook — ingest incident from external source |
 | `POST` | `/sessions` | admin/operator | Start a session |
 | `GET` | `/sessions/{id}` | any | Get session details |
 | `GET` | `/approvals` | any | List approval requests |
@@ -271,6 +272,11 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `PUT` | `/config/model` | admin | Validate and persist the default model config |
 | `GET` | `/sessions/{id}/messages` | any | List co-pilot chat messages |
 | `POST` | `/sessions/{id}/messages` | admin/operator | Send user message to co-pilot |
+| `GET` | `/ingest-tokens` | admin | List ingest tokens |
+| `POST` | `/ingest-tokens` | admin | Create ingest token (returns raw token once) |
+| `POST` | `/ingest-tokens/{id}/revoke` | admin | Revoke (deactivate) an ingest token |
+| `DELETE` | `/ingest-tokens/{id}` | admin | Permanently delete an ingest token |
+| `GET` | `/ingest-providers` | any | List available ingest provider adapters |
 | `WS` | `/sessions/{id}/stream?token=JWT` | JWT query param | Live session streaming |
 
 ### Roles
@@ -417,6 +423,57 @@ Sprint 9 added a persisted approval flow for destructive Tier 1 actions:
 
 Default approval timeout is 15 minutes (`AIM_APPROVAL_TIMEOUT_SECONDS=900`).
 
+## External Incident Ingestion
+
+Sprint 14 added a webhook-based ingestion system that lets external monitoring/alerting tools create incidents in AIM automatically.
+
+### How It Works
+
+1. An admin creates an **ingest token** via `POST /ingest-tokens`, specifying which provider adapter to use.
+2. The raw token (starts with `aim_ingest_...`) is returned **once** — save it. AIM stores only the SHA-256 hash.
+3. External systems send JSON payloads to `POST /incidents/ingest` with the token in an `X-AIM-Token` header (or `Authorization: Bearer`).
+4. AIM routes the payload through the provider-specific adapter, which normalizes it into an incident.
+5. Dedup by `(external_source, external_id)` — repeated alerts update or skip instead of creating duplicates.
+6. Every inbound payload is logged raw in the `ingest_log` table for replay/debugging.
+
+### Supported Provider Adapters
+
+| Provider | Key | Handles |
+|----------|-----|---------|
+| CloudWatch | `cloudwatch` | SNS `SubscriptionConfirmation` + `Notification` envelopes with embedded alarm JSON |
+| Azure Monitor | `azure_monitor` | Common alert schema v2 — maps severity (Sev0–4) and monitor condition |
+| LegacyAlertVendor | `legacy_alert_vendor` | v2 webhooks — `incident.triggered`, `.acknowledged`, `.resolved` |
+| Generic JSON | `generic` | Configurable dot-path field mapping — works with Grafana, Datadog, Prometheus, custom scripts |
+
+### Quick Test (curl)
+
+```bash
+# 1. Get an admin JWT
+TOKEN=$(curl -s http://localhost:8000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# 2. Create an ingest token
+INGEST=$(curl -s http://localhost:8000/ingest-tokens \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"test-source","provider":"generic"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+# 3. Send an incident
+curl -s http://localhost:8000/incidents/ingest \
+  -H "X-AIM-Token: $INGEST" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Disk Full","description":"98% on /data","severity":"high","id":"alert-001"}'
+# → {"success":true,"dedup_action":"created",...}
+
+# 4. Same payload again → dedup kicks in
+curl -s http://localhost:8000/incidents/ingest \
+  -H "X-AIM-Token: $INGEST" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Disk Full","description":"98% on /data","severity":"high","id":"alert-001"}'
+# → {"success":true,"dedup_action":"skipped",...}
+```
+
 ## Project Structure
 
 ```
@@ -428,8 +485,12 @@ ai-incident-manager/
 │   │   ├── auth.py         # JWT auth, bcrypt hashing, RBAC dependencies
 │   │   ├── deps.py         # DB session dependency injection
 │   │   ├── schemas.py      # Pydantic request/response models
-│   │   └── routes/         # Route modules (auth, incidents, sessions + chat, approvals, audit, config, models, mcp_servers, skills, ws)
+│   │   └── routes/         # Route modules (auth, incidents, sessions + chat, approvals, audit, config, models, mcp_servers, skills, ws, ingest)
 │   ├── chat/               # Async co-pilot chat responder (parallel LLM call + WS push)
+│   ├── ingest/             # External incident ingestion (Sprint 14)
+│   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, legacy_alert_vendor, generic)
+│   │   ├── registry.py     # Adapter registry (provider key → adapter class)
+│   │   └── service.py      # Token auth, adapter dispatch, dedup, audit logging
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic
 │   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
 │   ├── config_loader.py    # .env/AppConfig loader + typed dataclasses
@@ -451,7 +512,7 @@ ai-incident-manager/
 ## Progress
 
 - **Phase 1 (Sprints 1–6):** ✅ Complete — CLI, MCP, skills, tiers, audit, LangGraph workflow
-- **Phase 2 (Sprints 7–13):** ✅ Complete
+- **Phase 2 (Sprints 7–14):** In progress
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
   - Sprint 8: ✅ FastAPI REST + WebSocket layer (JWT auth, RBAC, all CRUD endpoints)
   - Sprint 9: ✅ Tier 1 approval flow
@@ -459,6 +520,7 @@ ai-incident-manager/
   - Sprint 11: ✅ Next.js frontend + Docker setup
   - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, Co-pilot Chat)
   - Sprint 13: ✅ Single-container app — `aim serve` + unified `docker/Dockerfile` + PyInstaller binary, E2E + frontend-mount verification green
+  - Sprint 14: 🔧 External incident ingestion — core API + 4 provider adapters + dedup + ingest audit log done; admin UI, rate limiting, MCP-driven detector remaining
 
 ## Distribution Status
 
@@ -473,3 +535,4 @@ skills/              # operator-owned skill definitions for each environment
 The repo ships the PyInstaller spec/build script and the unified `aim serve` entrypoint; the full chain (auth → incident → session → approval → execute → audit, plus the static frontend mount) is covered by `tests/test_e2e.py` and `tests/test_frontend_mount.py`.
 
 See `docs/REFERENCE.md` for full architecture details.
+

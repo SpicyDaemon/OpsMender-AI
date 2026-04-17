@@ -63,6 +63,8 @@ class IncidentResponse(BaseModel):
     description: str
     status: str
     severity: Optional[str]
+    external_id: Optional[str] = None
+    external_source: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -313,6 +315,61 @@ class SessionMessageResponse(BaseModel):
 class SessionMessageListResponse(BaseModel):
     items: list[SessionMessageResponse]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Ingest tokens (Sprint 14)
+# ---------------------------------------------------------------------------
+
+class IngestTokenCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    provider: str = Field(
+        ..., pattern="^(cloudwatch|azure_monitor|legacy_alert_vendor|generic)$"
+    )
+
+
+class IngestTokenResponse(BaseModel):
+    """Returned on list/get — never exposes the raw token."""
+    id: uuid.UUID
+    name: str
+    provider: str
+    is_active: bool
+    created_at: datetime
+    last_used_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class IngestTokenCreatedResponse(BaseModel):
+    """Returned only on creation — includes the raw token once."""
+    id: uuid.UUID
+    name: str
+    provider: str
+    token: str  # raw token — shown once, never stored
+    is_active: bool
+    created_at: datetime
+
+
+class IngestTokenListResponse(BaseModel):
+    items: list[IngestTokenResponse]
+    total: int
+
+
+class IngestResponse(BaseModel):
+    """Response from POST /incidents/ingest webhook."""
+    success: bool
+    incident_id: Optional[uuid.UUID] = None
+    dedup_action: Optional[str] = None  # created | updated | skipped
+    error: Optional[str] = None
+
+
+class IngestProviderResponse(BaseModel):
+    key: str
+    label: str
+
+
+class IngestProviderListResponse(BaseModel):
+    items: list[IngestProviderResponse]
 
 
 # ---------------------------------------------------------------------------

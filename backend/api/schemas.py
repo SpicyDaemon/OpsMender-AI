@@ -373,6 +373,78 @@ class IngestProviderListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Detector rules (MCP-driven incident detection)
+# ---------------------------------------------------------------------------
+
+class DetectorRuleCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    mcp_server_id: uuid.UUID
+    prompt_template: str = Field(..., min_length=1)
+    model_config_id: Optional[uuid.UUID] = None
+    interval_seconds: int = Field(default=300, ge=30, le=86400)
+    severity_default: str = Field(default="medium", pattern="^(critical|high|medium|low)$")
+    is_active: bool = True
+
+
+class DetectorRuleUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    mcp_server_id: Optional[uuid.UUID] = None
+    prompt_template: Optional[str] = Field(None, min_length=1)
+    model_config_id: Optional[uuid.UUID] = None
+    interval_seconds: Optional[int] = Field(None, ge=30, le=86400)
+    severity_default: Optional[str] = Field(None, pattern="^(critical|high|medium|low)$")
+    is_active: Optional[bool] = None
+
+
+class DetectorRuleResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    mcp_server_id: uuid.UUID
+    prompt_template: str
+    model_config_id: Optional[uuid.UUID]
+    interval_seconds: int
+    severity_default: str
+    is_active: bool
+    last_ran_at: Optional[datetime]
+    last_fingerprint: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DetectorRuleListResponse(BaseModel):
+    items: list[DetectorRuleResponse]
+    total: int
+
+
+class DetectorHistoryResponse(BaseModel):
+    id: uuid.UUID
+    rule_id: uuid.UUID
+    ran_at: datetime
+    duration_ms: Optional[int]
+    issue_detected: bool
+    incident_id: Optional[uuid.UUID]
+    raw_verdict: Optional[dict] = None
+    error: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class DetectorHistoryListResponse(BaseModel):
+    items: list[DetectorHistoryResponse]
+    total: int
+
+
+class DetectorRunResponse(BaseModel):
+    """Response from POST /detectors/{id}/run (on-demand execution)."""
+    success: bool
+    issue_detected: bool = False
+    incident_id: Optional[uuid.UUID] = None
+    error: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------
 

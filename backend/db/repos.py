@@ -23,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
     ApprovalRequest,
     AuditEntry,
+    DetectorHistory,
+    DetectorRule,
     Incident,
     IngestLog,
     IngestToken,

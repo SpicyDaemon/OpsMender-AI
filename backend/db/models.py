@@ -13,6 +13,8 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``session_messages``   — co-pilot chat history (user ↔ assistant), parallel to the workflow
 - ``ingest_tokens``      — per-source webhook credentials for external incident ingestion
 - ``ingest_log``         — raw payloads from external ingest for replay/debugging
+- ``detector_rules``     — MCP-driven incident detection probes (one per MCP server)
+- ``detector_history``   — run history for each detector rule
 """
 
 from __future__ import annotations
@@ -360,3 +362,69 @@ class IngestLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# Detector rules (MCP-driven incident detection — Sprint 14)
+# ---------------------------------------------------------------------------
+
+class DetectorRule(Base):
+    """One detection probe against one MCP server.
+
+    Periodically runs a read-only LLM loop to inspect the MCP server
+    and auto-files an incident when something looks wrong.
+    """
+    __tablename__ = "detector_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    mcp_server_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False
+    )
+    prompt_template: Mapped[str] = mapped_column(Text, nullable=False)
+    model_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("model_configs.id", ondelete="SET NULL"), nullable=True
+    )
+    interval_seconds: Mapped[int] = mapped_column(
+        Integer, default=300, nullable=False
+    )  # default: every 5 minutes
+    severity_default: Mapped[str] = mapped_column(
+        String(20), default="medium", nullable=False
+    )  # critical | high | medium | low
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_ran_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_fingerprint: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Detector history (run log for detector rules)
+# ---------------------------------------------------------------------------
+
+class DetectorHistory(Base):
+    """One row per detector rule execution."""
+    __tablename__ = "detector_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    rule_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("detector_rules.id", ondelete="CASCADE"), nullable=False,
+        index=True,
+    )
+    ran_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    issue_detected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="SET NULL"), nullable=True
+    )
+    raw_verdict: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+

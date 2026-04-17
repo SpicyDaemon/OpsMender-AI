@@ -1045,3 +1045,166 @@ class IngestLogRepo:
         stmt = stmt.limit(limit).offset(offset)
         result = await db.execute(stmt)
         return result.scalars().all()
+
+
+# ---------------------------------------------------------------------------
+# Detector rules / history (MCP-driven incident detection — Sprint 14)
+# ---------------------------------------------------------------------------
+
+class DetectorRuleRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        mcp_server_id: uuid.UUID,
+        prompt_template: str,
+        model_config_id: uuid.UUID | None = None,
+        interval_seconds: int = 300,
+        severity_default: str = "medium",
+        is_active: bool = True,
+    ) -> DetectorRule:
+        rule = DetectorRule(
+            name=name,
+            mcp_server_id=mcp_server_id,
+            prompt_template=prompt_template,
+            model_config_id=model_config_id,
+            interval_seconds=interval_seconds,
+            severity_default=severity_default,
+            is_active=is_active,
+        )
+        db.add(rule)
+        await db.flush()
+        return rule
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, rule_id: uuid.UUID) -> DetectorRule | None:
+        return await db.get(DetectorRule, rule_id)
+
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str) -> DetectorRule | None:
+        stmt = select(DetectorRule).where(DetectorRule.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        *,
+        active_only: bool = False,
+    ) -> Sequence[DetectorRule]:
+        stmt = select(DetectorRule).order_by(DetectorRule.name)
+        if active_only:
+            stmt = stmt.where(DetectorRule.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        rule_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        mcp_server_id: uuid.UUID | None = None,
+        prompt_template: str | None = None,
+        model_config_id: uuid.UUID | None = None,
+        model_config_id_provided: bool = False,
+        interval_seconds: int | None = None,
+        severity_default: str | None = None,
+        is_active: bool | None = None,
+    ) -> DetectorRule | None:
+        values: dict[str, Any] = {
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if name is not None:
+            values["name"] = name
+        if mcp_server_id is not None:
+            values["mcp_server_id"] = mcp_server_id
+        if prompt_template is not None:
+            values["prompt_template"] = prompt_template
+        if model_config_id_provided:
+            values["model_config_id"] = model_config_id
+        if interval_seconds is not None:
+            values["interval_seconds"] = interval_seconds
+        if severity_default is not None:
+            values["severity_default"] = severity_default
+        if is_active is not None:
+            values["is_active"] = is_active
+
+        stmt = update(DetectorRule).where(DetectorRule.id == rule_id).values(**values)
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await DetectorRuleRepo.get_by_id(db, rule_id)
+
+    @staticmethod
+    async def mark_run(
+        db: AsyncSession,
+        rule_id: uuid.UUID,
+        *,
+        last_ran_at: datetime | None = None,
+        last_fingerprint: str | None = None,
+    ) -> None:
+        values: dict[str, Any] = {
+            "updated_at": datetime.now(timezone.utc),
+            "last_ran_at": last_ran_at or datetime.now(timezone.utc),
+        }
+        if last_fingerprint is not None:
+            values["last_fingerprint"] = last_fingerprint
+        stmt = update(DetectorRule).where(DetectorRule.id == rule_id).values(**values)
+        await db.execute(stmt)
+
+    @staticmethod
+    async def delete(db: AsyncSession, rule_id: uuid.UUID) -> bool:
+        rule = await DetectorRuleRepo.get_by_id(db, rule_id)
+        if rule is None:
+            return False
+        await db.delete(rule)
+        await db.flush()
+        return True
+
+
+class DetectorHistoryRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        rule_id: uuid.UUID,
+        duration_ms: int | None = None,
+        issue_detected: bool = False,
+        incident_id: uuid.UUID | None = None,
+        raw_verdict: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> DetectorHistory:
+        row = DetectorHistory(
+            rule_id=rule_id,
+            duration_ms=duration_ms,
+            issue_detected=issue_detected,
+            incident_id=incident_id,
+            raw_verdict=raw_verdict,
+            error=error,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def list_by_rule(
+        db: AsyncSession,
+        rule_id: uuid.UUID,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[DetectorHistory]:
+        stmt = (
+            select(DetectorHistory)
+            .where(DetectorHistory.rule_id == rule_id)
+            .order_by(DetectorHistory.ran_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()

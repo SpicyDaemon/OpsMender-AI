@@ -283,6 +283,55 @@ export async function setDefaultModelConfig(
 }
 
 // ---------------------------------------------------------------------------
+// Detectors
+// ---------------------------------------------------------------------------
+
+import type {
+  DetectorHistoryListResponse,
+  DetectorRuleCreate,
+  DetectorRuleListResponse,
+  DetectorRuleResponse,
+  DetectorRuleUpdate,
+  DetectorRunResponse,
+  DetectorTemplateListResponse,
+} from "./types";
+
+export async function listDetectors(): Promise<DetectorRuleListResponse> {
+  return api.get<DetectorRuleListResponse>("/detectors");
+}
+
+export async function createDetector(
+  body: DetectorRuleCreate,
+): Promise<DetectorRuleResponse> {
+  return api.post<DetectorRuleResponse>("/detectors", body);
+}
+
+export async function updateDetector(
+  id: string,
+  body: DetectorRuleUpdate,
+): Promise<DetectorRuleResponse> {
+  return api.put<DetectorRuleResponse>(`/detectors/${id}`, body);
+}
+
+export async function deleteDetector(id: string): Promise<void> {
+  return api.del<void>(`/detectors/${id}`);
+}
+
+export async function runDetector(id: string): Promise<DetectorRunResponse> {
+  return api.post<DetectorRunResponse>(`/detectors/${id}/run`);
+}
+
+export async function listDetectorHistory(
+  id: string,
+): Promise<DetectorHistoryListResponse> {
+  return api.get<DetectorHistoryListResponse>(`/detectors/${id}/history`);
+}
+
+export async function listDetectorTemplates(): Promise<DetectorTemplateListResponse> {
+  return api.get<DetectorTemplateListResponse>("/detectors/templates");
+}
+
+// ---------------------------------------------------------------------------
 // MCP Servers
 // ---------------------------------------------------------------------------
 

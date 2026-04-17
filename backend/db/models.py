@@ -327,7 +327,7 @@ class IngestToken(Base):
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # cloudwatch | azure_monitor | legacy_alert_vendor | generic
+    )  # cloudwatch | azure_monitor | legacy_alert_vendor | legacy_alert_relay | generic
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -427,4 +427,3 @@ class DetectorHistory(Base):
     )
     raw_verdict: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-

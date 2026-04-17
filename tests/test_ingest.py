@@ -2,11 +2,11 @@
 
 Covers:
 - Ingest token CRUD (create, list, revoke, delete)
-- Webhook endpoint (POST /incidents/ingest) with all 4 adapters
+- Webhook endpoint (POST /incidents/ingest) with all 5 adapters
 - Dedup by external fingerprint (create, update, skip)
 - Token auth (missing, invalid, revoked)
 - Rate limiting & audit log entries
-- Adapter parsing for CloudWatch, Azure Monitor, LegacyAlertVendor, Generic JSON
+- Adapter parsing for CloudWatch, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, Generic JSON
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from backend.api.app import create_app
 from backend.api.deps import get_db, set_session_factory
 from backend.config_loader import set_env_path
 from backend.db.models import Base
-from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo
+from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo, SessionRepo
 from backend.ingest.service import generate_token, hash_token
 
 
@@ -32,7 +32,9 @@ from backend.ingest.service import generate_token, hash_token
 
 @pytest.fixture
 async def app(tmp_path):
-    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    db_path = tmp_path / "ingest-test.db"
+    database_url = f"sqlite+aiosqlite:///{db_path}"
+    engine = create_async_engine(database_url, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -45,7 +47,7 @@ async def app(tmp_path):
         "AIM_LOG_LEVEL=INFO\n"
         "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
         "AIM_JWT_SECRET=test-secret\n"
-        "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
+        f"AIM_DATABASE_URL={database_url}\n"
         f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
     )
     set_env_path(tmp_env)
@@ -230,6 +232,7 @@ class TestIngestProviders:
         assert "cloudwatch" in keys
         assert "azure_monitor" in keys
         assert "legacy_alert_vendor" in keys
+        assert "legacy_alert_relay" in keys
         assert "generic" in keys
 
 
@@ -373,6 +376,110 @@ class TestIngestGeneric:
             inc = await IncidentRepo.get_by_id(db, uuid.UUID(data["incident_id"]))
             assert inc is not None
             assert inc.status == "resolved"
+
+    async def test_ingest_auto_start_creates_session_when_rule_matches(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        config_resp = await client.put(
+            "/config",
+            json={
+                "tier": 1,
+                "ingest_auto_start_enabled": True,
+                "ingest_auto_start_min_severity": "high",
+                "ingest_auto_start_source": "generic",
+            },
+            headers=admin_headers,
+        )
+        assert config_resp.status_code == 200
+
+        raw, _ = await _create_token(app, provider="generic", name="generic-autostart")
+        resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Primary DB unavailable",
+                "description": "RDS instance stopped responding",
+                "severity": "critical",
+                "id": "autostart-001",
+            },
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp.status_code == 200
+        incident_id = uuid.UUID(resp.json()["incident_id"])
+
+        async with app.state.session_factory() as db:
+            sessions = await SessionRepo.list_by_incident(db, incident_id)
+            assert len(sessions) == 1
+            assert sessions[0].tier == 1
+            assert sessions[0].status == "active"
+
+    async def test_ingest_auto_start_skips_when_rule_does_not_match(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        await client.put(
+            "/config",
+            json={
+                "ingest_auto_start_enabled": True,
+                "ingest_auto_start_min_severity": "critical",
+                "ingest_auto_start_source": "legacy_alert_vendor",
+            },
+            headers=admin_headers,
+        )
+
+        raw, _ = await _create_token(app, provider="generic", name="generic-no-autostart")
+        resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Disk warning",
+                "description": "Disk is 82% full",
+                "severity": "high",
+                "id": "autostart-002",
+            },
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp.status_code == 200
+        incident_id = uuid.UUID(resp.json()["incident_id"])
+
+        async with app.state.session_factory() as db:
+            sessions = await SessionRepo.list_by_incident(db, incident_id)
+            assert sessions == []
+
+    async def test_ingest_auto_start_does_not_duplicate_sessions_on_dedup(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        await client.put(
+            "/config",
+            json={
+                "ingest_auto_start_enabled": True,
+                "ingest_auto_start_min_severity": "high",
+                "ingest_auto_start_source": "generic",
+            },
+            headers=admin_headers,
+        )
+
+        raw, _ = await _create_token(app, provider="generic", name="generic-autostart-dedup")
+        payload = {
+            "title": "API outage",
+            "description": "503s spiking",
+            "severity": "critical",
+            "id": "autostart-003",
+        }
+        first = await client.post(
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
+        )
+        second = await client.post(
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
+        )
+        assert first.status_code == 200
+        assert second.status_code == 200
+
+        incident_id = uuid.UUID(first.json()["incident_id"])
+        async with app.state.session_factory() as db:
+            sessions = await SessionRepo.list_by_incident(db, incident_id)
+            assert len(sessions) == 1
 
 
 # ===========================================================================
@@ -572,6 +679,67 @@ class TestIngestLegacyAlertVendor:
 
 
 # ===========================================================================
+# Webhook — LegacyAlertRelay adapter
+# ===========================================================================
+
+class TestIngestLegacyAlertRelay:
+
+    async def test_legacy_alert_relay_create(self, client: AsyncClient, app):
+        raw, tok = await _create_token(
+            app, provider="legacy_alert_relay", name="legacy_alert_relay-create",
+        )
+        payload = {
+            "action": "Create",
+            "alert": {
+                "alertId": "OG-ALERT-001",
+                "message": "API latency above threshold",
+                "description": "P95 latency exceeded 800ms for 5m",
+                "priority": "P2",
+                "alias": "latency-prod-api",
+                "tinyId": "418",
+                "entity": "prod-api",
+                "source": "grafana",
+                "username": "alert-bot@example.com",
+                "tags": ["latency", "prod"],
+                "details": {"region": "us-east-1", "service": "api"},
+            },
+            "integrationName": "AIM webhook",
+        }
+        resp = await client.post(
+            "/incidents/ingest", json=payload, headers={"X-AIM-Token": raw},
+        )
+        data = resp.json()
+        assert data["success"] is True
+        assert data["dedup_action"] == "created"
+
+    async def test_legacy_alert_relay_close_updates_existing_incident(
+        self, client: AsyncClient, app
+    ):
+        raw, tok = await _create_token(
+            app, provider="legacy_alert_relay", name="legacy_alert_relay-close",
+        )
+        base_alert = {
+            "alertId": "OG-ALERT-002",
+            "message": "Checkout error spike",
+            "priority": "P1",
+            "alias": "checkout-errors",
+        }
+
+        await client.post(
+            "/incidents/ingest",
+            json={"action": "Create", "alert": base_alert},
+            headers={"X-AIM-Token": raw},
+        )
+
+        resp = await client.post(
+            "/incidents/ingest",
+            json={"action": "Close", "alert": base_alert},
+            headers={"X-AIM-Token": raw},
+        )
+        assert resp.json()["dedup_action"] == "updated"
+
+
+# ===========================================================================
 # Ingest audit log
 # ===========================================================================
 
@@ -678,6 +846,47 @@ class TestAdaptersUnit:
         adapter = LegacyAlertVendorAdapter()
         with pytest.raises(ValueError, match="Missing"):
             adapter.parse({})
+
+    def test_legacy_alert_relay_missing_alert(self):
+        from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
+        adapter = LegacyAlertRelayAdapter()
+        with pytest.raises(ValueError, match="Missing"):
+            adapter.parse({"action": "Create"})
+
+    def test_legacy_alert_relay_create_mapping(self):
+        from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
+        adapter = LegacyAlertRelayAdapter()
+        result = adapter.parse({
+            "action": "Create",
+            "alert": {
+                "alertId": "OG-UNIT-001",
+                "message": "API latency above threshold",
+                "description": "P95 latency exceeded 800ms",
+                "priority": "P2",
+                "alias": "latency-prod-api",
+                "tags": ["latency", "prod"],
+            },
+        })
+        assert result.title == "[LegacyAlertRelay] API latency above threshold"
+        assert result.status == "open"
+        assert result.severity == "high"
+        assert result.external_id == "OG-UNIT-001"
+        assert result.external_source == "legacy_alert_relay"
+
+    def test_legacy_alert_relay_close_mapping(self):
+        from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
+        adapter = LegacyAlertRelayAdapter()
+        result = adapter.parse({
+            "action": "Close",
+            "alert": {
+                "alertId": "OG-UNIT-002",
+                "message": "Checkout error spike",
+                "priority": "P1",
+            },
+        })
+        assert result.status == "resolved"
+        assert result.severity == "critical"
+        assert result.external_id == "OG-UNIT-002"
 
     def test_registry_fallback_to_generic(self):
         from backend.ingest.registry import get_adapter
@@ -806,4 +1015,3 @@ class TestRateLimitIntegration:
         assert "X-RateLimit-Limit" in resp.headers
         assert resp.headers["X-RateLimit-Limit"] == "2"
         assert resp.headers["X-RateLimit-Remaining"] == "0"
-

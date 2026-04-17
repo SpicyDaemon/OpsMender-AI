@@ -7,11 +7,13 @@ from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
 from backend.ingest.adapters.azure_monitor import AzureMonitorAdapter
 from backend.ingest.adapters.legacy_alert_vendor import LegacyAlertVendorAdapter
 from backend.ingest.adapters.generic import GenericAdapter
+from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
 
 _ADAPTERS: dict[str, type[IngestAdapter]] = {
     "cloudwatch": CloudWatchAdapter,
     "azure_monitor": AzureMonitorAdapter,
     "legacy_alert_vendor": LegacyAlertVendorAdapter,
+    "legacy_alert_relay": LegacyAlertRelayAdapter,
     "generic": GenericAdapter,
 }
 

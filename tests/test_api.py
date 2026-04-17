@@ -445,6 +445,9 @@ class TestConfig:
         assert "mcp_servers" in data
         assert "audit_output" in data
         assert "logging_level" in data
+        assert data["ingest_auto_start_enabled"] is False
+        assert data["ingest_auto_start_min_severity"] == "critical"
+        assert data["ingest_auto_start_source"] is None
 
     async def test_get_config_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
@@ -456,11 +459,33 @@ class TestConfig:
         resp = await client.put("/config", json={
             "tier": 3,
             "logging_level": "DEBUG",
+            "ingest_auto_start_enabled": True,
+            "ingest_auto_start_min_severity": "high",
+            "ingest_auto_start_source": "legacy_alert_vendor",
         }, headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["tier"] == 3
         assert data["logging_level"] == "DEBUG"
+        assert data["ingest_auto_start_enabled"] is True
+        assert data["ingest_auto_start_min_severity"] == "high"
+        assert data["ingest_auto_start_source"] == "legacy_alert_vendor"
+
+    async def test_update_config_allows_clearing_ingest_auto_start_source(
+        self, client: AsyncClient, auth_headers
+    ):
+        await client.put(
+            "/config",
+            json={"ingest_auto_start_source": "legacy_alert_relay"},
+            headers=auth_headers,
+        )
+        resp = await client.put(
+            "/config",
+            json={"ingest_auto_start_source": ""},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ingest_auto_start_source"] is None
 
     async def test_update_config_viewer_forbidden(
         self, client: AsyncClient, viewer_headers

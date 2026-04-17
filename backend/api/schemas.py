@@ -159,6 +159,9 @@ class ConfigResponse(BaseModel):
     mcp_servers: list[dict[str, Any]]
     audit_output: str
     logging_level: str
+    ingest_auto_start_enabled: bool
+    ingest_auto_start_min_severity: str
+    ingest_auto_start_source: Optional[str] = None
 
 
 class ConfigUpdate(BaseModel):
@@ -166,6 +169,12 @@ class ConfigUpdate(BaseModel):
     logging_level: Optional[str] = Field(
         default=None, pattern="^(DEBUG|INFO|WARNING|ERROR)$"
     )
+    ingest_auto_start_enabled: Optional[bool] = None
+    ingest_auto_start_min_severity: Optional[str] = Field(
+        default=None,
+        pattern="^(critical|high|medium|low)$",
+    )
+    ingest_auto_start_source: Optional[str] = Field(default=None, max_length=100)
 
 
 class ModelConfigResponse(BaseModel):
@@ -324,7 +333,7 @@ class SessionMessageListResponse(BaseModel):
 class IngestTokenCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     provider: str = Field(
-        ..., pattern="^(cloudwatch|azure_monitor|legacy_alert_vendor|generic)$"
+        ..., pattern="^(cloudwatch|azure_monitor|legacy_alert_vendor|legacy_alert_relay|generic)$"
     )
 
 
@@ -442,6 +451,20 @@ class DetectorRunResponse(BaseModel):
     issue_detected: bool = False
     incident_id: Optional[uuid.UUID] = None
     error: Optional[str] = None
+
+
+class DetectorTemplateResponse(BaseModel):
+    key: str
+    label: str
+    description: str
+    prompt_template: str
+    severity_default: str
+    interval_seconds: int
+
+
+class DetectorTemplateListResponse(BaseModel):
+    items: list[DetectorTemplateResponse]
+    total: int
 
 
 # ---------------------------------------------------------------------------

@@ -411,12 +411,22 @@ Sprint 14 added a webhook-based ingestion system that lets external monitoring/a
 5. Dedup by `(external_source, external_id)` — repeated alerts update or skip instead of creating duplicates.
 6. Every inbound payload is logged raw in the `ingest_log` table for replay/debugging.
 7. Per-token rate limiting enforced (default: 60 req/min). Returns `429` with `Retry-After` header when exceeded.
+8. Optional auto-start can create one session automatically for newly created incidents that match a configured source + minimum severity rule.
 
 **Rate limit config** (in `.env`):
 ```dotenv
 AIM_INGEST_RATE_LIMIT=60     # max requests per window per token (0 = disabled)
 AIM_INGEST_RATE_WINDOW=60    # window size in seconds
 ```
+
+**Optional ingest auto-start** (env defaults, also editable in `/dashboard/config`):
+```dotenv
+AIM_INGEST_AUTO_START_ENABLED=false
+AIM_INGEST_AUTO_START_MIN_SEVERITY=critical
+AIM_INGEST_AUTO_START_SOURCE=
+```
+
+When enabled, AIM auto-creates a single session only for newly created incidents whose `external_source` matches the configured source filter (or any source if blank) and whose severity is at or above the configured threshold. The new session inherits the current runtime tier, and duplicate ingests do not spawn extra active sessions.
 
 ### Supported Provider Adapters
 
@@ -425,6 +435,7 @@ AIM_INGEST_RATE_WINDOW=60    # window size in seconds
 | CloudWatch | `cloudwatch` | SNS `SubscriptionConfirmation` + `Notification` envelopes with embedded alarm JSON |
 | Azure Monitor | `azure_monitor` | Common alert schema v2 — maps severity (Sev0–4) and monitor condition |
 | LegacyAlertVendor | `legacy_alert_vendor` | v2 webhooks — `incident.triggered`, `.acknowledged`, `.resolved` |
+| LegacyAlertRelay | `legacy_alert_relay` | Webhook integration payloads — `Create`, `Acknowledge`, `Close`, and update-style alert actions |
 | Generic JSON | `generic` | Configurable dot-path field mapping — works with Grafana, Datadog, Prometheus, custom scripts |
 
 ### Quick Test (curl)
@@ -456,7 +467,7 @@ curl -s http://localhost:8000/incidents/ingest \
 # → {"success":true,"dedup_action":"skipped",...}
 ```
 
-For full curl recipes covering all four providers (CloudWatch SNS, Azure Monitor, LegacyAlertVendor, Generic), including lifecycle examples (alarm→recovery, trigger→acknowledge→resolve), severity mapping tables, and dedup behavior, see [`docs/REFERENCE.md`](docs/REFERENCE.md#external-incident-ingestion).
+For full curl recipes covering all five providers (CloudWatch SNS, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, Generic), including lifecycle examples and severity mapping tables, see [`docs/REFERENCE.md`](docs/REFERENCE.md#external-incident-ingestion).
 
 ## Project Structure
 
@@ -472,9 +483,10 @@ ai-incident-manager/
 │   │   └── routes/         # Route modules (auth, incidents, sessions + chat, approvals, audit, config, models, mcp_servers, skills, ws, ingest)
 │   ├── chat/               # Async co-pilot chat responder (parallel LLM call + WS push)
 │   ├── ingest/             # External incident ingestion (Sprint 14)
-│   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, legacy_alert_vendor, generic)
+│   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, legacy_alert_vendor, legacy_alert_relay, generic)
 │   │   ├── registry.py     # Adapter registry (provider key → adapter class)
 │   │   └── service.py      # Token auth, adapter dispatch, dedup, audit logging
+│   ├── detector/           # MCP-driven detector runner + scheduler + templates (Sprint 14)
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic
 │   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
 │   ├── config_loader.py    # .env/AppConfig loader + typed dataclasses
@@ -504,7 +516,7 @@ ai-incident-manager/
   - Sprint 11: ✅ Next.js frontend + Docker setup
   - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, Co-pilot Chat)
   - Sprint 13: ✅ Single-container app — `aim serve` + unified `docker/Dockerfile` + PyInstaller binary, E2E + frontend-mount verification green
-  - Sprint 14: 🔧 External incident ingestion — core API + 4 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting done; MCP-driven detector remaining
+  - Sprint 14: 🔧 External incident ingestion — core API + 5 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting done; MCP-driven detector backend + templates + dashboard UI done; optional auto-start remains
 
 ## Distribution Status
 
@@ -519,4 +531,3 @@ skills/              # operator-owned skill definitions for each environment
 The repo ships the PyInstaller spec/build script and the unified `aim serve` entrypoint; the full chain (auth → incident → session → approval → execute → audit, plus the static frontend mount) is covered by `tests/test_e2e.py` and `tests/test_frontend_mount.py`.
 
 See `docs/REFERENCE.md` for full architecture details.
-

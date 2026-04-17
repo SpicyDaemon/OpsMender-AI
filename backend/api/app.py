@@ -19,6 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config_loader import AppConfig
 from backend.api.deps import set_mcp_pool, set_session_factory
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
+from backend.detector.runner import DetectorBudgetGuard
+from backend.detector.scheduler import DetectorScheduler
 from backend.mcp.pool import MCPServerPool
 from backend.skills.importer import auto_import as auto_import_skills
 
@@ -45,6 +47,19 @@ async def _lifespan(app: FastAPI):
     pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
     set_mcp_pool(pool)
     app.state.mcp_pool = pool
+    app.state.detector_budget = DetectorBudgetGuard(
+        max_runs_per_hour=config.detector.max_runs_per_hour,
+        global_budget=config.detector.budget,
+    )
+    scheduler = DetectorScheduler(
+        factory,
+        pool=pool,
+        config=config,
+        budget_guard=app.state.detector_budget,
+    )
+    app.state.detector_scheduler = scheduler
+    if config.detector.enabled:
+        await scheduler.start()
 
     # Import any SKILL.md files under ./skills/ that aren't already in the DB.
     # Best-effort: failures are logged but do not block startup.
@@ -58,6 +73,7 @@ async def _lifespan(app: FastAPI):
 
     yield
 
+    await scheduler.stop()
     await engine.dispose()
 
 
@@ -104,6 +120,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.config import router as config_router
     from backend.api.routes.ws import router as ws_router
     from backend.api.routes.ingest import router as ingest_router
+    from backend.api.routes.detectors import router as detectors_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -116,6 +133,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(config_router)
     app.include_router(ws_router)
     app.include_router(ingest_router)
+    app.include_router(detectors_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

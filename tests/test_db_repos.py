@@ -15,6 +15,8 @@ from backend.db.models import Base, Session as SessionModel
 from backend.db.repos import (
     ApprovalRequestRepo,
     AuditEntryRepo,
+    DetectorHistoryRepo,
+    DetectorRuleRepo,
     IncidentRepo,
     MCPServerRepo,
     ModelConfigRepo,
@@ -517,6 +519,94 @@ class TestMCPServerRepo:
         active_servers = await MCPServerRepo.list_all(db, active_only=True)
         assert len(active_servers) == 1
         assert active_servers[0].name == "k8s"
+
+
+# ---------------------------------------------------------------------------
+# Detector repos
+# ---------------------------------------------------------------------------
+
+class TestDetectorRepos:
+
+    async def test_create_rule_and_history(self, db: AsyncSession):
+        server = await MCPServerRepo.create(
+            db,
+            name="detector-k8s",
+            transport="stdio",
+            command="echo",
+        )
+        await db.flush()
+
+        rule = await DetectorRuleRepo.create(
+            db,
+            name="watch-crashloops",
+            mcp_server_id=server.id,
+            prompt_template="Find unhealthy pods",
+            interval_seconds=600,
+            severity_default="high",
+        )
+        await db.flush()
+
+        fetched = await DetectorRuleRepo.get_by_id(db, rule.id)
+        assert fetched is not None
+        assert fetched.name == "watch-crashloops"
+        assert fetched.interval_seconds == 600
+
+        history = await DetectorHistoryRepo.create(
+            db,
+            rule_id=rule.id,
+            duration_ms=123,
+            issue_detected=True,
+            raw_verdict={"issue_detected": True, "fingerprint": "abc"},
+        )
+        await db.flush()
+
+        entries = await DetectorHistoryRepo.list_by_rule(db, rule.id)
+        assert len(entries) == 1
+        assert entries[0].id == history.id
+        assert entries[0].issue_detected is True
+
+    async def test_update_mark_run_and_delete_rule(self, db: AsyncSession):
+        server = await MCPServerRepo.create(
+            db,
+            name="detector-db",
+            transport="stdio",
+            command="echo",
+        )
+        await db.flush()
+
+        rule = await DetectorRuleRepo.create(
+            db,
+            name="watch-errors",
+            mcp_server_id=server.id,
+            prompt_template="Find database issues",
+        )
+        await db.flush()
+
+        updated = await DetectorRuleRepo.update(
+            db,
+            rule.id,
+            interval_seconds=900,
+            is_active=False,
+        )
+        await db.flush()
+        assert updated is not None
+        assert updated.interval_seconds == 900
+        assert updated.is_active is False
+
+        await DetectorRuleRepo.mark_run(
+            db,
+            rule.id,
+            last_fingerprint="fp-123",
+        )
+        await db.flush()
+        await db.refresh(rule)
+        assert rule.last_ran_at is not None
+        assert rule.last_fingerprint == "fp-123"
+
+        deleted = await DetectorRuleRepo.delete(db, rule.id)
+        await db.flush()
+        assert deleted is True
+        assert await DetectorRuleRepo.get_by_id(db, rule.id) is None
 
     async def test_update_server(self, db: AsyncSession):
         server = await MCPServerRepo.create(

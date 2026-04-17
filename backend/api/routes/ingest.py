@@ -113,7 +113,12 @@ async def ingest_webhook(
         )
 
     # Run ingest
-    result = await ingest_incident(db, token=token, payload=payload)
+    result = await ingest_incident(
+        db,
+        token=token,
+        payload=payload,
+        config=request.app.state.config,
+    )
 
     if not result.success:
         # Commit the session so the audit log entry is preserved,

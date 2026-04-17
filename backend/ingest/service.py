@@ -14,8 +14,14 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config_loader import AppConfig
 from backend.db.models import Incident, IngestToken
-from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo
+from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo, SessionRepo
+from backend.ingest.autostart import (
+    has_active_session_for_incident,
+    load_auto_start_policy,
+    should_auto_start_session,
+)
 from backend.ingest.registry import get_adapter
 
 logger = logging.getLogger(__name__)
@@ -42,6 +48,7 @@ class IngestResult:
 
     success: bool
     incident_id: uuid.UUID | None = None
+    session_id: uuid.UUID | None = None
     dedup_action: str | None = None  # created | updated | skipped
     error: str | None = None
 
@@ -65,6 +72,7 @@ async def ingest_incident(
     *,
     token: IngestToken,
     payload: dict[str, Any],
+    config: AppConfig,
 ) -> IngestResult:
     """Parse an inbound payload, dedup, and create/update an incident.
 
@@ -156,8 +164,33 @@ async def ingest_incident(
         parsed.external_id,
     )
 
+    session_id: uuid.UUID | None = None
+    policy = await load_auto_start_policy(db, config)
+    if should_auto_start_session(incident, dedup_action=dedup_action, policy=policy):
+        if not await has_active_session_for_incident(db, incident.id):
+            session = await SessionRepo.create(
+                db,
+                tier=policy.session_tier,
+                incident_id=incident.id,
+            )
+            session_id = session.id
+            logger.info(
+                "ingest.auto_start: incident=%s session=%s tier=%s source=%s severity=%s",
+                incident.id,
+                session.id,
+                policy.session_tier,
+                incident.external_source,
+                incident.severity,
+            )
+        else:
+            logger.info(
+                "ingest.auto_start: skipped existing active session for incident=%s",
+                incident.id,
+            )
+
     return IngestResult(
         success=True,
         incident_id=incident.id,
+        session_id=session_id,
         dedup_action=dedup_action,
     )

@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   BookOpen,
   CheckSquare,
+  Radar,
   FileText,
   LogOut,
   Settings,
@@ -16,6 +17,7 @@ import { useAuth } from "@/context/auth";
 const NAV = [
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
+  { href: "/dashboard/detectors", label: "Detectors", icon: Radar },
   { href: "/dashboard/skills", label: "Skills", icon: FileText },
   { href: "/dashboard/audit", label: "Audit Log", icon: BookOpen },
   { href: "/dashboard/config", label: "Config", icon: Settings },

@@ -35,6 +35,9 @@ def _config_to_response(
     *,
     tier: int,
     logging_level: str,
+    ingest_auto_start_enabled: bool,
+    ingest_auto_start_min_severity: str,
+    ingest_auto_start_source: str | None,
 ) -> ConfigResponse:
     servers = []
     for server in cfg.mcp_servers:
@@ -52,11 +55,23 @@ def _config_to_response(
         mcp_servers=servers,
         audit_output=cfg.audit.output,
         logging_level=logging_level,
+        ingest_auto_start_enabled=ingest_auto_start_enabled,
+        ingest_auto_start_min_severity=ingest_auto_start_min_severity,
+        ingest_auto_start_source=ingest_auto_start_source,
     )
 
 
 async def _read_runtime_config(db: AsyncSession) -> dict[str, str]:
-    return await RuntimeConfigRepo.get_many(db, ["tier", "logging_level"])
+    return await RuntimeConfigRepo.get_many(
+        db,
+        [
+            "tier",
+            "logging_level",
+            "ingest_auto_start_enabled",
+            "ingest_auto_start_min_severity",
+            "ingest_auto_start_source",
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +98,30 @@ async def get_config(
     overrides = await _read_runtime_config(db)
     tier = int(overrides.get("tier", cfg.tiers.get("default", 2)))
     logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
-    return _config_to_response(cfg, tier=tier, logging_level=logging_level)
+    ingest_auto_start_enabled = (
+        overrides.get("ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled))
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+    ingest_auto_start_min_severity = overrides.get(
+        "ingest_auto_start_min_severity",
+        cfg.ingest.auto_start_min_severity,
+    )
+    ingest_auto_start_source = (
+        overrides.get("ingest_auto_start_source", cfg.ingest.auto_start_source or "")
+        .strip()
+        .lower()
+        or None
+    )
+    return _config_to_response(
+        cfg,
+        tier=tier,
+        logging_level=logging_level,
+        ingest_auto_start_enabled=ingest_auto_start_enabled,
+        ingest_auto_start_min_severity=ingest_auto_start_min_severity,
+        ingest_auto_start_source=ingest_auto_start_source,
+    )
 
 
 @router.put(
@@ -104,6 +142,24 @@ async def update_config(
             key="logging_level",
             value=body.logging_level,
         )
+    if body.ingest_auto_start_enabled is not None:
+        await RuntimeConfigRepo.set(
+            db,
+            key="ingest_auto_start_enabled",
+            value="true" if body.ingest_auto_start_enabled else "false",
+        )
+    if body.ingest_auto_start_min_severity is not None:
+        await RuntimeConfigRepo.set(
+            db,
+            key="ingest_auto_start_min_severity",
+            value=body.ingest_auto_start_min_severity,
+        )
+    if body.ingest_auto_start_source is not None:
+        await RuntimeConfigRepo.set(
+            db,
+            key="ingest_auto_start_source",
+            value=body.ingest_auto_start_source.strip().lower(),
+        )
     await db.commit()
 
     try:
@@ -116,7 +172,30 @@ async def update_config(
     overrides = await _read_runtime_config(db)
     tier = int(overrides.get("tier", cfg.tiers.get("default", 2)))
     logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
-    return _config_to_response(cfg, tier=tier, logging_level=logging_level)
+    ingest_auto_start_enabled = (
+        overrides.get("ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled))
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+    ingest_auto_start_min_severity = overrides.get(
+        "ingest_auto_start_min_severity",
+        cfg.ingest.auto_start_min_severity,
+    )
+    ingest_auto_start_source = (
+        overrides.get("ingest_auto_start_source", cfg.ingest.auto_start_source or "")
+        .strip()
+        .lower()
+        or None
+    )
+    return _config_to_response(
+        cfg,
+        tier=tier,
+        logging_level=logging_level,
+        ingest_auto_start_enabled=ingest_auto_start_enabled,
+        ingest_auto_start_min_severity=ingest_auto_start_min_severity,
+        ingest_auto_start_source=ingest_auto_start_source,
+    )
 
 
 @router.put(

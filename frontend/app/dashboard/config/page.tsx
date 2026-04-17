@@ -174,6 +174,129 @@ function TierSection({
   );
 }
 
+function IngestAutoStartSection({
+  config,
+  onSaved,
+  canEdit,
+}: {
+  config: ConfigResponse;
+  onSaved: () => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [enabled, setEnabled] = useState(config.ingest_auto_start_enabled);
+  const [minSeverity, setMinSeverity] = useState(config.ingest_auto_start_min_severity);
+  const [source, setSource] = useState(config.ingest_auto_start_source ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    setEnabled(config.ingest_auto_start_enabled);
+    setMinSeverity(config.ingest_auto_start_min_severity);
+    setSource(config.ingest_auto_start_source ?? "");
+  }, [
+    config.ingest_auto_start_enabled,
+    config.ingest_auto_start_min_severity,
+    config.ingest_auto_start_source,
+  ]);
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    setSuccess(false);
+    try {
+      await updateConfig({
+        ingest_auto_start_enabled: enabled,
+        ingest_auto_start_min_severity: minSeverity,
+        ingest_auto_start_source: source.trim(),
+      });
+      setSuccess(true);
+      await onSaved();
+      setTimeout(() => setSuccess(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Section
+      title="Ingest Auto-Start"
+      description="Optionally create a session automatically when a newly ingested incident matches the rule below."
+    >
+      <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+        <input
+          type="checkbox"
+          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          disabled={!canEdit}
+        />
+        <div>
+          <p className="text-sm font-medium text-gray-900">
+            Enable automatic session creation for ingested incidents
+          </p>
+          <p className="mt-1 text-sm text-gray-500">
+            When enabled, AIM creates one session for a newly created incident if its severity
+            meets the threshold and its source matches the configured provider key.
+          </p>
+        </div>
+      </label>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <Label htmlFor="ingest-auto-severity">Minimum Severity</Label>
+          <Select
+            id="ingest-auto-severity"
+            value={minSeverity}
+            onChange={(e) => setMinSeverity(e.target.value as ConfigResponse["ingest_auto_start_min_severity"])}
+            disabled={!canEdit}
+          >
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="ingest-auto-source">Source Filter</Label>
+          <Input
+            id="ingest-auto-source"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder="legacy_alert_vendor"
+            disabled={!canEdit}
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Exact provider key such as `cloudwatch`, `azure_monitor`, `legacy_alert_vendor`, `legacy_alert_relay`, or `generic`.
+            Leave blank to match any source.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        Auto-start only runs for newly created incidents and reuses the current runtime tier for the session.
+        Duplicate ingests will not spawn extra active sessions.
+      </div>
+
+      {!canEdit && (
+        <p className="text-sm text-gray-500">
+          Admin role required to edit ingest auto-start settings.
+        </p>
+      )}
+      {error && <FormError message={error} />}
+      {success && <p className="text-sm text-green-600">Saved successfully.</p>}
+
+      <div className="flex justify-end">
+        <Button onClick={handleSave} loading={saving} disabled={!canEdit}>
+          <Save size={13} /> Save
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
 type ModelFormState = {
   name: string;
   provider: string;
@@ -1219,6 +1342,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   cloudwatch: "border-orange-200 bg-orange-50 text-orange-700",
   azure_monitor: "border-blue-200 bg-blue-50 text-blue-700",
   legacy_alert_vendor: "border-green-200 bg-green-50 text-green-700",
+  legacy_alert_relay: "border-red-200 bg-red-50 text-red-700",
   generic: "border-gray-200 bg-gray-50 text-gray-600",
 };
 
@@ -1616,11 +1740,12 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Config</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Manage runtime defaults, saved model profiles, MCP server connections, and external ingest tokens.
+          Manage runtime defaults, ingest automation, saved model profiles, MCP server connections, and external ingest tokens.
         </p>
       </div>
 
       <TierSection config={config} onSaved={loadPageData} canEdit={canEdit} />
+      <IngestAutoStartSection config={config} onSaved={loadPageData} canEdit={canEdit} />
       <ModelSection
         providers={providers}
         configs={modelConfigs}
@@ -1641,4 +1766,3 @@ export default function ConfigPage() {
     </div>
   );
 }
-

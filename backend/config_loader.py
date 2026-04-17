@@ -64,11 +64,36 @@ def _env_int(env: dict[str, str], key: str, default: int) -> int:
         raise ValueError(f"{key} must be an integer, got {raw!r}") from exc
 
 
+def _env_bool(env: dict[str, str], key: str, default: bool) -> bool:
+    raw = _env_str(env, key)
+    if raw is None:
+        return default
+    lowered = raw.strip().lower()
+    if lowered in {"1", "true", "yes", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{key} must be a boolean, got {raw!r}")
+
+
 def _env_csv(env: dict[str, str], key: str, default: str) -> list[str]:
     raw = (_env_str(env, key, default) or default).strip()
     if raw == "*":
         return ["*"]
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _env_severity(
+    env: dict[str, str],
+    key: str,
+    default: str,
+) -> str:
+    raw = (_env_str(env, key, default) or default).strip().lower()
+    if raw not in {"critical", "high", "medium", "low"}:
+        raise ValueError(
+            f"{key} must be one of critical|high|medium|low, got {raw!r}"
+        )
+    return raw
 
 
 @dataclasses.dataclass
@@ -123,6 +148,18 @@ class IngestConfig:
 
     rate_limit: int = 60
     rate_window: int = 60
+    auto_start_enabled: bool = False
+    auto_start_min_severity: str = "critical"
+    auto_start_source: str | None = None
+
+
+@dataclasses.dataclass
+class DetectorConfig:
+    """MCP-driven detector scheduler + guardrail settings."""
+
+    enabled: bool = False
+    max_runs_per_hour: int = 12
+    budget: int = 500
 
 
 @dataclasses.dataclass
@@ -215,6 +252,7 @@ class AppConfig:
     audit: AuditConfig
     approvals: ApprovalConfig
     ingest: IngestConfig
+    detector: DetectorConfig
     app: AppSettings
     db: DatabaseConfig
     auth: AuthConfig
@@ -252,6 +290,21 @@ class AppConfig:
         ingest = IngestConfig(
             rate_limit=_env_int(env, "AIM_INGEST_RATE_LIMIT", 60),
             rate_window=_env_int(env, "AIM_INGEST_RATE_WINDOW", 60),
+            auto_start_enabled=_env_bool(
+                env, "AIM_INGEST_AUTO_START_ENABLED", False
+            ),
+            auto_start_min_severity=_env_severity(
+                env, "AIM_INGEST_AUTO_START_MIN_SEVERITY", "critical"
+            ),
+            auto_start_source=(
+                (_env_str(env, "AIM_INGEST_AUTO_START_SOURCE", "") or "").strip().lower()
+                or None
+            ),
+        )
+        detector = DetectorConfig(
+            enabled=_env_bool(env, "AIM_DETECTOR_ENABLED", False),
+            max_runs_per_hour=_env_int(env, "AIM_DETECTOR_MAX_RUNS_PER_HOUR", 12),
+            budget=_env_int(env, "AIM_DETECTOR_BUDGET", 500),
         )
 
         return cls(
@@ -261,6 +314,7 @@ class AppConfig:
             audit=audit,
             approvals=approvals,
             ingest=ingest,
+            detector=detector,
             app=app,
             db=DatabaseConfig(
                 url=_env_str(env, "AIM_DATABASE_URL"),

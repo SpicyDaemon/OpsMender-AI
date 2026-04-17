@@ -148,11 +148,17 @@ export interface ConfigResponse {
   mcp_servers: Record<string, unknown>[];
   audit_output: string;
   logging_level: string;
+  ingest_auto_start_enabled: boolean;
+  ingest_auto_start_min_severity: Severity;
+  ingest_auto_start_source: string | null;
 }
 
 export interface ConfigUpdate {
   tier?: number;
   logging_level?: string;
+  ingest_auto_start_enabled?: boolean;
+  ingest_auto_start_min_severity?: Severity;
+  ingest_auto_start_source?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -293,7 +299,12 @@ export interface SkillCloneRequest {
 // Ingest Tokens (Sprint 14)
 // ---------------------------------------------------------------------------
 
-export type IngestProvider = "cloudwatch" | "azure_monitor" | "legacy_alert_vendor" | "generic";
+export type IngestProvider =
+  | "cloudwatch"
+  | "azure_monitor"
+  | "legacy_alert_vendor"
+  | "legacy_alert_relay"
+  | "generic";
 
 export interface IngestTokenResponse {
   id: string;
@@ -330,6 +341,87 @@ export interface IngestProviderItem {
 
 export interface IngestProviderListResponse {
   items: IngestProviderItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Detectors (Sprint 14)
+// ---------------------------------------------------------------------------
+
+export interface DetectorRuleResponse {
+  id: string;
+  name: string;
+  mcp_server_id: string;
+  prompt_template: string;
+  model_config_id: string | null;
+  interval_seconds: number;
+  severity_default: Severity;
+  is_active: boolean;
+  last_ran_at: string | null;
+  last_fingerprint: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DetectorRuleListResponse {
+  items: DetectorRuleResponse[];
+  total: number;
+}
+
+export interface DetectorRuleCreate {
+  name: string;
+  mcp_server_id: string;
+  prompt_template: string;
+  model_config_id?: string | null;
+  interval_seconds?: number;
+  severity_default?: Severity;
+  is_active?: boolean;
+}
+
+export interface DetectorRuleUpdate {
+  name?: string;
+  mcp_server_id?: string;
+  prompt_template?: string;
+  model_config_id?: string | null;
+  interval_seconds?: number;
+  severity_default?: Severity;
+  is_active?: boolean;
+}
+
+export interface DetectorHistoryResponse {
+  id: string;
+  rule_id: string;
+  ran_at: string;
+  duration_ms: number | null;
+  issue_detected: boolean;
+  incident_id: string | null;
+  raw_verdict: Record<string, unknown> | null;
+  error: string | null;
+}
+
+export interface DetectorHistoryListResponse {
+  items: DetectorHistoryResponse[];
+  total: number;
+}
+
+export interface DetectorRunResponse {
+  success: boolean;
+  issue_detected: boolean;
+  incident_id: string | null;
+  error: string | null;
+}
+
+export interface DetectorTemplateResponse {
+  key: string;
+  label: string;
+  description: string;
+  prompt_template: string;
+  severity_default: Severity;
+  interval_seconds: number;
+}
+
+export interface DetectorTemplateListResponse {
+  items: DetectorTemplateResponse[];
+  total: number;
 }
 
 // ---------------------------------------------------------------------------

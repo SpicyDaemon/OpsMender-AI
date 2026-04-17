@@ -1,0 +1,116 @@
+"""Auto-start policy helpers for externally ingested incidents."""
+
+from __future__ import annotations
+
+import dataclasses
+import uuid
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.config_loader import AppConfig
+from backend.db.models import Incident
+from backend.db.repos import RuntimeConfigRepo, SessionRepo
+
+_SEVERITY_RANK = {
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+    "critical": 4,
+}
+
+_ACTIVE_SESSION_STATUSES = {"active", "awaiting_approval"}
+
+
+@dataclasses.dataclass(frozen=True)
+class IngestAutoStartPolicy:
+    enabled: bool
+    min_severity: str
+    source: str | None
+    session_tier: int
+
+
+def _to_bool(raw: str | None, default: bool) -> bool:
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _normalize_severity(raw: str | None, default: str) -> str:
+    value = (raw or default).strip().lower()
+    return value if value in _SEVERITY_RANK else default
+
+
+def _normalize_source(raw: str | None) -> str | None:
+    value = (raw or "").strip().lower()
+    return value or None
+
+
+async def load_auto_start_policy(
+    db: AsyncSession,
+    config: AppConfig,
+) -> IngestAutoStartPolicy:
+    """Resolve the effective ingest auto-start policy from env + DB overrides."""
+    overrides = await RuntimeConfigRepo.get_many(
+        db,
+        [
+            "tier",
+            "ingest_auto_start_enabled",
+            "ingest_auto_start_min_severity",
+            "ingest_auto_start_source",
+        ],
+    )
+
+    return IngestAutoStartPolicy(
+        enabled=_to_bool(
+            overrides.get("ingest_auto_start_enabled"),
+            config.ingest.auto_start_enabled,
+        ),
+        min_severity=_normalize_severity(
+            overrides.get("ingest_auto_start_min_severity"),
+            config.ingest.auto_start_min_severity,
+        ),
+        source=_normalize_source(
+            overrides.get("ingest_auto_start_source", config.ingest.auto_start_source)
+        ),
+        session_tier=int(overrides.get("tier", config.tiers.get("default", 2))),
+    )
+
+
+def should_auto_start_session(
+    incident: Incident,
+    *,
+    dedup_action: str,
+    policy: IngestAutoStartPolicy,
+) -> bool:
+    """Return True when an ingested incident should auto-create a session."""
+    if not policy.enabled:
+        return False
+    if dedup_action != "created":
+        return False
+    if incident.status in {"resolved", "closed"}:
+        return False
+
+    severity = (incident.severity or "").strip().lower()
+    if _SEVERITY_RANK.get(severity, 0) < _SEVERITY_RANK[policy.min_severity]:
+        return False
+
+    if policy.source is not None:
+        source = (incident.external_source or "").strip().lower()
+        if source != policy.source:
+            return False
+
+    return True
+
+
+async def has_active_session_for_incident(
+    db: AsyncSession,
+    incident_id: uuid.UUID,
+) -> bool:
+    """Return True when the incident already has a non-terminal session."""
+    sessions = await SessionRepo.list_by_incident(db, incident_id)
+    return any(session.status in _ACTIVE_SESSION_STATUSES for session in sessions)

@@ -406,6 +406,15 @@ class TestSessions:
         )
         assert resp.status_code == 404
 
+    async def test_tier_0_session_includes_time_limit(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post("/sessions", json={
+            "tier": 0,
+        }, headers=auth_headers)
+        assert resp.status_code == 201
+        assert resp.json()["tier0_max_session_seconds"] == 600
+
 
 # ===========================================================================
 # Audit

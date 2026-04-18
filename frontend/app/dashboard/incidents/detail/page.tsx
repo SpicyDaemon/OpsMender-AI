@@ -171,7 +171,7 @@ function StartSessionModal({
             value={form.tier}
             onChange={(e) => setForm((f) => ({ ...f, tier: Number(e.target.value) }))}
           >
-            <option value={0}>Tier 0 — Full sandbox (all ops permitted)</option>
+            <option value={0}>Tier 0 — Autonomous rollback-safe only (time-limited)</option>
             <option value={1}>Tier 1 — Approval gate (destructive ops need approval)</option>
             <option value={2}>Tier 2 — Safe + caution only (no destructive ops)</option>
             <option value={3}>Tier 3 — Advise-only (no execution)</option>

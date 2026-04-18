@@ -8,14 +8,30 @@ from backend.tiers.enforcement import check, check_and_explain, EnforcementResul
 
 @pytest.fixture()
 def skill_def():
-    """A small skill definition for testing enforcement."""
+    """Small skill definition with mixed reversibility for enforcement tests.
+
+    ``scale_deployment`` and ``delete_pod`` are explicitly marked reversible
+    and given compensating inverses so the Tier 0 matrix tests exercise
+    rollback-safe writes. Non-reversible / no-inverse variants are covered in
+    ``TestTier0SandboxFloor`` below.
+    """
     return SkillDefinition(
         version="1",
         environment="test",
         operations=[
             OperationClassification(tool="get_pods", classification="safe"),
-            OperationClassification(tool="scale_deployment", classification="caution"),
-            OperationClassification(tool="delete_pod", classification="destructive"),
+            OperationClassification(
+                tool="scale_deployment",
+                classification="caution",
+                reversible=True,
+                compensating_inverse="restore_scale",
+            ),
+            OperationClassification(
+                tool="delete_pod",
+                classification="destructive",
+                reversible=True,
+                compensating_inverse="recreate_pod",
+            ),
         ],
     )
 
@@ -100,3 +116,90 @@ class TestEnforcementResult:
         )
         assert r.permitted is True
         assert r.tier == 2
+
+
+class TestTier0SandboxFloor:
+    """Tier 0 only executes ops resolved as reversible in the skill def."""
+
+    def test_non_reversible_caution_denied_at_tier_0(self):
+        sd = SkillDefinition(
+            version="1",
+            environment="test",
+            operations=[
+                OperationClassification(
+                    tool="rollout_restart", classification="caution"
+                ),
+            ],
+        )
+        r = check("rollout_restart", 0, sd)
+        assert r.permitted is False
+        assert r.reversible is False
+        assert "sandbox floor" in r.reason
+
+    def test_non_reversible_destructive_denied_at_tier_0(self):
+        sd = SkillDefinition(
+            version="1",
+            environment="test",
+            operations=[
+                OperationClassification(tool="delete_all", classification="destructive"),
+            ],
+        )
+        r = check("delete_all", 0, sd)
+        assert r.permitted is False
+        assert "sandbox floor" in r.reason
+
+    def test_explicit_reversible_permits_at_tier_0(self):
+        sd = SkillDefinition(
+            version="1",
+            environment="test",
+            operations=[
+                OperationClassification(
+                    tool="cordon_node",
+                    classification="caution",
+                    reversible=True,
+                    compensating_inverse="uncordon_node",
+                ),
+            ],
+        )
+        r = check("cordon_node", 0, sd)
+        assert r.permitted is True
+        assert r.reversible is True
+
+    def test_side_effecting_tier_0_op_without_inverse_is_denied(self):
+        sd = SkillDefinition(
+            version="1",
+            environment="test",
+            operations=[
+                OperationClassification(
+                    tool="rollout_restart",
+                    classification="caution",
+                    reversible=True,
+                ),
+            ],
+        )
+        r = check("rollout_restart", 0, sd)
+        assert r.permitted is False
+        assert "compensating_inverse" in r.reason
+
+    def test_safe_is_implicitly_reversible_at_tier_0(self):
+        """Reads never change state, so they run at Tier 0 without annotation."""
+        sd = SkillDefinition(
+            version="1",
+            environment="test",
+            operations=[OperationClassification(tool="get_pods", classification="safe")],
+        )
+        r = check("get_pods", 0, sd)
+        assert r.permitted is True
+        assert r.reversible is True
+
+    def test_reversibility_gate_does_not_affect_higher_tiers(self):
+        """Tier 1/2 ignore reversibility (Tier 0 floor only)."""
+        sd = SkillDefinition(
+            version="1",
+            environment="test",
+            operations=[
+                OperationClassification(tool="rollout_restart", classification="caution"),
+            ],
+        )
+        assert check("rollout_restart", 1, sd).permitted is True
+        assert check("rollout_restart", 2, sd).permitted is True

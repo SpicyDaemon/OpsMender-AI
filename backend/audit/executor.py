@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import dataclasses
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from mcp import ClientSession
 
@@ -53,6 +53,10 @@ async def audited_tool_call(
     tier: int,
     skill_def: SkillDefinition,
     logger: AuditLogger,
+    tool_caller: Callable[
+        [ClientSession, str, dict[str, Any]],
+        Awaitable[Any],
+    ] | None = None,
 ) -> AuditedToolResult:
     """Execute an MCP tool call with full audit logging.
 
@@ -76,6 +80,10 @@ async def audited_tool_call(
         Loaded skill definition used for classification.
     logger:
         Audit logger instance.
+    tool_caller:
+        Optional MCP invocation function. Defaults to
+        :func:`backend.mcp.client.call_tool`. Tier 0 uses this hook to
+        route execution through the sandbox allowlist.
 
     Returns
     -------
@@ -108,7 +116,8 @@ async def audited_tool_call(
     # 3b. Permitted — execute ────────────────────────────────────────
     start = time.monotonic()
     try:
-        mcp_result = await call_tool(session, tool_name, params)
+        caller = tool_caller or call_tool
+        mcp_result = await caller(session, tool_name, params)
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
         result_dict = {

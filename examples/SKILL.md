@@ -25,18 +25,26 @@ operations:
     notes: "All list operations are read-only"
 
   # --- Caution (non-destructive writes) ---
+  # `reversible: true` is the Tier 0 safety floor — only reversible ops run
+  # autonomously at Tier 0.  `compensating_inverse` names the tool the
+  # rollback engine invokes to undo this one (same parameters).
   - tool: scale_deployment
     classification: caution
-    notes: "Changes replica count — reversible but impacts capacity"
+    reversible: true
+    notes: "Changes replica count — reversible but impacts capacity (inverse is parametric, not auto-rolled-back)"
   - tool: cordon_node
     classification: caution
+    reversible: true
+    compensating_inverse: uncordon_node
     notes: "Prevents new pods from scheduling on a node"
   - tool: uncordon_node
     classification: caution
+    reversible: true
+    compensating_inverse: cordon_node
     notes: "Re-enables scheduling on a node"
   - tool: rollout_restart
     classification: caution
-    notes: "Restarts pods in a rolling fashion"
+    notes: "Restarts pods in a rolling fashion — no direct inverse"
   - tool: apply_configmap
     classification: caution
     notes: "Updates config — may affect running workloads"

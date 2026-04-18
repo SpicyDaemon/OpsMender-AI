@@ -163,6 +163,14 @@ class DetectorConfig:
 
 
 @dataclasses.dataclass
+class Tier0Config:
+    """Tier 0 sandbox hard time limits (Sprint 17)."""
+
+    max_session_seconds: int = 600
+    max_node_seconds: int = 120
+
+
+@dataclasses.dataclass
 class AppSettings:
     """General app runtime settings."""
 
@@ -253,6 +261,7 @@ class AppConfig:
     approvals: ApprovalConfig
     ingest: IngestConfig
     detector: DetectorConfig
+    tier0: "Tier0Config"
     app: AppSettings
     db: DatabaseConfig
     auth: AuthConfig
@@ -306,6 +315,12 @@ class AppConfig:
             max_runs_per_hour=_env_int(env, "AIM_DETECTOR_MAX_RUNS_PER_HOUR", 12),
             budget=_env_int(env, "AIM_DETECTOR_BUDGET", 500),
         )
+        tier0 = Tier0Config(
+            max_session_seconds=_env_int(
+                env, "AIM_TIER0_MAX_SESSION_SECONDS", 600
+            ),
+            max_node_seconds=_env_int(env, "AIM_TIER0_MAX_NODE_SECONDS", 120),
+        )
 
         return cls(
             mcp_servers=_parse_mcp_servers(env),
@@ -315,6 +330,7 @@ class AppConfig:
             approvals=approvals,
             ingest=ingest,
             detector=detector,
+            tier0=tier0,
             app=app,
             db=DatabaseConfig(
                 url=_env_str(env, "AIM_DATABASE_URL"),

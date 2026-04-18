@@ -524,7 +524,8 @@ ai-incident-manager/
   - Sprint 13: ✅ Single-container app — `aim serve` + unified `docker/Dockerfile` + PyInstaller binary, E2E + frontend-mount verification green
   - Sprint 14: ✅ External incident ingestion — core API + 5 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting + MCP-driven detector + auto-start
   - Sprint 15: ✅ Universal ingestion — `auto` adapter with heuristics + LLM fallback + per-token shape cache
-  - Sprint 16: 🔧 Bundle Node.js/npx in Docker + binary builds
+  - Sprint 16: ✅ Bundle Node.js/npx in Docker + binary builds
+  - Sprint 17: ✅ Tier 0 sandbox + hard time limits + rollback
 
 ## Distribution Status
 

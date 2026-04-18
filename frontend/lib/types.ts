@@ -46,7 +46,12 @@ export interface IncidentCreate {
 // Sessions
 // ---------------------------------------------------------------------------
 
-export type SessionStatus = "running" | "completed" | "failed" | "paused";
+export type SessionStatus =
+  | "active"
+  | "awaiting_approval"
+  | "completed"
+  | "failed"
+  | "timed_out";
 
 export interface SessionResponse {
   id: string;
@@ -58,6 +63,7 @@ export interface SessionResponse {
   summary: string | null;
   started_at: string;
   ended_at: string | null;
+  tier0_max_session_seconds: number | null;
 }
 
 export interface SessionCreate {
@@ -91,6 +97,29 @@ export interface SessionMessageListResponse {
 
 export interface SessionMessageCreate {
   content: string;
+}
+
+export interface SessionRollbackRequest {
+  mcp_server?: string;
+  dry_run?: boolean;
+}
+
+export interface RollbackStepResponse {
+  original_tool: string;
+  inverse_tool: string | null;
+  parameters: Record<string, unknown>;
+  status: string;
+  error: string | null;
+}
+
+export interface SessionRollbackResponse {
+  session_id: string;
+  dry_run: boolean;
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  steps: RollbackStepResponse[];
 }
 
 // ---------------------------------------------------------------------------

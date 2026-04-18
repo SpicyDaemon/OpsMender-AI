@@ -150,6 +150,8 @@ import type {
   SessionMessageCreate,
   SessionMessageListResponse,
   SessionMessageResponse,
+  SessionRollbackRequest,
+  SessionRollbackResponse,
   SessionResponse,
 } from "./types";
 
@@ -172,6 +174,13 @@ export async function sendSessionMessage(
   body: SessionMessageCreate,
 ): Promise<SessionMessageResponse> {
   return api.post<SessionMessageResponse>(`/sessions/${id}/messages`, body);
+}
+
+export async function rollbackSession(
+  id: string,
+  body: SessionRollbackRequest,
+): Promise<SessionRollbackResponse> {
+  return api.post<SessionRollbackResponse>(`/sessions/${id}/rollback`, body);
 }
 
 // ---------------------------------------------------------------------------

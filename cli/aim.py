@@ -27,6 +27,11 @@ from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
 from backend.mcp.client import MCPClientError, connect, list_tools
 from backend.mcp.pool import MCPServerPool
+from backend.tiers.sandbox import build_sandbox_for_session
+from backend.workflow.rollback import (
+    reconstruct_tool_calls,
+    replay_compensating_inverses,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -869,6 +874,8 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     # 5. Connect to MCP server(s) if available.  We resolve through the
     # MCPServerPool so DB-backed servers and `.env` fallbacks both work.
     mcp_session = None
+    tier0_sandbox = None
+    tier0_plan_tool_names: list[str] | None = None
     mcp_ctx = contextlib.AsyncExitStack()
 
     try:
@@ -893,6 +900,22 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 try:
                     mcp_session = await mcp_ctx.enter_async_context(connect(server))
                     print(f"Connected to {server.name}.\n")
+                    if tier == 0:
+                        tier0_sandbox = await build_sandbox_for_session(
+                            mcp_session, skill_def
+                        )
+                        tier0_plan_tool_names = sorted(
+                            tier0_sandbox.allowed_tool_names
+                        )
+                        print(
+                            "Tier 0 sandbox allowlist: "
+                            f"{len(tier0_plan_tool_names)} tool(s) visible to the workflow."
+                        )
+                        if tier0_plan_tool_names:
+                            print(", ".join(tier0_plan_tool_names))
+                        else:
+                            print("(no rollback-safe tools available)")
+                        print()
                 except Exception as exc:
                     print(f"MCP connection failed: {exc}", file=sys.stderr)
                     print("Continuing without MCP (no tool execution).\n")
@@ -901,7 +924,25 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         # 6. Log session start
         audit_logger.log_session_start(session_id, tier)
 
-        # 7. Build and invoke the workflow graph
+        # 7. Build and invoke the workflow graph.
+        # Tier 0 sessions get hard per-node + session wall clocks — see
+        # backend/agent/timeouts.py.
+        from backend.agent.timeouts import (
+            Tier0TimeConfig,
+            ainvoke_with_session_timeout,
+        )
+
+        tier0_time_config: Tier0TimeConfig | None = None
+        if tier == 0:
+            tier0_time_config = Tier0TimeConfig(
+                max_session_seconds=cfg.tier0.max_session_seconds,
+                max_node_seconds=cfg.tier0.max_node_seconds,
+            )
+            print(
+                f"Tier 0 time limits: {tier0_time_config.max_session_seconds}s session, "
+                f"{tier0_time_config.max_node_seconds}s per node\n"
+            )
+
         graph = build_graph(
             tier=tier,
             skill_def=skill_def,
@@ -909,18 +950,73 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             mcp_session=mcp_session,
             audit_logger=audit_logger if mcp_session else None,
             approval_service=approval_service,
+            tier0_time_config=tier0_time_config,
+            plan_tool_names=tier0_plan_tool_names,
+            tool_caller=tier0_sandbox.call_tool if tier0_sandbox is not None else None,
         )
 
         print("Running workflow: observe → diagnose → plan → tier_gate → execute → verify → summarize\n")
 
-        result = await graph.ainvoke({
+        initial_state = {
             "session_id": session_id,
             "tier": tier,
             "incident_description": args.incident,
             "skill_definition_path": str(skill_path),
-        })
+        }
+        if tier0_time_config is not None:
+            result = await ainvoke_with_session_timeout(
+                graph,
+                initial_state,
+                seconds=tier0_time_config.max_session_seconds,
+            )
+        else:
+            result = await graph.ainvoke(initial_state)
 
-        # 8. Log session end
+        # 8. Tier 0 auto-rollback on failure / timeout.
+        if (
+            tier == 0
+            and mcp_session is not None
+            and tier0_sandbox is not None
+            and result.get("status") in {"failed", "timed_out"}
+        ):
+            rollback_candidates = reconstruct_tool_calls(
+                audit_logger.read_by_session(session_id)
+            )
+            if rollback_candidates:
+                rollback_report = await replay_compensating_inverses(
+                    session_id=session_id,
+                    tier=tier,
+                    tool_calls=rollback_candidates,
+                    skill_def=skill_def,
+                    caller=lambda tool_name, params: tier0_sandbox.call_tool(
+                        mcp_session, tool_name, params
+                    ),
+                    audit_logger=audit_logger,
+                )
+                result["rollback"] = {
+                    "attempted": rollback_report.attempted,
+                    "succeeded": rollback_report.succeeded,
+                    "failed": rollback_report.failed,
+                    "skipped": rollback_report.skipped,
+                    "steps": [
+                        {
+                            "original_tool": step.original_tool,
+                            "inverse_tool": step.inverse_tool,
+                            "parameters": step.parameters,
+                            "status": step.status,
+                            "error": step.error,
+                        }
+                        for step in rollback_report.steps
+                    ],
+                }
+                print(
+                    "Tier 0 auto-rollback: "
+                    f"{rollback_report.succeeded} succeeded, "
+                    f"{rollback_report.failed} failed, "
+                    f"{rollback_report.skipped} skipped.\n"
+                )
+
+        # 9. Log session end
         audit_logger.log_session_end(session_id, tier)
         if session_factory is not None:
             async with session_factory() as db:
@@ -942,10 +1038,10 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                     )
                 await db.commit()
 
-        # 9. Display results
+        # 10. Display results
         _print_result(result)
 
-        # 10. Optionally write to file
+        # 11. Optionally write to file
         if args.output:
             out_path = pathlib.Path(args.output)
             out_path.parent.mkdir(parents=True, exist_ok=True)

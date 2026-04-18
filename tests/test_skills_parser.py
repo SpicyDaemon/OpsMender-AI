@@ -119,3 +119,97 @@ class TestOperationClassification:
         for c in ("safe", "caution", "destructive"):
             op = OperationClassification(tool="x", classification=c)
             assert op.classification == c
+
+
+class TestReversibilityAndInverse:
+    """Sprint 17 — reversible + compensating_inverse fields."""
+
+    def test_safe_implicitly_reversible(self):
+        op = OperationClassification(tool="get_pods", classification="safe")
+        assert op.effective_reversible is True
+
+    def test_caution_not_reversible_by_default(self):
+        op = OperationClassification(tool="rollout_restart", classification="caution")
+        assert op.effective_reversible is False
+
+    def test_destructive_not_reversible_by_default(self):
+        op = OperationClassification(tool="delete_pod", classification="destructive")
+        assert op.effective_reversible is False
+
+    def test_explicit_reversible_override(self):
+        op = OperationClassification(
+            tool="cordon_node",
+            classification="caution",
+            reversible=True,
+        )
+        assert op.effective_reversible is True
+
+    def test_explicit_reversible_false_on_safe(self):
+        """Edge case: operator can declare even a 'safe' op non-reversible."""
+        op = OperationClassification(
+            tool="heavy_query", classification="safe", reversible=False
+        )
+        assert op.effective_reversible is False
+
+    def test_parser_reads_reversible_and_inverse(self, tmp_path):
+        p = tmp_path / "SKILL.md"
+        p.write_text(
+            "---\n"
+            "version: '1'\n"
+            "environment: test\n"
+            "operations:\n"
+            "  - tool: cordon_node\n"
+            "    classification: caution\n"
+            "    reversible: true\n"
+            "    compensating_inverse: uncordon_node\n"
+            "  - tool: delete_pod\n"
+            "    classification: destructive\n"
+            "---\n"
+        )
+        sd = load(p)
+        assert sd.is_reversible("cordon_node") is True
+        assert sd.inverse_for("cordon_node") == "uncordon_node"
+        assert sd.is_reversible("delete_pod") is False
+        assert sd.inverse_for("delete_pod") is None
+
+    def test_is_reversible_unknown_tool_is_false(self, skill_md):
+        sd = load(skill_md)
+        assert sd.is_reversible("never_heard_of_this_tool") is False
+        assert sd.inverse_for("never_heard_of_this_tool") is None
+
+    def test_is_reversible_follows_wildcard_match(self, tmp_path):
+        p = tmp_path / "SKILL.md"
+        p.write_text(
+            "---\n"
+            "version: '1'\n"
+            "environment: test\n"
+            "operations:\n"
+            "  - tool: describe_*\n"
+            "    classification: safe\n"
+            "---\n"
+        )
+        sd = load(p)
+        assert sd.is_reversible("describe_pod") is True
+
+    def test_tier0_violation_requires_inverse_for_side_effecting_op(self, tmp_path):
+        p = tmp_path / "SKILL.md"
+        p.write_text(
+            "---\n"
+            "version: '1'\n"
+            "environment: test\n"
+            "operations:\n"
+            "  - tool: rollout_restart\n"
+            "    classification: caution\n"
+            "    reversible: true\n"
+            "---\n"
+        )
+        sd = load(p)
+        assert sd.is_reversible("rollout_restart") is True
+        assert sd.is_tier0_safe("rollout_restart") is False
+        assert "compensating_inverse" in (
+            sd.tier0_violation_reason("rollout_restart") or ""
+        )
+
+    def test_tier0_safe_read_does_not_require_inverse(self, skill_md):
+        sd = load(skill_md)
+        assert sd.is_tier0_safe("get_pods") is True

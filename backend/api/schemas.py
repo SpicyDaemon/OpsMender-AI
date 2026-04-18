@@ -98,8 +98,44 @@ class SessionResponse(BaseModel):
     summary: Optional[str]
     started_at: datetime
     ended_at: Optional[datetime]
+    tier0_max_session_seconds: Optional[int] = None
 
     model_config = {"from_attributes": True}
+
+
+# -- Rollback (Sprint 17) ----------------------------------------------------
+
+class SessionRollbackRequest(BaseModel):
+    """Trigger rollback of a session's executed operations.
+
+    ``mcp_server`` names the MCP server to connect to for issuing the
+    compensating-inverse calls.  When ``dry_run=true`` the endpoint
+    returns the rollback plan without actually invoking any inverse.
+    """
+
+    mcp_server: Optional[str] = Field(
+        default=None,
+        description="MCP server name. Required unless dry_run is true.",
+    )
+    dry_run: bool = False
+
+
+class RollbackStepResponse(BaseModel):
+    original_tool: str
+    inverse_tool: Optional[str]
+    parameters: dict[str, Any]
+    status: str  # succeeded | failed | skipped_no_inverse | skipped_not_permitted
+    error: Optional[str] = None
+
+
+class SessionRollbackResponse(BaseModel):
+    session_id: uuid.UUID
+    dry_run: bool
+    attempted: int
+    succeeded: int
+    failed: int
+    skipped: int
+    steps: list[RollbackStepResponse]
 
 
 # ---------------------------------------------------------------------------

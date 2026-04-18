@@ -11,6 +11,10 @@ Expected YAML structure::
     operations:
       - tool: get_pods
         classification: safe
+      - tool: cordon_node
+        classification: caution
+        reversible: true
+        compensating_inverse: uncordon_node
       - tool: "delete_*"
         classification: destructive
         notes: "Deletes resources — requires Tier 1 approval"
@@ -28,11 +32,21 @@ import yaml
 
 @dataclasses.dataclass
 class OperationClassification:
-    """A single tool-name → classification mapping."""
+    """A single tool-name → classification mapping.
+
+    ``reversible`` is the Tier 0 safety floor: a Tier 0 session only executes
+    operations that resolve to ``reversible=True``.  When unset it falls back
+    to a classification-driven default (``safe`` is implicitly reversible;
+    ``caution``/``destructive`` are not).  ``compensating_inverse`` names the
+    tool that undoes this one — the rollback engine invokes it with the same
+    parameters.
+    """
 
     tool: str  # exact name or glob pattern (e.g. "delete_*")
     classification: str  # "safe" | "caution" | "destructive"
     notes: Optional[str] = None
+    reversible: Optional[bool] = None
+    compensating_inverse: Optional[str] = None
 
     def __post_init__(self) -> None:
         valid = ("safe", "caution", "destructive")
@@ -41,6 +55,18 @@ class OperationClassification:
                 f"Operation '{self.tool}': classification must be one of {valid}, "
                 f"got '{self.classification}'"
             )
+
+    @property
+    def effective_reversible(self) -> bool:
+        """Resolved reversibility, applying the classification default."""
+        if self.reversible is not None:
+            return self.reversible
+        return self.classification == "safe"
+
+    @property
+    def requires_compensating_inverse(self) -> bool:
+        """Return True when Tier 0 needs an explicit inverse for this op."""
+        return self.classification != "safe" and self.effective_reversible
 
 
 @dataclasses.dataclass
@@ -51,22 +77,64 @@ class SkillDefinition:
     environment: str
     operations: List[OperationClassification]
 
+    def _match(self, tool_name: str) -> Optional[OperationClassification]:
+        """Return the first matching OperationClassification or None."""
+        for op in self.operations:
+            if op.tool == tool_name:
+                return op
+        for op in self.operations:
+            if "*" in op.tool or "?" in op.tool:
+                if fnmatch.fnmatch(tool_name, op.tool):
+                    return op
+        return None
+
     def classify(self, tool_name: str) -> str:
         """Return the classification for *tool_name*.
 
         Checks exact matches first, then glob patterns.
         Returns ``"unknown"`` if no rule matches.
         """
-        # Exact match pass
-        for op in self.operations:
-            if op.tool == tool_name:
-                return op.classification
-        # Glob/wildcard pass
-        for op in self.operations:
-            if "*" in op.tool or "?" in op.tool:
-                if fnmatch.fnmatch(tool_name, op.tool):
-                    return op.classification
-        return "unknown"
+        op = self._match(tool_name)
+        return op.classification if op is not None else "unknown"
+
+    def is_reversible(self, tool_name: str) -> bool:
+        """Return True if *tool_name* is declared reversible.
+
+        Unknown tools are treated as non-reversible (fail-closed).
+        """
+        op = self._match(tool_name)
+        return op.effective_reversible if op is not None else False
+
+    def inverse_for(self, tool_name: str) -> Optional[str]:
+        """Return the compensating-inverse tool name, if any."""
+        op = self._match(tool_name)
+        return op.compensating_inverse if op is not None else None
+
+    def tier0_violation_reason(self, tool_name: str) -> Optional[str]:
+        """Return the Tier 0 safety-floor violation reason, if any.
+
+        Tier 0 runs only operations that are:
+
+        1. declared in the skill definition
+        2. reversible (explicitly, or implicitly via ``safe``)
+        3. equipped with a ``compensating_inverse`` when they are
+           side-effecting writes
+        """
+        op = self._match(tool_name)
+        if op is None:
+            return "unknown operation — not declared in skill definition"
+        if not op.effective_reversible:
+            return "not marked reversible in skill definition"
+        if op.requires_compensating_inverse and not op.compensating_inverse:
+            return (
+                "side-effecting Tier 0 operations must declare "
+                "compensating_inverse"
+            )
+        return None
+
+    def is_tier0_safe(self, tool_name: str) -> bool:
+        """Return True if *tool_name* clears the Tier 0 safety floor."""
+        return self.tier0_violation_reason(tool_name) is None
 
 
 def _extract_yaml_front_matter(text: str) -> str:
@@ -100,11 +168,19 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
 
     operations: list[OperationClassification] = []
     for entry in data.get("operations", []):
+        reversible_raw = entry.get("reversible")
+        reversible: Optional[bool]
+        if reversible_raw is None:
+            reversible = None
+        else:
+            reversible = bool(reversible_raw)
         operations.append(
             OperationClassification(
                 tool=entry.get("tool", ""),
                 classification=entry.get("classification", "unknown"),
                 notes=entry.get("notes"),
+                reversible=reversible,
+                compensating_inverse=entry.get("compensating_inverse"),
             )
         )
 

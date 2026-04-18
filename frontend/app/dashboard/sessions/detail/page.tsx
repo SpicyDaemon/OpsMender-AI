@@ -19,19 +19,25 @@ import {
   getIncident,
   getSession,
   listApprovals,
+  listMCPServers,
   listSessionMessages,
+  rollbackSession,
   rejectRequest,
   sendSessionMessage,
 } from "@/lib/api";
 import type {
   ApprovalRequestResponse,
   IncidentResponse,
+  MCPServerResponse,
+  SessionRollbackResponse,
   SessionMessageResponse,
   SessionResponse,
   WSMessage,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Label, Select } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { useAuth } from "@/context/auth";
 
@@ -153,6 +159,12 @@ function chatMessageFromWS(msg: WSMessage): SessionMessageResponse | null {
   };
 }
 
+function formatDuration(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -170,6 +182,7 @@ function SessionPageContent() {
   const id = searchParams.get("id") ?? "";
   const { user } = useAuth();
   const canChat = user?.role === "admin" || user?.role === "operator";
+  const canRollback = user?.role === "admin";
 
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
@@ -181,6 +194,8 @@ function SessionPageContent() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [timerTick, setTimerTick] = useState(0);
+  const [showRollback, setShowRollback] = useState(false);
 
   const counterRef = useRef(0);
   const eventsBottomRef = useRef<HTMLDivElement>(null);
@@ -268,6 +283,20 @@ function SessionPageContent() {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    if (
+      session?.tier !== 0
+      || session.status !== "active"
+      || !session.tier0_max_session_seconds
+    ) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setTimerTick((value) => value + 1);
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [session?.status, session?.tier, session?.tier0_max_session_seconds]);
+
   // Initial approval load
   useEffect(() => {
     refreshApprovals();
@@ -313,6 +342,28 @@ function SessionPageContent() {
     return "Add context or ask anything…";
   }, [canChat, session?.status]);
 
+  const tier0Timer = useMemo(() => {
+    if (!session || session.tier !== 0 || !session.tier0_max_session_seconds) {
+      return null;
+    }
+    const startedMs = new Date(session.started_at).getTime();
+    const deadlineMs = startedMs + session.tier0_max_session_seconds * 1000;
+    const nowMs = Date.now() + timerTick * 0;
+    const remainingSeconds = Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
+    const expired = remainingSeconds <= 0;
+    const label =
+      session.status === "timed_out"
+        ? "Time limit reached"
+        : expired && session.status === "active"
+          ? "Time limit reached"
+          : `Tier 0 time left ${formatDuration(remainingSeconds)}`;
+    return {
+      expired,
+      label,
+      maxSessionSeconds: session.tier0_max_session_seconds,
+    };
+  }, [session, timerTick]);
+
   if (loading) return <PageSpinner />;
   if (!id) return <p className="text-red-600">Missing session id.</p>;
   if (!session) return <p className="text-red-600">Session not found.</p>;
@@ -355,9 +406,14 @@ function SessionPageContent() {
                   </Badge>
                 )}
                 <Badge variant={session.status as Parameters<typeof Badge>[0]["variant"]}>
-                  {session.status}
+                  {session.status.replace("_", " ")}
                 </Badge>
                 <span className="text-xs text-gray-400">Tier {session.tier}</span>
+                {tier0Timer && (
+                  <Badge variant={tier0Timer.expired ? "failed" : "pending"}>
+                    {tier0Timer.label}
+                  </Badge>
+                )}
                 {session.model_provider && (
                   <span className="text-xs text-gray-400">
                     {session.model_provider}/{session.model_id ?? "default"}
@@ -381,6 +437,16 @@ function SessionPageContent() {
               {connected ? "Live" : "Disconnected"}
             </span>
           </div>
+          {canRollback && session.tier === 0 && (
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+              <p className="text-xs text-gray-500">
+                Tier 0 sessions can replay compensating inverses in reverse order.
+              </p>
+              <Button size="sm" variant="secondary" onClick={() => setShowRollback(true)}>
+                Rollback Session
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -537,7 +603,192 @@ function SessionPageContent() {
           </div>
         </div>
       </div>
+
+      {canRollback && session.tier === 0 && (
+        <RollbackModal
+          open={showRollback}
+          onClose={() => setShowRollback(false)}
+          session={session}
+          onRollbackComplete={(report) => {
+            setEvents((prev) => [
+              ...prev,
+              {
+                id: idGen(),
+                kind: report.failed > 0 ? "error" : "tool",
+                label: report.dry_run ? "Rollback preview generated" : "Rollback executed",
+                detail: `${report.succeeded} succeeded, ${report.failed} failed, ${report.skipped} skipped`,
+                ts: new Date(),
+              },
+            ]);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function RollbackModal({
+  open,
+  onClose,
+  session,
+  onRollbackComplete,
+}: {
+  open: boolean;
+  onClose: () => void;
+  session: SessionResponse;
+  onRollbackComplete: (report: SessionRollbackResponse) => void;
+}) {
+  const [servers, setServers] = useState<MCPServerResponse[]>([]);
+  const [selectedServer, setSelectedServer] = useState("");
+  const [loadingServers, setLoadingServers] = useState(false);
+  const [submitting, setSubmitting] = useState<"preview" | "live" | "">("");
+  const [error, setError] = useState("");
+  const [report, setReport] = useState<SessionRollbackResponse | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingServers(true);
+    setError("");
+    listMCPServers()
+      .then((res) => {
+        if (cancelled) return;
+        const active = res.items.filter((item) => item.is_active);
+        setServers(active);
+        setSelectedServer((current) => {
+          if (current && active.some((item) => item.name === current)) return current;
+          return active[0]?.name ?? "";
+        });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load MCP servers");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingServers(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  async function runRollback(dryRun: boolean) {
+    setError("");
+    setSubmitting(dryRun ? "preview" : "live");
+    try {
+      const result = await rollbackSession(session.id, {
+        dry_run: dryRun,
+        mcp_server: dryRun ? selectedServer || undefined : selectedServer,
+      });
+      setReport(result);
+      onRollbackComplete(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Rollback failed");
+    } finally {
+      setSubmitting("");
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Rollback Session">
+      <div className="space-y-4">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+          Preview resolves the rollback plan from audit + skill metadata.
+          Run rollback replays compensating inverses against the selected MCP server.
+        </div>
+
+        <div>
+          <Label htmlFor="rollback-server">MCP Server</Label>
+          <Select
+            id="rollback-server"
+            value={selectedServer}
+            onChange={(e) => setSelectedServer(e.target.value)}
+            disabled={loadingServers || servers.length === 0}
+          >
+            <option value="">Select a server</option>
+            {servers.map((server) => (
+              <option key={server.id} value={server.name}>
+                {server.name} ({server.transport})
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1 text-xs text-gray-400">
+            Live rollback requires the same MCP surface the original actions ran against.
+          </p>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => runRollback(true)}
+            loading={submitting === "preview"}
+          >
+            Preview Rollback
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => runRollback(false)}
+            loading={submitting === "live"}
+            disabled={!selectedServer}
+          >
+            Run Rollback
+          </Button>
+        </div>
+
+        {report && (
+          <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={report.failed > 0 ? "failed" : "approved"}>
+                {report.dry_run ? "Preview" : "Executed"}
+              </Badge>
+              <span className="text-xs text-gray-500">
+                attempted {report.attempted} · succeeded {report.succeeded} · failed {report.failed} · skipped {report.skipped}
+              </span>
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {report.steps.map((step, index) => (
+                <div key={`${step.original_tool}-${index}`} className="rounded-md border border-gray-200 bg-gray-50 p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-gray-800">
+                      {step.original_tool}
+                    </span>
+                    <span className="text-xs text-gray-400">→</span>
+                    <span className="text-sm text-gray-600">
+                      {step.inverse_tool ?? "no inverse"}
+                    </span>
+                    <Badge
+                      variant={
+                        step.status === "succeeded"
+                          ? "approved"
+                          : step.status === "failed"
+                            ? "failed"
+                            : "pending"
+                      }
+                    >
+                      {step.status.replaceAll("_", " ")}
+                    </Badge>
+                  </div>
+                  {Object.keys(step.parameters).length > 0 && (
+                    <pre className="mt-2 text-xs text-gray-500 whitespace-pre-wrap break-words font-mono">
+                      {JSON.stringify(step.parameters, null, 2)}
+                    </pre>
+                  )}
+                  {step.error && (
+                    <p className="mt-2 text-xs text-red-600">{step.error}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

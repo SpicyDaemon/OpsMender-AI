@@ -5,16 +5,22 @@ operation's classification from the skill definition.
 
 Tier permission matrix (from REFERENCE.md):
 
-    | Classification | Tier 0 | Tier 1        | Tier 2 | Tier 3        |
-    |----------------|--------|---------------|--------|---------------|
-    | safe           | permit | permit        | permit | advise-only   |
-    | caution        | permit | permit        | permit | deny          |
-    | destructive    | permit | needs-approval| deny   | deny          |
-    | unknown        | deny   | deny          | deny   | deny          |
+    | Classification | Tier 0 *           | Tier 1        | Tier 2 | Tier 3        |
+    |----------------|--------------------|---------------|--------|---------------|
+    | safe           | permit             | permit        | permit | advise-only   |
+    | caution        | permit if reversible| permit        | permit | deny          |
+    | destructive    | permit if reversible| needs-approval| deny   | deny          |
+    | unknown        | deny               | deny          | deny   | deny          |
 
 ``advise-only`` means the action is surfaced as a recommendation but not
 executed by the agent.  For enforcement purposes it is treated as a denial
 of autonomous execution.
+
+(*) Tier 0 has a second hard gate — the operation must resolve to
+``reversible=True`` in the skill definition.  This is the Tier 0 sandbox
+floor: an autonomous run may only execute operations whose effects can be
+undone by the rollback engine (or are read-only).  Non-reversible ops are
+denied even at Tier 0.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ class EnforcementResult:
     classification: str  # "safe" | "caution" | "destructive" | "unknown"
     tier: int
     reason: str
+    reversible: bool = False
 
 
 # Rows: classification → {tier: (permitted, reason)}
@@ -76,18 +83,36 @@ def check(
 
     This is a hard programmatic check — it cannot be bypassed by agent
     reasoning.
+
+    Tier 0 adds a second gate: the operation must clear the Tier 0
+    safety floor in the skill definition.  That means it must be
+    reversible and, if it is side-effecting, it must declare a
+    compensating inverse. Non-compliant ops are denied at Tier 0 even
+    if the classification matrix would otherwise permit them.
     """
     if tier not in (0, 1, 2, 3):
         raise ValueError(f"Invalid tier: {tier} (must be 0-3)")
 
     classification = skill_def.classify(tool_name)
     permitted, reason = _MATRIX[classification][tier]
+    reversible = skill_def.is_reversible(tool_name)
+
+    # Tier 0 sandbox floor: only rollback-safe ops execute.
+    if tier == 0 and permitted:
+        violation = skill_def.tier0_violation_reason(tool_name)
+        if violation is not None:
+            permitted = False
+            reason = (
+                f"{classification} operation denied at Tier 0 — {violation} "
+                "(sandbox floor)"
+            )
 
     return EnforcementResult(
         permitted=permitted,
         classification=classification,
         tier=tier,
         reason=reason,
+        reversible=reversible,
     )
 
 

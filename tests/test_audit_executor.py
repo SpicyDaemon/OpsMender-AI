@@ -173,6 +173,26 @@ class TestPermittedToolCall:
         )
         mock_session.call_tool.assert_awaited_once_with("get_pods", params)
 
+    @pytest.mark.asyncio
+    async def test_custom_tool_caller_is_used(
+        self, mock_session: AsyncMock, audit_log: AuditLogger
+    ):
+        sandbox_caller = AsyncMock(return_value=_mock_mcp_result())
+        await audited_tool_call(
+            session=mock_session,
+            tool_name="get_pods",
+            tool_parameters={"namespace": "default"},
+            session_id=SESSION_ID,
+            tier=TIER,
+            skill_def=_skill_def(),
+            logger=audit_log,
+            tool_caller=sandbox_caller,
+        )
+        sandbox_caller.assert_awaited_once_with(
+            mock_session, "get_pods", {"namespace": "default"}
+        )
+        mock_session.call_tool.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # Blocked tool calls

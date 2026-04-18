@@ -234,6 +234,46 @@ def _build_plan(llm: LLM, tier: int, skill_def: SkillDefinition):
     return plan
 
 
+def _build_plan_with_tool_names(
+    llm: LLM,
+    tier: int,
+    skill_def: SkillDefinition,
+    tool_names: list[str],
+):
+    """Return a plan node that only exposes the supplied concrete tools."""
+
+    def plan(state: IncidentState) -> dict:
+        import json
+
+        diagnosis = state.get("diagnosis", "")
+        if tool_names:
+            tools_list = "\n".join(
+                f"- {tool_name} ({skill_def.classify(tool_name)})"
+                for tool_name in tool_names
+            )
+        else:
+            tools_list = "(none available)"
+        prompt = PLAN_PROMPT.format(
+            diagnosis=diagnosis,
+            available_tools=tools_list,
+            tier=tier,
+        )
+        raw = llm.invoke(prompt)
+
+        try:
+            actions = json.loads(raw)
+            if not isinstance(actions, list):
+                actions = []
+        except (json.JSONDecodeError, TypeError):
+            actions = []
+
+        return {
+            "plan": actions,
+        }
+
+    return plan
+
+
 def plan(state: IncidentState) -> dict:
     """Stub plan node (no LLM).  Use ``_build_plan`` for real logic."""
     return {
@@ -381,6 +421,7 @@ def _build_execute(
     mcp_session,
     skill_def: SkillDefinition,
     audit_logger,
+    tool_caller=None,
 ):
     """Return an execute node that calls ``audited_tool_call`` for each
     approved action.
@@ -415,6 +456,7 @@ def _build_execute(
                 tier=tier,
                 skill_def=skill_def,
                 logger=audit_logger,
+                tool_caller=tool_caller,
             )
 
             records.append({

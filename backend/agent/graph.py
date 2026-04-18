@@ -34,6 +34,7 @@ from langgraph.graph import StateGraph, START, END
 
 from backend.agent.llm import LLM
 from backend.agent.state import IncidentState
+from backend.agent.timeouts import Tier0TimeConfig, wrap_node_with_timeout
 from backend.approvals import ApprovalService
 from backend.agent.nodes import (
     # Stub versions (no LLM / no MCP)
@@ -47,6 +48,7 @@ from backend.agent.nodes import (
     _build_observe,
     _build_diagnose,
     _build_plan,
+    _build_plan_with_tool_names,
     _build_tier_gate,
     _build_execute,
     _build_verify,
@@ -63,6 +65,9 @@ def build_graph(
     mcp_session=None,
     audit_logger=None,
     approval_service: ApprovalService | None = None,
+    tier0_time_config: Tier0TimeConfig | None = None,
+    plan_tool_names: list[str] | None = None,
+    tool_caller=None,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -93,7 +98,12 @@ def build_graph(
     if llm is not None:
         observe_fn = _build_observe(llm)
         diagnose_fn = _build_diagnose(llm)
-        plan_fn = _build_plan(llm, tier, skill_def)
+        if plan_tool_names is not None:
+            plan_fn = _build_plan_with_tool_names(
+                llm, tier, skill_def, plan_tool_names
+            )
+        else:
+            plan_fn = _build_plan(llm, tier, skill_def)
         verify_fn = _build_verify(llm)
         summarize_fn = _build_summarize(llm)
     else:
@@ -104,15 +114,36 @@ def build_graph(
         summarize_fn = summarize
 
     if mcp_session is not None and audit_logger is not None:
-        execute_fn = _build_execute(mcp_session, skill_def, audit_logger)
+        execute_fn = _build_execute(
+            mcp_session,
+            skill_def,
+            audit_logger,
+            tool_caller=tool_caller,
+        )
     else:
         execute_fn = execute
+
+    tier_gate_fn = _build_tier_gate(tier, skill_def, approval_service)
+
+    # -- Tier 0 per-node timeouts -------------------------------------------
+    # When a Tier 0 time config is supplied, every node is wrapped with a
+    # hard wall clock.  This is the sandbox's second safety gate — the
+    # agent cannot hang a session on a single slow LLM call.
+    if tier == 0 and tier0_time_config is not None:
+        secs = tier0_time_config.max_node_seconds
+        observe_fn = wrap_node_with_timeout(observe_fn, seconds=secs, node_name="observe")
+        diagnose_fn = wrap_node_with_timeout(diagnose_fn, seconds=secs, node_name="diagnose")
+        plan_fn = wrap_node_with_timeout(plan_fn, seconds=secs, node_name="plan")
+        tier_gate_fn = wrap_node_with_timeout(tier_gate_fn, seconds=secs, node_name="tier_gate")
+        execute_fn = wrap_node_with_timeout(execute_fn, seconds=secs, node_name="execute")
+        verify_fn = wrap_node_with_timeout(verify_fn, seconds=secs, node_name="verify")
+        summarize_fn = wrap_node_with_timeout(summarize_fn, seconds=secs, node_name="summarize")
 
     # -- register nodes ------------------------------------------------------
     builder.add_node("observe", observe_fn)
     builder.add_node("diagnose", diagnose_fn)
     builder.add_node("plan", plan_fn)
-    builder.add_node("tier_gate", _build_tier_gate(tier, skill_def, approval_service))
+    builder.add_node("tier_gate", tier_gate_fn)
     builder.add_node("execute", execute_fn)
     builder.add_node("verify", verify_fn)
     builder.add_node("summarize", summarize_fn)

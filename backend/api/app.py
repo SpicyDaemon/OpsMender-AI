@@ -43,6 +43,7 @@ async def _lifespan(app: FastAPI):
     factory = get_session_factory(engine)
     set_session_factory(factory)
     app.state.database_url = database_url
+    app.state.session_factory = factory
 
     pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
     set_mcp_pool(pool)
@@ -73,6 +74,13 @@ async def _lifespan(app: FastAPI):
 
     yield
 
+    session_tasks = list(getattr(app.state, "session_tasks", set()))
+    for task in session_tasks:
+        task.cancel()
+    if session_tasks:
+        import asyncio
+        await asyncio.gather(*session_tasks, return_exceptions=True)
+
     await scheduler.stop()
     await engine.dispose()
 
@@ -88,6 +96,9 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         lifespan=_lifespan,
     )
     app.state.config = config
+    app.state.session_factory = None
+    app.state.mcp_pool = MCPServerPool(None, env_fallback=config.mcp_servers)
+    app.state.session_tasks = set()
 
     # -- Ingest rate limiter ------------------------------------------------
     from backend.ingest.rate_limiter import IngestRateLimiter

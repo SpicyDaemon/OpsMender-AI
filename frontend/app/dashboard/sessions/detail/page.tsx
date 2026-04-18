@@ -265,7 +265,31 @@ function SessionPageContent() {
         const ev = parseWSMessage(msg, idGen);
         if (ev) setEvents((prev) => [...prev, ev]);
         if (msg.type === "approval_requested") {
+          setSession((prev) => (prev ? { ...prev, status: "awaiting_approval" } : prev));
           refreshApprovals();
+        }
+        if (msg.type === "approval_resolved") {
+          const resolution = String(msg.data.status ?? "");
+          setSession((prev) => {
+            if (!prev) return prev;
+            if (resolution === "expired") {
+              return { ...prev, status: "timed_out", ended_at: new Date().toISOString() };
+            }
+            return { ...prev, status: "active" };
+          });
+          refreshApprovals();
+        }
+        if (msg.type === "session_end") {
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: (msg.data.status as SessionResponse["status"]) ?? prev.status,
+                  summary: (msg.data.summary as string | null | undefined) ?? prev.summary,
+                  ended_at: prev.ended_at ?? new Date().toISOString(),
+                }
+              : prev,
+          );
         }
       },
       () => setConnected(false),

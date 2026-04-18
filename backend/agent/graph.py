@@ -30,6 +30,8 @@ Usage (full mode, with LLM and MCP)::
 
 from __future__ import annotations
 
+import inspect
+
 from langgraph.graph import StateGraph, START, END
 
 from backend.agent.llm import LLM
@@ -57,6 +59,28 @@ from backend.agent.nodes import (
 from backend.skills.parser import SkillDefinition
 
 
+def _wrap_node_with_events(fn, *, node_name: str, publisher):
+    async def _run(state):
+        await publisher(node_name, "started", state)
+        try:
+            result = fn(state)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception:
+            await publisher(node_name, "failed", {"error": True})
+            raise
+
+        status = "completed"
+        if isinstance(result, dict):
+            status = result.get("status") or "completed"
+        await publisher(node_name, status, result)
+        return result
+
+    _run.__wrapped__ = fn  # type: ignore[attr-defined]
+    _run.__name__ = f"event_wrapped_{node_name}"
+    return _run
+
+
 def build_graph(
     *,
     tier: int,
@@ -68,6 +92,7 @@ def build_graph(
     tier0_time_config: Tier0TimeConfig | None = None,
     plan_tool_names: list[str] | None = None,
     tool_caller=None,
+    node_event_publisher=None,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -138,6 +163,29 @@ def build_graph(
         execute_fn = wrap_node_with_timeout(execute_fn, seconds=secs, node_name="execute")
         verify_fn = wrap_node_with_timeout(verify_fn, seconds=secs, node_name="verify")
         summarize_fn = wrap_node_with_timeout(summarize_fn, seconds=secs, node_name="summarize")
+
+    if node_event_publisher is not None:
+        observe_fn = _wrap_node_with_events(
+            observe_fn, node_name="observe", publisher=node_event_publisher
+        )
+        diagnose_fn = _wrap_node_with_events(
+            diagnose_fn, node_name="diagnose", publisher=node_event_publisher
+        )
+        plan_fn = _wrap_node_with_events(
+            plan_fn, node_name="plan", publisher=node_event_publisher
+        )
+        tier_gate_fn = _wrap_node_with_events(
+            tier_gate_fn, node_name="tier_gate", publisher=node_event_publisher
+        )
+        execute_fn = _wrap_node_with_events(
+            execute_fn, node_name="execute", publisher=node_event_publisher
+        )
+        verify_fn = _wrap_node_with_events(
+            verify_fn, node_name="verify", publisher=node_event_publisher
+        )
+        summarize_fn = _wrap_node_with_events(
+            summarize_fn, node_name="summarize", publisher=node_event_publisher
+        )
 
     # -- register nodes ------------------------------------------------------
     builder.add_node("observe", observe_fn)

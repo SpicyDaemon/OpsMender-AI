@@ -6,6 +6,7 @@ Tests the full API surface: auth, incidents, sessions, audit, config.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -137,6 +138,29 @@ async def _create_approval_request(app, *, tier: int = 1, expires_delta_minutes:
         await db.refresh(session)
         await db.refresh(request)
         return session, request
+
+
+async def _wait_for_session_status(
+    client: AsyncClient,
+    session_id: str,
+    headers: dict[str, str],
+    *,
+    statuses: set[str],
+    timeout_seconds: float = 2.0,
+):
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while True:
+        resp = await client.get(f"/sessions/{session_id}", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        if data["status"] in statuses:
+            return data
+        if asyncio.get_running_loop().time() >= deadline:
+            raise AssertionError(
+                f"Session {session_id} did not reach {sorted(statuses)} within {timeout_seconds}s; "
+                f"last status was {data['status']}"
+            )
+        await asyncio.sleep(0.05)
 
 
 # ===========================================================================
@@ -414,6 +438,82 @@ class TestSessions:
         }, headers=auth_headers)
         assert resp.status_code == 201
         assert resp.json()["tier0_max_session_seconds"] == 600
+
+    async def test_create_session_without_incident_does_not_autorun(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        app.state.workflow_start_delay_seconds = 0
+
+        resp = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
+        assert resp.status_code == 201
+        session_id = resp.json()["id"]
+
+        await asyncio.sleep(0.15)
+        latest = await client.get(f"/sessions/{session_id}", headers=auth_headers)
+        assert latest.status_code == 200
+        assert latest.json()["status"] == "active"
+
+        async with app.state.session_factory() as db:
+            entries = await AuditEntryRepo.list_by_session(db, uuid.UUID(session_id))
+        assert entries == []
+
+    async def test_create_session_with_incident_autoruns_workflow(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        app.state.workflow_start_delay_seconds = 0
+        published: list[tuple[str, dict[str, object]]] = []
+
+        async def _capture_publish(session_id, message):
+            published.append((message.type, dict(message.data)))
+
+        monkeypatch.setattr("backend.api.session_runner.publish", _capture_publish)
+
+        inc_resp = await client.post(
+            "/incidents",
+            json={
+                "title": "API-launched workflow",
+                "description": "pods restarting in production",
+                "severity": "high",
+            },
+            headers=auth_headers,
+        )
+        assert inc_resp.status_code == 201
+        inc_id = inc_resp.json()["id"]
+
+        resp = await client.post(
+            "/sessions",
+            json={"incident_id": inc_id, "tier": 2},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        session_id = resp.json()["id"]
+
+        final = await _wait_for_session_status(
+            client,
+            session_id,
+            auth_headers,
+            statuses={"completed", "failed", "timed_out"},
+        )
+        assert final["status"] == "completed"
+        assert final["summary"]
+
+        event_types = [event_type for event_type, _ in published]
+        assert "node_transition" in event_types
+        assert "session_end" in event_types
+        assert any(
+            event_type == "node_transition" and data.get("node") == "observe"
+            for event_type, data in published
+        )
+        assert any(
+            event_type == "node_transition" and data.get("node") == "summarize"
+            for event_type, data in published
+        )
+
+        async with app.state.session_factory() as db:
+            entries = await AuditEntryRepo.list_by_session(db, uuid.UUID(session_id))
+        entry_types = [entry.entry_type for entry in entries]
+        assert "session_start" in entry_types
+        assert "session_end" in entry_types
 
 
 # ===========================================================================

@@ -11,6 +11,7 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``runtime_config``     — DB-backed UI overrides for runtime settings
 - ``skills``             — operator-owned skill definitions (optionally bound to an MCP server)
 - ``session_messages``   — co-pilot chat history (user ↔ assistant), parallel to the workflow
+- ``webhook_triggers``   — outbound webhooks fired on session lifecycle changes
 - ``ingest_tokens``      — per-source webhook credentials for external incident ingestion
 - ``ingest_log``         — raw payloads from external ingest for replay/debugging
 - ``detector_rules``     — MCP-driven incident detection probes (one per MCP server)
@@ -309,6 +310,32 @@ class RuntimeConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# Webhook triggers (outbound session-state notifications)
+# ---------------------------------------------------------------------------
+
+class WebhookTrigger(Base):
+    __tablename__ = "webhook_triggers"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    event_types: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    headers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+    last_triggered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 # ---------------------------------------------------------------------------

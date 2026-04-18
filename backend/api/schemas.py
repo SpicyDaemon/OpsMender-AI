@@ -363,6 +363,48 @@ class SessionMessageListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Webhook triggers (outbound session-state notifications)
+# ---------------------------------------------------------------------------
+
+class WebhookTriggerUpsert(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    url: str = Field(..., min_length=1, max_length=1000)
+    event_types: list[str] = Field(..., min_length=1)
+    headers: Optional[dict[str, str]] = None
+    token: Optional[str] = None
+    clear_token: bool = False
+    is_active: bool = True
+
+
+class WebhookTriggerResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    url: str
+    event_types: list[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    last_triggered_at: Optional[datetime]
+    last_error: Optional[str]
+    header_names: list[str] = Field(default_factory=list)
+    has_token: bool
+
+    model_config = {"from_attributes": True}
+
+
+class WebhookTriggerListResponse(BaseModel):
+    items: list[WebhookTriggerResponse]
+    total: int
+
+
+class WebhookTriggerTestResponse(BaseModel):
+    success: bool
+    detail: str
+    status_code: Optional[int] = None
+    event_type: str
+
+
+# ---------------------------------------------------------------------------
 # Ingest tokens (Sprint 14)
 # ---------------------------------------------------------------------------
 

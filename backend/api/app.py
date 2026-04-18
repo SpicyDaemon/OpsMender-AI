@@ -81,6 +81,13 @@ async def _lifespan(app: FastAPI):
         import asyncio
         await asyncio.gather(*session_tasks, return_exceptions=True)
 
+    background_tasks = list(getattr(app.state, "background_tasks", set()))
+    for task in background_tasks:
+        task.cancel()
+    if background_tasks:
+        import asyncio
+        await asyncio.gather(*background_tasks, return_exceptions=True)
+
     await scheduler.stop()
     await engine.dispose()
 
@@ -99,6 +106,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.state.session_factory = None
     app.state.mcp_pool = MCPServerPool(None, env_fallback=config.mcp_servers)
     app.state.session_tasks = set()
+    app.state.background_tasks = set()
 
     # -- Ingest rate limiter ------------------------------------------------
     from backend.ingest.rate_limiter import IngestRateLimiter
@@ -132,6 +140,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.ws import router as ws_router
     from backend.api.routes.ingest import router as ingest_router
     from backend.api.routes.detectors import router as detectors_router
+    from backend.api.routes.webhook_triggers import router as webhook_triggers_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -145,6 +154,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(ws_router)
     app.include_router(ingest_router)
     app.include_router(detectors_router)
+    app.include_router(webhook_triggers_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

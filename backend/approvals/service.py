@@ -42,6 +42,7 @@ class ApprovalService:
         timeout_seconds: int = 900,
         poll_interval_seconds: float = 1.0,
         publisher: Callable[[uuid.UUID, dict[str, Any]], Awaitable[None]] | None = None,
+        status_notifier: Callable[[uuid.UUID, str], None] | None = None,
         now_fn: Callable[[], datetime] = _utcnow,
         sleep_fn: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -49,6 +50,7 @@ class ApprovalService:
         self._timeout_seconds = timeout_seconds
         self._poll_interval_seconds = poll_interval_seconds
         self._publisher = publisher
+        self._status_notifier = status_notifier
         self._now_fn = now_fn
         self._sleep_fn = sleep_fn
 
@@ -73,6 +75,7 @@ class ApprovalService:
             await SessionRepo.set_status(db, session_id, status="awaiting_approval")
             await db.commit()
             await db.refresh(request)
+        self._notify_session_status(session_id, "awaiting_approval")
 
         await self._publish(
             session_id,
@@ -89,9 +92,10 @@ class ApprovalService:
                     raise RuntimeError(f"Approval request not found: {request.id}")
 
                 if request.status != "pending":
-                    await self._sync_session_status(db, request)
+                    next_status = await self._sync_session_status(db, request)
                     await db.commit()
                     await db.refresh(request)
+                    self._notify_session_status(session_id, next_status)
                     await self._publish(
                         session_id,
                         {
@@ -109,9 +113,10 @@ class ApprovalService:
                     expired = await ApprovalRequestRepo.get_by_id(db, request.id)
                     if expired is None:
                         raise RuntimeError(f"Approval request not found: {request.id}")
-                    await self._sync_session_status(db, expired)
+                    next_status = await self._sync_session_status(db, expired)
                     await db.commit()
                     await db.refresh(expired)
+                    self._notify_session_status(session_id, next_status)
                     await self._publish(
                         session_id,
                         {
@@ -130,7 +135,7 @@ class ApprovalService:
         self,
         db: AsyncSession,
         request: ApprovalRequest,
-    ) -> None:
+    ) -> str:
         if request.status == "expired":
             await SessionRepo.set_status(
                 db,
@@ -138,9 +143,14 @@ class ApprovalService:
                 status="timed_out",
                 ended_at=self._now_fn(),
             )
-            return
+            return "timed_out"
 
         await SessionRepo.set_status(db, request.session_id, status="active")
+        return "active"
+
+    def _notify_session_status(self, session_id: uuid.UUID, status: str) -> None:
+        if self._status_notifier is not None:
+            self._status_notifier(session_id, status)
 
     async def _publish(self, session_id: uuid.UUID, event: dict[str, Any]) -> None:
         if self._publisher is not None:

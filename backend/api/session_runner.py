@@ -41,6 +41,7 @@ from backend.llm.factory import create_llm
 from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import SkillDefinition, load as load_skill_def, loads as load_skill_def_text
 from backend.tiers.sandbox import build_sandbox_for_session
+from backend.webhooks import schedule_session_event
 from backend.workflow.rollback import reconstruct_tool_calls, replay_compensating_inverses
 
 log = logging.getLogger(__name__)
@@ -408,6 +409,12 @@ async def run_session_workflow(
             factory,
             timeout_seconds=config.approvals.timeout_seconds,
             publisher=lambda sid, event: publish(sid, WSMessage(**event)),
+            status_notifier=lambda sid, status: schedule_session_event(
+                factory,
+                task_registry=app.state.background_tasks,
+                event_type=f"session.{status}",
+                session_id=sid,
+            ),
         )
 
         incident_description = _build_incident_description(incident, pending_messages)
@@ -512,6 +519,12 @@ async def run_session_workflow(
             status=final_status,
             summary=result.get("summary"),
         )
+        schedule_session_event(
+            factory,
+            task_registry=app.state.background_tasks,
+            event_type=f"session.{final_status}",
+            session_id=session_id,
+        )
         await _await_maybe(
             audit_logger.log_session_end(str(session_id), int(session.tier))
         )
@@ -534,6 +547,12 @@ async def run_session_workflow(
             session_id,
             status="failed",
             summary=f"Workflow failed: {exc}",
+        )
+        schedule_session_event(
+            factory,
+            task_registry=app.state.background_tasks,
+            event_type="session.failed",
+            session_id=session_id,
         )
         await publish(
             session_id,

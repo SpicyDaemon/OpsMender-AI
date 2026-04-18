@@ -22,6 +22,7 @@ from backend.db.repos import (
     ModelConfigRepo,
     SessionRepo,
     UserRepo,
+    WebhookTriggerRepo,
 )
 
 
@@ -187,6 +188,47 @@ class TestSessionRepo:
         await db.refresh(sess)
 
         assert sess.status == "awaiting_approval"
+
+
+# ---------------------------------------------------------------------------
+# WebhookTriggerRepo
+# ---------------------------------------------------------------------------
+
+class TestWebhookTriggerRepo:
+
+    async def test_create_and_list_matching_event(self, db: AsyncSession):
+        trigger = await WebhookTriggerRepo.create(
+            db,
+            name="session-complete",
+            url="https://example.com/hook",
+            event_types=["session.completed"],
+            headers={"X-Test": "1"},
+            token="secret",
+        )
+        await db.flush()
+
+        items = await WebhookTriggerRepo.list_matching_event(db, "session.completed")
+        assert [item.id for item in items] == [trigger.id]
+
+    async def test_mark_delivery_updates_timestamp_and_error(self, db: AsyncSession):
+        trigger = await WebhookTriggerRepo.create(
+            db,
+            name="session-fail",
+            url="https://example.com/fail",
+            event_types=["session.failed"],
+        )
+        await db.flush()
+
+        await WebhookTriggerRepo.mark_delivery(
+            db,
+            trigger.id,
+            error="boom",
+        )
+        await db.flush()
+        await db.refresh(trigger)
+
+        assert trigger.last_triggered_at is not None
+        assert trigger.last_error == "boom"
 
 
 # ---------------------------------------------------------------------------

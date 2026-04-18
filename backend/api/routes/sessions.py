@@ -46,6 +46,7 @@ from backend.mcp.client import list_tools as mcp_list_tools
 from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import loads as load_skill_def
 from backend.tiers.sandbox import Tier0Sandbox
+from backend.webhooks import schedule_session_event
 from backend.workflow.rollback import (
     reconstruct_tool_calls,
     replay_compensating_inverses,
@@ -121,6 +122,13 @@ async def create_session(
 
     await db.commit()
     await db.refresh(session)
+
+    schedule_session_event(
+        request.app.state.session_factory,
+        task_registry=request.app.state.background_tasks,
+        event_type="session.created",
+        session_id=session.id,
+    )
 
     # If a briefing was provided, fire the responder so the chat has an
     # assistant reply waiting by the time the UI connects.

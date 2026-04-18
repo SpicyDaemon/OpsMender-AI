@@ -35,6 +35,7 @@ from backend.db.models import (
     SessionMessage,
     Skill,
     User,
+    WebhookTrigger,
 )
 
 
@@ -926,6 +927,132 @@ class RuntimeConfigRepo:
         item.updated_at = datetime.now(timezone.utc)
         await db.flush()
         return item
+
+
+# ---------------------------------------------------------------------------
+# Webhook triggers (outbound session-state notifications)
+# ---------------------------------------------------------------------------
+
+class WebhookTriggerRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        url: str,
+        event_types: list[str],
+        headers: dict[str, str] | None = None,
+        token: str | None = None,
+        is_active: bool = True,
+    ) -> WebhookTrigger:
+        trigger = WebhookTrigger(
+            name=name,
+            url=url,
+            event_types=event_types,
+            headers=headers,
+            token=token,
+            is_active=is_active,
+        )
+        db.add(trigger)
+        await db.flush()
+        return trigger
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, trigger_id: uuid.UUID
+    ) -> WebhookTrigger | None:
+        return await db.get(WebhookTrigger, trigger_id)
+
+    @staticmethod
+    async def get_by_name(
+        db: AsyncSession, name: str
+    ) -> WebhookTrigger | None:
+        stmt = select(WebhookTrigger).where(WebhookTrigger.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        *,
+        active_only: bool = False,
+    ) -> Sequence[WebhookTrigger]:
+        stmt = select(WebhookTrigger).order_by(WebhookTrigger.name)
+        if active_only:
+            stmt = stmt.where(WebhookTrigger.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def list_matching_event(
+        db: AsyncSession,
+        event_type: str,
+    ) -> Sequence[WebhookTrigger]:
+        items = await WebhookTriggerRepo.list_all(db, active_only=True)
+        return [
+            item
+            for item in items
+            if "*" in (item.event_types or []) or event_type in (item.event_types or [])
+        ]
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        trigger_id: uuid.UUID,
+        *,
+        name: str,
+        url: str,
+        event_types: list[str],
+        headers: dict[str, str] | None = None,
+        token: str | None = None,
+        is_active: bool = True,
+    ) -> WebhookTrigger | None:
+        stmt = (
+            update(WebhookTrigger)
+            .where(WebhookTrigger.id == trigger_id)
+            .values(
+                name=name,
+                url=url,
+                event_types=event_types,
+                headers=headers,
+                token=token,
+                is_active=is_active,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await WebhookTriggerRepo.get_by_id(db, trigger_id)
+
+    @staticmethod
+    async def mark_delivery(
+        db: AsyncSession,
+        trigger_id: uuid.UUID,
+        *,
+        error: str | None = None,
+    ) -> None:
+        stmt = (
+            update(WebhookTrigger)
+            .where(WebhookTrigger.id == trigger_id)
+            .values(
+                last_triggered_at=datetime.now(timezone.utc),
+                last_error=error,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        await db.execute(stmt)
+
+    @staticmethod
+    async def delete(db: AsyncSession, trigger_id: uuid.UUID) -> bool:
+        trigger = await WebhookTriggerRepo.get_by_id(db, trigger_id)
+        if trigger is None:
+            return False
+        await db.delete(trigger)
+        await db.flush()
+        return True
 
 
 # ---------------------------------------------------------------------------

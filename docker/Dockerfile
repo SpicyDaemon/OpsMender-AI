@@ -1,13 +1,15 @@
 # AI Incident Manager — single container (frontend + backend)
 #
-# Three stages:
+# Four stages:
 #   1. frontend-builder  — Node 22, produces /app/frontend/out (static export)
-#   2. backend-builder   — Python 3.12, installs deps into /app/.venv via uv
-#   3. runtime           — slim Python image, copies venv + static export + source
+#   2. node-runtime      — Node 22 slim, provides node/npm/npx for the runtime
+#   3. backend-builder   — Python 3.12, installs deps into /app/.venv via uv
+#   4. runtime           — slim Python image, copies venv + Node + static export + source
 #
 # Result: one image, one port (8000), one process (uvicorn).
 # FastAPI serves /api/* (all existing routes) and falls through to the static
-# Next build for everything else.
+# Next build for everything else. Node.js is on PATH so npx-based MCP servers
+# (e.g. `npx -y @anthropic/mcp-server-k8s`) work out of the box.
 
 # ── Stage 1: frontend (static export) ───────────────────────────────────────
 FROM node:22-alpine AS frontend-builder
@@ -27,7 +29,12 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 
-# ── Stage 2: backend (Python deps) ──────────────────────────────────────────
+# ── Stage 2: Node.js runtime (for npx-based MCP servers) ────────────────────
+# Same Debian bookworm base as python:3.12-slim → glibc-compatible binaries.
+FROM node:22-slim AS node-runtime
+
+
+# ── Stage 3: backend (Python deps) ──────────────────────────────────────────
 FROM python:3.12-slim AS backend-builder
 
 WORKDIR /app
@@ -39,7 +46,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 
-# ── Stage 3: runtime ────────────────────────────────────────────────────────
+# ── Stage 4: runtime ────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
 WORKDIR /app
@@ -48,6 +55,14 @@ WORKDIR /app
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl tini \
  && rm -rf /var/lib/apt/lists/*
+
+# Node.js — copied from the node-runtime stage so npx-based MCP servers
+# (e.g. `npx -y @anthropic/mcp-server-k8s`) work without the user having
+# to install Node separately.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # Python venv
 COPY --from=backend-builder /app/.venv /app/.venv

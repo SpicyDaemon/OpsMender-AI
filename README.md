@@ -192,9 +192,11 @@ kill <PID>                 # or: kill -9 <PID> if it ignores SIGTERM
 Sprint 13 closed out the single-container distribution path:
 
 - `aim serve` starts the FastAPI API and the embedded static frontend from one Python process
-- `docker/Dockerfile` builds a single container image that serves both backend and frontend on port `8000`
+- `docker/Dockerfile` builds a single container image that serves both backend and frontend on port `8000` — **Node.js 22 LTS is bundled** so `npx`-based MCP servers (e.g. `@anthropic/mcp-server-k8s`) work out of the box
 - `docker/docker-compose.yml` runs the app with Postgres, health checks, and a logs volume
 - `aim.spec` plus `scripts/build_binary.sh` define the PyInstaller path for a standalone `aim` binary
+
+> **Node.js for the binary:** The PyInstaller binary does **not** bundle Node.js. If you use `npx`-based MCP servers, install Node.js LTS on the host and ensure `npx` is on `$PATH`, or set `AIM_NODE_PATH=/path/to/node/bin` in `.env`.
 
 Build the binary locally with:
 
@@ -520,7 +522,9 @@ ai-incident-manager/
   - Sprint 11: ✅ Next.js frontend + Docker setup
   - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, Co-pilot Chat)
   - Sprint 13: ✅ Single-container app — `aim serve` + unified `docker/Dockerfile` + PyInstaller binary, E2E + frontend-mount verification green
-  - Sprint 14: 🔧 External incident ingestion — core API + 5 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting done; MCP-driven detector backend + templates + dashboard UI done; optional auto-start remains
+  - Sprint 14: ✅ External incident ingestion — core API + 5 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting + MCP-driven detector + auto-start
+  - Sprint 15: ✅ Universal ingestion — `auto` adapter with heuristics + LLM fallback + per-token shape cache
+  - Sprint 16: 🔧 Bundle Node.js/npx in Docker + binary builds
 
 ## Distribution Status
 

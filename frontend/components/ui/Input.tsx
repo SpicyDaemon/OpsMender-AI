@@ -1,6 +1,6 @@
 import { type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes, forwardRef } from "react";
 
-const BASE = "block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:opacity-60";
+const BASE = "block w-full rounded-md border border-border-strong bg-bg-input px-3 py-2 text-sm text-fg-primary placeholder:text-fg-muted transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:bg-bg-hover disabled:opacity-60";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className = "", ...props }, ref) => (
@@ -18,7 +18,7 @@ Textarea.displayName = "Textarea";
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   ({ className = "", ...props }, ref) => (
-    <select ref={ref} className={`${BASE} ${className}`} {...props} />
+    <select ref={ref} className={`${BASE} appearance-none pr-8 ${className}`} {...props} />
   ),
 );
 Select.displayName = "Select";
@@ -30,7 +30,7 @@ interface LabelProps {
 }
 export function Label({ children, htmlFor, className = "" }: LabelProps) {
   return (
-    <label htmlFor={htmlFor} className={`block text-sm font-medium text-gray-700 mb-1 ${className}`}>
+    <label htmlFor={htmlFor} className={`block text-xs font-medium text-fg-secondary mb-1.5 uppercase tracking-wide ${className}`}>
       {children}
     </label>
   );
@@ -38,5 +38,5 @@ export function Label({ children, htmlFor, className = "" }: LabelProps) {
 
 export function FormError({ message }: { message?: string }) {
   if (!message) return null;
-  return <p className="mt-1 text-xs text-red-600">{message}</p>;
+  return <p className="mt-1 text-xs text-status-critical">{message}</p>;
 }

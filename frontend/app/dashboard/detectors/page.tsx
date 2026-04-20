@@ -31,6 +31,7 @@ import type {
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -296,7 +297,7 @@ function DetectorModal({
             }
             className="text-sm"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-fg-secondary">
             The detector will use this prompt to decide what to observe on the MCP
             server and whether to file an incident.
           </p>
@@ -343,12 +344,12 @@ function HistoryModal({
       ) : (
         <div className="space-y-3">
           {history.length === 0 ? (
-            <p className="text-sm text-gray-500">No run history yet.</p>
+            <p className="text-sm text-fg-secondary">No run history yet.</p>
           ) : (
             history.map((item) => (
               <div
                 key={item.id}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+                className="rounded-xl border border-border-subtle bg-bg-elevated p-4"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -357,15 +358,15 @@ function HistoryModal({
                     </Badge>
                     {item.error && <Badge variant="rejected">error</Badge>}
                   </div>
-                  <p className="text-xs text-gray-500">{fmtDate(item.ran_at)}</p>
+                  <p className="text-xs text-fg-secondary">{fmtDate(item.ran_at)}</p>
                 </div>
-                <div className="mt-2 grid grid-cols-3 gap-3 text-xs text-gray-600">
+                <div className="mt-2 grid grid-cols-3 gap-3 text-xs text-fg-secondary">
                   <div>Duration: {item.duration_ms ?? 0}ms</div>
                   <div>Incident: {item.incident_id ? `${item.incident_id.slice(0, 8)}…` : "none"}</div>
                   <div>Error: {item.error ?? "none"}</div>
                 </div>
                 {item.raw_verdict && (
-                  <pre className="mt-3 overflow-x-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                  <pre className="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-panel p-3 text-xs text-fg-primary">
                     {JSON.stringify(item.raw_verdict, null, 2)}
                   </pre>
                 )}
@@ -489,8 +490,8 @@ export default function DetectorsPage() {
     <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Detectors</h1>
-          <p className="mt-1 max-w-3xl text-sm text-gray-500">
+          <h1 className="text-2xl font-semibold text-fg-primary">Detectors</h1>
+          <p className="mt-1 max-w-3xl text-sm text-fg-secondary">
             Turn MCP servers into incident sources with scheduled observation-only
             rules. Start from a built-in template or write a custom prompt.
           </p>
@@ -510,30 +511,30 @@ export default function DetectorsPage() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-xl border border-status-critical-border bg-status-critical-bg px-4 py-3 text-sm text-status-critical">
           {error}
         </div>
       )}
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-border-subtle bg-bg-panel p-5 shadow-sm">
         <div className="mb-4 flex items-center gap-2">
-          <Activity size={16} className="text-indigo-600" />
-          <h2 className="text-sm font-semibold text-gray-900">Built-in templates</h2>
+          <Activity size={16} className="text-accent" />
+          <h2 className="text-sm font-semibold text-fg-primary">Built-in templates</h2>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {templates.map((tpl) => (
             <div
               key={tpl.key}
-              className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+              className="rounded-xl border border-border-subtle bg-bg-elevated p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">{tpl.label}</h3>
-                  <p className="mt-1 text-sm text-gray-500">{tpl.description}</p>
+                  <h3 className="text-sm font-semibold text-fg-primary">{tpl.label}</h3>
+                  <p className="mt-1 text-sm text-fg-secondary">{tpl.description}</p>
                 </div>
                 <Badge variant={tpl.severity_default}>{tpl.severity_default}</Badge>
               </div>
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-3 text-xs text-fg-secondary">
                 Suggested interval: {fmtInterval(tpl.interval_seconds)}
               </p>
             </div>
@@ -541,18 +542,18 @@ export default function DetectorsPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+      <section className="rounded-2xl border border-border-subtle bg-bg-panel shadow-sm">
+        <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Detector rules</h2>
-            <p className="text-xs text-gray-500">{rules.length} configured</p>
+            <h2 className="text-sm font-semibold text-fg-primary">Detector rules</h2>
+            <p className="text-xs text-fg-secondary">{rules.length} configured</p>
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+              <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium uppercase tracking-wide text-fg-secondary">
                 <th className="px-5 py-3">Rule</th>
                 <th className="px-5 py-3">MCP Server</th>
                 <th className="px-5 py-3">Interval</th>
@@ -562,11 +563,23 @@ export default function DetectorsPage() {
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-gray-400">
-                    No detector rules yet.
+                  <td colSpan={7} className="p-6">
+                    <EmptyState
+                      icon={Activity}
+                      title="No detector rules yet"
+                      description="Detector rules poll an MCP server on a schedule and auto-file incidents when the agent spots something unusual."
+                      action={
+                        canManage ? (
+                          <Button size="sm" onClick={openCreate}>
+                            <Plus size={14} />
+                            Add detector
+                          </Button>
+                        ) : undefined
+                      }
+                    />
                   </td>
                 </tr>
               )}
@@ -578,28 +591,28 @@ export default function DetectorsPage() {
                   <tr key={rule.id} className="align-top">
                     <td className="px-5 py-4">
                       <div className="space-y-1">
-                        <p className="font-medium text-gray-900">{rule.name}</p>
-                        <p className="max-w-md text-xs text-gray-500">
+                        <p className="font-medium text-fg-primary">{rule.name}</p>
+                        <p className="max-w-md text-xs text-fg-secondary">
                           {template?.label ?? "Custom template"}
                           {model ? ` • model: ${model.name}` : " • default model"}
                         </p>
-                        <p className="max-w-xl line-clamp-2 text-xs text-gray-400">
+                        <p className="max-w-xl line-clamp-2 text-xs text-fg-muted">
                           {rule.prompt_template}
                         </p>
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-sm text-gray-600">
+                    <td className="px-5 py-4 text-sm text-fg-secondary">
                       {server?.name ?? rule.mcp_server_id.slice(0, 8)}
                     </td>
-                    <td className="px-5 py-4 text-sm text-gray-600">
+                    <td className="px-5 py-4 text-sm text-fg-secondary">
                       {fmtInterval(rule.interval_seconds)}
                     </td>
                     <td className="px-5 py-4">
                       <Badge variant={rule.severity_default}>{rule.severity_default}</Badge>
                     </td>
-                    <td className="px-5 py-4 text-sm text-gray-600">
+                    <td className="px-5 py-4 text-sm text-fg-secondary">
                       <div>{fmtDate(rule.last_ran_at)}</div>
-                      <div className="mt-1 text-xs text-gray-400">
+                      <div className="mt-1 text-xs text-fg-muted">
                         {rule.last_fingerprint ? `fp: ${rule.last_fingerprint}` : "no fingerprint"}
                       </div>
                     </td>

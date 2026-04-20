@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { BookOpen, RefreshCw } from "lucide-react";
 import { listAudit } from "@/lib/api";
 import type { AuditEntryResponse, AuditListResponse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { PageSpinner } from "@/components/ui/Spinner";
 
@@ -24,11 +25,11 @@ function PermittedDot({ permitted }: { permitted: boolean }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-        permitted ? "text-green-700" : "text-red-700"
+        permitted ? "text-status-low" : "text-status-critical"
       }`}
     >
       <span
-        className={`h-1.5 w-1.5 rounded-full ${permitted ? "bg-green-500" : "bg-red-500"}`}
+        className={`h-1.5 w-1.5 rounded-full ${permitted ? "bg-status-low" : "bg-status-critical"}`}
       />
       {permitted ? "Permitted" : "Blocked"}
     </span>
@@ -72,9 +73,9 @@ export default function AuditPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
+          <h1 className="text-2xl font-bold text-fg-primary">Audit Log</h1>
           {data && (
-            <p className="text-sm text-gray-500 mt-0.5">{data.total} entries</p>
+            <p className="text-sm text-fg-secondary mt-0.5">{data.total} entries</p>
           )}
         </div>
         <Button variant="ghost" size="sm" onClick={() => { setPage(0); load(); }} disabled={loading}>
@@ -120,12 +121,26 @@ export default function AuditPage() {
       {/* Table */}
       {loading && !data ? (
         <PageSpinner />
+      ) : data?.items.length === 0 ? (
+        <EmptyState
+          icon={BookOpen}
+          title={
+            sessionId || toolName || permitted
+              ? "No audit entries match these filters"
+              : "No audit entries yet"
+          }
+          description={
+            sessionId || toolName || permitted
+              ? "Try clearing filters above."
+              : "Every MCP tool call — permitted or blocked — is recorded here once sessions start running."
+          }
+        />
       ) : (
         <>
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
                   <th className="px-4 py-3">Timestamp</th>
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Tool</th>
@@ -134,39 +149,32 @@ export default function AuditPage() {
                   <th className="px-4 py-3">Duration</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data?.items.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
-                      No audit entries found.
-                    </td>
-                  </tr>
-                )}
+              <tbody className="divide-y divide-border-subtle">
                 {data?.items.map((entry) => (
                   <>
                     <tr
                       key={entry.id}
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      className="hover:bg-bg-elevated cursor-pointer transition-colors"
                       onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
                     >
-                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap font-mono text-xs">
+                      <td className="px-4 py-3 text-fg-secondary whitespace-nowrap font-mono text-xs">
                         {fmtDate(entry.timestamp)}
                       </td>
-                      <td className="px-4 py-3 text-gray-700">{entry.entry_type}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-700">
-                        {entry.tool_name ?? <span className="text-gray-300">—</span>}
+                      <td className="px-4 py-3 text-fg-primary">{entry.entry_type}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-fg-primary">
+                        {entry.tool_name ?? <span className="text-fg-muted">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">{entry.tier}</td>
+                      <td className="px-4 py-3 text-fg-secondary">{entry.tier}</td>
                       <td className="px-4 py-3">
                         <PermittedDot permitted={entry.permitted} />
                       </td>
-                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      <td className="px-4 py-3 text-fg-secondary whitespace-nowrap">
                         {entry.duration_ms != null ? `${entry.duration_ms}ms` : "—"}
                       </td>
                     </tr>
                     {/* Expanded detail row */}
                     {expanded === entry.id && (
-                      <tr key={`${entry.id}-detail`} className="bg-gray-50">
+                      <tr key={`${entry.id}-detail`} className="bg-bg-elevated">
                         <td colSpan={6} className="px-4 py-3">
                           <ExpandedAuditRow entry={entry} />
                         </td>
@@ -180,7 +188,7 @@ export default function AuditPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+            <div className="mt-4 flex items-center justify-between text-sm text-fg-secondary">
               <span>
                 Page {page + 1} of {totalPages}
               </span>
@@ -214,27 +222,27 @@ function ExpandedAuditRow({ entry }: { entry: AuditEntryResponse }) {
   return (
     <div className="grid grid-cols-2 gap-4 text-xs">
       <div>
-        <p className="font-medium text-gray-500 mb-1">Session ID</p>
-        <p className="font-mono text-gray-700">{entry.session_id}</p>
+        <p className="font-medium text-fg-secondary mb-1">Session ID</p>
+        <p className="font-mono text-fg-primary">{entry.session_id}</p>
       </div>
       {entry.block_reason && (
         <div>
-          <p className="font-medium text-red-500 mb-1">Block Reason</p>
-          <p className="text-red-700">{entry.block_reason}</p>
+          <p className="font-medium text-status-critical mb-1">Block Reason</p>
+          <p className="text-status-critical">{entry.block_reason}</p>
         </div>
       )}
       {entry.tool_parameters && (
         <div>
-          <p className="font-medium text-gray-500 mb-1">Parameters</p>
-          <pre className="bg-gray-100 rounded p-2 overflow-x-auto">
+          <p className="font-medium text-fg-secondary mb-1">Parameters</p>
+          <pre className="bg-bg-elevated rounded p-2 overflow-x-auto">
             {JSON.stringify(entry.tool_parameters, null, 2)}
           </pre>
         </div>
       )}
       {entry.result && (
         <div>
-          <p className="font-medium text-gray-500 mb-1">Result</p>
-          <pre className="bg-gray-100 rounded p-2 overflow-x-auto">
+          <p className="font-medium text-fg-secondary mb-1">Result</p>
+          <pre className="bg-bg-elevated rounded p-2 overflow-x-auto">
             {JSON.stringify(entry.result, null, 2)}
           </pre>
         </div>

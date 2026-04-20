@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw } from "lucide-react";
 import { createIncident, listIncidents } from "@/lib/api";
 import type { IncidentCreate, IncidentListResponse, IncidentResponse, Severity } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -47,9 +48,9 @@ export default function IncidentsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Incidents</h1>
+          <h1 className="text-2xl font-bold text-fg-primary">Incidents</h1>
           {data && (
-            <p className="text-sm text-gray-500 mt-0.5">{data.total} total</p>
+            <p className="text-sm text-fg-secondary mt-0.5">{data.total} total</p>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -80,35 +81,46 @@ export default function IncidentsPage() {
       {/* Table */}
       {loading && !data ? (
         <PageSpinner />
+      ) : data?.items.length === 0 ? (
+        <EmptyState
+          icon={AlertTriangle}
+          title={statusFilter ? "No incidents match this filter" : "No incidents yet"}
+          description={
+            statusFilter
+              ? "Try clearing the status filter above."
+              : "Incidents you create or receive from integrations will appear here."
+          }
+          action={
+            !statusFilter && (
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                <Plus size={14} />
+                New Incident
+              </Button>
+            )
+          }
+        />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Severity</th>
                 <th className="px-4 py-3">Created</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {data?.items.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                    No incidents found.
-                  </td>
-                </tr>
-              )}
+            <tbody className="divide-y divide-border-subtle">
               {data?.items.map((inc) => (
-                <tr key={inc.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={inc.id} className="hover:bg-bg-elevated transition-colors">
                   <td className="px-4 py-3">
                     <Link
                       href={`/dashboard/incidents/detail?id=${inc.id}`}
-                      className="font-medium text-gray-900 hover:text-indigo-600"
+                      className="font-medium text-fg-primary hover:text-accent"
                     >
                       {inc.title}
                     </Link>
-                    <p className="text-xs text-gray-400 truncate max-w-xs mt-0.5">
+                    <p className="text-xs text-fg-muted truncate max-w-xs mt-0.5">
                       {inc.description}
                     </p>
                   </td>
@@ -121,10 +133,10 @@ export default function IncidentsPage() {
                     {inc.severity ? (
                       <Badge variant={inc.severity}>{inc.severity}</Badge>
                     ) : (
-                      <span className="text-gray-300">—</span>
+                      <span className="text-fg-muted">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                  <td className="px-4 py-3 text-fg-secondary whitespace-nowrap">
                     {fmtDate(inc.created_at)}
                   </td>
                 </tr>

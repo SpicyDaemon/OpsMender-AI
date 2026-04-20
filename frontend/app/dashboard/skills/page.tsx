@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
+  FileText,
   FileUp,
   Pencil,
   Plus,
@@ -24,6 +25,7 @@ import type {
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -185,7 +187,7 @@ function SkillModal({
             rows={18}
             className="font-mono text-xs"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-fg-secondary">
             YAML front-matter between <code>---</code> fences defines
             operations. Content is validated before saving.
           </p>
@@ -358,7 +360,7 @@ function ImportModal({
             type="file"
             accept=".md,.markdown,text/markdown"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-indigo-700 hover:file:bg-indigo-100"
+            className="block w-full text-sm text-fg-primary file:mr-3 file:rounded-md file:border-0 file:bg-accent-bg file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent hover:file:bg-accent-bg"
           />
         </div>
         <div>
@@ -475,8 +477,8 @@ export default function SkillsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Skills</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-semibold text-fg-primary">Skills</h1>
+          <p className="mt-1 text-sm text-fg-secondary">
             Operator-owned skill definitions. Each MCP server can have its
             own skill; a global skill acts as the fallback.
           </p>
@@ -497,9 +499,27 @@ export default function SkillsPage() {
       </div>
 
       {skills.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
-          No skills yet. {canEdit ? "Import a SKILL.md file or create one." : "Ask an admin to add one."}
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="No skills yet"
+          description={
+            canEdit
+              ? "Skills classify MCP tool calls as safe, caution, or destructive. Import a SKILL.md file or author one from scratch."
+              : "Ask an admin to import or create a SKILL.md file."
+          }
+          action={
+            canEdit ? (
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setShowImport(true)}>
+                  <FileUp size={14} /> Import .md
+                </Button>
+                <Button size="sm" onClick={openCreate}>
+                  <Plus size={14} /> New skill
+                </Button>
+              </div>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-6">
           <SkillGroup
@@ -576,14 +596,14 @@ function SkillGroup({
   onDelete: (s: SkillResponse) => void;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="border-b border-gray-100 px-6 py-4">
-        <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
+    <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+      <div className="border-b border-border-subtle px-6 py-4">
+        <h2 className="text-base font-semibold text-fg-primary">{title}</h2>
+        {subtitle && <p className="mt-0.5 text-xs text-fg-secondary">{subtitle}</p>}
       </div>
-      <div className="divide-y divide-gray-100">
+      <div className="divide-y divide-border-subtle">
         {skills.length === 0 ? (
-          <p className="px-6 py-4 text-sm text-gray-500">No skills.</p>
+          <p className="px-6 py-4 text-sm text-fg-secondary">No skills.</p>
         ) : (
           skills.map((skill) => (
             <div
@@ -592,7 +612,7 @@ function SkillGroup({
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-900">{skill.name}</span>
+                  <span className="font-medium text-fg-primary">{skill.name}</span>
                   {skill.mcp_server_id ? (
                     <Badge variant="in_progress">
                       {serverNameById.get(skill.mcp_server_id) ?? "server"}
@@ -602,11 +622,11 @@ function SkillGroup({
                   )}
                 </div>
                 {skill.description && (
-                  <p className="mt-1 text-sm text-gray-600">
+                  <p className="mt-1 text-sm text-fg-secondary">
                     {skill.description}
                   </p>
                 )}
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-fg-muted">
                   Updated {fmtDate(skill.updated_at)}
                 </p>
               </div>

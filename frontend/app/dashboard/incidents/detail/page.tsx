@@ -55,15 +55,15 @@ function IncidentDetailContent() {
   }, [id]);
 
   if (loading) return <PageSpinner />;
-  if (!id) return <p className="text-red-600">Missing incident id.</p>;
-  if (!incident) return <p className="text-red-600">Incident not found.</p>;
+  if (!id) return <p className="text-status-critical">Missing incident id.</p>;
+  if (!incident) return <p className="text-status-critical">Incident not found.</p>;
 
   return (
     <div className="max-w-3xl mx-auto">
       {/* Back */}
       <Link
         href="/dashboard/incidents"
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-fg-secondary hover:text-fg-primary mb-6"
       >
         <ArrowLeft size={14} /> Incidents
       </Link>
@@ -71,7 +71,7 @@ function IncidentDetailContent() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{incident.title}</h1>
+          <h1 className="text-2xl font-bold text-fg-primary">{incident.title}</h1>
           <div className="flex items-center gap-2 mt-2">
             <Badge variant={incident.status as Parameters<typeof Badge>[0]["variant"]}>
               {incident.status.replace("_", " ")}
@@ -88,19 +88,19 @@ function IncidentDetailContent() {
       </div>
 
       {/* Detail card */}
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
+      <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm p-6 space-y-4">
         <div>
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Description</p>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{incident.description}</p>
+          <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Description</p>
+          <p className="text-sm text-fg-primary whitespace-pre-wrap">{incident.description}</p>
         </div>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Created</p>
-            <p className="text-gray-700">{fmtDate(incident.created_at)}</p>
+            <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Created</p>
+            <p className="text-fg-primary">{fmtDate(incident.created_at)}</p>
           </div>
           <div>
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Updated</p>
-            <p className="text-gray-700">{fmtDate(incident.updated_at)}</p>
+            <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Updated</p>
+            <p className="text-fg-primary">{fmtDate(incident.updated_at)}</p>
           </div>
         </div>
       </div>
@@ -281,7 +281,7 @@ function StartSessionModal({
               setForm((f) => ({ ...f, initial_briefing: e.target.value }))
             }
           />
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-fg-muted">
             Seeded as the first user message in the co-pilot chat before the workflow begins.
           </p>
         </div>

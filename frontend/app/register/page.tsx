@@ -45,12 +45,12 @@ export default function RegisterPage() {
     <div className="flex min-h-full flex-col items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <ShieldCheck size={32} className="text-indigo-600" />
-          <span className="text-xl font-bold text-gray-900">AI Incident Manager</span>
+          <ShieldCheck size={32} className="text-accent" />
+          <span className="text-xl font-bold text-fg-primary">AI Incident Manager</span>
         </div>
 
-        <div className="rounded-xl bg-white shadow-sm ring-1 ring-gray-200 px-8 py-8">
-          <h1 className="text-lg font-semibold text-gray-900 mb-6">Create an account</h1>
+        <div className="rounded-xl bg-bg-panel shadow-sm ring-1 ring-border-subtle px-8 py-8">
+          <h1 className="text-lg font-semibold text-fg-primary mb-6">Create an account</h1>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -112,9 +112,9 @@ export default function RegisterPage() {
           </form>
         </div>
 
-        <p className="mt-4 text-center text-sm text-gray-500">
+        <p className="mt-4 text-center text-sm text-fg-secondary">
           Already have an account?{" "}
-          <Link href="/login" className="text-indigo-600 hover:underline font-medium">
+          <Link href="/login" className="text-accent hover:underline font-medium">
             Sign in
           </Link>
         </p>

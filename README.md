@@ -10,18 +10,17 @@ Requires [uv](https://docs.astral.sh/uv/) (Python package manager) and Python 3.
 # 1. Install dependencies and register the `aim` CLI command
 uv sync --dev
 
-# 2. Set up environment
-cp .env.example .env        # edit .env with your API keys
+# 2. Create your .env (SQLite works out of the box — no Postgres needed)
+cp .env.example .env
 
 # 3. Verify installation
 uv run aim --version
-uv run aim check             # validates config + MCP connectivity
-
-# 4. Run a dry-run session (no LLM or MCP needed)
-uv run aim run --dry-run --incident "High CPU on api-server-01"
+uv run aim run --dry-run --incident "High CPU on api-server-01"   # no LLM/MCP needed
 ```
 
-> **How `aim` works:** `uv sync` installs the project as a Python package, which registers `aim` as a CLI entry point (defined in `pyproject.toml` → `[project.scripts]`). You run it via `uv run aim` or by activating the venv directly (`. .venv/bin/activate && aim`).
+See [Running Locally](#running-locally) to start the full API + dashboard.
+
+> **How `aim` works:** `uv sync` installs the project as a Python package, which registers `aim` as a CLI entry point (defined in `pyproject.toml` → `[project.scripts]`). Run it via `uv run aim` or by activating the venv directly (`. .venv/bin/activate && aim`).
 
 ### Runtime Inputs
 
@@ -33,26 +32,6 @@ In practice, an AIM deployment is driven by four operator-owned inputs:
 - `skills/` directory for your environment-specific `SKILL.md` files that define what counts as safe, caution, or destructive. Files placed here are auto-imported into the `skills` DB table on backend startup (existing rows are skipped by name, so UI edits are preserved across restarts). `examples/SKILL.md` is a reference template only and is never auto-imported.
 
 This is intentional: AIM does not hardcode what "destructive" means for your infrastructure. The operator defines that through skills.
-
-### Local Dev Notes
-
-- Sprint 13 verification (`tests/test_e2e.py` + `tests/test_frontend_mount.py`) is green using a file-backed temp SQLite DB. See [End-to-End Verification](#end-to-end-verification) below for how to run it.
-- On Python 3.14.x, async SQLite hangs if the engine is opened against an in-memory URL (`sqlite+aiosqlite://`). Use a file URL (`sqlite+aiosqlite:///path/to/file.db`) — the E2E fixture already does this via `tmp_path`.
-- `aim approvals ...` requires a reachable database because approval requests are persisted.
-- `aim config model set ...` also requires a reachable database because model configs are persisted.
-- If you are not running Postgres locally yet, SQLite works for local approval-flow testing:
-
-```bash
-export AIM_DATABASE_URL="sqlite+aiosqlite:///$(pwd)/aim.db"
-```
-
-- If `aim` ever fails with `ModuleNotFoundError: cli` after venv activation, reinstall the package into the venv as a regular wheel:
-
-```bash
-.venv/bin/pip install --force-reinstall --no-deps .
-```
-
-- After that non-editable install, source changes will not automatically appear in the `aim` launcher until you reinstall again.
 
 ## Running Tests
 
@@ -123,29 +102,43 @@ If you change anything in the API layer, the workflow, the approval service, the
 | `aim approvals approve ID` | Approve a pending Tier 1 request |
 | `aim approvals reject ID` | Reject a pending Tier 1 request |
 
-## Running Locally (Full Stack)
+## Running Locally
 
 AIM runs on a **single port (8000)** — backend API + static frontend export served by one Python process. There is no separate frontend port.
 
-> **Known limitation:** the Alembic migrations use Postgres-specific types, so `aim serve` currently only works against Postgres. The dev server (`scripts/dev_server.py`) sidesteps Alembic by using `Base.metadata.create_all`, which is dialect-aware and works on SQLite.
+### Dev server with SQLite (recommended for local testing)
 
-### Dev mode (recommended)
-
-One terminal, one port. Loads `.env`, follows the DB fallback chain (`AIM_DATABASE_URL` → local Postgres → SQLite `aim-local.db`), seeds `admin` / `admin123`, and starts Uvicorn on port 8000 serving both the API and the embedded static frontend.
+No Postgres required. The dev launcher sidesteps Alembic by using `Base.metadata.create_all`, which works on SQLite. It loads `.env`, creates the schema, seeds `admin` / `admin123`, and starts Uvicorn on port 8000 serving both the API and the embedded static frontend.
 
 ```bash
-# 1. Build the static frontend (only when the frontend changes)
+# 1. Point AIM at a local SQLite file in .env
+#    (either edit AIM_DATABASE_URL, or comment it out and the app defaults to sqlite+aiosqlite:///./aim-local.db)
+AIM_DATABASE_URL=sqlite+aiosqlite:///./aim-local.db
+
+# 2. Build the static frontend (only when the frontend changes)
 cd frontend && npm install && npm run build && cd ..
 
-# 2. Start the app
+# 3. Start the app
 uv run python scripts/dev_server.py
 ```
 
 Open **http://localhost:8000** and log in with `admin` / `admin123`.
 
-When you change frontend code, run `cd frontend && npm run build && cd ..` and restart the dev server.
+**Hot-reload workflow** — for faster frontend iteration you can skip the `npm run build` step and run the Next.js dev server on port 3000 instead, pointing it at the backend on 8000:
+
+```bash
+# terminal 1 — backend only
+uv run python scripts/dev_server.py
+
+# terminal 2 — frontend dev server
+cd frontend && npm run dev
+```
+
+Then open **http://localhost:3000**.
 
 ### Production mode (`aim serve` with Postgres)
+
+`aim serve` runs Alembic migrations, which use Postgres-specific types, so it requires Postgres.
 
 ```bash
 # 1. Start Postgres (one-time)
@@ -153,8 +146,8 @@ docker run -d --name aim-pg \
   -e POSTGRES_USER=aim -e POSTGRES_PASSWORD=aim -e POSTGRES_DB=aim \
   -p 5432:5432 postgres:16
 
-# 2. Point AIM at it
-echo "AIM_DATABASE_URL=postgresql+asyncpg://aim:aim@localhost:5432/aim" >> .env
+# 2. Point AIM at it in .env
+AIM_DATABASE_URL=postgresql+asyncpg://aim:aim@localhost:5432/aim
 
 # 3. Build the static frontend (only when the frontend changes)
 cd frontend && npm install && npm run build && cd ..
@@ -165,7 +158,7 @@ uv run aim serve
 
 Open **http://localhost:8000** → click **Register** → first registered user becomes admin automatically.
 
-### Raw Uvicorn (alternative)
+### Raw Uvicorn (Postgres only)
 
 ```bash
 export AIM_DATABASE_URL="postgresql+asyncpg://aim:aim@localhost:5432/aim"
@@ -174,16 +167,15 @@ uv run alembic upgrade head
 uv run uvicorn backend.api.app:create_app --factory --reload
 ```
 
-Note: the ASGI target is `backend.api.app:create_app` **with `--factory`** — there is no `backend.api.main` module.
+The ASGI target is `backend.api.app:create_app` **with `--factory`** — there is no `backend.api.main` module.
 
-### Shutting down cleanly
+### Troubleshooting
 
-Always stop with **Ctrl-C**. If a previous run got orphaned:
-
-```bash
-lsof -i :8000              # find the PID holding the port
-kill <PID>                 # or: kill -9 <PID> if it ignores SIGTERM
-```
+- **SQLite on Python 3.14.x:** use a file URL (`sqlite+aiosqlite:///./aim-local.db`). In-memory (`sqlite+aiosqlite://`) hangs.
+- **`ModuleNotFoundError: cli` when running `aim` (macOS + iCloud Desktop):** Python 3.14's `site.py` skips `.pth` files marked with the BSD `hidden` flag, which iCloud Drive sets on everything under a synced `Desktop/` or `Documents/`. That breaks the editable install's sys.path wiring. Fix: `chflags -R nohidden .venv`. Long-term, either exclude `.venv` from iCloud ("Remove Download" on the folder) or keep the project outside an iCloud-synced path.
+- **`ModuleNotFoundError: cli` on other setups:** reinstall as a regular wheel — `.venv/bin/pip install --force-reinstall --no-deps .` (note: source changes won't hot-reload in the `aim` launcher after a non-editable install).
+- **Port 8000 already in use:** `lsof -i :8000` to find the PID, then `kill <PID>`.
+- **`aim approvals …` or `aim config model set …` errors:** both require a reachable DB.
 
 
 
@@ -613,7 +605,11 @@ ai-incident-manager/
 ## Progress
 
 - **Phase 1 (Sprints 1–6):** ✅ Complete — CLI, MCP, skills, tiers, audit, LangGraph workflow
-- **Phase 2 (Sprints 7–20):** ✅ Complete
+- **Phase 2 (Sprints 7–16):** ✅ Complete — persistence, REST/WebSocket API, approvals, BYOM, frontend, single-container distribution, external ingestion
+- **Phase 3 (Sprints 17–23):** ✅ Complete — Tier 0 sandbox + rollback, outbound webhook triggers (Slack/Teams/Sumo), custom workflow profiles, multi-agent team profiles
+- **Sprint 24 (in progress):** UI polish + public release — see [`docs/TASKS.md`](docs/TASKS.md)
+
+### Sprint breakdown
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
   - Sprint 8: ✅ FastAPI REST + WebSocket layer (JWT auth, RBAC, all CRUD endpoints)
   - Sprint 9: ✅ Tier 1 approval flow

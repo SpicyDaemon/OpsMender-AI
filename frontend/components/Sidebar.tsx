@@ -15,6 +15,7 @@ import {
   Settings,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
+import { getConfig } from "@/lib/api";
 
 const NAV = [
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
@@ -33,11 +34,19 @@ const ROLE_STYLES: Record<string, string> = {
   viewer: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
 };
 
+const TIER_STYLES: Record<number, { label: string; cls: string }> = {
+  0: { label: "Autonomous", cls: "bg-status-critical-bg text-status-critical border-status-critical-border" },
+  1: { label: "Approval", cls: "bg-status-high-bg text-status-high border-status-high-border" },
+  2: { label: "Assisted", cls: "bg-status-medium-bg text-status-medium border-status-medium-border" },
+  3: { label: "Advisory", cls: "bg-status-low-bg text-status-low border-status-low-border" },
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [tier, setTier] = useState<number | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
@@ -46,11 +55,21 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    getConfig()
+      .then((c) => { if (!cancelled) setTier(c.tier); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user, pathname]);
+
+  useEffect(() => {
     if (hydrated) localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
   }, [collapsed, hydrated]);
 
   const width = collapsed ? "w-16" : "w-60";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
+  const tierInfo = tier !== null ? TIER_STYLES[tier] : null;
 
   return (
     <aside
@@ -68,6 +87,32 @@ export function Sidebar() {
           </div>
         )}
       </div>
+
+      {/* Tier indicator */}
+      {tierInfo && (
+        <div className="border-b border-border-subtle px-3 py-2">
+          {collapsed ? (
+            <div
+              title={`Tier ${tier} · ${tierInfo.label}`}
+              className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md border font-mono text-[11px] font-semibold ${tierInfo.cls}`}
+            >
+              T{tier}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-fg-muted">
+                Tier
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tierInfo.cls}`}
+              >
+                <span className="font-mono">T{tier}</span>
+                <span>{tierInfo.label}</span>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Nav */}
       <nav className="flex-1 space-y-0.5 px-2 py-3 overflow-y-auto">

@@ -92,11 +92,11 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="border-b border-gray-100 px-6 py-4">
-        <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+    <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+      <div className="border-b border-border-subtle px-6 py-4">
+        <h2 className="text-base font-semibold text-fg-primary">{title}</h2>
         {description && (
-          <p className="mt-0.5 text-sm text-gray-500">{description}</p>
+          <p className="mt-0.5 text-sm text-fg-secondary">{description}</p>
         )}
       </div>
       <div className="space-y-4 px-6 py-5">{children}</div>
@@ -178,18 +178,18 @@ function TierSection({
 
       <div>
         <Label>Audit Output</Label>
-        <p className="rounded-md bg-gray-50 px-3 py-2 font-mono text-sm text-gray-500">
+        <p className="rounded-md bg-bg-elevated px-3 py-2 font-mono text-sm text-fg-secondary">
           {config.audit_output}
         </p>
       </div>
 
       {!canEdit && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-fg-secondary">
           Admin role required to edit runtime config.
         </p>
       )}
       {error && <FormError message={error} />}
-      {success && <p className="text-sm text-green-600">Saved successfully.</p>}
+      {success && <p className="text-sm text-status-low">Saved successfully.</p>}
 
       <div className="flex justify-end">
         <Button onClick={handleSave} loading={saving} disabled={!canEdit}>
@@ -251,19 +251,19 @@ function IngestAutoStartSection({
       title="Ingest Auto-Start"
       description="Optionally create a session automatically when a newly ingested incident matches the rule below."
     >
-      <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+      <label className="flex items-start gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3">
         <input
           type="checkbox"
-          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          className="mt-1 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
           disabled={!canEdit}
         />
         <div>
-          <p className="text-sm font-medium text-gray-900">
+          <p className="text-sm font-medium text-fg-primary">
             Enable automatic session creation for ingested incidents
           </p>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-fg-secondary">
             When enabled, AIM creates one session for a newly created incident if its severity
             meets the threshold and its source matches the configured provider key.
           </p>
@@ -294,25 +294,25 @@ function IngestAutoStartSection({
             placeholder="legacy_alert_vendor"
             disabled={!canEdit}
           />
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-fg-muted">
             Exact provider key such as `cloudwatch`, `azure_monitor`, `legacy_alert_vendor`, `legacy_alert_relay`, or `generic`.
             Leave blank to match any source.
           </p>
         </div>
       </div>
 
-      <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <div className="rounded-lg border border-status-info-border bg-status-info-bg px-4 py-3 text-sm text-status-info">
         Auto-start only runs for newly created incidents and reuses the current runtime tier for the session.
         Duplicate ingests will not spawn extra active sessions.
       </div>
 
       {!canEdit && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-fg-secondary">
           Admin role required to edit ingest auto-start settings.
         </p>
       )}
       {error && <FormError message={error} />}
-      {success && <p className="text-sm text-green-600">Saved successfully.</p>}
+      {success && <p className="text-sm text-status-low">Saved successfully.</p>}
 
       <div className="flex justify-end">
         <Button onClick={handleSave} loading={saving} disabled={!canEdit}>
@@ -483,7 +483,7 @@ function ModelConfigModal({
               onChange={(e) => setField("api_key_env_var", e.target.value)}
               placeholder={selectedProvider?.default_api_key_env_var ?? "OPENAI_API_KEY"}
             />
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-fg-muted">
               Store the secret in `.env`; this field saves the variable name only.
             </p>
           </div>
@@ -662,13 +662,13 @@ function ModelSection({
             key={provider.provider}
             className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
               provider.available
-                ? "border-green-200 bg-green-50 text-green-700"
-                : "border-gray-200 bg-gray-50 text-gray-400"
+                ? "border-status-low-border bg-status-low-bg text-status-low"
+                : "border-border-subtle bg-bg-elevated text-fg-muted"
             }`}
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                provider.available ? "bg-green-500" : "bg-gray-300"
+                provider.available ? "bg-status-low" : "bg-bg-elevated"
               }`}
             />
             {provider.label}
@@ -678,11 +678,11 @@ function ModelSection({
 
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-fg-secondary">
             {configs.length} saved config{configs.length === 1 ? "" : "s"}
           </p>
           {!canEdit && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-fg-secondary">
               Admin role required to add or edit saved model configs.
             </p>
           )}
@@ -693,16 +693,16 @@ function ModelSection({
       </div>
 
       {error && <FormError message={error} />}
-      {notice && <p className="text-sm text-green-600">{notice}</p>}
+      {notice && <p className="text-sm text-status-low">{notice}</p>}
 
       {configs.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
           No saved model configs yet. Create one to make provider switching easier for operators.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="overflow-hidden rounded-xl border border-border-subtle">
+          <table className="min-w-full divide-y divide-border-subtle text-sm">
+            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
                 <th className="px-4 py-3">Config</th>
                 <th className="px-4 py-3">Provider</th>
@@ -711,25 +711,25 @@ function ModelSection({
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 bg-white">
+            <tbody className="divide-y divide-border-subtle bg-bg-panel">
               {configs.map((config) => (
                 <tr key={config.id}>
                   <td className="px-4 py-3 align-top">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">{config.name}</span>
+                      <span className="font-medium text-fg-primary">{config.name}</span>
                       {config.is_default && <Badge>Default</Badge>}
                     </div>
-                    <p className="mt-1 font-mono text-xs text-gray-400">
+                    <p className="mt-1 font-mono text-xs text-fg-muted">
                       {config.api_key_env_var ?? "No API key env var"}
                     </p>
                   </td>
-                  <td className="px-4 py-3 align-top capitalize text-gray-700">
+                  <td className="px-4 py-3 align-top capitalize text-fg-primary">
                     {config.provider.replace("_", " ")}
                   </td>
-                  <td className="px-4 py-3 align-top font-mono text-xs text-gray-600">
+                  <td className="px-4 py-3 align-top font-mono text-xs text-fg-secondary">
                     {config.model_id}
                   </td>
-                  <td className="px-4 py-3 align-top text-gray-600">
+                  <td className="px-4 py-3 align-top text-fg-secondary">
                     <div>Max tokens: {config.max_tokens}</div>
                     <div>Temp: {config.temperature}</div>
                   </td>
@@ -991,9 +991,9 @@ function MCPServerModal({
           <div>
             <Label htmlFor="mcp-token">Bearer Token</Label>
             {hasExistingToken && form.tokenMode === "keep" ? (
-              <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+              <div className="flex items-center gap-3 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-secondary">
                 <span className="font-mono tracking-widest">••••••••</span>
-                <span className="text-xs text-gray-400">saved</span>
+                <span className="text-xs text-fg-muted">saved</span>
                 <div className="ml-auto flex gap-2">
                   <Button
                     type="button"
@@ -1014,7 +1014,7 @@ function MCPServerModal({
                 </div>
               </div>
             ) : form.tokenMode === "clear" ? (
-              <div className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div className="flex items-center justify-between rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-sm text-status-critical">
                 <span>Token will be removed on save.</span>
                 <Button
                   type="button"
@@ -1038,7 +1038,7 @@ function MCPServerModal({
                 {hasExistingToken && (
                   <button
                     type="button"
-                    className="mt-1 text-xs text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline"
+                    className="mt-1 text-xs text-fg-secondary hover:text-fg-primary underline-offset-2 hover:underline"
                     onClick={() => setField("tokenMode", "keep")}
                   >
                     Keep existing token
@@ -1062,12 +1062,12 @@ function MCPServerModal({
         </div>
 
         <div>
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+          <label className="inline-flex items-center gap-2 text-sm text-fg-primary">
             <input
               type="checkbox"
               checked={form.is_active}
               onChange={(e) => setField("is_active", e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
             />
             Active (available for sessions)
           </label>
@@ -1097,8 +1097,8 @@ function TestPill({ state }: { state: TestState }) {
   if (state.status === "idle") return null;
   if (state.status === "running") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-elevated px-2 py-0.5 text-xs text-fg-secondary">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-bg-elevated" />
         Testing…
       </span>
     );
@@ -1106,7 +1106,7 @@ function TestPill({ state }: { state: TestState }) {
   if (state.status === "success") {
     return (
       <span
-        className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700"
+        className="inline-flex items-center gap-1 rounded-full border border-status-low-border bg-status-low-bg px-2 py-0.5 text-xs text-status-low"
         title={state.result?.tool_names.join(", ")}
       >
         <CheckCircle2 size={12} /> {state.result?.tool_count ?? 0} tool
@@ -1116,7 +1116,7 @@ function TestPill({ state }: { state: TestState }) {
   }
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-700"
+      className="inline-flex items-center gap-1 rounded-full border border-status-critical-border bg-status-critical-bg px-2 py-0.5 text-xs text-status-critical"
       title={state.result?.detail}
     >
       <XCircle size={12} /> Failed
@@ -1242,7 +1242,7 @@ function MCPSection({
       description="Saved MCP servers are resolved dynamically. New servers are immediately available to running sessions."
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-fg-secondary">
           {servers.length} saved server{servers.length === 1 ? "" : "s"}
         </p>
         <Button onClick={openCreateModal} disabled={!canEdit}>
@@ -1251,22 +1251,22 @@ function MCPSection({
       </div>
 
       {!canEdit && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-fg-secondary">
           Admin role required to add, edit, or test MCP servers.
         </p>
       )}
 
       {error && <FormError message={error} />}
-      {notice && <p className="text-sm text-green-600">{notice}</p>}
+      {notice && <p className="text-sm text-status-low">{notice}</p>}
 
       {servers.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
           No MCP servers yet. Add one so agents can reach your infrastructure.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="overflow-hidden rounded-xl border border-border-subtle">
+          <table className="min-w-full divide-y divide-border-subtle text-sm">
+            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Transport</th>
@@ -1275,7 +1275,7 @@ function MCPSection({
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 bg-white">
+            <tbody className="divide-y divide-border-subtle bg-bg-panel">
               {servers.map((server) => {
                 const target =
                   server.transport === "stdio"
@@ -1288,11 +1288,11 @@ function MCPSection({
                 return (
                   <tr key={server.id}>
                     <td className="px-4 py-3 align-top">
-                      <div className="font-medium text-gray-900">
+                      <div className="font-medium text-fg-primary">
                         {server.name}
                       </div>
                       {server.has_token && (
-                        <p className="mt-1 text-xs text-gray-400">
+                        <p className="mt-1 text-xs text-fg-muted">
                           Bearer token stored
                         </p>
                       )}
@@ -1300,7 +1300,7 @@ function MCPSection({
                     <td className="px-4 py-3 align-top">
                       <Badge>{server.transport}</Badge>
                     </td>
-                    <td className="px-4 py-3 align-top font-mono text-xs text-gray-600">
+                    <td className="px-4 py-3 align-top font-mono text-xs text-fg-secondary">
                       <span className="line-clamp-2 break-all">{target}</span>
                     </td>
                     <td className="px-4 py-3 align-top">
@@ -1365,12 +1365,12 @@ function MCPSection({
 // ---------------------------------------------------------------------------
 
 const PROVIDER_COLORS: Record<string, string> = {
-  auto: "border-indigo-200 bg-indigo-50 text-indigo-700",
-  cloudwatch: "border-orange-200 bg-orange-50 text-orange-700",
-  azure_monitor: "border-blue-200 bg-blue-50 text-blue-700",
-  legacy_alert_vendor: "border-green-200 bg-green-50 text-green-700",
-  legacy_alert_relay: "border-red-200 bg-red-50 text-red-700",
-  generic: "border-gray-200 bg-gray-50 text-gray-600",
+  auto: "border-accent bg-accent-bg text-accent",
+  cloudwatch: "border-status-high-border bg-status-high-bg text-status-high",
+  azure_monitor: "border-status-info-border bg-status-info-bg text-status-info",
+  legacy_alert_vendor: "border-status-low-border bg-status-low-bg text-status-low",
+  legacy_alert_relay: "border-status-critical-border bg-status-critical-bg text-status-critical",
+  generic: "border-border-subtle bg-bg-elevated text-fg-secondary",
 };
 
 function ProviderBadge({ provider }: { provider: string }) {
@@ -1543,13 +1543,13 @@ function IngestTokenSection({
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-fg-secondary">
             {tokens.length} token{tokens.length === 1 ? "" : "s"}
             {tokens.filter((t) => t.is_active).length < tokens.length &&
               ` (${tokens.filter((t) => t.is_active).length} active)`}
           </p>
           {!canEdit && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-fg-secondary">
               Admin role required to manage ingest tokens.
             </p>
           )}
@@ -1560,16 +1560,16 @@ function IngestTokenSection({
       </div>
 
       {error && <FormError message={error} />}
-      {notice && <p className="text-sm text-green-600">{notice}</p>}
+      {notice && <p className="text-sm text-status-low">{notice}</p>}
 
       {tokens.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
           No ingest tokens yet. Create one to start receiving incidents from external monitoring tools.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="overflow-hidden rounded-xl border border-border-subtle">
+          <table className="min-w-full divide-y divide-border-subtle text-sm">
+            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Provider</th>
@@ -1580,16 +1580,16 @@ function IngestTokenSection({
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 bg-white">
+            <tbody className="divide-y divide-border-subtle bg-bg-panel">
               {tokens.map((token) => (
                 <tr
                   key={token.id}
-                  className={!token.is_active ? "bg-gray-50 opacity-60" : ""}
+                  className={!token.is_active ? "bg-bg-elevated opacity-60" : ""}
                 >
                   <td className="px-4 py-3 align-top">
                     <div className="flex items-center gap-2">
-                      <Key size={14} className="text-gray-400" />
-                      <span className="font-medium text-gray-900">
+                      <Key size={14} className="text-fg-muted" />
+                      <span className="font-medium text-fg-primary">
                         {token.name}
                       </span>
                     </div>
@@ -1604,7 +1604,7 @@ function IngestTokenSection({
                       {token.is_active ? "Active" : "Revoked"}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 align-top text-gray-600">
+                  <td className="px-4 py-3 align-top text-fg-secondary">
                     {token.provider === "auto" ? (
                       <span
                         className="text-xs"
@@ -1613,13 +1613,13 @@ function IngestTokenSection({
                         {token.shape_cache_size} learned
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-400">—</span>
+                      <span className="text-xs text-fg-muted">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 align-top text-gray-600">
+                  <td className="px-4 py-3 align-top text-fg-secondary">
                     {formatLastUsed(token.last_used_at)}
                   </td>
-                  <td className="px-4 py-3 align-top text-gray-500 text-xs">
+                  <td className="px-4 py-3 align-top text-fg-secondary text-xs">
                     {new Date(token.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 align-top">
@@ -1660,14 +1660,14 @@ function IngestTokenSection({
       >
         {createdToken ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-medium text-amber-800">
+            <div className="rounded-lg border border-status-high-border bg-status-high-bg p-4">
+              <p className="text-sm font-medium text-status-high">
                 ⚠️ Copy this token now — it will never be shown again.
               </p>
             </div>
             <div>
               <Label>Token Name</Label>
-              <p className="text-sm font-medium text-gray-900">
+              <p className="text-sm font-medium text-fg-primary">
                 {createdToken.name}
               </p>
             </div>
@@ -1678,7 +1678,7 @@ function IngestTokenSection({
             <div>
               <Label>Raw Token</Label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 break-all select-all">
+                <code className="flex-1 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 font-mono text-xs text-fg-primary break-all select-all">
                   {createdToken.token}
                 </code>
                 <Button
@@ -1693,7 +1693,7 @@ function IngestTokenSection({
             </div>
             <div>
               <Label>Usage</Label>
-              <code className="block rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-600">
+              <code className="block rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 font-mono text-xs text-fg-secondary">
                 curl -H &quot;X-AIM-Token: {createdToken.token.slice(0, 20)}...&quot; \<br />
                 &nbsp;&nbsp;-H &quot;Content-Type: application/json&quot; \<br />
                 &nbsp;&nbsp;-d &apos;{`{"title":"...","description":"..."}`}&apos; \<br />
@@ -1717,7 +1717,7 @@ function IngestTokenSection({
                 placeholder="cloudwatch-production"
                 required
               />
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-fg-muted">
                 A descriptive name for this token source.
               </p>
             </div>
@@ -1739,7 +1739,7 @@ function IngestTokenSection({
                   </option>
                 ))}
               </Select>
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-fg-muted">
                 Determines how inbound JSON payloads are parsed into incidents.
                 Use <strong>Auto-detect</strong> for any webhook — the token
                 learns the payload shape on first use.
@@ -1758,14 +1758,14 @@ function IngestTokenSection({
                   }}
                   rows={6}
                   placeholder={'{\n  "alerts": [{"labels": {"alertname": "..."}}]\n}'}
-                  className="mt-1 block w-full rounded-md border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-800 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  className="mt-1 block w-full rounded-md border border-border-subtle bg-bg-panel px-3 py-2 font-mono text-xs text-fg-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
                 />
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-fg-muted">
                   Paste a sample alert JSON to pre-train the token. Skips the
                   LLM call on the first real webhook of this shape.
                 </p>
                 {sampleError && (
-                  <p className="mt-1 text-xs text-red-600">{sampleError}</p>
+                  <p className="mt-1 text-xs text-status-critical">{sampleError}</p>
                 )}
               </div>
             )}
@@ -1922,7 +1922,7 @@ function AgentTeamProfileModal({
 
         <div>
           <Label>Specialist Roles</Label>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-fg-muted">
             Selected roles each produce their own reasoning pass for observe,
             diagnose, plan, verify, and summarize. AIM then synthesizes them
             into one final answer while keeping `tier_gate` and `execute`
@@ -1936,8 +1936,8 @@ function AgentTeamProfileModal({
                   key={role.value}
                   className={`rounded-lg border px-4 py-3 text-sm ${
                     checked
-                      ? "border-indigo-300 bg-indigo-50"
-                      : "border-gray-200 bg-gray-50"
+                      ? "border-accent bg-accent-bg"
+                      : "border-border-subtle bg-bg-elevated"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -1945,11 +1945,11 @@ function AgentTeamProfileModal({
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggleRole(role.value)}
-                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
                     />
                     <div>
-                      <p className="font-medium text-gray-900">{role.label}</p>
-                      <p className="mt-1 text-xs text-gray-500">{role.description}</p>
+                      <p className="font-medium text-fg-primary">{role.label}</p>
+                      <p className="mt-1 text-xs text-fg-secondary">{role.description}</p>
                     </div>
                   </div>
                 </label>
@@ -1959,21 +1959,21 @@ function AgentTeamProfileModal({
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <label className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-primary">
             <input
               type="checkbox"
               checked={form.is_active}
               onChange={(e) => setField("is_active", e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
             />
             Active (available when starting sessions)
           </label>
-          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <label className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-primary">
             <input
               type="checkbox"
               checked={form.is_default}
               onChange={(e) => setField("is_default", e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
             />
             Default agent team
           </label>
@@ -2086,11 +2086,11 @@ function AgentTeamProfileSection({
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-fg-secondary">
             {profiles.length} saved team{profiles.length === 1 ? "" : "s"}
           </p>
           {!canEdit && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-fg-secondary">
               Admin role required to manage agent teams.
             </p>
           )}
@@ -2101,16 +2101,16 @@ function AgentTeamProfileSection({
       </div>
 
       {error && <FormError message={error} />}
-      {notice && <p className="text-sm text-green-600">{notice}</p>}
+      {notice && <p className="text-sm text-status-low">{notice}</p>}
 
       {profiles.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
           No agent teams yet. Sessions will use AIM&apos;s default single-agent reasoning.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="overflow-hidden rounded-xl border border-border-subtle">
+          <table className="min-w-full divide-y divide-border-subtle text-sm">
+            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
                 <th className="px-4 py-3">Profile</th>
                 <th className="px-4 py-3">Roles</th>
@@ -2118,16 +2118,16 @@ function AgentTeamProfileSection({
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 bg-white">
+            <tbody className="divide-y divide-border-subtle bg-bg-panel">
               {profiles.map((profile) => (
                 <tr key={profile.id}>
                   <td className="px-4 py-3 align-top">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">{profile.name}</span>
+                      <span className="font-medium text-fg-primary">{profile.name}</span>
                       {profile.is_default && <Badge>Default</Badge>}
                     </div>
                     {profile.description && (
-                      <p className="mt-1 text-xs text-gray-500">{profile.description}</p>
+                      <p className="mt-1 text-xs text-fg-secondary">{profile.description}</p>
                     )}
                   </td>
                   <td className="px-4 py-3 align-top">
@@ -2302,7 +2302,7 @@ function WorkflowProfileModal({
 
         <div>
           <Label>Node Order</Label>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-fg-muted">
             Reorder the fixed AIM nodes. Safety rules are enforced server-side:
             `execute` requires `tier_gate` immediately before it.
           </p>
@@ -2312,11 +2312,11 @@ function WorkflowProfileModal({
               return (
                 <div
                   key={`${node}-${index}`}
-                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                  className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2"
                 >
                   <div className="flex items-center gap-3">
                     <Badge>{index + 1}</Badge>
-                    <span className="text-sm font-medium text-gray-800">
+                    <span className="text-sm font-medium text-fg-primary">
                       {option?.label ?? node}
                     </span>
                   </div>
@@ -2347,21 +2347,21 @@ function WorkflowProfileModal({
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <label className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-primary">
             <input
               type="checkbox"
               checked={form.is_active}
               onChange={(e) => setField("is_active", e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
             />
             Active (available when starting sessions)
           </label>
-          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <label className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-primary">
             <input
               type="checkbox"
               checked={form.is_default}
               onChange={(e) => setField("is_default", e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
             />
             Default workflow profile
           </label>
@@ -2474,11 +2474,11 @@ function WorkflowProfileSection({
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-fg-secondary">
             {profiles.length} saved profile{profiles.length === 1 ? "" : "s"}
           </p>
           {!canEdit && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-fg-secondary">
               Admin role required to manage workflow profiles.
             </p>
           )}
@@ -2489,16 +2489,16 @@ function WorkflowProfileSection({
       </div>
 
       {error && <FormError message={error} />}
-      {notice && <p className="text-sm text-green-600">{notice}</p>}
+      {notice && <p className="text-sm text-status-low">{notice}</p>}
 
       {profiles.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
           No workflow profiles yet. Sessions will use AIM&apos;s built-in default flow.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="overflow-hidden rounded-xl border border-border-subtle">
+          <table className="min-w-full divide-y divide-border-subtle text-sm">
+            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
                 <th className="px-4 py-3">Profile</th>
                 <th className="px-4 py-3">Nodes</th>
@@ -2506,16 +2506,16 @@ function WorkflowProfileSection({
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 bg-white">
+            <tbody className="divide-y divide-border-subtle bg-bg-panel">
               {profiles.map((profile) => (
                 <tr key={profile.id}>
                   <td className="px-4 py-3 align-top">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">{profile.name}</span>
+                      <span className="font-medium text-fg-primary">{profile.name}</span>
                       {profile.is_default && <Badge>Default</Badge>}
                     </div>
                     {profile.description && (
-                      <p className="mt-1 text-xs text-gray-500">{profile.description}</p>
+                      <p className="mt-1 text-xs text-fg-secondary">{profile.description}</p>
                     )}
                   </td>
                   <td className="px-4 py-3 align-top">
@@ -2723,22 +2723,22 @@ function WebhookTestPill({ state }: { state: WebhookTestState }) {
   if (state.status === "idle") return null;
   if (state.status === "running") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-elevated px-2 py-0.5 text-xs text-fg-secondary">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-bg-elevated" />
         Testing…
       </span>
     );
   }
   if (state.status === "success") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700">
+      <span className="inline-flex items-center gap-1 rounded-full border border-status-low-border bg-status-low-bg px-2 py-0.5 text-xs text-status-low">
         <CheckCircle2 size={12} /> Delivered
       </span>
     );
   }
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-700"
+      className="inline-flex items-center gap-1 rounded-full border border-status-critical-border bg-status-critical-bg px-2 py-0.5 text-xs text-status-critical"
       title={state.result?.detail}
     >
       <XCircle size={12} /> Failed
@@ -2854,7 +2854,7 @@ function WebhookTriggerModal({
             <option value="teams">Teams webhook workflow</option>
             <option value="sumo">Sumo Logic JSON event</option>
           </Select>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-fg-muted">
             {form.format === "slack" &&
               "Sends Slack-compatible text plus Block Kit sections to an incoming webhook URL."}
             {form.format === "teams" &&
@@ -2878,13 +2878,13 @@ function WebhookTriggerModal({
                   key={option.value}
                   className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${
                     checked
-                      ? "border-indigo-200 bg-indigo-50 text-indigo-800"
-                      : "border-gray-200 bg-white text-gray-700"
+                      ? "border-accent bg-accent-bg text-accent"
+                      : "border-border-subtle bg-bg-panel text-fg-primary"
                   } ${disabled ? "opacity-50" : ""}`}
                 >
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    className="mt-1 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
                     checked={checked}
                     disabled={disabled}
                     onChange={() => toggleEvent(option.value)}
@@ -2915,11 +2915,11 @@ function WebhookTriggerModal({
               {initialTrigger && <option value="clear">Clear headers</option>}
             </Select>
             {initialTrigger?.header_names.length ? (
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-fg-muted">
                 Stored headers: {initialTrigger.header_names.join(", ")}
               </p>
             ) : (
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-fg-muted">
                 Optional static headers sent with every delivery. Usually not needed for Slack, Teams, or Sumo collector URLs.
               </p>
             )}
@@ -2941,7 +2941,7 @@ function WebhookTriggerModal({
               </option>
               {initialTrigger && <option value="clear">Clear token</option>}
             </Select>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-fg-muted">
               {initialTrigger?.has_token
                 ? "A bearer token is already stored for this trigger."
                 : "Optional Authorization: Bearer token. Usually not needed for Slack, Teams, or Sumo collector URLs."}
@@ -2959,7 +2959,7 @@ function WebhookTriggerModal({
               rows={5}
               placeholder={"X-Team: platform\nX-Environment: production"}
             />
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-fg-muted">
               One header per line in the form <code>Header-Name: value</code>.
             </p>
           </div>
@@ -2977,12 +2977,12 @@ function WebhookTriggerModal({
           </div>
         )}
 
-        <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+        <label className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-primary">
           <input
             type="checkbox"
             checked={form.is_active}
             onChange={(e) => setField("is_active", e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
           />
           Active (deliver subscribed events)
         </label>
@@ -3132,11 +3132,11 @@ function WebhookTriggerSection({
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-fg-secondary">
             {triggers.length} saved trigger{triggers.length === 1 ? "" : "s"}
           </p>
           {!canEdit && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-fg-secondary">
               Admin role required to manage outbound webhook triggers.
             </p>
           )}
@@ -3147,16 +3147,16 @@ function WebhookTriggerSection({
       </div>
 
       {error && <FormError message={error} />}
-      {notice && <p className="text-sm text-green-600">{notice}</p>}
+      {notice && <p className="text-sm text-status-low">{notice}</p>}
 
       {triggers.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
           No outbound webhook triggers yet. Add one to deliver AIM session events to downstream systems.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="overflow-hidden rounded-xl border border-border-subtle">
+          <table className="min-w-full divide-y divide-border-subtle text-sm">
+            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
                 <th className="px-4 py-3">Trigger</th>
                 <th className="px-4 py-3">Format</th>
@@ -3166,32 +3166,32 @@ function WebhookTriggerSection({
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 bg-white">
+            <tbody className="divide-y divide-border-subtle bg-bg-panel">
               {triggers.map((trigger) => {
                 const testState = testStates[trigger.id] ?? { status: "idle" };
                 return (
                   <tr
                     key={trigger.id}
-                    className={!trigger.is_active ? "bg-gray-50 opacity-70" : ""}
+                    className={!trigger.is_active ? "bg-bg-elevated opacity-70" : ""}
                   >
                     <td className="px-4 py-3 align-top">
                       <div className="flex items-center gap-2">
-                        <Bell size={14} className="text-gray-400" />
-                        <span className="font-medium text-gray-900">
+                        <Bell size={14} className="text-fg-muted" />
+                        <span className="font-medium text-fg-primary">
                           {trigger.name}
                         </span>
                       </div>
-                      <p className="mt-1 break-all font-mono text-xs text-gray-500">
+                      <p className="mt-1 break-all font-mono text-xs text-fg-secondary">
                         {trigger.url}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {trigger.has_token && (
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-fg-secondary">
                             Bearer token stored
                           </span>
                         )}
                         {trigger.header_names.length > 0 && (
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-fg-secondary">
                             Headers: {trigger.header_names.join(", ")}
                           </span>
                         )}
@@ -3210,18 +3210,18 @@ function WebhookTriggerSection({
                       </div>
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <p className="text-sm text-gray-700">
+                      <p className="text-sm text-fg-primary">
                         Last send: {formatRelativeTimestamp(trigger.last_triggered_at)}
                       </p>
                       {trigger.last_error ? (
                         <p
-                          className="mt-1 line-clamp-2 text-xs text-red-600"
+                          className="mt-1 line-clamp-2 text-xs text-status-critical"
                           title={trigger.last_error}
                         >
                           {trigger.last_error}
                         </p>
                       ) : (
-                        <p className="mt-1 text-xs text-gray-400">
+                        <p className="mt-1 text-xs text-fg-muted">
                           No delivery errors recorded.
                         </p>
                       )}
@@ -3343,8 +3343,8 @@ export default function ConfigPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Config</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-fg-primary">Config</h1>
+        <p className="mt-1 text-sm text-fg-secondary">
           Manage runtime defaults, ingest automation, saved model profiles, agent teams, workflow profiles, MCP server connections, outbound webhook triggers, and external ingest tokens.
         </p>
       </div>

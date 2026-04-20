@@ -967,6 +967,54 @@ class TestWebhookTriggers:
         assert payload.keys() == {"text"}
         assert "Webhook test incident" in payload["text"]
 
+    async def test_test_trigger_sumo_format_uses_log_friendly_json(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        deliveries: list[dict[str, object]] = []
+
+        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
+            deliveries.append(payload)
+
+            class _Resp:
+                status_code = 200
+
+                def raise_for_status(self):
+                    return None
+
+            return _Resp()
+
+        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
+
+        create_resp = await client.post(
+            "/webhook-triggers",
+            json={
+                "name": "sumo-test",
+                "url": "https://endpoint.collection.us2.sumologic.com/receiver/v1/http/test",
+                "format": "sumo",
+                "event_types": ["session.completed"],
+                "is_active": True,
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+
+        trigger_id = create_resp.json()["id"]
+        test_resp = await client.post(
+            f"/webhook-triggers/{trigger_id}/test",
+            headers=auth_headers,
+        )
+        assert test_resp.status_code == 200
+        assert test_resp.json()["success"] is True
+
+        assert deliveries
+        payload = deliveries[-1]
+        assert payload["eventType"] == "webhook.test"
+        assert payload["source"] == "aim"
+        assert payload["message"].startswith("AIM Webhook.Test:")
+        assert payload["incidentTitle"] == "Webhook test incident"
+        assert payload["sessionStatus"] == "completed"
+        assert payload["session"]["id"] == "test-session"
+
     async def test_get_config_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):

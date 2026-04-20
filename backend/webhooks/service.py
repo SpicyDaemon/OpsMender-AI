@@ -143,12 +143,37 @@ def _format_teams_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_sumo_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    session = payload["session"]
+    incident = payload.get("incident") or {}
+    return {
+        "eventType": payload["event"],
+        "source": payload["source"],
+        "sentAt": payload["sent_at"],
+        "message": _build_notification_text(payload),
+        "sessionId": session["id"],
+        "incidentId": incident.get("id"),
+        "incidentTitle": incident.get("title"),
+        "incidentSeverity": incident.get("severity"),
+        "sessionStatus": session["status"],
+        "tier": session["tier"],
+        "modelProvider": session.get("model_provider"),
+        "modelId": session.get("model_id"),
+        "summary": session.get("summary"),
+        "session": session,
+        "incident": incident or None,
+        "trigger": payload.get("trigger"),
+    }
+
+
 def _format_payload_for_trigger(trigger, payload: dict[str, Any]) -> dict[str, Any]:
     trigger_format = str(getattr(trigger, "format", "generic") or "generic").lower()
     if trigger_format == "slack":
         return _format_slack_payload(payload)
     if trigger_format == "teams":
         return _format_teams_payload(payload)
+    if trigger_format == "sumo":
+        return _format_sumo_payload(payload)
     return payload
 
 

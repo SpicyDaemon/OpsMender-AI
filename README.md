@@ -494,6 +494,7 @@ Outbound notifications are managed through saved **webhook triggers** in `/dashb
 | `generic` | Any automation endpoint | AIM normalized JSON event |
 | `slack` | Slack incoming webhook | `text` + Block Kit `blocks` |
 | `teams` | Microsoft Teams Workflows webhook | plain `text` body |
+| `sumo` | Sumo Logic HTTP source / JSON ingestion endpoint | log-friendly JSON event with flattened top-level fields plus nested session/incident objects |
 
 Supported events:
 
@@ -569,6 +570,7 @@ ai-incident-manager/
   - Sprint 18: ✅ Outbound webhook triggers — persisted configs, async session event delivery, CRUD/test API
   - Sprint 19: ✅ Outbound webhook trigger UI — dashboard management + safe edit semantics for headers/tokens
   - Sprint 20: ✅ Slack + Teams outbound trigger formats on top of the generic webhook trigger system
+  - Sprint 21: ✅ Sumo Logic outbound trigger format on top of the generic webhook trigger system
 
 ## Distribution Status
 

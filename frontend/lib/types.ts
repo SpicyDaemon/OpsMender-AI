@@ -298,7 +298,7 @@ export type WebhookTriggerEventType =
   | "session.failed"
   | "session.timed_out";
 
-export type WebhookTriggerFormat = "generic" | "slack" | "teams";
+export type WebhookTriggerFormat = "generic" | "slack" | "teams" | "sumo";
 
 export interface WebhookTriggerResponse {
   id: string;

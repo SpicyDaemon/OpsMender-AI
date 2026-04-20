@@ -2037,6 +2037,8 @@ function WebhookTriggerModal({
                   ? "https://hooks.slack.com/services/..."
                   : form.format === "teams"
                     ? "https://prod-...logic.azure.com/... or Teams workflow URL"
+                    : form.format === "sumo"
+                      ? "https://endpoint.collection.us2.sumologic.com/receiver/v1/http/..."
                     : "https://hooks.example/aim"
               }
               required
@@ -2056,12 +2058,15 @@ function WebhookTriggerModal({
             <option value="generic">Generic JSON</option>
             <option value="slack">Slack incoming webhook</option>
             <option value="teams">Teams webhook workflow</option>
+            <option value="sumo">Sumo Logic JSON event</option>
           </Select>
           <p className="mt-1 text-xs text-gray-400">
             {form.format === "slack" &&
               "Sends Slack-compatible text plus Block Kit sections to an incoming webhook URL."}
             {form.format === "teams" &&
               "Sends a Teams workflow-friendly text payload. Use a Teams Workflows webhook URL."}
+            {form.format === "sumo" &&
+              "Sends a log-friendly JSON event optimized for Sumo HTTP sources or webhook-style JSON ingestion endpoints."}
             {form.format === "generic" &&
               "Sends AIM's full normalized session-event JSON payload."}
           </p>
@@ -2121,7 +2126,7 @@ function WebhookTriggerModal({
               </p>
             ) : (
               <p className="mt-1 text-xs text-gray-400">
-                Optional static headers sent with every delivery. Usually not needed for Slack or Teams webhook URLs.
+                Optional static headers sent with every delivery. Usually not needed for Slack, Teams, or Sumo collector URLs.
               </p>
             )}
           </div>
@@ -2145,7 +2150,7 @@ function WebhookTriggerModal({
             <p className="mt-1 text-xs text-gray-400">
               {initialTrigger?.has_token
                 ? "A bearer token is already stored for this trigger."
-                : "Optional Authorization: Bearer token. Usually not needed for Slack or Teams webhook URLs."}
+                : "Optional Authorization: Bearer token. Usually not needed for Slack, Teams, or Sumo collector URLs."}
             </p>
           </div>
         </div>

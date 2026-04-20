@@ -7,7 +7,8 @@ import type { AuditEntryResponse, AuditListResponse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select } from "@/components/ui/Input";
-import { PageSpinner } from "@/components/ui/Spinner";
+import { TableSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 const PAGE_SIZE = 25;
 
@@ -47,6 +48,7 @@ export default function AuditPage() {
   const [permitted, setPermitted] = useState<"" | "true" | "false">("");
 
   const [expanded, setExpanded] = useState<string | null>(null);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,10 +61,12 @@ export default function AuditPage() {
         offset: page * PAGE_SIZE,
       });
       setData(res);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load audit log");
     } finally {
       setLoading(false);
     }
-  }, [sessionId, toolName, permitted, page]);
+  }, [sessionId, toolName, permitted, page, toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -120,7 +124,7 @@ export default function AuditPage() {
 
       {/* Table */}
       {loading && !data ? (
-        <PageSpinner />
+        <TableSkeleton rows={8} columns={6} />
       ) : data?.items.length === 0 ? (
         <EmptyState
           icon={BookOpen}

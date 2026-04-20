@@ -34,7 +34,8 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { PageSpinner } from "@/components/ui/Spinner";
+import { CardSkeleton, SkeletonText, TableSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 type FormState = {
   name: string;
@@ -340,7 +341,11 @@ function HistoryModal({
       maxWidth="max-w-3xl"
     >
       {loading ? (
-        <PageSpinner />
+        <div className="space-y-3">
+          <SkeletonText lines={2} />
+          <SkeletonText lines={2} />
+          <SkeletonText lines={2} />
+        </div>
       ) : (
         <div className="space-y-3">
           {history.length === 0 ? (
@@ -385,7 +390,6 @@ export default function DetectorsPage() {
   const canRun = user?.role === "admin" || user?.role === "operator";
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [rules, setRules] = useState<DetectorRuleResponse[]>([]);
   const [templates, setTemplates] = useState<DetectorTemplateResponse[]>([]);
   const [servers, setServers] = useState<MCPServerResponse[]>([]);
@@ -397,6 +401,7 @@ export default function DetectorsPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<DetectorHistoryResponse[]>([]);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const toast = useToast();
 
   const templateMap = useMemo(
     () => new Map(templates.map((tpl) => [tpl.prompt_template, tpl])),
@@ -405,7 +410,6 @@ export default function DetectorsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
       const [ruleRes, templateRes, serverRes, modelRes] = await Promise.all([
         listDetectors(),
@@ -418,11 +422,11 @@ export default function DetectorsPage() {
       setServers(serverRes.items.filter((item) => item.is_active));
       setModels(modelRes.items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load detectors");
+      toast.error(err instanceof Error ? err.message : "Failed to load detectors");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     load();
@@ -442,9 +446,10 @@ export default function DetectorsPage() {
     if (!window.confirm(`Delete detector rule "${rule.name}"?`)) return;
     try {
       await deleteDetector(rule.id);
+      toast.success(`Deleted "${rule.name}"`);
       await load();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   }
 
@@ -453,15 +458,17 @@ export default function DetectorsPage() {
     try {
       const res = await runDetector(rule.id);
       await load();
-      window.alert(
-        res.success
-          ? res.issue_detected
-            ? `Run complete. Incident detected${res.incident_id ? `: ${res.incident_id}` : ""}.`
-            : "Run complete. No incident detected."
-          : `Run failed: ${res.error ?? "unknown error"}`,
-      );
+      if (!res.success) {
+        toast.error(`Run failed: ${res.error ?? "unknown error"}`);
+      } else if (res.issue_detected) {
+        toast.warning(
+          `Run complete — incident detected${res.incident_id ? `: ${res.incident_id.slice(0, 8)}…` : ""}`,
+        );
+      } else {
+        toast.success("Run complete — no incident");
+      }
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Run failed");
+      toast.error(err instanceof Error ? err.message : "Run failed");
     } finally {
       setRunningId(null);
     }
@@ -476,7 +483,7 @@ export default function DetectorsPage() {
       const res = await listDetectorHistory(rule.id);
       setHistory(res.items);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to load history");
+      toast.error(err instanceof Error ? err.message : "Failed to load history");
       setHistoryOpen(false);
       setHistoryRule(null);
     } finally {
@@ -484,7 +491,14 @@ export default function DetectorsPage() {
     }
   }
 
-  if (loading) return <PageSpinner />;
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-8">
+        <CardSkeleton lines={2} />
+        <TableSkeleton rows={5} columns={7} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -509,12 +523,6 @@ export default function DetectorsPage() {
           )}
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-xl border border-status-critical-border bg-status-critical-bg px-4 py-3 text-sm text-status-critical">
-          {error}
-        </div>
-      )}
 
       <section className="rounded-2xl border border-border-subtle bg-bg-panel p-5 shadow-sm">
         <div className="mb-4 flex items-center gap-2">

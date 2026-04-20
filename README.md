@@ -608,6 +608,7 @@ ai-incident-manager/
 - **Phase 2 (Sprints 7–16):** ✅ Complete — persistence, REST/WebSocket API, approvals, BYOM, frontend, single-container distribution, external ingestion
 - **Phase 3 (Sprints 17–23):** ✅ Complete — Tier 0 sandbox + rollback, outbound webhook triggers (Slack/Teams/Sumo), custom workflow profiles, multi-agent team profiles
 - **Sprint 24 (in progress):** UI polish + public release — see [`docs/TASKS.md`](docs/TASKS.md)
+- **Sprint 25 (planned):** SLA / SLO dashboard + maintenance windows — per-target uptime (rolling 7d / 30d / 90d / 1y), user-defined SLOs with error-budget tracking, and scheduled maintenance windows that exclude suppressed samples from SLO math. See [`docs/TASKS.md`](docs/TASKS.md).
 
 ### Sprint breakdown
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)

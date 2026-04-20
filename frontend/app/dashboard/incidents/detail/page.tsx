@@ -22,7 +22,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { PageSpinner } from "@/components/ui/Spinner";
+import { DetailSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString();
@@ -30,7 +31,7 @@ function fmtDate(iso: string) {
 
 export default function IncidentDetailPage() {
   return (
-    <Suspense fallback={<PageSpinner />}>
+    <Suspense fallback={<DetailSkeleton />}>
       <IncidentDetailContent />
     </Suspense>
   );
@@ -43,6 +44,7 @@ function IncidentDetailContent() {
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSession, setShowSession] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     if (!id) {
@@ -51,10 +53,13 @@ function IncidentDetailContent() {
     }
     getIncident(id)
       .then(setIncident)
+      .catch((err) =>
+        toast.error(err instanceof Error ? err.message : "Failed to load incident"),
+      )
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, toast]);
 
-  if (loading) return <PageSpinner />;
+  if (loading) return <DetailSkeleton />;
   if (!id) return <p className="text-status-critical">Missing incident id.</p>;
   if (!incident) return <p className="text-status-critical">Incident not found.</p>;
 

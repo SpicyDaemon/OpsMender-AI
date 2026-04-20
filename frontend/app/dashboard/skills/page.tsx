@@ -28,7 +28,8 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { PageSpinner } from "@/components/ui/Spinner";
+import { CardSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 const TEMPLATE_SKILL = `---
 version: "1"
@@ -412,15 +413,20 @@ export default function SkillsPage() {
   const [cloning, setCloning] = useState<SkillResponse | null>(null);
   const [showClone, setShowClone] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(async () => {
-    const [skillList, serverList] = await Promise.all([
-      listSkills(),
-      listMCPServers(),
-    ]);
-    setSkills(skillList.items);
-    setServers(serverList.items);
-  }, []);
+    try {
+      const [skillList, serverList] = await Promise.all([
+        listSkills(),
+        listMCPServers(),
+      ]);
+      setSkills(skillList.items);
+      setServers(serverList.items);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load skills");
+    }
+  }, [toast]);
 
   useEffect(() => {
     setLoading(true);
@@ -452,9 +458,10 @@ export default function SkillsPage() {
     if (!confirm(`Delete skill "${skill.name}"?`)) return;
     try {
       await deleteSkill(skill.id);
+      toast.success(`Deleted "${skill.name}"`);
       await load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   }
 
@@ -471,7 +478,15 @@ export default function SkillsPage() {
     setShowClone(true);
   }
 
-  if (loading) return <PageSpinner />;
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <CardSkeleton lines={2} />
+        <CardSkeleton lines={3} />
+        <CardSkeleton lines={3} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { PageSpinner } from "@/components/ui/Spinner";
+import { TableSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -28,18 +29,19 @@ export default function IncidentsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listIncidents({ status: statusFilter || undefined, limit: 50 });
       setData(res);
-    } catch {
-      // silently fail — keep stale data
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load incidents");
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -80,7 +82,7 @@ export default function IncidentsPage() {
 
       {/* Table */}
       {loading && !data ? (
-        <PageSpinner />
+        <TableSkeleton rows={6} columns={4} />
       ) : data?.items.length === 0 ? (
         <EmptyState
           icon={AlertTriangle}

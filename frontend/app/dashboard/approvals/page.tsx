@@ -8,9 +8,10 @@ import type { ApprovalListResponse, ApprovalRequestResponse, ApprovalStatus } fr
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Select, Label } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { PageSpinner } from "@/components/ui/Spinner";
+import { TableSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -35,16 +36,19 @@ export default function ApprovalsPage() {
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | "">("");
   const [selected, setSelected] = useState<ApprovalRequestResponse | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listApprovals({ status: statusFilter || undefined, limit: 100 });
       setData(res);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load approvals");
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -52,10 +56,11 @@ export default function ApprovalsPage() {
     setActionLoading(true);
     try {
       await approveRequest(id);
+      toast.success("Approval granted");
       setSelected(null);
       load();
-    } catch {
-      // ignore
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Approval failed");
     } finally {
       setActionLoading(false);
     }
@@ -65,10 +70,11 @@ export default function ApprovalsPage() {
     setActionLoading(true);
     try {
       await rejectRequest(id);
+      toast.info("Approval rejected");
       setSelected(null);
       load();
-    } catch {
-      // ignore
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Rejection failed");
     } finally {
       setActionLoading(false);
     }
@@ -114,7 +120,7 @@ export default function ApprovalsPage() {
 
       {/* Table */}
       {loading && !data ? (
-        <PageSpinner />
+        <TableSkeleton rows={6} columns={6} />
       ) : data?.items.length === 0 ? (
         <EmptyState
           icon={CheckSquare}

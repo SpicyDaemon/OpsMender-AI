@@ -379,6 +379,44 @@ export async function testMCPServer(
 }
 
 // ---------------------------------------------------------------------------
+// Webhook Triggers
+// ---------------------------------------------------------------------------
+
+import type {
+  WebhookTriggerListResponse,
+  WebhookTriggerResponse,
+  WebhookTriggerTestResponse,
+  WebhookTriggerUpsert,
+} from "./types";
+
+export async function listWebhookTriggers(): Promise<WebhookTriggerListResponse> {
+  return api.get<WebhookTriggerListResponse>("/webhook-triggers");
+}
+
+export async function createWebhookTrigger(
+  body: WebhookTriggerUpsert,
+): Promise<WebhookTriggerResponse> {
+  return api.post<WebhookTriggerResponse>("/webhook-triggers", body);
+}
+
+export async function updateWebhookTrigger(
+  id: string,
+  body: WebhookTriggerUpsert,
+): Promise<WebhookTriggerResponse> {
+  return api.put<WebhookTriggerResponse>(`/webhook-triggers/${id}`, body);
+}
+
+export async function deleteWebhookTrigger(id: string): Promise<void> {
+  return api.del<void>(`/webhook-triggers/${id}`);
+}
+
+export async function testWebhookTrigger(
+  id: string,
+): Promise<WebhookTriggerTestResponse> {
+  return api.post<WebhookTriggerTestResponse>(`/webhook-triggers/${id}/test`);
+}
+
+// ---------------------------------------------------------------------------
 // Skills
 // ---------------------------------------------------------------------------
 

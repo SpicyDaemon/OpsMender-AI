@@ -209,6 +209,7 @@ class TestWebhookTriggerRepo:
 
         items = await WebhookTriggerRepo.list_matching_event(db, "session.completed")
         assert [item.id for item in items] == [trigger.id]
+        assert trigger.format == "generic"
 
     async def test_mark_delivery_updates_timestamp_and_error(self, db: AsyncSession):
         trigger = await WebhookTriggerRepo.create(

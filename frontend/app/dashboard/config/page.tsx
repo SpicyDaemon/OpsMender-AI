@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  Bell,
   CheckCircle2,
   ClipboardCopy,
   Key,
@@ -9,6 +10,7 @@ import {
   Plug,
   Plus,
   Save,
+  Send,
   ShieldOff,
   Star,
   Trash2,
@@ -18,21 +20,26 @@ import {
   createIngestToken,
   createMCPServer,
   createModelConfig,
+  createWebhookTrigger,
   deleteIngestToken,
   deleteMCPServer,
   deleteModelConfig,
+  deleteWebhookTrigger,
   getConfig,
   listIngestProviders,
   listIngestTokens,
   listMCPServers,
   listModelConfigs,
   listProviders,
+  listWebhookTriggers,
   revokeIngestToken,
   setDefaultModelConfig,
   testMCPServer,
+  testWebhookTrigger,
   updateConfig,
   updateMCPServer,
   updateModelConfigById,
+  updateWebhookTrigger,
 } from "@/lib/api";
 import type {
   ConfigResponse,
@@ -47,6 +54,11 @@ import type {
   ModelConfigResponse,
   ModelConfigUpdate,
   ProviderModelsResponse,
+  WebhookTriggerEventType,
+  WebhookTriggerFormat,
+  WebhookTriggerResponse,
+  WebhookTriggerTestResponse,
+  WebhookTriggerUpsert,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
@@ -1765,6 +1777,715 @@ function IngestTokenSection({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Outbound Webhook Triggers
+// ---------------------------------------------------------------------------
+
+const WEBHOOK_EVENT_OPTIONS: Array<{
+  value: WebhookTriggerEventType;
+  label: string;
+}> = [
+  { value: "*", label: "All session events" },
+  { value: "session.created", label: "Session created" },
+  { value: "session.awaiting_approval", label: "Awaiting approval" },
+  { value: "session.active", label: "Session active" },
+  { value: "session.completed", label: "Session completed" },
+  { value: "session.failed", label: "Session failed" },
+  { value: "session.timed_out", label: "Session timed out" },
+];
+
+type WebhookFieldMode = "replace" | "preserve" | "clear";
+
+type WebhookFormState = {
+  name: string;
+  url: string;
+  format: WebhookTriggerFormat;
+  event_types: WebhookTriggerEventType[];
+  headersText: string;
+  headersMode: WebhookFieldMode;
+  token: string;
+  tokenMode: WebhookFieldMode;
+  is_active: boolean;
+};
+
+type WebhookTestState = {
+  status: "idle" | "running" | "success" | "failure";
+  result?: WebhookTriggerTestResponse;
+};
+
+function createWebhookFormState(
+  current: WebhookTriggerResponse | null,
+): WebhookFormState {
+  return {
+    name: current?.name ?? "",
+    url: current?.url ?? "",
+    format: current?.format ?? "generic",
+    event_types: current?.event_types?.length
+      ? current.event_types
+      : ["session.completed"],
+    headersText: "",
+    headersMode: current?.header_names.length ? "preserve" : "replace",
+    token: "",
+    tokenMode: current?.has_token ? "preserve" : "replace",
+    is_active: current?.is_active ?? true,
+  };
+}
+
+function parseWebhookHeaders(
+  value: string,
+): { headers: Record<string, string> | null; error: string | null } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { headers: null, error: null };
+  }
+
+  const headers: Record<string, string> = {};
+  for (const rawLine of trimmed.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const separator = line.indexOf(":");
+    if (separator <= 0) {
+      return {
+        headers: null,
+        error: `Invalid header line "${line}". Use "Header-Name: value".`,
+      };
+    }
+    const key = line.slice(0, separator).trim();
+    const headerValue = line.slice(separator + 1).trim();
+    if (!key) {
+      return {
+        headers: null,
+        error: `Invalid header line "${line}". Header name is required.`,
+      };
+    }
+    headers[key] = headerValue;
+  }
+
+  return { headers, error: null };
+}
+
+function buildWebhookPayload(
+  form: WebhookFormState,
+  initialTrigger: WebhookTriggerResponse | null,
+): { payload: WebhookTriggerUpsert | null; error: string | null } {
+  if (form.event_types.length === 0) {
+    return { payload: null, error: "Select at least one session event." };
+  }
+
+  const payload: WebhookTriggerUpsert = {
+    name: form.name.trim(),
+    url: form.url.trim(),
+    format: form.format,
+    event_types: form.event_types,
+    is_active: form.is_active,
+  };
+
+  if (!payload.name || !payload.url) {
+    return { payload: null, error: "Name and URL are required." };
+  }
+
+  if (form.headersMode === "clear") {
+    payload.clear_headers = true;
+  } else if (form.headersMode === "replace" || !initialTrigger) {
+    const { headers, error } = parseWebhookHeaders(form.headersText);
+    if (error) return { payload: null, error };
+    if (headers && Object.keys(headers).length > 0) {
+      payload.headers = headers;
+    } else if (initialTrigger) {
+      payload.clear_headers = true;
+    }
+  }
+
+  if (form.tokenMode === "clear") {
+    payload.clear_token = true;
+  } else if (form.tokenMode === "replace" || !initialTrigger) {
+    const token = form.token.trim();
+    if (token) {
+      payload.token = token;
+    } else if (initialTrigger) {
+      payload.clear_token = true;
+    }
+  }
+
+  return { payload, error: null };
+}
+
+function formatRelativeTimestamp(timestamp: string | null): string {
+  if (!timestamp) return "Never";
+  const value = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - value.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return value.toLocaleDateString();
+}
+
+function WebhookTestPill({ state }: { state: WebhookTestState }) {
+  if (state.status === "idle") return null;
+  if (state.status === "running") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+        Testing…
+      </span>
+    );
+  }
+  if (state.status === "success") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700">
+        <CheckCircle2 size={12} /> Delivered
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-700"
+      title={state.result?.detail}
+    >
+      <XCircle size={12} /> Failed
+    </span>
+  );
+}
+
+function WebhookTriggerModal({
+  open,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+  initialTrigger,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (form: WebhookFormState) => Promise<void>;
+  saving: boolean;
+  error: string;
+  initialTrigger: WebhookTriggerResponse | null;
+}) {
+  const [form, setForm] = useState<WebhookFormState>(() =>
+    createWebhookFormState(initialTrigger),
+  );
+
+  function setField<K extends keyof WebhookFormState>(
+    key: K,
+    value: WebhookFormState[K],
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleEvent(eventType: WebhookTriggerEventType) {
+    setForm((current) => {
+      const selected = new Set(current.event_types);
+      if (eventType === "*") {
+        return {
+          ...current,
+          event_types: selected.has("*") ? [] : ["*"],
+        };
+      }
+
+      selected.delete("*");
+      if (selected.has(eventType)) {
+        selected.delete(eventType);
+      } else {
+        selected.add(eventType);
+      }
+      return {
+        ...current,
+        event_types: Array.from(selected) as WebhookTriggerEventType[],
+      };
+    });
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit(form);
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={initialTrigger ? "Edit Webhook Trigger" : "Add Webhook Trigger"}
+      maxWidth="max-w-2xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="webhook-name">Trigger Name</Label>
+            <Input
+              id="webhook-name"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              placeholder="ops-oncall"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="webhook-url">Destination URL</Label>
+            <Input
+              id="webhook-url"
+              type="url"
+              value={form.url}
+              onChange={(e) => setField("url", e.target.value)}
+              placeholder={
+                form.format === "slack"
+                  ? "https://hooks.slack.com/services/..."
+                  : form.format === "teams"
+                    ? "https://prod-...logic.azure.com/... or Teams workflow URL"
+                    : "https://hooks.example/aim"
+              }
+              required
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="webhook-format">Delivery Format</Label>
+          <Select
+            id="webhook-format"
+            value={form.format}
+            onChange={(e) =>
+              setField("format", e.target.value as WebhookTriggerFormat)
+            }
+          >
+            <option value="generic">Generic JSON</option>
+            <option value="slack">Slack incoming webhook</option>
+            <option value="teams">Teams webhook workflow</option>
+          </Select>
+          <p className="mt-1 text-xs text-gray-400">
+            {form.format === "slack" &&
+              "Sends Slack-compatible text plus Block Kit sections to an incoming webhook URL."}
+            {form.format === "teams" &&
+              "Sends a Teams workflow-friendly text payload. Use a Teams Workflows webhook URL."}
+            {form.format === "generic" &&
+              "Sends AIM's full normalized session-event JSON payload."}
+          </p>
+        </div>
+
+        <div>
+          <Label>Session Events</Label>
+          <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+            {WEBHOOK_EVENT_OPTIONS.map((option) => {
+              const checked = form.event_types.includes(option.value);
+              const disabled =
+                option.value !== "*" && form.event_types.includes("*");
+              return (
+                <label
+                  key={option.value}
+                  className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${
+                    checked
+                      ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+                      : "border-gray-200 bg-white text-gray-700"
+                  } ${disabled ? "opacity-50" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={checked}
+                    disabled={disabled}
+                    onChange={() => toggleEvent(option.value)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="webhook-headers-mode">Headers</Label>
+            <Select
+              id="webhook-headers-mode"
+              value={form.headersMode}
+              onChange={(e) =>
+                setField("headersMode", e.target.value as WebhookFieldMode)
+              }
+            >
+              {initialTrigger && (
+                <option value="preserve">Preserve stored headers</option>
+              )}
+              <option value="replace">
+                {initialTrigger ? "Replace headers" : "Set headers now"}
+              </option>
+              {initialTrigger && <option value="clear">Clear headers</option>}
+            </Select>
+            {initialTrigger?.header_names.length ? (
+              <p className="mt-1 text-xs text-gray-400">
+                Stored headers: {initialTrigger.header_names.join(", ")}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-gray-400">
+                Optional static headers sent with every delivery. Usually not needed for Slack or Teams webhook URLs.
+              </p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="webhook-token-mode">Bearer Token</Label>
+            <Select
+              id="webhook-token-mode"
+              value={form.tokenMode}
+              onChange={(e) =>
+                setField("tokenMode", e.target.value as WebhookFieldMode)
+              }
+            >
+              {initialTrigger && (
+                <option value="preserve">Preserve stored token</option>
+              )}
+              <option value="replace">
+                {initialTrigger ? "Replace token" : "Set token now"}
+              </option>
+              {initialTrigger && <option value="clear">Clear token</option>}
+            </Select>
+            <p className="mt-1 text-xs text-gray-400">
+              {initialTrigger?.has_token
+                ? "A bearer token is already stored for this trigger."
+                : "Optional Authorization: Bearer token. Usually not needed for Slack or Teams webhook URLs."}
+            </p>
+          </div>
+        </div>
+
+        {form.headersMode === "replace" && (
+          <div>
+            <Label htmlFor="webhook-headers">Header Overrides</Label>
+            <Textarea
+              id="webhook-headers"
+              value={form.headersText}
+              onChange={(e) => setField("headersText", e.target.value)}
+              rows={5}
+              placeholder={"X-Team: platform\nX-Environment: production"}
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              One header per line in the form <code>Header-Name: value</code>.
+            </p>
+          </div>
+        )}
+
+        {form.tokenMode === "replace" && (
+          <div>
+            <Label htmlFor="webhook-token">Bearer Token</Label>
+            <Input
+              id="webhook-token"
+              value={form.token}
+              onChange={(e) => setField("token", e.target.value)}
+              placeholder="secret-token"
+            />
+          </div>
+        )}
+
+        <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => setField("is_active", e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          Active (deliver subscribed events)
+        </label>
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={!form.name.trim() || !form.url.trim()}
+          >
+            <Save size={13} />{" "}
+            {initialTrigger ? "Save Changes" : "Create Trigger"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function WebhookTriggerSection({
+  triggers,
+  onReload,
+  canEdit,
+}: {
+  triggers: WebhookTriggerResponse[];
+  onReload: () => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<WebhookTriggerResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [testStates, setTestStates] = useState<Record<string, WebhookTestState>>(
+    {},
+  );
+
+  function openCreateModal() {
+    setEditing(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEditModal(trigger: WebhookTriggerResponse) {
+    setEditing(trigger);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setEditing(null);
+    setError("");
+  }
+
+  async function handleSubmit(form: WebhookFormState) {
+    const { payload, error: buildError } = buildWebhookPayload(form, editing);
+    if (buildError || !payload) {
+      setError(buildError ?? "Invalid form values.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      if (editing) {
+        await updateWebhookTrigger(editing.id, payload);
+        setNotice("Webhook trigger updated.");
+      } else {
+        await createWebhookTrigger(payload);
+        setNotice("Webhook trigger created.");
+      }
+      setModalOpen(false);
+      setEditing(null);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(trigger: WebhookTriggerResponse) {
+    const confirmed = window.confirm(
+      `Delete webhook trigger "${trigger.name}"?`,
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    try {
+      await deleteWebhookTrigger(trigger.id);
+      setNotice("Webhook trigger deleted.");
+      setTestStates((current) => {
+        const next = { ...current };
+        delete next[trigger.id];
+        return next;
+      });
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  async function handleTest(trigger: WebhookTriggerResponse) {
+    setTestStates((current) => ({
+      ...current,
+      [trigger.id]: { status: "running" },
+    }));
+
+    try {
+      const result = await testWebhookTrigger(trigger.id);
+      setTestStates((current) => ({
+        ...current,
+        [trigger.id]: {
+          status: result.success ? "success" : "failure",
+          result,
+        },
+      }));
+    } catch (err) {
+      setTestStates((current) => ({
+        ...current,
+        [trigger.id]: {
+          status: "failure",
+          result: {
+            success: false,
+            detail: err instanceof Error ? err.message : "Request failed",
+            status_code: null,
+            event_type: "webhook.test",
+          },
+        },
+      }));
+    }
+  }
+
+  return (
+    <Section
+      title="Outbound Webhooks"
+      description="Saved triggers notify external systems when session state changes. This uses the existing generic webhook backend."
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-gray-600">
+            {triggers.length} saved trigger{triggers.length === 1 ? "" : "s"}
+          </p>
+          {!canEdit && (
+            <p className="text-sm text-gray-500">
+              Admin role required to manage outbound webhook triggers.
+            </p>
+          )}
+        </div>
+        <Button onClick={openCreateModal} disabled={!canEdit}>
+          <Plus size={14} /> Add Trigger
+        </Button>
+      </div>
+
+      {error && <FormError message={error} />}
+      {notice && <p className="text-sm text-green-600">{notice}</p>}
+
+      {triggers.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+          No outbound webhook triggers yet. Add one to deliver AIM session events to downstream systems.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-3">Trigger</th>
+                <th className="px-4 py-3">Format</th>
+                <th className="px-4 py-3">Events</th>
+                <th className="px-4 py-3">Delivery</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {triggers.map((trigger) => {
+                const testState = testStates[trigger.id] ?? { status: "idle" };
+                return (
+                  <tr
+                    key={trigger.id}
+                    className={!trigger.is_active ? "bg-gray-50 opacity-70" : ""}
+                  >
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex items-center gap-2">
+                        <Bell size={14} className="text-gray-400" />
+                        <span className="font-medium text-gray-900">
+                          {trigger.name}
+                        </span>
+                      </div>
+                      <p className="mt-1 break-all font-mono text-xs text-gray-500">
+                        {trigger.url}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {trigger.has_token && (
+                          <span className="text-xs text-gray-500">
+                            Bearer token stored
+                          </span>
+                        )}
+                        {trigger.header_names.length > 0 && (
+                          <span className="text-xs text-gray-500">
+                            Headers: {trigger.header_names.join(", ")}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <Badge>{trigger.format}</Badge>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex flex-wrap gap-1.5">
+                        {trigger.event_types.map((eventType) => (
+                          <Badge key={eventType}>
+                            {eventType === "*" ? "all" : eventType.replace("session.", "")}
+                          </Badge>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <p className="text-sm text-gray-700">
+                        Last send: {formatRelativeTimestamp(trigger.last_triggered_at)}
+                      </p>
+                      {trigger.last_error ? (
+                        <p
+                          className="mt-1 line-clamp-2 text-xs text-red-600"
+                          title={trigger.last_error}
+                        >
+                          {trigger.last_error}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-gray-400">
+                          No delivery errors recorded.
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        <Badge variant={trigger.is_active ? "resolved" : "closed"}>
+                          {trigger.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                        <WebhookTestPill state={testState} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleTest(trigger)}
+                          loading={testState.status === "running"}
+                          disabled={!canEdit}
+                        >
+                          <Send size={13} /> Test
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openEditModal(trigger)}
+                          disabled={!canEdit}
+                        >
+                          <Pencil size={13} /> Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDelete(trigger)}
+                          disabled={!canEdit}
+                        >
+                          <Trash2 size={13} /> Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalOpen && (
+        <WebhookTriggerModal
+          open={modalOpen}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+          saving={saving}
+          error={error}
+          initialTrigger={editing}
+        />
+      )}
+    </Section>
+  );
+}
+
 export default function ConfigPage() {
   const { user } = useAuth();
   const canEdit = user?.role === "admin";
@@ -1775,10 +2496,19 @@ export default function ConfigPage() {
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
   const [ingestTokens, setIngestTokens] = useState<IngestTokenResponse[]>([]);
   const [ingestProviderList, setIngestProviderList] = useState<IngestProviderItem[]>([]);
+  const [webhookTriggers, setWebhookTriggers] = useState<WebhookTriggerResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadPageData = useCallback(async () => {
-    const [runtimeConfig, providerList, savedConfigs, mcpList, tokenList, ipList] =
+    const [
+      runtimeConfig,
+      providerList,
+      savedConfigs,
+      mcpList,
+      tokenList,
+      ipList,
+      triggerList,
+    ] =
       await Promise.all([
         getConfig(),
         listProviders(),
@@ -1786,6 +2516,7 @@ export default function ConfigPage() {
         listMCPServers(),
         listIngestTokens().catch(() => ({ items: [], total: 0 })),
         listIngestProviders().catch(() => ({ items: [] })),
+        listWebhookTriggers().catch(() => ({ items: [], total: 0 })),
       ]);
     setConfig(runtimeConfig);
     setProviders(providerList.items);
@@ -1793,6 +2524,7 @@ export default function ConfigPage() {
     setMcpServers(mcpList.items);
     setIngestTokens(tokenList.items);
     setIngestProviderList(ipList.items);
+    setWebhookTriggers(triggerList.items);
   }, []);
 
   useEffect(() => {
@@ -1806,7 +2538,7 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Config</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Manage runtime defaults, ingest automation, saved model profiles, MCP server connections, and external ingest tokens.
+          Manage runtime defaults, ingest automation, saved model profiles, MCP server connections, outbound webhook triggers, and external ingest tokens.
         </p>
       </div>
 
@@ -1826,6 +2558,11 @@ export default function ConfigPage() {
       <IngestTokenSection
         tokens={ingestTokens}
         ingestProviders={ingestProviderList}
+        onReload={loadPageData}
+        canEdit={canEdit}
+      />
+      <WebhookTriggerSection
+        triggers={webhookTriggers}
         onReload={loadPageData}
         canEdit={canEdit}
       />

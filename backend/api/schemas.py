@@ -369,8 +369,10 @@ class SessionMessageListResponse(BaseModel):
 class WebhookTriggerUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     url: str = Field(..., min_length=1, max_length=1000)
+    format: str = Field(default="generic", pattern="^(generic|slack|teams)$")
     event_types: list[str] = Field(..., min_length=1)
     headers: Optional[dict[str, str]] = None
+    clear_headers: bool = False
     token: Optional[str] = None
     clear_token: bool = False
     is_active: bool = True
@@ -380,6 +382,7 @@ class WebhookTriggerResponse(BaseModel):
     id: uuid.UUID
     name: str
     url: str
+    format: str
     event_types: list[str]
     is_active: bool
     created_at: datetime

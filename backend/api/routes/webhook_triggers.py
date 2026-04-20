@@ -53,11 +53,23 @@ def _resolve_token(
     return body.token
 
 
+def _resolve_headers(
+    body: WebhookTriggerUpsert,
+    existing: WebhookTrigger | None = None,
+) -> dict[str, str] | None:
+    if body.clear_headers:
+        return None
+    if body.headers is None:
+        return None if existing is None else existing.headers
+    return body.headers
+
+
 def _to_response(trigger: WebhookTrigger) -> WebhookTriggerResponse:
     return WebhookTriggerResponse(
         id=trigger.id,
         name=trigger.name,
         url=trigger.url,
+        format=trigger.format,
         event_types=list(trigger.event_types or []),
         is_active=trigger.is_active,
         created_at=trigger.created_at,
@@ -101,8 +113,9 @@ async def create_webhook_trigger(
             db,
             name=body.name,
             url=body.url,
+            format=body.format,
             event_types=_validate_event_types(body.event_types),
-            headers=body.headers,
+            headers=_resolve_headers(body),
             token=_resolve_token(body),
             is_active=body.is_active,
         )
@@ -141,8 +154,9 @@ async def update_webhook_trigger(
             trigger_id,
             name=body.name,
             url=body.url,
+            format=body.format,
             event_types=_validate_event_types(body.event_types),
-            headers=body.headers,
+            headers=_resolve_headers(body, existing),
             token=_resolve_token(body, existing),
             is_active=body.is_active,
         )

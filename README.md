@@ -254,6 +254,11 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `POST` | `/ingest-tokens/{id}/revoke` | admin | Revoke (deactivate) an ingest token |
 | `DELETE` | `/ingest-tokens/{id}` | admin | Permanently delete an ingest token |
 | `GET` | `/ingest-providers` | any | List available ingest provider adapters |
+| `GET` | `/webhook-triggers` | admin | List outbound webhook triggers |
+| `POST` | `/webhook-triggers` | admin | Create outbound webhook trigger |
+| `PUT` | `/webhook-triggers/{id}` | admin | Update outbound webhook trigger |
+| `DELETE` | `/webhook-triggers/{id}` | admin | Delete outbound webhook trigger |
+| `POST` | `/webhook-triggers/{id}/test` | admin | Send a test outbound webhook payload |
 | `WS` | `/sessions/{id}/stream?token=JWT` | JWT query param | Live session streaming |
 
 ### Roles
@@ -475,6 +480,40 @@ curl -s http://localhost:8000/incidents/ingest \
 
 For full curl recipes covering all five providers (CloudWatch SNS, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, Generic), including lifecycle examples and severity mapping tables, see [`docs/REFERENCE.md`](docs/REFERENCE.md#external-incident-ingestion).
 
+## Outbound Notifications
+
+AIM also supports outbound collaboration notifications for session lifecycle events. This is separate from inbound alert ingestion:
+
+- **Inbound**: external tools create incidents in AIM through `POST /incidents/ingest`
+- **Outbound**: AIM notifies downstream systems when a session is created, awaits approval, becomes active, completes, fails, or times out
+
+Outbound notifications are managed through saved **webhook triggers** in `/dashboard/config` or via the `/webhook-triggers` API. Each trigger subscribes to one or more session events and uses one of three payload formats:
+
+| Format | Purpose | Payload |
+|--------|---------|---------|
+| `generic` | Any automation endpoint | AIM normalized JSON event |
+| `slack` | Slack incoming webhook | `text` + Block Kit `blocks` |
+| `teams` | Microsoft Teams Workflows webhook | plain `text` body |
+
+Supported events:
+
+- `session.created`
+- `session.awaiting_approval`
+- `session.active`
+- `session.completed`
+- `session.failed`
+- `session.timed_out`
+- `*` for all session events
+
+Typical usage:
+
+1. Create a trigger pointing at a Slack or Teams webhook URL.
+2. Choose the delivery format (`slack` or `teams`).
+3. Select which session events should notify the channel.
+4. Use `POST /webhook-triggers/{id}/test` or the dashboard Test button to verify the destination.
+
+The generic webhook system remains the underlying transport. Slack and Teams are just destination-specific renderers on top of the same trigger model.
+
 ## Project Structure
 
 ```
@@ -500,6 +539,7 @@ ai-incident-manager/
 │   ├── llm/                # Provider abstraction, registry, and factories
 │   ├── mcp/                # MCP client wrapper (stdio/sse/http) + dynamic server pool
 │   ├── skills/             # Skill definition parser (SKILL.md) + startup auto-importer
+│   ├── webhooks/           # Outbound webhook trigger rendering + delivery
 │   └── tiers/              # Tier enforcement layer
 ├── cli/
 │   └── aim.py              # CLI entry point (run, check, audit, config, approvals)
@@ -514,7 +554,7 @@ ai-incident-manager/
 ## Progress
 
 - **Phase 1 (Sprints 1–6):** ✅ Complete — CLI, MCP, skills, tiers, audit, LangGraph workflow
-- **Phase 2 (Sprints 7–14):** In progress
+- **Phase 2 (Sprints 7–20):** ✅ Complete
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
   - Sprint 8: ✅ FastAPI REST + WebSocket layer (JWT auth, RBAC, all CRUD endpoints)
   - Sprint 9: ✅ Tier 1 approval flow
@@ -526,6 +566,9 @@ ai-incident-manager/
   - Sprint 15: ✅ Universal ingestion — `auto` adapter with heuristics + LLM fallback + per-token shape cache
   - Sprint 16: ✅ Bundle Node.js/npx in Docker + binary builds
   - Sprint 17: ✅ Tier 0 sandbox + hard time limits + rollback
+  - Sprint 18: ✅ Outbound webhook triggers — persisted configs, async session event delivery, CRUD/test API
+  - Sprint 19: ✅ Outbound webhook trigger UI — dashboard management + safe edit semantics for headers/tokens
+  - Sprint 20: ✅ Slack + Teams outbound trigger formats on top of the generic webhook trigger system
 
 ## Distribution Status
 

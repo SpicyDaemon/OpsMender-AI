@@ -764,6 +764,7 @@ class TestWebhookTriggers:
             json={
                 "name": "ops-webhook",
                 "url": "https://hooks.example/ops",
+                "format": "generic",
                 "event_types": ["session.completed", "session.failed"],
                 "headers": {"X-Team": "ops"},
                 "token": "secret-token",
@@ -773,6 +774,7 @@ class TestWebhookTriggers:
         )
         assert create_resp.status_code == 201
         trigger_id = create_resp.json()["id"]
+        assert create_resp.json()["format"] == "generic"
         assert create_resp.json()["has_token"] is True
         assert create_resp.json()["header_names"] == ["X-Team"]
 
@@ -785,6 +787,7 @@ class TestWebhookTriggers:
             json={
                 "name": "ops-webhook",
                 "url": "https://hooks.example/ops-v2",
+                "format": "slack",
                 "event_types": ["session.completed"],
                 "headers": {"X-Team": "platform"},
                 "is_active": False,
@@ -793,6 +796,7 @@ class TestWebhookTriggers:
         )
         assert update_resp.status_code == 200
         assert update_resp.json()["url"] == "https://hooks.example/ops-v2"
+        assert update_resp.json()["format"] == "slack"
         assert update_resp.json()["is_active"] is False
 
         test_resp = await client.post(
@@ -806,7 +810,8 @@ class TestWebhookTriggers:
         await asyncio.sleep(0.05)
         assert deliveries
         _, payload, headers = deliveries[-1]
-        assert payload["event"] == "webhook.test"
+        assert payload["text"].startswith("AIM Webhook.Test:")
+        assert payload["blocks"]
         assert headers["Authorization"] == "Bearer secret-token"
         assert headers["X-Team"] == "platform"
 
@@ -816,6 +821,53 @@ class TestWebhookTriggers:
         )
         assert delete_resp.status_code == 204
 
+    async def test_update_trigger_preserves_headers_unless_cleared(
+        self, client: AsyncClient, auth_headers
+    ):
+        create_resp = await client.post(
+            "/webhook-triggers",
+            json={
+                "name": "preserve-headers",
+                "url": "https://hooks.example/ops",
+                "format": "generic",
+                "event_types": ["session.completed"],
+                "headers": {"X-Team": "ops", "X-Region": "us"},
+                "is_active": True,
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+        trigger_id = create_resp.json()["id"]
+
+        update_resp = await client.put(
+            f"/webhook-triggers/{trigger_id}",
+            json={
+                "name": "preserve-headers",
+                "url": "https://hooks.example/ops-v2",
+                "format": "generic",
+                "event_types": ["session.failed"],
+                "is_active": True,
+            },
+            headers=auth_headers,
+        )
+        assert update_resp.status_code == 200
+        assert sorted(update_resp.json()["header_names"]) == ["X-Region", "X-Team"]
+
+        clear_resp = await client.put(
+            f"/webhook-triggers/{trigger_id}",
+            json={
+                "name": "preserve-headers",
+                "url": "https://hooks.example/ops-v3",
+                "format": "generic",
+                "event_types": ["session.failed"],
+                "clear_headers": True,
+                "is_active": True,
+            },
+            headers=auth_headers,
+        )
+        assert clear_resp.status_code == 200
+        assert clear_resp.json()["header_names"] == []
+
     async def test_create_trigger_validates_event_types(
         self, client: AsyncClient, auth_headers
     ):
@@ -824,12 +876,96 @@ class TestWebhookTriggers:
             json={
                 "name": "bad-trigger",
                 "url": "https://hooks.example/bad",
+                "format": "generic",
                 "event_types": ["session.unknown"],
             },
             headers=auth_headers,
         )
         assert resp.status_code == 400
         assert "Unsupported event types" in resp.json()["detail"]
+
+    async def test_session_created_slack_trigger_formats_payload(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        deliveries: list[dict[str, object]] = []
+
+        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
+            deliveries.append(payload)
+
+            class _Resp:
+                status_code = 200
+
+                def raise_for_status(self):
+                    return None
+
+            return _Resp()
+
+        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
+
+        async with app.state.session_factory() as db:
+            await WebhookTriggerRepo.create(
+                db,
+                name="slack-created",
+                url="https://hooks.slack.com/services/T/B/X",
+                format="slack",
+                event_types=["session.created"],
+            )
+            await db.commit()
+
+        resp = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
+        assert resp.status_code == 201
+
+        await asyncio.sleep(0.05)
+
+        assert len(deliveries) == 1
+        payload = deliveries[0]
+        assert "text" in payload
+        assert "blocks" in payload
+        assert payload["text"].startswith("AIM Created:")
+
+    async def test_test_trigger_teams_format_uses_text_payload(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        deliveries: list[dict[str, object]] = []
+
+        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
+            deliveries.append(payload)
+
+            class _Resp:
+                status_code = 200
+
+                def raise_for_status(self):
+                    return None
+
+            return _Resp()
+
+        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
+
+        create_resp = await client.post(
+            "/webhook-triggers",
+            json={
+                "name": "teams-test",
+                "url": "https://prod-00.westus.logic.azure.com/workflows/test",
+                "format": "teams",
+                "event_types": ["session.completed"],
+                "is_active": True,
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+
+        trigger_id = create_resp.json()["id"]
+        test_resp = await client.post(
+            f"/webhook-triggers/{trigger_id}/test",
+            headers=auth_headers,
+        )
+        assert test_resp.status_code == 200
+        assert test_resp.json()["success"] is True
+
+        assert deliveries
+        payload = deliveries[-1]
+        assert payload.keys() == {"text"}
+        assert "Webhook test incident" in payload["text"]
 
     async def test_get_config_viewer_forbidden(
         self, client: AsyncClient, viewer_headers

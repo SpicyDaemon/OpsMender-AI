@@ -286,6 +286,60 @@ export interface MCPServerTestResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Webhook Triggers
+// ---------------------------------------------------------------------------
+
+export type WebhookTriggerEventType =
+  | "*"
+  | "session.created"
+  | "session.awaiting_approval"
+  | "session.active"
+  | "session.completed"
+  | "session.failed"
+  | "session.timed_out";
+
+export type WebhookTriggerFormat = "generic" | "slack" | "teams";
+
+export interface WebhookTriggerResponse {
+  id: string;
+  name: string;
+  url: string;
+  format: WebhookTriggerFormat;
+  event_types: WebhookTriggerEventType[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  last_triggered_at: string | null;
+  last_error: string | null;
+  header_names: string[];
+  has_token: boolean;
+}
+
+export interface WebhookTriggerListResponse {
+  items: WebhookTriggerResponse[];
+  total: number;
+}
+
+export interface WebhookTriggerUpsert {
+  name: string;
+  url: string;
+  format: WebhookTriggerFormat;
+  event_types: WebhookTriggerEventType[];
+  headers?: Record<string, string> | null;
+  clear_headers?: boolean;
+  token?: string | null;
+  clear_token?: boolean;
+  is_active?: boolean;
+}
+
+export interface WebhookTriggerTestResponse {
+  success: boolean;
+  detail: string;
+  status_code: number | null;
+  event_type: string;
+}
+
+// ---------------------------------------------------------------------------
 // Skills
 // ---------------------------------------------------------------------------
 

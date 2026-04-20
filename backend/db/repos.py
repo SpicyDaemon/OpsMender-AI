@@ -941,6 +941,7 @@ class WebhookTriggerRepo:
         *,
         name: str,
         url: str,
+        format: str = "generic",
         event_types: list[str],
         headers: dict[str, str] | None = None,
         token: str | None = None,
@@ -949,6 +950,7 @@ class WebhookTriggerRepo:
         trigger = WebhookTrigger(
             name=name,
             url=url,
+            format=format,
             event_types=event_types,
             headers=headers,
             token=token,
@@ -1003,6 +1005,7 @@ class WebhookTriggerRepo:
         *,
         name: str,
         url: str,
+        format: str = "generic",
         event_types: list[str],
         headers: dict[str, str] | None = None,
         token: str | None = None,
@@ -1014,6 +1017,7 @@ class WebhookTriggerRepo:
             .values(
                 name=name,
                 url=url,
+                format=format,
                 event_types=event_types,
                 headers=headers,
                 token=token,

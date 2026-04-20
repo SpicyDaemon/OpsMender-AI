@@ -322,6 +322,7 @@ class WebhookTrigger(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    format: Mapped[str] = mapped_column(String(20), default="generic", nullable=False)
     event_types: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     headers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     token: Mapped[str | None] = mapped_column(Text, nullable=True)

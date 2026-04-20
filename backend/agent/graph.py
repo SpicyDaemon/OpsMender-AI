@@ -58,6 +58,45 @@ from backend.agent.nodes import (
 )
 from backend.skills.parser import SkillDefinition
 
+DEFAULT_WORKFLOW_NODE_ORDER = [
+    "observe",
+    "diagnose",
+    "plan",
+    "tier_gate",
+    "execute",
+    "verify",
+    "summarize",
+]
+
+
+def validate_workflow_node_order(node_order: list[str] | None) -> list[str]:
+    if node_order is None:
+        return list(DEFAULT_WORKFLOW_NODE_ORDER)
+    if not node_order:
+        raise ValueError("Workflow node order cannot be empty")
+
+    allowed = set(DEFAULT_WORKFLOW_NODE_ORDER)
+    cleaned = [str(node).strip() for node in node_order if str(node).strip()]
+    if len(cleaned) != len(node_order):
+        raise ValueError("Workflow node order cannot contain blank node names")
+    if len(set(cleaned)) != len(cleaned):
+        raise ValueError("Workflow node order cannot contain duplicate nodes")
+
+    invalid = [node for node in cleaned if node not in allowed]
+    if invalid:
+        raise ValueError(f"Unsupported workflow nodes: {', '.join(invalid)}")
+
+    if "execute" in cleaned:
+        if "tier_gate" not in cleaned:
+            raise ValueError("Workflow including execute must also include tier_gate")
+        if cleaned.index("tier_gate") + 1 != cleaned.index("execute"):
+            raise ValueError("tier_gate must appear immediately before execute")
+
+    if "tier_gate" in cleaned and "execute" not in cleaned:
+        raise ValueError("tier_gate cannot be used without execute")
+
+    return cleaned
+
 
 def _wrap_node_with_events(fn, *, node_name: str, publisher):
     async def _run(state):
@@ -93,6 +132,7 @@ def build_graph(
     plan_tool_names: list[str] | None = None,
     tool_caller=None,
     node_event_publisher=None,
+    node_order: list[str] | None = None,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -118,6 +158,7 @@ def build_graph(
         A compiled graph ready for ``.invoke()`` or ``.ainvoke()``.
     """
     builder = StateGraph(IncidentState)
+    node_order = validate_workflow_node_order(node_order)
 
     # -- select node implementations ----------------------------------------
     if llm is not None:
@@ -188,22 +229,22 @@ def build_graph(
         )
 
     # -- register nodes ------------------------------------------------------
-    builder.add_node("observe", observe_fn)
-    builder.add_node("diagnose", diagnose_fn)
-    builder.add_node("plan", plan_fn)
-    builder.add_node("tier_gate", tier_gate_fn)
-    builder.add_node("execute", execute_fn)
-    builder.add_node("verify", verify_fn)
-    builder.add_node("summarize", summarize_fn)
+    node_impls = {
+        "observe": observe_fn,
+        "diagnose": diagnose_fn,
+        "plan": plan_fn,
+        "tier_gate": tier_gate_fn,
+        "execute": execute_fn,
+        "verify": verify_fn,
+        "summarize": summarize_fn,
+    }
+    for node_name in node_order:
+        builder.add_node(node_name, node_impls[node_name])
 
     # -- wire edges (linear pipeline) ----------------------------------------
-    builder.add_edge(START, "observe")
-    builder.add_edge("observe", "diagnose")
-    builder.add_edge("diagnose", "plan")
-    builder.add_edge("plan", "tier_gate")
-    builder.add_edge("tier_gate", "execute")
-    builder.add_edge("execute", "verify")
-    builder.add_edge("verify", "summarize")
-    builder.add_edge("summarize", END)
+    builder.add_edge(START, node_order[0])
+    for current, nxt in zip(node_order, node_order[1:]):
+        builder.add_edge(current, nxt)
+    builder.add_edge(node_order[-1], END)
 
     return builder.compile()

@@ -259,6 +259,10 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `PUT` | `/webhook-triggers/{id}` | admin | Update outbound webhook trigger |
 | `DELETE` | `/webhook-triggers/{id}` | admin | Delete outbound webhook trigger |
 | `POST` | `/webhook-triggers/{id}/test` | admin | Send a test outbound webhook payload |
+| `GET` | `/workflow-profiles` | any | List saved workflow profiles |
+| `POST` | `/workflow-profiles` | admin | Create workflow profile |
+| `PUT` | `/workflow-profiles/{id}` | admin | Update workflow profile |
+| `DELETE` | `/workflow-profiles/{id}` | admin | Delete workflow profile |
 | `WS` | `/sessions/{id}/stream?token=JWT` | JWT query param | Live session streaming |
 
 ### Roles
@@ -515,6 +519,32 @@ Typical usage:
 
 The generic webhook system remains the underlying transport. Slack and Teams are just destination-specific renderers on top of the same trigger model.
 
+## Custom Workflow Builder
+
+AIM now supports a saved **workflow profile** builder on top of the fixed LangGraph node set:
+
+- `observe`
+- `diagnose`
+- `plan`
+- `tier_gate`
+- `execute`
+- `verify`
+- `summarize`
+
+This is not a free-form graph editor. Instead, admins create saved workflow profiles that choose the ordered subset of nodes a session should run. Sessions can use:
+
+- the built-in default workflow when no profile is selected
+- the default saved workflow profile
+- an explicitly selected workflow profile at session start
+
+Safety constraints stay enforced:
+
+- `tier_gate` is still programmatic
+- `execute` requires `tier_gate` immediately before it
+- custom workflows cannot introduce arbitrary user-defined code or bypass tier enforcement
+
+Workflow profiles are managed from `/dashboard/config` and via the `/workflow-profiles` API.
+
 ## Project Structure
 
 ```
@@ -571,6 +601,7 @@ ai-incident-manager/
   - Sprint 19: ✅ Outbound webhook trigger UI — dashboard management + safe edit semantics for headers/tokens
   - Sprint 20: ✅ Slack + Teams outbound trigger formats on top of the generic webhook trigger system
   - Sprint 21: ✅ Sumo Logic outbound trigger format on top of the generic webhook trigger system
+  - Sprint 22: ✅ Custom workflow builder — saved workflow profiles wired into sessions, API, graph builder, and config UI
 
 ## Distribution Status
 

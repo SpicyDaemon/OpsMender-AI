@@ -23,6 +23,7 @@ from backend.db.repos import (
     SessionRepo,
     UserRepo,
     WebhookTriggerRepo,
+    WorkflowProfileRepo,
 )
 
 
@@ -230,6 +231,27 @@ class TestWebhookTriggerRepo:
 
         assert trigger.last_triggered_at is not None
         assert trigger.last_error == "boom"
+
+
+# ---------------------------------------------------------------------------
+# WorkflowProfileRepo
+# ---------------------------------------------------------------------------
+
+class TestWorkflowProfileRepo:
+
+    async def test_create_and_get_default(self, db: AsyncSession):
+        created = await WorkflowProfileRepo.create(
+            db,
+            name="default-linear",
+            description="default",
+            node_order=["observe", "diagnose", "plan", "tier_gate", "execute", "verify", "summarize"],
+            is_default=True,
+        )
+        await db.flush()
+
+        default = await WorkflowProfileRepo.get_default(db)
+        assert default is not None
+        assert default.id == created.id
 
 
 # ---------------------------------------------------------------------------

@@ -41,6 +41,7 @@ from backend.db.repos import (
     SessionMessageRepo,
     SessionRepo,
     SkillRepo,
+    WorkflowProfileRepo,
 )
 from backend.mcp.client import list_tools as mcp_list_tools
 from backend.mcp.pool import MCPServerPool
@@ -66,6 +67,7 @@ def _to_session_response(session) -> SessionResponse:
     return SessionResponse(
         id=session.id,
         incident_id=session.incident_id,
+        workflow_profile_id=getattr(session, "workflow_profile_id", None),
         tier=session.tier,
         model_provider=session.model_provider,
         model_id=session.model_id,
@@ -100,10 +102,28 @@ async def create_session(
                 detail="Incident not found",
             )
 
+    workflow_profile_id = body.workflow_profile_id
+    if workflow_profile_id is not None:
+        profile = await WorkflowProfileRepo.get_by_id(db, workflow_profile_id)
+        if profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Workflow profile not found",
+            )
+        if not profile.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Workflow profile is inactive",
+            )
+    else:
+        default_profile = await WorkflowProfileRepo.get_default(db)
+        workflow_profile_id = None if default_profile is None else default_profile.id
+
     session = await SessionRepo.create(
         db,
         tier=body.tier,
         incident_id=body.incident_id,
+        workflow_profile_id=workflow_profile_id,
         model_provider=body.model_provider,
         model_id=body.model_id,
     )

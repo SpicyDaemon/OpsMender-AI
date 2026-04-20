@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from backend.agent.graph import build_graph
+from backend.agent.graph import build_graph, validate_workflow_node_order
 from backend.agent.llm import LLM, StubLLM
 from backend.agent.nodes import (
     _build_diagnose,
@@ -118,6 +118,20 @@ class TestGraphStructure:
         node_names = set(graph.nodes.keys())
         expected = {"observe", "diagnose", "plan", "tier_gate", "execute", "verify", "summarize", "__start__"}
         assert expected.issubset(node_names)
+
+    def test_graph_supports_custom_node_order(self):
+        graph = build_graph(
+            tier=2,
+            skill_def=_skill_def(),
+            node_order=["diagnose", "plan", "tier_gate", "execute", "summarize"],
+        )
+        node_names = set(graph.nodes.keys())
+        assert "observe" not in node_names
+        assert {"diagnose", "plan", "tier_gate", "execute", "summarize"}.issubset(node_names)
+
+    def test_validate_workflow_node_order_rejects_execute_without_gate(self):
+        with pytest.raises(ValueError):
+            validate_workflow_node_order(["plan", "execute", "summarize"])
 
 
 # ---------------------------------------------------------------------------

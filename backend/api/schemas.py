@@ -82,6 +82,7 @@ class IncidentListResponse(BaseModel):
 
 class SessionCreate(BaseModel):
     incident_id: Optional[uuid.UUID] = None
+    workflow_profile_id: Optional[uuid.UUID] = None
     tier: int = Field(..., ge=0, le=3)
     model_provider: Optional[str] = None
     model_id: Optional[str] = None
@@ -91,6 +92,7 @@ class SessionCreate(BaseModel):
 class SessionResponse(BaseModel):
     id: uuid.UUID
     incident_id: Optional[uuid.UUID]
+    workflow_profile_id: Optional[uuid.UUID]
     tier: int
     model_provider: Optional[str]
     model_id: Optional[str]
@@ -405,6 +407,36 @@ class WebhookTriggerTestResponse(BaseModel):
     detail: str
     status_code: Optional[int] = None
     event_type: str
+
+
+# ---------------------------------------------------------------------------
+# Workflow profiles (custom workflow builder — Phase 3)
+# ---------------------------------------------------------------------------
+
+class WorkflowProfileUpsert(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    description: Optional[str] = None
+    node_order: list[str] = Field(..., min_length=1)
+    is_active: bool = True
+    is_default: bool = False
+
+
+class WorkflowProfileResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str]
+    node_order: list[str]
+    is_active: bool
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WorkflowProfileListResponse(BaseModel):
+    items: list[WorkflowProfileResponse]
+    total: int
 
 
 # ---------------------------------------------------------------------------

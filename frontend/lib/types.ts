@@ -56,6 +56,7 @@ export type SessionStatus =
 export interface SessionResponse {
   id: string;
   incident_id: string | null;
+  workflow_profile_id: string | null;
   tier: number;
   model_provider: string | null;
   model_id: string | null;
@@ -68,6 +69,7 @@ export interface SessionResponse {
 
 export interface SessionCreate {
   incident_id?: string;
+  workflow_profile_id?: string;
   tier: number;
   model_provider?: string;
   model_id?: string;
@@ -337,6 +339,43 @@ export interface WebhookTriggerTestResponse {
   detail: string;
   status_code: number | null;
   event_type: string;
+}
+
+// ---------------------------------------------------------------------------
+// Workflow Profiles
+// ---------------------------------------------------------------------------
+
+export type WorkflowNode =
+  | "observe"
+  | "diagnose"
+  | "plan"
+  | "tier_gate"
+  | "execute"
+  | "verify"
+  | "summarize";
+
+export interface WorkflowProfileResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  node_order: WorkflowNode[];
+  is_active: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowProfileListResponse {
+  items: WorkflowProfileResponse[];
+  total: number;
+}
+
+export interface WorkflowProfileUpsert {
+  name: string;
+  description?: string | null;
+  node_order: WorkflowNode[];
+  is_active?: boolean;
+  is_default?: boolean;
 }
 
 // ---------------------------------------------------------------------------

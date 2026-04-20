@@ -119,6 +119,9 @@ class Session(Base):
     incident_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("incidents.id"), nullable=True
     )
+    workflow_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("workflow_profiles.id", ondelete="SET NULL"), nullable=True
+    )
     tier: Mapped[int] = mapped_column(Integer, nullable=False)
     model_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -134,6 +137,7 @@ class Session(Base):
     )
 
     incident: Mapped[Incident | None] = relationship(back_populates="sessions")
+    workflow_profile: Mapped["WorkflowProfile | None"] = relationship()
     audit_entries: Mapped[list[AuditEntry]] = relationship(back_populates="session")
     approval_requests: Mapped[list[ApprovalRequest]] = relationship(
         back_populates="session"
@@ -337,6 +341,27 @@ class WebhookTrigger(Base):
         DateTime(timezone=True), nullable=True
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Workflow profiles (custom workflow builder — Phase 3)
+# ---------------------------------------------------------------------------
+
+class WorkflowProfile(Base):
+    __tablename__ = "workflow_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    node_order: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
 
 # ---------------------------------------------------------------------------

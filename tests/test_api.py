@@ -29,6 +29,7 @@ from backend.db.repos import (
     SessionRepo,
     UserRepo,
     WebhookTriggerRepo,
+    WorkflowProfileRepo,
 )
 
 
@@ -1014,6 +1015,85 @@ class TestWebhookTriggers:
         assert payload["incidentTitle"] == "Webhook test incident"
         assert payload["sessionStatus"] == "completed"
         assert payload["session"]["id"] == "test-session"
+
+class TestWorkflowProfiles:
+
+    async def test_create_list_update_delete_workflow_profile(
+        self, client: AsyncClient, auth_headers
+    ):
+        create_resp = await client.post(
+            "/workflow-profiles",
+            json={
+                "name": "fast-track",
+                "description": "Skip observe",
+                "node_order": ["diagnose", "plan", "tier_gate", "execute", "verify", "summarize"],
+                "is_active": True,
+                "is_default": True,
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+        profile_id = create_resp.json()["id"]
+        assert create_resp.json()["is_default"] is True
+
+        list_resp = await client.get("/workflow-profiles", headers=auth_headers)
+        assert list_resp.status_code == 200
+        assert list_resp.json()["total"] >= 1
+
+        update_resp = await client.put(
+            f"/workflow-profiles/{profile_id}",
+            json={
+                "name": "fast-track",
+                "description": "Skip observe and verify",
+                "node_order": ["diagnose", "plan", "tier_gate", "execute", "summarize"],
+                "is_active": True,
+                "is_default": False,
+            },
+            headers=auth_headers,
+        )
+        assert update_resp.status_code == 200
+        assert update_resp.json()["node_order"] == [
+            "diagnose", "plan", "tier_gate", "execute", "summarize"
+        ]
+
+        delete_resp = await client.delete(
+            f"/workflow-profiles/{profile_id}",
+            headers=auth_headers,
+        )
+        assert delete_resp.status_code == 204
+
+    async def test_create_workflow_profile_validates_node_order(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            "/workflow-profiles",
+            json={
+                "name": "bad-workflow",
+                "node_order": ["plan", "execute", "tier_gate"],
+                "is_active": True,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "tier_gate" in resp.json()["detail"]
+
+    async def test_create_session_uses_default_workflow_profile(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            profile = await WorkflowProfileRepo.create(
+                db,
+                name="default-fast-track",
+                description="default workflow",
+                node_order=["diagnose", "plan", "tier_gate", "execute", "summarize"],
+                is_default=True,
+            )
+            await db.commit()
+            profile_id = profile.id
+
+        resp = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
+        assert resp.status_code == 201
+        assert resp.json()["workflow_profile_id"] == str(profile_id)
 
     async def test_get_config_viewer_forbidden(
         self, client: AsyncClient, viewer_headers

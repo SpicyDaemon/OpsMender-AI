@@ -36,6 +36,7 @@ from backend.db.models import (
     Skill,
     User,
     WebhookTrigger,
+    WorkflowProfile,
 )
 
 
@@ -175,12 +176,14 @@ class SessionRepo:
         *,
         tier: int,
         incident_id: uuid.UUID | None = None,
+        workflow_profile_id: uuid.UUID | None = None,
         model_provider: str | None = None,
         model_id: str | None = None,
     ) -> Session:
         session = Session(
             tier=tier,
             incident_id=incident_id,
+            workflow_profile_id=workflow_profile_id,
             model_provider=model_provider,
             model_id=model_id,
         )
@@ -1055,6 +1058,115 @@ class WebhookTriggerRepo:
         if trigger is None:
             return False
         await db.delete(trigger)
+        await db.flush()
+        return True
+
+
+# ---------------------------------------------------------------------------
+# Workflow profiles (custom workflow builder — Phase 3)
+# ---------------------------------------------------------------------------
+
+class WorkflowProfileRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        description: str | None,
+        node_order: list[str],
+        is_active: bool = True,
+        is_default: bool = False,
+    ) -> WorkflowProfile:
+        if is_default:
+            await db.execute(update(WorkflowProfile).values(is_default=False))
+        profile = WorkflowProfile(
+            name=name,
+            description=description,
+            node_order=node_order,
+            is_active=is_active,
+            is_default=is_default,
+        )
+        db.add(profile)
+        await db.flush()
+        return profile
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, profile_id: uuid.UUID
+    ) -> WorkflowProfile | None:
+        return await db.get(WorkflowProfile, profile_id)
+
+    @staticmethod
+    async def get_by_name(
+        db: AsyncSession, name: str
+    ) -> WorkflowProfile | None:
+        stmt = select(WorkflowProfile).where(WorkflowProfile.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_default(db: AsyncSession) -> WorkflowProfile | None:
+        stmt = select(WorkflowProfile).where(WorkflowProfile.is_default == True)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        *,
+        active_only: bool = False,
+    ) -> Sequence[WorkflowProfile]:
+        stmt = select(WorkflowProfile).order_by(
+            WorkflowProfile.is_default.desc(),
+            WorkflowProfile.name,
+        )
+        if active_only:
+            stmt = stmt.where(WorkflowProfile.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        profile_id: uuid.UUID,
+        *,
+        name: str,
+        description: str | None,
+        node_order: list[str],
+        is_active: bool,
+        is_default: bool,
+    ) -> WorkflowProfile | None:
+        if is_default:
+            await db.execute(
+                update(WorkflowProfile)
+                .where(WorkflowProfile.id != profile_id)
+                .values(is_default=False)
+            )
+        stmt = (
+            update(WorkflowProfile)
+            .where(WorkflowProfile.id == profile_id)
+            .values(
+                name=name,
+                description=description,
+                node_order=node_order,
+                is_active=is_active,
+                is_default=is_default,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await WorkflowProfileRepo.get_by_id(db, profile_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, profile_id: uuid.UUID) -> bool:
+        profile = await WorkflowProfileRepo.get_by_id(db, profile_id)
+        if profile is None:
+            return False
+        await db.delete(profile)
         await db.flush()
         return True
 

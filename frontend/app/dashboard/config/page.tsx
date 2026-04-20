@@ -21,10 +21,12 @@ import {
   createMCPServer,
   createModelConfig,
   createWebhookTrigger,
+  createWorkflowProfile,
   deleteIngestToken,
   deleteMCPServer,
   deleteModelConfig,
   deleteWebhookTrigger,
+  deleteWorkflowProfile,
   getConfig,
   listIngestProviders,
   listIngestTokens,
@@ -32,6 +34,7 @@ import {
   listModelConfigs,
   listProviders,
   listWebhookTriggers,
+  listWorkflowProfiles,
   revokeIngestToken,
   setDefaultModelConfig,
   testMCPServer,
@@ -40,6 +43,7 @@ import {
   updateMCPServer,
   updateModelConfigById,
   updateWebhookTrigger,
+  updateWorkflowProfile,
 } from "@/lib/api";
 import type {
   ConfigResponse,
@@ -59,6 +63,9 @@ import type {
   WebhookTriggerResponse,
   WebhookTriggerTestResponse,
   WebhookTriggerUpsert,
+  WorkflowNode,
+  WorkflowProfileResponse,
+  WorkflowProfileUpsert,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
@@ -1778,6 +1785,393 @@ function IngestTokenSection({
 }
 
 // ---------------------------------------------------------------------------
+// Workflow Profiles (custom workflow builder — Phase 3)
+// ---------------------------------------------------------------------------
+
+const WORKFLOW_NODE_OPTIONS: Array<{ value: WorkflowNode; label: string }> = [
+  { value: "observe", label: "Observe" },
+  { value: "diagnose", label: "Diagnose" },
+  { value: "plan", label: "Plan" },
+  { value: "tier_gate", label: "Tier Gate" },
+  { value: "execute", label: "Execute" },
+  { value: "verify", label: "Verify" },
+  { value: "summarize", label: "Summarize" },
+];
+
+type WorkflowProfileFormState = {
+  name: string;
+  description: string;
+  node_order: WorkflowNode[];
+  is_active: boolean;
+  is_default: boolean;
+};
+
+function createWorkflowProfileFormState(
+  current: WorkflowProfileResponse | null,
+): WorkflowProfileFormState {
+  return {
+    name: current?.name ?? "",
+    description: current?.description ?? "",
+    node_order: current?.node_order ?? [
+      "observe",
+      "diagnose",
+      "plan",
+      "tier_gate",
+      "execute",
+      "verify",
+      "summarize",
+    ],
+    is_active: current?.is_active ?? true,
+    is_default: current?.is_default ?? false,
+  };
+}
+
+function WorkflowProfileModal({
+  open,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+  initialProfile,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (form: WorkflowProfileFormState) => Promise<void>;
+  saving: boolean;
+  error: string;
+  initialProfile: WorkflowProfileResponse | null;
+}) {
+  const [form, setForm] = useState<WorkflowProfileFormState>(() =>
+    createWorkflowProfileFormState(initialProfile),
+  );
+
+  function setField<K extends keyof WorkflowProfileFormState>(
+    key: K,
+    value: WorkflowProfileFormState[K],
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function moveNode(index: number, direction: -1 | 1) {
+    setForm((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.node_order.length) {
+        return current;
+      }
+      const updated = [...current.node_order];
+      const [node] = updated.splice(index, 1);
+      updated.splice(nextIndex, 0, node);
+      return { ...current, node_order: updated };
+    });
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit(form);
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={initialProfile ? "Edit Workflow Profile" : "Add Workflow Profile"}
+      maxWidth="max-w-2xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="workflow-name">Profile Name</Label>
+            <Input
+              id="workflow-name"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              placeholder="default-linear"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="workflow-desc">Description</Label>
+            <Input
+              id="workflow-desc"
+              value={form.description}
+              onChange={(e) => setField("description", e.target.value)}
+              placeholder="Standard observe → diagnose → plan flow"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label>Node Order</Label>
+          <p className="mt-1 text-xs text-gray-400">
+            Reorder the fixed AIM nodes. Safety rules are enforced server-side:
+            `execute` requires `tier_gate` immediately before it.
+          </p>
+          <div className="mt-3 space-y-2">
+            {form.node_order.map((node, index) => {
+              const option = WORKFLOW_NODE_OPTIONS.find((item) => item.value === node);
+              return (
+                <div
+                  key={`${node}-${index}`}
+                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                >
+                  <div className="flex items-center gap-3">
+                    <Badge>{index + 1}</Badge>
+                    <span className="text-sm font-medium text-gray-800">
+                      {option?.label ?? node}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => moveNode(index, -1)}
+                      disabled={index === 0}
+                    >
+                      Up
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => moveNode(index, 1)}
+                      disabled={index === form.node_order.length - 1}
+                    >
+                      Down
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) => setField("is_active", e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Active (available when starting sessions)
+          </label>
+          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.is_default}
+              onChange={(e) => setField("is_default", e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Default workflow profile
+          </label>
+        </div>
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={!form.name.trim() || form.node_order.length === 0}
+          >
+            <Save size={13} />{" "}
+            {initialProfile ? "Save Changes" : "Create Profile"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function WorkflowProfileSection({
+  profiles,
+  onReload,
+  canEdit,
+}: {
+  profiles: WorkflowProfileResponse[];
+  onReload: () => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<WorkflowProfileResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  function openCreateModal() {
+    setEditing(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEditModal(profile: WorkflowProfileResponse) {
+    setEditing(profile);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setEditing(null);
+    setError("");
+  }
+
+  async function handleSubmit(form: WorkflowProfileFormState) {
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload: WorkflowProfileUpsert = {
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        node_order: form.node_order,
+        is_active: form.is_active,
+        is_default: form.is_default,
+      };
+      if (editing) {
+        await updateWorkflowProfile(editing.id, payload);
+        setNotice("Workflow profile updated.");
+      } else {
+        await createWorkflowProfile(payload);
+        setNotice("Workflow profile created.");
+      }
+      setModalOpen(false);
+      setEditing(null);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(profile: WorkflowProfileResponse) {
+    const confirmed = window.confirm(
+      `Delete workflow profile "${profile.name}"?`,
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    try {
+      await deleteWorkflowProfile(profile.id);
+      setNotice("Workflow profile deleted.");
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  return (
+    <Section
+      title="Workflow Profiles"
+      description="Saved workflow profiles let operators choose which built-in AIM nodes run, and in what order, while preserving the tier-gate safety rules."
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-gray-600">
+            {profiles.length} saved profile{profiles.length === 1 ? "" : "s"}
+          </p>
+          {!canEdit && (
+            <p className="text-sm text-gray-500">
+              Admin role required to manage workflow profiles.
+            </p>
+          )}
+        </div>
+        <Button onClick={openCreateModal} disabled={!canEdit}>
+          <Plus size={14} /> Add Workflow Profile
+        </Button>
+      </div>
+
+      {error && <FormError message={error} />}
+      {notice && <p className="text-sm text-green-600">{notice}</p>}
+
+      {profiles.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+          No workflow profiles yet. Sessions will use AIM&apos;s built-in default flow.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-3">Profile</th>
+                <th className="px-4 py-3">Nodes</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {profiles.map((profile) => (
+                <tr key={profile.id}>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900">{profile.name}</span>
+                      {profile.is_default && <Badge>Default</Badge>}
+                    </div>
+                    {profile.description && (
+                      <p className="mt-1 text-xs text-gray-500">{profile.description}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex flex-wrap gap-1.5">
+                      {profile.node_order.map((node) => (
+                        <Badge key={node}>{node}</Badge>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <Badge variant={profile.is_active ? "resolved" : "closed"}>
+                      {profile.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openEditModal(profile)}
+                        disabled={!canEdit}
+                      >
+                        <Pencil size={13} /> Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleDelete(profile)}
+                        disabled={!canEdit}
+                      >
+                        <Trash2 size={13} /> Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalOpen && (
+        <WorkflowProfileModal
+          open={modalOpen}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+          saving={saving}
+          error={error}
+          initialProfile={editing}
+        />
+      )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Outbound Webhook Triggers
 // ---------------------------------------------------------------------------
 
@@ -2502,6 +2896,7 @@ export default function ConfigPage() {
   const [ingestTokens, setIngestTokens] = useState<IngestTokenResponse[]>([]);
   const [ingestProviderList, setIngestProviderList] = useState<IngestProviderItem[]>([]);
   const [webhookTriggers, setWebhookTriggers] = useState<WebhookTriggerResponse[]>([]);
+  const [workflowProfiles, setWorkflowProfiles] = useState<WorkflowProfileResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadPageData = useCallback(async () => {
@@ -2513,6 +2908,7 @@ export default function ConfigPage() {
       tokenList,
       ipList,
       triggerList,
+      workflowList,
     ] =
       await Promise.all([
         getConfig(),
@@ -2522,6 +2918,7 @@ export default function ConfigPage() {
         listIngestTokens().catch(() => ({ items: [], total: 0 })),
         listIngestProviders().catch(() => ({ items: [] })),
         listWebhookTriggers().catch(() => ({ items: [], total: 0 })),
+        listWorkflowProfiles().catch(() => ({ items: [], total: 0 })),
       ]);
     setConfig(runtimeConfig);
     setProviders(providerList.items);
@@ -2530,6 +2927,7 @@ export default function ConfigPage() {
     setIngestTokens(tokenList.items);
     setIngestProviderList(ipList.items);
     setWebhookTriggers(triggerList.items);
+    setWorkflowProfiles(workflowList.items);
   }, []);
 
   useEffect(() => {
@@ -2563,6 +2961,11 @@ export default function ConfigPage() {
       <IngestTokenSection
         tokens={ingestTokens}
         ingestProviders={ingestProviderList}
+        onReload={loadPageData}
+        canEdit={canEdit}
+      />
+      <WorkflowProfileSection
+        profiles={workflowProfiles}
         onReload={loadPageData}
         canEdit={canEdit}
       />

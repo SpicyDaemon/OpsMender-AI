@@ -35,6 +35,7 @@ from backend.db.repos import (
     SessionMessageRepo,
     SessionRepo,
     SkillRepo,
+    WorkflowProfileRepo,
 )
 from backend.llm.base import LLM
 from backend.llm.factory import create_llm
@@ -454,6 +455,13 @@ async def run_session_workflow(
                 session_id, node_name, status
             ),
         }
+        if session.workflow_profile_id is not None:
+            async with factory() as db:
+                workflow_profile = await WorkflowProfileRepo.get_by_id(
+                    db, session.workflow_profile_id
+                )
+            if workflow_profile is not None:
+                graph_kwargs["node_order"] = list(workflow_profile.node_order or [])
 
         server_name = None if selected_server is None else selected_server.name
         if int(session.tier) == 0:

@@ -4,11 +4,12 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Play } from "lucide-react";
-import { createSession, getIncident, listProviders } from "@/lib/api";
+import { createSession, getIncident, listProviders, listWorkflowProfiles } from "@/lib/api";
 import type {
   IncidentResponse,
   ProviderModelsResponse,
   SessionCreate,
+  WorkflowProfileResponse,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -124,8 +125,10 @@ function StartSessionModal({
   onStarted: (sessionId: string) => void;
 }) {
   const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
+  const [workflowProfiles, setWorkflowProfiles] = useState<WorkflowProfileResponse[]>([]);
   const [form, setForm] = useState<SessionCreate>({
     incident_id: incidentId,
+    workflow_profile_id: undefined,
     tier: 2,
     model_provider: undefined,
     model_id: undefined,
@@ -138,6 +141,9 @@ function StartSessionModal({
     if (open) {
       listProviders()
         .then((res) => setProviders(res.items))
+        .catch(() => {});
+      listWorkflowProfiles()
+        .then((res) => setWorkflowProfiles(res.items.filter((item) => item.is_active)))
         .catch(() => {});
     }
   }, [open]);
@@ -164,6 +170,24 @@ function StartSessionModal({
   return (
     <Modal open={open} onClose={onClose} title="Start Session">
       <div className="space-y-4">
+        <div>
+          <Label htmlFor="ss-workflow">Workflow Profile (optional)</Label>
+          <Select
+            id="ss-workflow"
+            value={form.workflow_profile_id ?? ""}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, workflow_profile_id: e.target.value || undefined }))
+            }
+          >
+            <option value="">Default</option>
+            {workflowProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}{profile.is_default ? " (default)" : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+
         <div>
           <Label htmlFor="ss-tier">Tier</Label>
           <Select

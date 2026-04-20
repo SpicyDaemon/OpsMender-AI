@@ -417,6 +417,37 @@ export async function testWebhookTrigger(
 }
 
 // ---------------------------------------------------------------------------
+// Workflow Profiles
+// ---------------------------------------------------------------------------
+
+import type {
+  WorkflowProfileListResponse,
+  WorkflowProfileResponse,
+  WorkflowProfileUpsert,
+} from "./types";
+
+export async function listWorkflowProfiles(): Promise<WorkflowProfileListResponse> {
+  return api.get<WorkflowProfileListResponse>("/workflow-profiles");
+}
+
+export async function createWorkflowProfile(
+  body: WorkflowProfileUpsert,
+): Promise<WorkflowProfileResponse> {
+  return api.post<WorkflowProfileResponse>("/workflow-profiles", body);
+}
+
+export async function updateWorkflowProfile(
+  id: string,
+  body: WorkflowProfileUpsert,
+): Promise<WorkflowProfileResponse> {
+  return api.put<WorkflowProfileResponse>(`/workflow-profiles/${id}`, body);
+}
+
+export async function deleteWorkflowProfile(id: string): Promise<void> {
+  return api.del<void>(`/workflow-profiles/${id}`);
+}
+
+// ---------------------------------------------------------------------------
 // Skills
 // ---------------------------------------------------------------------------
 

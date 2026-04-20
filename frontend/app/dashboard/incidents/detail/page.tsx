@@ -4,8 +4,15 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Play } from "lucide-react";
-import { createSession, getIncident, listProviders, listWorkflowProfiles } from "@/lib/api";
+import {
+  createSession,
+  getIncident,
+  listAgentTeamProfiles,
+  listProviders,
+  listWorkflowProfiles,
+} from "@/lib/api";
 import type {
+  AgentTeamProfileResponse,
   IncidentResponse,
   ProviderModelsResponse,
   SessionCreate,
@@ -125,10 +132,12 @@ function StartSessionModal({
   onStarted: (sessionId: string) => void;
 }) {
   const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
+  const [agentTeamProfiles, setAgentTeamProfiles] = useState<AgentTeamProfileResponse[]>([]);
   const [workflowProfiles, setWorkflowProfiles] = useState<WorkflowProfileResponse[]>([]);
   const [form, setForm] = useState<SessionCreate>({
     incident_id: incidentId,
     workflow_profile_id: undefined,
+    agent_team_profile_id: undefined,
     tier: 2,
     model_provider: undefined,
     model_id: undefined,
@@ -141,6 +150,9 @@ function StartSessionModal({
     if (open) {
       listProviders()
         .then((res) => setProviders(res.items))
+        .catch(() => {});
+      listAgentTeamProfiles()
+        .then((res) => setAgentTeamProfiles(res.items.filter((item) => item.is_active)))
         .catch(() => {});
       listWorkflowProfiles()
         .then((res) => setWorkflowProfiles(res.items.filter((item) => item.is_active)))
@@ -170,6 +182,24 @@ function StartSessionModal({
   return (
     <Modal open={open} onClose={onClose} title="Start Session">
       <div className="space-y-4">
+        <div>
+          <Label htmlFor="ss-agent-team">Agent Team (optional)</Label>
+          <Select
+            id="ss-agent-team"
+            value={form.agent_team_profile_id ?? ""}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, agent_team_profile_id: e.target.value || undefined }))
+            }
+          >
+            <option value="">Default</option>
+            {agentTeamProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}{profile.is_default ? " (default)" : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+
         <div>
           <Label htmlFor="ss-workflow">Workflow Profile (optional)</Label>
           <Select

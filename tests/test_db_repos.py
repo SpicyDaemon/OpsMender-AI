@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from backend.db.models import Base, Session as SessionModel
 from backend.db.repos import (
+    AgentTeamProfileRepo,
     ApprovalRequestRepo,
     AuditEntryRepo,
     DetectorHistoryRepo,
@@ -250,6 +251,27 @@ class TestWorkflowProfileRepo:
         await db.flush()
 
         default = await WorkflowProfileRepo.get_default(db)
+        assert default is not None
+        assert default.id == created.id
+
+
+# ---------------------------------------------------------------------------
+# AgentTeamProfileRepo
+# ---------------------------------------------------------------------------
+
+class TestAgentTeamProfileRepo:
+
+    async def test_create_and_get_default(self, db: AsyncSession):
+        created = await AgentTeamProfileRepo.create(
+            db,
+            name="triage-council",
+            description="default team",
+            roles=["incident_commander", "investigator", "skeptic"],
+            is_default=True,
+        )
+        await db.flush()
+
+        default = await AgentTeamProfileRepo.get_default(db)
         assert default is not None
         assert default.id == created.id
 

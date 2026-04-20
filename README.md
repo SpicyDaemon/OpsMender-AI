@@ -263,6 +263,10 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `POST` | `/workflow-profiles` | admin | Create workflow profile |
 | `PUT` | `/workflow-profiles/{id}` | admin | Update workflow profile |
 | `DELETE` | `/workflow-profiles/{id}` | admin | Delete workflow profile |
+| `GET` | `/agent-team-profiles` | any | List saved agent team profiles |
+| `POST` | `/agent-team-profiles` | admin | Create agent team profile |
+| `PUT` | `/agent-team-profiles/{id}` | admin | Update agent team profile |
+| `DELETE` | `/agent-team-profiles/{id}` | admin | Delete agent team profile |
 | `WS` | `/sessions/{id}/stream?token=JWT` | JWT query param | Live session streaming |
 
 ### Roles
@@ -545,6 +549,30 @@ Safety constraints stay enforced:
 
 Workflow profiles are managed from `/dashboard/config` and via the `/workflow-profiles` API.
 
+## Multi-Agent Teams
+
+AIM also supports saved **agent team profiles** for multi-agent reasoning inside
+the existing workflow. This is intentionally constrained:
+
+- specialist roles are fixed to AIM's built-in set:
+  - `incident_commander`
+  - `investigator`
+  - `skeptic`
+  - `remediator`
+- selected roles each produce their own reasoning pass for `observe`,
+  `diagnose`, `plan`, `verify`, and `summarize`
+- AIM then synthesizes those role outputs into a single final answer
+- `tier_gate` and `execute` remain single-path and programmatic
+
+Sessions can use:
+
+- the default single-agent path when no team is selected
+- the default saved agent team profile
+- an explicitly selected agent team profile at session start
+
+Agent team profiles are managed from `/dashboard/config` and via the
+`/agent-team-profiles` API.
+
 ## Project Structure
 
 ```
@@ -602,6 +630,7 @@ ai-incident-manager/
   - Sprint 20: ✅ Slack + Teams outbound trigger formats on top of the generic webhook trigger system
   - Sprint 21: ✅ Sumo Logic outbound trigger format on top of the generic webhook trigger system
   - Sprint 22: ✅ Custom workflow builder — saved workflow profiles wired into sessions, API, graph builder, and config UI
+  - Sprint 23: ✅ Multi-agent support — saved agent team profiles wired into sessions, API, multi-agent node synthesis, and config UI
 
 ## Distribution Status
 

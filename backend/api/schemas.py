@@ -83,6 +83,7 @@ class IncidentListResponse(BaseModel):
 class SessionCreate(BaseModel):
     incident_id: Optional[uuid.UUID] = None
     workflow_profile_id: Optional[uuid.UUID] = None
+    agent_team_profile_id: Optional[uuid.UUID] = None
     tier: int = Field(..., ge=0, le=3)
     model_provider: Optional[str] = None
     model_id: Optional[str] = None
@@ -93,6 +94,7 @@ class SessionResponse(BaseModel):
     id: uuid.UUID
     incident_id: Optional[uuid.UUID]
     workflow_profile_id: Optional[uuid.UUID]
+    agent_team_profile_id: Optional[uuid.UUID]
     tier: int
     model_provider: Optional[str]
     model_id: Optional[str]
@@ -436,6 +438,36 @@ class WorkflowProfileResponse(BaseModel):
 
 class WorkflowProfileListResponse(BaseModel):
     items: list[WorkflowProfileResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# Agent team profiles (multi-agent support — Phase 3)
+# ---------------------------------------------------------------------------
+
+class AgentTeamProfileUpsert(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    description: Optional[str] = None
+    roles: list[str] = Field(..., min_length=1)
+    is_active: bool = True
+    is_default: bool = False
+
+
+class AgentTeamProfileResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str]
+    roles: list[str]
+    is_active: bool
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AgentTeamProfileListResponse(BaseModel):
+    items: list[AgentTeamProfileResponse]
     total: int
 
 

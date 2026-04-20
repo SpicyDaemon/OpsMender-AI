@@ -21,6 +21,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
+    AgentTeamProfile,
     ApprovalRequest,
     AuditEntry,
     DetectorHistory,
@@ -177,6 +178,7 @@ class SessionRepo:
         tier: int,
         incident_id: uuid.UUID | None = None,
         workflow_profile_id: uuid.UUID | None = None,
+        agent_team_profile_id: uuid.UUID | None = None,
         model_provider: str | None = None,
         model_id: str | None = None,
     ) -> Session:
@@ -184,6 +186,7 @@ class SessionRepo:
             tier=tier,
             incident_id=incident_id,
             workflow_profile_id=workflow_profile_id,
+            agent_team_profile_id=agent_team_profile_id,
             model_provider=model_provider,
             model_id=model_id,
         )
@@ -1164,6 +1167,115 @@ class WorkflowProfileRepo:
     @staticmethod
     async def delete(db: AsyncSession, profile_id: uuid.UUID) -> bool:
         profile = await WorkflowProfileRepo.get_by_id(db, profile_id)
+        if profile is None:
+            return False
+        await db.delete(profile)
+        await db.flush()
+        return True
+
+
+# ---------------------------------------------------------------------------
+# Agent team profiles (multi-agent support — Phase 3)
+# ---------------------------------------------------------------------------
+
+class AgentTeamProfileRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        description: str | None,
+        roles: list[str],
+        is_active: bool = True,
+        is_default: bool = False,
+    ) -> AgentTeamProfile:
+        if is_default:
+            await db.execute(update(AgentTeamProfile).values(is_default=False))
+        profile = AgentTeamProfile(
+            name=name,
+            description=description,
+            roles=roles,
+            is_active=is_active,
+            is_default=is_default,
+        )
+        db.add(profile)
+        await db.flush()
+        return profile
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, profile_id: uuid.UUID
+    ) -> AgentTeamProfile | None:
+        return await db.get(AgentTeamProfile, profile_id)
+
+    @staticmethod
+    async def get_by_name(
+        db: AsyncSession, name: str
+    ) -> AgentTeamProfile | None:
+        stmt = select(AgentTeamProfile).where(AgentTeamProfile.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_default(db: AsyncSession) -> AgentTeamProfile | None:
+        stmt = select(AgentTeamProfile).where(AgentTeamProfile.is_default == True)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        *,
+        active_only: bool = False,
+    ) -> Sequence[AgentTeamProfile]:
+        stmt = select(AgentTeamProfile).order_by(
+            AgentTeamProfile.is_default.desc(),
+            AgentTeamProfile.name,
+        )
+        if active_only:
+            stmt = stmt.where(AgentTeamProfile.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        profile_id: uuid.UUID,
+        *,
+        name: str,
+        description: str | None,
+        roles: list[str],
+        is_active: bool,
+        is_default: bool,
+    ) -> AgentTeamProfile | None:
+        if is_default:
+            await db.execute(
+                update(AgentTeamProfile)
+                .where(AgentTeamProfile.id != profile_id)
+                .values(is_default=False)
+            )
+        stmt = (
+            update(AgentTeamProfile)
+            .where(AgentTeamProfile.id == profile_id)
+            .values(
+                name=name,
+                description=description,
+                roles=roles,
+                is_active=is_active,
+                is_default=is_default,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await AgentTeamProfileRepo.get_by_id(db, profile_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, profile_id: uuid.UUID) -> bool:
+        profile = await AgentTeamProfileRepo.get_by_id(db, profile_id)
         if profile is None:
             return False
         await db.delete(profile)

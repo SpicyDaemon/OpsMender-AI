@@ -17,17 +17,20 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  createAgentTeamProfile,
   createIngestToken,
   createMCPServer,
   createModelConfig,
   createWebhookTrigger,
   createWorkflowProfile,
+  deleteAgentTeamProfile,
   deleteIngestToken,
   deleteMCPServer,
   deleteModelConfig,
   deleteWebhookTrigger,
   deleteWorkflowProfile,
   getConfig,
+  listAgentTeamProfiles,
   listIngestProviders,
   listIngestTokens,
   listMCPServers,
@@ -39,6 +42,7 @@ import {
   setDefaultModelConfig,
   testMCPServer,
   testWebhookTrigger,
+  updateAgentTeamProfile,
   updateConfig,
   updateMCPServer,
   updateModelConfigById,
@@ -46,6 +50,9 @@ import {
   updateWorkflowProfile,
 } from "@/lib/api";
 import type {
+  AgentRole,
+  AgentTeamProfileResponse,
+  AgentTeamProfileUpsert,
   ConfigResponse,
   IngestProviderItem,
   IngestTokenCreate,
@@ -1785,6 +1792,399 @@ function IngestTokenSection({
 }
 
 // ---------------------------------------------------------------------------
+// Agent Team Profiles (multi-agent support — Phase 3)
+// ---------------------------------------------------------------------------
+
+const AGENT_ROLE_OPTIONS: Array<{
+  value: AgentRole;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "incident_commander",
+    label: "Incident Commander",
+    description: "Keeps the output decision-oriented and impact-aware.",
+  },
+  {
+    value: "investigator",
+    label: "Investigator",
+    description: "Focuses on evidence, failure domains, and root-cause signals.",
+  },
+  {
+    value: "skeptic",
+    label: "Skeptic",
+    description: "Challenges assumptions and surfaces uncertainty or missing data.",
+  },
+  {
+    value: "remediator",
+    label: "Remediator",
+    description: "Pushes toward safe action ordering and rollback-aware plans.",
+  },
+];
+
+type AgentTeamProfileFormState = {
+  name: string;
+  description: string;
+  roles: AgentRole[];
+  is_active: boolean;
+  is_default: boolean;
+};
+
+function createAgentTeamProfileFormState(
+  current: AgentTeamProfileResponse | null,
+): AgentTeamProfileFormState {
+  return {
+    name: current?.name ?? "",
+    description: current?.description ?? "",
+    roles: current?.roles ?? ["incident_commander", "investigator", "skeptic"],
+    is_active: current?.is_active ?? true,
+    is_default: current?.is_default ?? false,
+  };
+}
+
+function AgentTeamProfileModal({
+  open,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+  initialProfile,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (form: AgentTeamProfileFormState) => Promise<void>;
+  saving: boolean;
+  error: string;
+  initialProfile: AgentTeamProfileResponse | null;
+}) {
+  const [form, setForm] = useState<AgentTeamProfileFormState>(() =>
+    createAgentTeamProfileFormState(initialProfile),
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(createAgentTeamProfileFormState(initialProfile));
+  }, [open, initialProfile]);
+
+  function setField<K extends keyof AgentTeamProfileFormState>(
+    key: K,
+    value: AgentTeamProfileFormState[K],
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleRole(role: AgentRole) {
+    setForm((current) => {
+      const exists = current.roles.includes(role);
+      return {
+        ...current,
+        roles: exists
+          ? current.roles.filter((item) => item !== role)
+          : [...current.roles, role],
+      };
+    });
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit(form);
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={initialProfile ? "Edit Agent Team" : "Add Agent Team"}
+      maxWidth="max-w-2xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="agent-team-name">Profile Name</Label>
+            <Input
+              id="agent-team-name"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              placeholder="triage-council"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="agent-team-desc">Description</Label>
+            <Input
+              id="agent-team-desc"
+              value={form.description}
+              onChange={(e) => setField("description", e.target.value)}
+              placeholder="Balanced triage with challenge + remediation review"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label>Specialist Roles</Label>
+          <p className="mt-1 text-xs text-gray-400">
+            Selected roles each produce their own reasoning pass for observe,
+            diagnose, plan, verify, and summarize. AIM then synthesizes them
+            into one final answer while keeping `tier_gate` and `execute`
+            single-path and deterministic.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {AGENT_ROLE_OPTIONS.map((role) => {
+              const checked = form.roles.includes(role.value);
+              return (
+                <label
+                  key={role.value}
+                  className={`rounded-lg border px-4 py-3 text-sm ${
+                    checked
+                      ? "border-indigo-300 bg-indigo-50"
+                      : "border-gray-200 bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleRole(role.value)}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div>
+                      <p className="font-medium text-gray-900">{role.label}</p>
+                      <p className="mt-1 text-xs text-gray-500">{role.description}</p>
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) => setField("is_active", e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Active (available when starting sessions)
+          </label>
+          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.is_default}
+              onChange={(e) => setField("is_default", e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Default agent team
+          </label>
+        </div>
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={!form.name.trim() || form.roles.length === 0}
+          >
+            <Save size={13} />{" "}
+            {initialProfile ? "Save Changes" : "Create Team"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AgentTeamProfileSection({
+  profiles,
+  onReload,
+  canEdit,
+}: {
+  profiles: AgentTeamProfileResponse[];
+  onReload: () => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<AgentTeamProfileResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  function openCreateModal() {
+    setEditing(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEditModal(profile: AgentTeamProfileResponse) {
+    setEditing(profile);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setEditing(null);
+    setError("");
+  }
+
+  async function handleSubmit(form: AgentTeamProfileFormState) {
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload: AgentTeamProfileUpsert = {
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        roles: form.roles,
+        is_active: form.is_active,
+        is_default: form.is_default,
+      };
+      if (editing) {
+        await updateAgentTeamProfile(editing.id, payload);
+        setNotice("Agent team updated.");
+      } else {
+        await createAgentTeamProfile(payload);
+        setNotice("Agent team created.");
+      }
+      setModalOpen(false);
+      setEditing(null);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(profile: AgentTeamProfileResponse) {
+    const confirmed = window.confirm(
+      `Delete agent team "${profile.name}"?`,
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    try {
+      await deleteAgentTeamProfile(profile.id);
+      setNotice("Agent team deleted.");
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  return (
+    <Section
+      title="Agent Teams"
+      description="Saved agent teams run multiple specialist reasoning passes inside the same AIM workflow, while execution still flows through the normal tier gate and execute path."
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-gray-600">
+            {profiles.length} saved team{profiles.length === 1 ? "" : "s"}
+          </p>
+          {!canEdit && (
+            <p className="text-sm text-gray-500">
+              Admin role required to manage agent teams.
+            </p>
+          )}
+        </div>
+        <Button onClick={openCreateModal} disabled={!canEdit}>
+          <Plus size={14} /> Add Agent Team
+        </Button>
+      </div>
+
+      {error && <FormError message={error} />}
+      {notice && <p className="text-sm text-green-600">{notice}</p>}
+
+      {profiles.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+          No agent teams yet. Sessions will use AIM&apos;s default single-agent reasoning.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-3">Profile</th>
+                <th className="px-4 py-3">Roles</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {profiles.map((profile) => (
+                <tr key={profile.id}>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900">{profile.name}</span>
+                      {profile.is_default && <Badge>Default</Badge>}
+                    </div>
+                    {profile.description && (
+                      <p className="mt-1 text-xs text-gray-500">{profile.description}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex flex-wrap gap-1.5">
+                      {profile.roles.map((role) => {
+                        const option = AGENT_ROLE_OPTIONS.find((item) => item.value === role);
+                        return <Badge key={role}>{option?.label ?? role}</Badge>;
+                      })}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <Badge variant={profile.is_active ? "resolved" : "closed"}>
+                      {profile.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openEditModal(profile)}
+                        disabled={!canEdit}
+                      >
+                        <Pencil size={13} /> Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleDelete(profile)}
+                        disabled={!canEdit}
+                      >
+                        <Trash2 size={13} /> Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalOpen && (
+        <AgentTeamProfileModal
+          open={modalOpen}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+          saving={saving}
+          error={error}
+          initialProfile={editing}
+        />
+      )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Workflow Profiles (custom workflow builder — Phase 3)
 // ---------------------------------------------------------------------------
 
@@ -2896,6 +3296,7 @@ export default function ConfigPage() {
   const [ingestTokens, setIngestTokens] = useState<IngestTokenResponse[]>([]);
   const [ingestProviderList, setIngestProviderList] = useState<IngestProviderItem[]>([]);
   const [webhookTriggers, setWebhookTriggers] = useState<WebhookTriggerResponse[]>([]);
+  const [agentTeamProfiles, setAgentTeamProfiles] = useState<AgentTeamProfileResponse[]>([]);
   const [workflowProfiles, setWorkflowProfiles] = useState<WorkflowProfileResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -2908,6 +3309,7 @@ export default function ConfigPage() {
       tokenList,
       ipList,
       triggerList,
+      agentTeamList,
       workflowList,
     ] =
       await Promise.all([
@@ -2918,6 +3320,7 @@ export default function ConfigPage() {
         listIngestTokens().catch(() => ({ items: [], total: 0 })),
         listIngestProviders().catch(() => ({ items: [] })),
         listWebhookTriggers().catch(() => ({ items: [], total: 0 })),
+        listAgentTeamProfiles().catch(() => ({ items: [], total: 0 })),
         listWorkflowProfiles().catch(() => ({ items: [], total: 0 })),
       ]);
     setConfig(runtimeConfig);
@@ -2927,6 +3330,7 @@ export default function ConfigPage() {
     setIngestTokens(tokenList.items);
     setIngestProviderList(ipList.items);
     setWebhookTriggers(triggerList.items);
+    setAgentTeamProfiles(agentTeamList.items);
     setWorkflowProfiles(workflowList.items);
   }, []);
 
@@ -2941,7 +3345,7 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Config</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Manage runtime defaults, ingest automation, saved model profiles, MCP server connections, outbound webhook triggers, and external ingest tokens.
+          Manage runtime defaults, ingest automation, saved model profiles, agent teams, workflow profiles, MCP server connections, outbound webhook triggers, and external ingest tokens.
         </p>
       </div>
 
@@ -2961,6 +3365,11 @@ export default function ConfigPage() {
       <IngestTokenSection
         tokens={ingestTokens}
         ingestProviders={ingestProviderList}
+        onReload={loadPageData}
+        canEdit={canEdit}
+      />
+      <AgentTeamProfileSection
+        profiles={agentTeamProfiles}
         onReload={loadPageData}
         canEdit={canEdit}
       />

@@ -29,6 +29,7 @@ from backend.approvals import ApprovalService
 from backend.audit.logger import AuditEntryType
 from backend.config_loader import AppConfig, MCPServerConfig
 from backend.db.repos import (
+    AgentTeamProfileRepo,
     AuditEntryRepo,
     IncidentRepo,
     ModelConfigRepo,
@@ -462,6 +463,13 @@ async def run_session_workflow(
                 )
             if workflow_profile is not None:
                 graph_kwargs["node_order"] = list(workflow_profile.node_order or [])
+        if getattr(session, "agent_team_profile_id", None) is not None:
+            async with factory() as db:
+                agent_team_profile = await AgentTeamProfileRepo.get_by_id(
+                    db, session.agent_team_profile_id
+                )
+            if agent_team_profile is not None:
+                graph_kwargs["agent_roles"] = list(agent_team_profile.roles or [])
 
         server_name = None if selected_server is None else selected_server.name
         if int(session.tier) == 0:

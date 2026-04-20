@@ -135,12 +135,124 @@ Write a concise incident summary covering:
 Keep it under 200 words."""
 
 
+AGENT_ROLE_SPECS: dict[str, dict[str, str]] = {
+    "incident_commander": {
+        "label": "Incident Commander",
+        "focus": (
+            "Prioritize business impact, operator clarity, decision-making, "
+            "and the most important next steps."
+        ),
+    },
+    "investigator": {
+        "label": "Investigator",
+        "focus": (
+            "Prioritize concrete evidence, failure domains, plausible root causes, "
+            "and what data should be gathered next."
+        ),
+    },
+    "skeptic": {
+        "label": "Skeptic",
+        "focus": (
+            "Challenge assumptions, call out uncertainty, identify alternate "
+            "hypotheses, and highlight missing evidence or risky leaps."
+        ),
+    },
+    "remediator": {
+        "label": "Remediator",
+        "focus": (
+            "Prioritize low-risk remediation sequencing, rollback awareness, "
+            "and safe operational execution."
+        ),
+    },
+}
+
+
+MULTI_AGENT_ROLE_PROMPT = """\
+You are acting as the {role_label} in a multi-agent incident response team.
+
+Role focus:
+{role_focus}
+
+Complete the following task from that perspective. Keep the answer grounded,
+conservative, and directly usable by operators.
+
+Task:
+---
+{task_prompt}
+---
+
+Return only the answer requested by the task."""
+
+
+MULTI_AGENT_SYNTHESIS_PROMPT = """\
+You are consolidating outputs from a multi-agent incident response team.
+
+Original task:
+---
+{task_prompt}
+---
+
+Role outputs:
+---
+{role_outputs}
+---
+
+Produce one final consolidated answer that preserves the output format requested
+by the original task. Reconcile conflicts conservatively and surface uncertainty
+when relevant."""
+
+
+def validate_agent_roles(agent_roles: list[str] | None) -> list[str]:
+    if agent_roles is None:
+        return []
+    if not agent_roles:
+        return []
+
+    cleaned = [str(role).strip() for role in agent_roles if str(role).strip()]
+    if not cleaned:
+        raise ValueError("Agent team roles cannot be empty")
+    if len(cleaned) != len(agent_roles):
+        raise ValueError("Agent team roles cannot contain blank role names")
+    if len(set(cleaned)) != len(cleaned):
+        raise ValueError("Agent team roles cannot contain duplicate roles")
+
+    invalid = [role for role in cleaned if role not in AGENT_ROLE_SPECS]
+    if invalid:
+        raise ValueError(f"Unsupported agent roles: {', '.join(invalid)}")
+
+    return cleaned
+
+
+def _invoke_multi_agent(llm: LLM, *, task_prompt: str, agent_roles: list[str]) -> str:
+    if not agent_roles:
+        return llm.invoke(task_prompt)
+
+    role_outputs: list[str] = []
+    for role in agent_roles:
+        role_spec = AGENT_ROLE_SPECS[role]
+        role_prompt = MULTI_AGENT_ROLE_PROMPT.format(
+            role_label=role_spec["label"],
+            role_focus=role_spec["focus"],
+            task_prompt=task_prompt,
+        )
+        role_response = llm.invoke(role_prompt)
+        role_outputs.append(f"{role_spec['label']}:\n{role_response}")
+
+    synthesis_prompt = MULTI_AGENT_SYNTHESIS_PROMPT.format(
+        task_prompt=task_prompt,
+        role_outputs="\n\n".join(role_outputs),
+    )
+    return llm.invoke(synthesis_prompt)
+
+
 # ---------------------------------------------------------------------------
 # observe
 # ---------------------------------------------------------------------------
 
-def _build_observe(llm: LLM):
+def _build_observe(llm: LLM, agent_roles: list[str] | None = None):
     """Return an observe node function closed over the LLM instance."""
+
+    agent_roles = validate_agent_roles(agent_roles)
 
     def observe(state: IncidentState) -> dict:
         """Gather initial observations about the incident.
@@ -150,7 +262,11 @@ def _build_observe(llm: LLM):
         """
         description = state.get("incident_description", "")
         prompt = OBSERVE_PROMPT.format(incident_description=description)
-        observations = llm.invoke(prompt)
+        observations = _invoke_multi_agent(
+            llm,
+            task_prompt=prompt,
+            agent_roles=agent_roles,
+        )
         return {
             "observations": observations,
             "status": "active",
@@ -173,14 +289,20 @@ def observe(state: IncidentState) -> dict:
 # diagnose
 # ---------------------------------------------------------------------------
 
-def _build_diagnose(llm: LLM):
+def _build_diagnose(llm: LLM, agent_roles: list[str] | None = None):
     """Return a diagnose node function closed over the LLM instance."""
+
+    agent_roles = validate_agent_roles(agent_roles)
 
     def diagnose(state: IncidentState) -> dict:
         """Analyse observations and produce a diagnosis."""
         observations = state.get("observations", "")
         prompt = DIAGNOSE_PROMPT.format(observations=observations)
-        diagnosis = llm.invoke(prompt)
+        diagnosis = _invoke_multi_agent(
+            llm,
+            task_prompt=prompt,
+            agent_roles=agent_roles,
+        )
         return {
             "diagnosis": diagnosis,
         }
@@ -200,8 +322,15 @@ def diagnose(state: IncidentState) -> dict:
 # plan
 # ---------------------------------------------------------------------------
 
-def _build_plan(llm: LLM, tier: int, skill_def: SkillDefinition):
+def _build_plan(
+    llm: LLM,
+    tier: int,
+    skill_def: SkillDefinition,
+    agent_roles: list[str] | None = None,
+):
     """Return a plan node function closed over the LLM, tier, and skill def."""
+
+    agent_roles = validate_agent_roles(agent_roles)
 
     def plan(state: IncidentState) -> dict:
         """Propose a list of remediation actions."""
@@ -217,7 +346,11 @@ def _build_plan(llm: LLM, tier: int, skill_def: SkillDefinition):
             available_tools=tools_list,
             tier=tier,
         )
-        raw = llm.invoke(prompt)
+        raw = _invoke_multi_agent(
+            llm,
+            task_prompt=prompt,
+            agent_roles=agent_roles,
+        )
 
         # Parse the LLM response as JSON — fall back to empty plan on failure
         try:
@@ -239,8 +372,11 @@ def _build_plan_with_tool_names(
     tier: int,
     skill_def: SkillDefinition,
     tool_names: list[str],
+    agent_roles: list[str] | None = None,
 ):
     """Return a plan node that only exposes the supplied concrete tools."""
+
+    agent_roles = validate_agent_roles(agent_roles)
 
     def plan(state: IncidentState) -> dict:
         import json
@@ -258,7 +394,11 @@ def _build_plan_with_tool_names(
             available_tools=tools_list,
             tier=tier,
         )
-        raw = llm.invoke(prompt)
+        raw = _invoke_multi_agent(
+            llm,
+            task_prompt=prompt,
+            agent_roles=agent_roles,
+        )
 
         try:
             actions = json.loads(raw)
@@ -490,8 +630,10 @@ def execute(state: IncidentState) -> dict:
 # verify
 # ---------------------------------------------------------------------------
 
-def _build_verify(llm: LLM):
+def _build_verify(llm: LLM, agent_roles: list[str] | None = None):
     """Return a verify node function closed over the LLM instance."""
+
+    agent_roles = validate_agent_roles(agent_roles)
 
     def verify(state: IncidentState) -> dict:
         """Verify the results of executed actions."""
@@ -507,7 +649,11 @@ def _build_verify(llm: LLM):
             tool_call_count=len(tool_calls),
             tool_call_results=results,
         )
-        verification = llm.invoke(prompt)
+        verification = _invoke_multi_agent(
+            llm,
+            task_prompt=prompt,
+            agent_roles=agent_roles,
+        )
         return {
             "verification": verification,
         }
@@ -527,8 +673,10 @@ def verify(state: IncidentState) -> dict:
 # summarize
 # ---------------------------------------------------------------------------
 
-def _build_summarize(llm: LLM):
+def _build_summarize(llm: LLM, agent_roles: list[str] | None = None):
     """Return a summarize node function closed over the LLM instance."""
+
+    agent_roles = validate_agent_roles(agent_roles)
 
     def summarize(state: IncidentState) -> dict:
         """Produce a final incident summary."""
@@ -539,7 +687,11 @@ def _build_summarize(llm: LLM):
             tool_call_count=len(state.get("tool_calls", [])),
             blocked_count=len(state.get("blocked_actions", [])),
         )
-        summary = llm.invoke(prompt)
+        summary = _invoke_multi_agent(
+            llm,
+            task_prompt=prompt,
+            agent_roles=agent_roles,
+        )
         status = state.get("status")
         return {
             "summary": summary,

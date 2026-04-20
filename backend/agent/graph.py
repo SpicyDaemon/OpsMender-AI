@@ -55,6 +55,7 @@ from backend.agent.nodes import (
     _build_execute,
     _build_verify,
     _build_summarize,
+    validate_agent_roles,
 )
 from backend.skills.parser import SkillDefinition
 
@@ -133,6 +134,7 @@ def build_graph(
     tool_caller=None,
     node_event_publisher=None,
     node_order: list[str] | None = None,
+    agent_roles: list[str] | None = None,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -159,19 +161,20 @@ def build_graph(
     """
     builder = StateGraph(IncidentState)
     node_order = validate_workflow_node_order(node_order)
+    agent_roles = validate_agent_roles(agent_roles)
 
     # -- select node implementations ----------------------------------------
     if llm is not None:
-        observe_fn = _build_observe(llm)
-        diagnose_fn = _build_diagnose(llm)
+        observe_fn = _build_observe(llm, agent_roles=agent_roles)
+        diagnose_fn = _build_diagnose(llm, agent_roles=agent_roles)
         if plan_tool_names is not None:
             plan_fn = _build_plan_with_tool_names(
-                llm, tier, skill_def, plan_tool_names
+                llm, tier, skill_def, plan_tool_names, agent_roles=agent_roles
             )
         else:
-            plan_fn = _build_plan(llm, tier, skill_def)
-        verify_fn = _build_verify(llm)
-        summarize_fn = _build_summarize(llm)
+            plan_fn = _build_plan(llm, tier, skill_def, agent_roles=agent_roles)
+        verify_fn = _build_verify(llm, agent_roles=agent_roles)
+        summarize_fn = _build_summarize(llm, agent_roles=agent_roles)
     else:
         observe_fn = observe
         diagnose_fn = diagnose

@@ -38,7 +38,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Label, Select } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { PageSpinner } from "@/components/ui/Spinner";
+import { SessionDetailSkeleton } from "@/components/ui/Skeleton";
 import { useAuth } from "@/context/auth";
 
 // ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ function formatDuration(totalSeconds: number): string {
 
 export default function SessionPage() {
   return (
-    <Suspense fallback={<PageSpinner />}>
+    <Suspense fallback={<SessionDetailSkeleton />}>
       <SessionPageContent />
     </Suspense>
   );
@@ -388,7 +388,7 @@ function SessionPageContent() {
     };
   }, [session, timerTick]);
 
-  if (loading) return <PageSpinner />;
+  if (loading) return <SessionDetailSkeleton />;
   if (!id) return <p className="text-status-critical">Missing session id.</p>;
   if (!session) return <p className="text-status-critical">Session not found.</p>;
 

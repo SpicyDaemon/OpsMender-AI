@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   Bell,
@@ -79,7 +80,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FormError, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { PageSpinner } from "@/components/ui/Spinner";
+import { ConfigPageSkeleton } from "@/components/ui/Skeleton";
 
 
 function Section({
@@ -101,6 +102,100 @@ function Section({
       </div>
       <div className="space-y-4 px-6 py-5">{children}</div>
     </div>
+  );
+}
+
+type ConfigTabId =
+  | "runtime"
+  | "models"
+  | "mcp"
+  | "skills"
+  | "detectors"
+  | "ingest"
+  | "webhooks"
+  | "workflows"
+  | "agent-teams";
+
+const CONFIG_TABS: Array<{
+  id: ConfigTabId;
+  label: string;
+  blurb: string;
+}> = [
+  {
+    id: "runtime",
+    label: "Runtime",
+    blurb: "Tier limits and audit-level defaults.",
+  },
+  {
+    id: "models",
+    label: "Models",
+    blurb: "Saved provider/model profiles for new sessions.",
+  },
+  {
+    id: "mcp",
+    label: "MCP",
+    blurb: "Live server connections and connectivity checks.",
+  },
+  {
+    id: "skills",
+    label: "Skills",
+    blurb: "Manage markdown skills on the dedicated page.",
+  },
+  {
+    id: "detectors",
+    label: "Detectors",
+    blurb: "Rule health and detector execution history.",
+  },
+  {
+    id: "ingest",
+    label: "Ingest",
+    blurb: "Webhook tokens and ingest auto-start rules.",
+  },
+  {
+    id: "webhooks",
+    label: "Webhooks",
+    blurb: "Outbound notifications for session lifecycle events.",
+  },
+  {
+    id: "workflows",
+    label: "Workflows",
+    blurb: "Saved node-order profiles for sessions.",
+  },
+  {
+    id: "agent-teams",
+    label: "Agent Teams",
+    blurb: "Specialist reasoning profiles for multi-agent runs.",
+  },
+];
+
+function ConfigPageLinkCard({
+  title,
+  description,
+  href,
+  cta,
+}: {
+  title: string;
+  description: string;
+  href: string;
+  cta: string;
+}) {
+  return (
+    <Section title={title} description={description}>
+      <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-medium text-fg-primary">{title}</p>
+          <p className="mt-1 text-sm text-fg-secondary">
+            This surface already has its own dedicated route so operators can work there without scrolling through the rest of config.
+          </p>
+        </div>
+        <Link
+          href={href}
+          className="inline-flex self-start rounded-md border border-border-strong bg-bg-panel px-3.5 py-1.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover md:self-auto"
+        >
+          {cta}
+        </Link>
+      </div>
+    </Section>
   );
 }
 
@@ -3299,6 +3394,7 @@ export default function ConfigPage() {
   const [agentTeamProfiles, setAgentTeamProfiles] = useState<AgentTeamProfileResponse[]>([]);
   const [workflowProfiles, setWorkflowProfiles] = useState<WorkflowProfileResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<ConfigTabId>("runtime");
 
   const loadPageData = useCallback(async () => {
     const [
@@ -3338,7 +3434,48 @@ export default function ConfigPage() {
     loadPageData().finally(() => setLoading(false));
   }, [loadPageData]);
 
-  if (loading || !config) return <PageSpinner />;
+  if (loading || !config) return <ConfigPageSkeleton />;
+
+  const tabMeta: Record<ConfigTabId, { stat: string; detail: string }> = {
+    runtime: {
+      stat: `Tier ${config.tier}`,
+      detail: `Log level ${config.logging_level}`,
+    },
+    models: {
+      stat: `${modelConfigs.length} profile${modelConfigs.length === 1 ? "" : "s"}`,
+      detail: `${providers.filter((provider) => provider.available).length} provider${providers.filter((provider) => provider.available).length === 1 ? "" : "s"} available`,
+    },
+    mcp: {
+      stat: `${mcpServers.length} server${mcpServers.length === 1 ? "" : "s"}`,
+      detail: `${mcpServers.filter((server) => server.is_active).length} active`,
+    },
+    skills: {
+      stat: "Dedicated page",
+      detail: "Import, clone, and edit skills",
+    },
+    detectors: {
+      stat: "Dedicated page",
+      detail: "Rule runs and verdict history",
+    },
+    ingest: {
+      stat: `${ingestTokens.length} token${ingestTokens.length === 1 ? "" : "s"}`,
+      detail: config.ingest_auto_start_enabled
+        ? `Auto-start from ${config.ingest_auto_start_min_severity}+`
+        : "Auto-start disabled",
+    },
+    webhooks: {
+      stat: `${webhookTriggers.length} trigger${webhookTriggers.length === 1 ? "" : "s"}`,
+      detail: `${webhookTriggers.filter((trigger) => trigger.is_active).length} active`,
+    },
+    workflows: {
+      stat: `${workflowProfiles.length} profile${workflowProfiles.length === 1 ? "" : "s"}`,
+      detail: `${workflowProfiles.filter((profile) => profile.is_active).length} active`,
+    },
+    "agent-teams": {
+      stat: `${agentTeamProfiles.length} team${agentTeamProfiles.length === 1 ? "" : "s"}`,
+      detail: `${agentTeamProfiles.filter((profile) => profile.is_active).length} active`,
+    },
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -3349,40 +3486,115 @@ export default function ConfigPage() {
         </p>
       </div>
 
-      <TierSection config={config} onSaved={loadPageData} canEdit={canEdit} />
-      <IngestAutoStartSection config={config} onSaved={loadPageData} canEdit={canEdit} />
-      <ModelSection
-        providers={providers}
-        configs={modelConfigs}
-        onReload={loadPageData}
-        canEdit={canEdit}
-      />
-      <MCPSection
-        servers={mcpServers}
-        onReload={loadPageData}
-        canEdit={canEdit}
-      />
-      <IngestTokenSection
-        tokens={ingestTokens}
-        ingestProviders={ingestProviderList}
-        onReload={loadPageData}
-        canEdit={canEdit}
-      />
-      <AgentTeamProfileSection
-        profiles={agentTeamProfiles}
-        onReload={loadPageData}
-        canEdit={canEdit}
-      />
-      <WorkflowProfileSection
-        profiles={workflowProfiles}
-        onReload={loadPageData}
-        canEdit={canEdit}
-      />
-      <WebhookTriggerSection
-        triggers={webhookTriggers}
-        onReload={loadPageData}
-        canEdit={canEdit}
-      />
+      <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+        <div className="border-b border-border-subtle px-4 py-3">
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-fg-muted">
+            Settings Surfaces
+          </p>
+        </div>
+        <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-3">
+          {CONFIG_TABS.map((tab) => {
+            const selected = activeTab === tab.id;
+            const meta = tabMeta[tab.id];
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                  selected
+                    ? "border-accent bg-accent-bg"
+                    : "border-border-subtle bg-bg-elevated hover:bg-bg-hover"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-fg-primary">{tab.label}</p>
+                    <p className="mt-1 text-xs text-fg-secondary">{tab.blurb}</p>
+                  </div>
+                  <Badge variant={selected ? "info" : "default"}>{meta.stat}</Badge>
+                </div>
+                <p className="mt-3 text-xs text-fg-muted">{meta.detail}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {activeTab === "runtime" && (
+        <TierSection config={config} onSaved={loadPageData} canEdit={canEdit} />
+      )}
+
+      {activeTab === "models" && (
+        <ModelSection
+          providers={providers}
+          configs={modelConfigs}
+          onReload={loadPageData}
+          canEdit={canEdit}
+        />
+      )}
+
+      {activeTab === "mcp" && (
+        <MCPSection
+          servers={mcpServers}
+          onReload={loadPageData}
+          canEdit={canEdit}
+        />
+      )}
+
+      {activeTab === "skills" && (
+        <ConfigPageLinkCard
+          title="Skills"
+          description="Skill management already has a richer dedicated workspace with import, clone, edit, and delete flows."
+          href="/dashboard/skills"
+          cta="Open Skills"
+        />
+      )}
+
+      {activeTab === "detectors" && (
+        <ConfigPageLinkCard
+          title="Detectors"
+          description="Detector rules and run history already live on their own page, where status and execution details fit better than inside a long admin form."
+          href="/dashboard/detectors"
+          cta="Open Detectors"
+        />
+      )}
+
+      {activeTab === "ingest" && (
+        <div className="space-y-6">
+          <IngestAutoStartSection config={config} onSaved={loadPageData} canEdit={canEdit} />
+          <IngestTokenSection
+            tokens={ingestTokens}
+            ingestProviders={ingestProviderList}
+            onReload={loadPageData}
+            canEdit={canEdit}
+          />
+        </div>
+      )}
+
+      {activeTab === "webhooks" && (
+        <WebhookTriggerSection
+          triggers={webhookTriggers}
+          onReload={loadPageData}
+          canEdit={canEdit}
+        />
+      )}
+
+      {activeTab === "workflows" && (
+        <WorkflowProfileSection
+          profiles={workflowProfiles}
+          onReload={loadPageData}
+          canEdit={canEdit}
+        />
+      )}
+
+      {activeTab === "agent-teams" && (
+        <AgentTeamProfileSection
+          profiles={agentTeamProfiles}
+          onReload={loadPageData}
+          canEdit={canEdit}
+        />
+      )}
     </div>
   );
 }

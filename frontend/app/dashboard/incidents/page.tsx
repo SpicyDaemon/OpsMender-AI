@@ -1,10 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw, Search, X } from "lucide-react";
 import { createIncident, listIncidents } from "@/lib/api";
-import type { IncidentCreate, IncidentListResponse, IncidentResponse, Severity } from "@/lib/types";
+import type {
+  IncidentCreate,
+  IncidentListResponse,
+  IncidentResponse,
+  IncidentStatus,
+  Severity,
+} from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -22,11 +28,70 @@ function fmtDate(iso: string) {
   });
 }
 
-const STATUS_OPTIONS = ["", "open", "in_progress", "resolved", "closed"];
+function fmtRelative(iso: string) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return fmtDate(iso);
+}
+
+function sourceMeta(incident: IncidentResponse) {
+  if (!incident.external_source) {
+    return {
+      key: "manual",
+      label: "Manual",
+      icon: "M",
+      className: "bg-status-info-bg text-status-info border-status-info-border",
+    };
+  }
+  const raw = incident.external_source.replace(/^auto:/, "").replace(/_/g, " ");
+  const label = raw
+    .split(":")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" / ");
+  return {
+    key: "ingested",
+    label: label || "Ingested",
+    icon: (label || "I").slice(0, 2).toUpperCase(),
+    className: "bg-status-medium-bg text-status-medium border-status-medium-border",
+  };
+}
+
+const STATUS_OPTIONS: { value: IncidentStatus | ""; label: string }[] = [
+  { value: "", label: "All statuses" },
+  { value: "open", label: "Open" },
+  { value: "in_progress", label: "In progress" },
+  { value: "resolved", label: "Resolved" },
+  { value: "closed", label: "Closed" },
+];
+
+const SEVERITY_OPTIONS: { value: Severity | ""; label: string }[] = [
+  { value: "", label: "All severities" },
+  { value: "critical", label: "Critical" },
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
+];
+
+const SOURCE_OPTIONS = [
+  { value: "", label: "All sources" },
+  { value: "manual", label: "Manual" },
+  { value: "ingested", label: "Ingested" },
+];
 
 export default function IncidentsPage() {
   const [data, setData] = useState<IncidentListResponse | null>(null);
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<IncidentStatus | "">("");
+  const [severityFilter, setSeverityFilter] = useState<Severity | "">("");
+  const [sourceFilter, setSourceFilter] = useState<"" | "manual" | "ingested">("");
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const toast = useToast();
@@ -34,7 +99,7 @@ export default function IncidentsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listIncidents({ status: statusFilter || undefined, limit: 50 });
+      const res = await listIncidents({ status: statusFilter || undefined, limit: 100 });
       setData(res);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load incidents");
@@ -45,14 +110,64 @@ export default function IncidentsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const filteredItems = useMemo(() => {
+    const items = data?.items ?? [];
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return items.filter((incident) => {
+      const source = sourceMeta(incident).key;
+      const matchesSeverity = !severityFilter || incident.severity === severityFilter;
+      const matchesSource = !sourceFilter || source === sourceFilter;
+      const matchesQuery =
+        !normalizedQuery
+        || incident.title.toLowerCase().includes(normalizedQuery)
+        || incident.description.toLowerCase().includes(normalizedQuery)
+        || incident.id.toLowerCase().includes(normalizedQuery)
+        || (incident.external_source ?? "").toLowerCase().includes(normalizedQuery);
+
+      return matchesSeverity && matchesSource && matchesQuery;
+    });
+  }, [data?.items, query, severityFilter, sourceFilter]);
+
+  const hasLocalFilters = Boolean(query || severityFilter || sourceFilter);
+  const hasAnyFilters = Boolean(statusFilter || hasLocalFilters);
+
+  const overview = useMemo(() => {
+    const items = filteredItems;
+    return [
+      {
+        label: "Visible",
+        value: String(items.length),
+        tone: "text-fg-primary",
+      },
+      {
+        label: "Critical",
+        value: String(items.filter((item) => item.severity === "critical").length),
+        tone: "text-status-critical",
+      },
+      {
+        label: "Open",
+        value: String(items.filter((item) => item.status === "open").length),
+        tone: "text-status-info",
+      },
+      {
+        label: "Ingested",
+        value: String(items.filter((item) => sourceMeta(item).key === "ingested").length),
+        tone: "text-status-medium",
+      },
+    ];
+  }, [filteredItems]);
+
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="mx-auto max-w-6xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-fg-primary">Incidents</h1>
           {data && (
-            <p className="text-sm text-fg-secondary mt-0.5">{data.total} total</p>
+            <p className="mt-0.5 text-sm text-fg-secondary">
+              Showing {filteredItems.length} of {data.total} incidents
+            </p>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -67,33 +182,118 @@ export default function IncidentsPage() {
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="mb-4">
-        <Select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="w-48"
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s ? s.replace("_", " ") : "All statuses"}</option>
-          ))}
-        </Select>
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {overview.map((item) => (
+          <div
+            key={item.label}
+            className="rounded-lg border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm"
+          >
+            <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+              {item.label}
+            </p>
+            <p className={`mt-2 text-2xl font-semibold tracking-tight ${item.tone}`}>
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="mb-4 rounded-lg border border-border-subtle bg-bg-panel p-4 shadow-sm">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.8fr))_auto]">
+          <div>
+            <Label htmlFor="inc-search">Search</Label>
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+              <Input
+                id="inc-search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search title, description, ID, or source…"
+                className="pl-9"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="inc-status">Status</Label>
+            <Select
+              id="inc-status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as IncidentStatus | "")}
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="inc-severity">Severity</Label>
+            <Select
+              id="inc-severity"
+              value={severityFilter}
+              onChange={(e) => setSeverityFilter(e.target.value as Severity | "")}
+            >
+              {SEVERITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="inc-source">Source</Label>
+            <Select
+              id="inc-source"
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value as "" | "manual" | "ingested")}
+            >
+              {SOURCE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="flex items-end">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full justify-center"
+              disabled={!hasAnyFilters}
+              onClick={() => {
+                setQuery("");
+                setStatusFilter("");
+                setSeverityFilter("");
+                setSourceFilter("");
+              }}
+            >
+              <X size={14} />
+              Clear
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Table */}
       {loading && !data ? (
-        <TableSkeleton rows={6} columns={4} />
-      ) : data?.items.length === 0 ? (
+        <TableSkeleton rows={6} columns={5} />
+      ) : filteredItems.length === 0 ? (
         <EmptyState
           icon={AlertTriangle}
-          title={statusFilter ? "No incidents match this filter" : "No incidents yet"}
+          title={hasAnyFilters ? "No incidents match these filters" : "No incidents yet"}
           description={
-            statusFilter
-              ? "Try clearing the status filter above."
+            hasAnyFilters
+              ? "Try widening the filters or clearing the search to see more incidents."
               : "Incidents you create or receive from integrations will appear here."
           }
           action={
-            !statusFilter && (
+            !hasAnyFilters && (
               <Button size="sm" onClick={() => setShowCreate(true)}>
                 <Plus size={14} />
                 New Incident
@@ -106,14 +306,17 @@ export default function IncidentsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
-                <th className="px-4 py-3">Title</th>
+                <th className="px-4 py-3">Incident</th>
+                <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Severity</th>
-                <th className="px-4 py-3">Created</th>
+                <th className="px-4 py-3">Last Activity</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
-              {data?.items.map((inc) => (
+              {filteredItems.map((inc) => {
+                const source = sourceMeta(inc);
+                return (
                 <tr key={inc.id} className="hover:bg-bg-elevated transition-colors">
                   <td className="px-4 py-3">
                     <Link
@@ -122,9 +325,27 @@ export default function IncidentsPage() {
                     >
                       {inc.title}
                     </Link>
-                    <p className="text-xs text-fg-muted truncate max-w-xs mt-0.5">
+                    <p className="mt-0.5 max-w-md truncate text-xs text-fg-muted">
                       {inc.description}
                     </p>
+                    <p className="mt-1 font-mono text-[11px] text-fg-muted">
+                      {inc.id.slice(0, 8)}… • created {fmtDate(inc.created_at)}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md border px-1 text-[10px] font-semibold uppercase tracking-wide ${source.className}`}
+                      >
+                        {source.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-fg-primary">{source.label}</p>
+                        <p className="truncate text-[11px] text-fg-muted">
+                          {inc.external_id ?? "Operator-created"}
+                        </p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={inc.status as Parameters<typeof Badge>[0]["variant"]}>
@@ -138,11 +359,12 @@ export default function IncidentsPage() {
                       <span className="text-fg-muted">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-fg-secondary whitespace-nowrap">
-                    {fmtDate(inc.created_at)}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <p className="text-sm text-fg-primary">{fmtRelative(inc.updated_at)}</p>
+                    <p className="mt-0.5 text-[11px] text-fg-muted">{fmtDate(inc.updated_at)}</p>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

@@ -461,6 +461,7 @@ function ModelConfigModal({
   onSubmit,
   saving,
   error,
+  onErrorChange,
   providers,
   initialConfig,
 }: {
@@ -469,6 +470,7 @@ function ModelConfigModal({
   onSubmit: (form: ModelFormState) => Promise<void>;
   saving: boolean;
   error: string;
+  onErrorChange: (value: string) => void;
   providers: ProviderModelsResponse[];
   initialConfig: ModelConfigResponse | null;
 }) {
@@ -489,17 +491,18 @@ function ModelConfigModal({
     key: K,
     value: ModelFormState[K],
   ) {
+    if (error) onErrorChange("");
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function handleProviderChange(providerName: string) {
     const nextProvider = providers.find((item) => item.provider === providerName);
+    if (error) onErrorChange("");
     setForm((current) => ({
       ...current,
       provider: providerName,
       model_id: nextProvider?.default_model_id ?? current.model_id,
-      api_key_env_var:
-        nextProvider?.default_api_key_env_var ?? current.api_key_env_var,
+      api_key_env_var: nextProvider?.default_api_key_env_var ?? "",
       base_url: "",
       api_version: "",
     }));
@@ -871,6 +874,7 @@ function ModelSection({
         onSubmit={handleSubmit}
         saving={saving}
         error={error}
+        onErrorChange={setError}
         providers={providers}
         initialConfig={editing}
       />

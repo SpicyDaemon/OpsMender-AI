@@ -147,6 +147,7 @@ export async function createIncident(body: IncidentCreate): Promise<IncidentResp
 
 import type {
   SessionCreate,
+  SessionListResponse,
   SessionMessageCreate,
   SessionMessageListResponse,
   SessionMessageResponse,
@@ -161,6 +162,10 @@ export async function getSession(id: string): Promise<SessionResponse> {
 
 export async function createSession(body: SessionCreate): Promise<SessionResponse> {
   return api.post<SessionResponse>("/sessions", body);
+}
+
+export async function listIncidentSessions(id: string): Promise<SessionListResponse> {
+  return api.get<SessionListResponse>(`/incidents/${id}/sessions`);
 }
 
 export async function listSessionMessages(

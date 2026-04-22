@@ -14,11 +14,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user, require_role
 from backend.api.deps import get_db
-from backend.api.schemas import IncidentCreate, IncidentListResponse, IncidentResponse
+from backend.api.schemas import (
+    IncidentCreate,
+    IncidentListResponse,
+    IncidentResponse,
+    SessionListResponse,
+    SessionResponse,
+)
+from backend.config_loader import Config
 from backend.db.models import User
-from backend.db.repos import IncidentRepo
+from backend.db.repos import IncidentRepo, SessionRepo
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
+
+
+def _tier0_max_session_seconds() -> int:
+    try:
+        return Config.load().tier0.max_session_seconds
+    except (FileNotFoundError, ValueError):
+        return 600
+
+
+def _to_session_response(session) -> SessionResponse:
+    return SessionResponse(
+        id=session.id,
+        incident_id=session.incident_id,
+        workflow_profile_id=getattr(session, "workflow_profile_id", None),
+        agent_team_profile_id=getattr(session, "agent_team_profile_id", None),
+        tier=session.tier,
+        model_provider=session.model_provider,
+        model_id=session.model_id,
+        status=session.status,
+        summary=session.summary,
+        started_at=session.started_at,
+        ended_at=session.ended_at,
+        tier0_max_session_seconds=_tier0_max_session_seconds()
+        if int(session.tier) == 0
+        else None,
+    )
 
 
 @router.post(
@@ -58,6 +91,30 @@ async def list_incidents(
     # A lightweight approach — fine for now, can optimise later.
     all_items = await IncidentRepo.list_all(db, status=status_filter, limit=10_000, offset=0)
     return IncidentListResponse(items=list(items), total=len(all_items))
+
+
+@router.get(
+    "/{incident_id}/sessions",
+    response_model=SessionListResponse,
+    summary="List sessions for an incident",
+)
+async def list_incident_sessions(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+
+    items = await SessionRepo.list_by_incident(db, incident_id)
+    return SessionListResponse(
+        items=[_to_session_response(item) for item in items],
+        total=len(items),
+    )
 
 
 @router.get(

@@ -27,6 +27,8 @@ export interface IncidentResponse {
   description: string;
   status: IncidentStatus;
   severity: Severity | null;
+  external_id: string | null;
+  external_source: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -66,6 +68,11 @@ export interface SessionResponse {
   started_at: string;
   ended_at: string | null;
   tier0_max_session_seconds: number | null;
+}
+
+export interface SessionListResponse {
+  items: SessionResponse[];
+  total: number;
 }
 
 export interface SessionCreate {

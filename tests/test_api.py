@@ -355,6 +355,40 @@ class TestIncidents:
         assert resp.status_code == 200
         assert resp.json()["title"] == "Look me up"
 
+    async def test_list_sessions_for_incident(self, client: AsyncClient, auth_headers):
+        incident = await client.post("/incidents", json={
+            "title": "Timeline target", "description": "d",
+        }, headers=auth_headers)
+        incident_id = incident.json()["id"]
+
+        await client.post("/sessions", json={
+            "tier": 2,
+            "incident_id": incident_id,
+        }, headers=auth_headers)
+        await client.post("/sessions", json={
+            "tier": 1,
+            "incident_id": incident_id,
+        }, headers=auth_headers)
+
+        other_incident = await client.post("/incidents", json={
+            "title": "Other", "description": "d",
+        }, headers=auth_headers)
+        await client.post("/sessions", json={
+            "tier": 3,
+            "incident_id": other_incident.json()["id"],
+        }, headers=auth_headers)
+
+        resp = await client.get(f"/incidents/{incident_id}/sessions", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert {item["tier"] for item in data["items"]} == {1, 2}
+        assert all(item["incident_id"] == incident_id for item in data["items"])
+
+    async def test_list_sessions_for_incident_not_found(self, client: AsyncClient, auth_headers):
+        resp = await client.get(f"/incidents/{uuid.uuid4()}/sessions", headers=auth_headers)
+        assert resp.status_code == 404
+
     async def test_get_incident_not_found(self, client: AsyncClient, auth_headers):
         fake_id = uuid.uuid4()
         resp = await client.get(f"/incidents/{fake_id}", headers=auth_headers)

@@ -107,6 +107,11 @@ class SessionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SessionListResponse(BaseModel):
+    items: list[SessionResponse]
+    total: int
+
+
 # -- Rollback (Sprint 17) ----------------------------------------------------
 
 class SessionRollbackRequest(BaseModel):

@@ -42,7 +42,9 @@ from backend.llm.factory import create_llm
 
 @pytest.fixture
 async def app(tmp_path):
-    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    db_path = tmp_path / "copilot-chat.db"
+    database_url = f"sqlite+aiosqlite:///{db_path}"
+    engine = create_async_engine(database_url, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -55,7 +57,7 @@ async def app(tmp_path):
         "AIM_LOG_LEVEL=INFO\n"
         "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
         "AIM_JWT_SECRET=test-secret\n"
-        "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
+        f"AIM_DATABASE_URL={database_url}\n"
         f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
     )
     set_env_path(tmp_env)

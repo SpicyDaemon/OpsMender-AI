@@ -264,7 +264,13 @@ async def create_session_message(
         content=body.content,
     )
     await db.commit()
-    await db.refresh(message)
+    persisted_message = await SessionMessageRepo.get_by_id(db, message.id)
+    if persisted_message is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to persist session message",
+        )
+    message = persisted_message
 
     # Push the user event immediately so other connected clients see it.
     await publish(

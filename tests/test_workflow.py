@@ -471,8 +471,9 @@ class TestTierGate:
         assert len(result["blocked_actions"]) == 1
         assert "approval service" in result["blocked_actions"][0]["block_reason"].lower()
 
-    async def test_tier_1_approved_action_waits_and_executes(self):
-        engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    async def test_tier_1_approved_action_waits_and_executes(self, tmp_path):
+        db_path = tmp_path / "tier1-approved.db"
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -506,8 +507,9 @@ class TestTierGate:
 
         await engine.dispose()
 
-    async def test_tier_1_rejected_action_is_blocked(self):
-        engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    async def test_tier_1_rejected_action_is_blocked(self, tmp_path):
+        db_path = tmp_path / "tier1-rejected.db"
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -540,8 +542,9 @@ class TestTierGate:
 
         await engine.dispose()
 
-    async def test_tier_1_timeout_marks_state_timed_out(self):
-        engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    async def test_tier_1_timeout_marks_state_timed_out(self, tmp_path):
+        db_path = tmp_path / "tier1-timeout.db"
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         factory = async_sessionmaker(engine, expire_on_commit=False)

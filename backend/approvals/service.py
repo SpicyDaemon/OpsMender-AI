@@ -74,7 +74,10 @@ class ApprovalService:
             )
             await SessionRepo.set_status(db, session_id, status="awaiting_approval")
             await db.commit()
-            await db.refresh(request)
+            persisted_request = await ApprovalRequestRepo.get_by_id(db, request.id)
+            if persisted_request is None:
+                raise RuntimeError(f"Approval request not found after create: {request.id}")
+            request = persisted_request
         self._notify_session_status(session_id, "awaiting_approval")
 
         await self._publish(
@@ -94,7 +97,10 @@ class ApprovalService:
                 if request.status != "pending":
                     next_status = await self._sync_session_status(db, request)
                     await db.commit()
-                    await db.refresh(request)
+                    persisted_request = await ApprovalRequestRepo.get_by_id(db, request.id)
+                    if persisted_request is None:
+                        raise RuntimeError(f"Approval request not found after resolve: {request.id}")
+                    request = persisted_request
                     self._notify_session_status(session_id, next_status)
                     await self._publish(
                         session_id,
@@ -115,7 +121,10 @@ class ApprovalService:
                         raise RuntimeError(f"Approval request not found: {request.id}")
                     next_status = await self._sync_session_status(db, expired)
                     await db.commit()
-                    await db.refresh(expired)
+                    persisted_expired = await ApprovalRequestRepo.get_by_id(db, expired.id)
+                    if persisted_expired is None:
+                        raise RuntimeError(f"Approval request not found after expiry: {expired.id}")
+                    expired = persisted_expired
                     self._notify_session_status(session_id, next_status)
                     await self._publish(
                         session_id,

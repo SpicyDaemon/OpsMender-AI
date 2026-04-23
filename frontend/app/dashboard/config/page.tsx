@@ -31,6 +31,7 @@ import {
   deleteWebhookTrigger,
   deleteWorkflowProfile,
   getConfig,
+  getModelBootstrapStatus,
   listAgentTeamProfiles,
   listIngestProviders,
   listIngestTokens,
@@ -64,6 +65,7 @@ import type {
   MCPServerUpsert,
   MCPTransport,
   ModelConfigResponse,
+  ModelBootstrapStatusResponse,
   ModelConfigUpdate,
   ProviderModelsResponse,
   WebhookTriggerEventType,
@@ -455,6 +457,17 @@ function createModelFormState(
   };
 }
 
+function shouldUseManualModelId(
+  providers: ProviderModelsResponse[],
+  providerName: string,
+  current?: ModelConfigResponse | null,
+) {
+  const provider = providers.find((item) => item.provider === providerName);
+  if (!provider || provider.models.length === 0) return true;
+  if (!current?.model_id) return false;
+  return !provider.models.includes(current.model_id);
+}
+
 function ModelConfigModal({
   open,
   onClose,
@@ -477,10 +490,24 @@ function ModelConfigModal({
   const [form, setForm] = useState<ModelFormState>(() =>
     createModelFormState(providers, initialConfig),
   );
+  const [useManualModelId, setUseManualModelId] = useState(() =>
+    shouldUseManualModelId(
+      providers,
+      initialConfig?.provider ?? providers[0]?.provider ?? "anthropic",
+      initialConfig,
+    ),
+  );
 
   useEffect(() => {
     if (!open) return;
     setForm(createModelFormState(providers, initialConfig));
+    setUseManualModelId(
+      shouldUseManualModelId(
+        providers,
+        initialConfig?.provider ?? providers[0]?.provider ?? "anthropic",
+        initialConfig,
+      ),
+    );
   }, [open, providers, initialConfig]);
 
   const selectedProvider = providers.find(
@@ -506,6 +533,7 @@ function ModelConfigModal({
       base_url: "",
       api_version: "",
     }));
+    setUseManualModelId(!nextProvider || nextProvider.models.length === 0);
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -550,8 +578,19 @@ function ModelConfigModal({
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <Label htmlFor="model-id">Model ID</Label>
-            {selectedProvider && selectedProvider.models.length > 0 ? (
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <Label htmlFor="model-id">Model ID</Label>
+              {selectedProvider && selectedProvider.models.length > 0 ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-fg-secondary transition-colors hover:text-fg-primary"
+                  onClick={() => setUseManualModelId((current) => !current)}
+                >
+                  {useManualModelId ? "Use discovered suggestions" : "Type manual model ID"}
+                </button>
+              ) : null}
+            </div>
+            {selectedProvider && selectedProvider.models.length > 0 && !useManualModelId ? (
               <Select
                 id="model-id"
                 value={form.model_id}
@@ -572,6 +611,9 @@ function ModelConfigModal({
                 required
               />
             )}
+            <p className="mt-1 text-xs text-fg-muted">
+              Provider-discovered models are suggestions only. You can always enter an explicit model or deployment ID.
+            </p>
           </div>
           <div>
             <Label htmlFor="model-key">API Key Env Var</Label>
@@ -610,6 +652,10 @@ function ModelConfigModal({
             />
           </div>
         )}
+
+        <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+          Secrets are stored as environment-variable references only. Enter the variable name AIM should read at runtime, not the raw provider secret.
+        </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
@@ -653,11 +699,13 @@ function ModelConfigModal({
 }
 
 function ModelSection({
+  bootstrap,
   providers,
   configs,
   onReload,
   canEdit,
 }: {
+  bootstrap: ModelBootstrapStatusResponse;
   providers: ProviderModelsResponse[];
   configs: ModelConfigResponse[];
   onReload: () => Promise<void>;
@@ -668,16 +716,19 @@ function ModelSection({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [warningNotice, setWarningNotice] = useState("");
 
   function openCreateModal() {
     setEditing(null);
     setError("");
+    setWarningNotice("");
     setModalOpen(true);
   }
 
   function openEditModal(config: ModelConfigResponse) {
     setEditing(config);
     setError("");
+    setWarningNotice("");
     setModalOpen(true);
   }
 
@@ -686,12 +737,14 @@ function ModelSection({
     setModalOpen(false);
     setEditing(null);
     setError("");
+    setWarningNotice("");
   }
 
   async function handleSubmit(form: ModelFormState) {
     setSaving(true);
     setError("");
     setNotice("");
+    setWarningNotice("");
     try {
       const payload: ModelConfigUpdate = {
         name: form.name,
@@ -703,12 +756,16 @@ function ModelSection({
         max_tokens: form.max_tokens,
         temperature: form.temperature,
       };
+      const result = editing
+        ? await updateModelConfigById(editing.id, payload)
+        : await createModelConfig(payload);
       if (editing) {
-        await updateModelConfigById(editing.id, payload);
         setNotice("Model config updated.");
       } else {
-        await createModelConfig(payload);
         setNotice("Model config created.");
+      }
+      if (result.warnings.length > 0) {
+        setWarningNotice(result.warnings.map((warning) => warning.message).join(" "));
       }
       setModalOpen(false);
       setEditing(null);
@@ -728,6 +785,7 @@ function ModelSection({
 
     setError("");
     setNotice("");
+    setWarningNotice("");
     try {
       await deleteModelConfig(config.id);
       setNotice("Model config deleted.");
@@ -740,6 +798,7 @@ function ModelSection({
   async function handleSetDefault(config: ModelConfigResponse) {
     setError("");
     setNotice("");
+    setWarningNotice("");
     try {
       await setDefaultModelConfig(config.id);
       setNotice(`"${config.name}" is now the default model.`);
@@ -754,6 +813,24 @@ function ModelSection({
       title="Model Manager"
       description="Saved model configs are reusable profiles for new sessions. Set one as default, or keep multiple providers ready to switch."
     >
+      {bootstrap.needs_setup && (
+        <div className="rounded-lg border border-status-medium-border bg-status-medium-bg px-4 py-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-status-medium">
+                Default model setup is still incomplete.
+              </p>
+              <p className="mt-1 text-sm text-fg-secondary">
+                AIM falls back to offline stub responses until one saved model config is marked as default. Bootstrap your first model here; secrets stay in `.env` or your deployment environment and only the env-var name is stored.
+              </p>
+            </div>
+            <Button onClick={openCreateModal} disabled={!canEdit}>
+              <Plus size={14} /> Bootstrap First Model
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {providers.map((provider) => (
           <span
@@ -792,6 +869,7 @@ function ModelSection({
 
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
+      {warningNotice && <p className="text-sm text-status-medium">{warningNotice}</p>}
 
       {configs.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
@@ -3391,6 +3469,7 @@ export default function ConfigPage() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
   const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
+  const [modelBootstrap, setModelBootstrap] = useState<ModelBootstrapStatusResponse | null>(null);
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
   const [ingestTokens, setIngestTokens] = useState<IngestTokenResponse[]>([]);
   const [ingestProviderList, setIngestProviderList] = useState<IngestProviderItem[]>([]);
@@ -3405,6 +3484,7 @@ export default function ConfigPage() {
       runtimeConfig,
       providerList,
       savedConfigs,
+      bootstrapStatus,
       mcpList,
       tokenList,
       ipList,
@@ -3416,6 +3496,7 @@ export default function ConfigPage() {
         getConfig(),
         listProviders(),
         listModelConfigs(),
+        getModelBootstrapStatus(),
         listMCPServers(),
         listIngestTokens().catch(() => ({ items: [], total: 0 })),
         listIngestProviders().catch(() => ({ items: [] })),
@@ -3426,6 +3507,7 @@ export default function ConfigPage() {
     setConfig(runtimeConfig);
     setProviders(providerList.items);
     setModelConfigs(savedConfigs.items);
+    setModelBootstrap(bootstrapStatus);
     setMcpServers(mcpList.items);
     setIngestTokens(tokenList.items);
     setIngestProviderList(ipList.items);
@@ -3438,7 +3520,7 @@ export default function ConfigPage() {
     loadPageData().finally(() => setLoading(false));
   }, [loadPageData]);
 
-  if (loading || !config) return <ConfigPageSkeleton />;
+  if (loading || !config || !modelBootstrap) return <ConfigPageSkeleton />;
 
   const tabMeta: Record<ConfigTabId, { stat: string; detail: string }> = {
     runtime: {
@@ -3447,7 +3529,9 @@ export default function ConfigPage() {
     },
     models: {
       stat: `${modelConfigs.length} profile${modelConfigs.length === 1 ? "" : "s"}`,
-      detail: `${providers.filter((provider) => provider.available).length} provider${providers.filter((provider) => provider.available).length === 1 ? "" : "s"} available`,
+      detail: modelBootstrap.has_default
+        ? `${providers.filter((provider) => provider.available).length} provider${providers.filter((provider) => provider.available).length === 1 ? "" : "s"} available`
+        : "Default model still needs bootstrap",
     },
     mcp: {
       stat: `${mcpServers.length} server${mcpServers.length === 1 ? "" : "s"}`,
@@ -3530,10 +3614,11 @@ export default function ConfigPage() {
       )}
 
       {activeTab === "models" && (
-        <ModelSection
-          providers={providers}
-          configs={modelConfigs}
-          onReload={loadPageData}
+              <ModelSection
+                bootstrap={modelBootstrap}
+                providers={providers}
+                configs={modelConfigs}
+                onReload={loadPageData}
           canEdit={canEdit}
         />
       )}

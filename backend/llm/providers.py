@@ -74,6 +74,7 @@ class AnthropicProvider:
 
     model: str = "claude-sonnet-4-20250514"
     max_tokens: int = 4096
+    api_key_env_var: str = "ANTHROPIC_API_KEY"
 
     def __post_init__(self) -> None:
         try:
@@ -84,10 +85,10 @@ class AnthropicProvider:
                 "Install it with: uv add anthropic"
             ) from exc
 
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        api_key = os.environ.get(self.api_key_env_var)
         if not api_key:
             raise EnvironmentError(
-                "ANTHROPIC_API_KEY environment variable is not set. "
+                f"{self.api_key_env_var} environment variable is not set. "
                 "Set it to your Anthropic API key."
             )
 

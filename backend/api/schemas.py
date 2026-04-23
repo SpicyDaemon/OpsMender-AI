@@ -243,6 +243,23 @@ class ModelConfigListResponse(BaseModel):
     total: int
 
 
+class ModelConfigValidationIssue(BaseModel):
+    code: str
+    message: str
+
+
+class ModelConfigSaveResponse(BaseModel):
+    config: ModelConfigResponse
+    warnings: list[ModelConfigValidationIssue] = Field(default_factory=list)
+
+
+class ModelBootstrapStatusResponse(BaseModel):
+    needs_setup: bool
+    has_configs: bool
+    has_default: bool
+    default_config: Optional[ModelConfigResponse] = None
+
+
 class ModelConfigUpdate(BaseModel):
     name: Optional[str] = None
     provider: str = Field(pattern="^(anthropic|openai|azure_openai|ollama)$")

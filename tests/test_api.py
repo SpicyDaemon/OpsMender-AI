@@ -1310,7 +1310,11 @@ class TestModelConfigAPI:
     ):
         monkeypatch.setattr(
             "backend.api.routes.config.ProviderRegistry.validate_model_config",
-            lambda self, **kwargs: None,
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {"warnings": []},
+            )(),
         )
 
         resp = await client.put(
@@ -1326,7 +1330,7 @@ class TestModelConfigAPI:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["config"]
         assert data["name"] == "primary-openai"
         assert data["provider"] == "openai"
         assert data["model_id"] == "gpt-4o"
@@ -1396,12 +1400,28 @@ class TestModelConfigAPI:
         assert data["total"] == 1
         assert data["items"][0]["name"] == "openai-primary"
 
+    async def test_get_model_bootstrap_status(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        resp = await client.get("/models/bootstrap", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "needs_setup": True,
+            "has_configs": False,
+            "has_default": False,
+            "default_config": None,
+        }
+
     async def test_create_saved_model_config_admin(
         self, client: AsyncClient, auth_headers, monkeypatch
     ):
         monkeypatch.setattr(
             "backend.api.routes.models.ProviderRegistry.validate_model_config",
-            lambda self, **kwargs: None,
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {"warnings": []},
+            )(),
         )
 
         resp = await client.post(
@@ -1417,16 +1437,59 @@ class TestModelConfigAPI:
             headers=auth_headers,
         )
         assert resp.status_code == 201
-        data = resp.json()
+        data = resp.json()["config"]
         assert data["name"] == "ollama-local"
         assert data["provider"] == "ollama"
+
+    async def test_create_saved_model_config_returns_validation_warnings(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {
+                    "warnings": [
+                        type(
+                            "_Warning",
+                            (),
+                            {
+                                "code": "provider_unverified",
+                                "message": "Could not verify provider connectivity.",
+                            },
+                        )()
+                    ]
+                },
+            )(),
+        )
+
+        resp = await client.post(
+            "/models/configs",
+            json={
+                "name": "openai-manual",
+                "provider": "openai",
+                "model_id": "gpt-5-custom",
+                "api_key_env_var": "OPENAI_API_KEY",
+            },
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["config"]["name"] == "openai-manual"
+        assert data["warnings"][0]["code"] == "provider_unverified"
 
     async def test_update_saved_model_config_admin(
         self, client: AsyncClient, app, auth_headers, monkeypatch
     ):
         monkeypatch.setattr(
             "backend.api.routes.models.ProviderRegistry.validate_model_config",
-            lambda self, **kwargs: None,
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {"warnings": []},
+            )(),
         )
 
         async with app.state.session_factory() as db:
@@ -1454,7 +1517,7 @@ class TestModelConfigAPI:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["config"]
         assert data["name"] == "openai-primary-v2"
         assert data["model_id"] == "gpt-4o-mini"
         assert data["max_tokens"] == 2048

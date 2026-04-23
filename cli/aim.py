@@ -230,6 +230,60 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output the saved model config as JSON",
     )
 
+    model_bootstrap = model_sub.add_parser(
+        "bootstrap",
+        help="Bootstrap the first default model config with prompts or flags",
+    )
+    model_bootstrap.add_argument(
+        "--name",
+        default=None,
+        help="Config name to create or update (default: provider:model_id)",
+    )
+    model_bootstrap.add_argument(
+        "--provider",
+        choices=["anthropic", "openai", "azure_openai", "ollama"],
+        default=None,
+        help="LLM provider to configure",
+    )
+    model_bootstrap.add_argument(
+        "--model-id",
+        default=None,
+        help="Model identifier or deployment name",
+    )
+    model_bootstrap.add_argument(
+        "--api-key-env-var",
+        default=None,
+        help="Environment variable containing the provider API key",
+    )
+    model_bootstrap.add_argument(
+        "--base-url",
+        default=None,
+        help="Provider base URL or local runtime endpoint",
+    )
+    model_bootstrap.add_argument(
+        "--api-version",
+        default=None,
+        help="Azure/OpenAI API version override",
+    )
+    model_bootstrap.add_argument(
+        "--max-tokens",
+        type=int,
+        default=4096,
+        help="Default max_tokens value to persist",
+    )
+    model_bootstrap.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Default temperature value to persist",
+    )
+    model_bootstrap.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output the saved model config as JSON",
+    )
+
     # -- audit --------------------------------------------------------------
     audit_parser = sub.add_parser("audit", help="View the audit log")
     audit_parser.add_argument(
@@ -505,6 +559,100 @@ def _format_model_config(config) -> str:
     )
 
 
+def _warnings_to_dict(warnings) -> list[dict[str, str]]:
+    return [
+        {"code": warning.code, "message": warning.message}
+        for warning in warnings
+    ]
+
+
+def _print_model_validation_warnings(warnings) -> None:
+    for warning in warnings:
+        print(f"Warning: {warning.message}", file=sys.stderr)
+
+
+def _prompt_value(prompt: str, *, default: str | None = None) -> str:
+    suffix = "" if default in (None, "") else f" [{default}]"
+    raw = input(f"{prompt}{suffix}: ").strip()
+    if raw:
+        return raw
+    return default or ""
+
+
+def _bootstrap_model_args(
+    args: argparse.Namespace,
+    registry: ProviderRegistry,
+) -> argparse.Namespace:
+    provider = args.provider or _prompt_value(
+        "Provider (anthropic/openai/azure_openai/ollama)",
+        default="openai",
+    )
+    spec = registry.get_spec(provider)
+
+    model_id = args.model_id or _prompt_value(
+        "Model ID or deployment name",
+        default=spec.default_model_id,
+    )
+    api_key_env_var = args.api_key_env_var
+    if spec.requires_api_key:
+        api_key_env_var = api_key_env_var or _prompt_value(
+            "API key env var reference",
+            default=spec.default_api_key_env_var,
+        )
+    base_url = args.base_url
+    if spec.requires_base_url:
+        base_url = base_url or _prompt_value("Base URL")
+    api_version = args.api_version
+    if spec.requires_api_version:
+        api_version = api_version or _prompt_value("API version")
+
+    args.provider = provider
+    args.model_id = model_id
+    args.api_key_env_var = api_key_env_var or None
+    args.base_url = base_url or None
+    args.api_version = api_version or None
+    args.name = args.name or f"{provider}:{model_id}"
+    return args
+
+
+async def _persist_model_config(cfg: Config, args: argparse.Namespace):
+    registry = ProviderRegistry()
+    validation = registry.validate_model_config(
+        provider=args.provider,
+        model_id=args.model_id,
+        api_key_env_var=args.api_key_env_var,
+        base_url=args.base_url,
+        api_version=args.api_version,
+        allow_unverified=True,
+    )
+
+    engine = get_engine(_database_url(cfg))
+    factory = get_session_factory(engine)
+    try:
+        async with factory() as db:
+            name = args.name or f"{args.provider}:{args.model_id}"
+            saved = await ModelConfigRepo.upsert(
+                db,
+                name=name,
+                provider=args.provider,
+                model_id=args.model_id,
+                api_key_env_var=args.api_key_env_var,
+                base_url=args.base_url,
+                api_version=args.api_version,
+                max_tokens=args.max_tokens,
+                temperature=args.temperature,
+            )
+            await ModelConfigRepo.set_default(db, saved.id)
+            await db.commit()
+            refreshed = await ModelConfigRepo.get_by_id(db, saved.id)
+            if refreshed is None:
+                raise RuntimeError("Saved model config could not be reloaded.")
+            await db.refresh(refreshed)
+            return refreshed, validation.warnings
+    finally:
+        await engine.dispose()
+
+
 async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
     if not args.approvals_command:
         print("Usage: aim approvals {list,approve,reject} ...", file=sys.stderr)
@@ -701,7 +849,7 @@ def _validate_config(cfg: Config, args: argparse.Namespace) -> int:
 
 async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
     if not args.model_command:
-        print("Usage: aim config model {list,set} ...", file=sys.stderr)
+        print("Usage: aim config model {list,set,bootstrap} ...", file=sys.stderr)
         return 1
 
     registry = ProviderRegistry()
@@ -729,41 +877,13 @@ async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
         return 0
 
     try:
-        registry.validate_model_config(
-            provider=args.provider,
-            model_id=args.model_id,
-            api_key_env_var=args.api_key_env_var,
-            base_url=args.base_url,
-            api_version=args.api_version,
-        )
+        if args.model_command == "bootstrap":
+            args = _bootstrap_model_args(args, registry)
+        saved, warnings = await _persist_model_config(cfg, args)
     except ValueError as exc:
         print(f"Model config validation failed: {exc}", file=sys.stderr)
         return 1
-
-    engine = get_engine(_database_url(cfg))
-    factory = get_session_factory(engine)
-    try:
-        async with factory() as db:
-            name = args.name or f"{args.provider}:{args.model_id}"
-            saved = await ModelConfigRepo.upsert(
-                db,
-                name=name,
-                provider=args.provider,
-                model_id=args.model_id,
-                api_key_env_var=args.api_key_env_var,
-                base_url=args.base_url,
-                api_version=args.api_version,
-                max_tokens=args.max_tokens,
-                temperature=args.temperature,
-            )
-            await ModelConfigRepo.set_default(db, saved.id)
-            await db.commit()
-            refreshed = await ModelConfigRepo.get_by_id(db, saved.id)
-            if refreshed is None:
-                print("Saved model config could not be reloaded.", file=sys.stderr)
-                return 1
-            await db.refresh(refreshed)
-    except (OSError, SQLAlchemyError) as exc:
+    except (OSError, SQLAlchemyError, RuntimeError) as exc:
         print(
             "Model config command failed: database unavailable. "
             "Set AIM_DATABASE_URL or use the local DB fallback for model config commands. "
@@ -771,13 +891,20 @@ async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    finally:
-        await engine.dispose()
 
     if args.json_output:
-        print(json.dumps(_model_config_to_dict(refreshed), indent=2))
+        print(
+            json.dumps(
+                {
+                    "config": _model_config_to_dict(saved),
+                    "warnings": _warnings_to_dict(warnings),
+                },
+                indent=2,
+            )
+        )
     else:
-        print(_format_model_config(refreshed))
+        print(_format_model_config(saved))
+        _print_model_validation_warnings(warnings)
     return 0
 
 

@@ -255,8 +255,10 @@ export async function updateConfig(body: ConfigUpdate): Promise<ConfigResponse> 
 // ---------------------------------------------------------------------------
 
 import type {
+  ModelBootstrapStatusResponse,
   ModelConfigListResponse,
   ModelConfigResponse,
+  ModelConfigSaveResponse,
   ModelConfigUpdate,
   ProviderModelsListResponse,
 } from "./types";
@@ -265,8 +267,12 @@ export async function listProviders(): Promise<ProviderModelsListResponse> {
   return api.get<ProviderModelsListResponse>("/models");
 }
 
-export async function setModelConfig(body: ModelConfigUpdate): Promise<unknown> {
-  return api.put("/config/model", body);
+export async function getModelBootstrapStatus(): Promise<ModelBootstrapStatusResponse> {
+  return api.get<ModelBootstrapStatusResponse>("/models/bootstrap");
+}
+
+export async function setModelConfig(body: ModelConfigUpdate): Promise<ModelConfigSaveResponse> {
+  return api.put<ModelConfigSaveResponse>("/config/model", body);
 }
 
 export async function listModelConfigs(): Promise<ModelConfigListResponse> {
@@ -275,15 +281,15 @@ export async function listModelConfigs(): Promise<ModelConfigListResponse> {
 
 export async function createModelConfig(
   body: ModelConfigUpdate,
-): Promise<ModelConfigResponse> {
-  return api.post<ModelConfigResponse>("/models/configs", body);
+): Promise<ModelConfigSaveResponse> {
+  return api.post<ModelConfigSaveResponse>("/models/configs", body);
 }
 
 export async function updateModelConfigById(
   id: string,
   body: ModelConfigUpdate,
-): Promise<ModelConfigResponse> {
-  return api.put<ModelConfigResponse>(`/models/configs/${id}`, body);
+): Promise<ModelConfigSaveResponse> {
+  return api.put<ModelConfigSaveResponse>(`/models/configs/${id}`, body);
 }
 
 export async function deleteModelConfig(id: string): Promise<void> {

@@ -224,6 +224,23 @@ export interface ModelConfigListResponse {
   total: number;
 }
 
+export interface ModelConfigValidationIssue {
+  code: string;
+  message: string;
+}
+
+export interface ModelConfigSaveResponse {
+  config: ModelConfigResponse;
+  warnings: ModelConfigValidationIssue[];
+}
+
+export interface ModelBootstrapStatusResponse {
+  needs_setup: boolean;
+  has_configs: boolean;
+  has_default: boolean;
+  default_config: ModelConfigResponse | null;
+}
+
 export interface ModelConfigUpdate {
   name?: string;
   provider: string;

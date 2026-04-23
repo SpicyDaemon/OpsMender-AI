@@ -272,7 +272,11 @@ class TestConfigModel:
         monkeypatch.setenv("AIM_DATABASE_URL", database_url)
         monkeypatch.setattr(
             "cli.aim.ProviderRegistry.validate_model_config",
-            lambda self, **kwargs: None,
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {"warnings": []},
+            )(),
         )
 
         with pytest.raises(SystemExit) as exc_info:
@@ -291,12 +295,13 @@ class TestConfigModel:
                     "http://localhost:11434",
                     "--json",
                 ]
-            )
+        )
         assert exc_info.value.code == 0
         data = json.loads(capsys.readouterr().out)
-        assert data["provider"] == "ollama"
-        assert data["model_id"] == "llama3.2"
-        assert data["is_default"] is True
+        assert data["config"]["provider"] == "ollama"
+        assert data["config"]["model_id"] == "llama3.2"
+        assert data["config"]["is_default"] is True
+        assert data["warnings"] == []
 
         async def _verify() -> None:
             engine = create_async_engine(database_url, echo=False)
@@ -336,3 +341,45 @@ class TestConfigModel:
             )
         assert exc_info.value.code == 1
         assert "bad model" in capsys.readouterr().err
+
+    def test_model_bootstrap_prompts_and_prints_warnings(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        cfg_path = _write_cfg(tmp_path)
+        db_path = tmp_path / "aim.db"
+        database_url = f"sqlite+aiosqlite:///{db_path}"
+        _create_sqlite_schema(database_url)
+        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        answers = iter([
+            "openai",
+            "gpt-5-custom",
+            "OPENAI_API_KEY",
+        ])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+        monkeypatch.setattr(
+            "cli.aim.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {
+                    "warnings": [
+                        type(
+                            "_Warning",
+                            (),
+                            {
+                                "code": "model_not_reported",
+                                "message": "Manual model ID saved with warning.",
+                            },
+                        )()
+                    ]
+                },
+            )(),
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--config", cfg_path, "config", "model", "bootstrap"])
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "provider=openai" in captured.out
+        assert "Manual model ID saved with warning." in captured.err

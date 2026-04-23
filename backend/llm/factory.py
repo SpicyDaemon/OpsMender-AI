@@ -28,6 +28,7 @@ def create_provider(
         return AnthropicProvider(
             model=model_id or "claude-sonnet-4-20250514",
             max_tokens=max_tokens,
+            api_key_env_var=api_key_env_var or "ANTHROPIC_API_KEY",
         )
     if provider == "openai":
         return OpenAIProvider(

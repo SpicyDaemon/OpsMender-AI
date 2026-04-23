@@ -114,6 +114,7 @@ function IncidentDetailContent() {
   const router = useRouter();
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
+  const [sessionsError, setSessionsError] = useState("");
   const [loading, setLoading] = useState(true);
   const [showSession, setShowSession] = useState(false);
   const toast = useToast();
@@ -125,17 +126,33 @@ function IncidentDetailContent() {
     }
     let cancelled = false;
     async function load() {
+      setLoading(true);
+      setSessionsError("");
       try {
-        const [incidentRes, sessionsRes] = await Promise.all([
-          getIncident(id),
-          listIncidentSessions(id),
-        ]);
+        const incidentRes = await getIncident(id);
         if (cancelled) return;
         setIncident(incidentRes);
+      } catch (err) {
+        if (!cancelled) {
+          setIncident(null);
+          setSessions([]);
+          toast.error(err instanceof Error ? err.message : "Failed to load incident");
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const sessionsRes = await listIncidentSessions(id);
+        if (cancelled) return;
         setSessions(sessionsRes.items);
       } catch (err) {
         if (!cancelled) {
-          toast.error(err instanceof Error ? err.message : "Failed to load incident");
+          setSessions([]);
+          const message =
+            err instanceof Error ? err.message : "Failed to load session history";
+          setSessionsError(message);
+          toast.warning(`Session history is temporarily unavailable: ${message}`);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -261,7 +278,11 @@ function IncidentDetailContent() {
           </div>
 
           <div className="p-5">
-            {sessions.length === 0 ? (
+            {sessionsError ? (
+              <div className="rounded-lg border border-status-high-border bg-status-high-bg px-4 py-4 text-sm text-fg-secondary">
+                We couldn&apos;t load session history for this incident right now. You can still review the incident details and start a new session.
+              </div>
+            ) : sessions.length === 0 ? (
               <EmptyState
                 icon={CircleDot}
                 title="No sessions for this incident yet"

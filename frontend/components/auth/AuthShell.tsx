@@ -7,9 +7,16 @@ interface AuthShellProps {
   description: string;
   footer: ReactNode;
   children: ReactNode;
+  eyebrow?: string;
 }
 
-export function AuthShell({ title, description, footer, children }: AuthShellProps) {
+export function AuthShell({
+  title,
+  description,
+  footer,
+  children,
+  eyebrow = "Operator Access",
+}: AuthShellProps) {
   return (
     <div className="relative flex min-h-full items-center justify-center overflow-hidden bg-bg-base px-4 py-16">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.12),transparent_28%)]" />
@@ -33,10 +40,12 @@ export function AuthShell({ title, description, footer, children }: AuthShellPro
 
         <div className="overflow-hidden rounded-lg border border-border-subtle bg-bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
           <div className="border-b border-border-subtle bg-bg-elevated px-6 py-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
-              Operator Access
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-fg-primary">
+            {eyebrow ? (
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
+                {eyebrow}
+              </p>
+            ) : null}
+            <h2 className={`${eyebrow ? "mt-2" : ""} text-2xl font-semibold tracking-tight text-fg-primary`}>
               {title}
             </h2>
             <p className="mt-1 text-sm text-fg-secondary">{description}</p>

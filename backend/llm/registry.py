@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .factory import create_provider
 
@@ -16,6 +16,21 @@ class ProviderSpec:
     requires_api_key: bool = True
     requires_base_url: bool = False
     requires_api_version: bool = False
+
+
+@dataclass(frozen=True)
+class ValidationIssue:
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    provider: str
+    model_id: str
+    warnings: list[ValidationIssue] = field(default_factory=list)
+    discovered_models: list[str] = field(default_factory=list)
+    discovery_error: str | None = None
 
 
 class ProviderRegistry:
@@ -118,20 +133,69 @@ class ProviderRegistry:
         api_key_env_var: str | None = None,
         base_url: str | None = None,
         api_version: str | None = None,
-    ) -> None:
-        result = self.discover_models(
+        allow_unverified: bool = False,
+    ) -> ValidationResult:
+        spec = self.get_spec(provider)
+
+        if spec.requires_base_url and not base_url:
+            raise ValueError(f"Provider '{provider}' requires a base_url")
+        if spec.requires_api_version and not api_version:
+            raise ValueError(f"Provider '{provider}' requires an api_version")
+
+        warnings: list[ValidationIssue] = []
+        discovery_error: str | None = None
+        discovered_models: list[str] = []
+        selected_api_key = api_key_env_var or spec.default_api_key_env_var
+
+        try:
+            client = create_provider(
+                provider=provider,
+                model_id=model_id,
+                api_key_env_var=selected_api_key,
+                base_url=base_url,
+                api_version=api_version,
+            )
+            discovered_models = client.list_models()
+        except Exception as exc:
+            discovery_error = str(exc)
+            if not allow_unverified:
+                raise ValueError(discovery_error) from exc
+            warnings.append(
+                ValidationIssue(
+                    code="provider_unverified",
+                    message=(
+                        "Could not verify provider connectivity during validation: "
+                        f"{discovery_error}. Saving anyway because explicit bootstrap "
+                        "inputs are allowed."
+                    ),
+                )
+            )
+            return ValidationResult(
+                provider=provider,
+                model_id=model_id,
+                warnings=warnings,
+                discovered_models=discovered_models,
+                discovery_error=discovery_error,
+            )
+
+        if provider in {"openai", "ollama"} and discovered_models and model_id not in discovered_models:
+            message = (
+                f"Model '{model_id}' is not currently reported by provider '{provider}'. "
+                f"Discovered models: {', '.join(discovered_models)}"
+            )
+            if not allow_unverified:
+                raise ValueError(message)
+            warnings.append(
+                ValidationIssue(
+                    code="model_not_reported",
+                    message=f"{message}. Saving anyway because manual model IDs are allowed.",
+                )
+            )
+
+        return ValidationResult(
             provider=provider,
             model_id=model_id,
-            api_key_env_var=api_key_env_var,
-            base_url=base_url,
-            api_version=api_version,
-        )[0]
-        if not result["available"]:
-            raise ValueError(str(result["error"]))
-
-        known_models = result["models"]
-        if provider in {"openai", "ollama"} and known_models and model_id not in known_models:
-            raise ValueError(
-                f"Model '{model_id}' is not reported by provider '{provider}'. "
-                f"Available models: {', '.join(known_models)}"
-            )
+            warnings=warnings,
+            discovered_models=discovered_models,
+            discovery_error=discovery_error,
+        )

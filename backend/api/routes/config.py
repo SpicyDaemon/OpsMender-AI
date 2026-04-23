@@ -15,6 +15,8 @@ from backend.api.schemas import (
     ConfigResponse,
     ConfigUpdate,
     ModelConfigResponse,
+    ModelConfigSaveResponse,
+    ModelConfigValidationIssue,
     ModelConfigUpdate,
 )
 from backend.config_loader import Config, set_env_path
@@ -200,7 +202,7 @@ async def update_config(
 
 @router.put(
     "/model",
-    response_model=ModelConfigResponse,
+    response_model=ModelConfigSaveResponse,
     summary="Set default model configuration",
 )
 async def update_model_config(
@@ -210,12 +212,13 @@ async def update_model_config(
 ):
     registry = ProviderRegistry()
     try:
-        registry.validate_model_config(
+        validation = registry.validate_model_config(
             provider=body.provider,
             model_id=body.model_id,
             api_key_env_var=body.api_key_env_var,
             base_url=body.base_url,
             api_version=body.api_version,
+            allow_unverified=True,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -242,4 +245,10 @@ async def update_model_config(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Model config could not be reloaded",
         )
-    return refreshed
+    return ModelConfigSaveResponse(
+        config=ModelConfigResponse.model_validate(refreshed),
+        warnings=[
+            ModelConfigValidationIssue(code=warning.code, message=warning.message)
+            for warning in validation.warnings
+        ],
+    )

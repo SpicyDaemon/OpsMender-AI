@@ -63,7 +63,7 @@ class TestProviderRegistry:
         )
         registry = ProviderRegistry()
 
-        with pytest.raises(ValueError, match="not reported by provider 'openai'"):
+        with pytest.raises(ValueError, match="not currently reported by provider 'openai'"):
             registry.validate_model_config(provider="openai", model_id="gpt-5")
 
     def test_validate_model_config_allows_azure_deployment_name(self, monkeypatch):
@@ -79,3 +79,41 @@ class TestProviderRegistry:
             base_url="https://example-resource.openai.azure.com/",
             api_version="2024-10-21",
         )
+
+    def test_validate_model_config_returns_warning_when_provider_unverified(
+        self, monkeypatch
+    ):
+        def _raise(**kwargs):
+            raise EnvironmentError("missing key")
+
+        monkeypatch.setattr("backend.llm.registry.create_provider", _raise)
+        registry = ProviderRegistry()
+
+        result = registry.validate_model_config(
+            provider="openai",
+            model_id="gpt-4o",
+            allow_unverified=True,
+        )
+
+        assert len(result.warnings) == 1
+        assert result.warnings[0].code == "provider_unverified"
+        assert "missing key" in result.warnings[0].message
+
+    def test_validate_model_config_returns_warning_for_manual_model_id(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["gpt-4o", "gpt-4o-mini"]),
+        )
+        registry = ProviderRegistry()
+
+        result = registry.validate_model_config(
+            provider="openai",
+            model_id="gpt-5-custom",
+            allow_unverified=True,
+        )
+
+        assert len(result.warnings) == 1
+        assert result.warnings[0].code == "model_not_reported"
+        assert "Saving anyway" in result.warnings[0].message

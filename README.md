@@ -98,6 +98,7 @@ If you change anything in the API layer, the workflow, the approval service, the
 | `aim config --validate` | Validate the current configuration |
 | `aim config model list` | Discover provider availability and reported models |
 | `aim config model set --provider ... --model-id ...` | Validate and persist the default model config |
+| `aim config model bootstrap` | First-run bootstrap for the default model config (prompts or flags) |
 | `aim approvals list` | List approval requests |
 | `aim approvals approve ID` | Approve a pending Tier 1 request |
 | `aim approvals reject ID` | Reject a pending Tier 1 request |
@@ -123,6 +124,7 @@ uv run python scripts/dev_server.py
 ```
 
 Open **http://localhost:8000** and log in with `admin` / `admin123`.
+If no default model config exists yet, go to **Config → Models** and bootstrap one from the dashboard before running live sessions.
 
 **Hot-reload workflow** — for faster frontend iteration you can skip the `npm run build` step and run the Next.js dev server on port 3000 instead, pointing it at the backend on 8000:
 
@@ -218,6 +220,7 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `POST` | `/approvals/{id}/approve` | admin/operator | Approve pending request |
 | `POST` | `/approvals/{id}/reject` | admin/operator | Reject pending request |
 | `GET` | `/models` | any | Discover provider availability and reported models |
+| `GET` | `/models/bootstrap` | any | Read first-run/default-model bootstrap status |
 | `GET` | `/models/configs` | any | List saved model configs |
 | `POST` | `/models/configs` | admin | Create saved model config |
 | `PUT` | `/models/configs/{id}` | admin | Update saved model config |
@@ -326,10 +329,20 @@ aim config model set --provider azure_openai --model-id my-deployment \
 aim config model set --provider ollama --model-id llama3.2 --base-url http://localhost:11434
 ```
 
+For first-run setup, AIM also ships a bootstrap path that prompts for missing fields:
+
+```bash
+aim config model bootstrap
+aim config model bootstrap --provider openai --model-id gpt-4.1 --api-key-env-var OPENAI_API_KEY
+```
+
 Notes:
 
 - `aim config model list` is discovery-only and does not write to the database.
-- `aim config model set` validates the provider config first, then stores it in `model_configs` and marks it as default.
+- `aim config model set` and `aim config model bootstrap` store the config in `model_configs` and mark it as default.
+- Provider-discovered model lists are suggestions, not a hard requirement. AIM allows explicit manual model IDs and returns warnings when discovery is stale, unavailable, or incomplete.
+- Secrets are stored as **environment-variable references only**. The database stores values like `OPENAI_API_KEY`, not the raw provider secret itself.
+- The dashboard supports the same first-run bootstrap flow from **Config → Models**, including provider, model ID, env-var reference, base URL, API version, max tokens, and temperature.
 - If you want to run a local Hugging Face model with AIM, the clean path is to serve it through a local runtime such as Ollama or another OpenAI-compatible endpoint rather than loading raw checkpoints directly inside AIM.
 
 ## Workflow

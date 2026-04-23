@@ -35,6 +35,7 @@ export default function LoginPage() {
     <AuthShell
       title="Sign in to AIM"
       description="Open the operator console and pick up the next incident with full session context."
+      eyebrow=""
       footer={(
         <>
           No account?{" "}

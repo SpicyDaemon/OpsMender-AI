@@ -115,6 +115,18 @@ class TestBackwardCompatibility:
         with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
             AnthropicProvider()
 
+    def test_anthropic_provider_respects_custom_api_key_env_var(self, monkeypatch):
+        fake_module = types.SimpleNamespace(
+            Anthropic=lambda **kwargs: types.SimpleNamespace(kwargs=kwargs)
+        )
+        monkeypatch.setitem(sys.modules, "anthropic", fake_module)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("AIM_ANTHROPIC_KEY", "test-key")
+
+        provider = AnthropicProvider(api_key_env_var="AIM_ANTHROPIC_KEY")
+
+        assert provider._client.kwargs["api_key"] == "test-key"
+
 
 def _install_fake_openai(monkeypatch):
     class _FakeModel:

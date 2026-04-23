@@ -11,8 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    ModelBootstrapStatusResponse,
     ModelConfigListResponse,
     ModelConfigResponse,
+    ModelConfigSaveResponse,
+    ModelConfigValidationIssue,
     ModelConfigUpdate,
     ProviderModelsListResponse,
 )
@@ -21,6 +24,16 @@ from backend.db.repos import ModelConfigRepo
 from backend.llm import ProviderRegistry
 
 router = APIRouter(prefix="/models", tags=["models"])
+
+
+def _save_response(config, warnings) -> ModelConfigSaveResponse:
+    return ModelConfigSaveResponse(
+        config=ModelConfigResponse.model_validate(config),
+        warnings=[
+            ModelConfigValidationIssue(code=warning.code, message=warning.message)
+            for warning in warnings
+        ],
+    )
 
 
 @router.get("", response_model=ProviderModelsListResponse, summary="List available provider models")
@@ -56,9 +69,32 @@ async def list_model_configs(
     return ModelConfigListResponse(items=list(items), total=len(items))
 
 
+@router.get(
+    "/bootstrap",
+    response_model=ModelBootstrapStatusResponse,
+    summary="Get first-run model bootstrap status",
+)
+async def get_model_bootstrap_status(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    items = list(await ModelConfigRepo.list_all(db))
+    default_cfg = next((item for item in items if item.is_default), None)
+    return ModelBootstrapStatusResponse(
+        needs_setup=default_cfg is None,
+        has_configs=bool(items),
+        has_default=default_cfg is not None,
+        default_config=(
+            None
+            if default_cfg is None
+            else ModelConfigResponse.model_validate(default_cfg)
+        ),
+    )
+
+
 @router.post(
     "/configs",
-    response_model=ModelConfigResponse,
+    response_model=ModelConfigSaveResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a saved model config",
 )
@@ -69,12 +105,13 @@ async def create_model_config(
 ):
     registry = ProviderRegistry()
     try:
-        registry.validate_model_config(
+        validation = registry.validate_model_config(
             provider=body.provider,
             model_id=body.model_id,
             api_key_env_var=body.api_key_env_var,
             base_url=body.base_url,
             api_version=body.api_version,
+            allow_unverified=True,
         )
         cfg = await ModelConfigRepo.create(
             db,
@@ -89,7 +126,7 @@ async def create_model_config(
         )
         await db.commit()
         await db.refresh(cfg)
-        return cfg
+        return _save_response(cfg, validation.warnings)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except IntegrityError as exc:
@@ -102,7 +139,7 @@ async def create_model_config(
 
 @router.put(
     "/configs/{config_id}",
-    response_model=ModelConfigResponse,
+    response_model=ModelConfigSaveResponse,
     summary="Update a saved model config",
 )
 async def update_model_config(
@@ -120,12 +157,13 @@ async def update_model_config(
 
     registry = ProviderRegistry()
     try:
-        registry.validate_model_config(
+        validation = registry.validate_model_config(
             provider=body.provider,
             model_id=body.model_id,
             api_key_env_var=body.api_key_env_var,
             base_url=body.base_url,
             api_version=body.api_version,
+            allow_unverified=True,
         )
         updated = await ModelConfigRepo.update(
             db,
@@ -146,7 +184,7 @@ async def update_model_config(
                 detail="Model config not found",
             )
         await db.refresh(updated)
-        return updated
+        return _save_response(updated, validation.warnings)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except IntegrityError as exc:

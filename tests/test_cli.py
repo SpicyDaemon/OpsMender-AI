@@ -9,11 +9,13 @@ from cli.aim import main
 
 class TestCLI:
     def test_version_flag(self, capsys):
+        import importlib.metadata
+
         with pytest.raises(SystemExit) as exc_info:
             main(["--version"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out.strip()
-        assert out == "0.1.0"
+        assert out == importlib.metadata.version("ai-incident-manager")
 
     def test_default_no_subcommand_prints_help(self, capsys):
         """Running with no args prints help text."""

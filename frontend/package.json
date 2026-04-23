@@ -1,7 +1,13 @@
 {
   "name": "frontend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "license": "MIT",
+  "description": "AI Incident Manager dashboard (Next.js static export)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SpicyDaemon/OpsMender-AI.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

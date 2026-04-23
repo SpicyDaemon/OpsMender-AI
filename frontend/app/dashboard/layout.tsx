@@ -1,4 +1,5 @@
 import { AuthGuard } from "@/components/AuthGuard";
+import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import type { ReactNode } from "react";
@@ -14,6 +15,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {children}
           </main>
         </div>
+        <KeyboardShortcuts />
       </div>
     </AuthGuard>
   );

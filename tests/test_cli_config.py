@@ -383,3 +383,190 @@ class TestConfigModel:
         captured = capsys.readouterr()
         assert "provider=openai" in captured.out
         assert "Manual model ID saved with warning." in captured.err
+
+    def test_model_bootstrap_with_flags_skips_prompts(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        cfg_path = _write_cfg(tmp_path)
+        db_path = tmp_path / "aim.db"
+        database_url = f"sqlite+aiosqlite:///{db_path}"
+        _create_sqlite_schema(database_url)
+        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        captured_kwargs: dict[str, object] = {}
+
+        def _validate(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return type("_Validation", (), {"warnings": []})()
+
+        monkeypatch.setattr(
+            "cli.aim.ProviderRegistry.validate_model_config",
+            _validate,
+        )
+
+        def _boom(prompt=""):
+            raise AssertionError(
+                f"bootstrap should not prompt when all flags are supplied; got prompt={prompt!r}"
+            )
+
+        monkeypatch.setattr("builtins.input", _boom)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "model",
+                    "bootstrap",
+                    "--provider",
+                    "ollama",
+                    "--model-id",
+                    "llama3.2",
+                    "--base-url",
+                    "http://localhost:11434",
+                ]
+            )
+
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "provider=ollama" in out
+        assert captured_kwargs["provider"] == "ollama"
+        assert captured_kwargs["model_id"] == "llama3.2"
+        assert captured_kwargs["base_url"] == "http://localhost:11434"
+        assert captured_kwargs["allow_unverified"] is True
+
+        async def _verify() -> None:
+            engine = create_async_engine(database_url, echo=False)
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            async with factory() as session:
+                default = await ModelConfigRepo.get_default(session)
+                assert default is not None
+                assert default.provider == "ollama"
+                assert default.model_id == "llama3.2"
+                assert default.name == "ollama:llama3.2"
+                assert default.is_default is True
+            await engine.dispose()
+
+        asyncio.run(_verify())
+
+    def test_model_bootstrap_azure_prompts_base_url_and_api_version(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        cfg_path = _write_cfg(tmp_path)
+        db_path = tmp_path / "aim.db"
+        database_url = f"sqlite+aiosqlite:///{db_path}"
+        _create_sqlite_schema(database_url)
+        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        captured_kwargs: dict[str, object] = {}
+
+        def _validate(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return type("_Validation", (), {"warnings": []})()
+
+        monkeypatch.setattr(
+            "cli.aim.ProviderRegistry.validate_model_config",
+            _validate,
+        )
+        prompts_seen: list[str] = []
+        answers = iter(
+            [
+                "https://example-resource.openai.azure.com/",
+                "2024-10-21",
+            ]
+        )
+
+        def _fake_input(prompt=""):
+            prompts_seen.append(prompt)
+            return next(answers)
+
+        monkeypatch.setattr("builtins.input", _fake_input)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "model",
+                    "bootstrap",
+                    "--provider",
+                    "azure_openai",
+                    "--model-id",
+                    "deploy-gpt4",
+                    "--api-key-env-var",
+                    "AZURE_OPENAI_API_KEY",
+                ]
+            )
+
+        assert exc_info.value.code == 0
+        assert captured_kwargs["provider"] == "azure_openai"
+        assert (
+            captured_kwargs["base_url"]
+            == "https://example-resource.openai.azure.com/"
+        )
+        assert captured_kwargs["api_version"] == "2024-10-21"
+        prompt_blob = " ".join(prompts_seen)
+        assert "Base URL" in prompt_blob
+        assert "API version" in prompt_blob
+
+    def test_model_bootstrap_json_output(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        cfg_path = _write_cfg(tmp_path)
+        db_path = tmp_path / "aim.db"
+        database_url = f"sqlite+aiosqlite:///{db_path}"
+        _create_sqlite_schema(database_url)
+        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        monkeypatch.setattr(
+            "cli.aim.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {
+                    "warnings": [
+                        type(
+                            "_Warning",
+                            (),
+                            {
+                                "code": "provider_unverified",
+                                "message": "Could not verify provider connectivity.",
+                            },
+                        )()
+                    ]
+                },
+            )(),
+        )
+        monkeypatch.setattr(
+            "builtins.input",
+            lambda prompt="": (_ for _ in ()).throw(
+                AssertionError("flag-driven bootstrap should not prompt")
+            ),
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "model",
+                    "bootstrap",
+                    "--provider",
+                    "openai",
+                    "--model-id",
+                    "gpt-5-custom",
+                    "--api-key-env-var",
+                    "OPENAI_API_KEY",
+                    "--name",
+                    "primary-manual",
+                    "--json",
+                ]
+            )
+
+        assert exc_info.value.code == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["config"]["name"] == "primary-manual"
+        assert data["config"]["provider"] == "openai"
+        assert data["config"]["model_id"] == "gpt-5-custom"
+        assert data["config"]["is_default"] is True
+        assert data["warnings"][0]["code"] == "provider_unverified"

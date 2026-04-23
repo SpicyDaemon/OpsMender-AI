@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Bell, ChevronDown, LogOut, Search } from "lucide-react";
+import { Bell, ChevronDown, Keyboard, LogOut, Search } from "lucide-react";
 import { useAuth } from "@/context/auth";
 import { listApprovals } from "@/lib/api";
 
@@ -93,6 +93,15 @@ export function TopBar() {
       </form>
 
       <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent("aim:open-shortcuts"))}
+          title="Keyboard shortcuts (?)"
+          className="hidden sm:flex h-9 w-9 items-center justify-center rounded-md text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
+        >
+          <Keyboard size={16} />
+        </button>
+
         <Link
           href="/dashboard/approvals"
           title={`${pending ?? 0} pending approvals`}

@@ -1,11 +1,29 @@
 [project]
 name = "ai-incident-manager"
-version = "0.1.0"
-description = "AI Incident Manager - CLI and backend scaffolding"
+version = "1.0.0"
+description = "AI-powered incident response framework with tiered access controls, MCP-first integrations, and human-in-the-loop approvals."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
-authors = [{name = "Your Name", email = "you@example.com"}]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "SpicyDaemon"}]
+keywords = ["incident-response", "sre", "devops", "mcp", "langgraph", "llm", "agents", "ai-ops"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+
 dependencies = [
     "pyyaml>=6.0",
     "mcp>=1.0",
@@ -25,6 +43,12 @@ dependencies = [
 
 [project.scripts]
 aim = "cli.aim:main"
+
+[project.urls]
+Homepage = "https://github.com/SpicyDaemon/OpsMender-AI"
+Repository = "https://github.com/SpicyDaemon/OpsMender-AI"
+Issues = "https://github.com/SpicyDaemon/OpsMender-AI/issues"
+Changelog = "https://github.com/SpicyDaemon/OpsMender-AI/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

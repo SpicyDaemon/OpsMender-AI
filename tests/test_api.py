@@ -1343,6 +1343,45 @@ class TestModelConfigAPI:
             assert default is not None
             assert default.name == "primary-openai"
 
+    async def test_update_model_config_surfaces_warnings(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.config.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {
+                    "warnings": [
+                        type(
+                            "_Warning",
+                            (),
+                            {
+                                "code": "model_not_reported",
+                                "message": "Manual model ID saved with warning.",
+                            },
+                        )()
+                    ]
+                },
+            )(),
+        )
+
+        resp = await client.put(
+            "/config/model",
+            json={
+                "provider": "openai",
+                "model_id": "gpt-5-custom",
+                "api_key_env_var": "OPENAI_API_KEY",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["config"]["model_id"] == "gpt-5-custom"
+        assert data["config"]["is_default"] is True
+        assert len(data["warnings"]) == 1
+        assert data["warnings"][0]["code"] == "model_not_reported"
+
     async def test_update_model_config_validation_error(
         self, client: AsyncClient, auth_headers, monkeypatch
     ):
@@ -1412,6 +1451,53 @@ class TestModelConfigAPI:
             "default_config": None,
         }
 
+    async def test_get_model_bootstrap_status_reports_default(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            await ModelConfigRepo.create(
+                db,
+                name="default-openai",
+                provider="openai",
+                model_id="gpt-4o",
+                is_default=True,
+            )
+            await db.commit()
+
+        resp = await client.get("/models/bootstrap", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["needs_setup"] is False
+        assert data["has_configs"] is True
+        assert data["has_default"] is True
+        assert data["default_config"]["name"] == "default-openai"
+
+    async def test_get_model_bootstrap_status_unauthenticated(
+        self, client: AsyncClient
+    ):
+        resp = await client.get("/models/bootstrap")
+        assert resp.status_code == 401
+
+    async def test_get_model_bootstrap_status_has_configs_without_default(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            await ModelConfigRepo.create(
+                db,
+                name="unset-primary",
+                provider="ollama",
+                model_id="llama3.2",
+            )
+            await db.commit()
+
+        resp = await client.get("/models/bootstrap", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["needs_setup"] is True
+        assert data["has_configs"] is True
+        assert data["has_default"] is False
+        assert data["default_config"] is None
+
     async def test_create_saved_model_config_admin(
         self, client: AsyncClient, auth_headers, monkeypatch
     ):
@@ -1440,6 +1526,89 @@ class TestModelConfigAPI:
         data = resp.json()["config"]
         assert data["name"] == "ollama-local"
         assert data["provider"] == "ollama"
+
+    async def test_create_saved_model_config_duplicate_name_conflict(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {"warnings": []},
+            )(),
+        )
+
+        first = await client.post(
+            "/models/configs",
+            json={
+                "name": "shared-name",
+                "provider": "ollama",
+                "model_id": "llama3.2",
+            },
+            headers=auth_headers,
+        )
+        assert first.status_code == 201
+
+        second = await client.post(
+            "/models/configs",
+            json={
+                "name": "shared-name",
+                "provider": "openai",
+                "model_id": "gpt-4o",
+                "api_key_env_var": "OPENAI_API_KEY",
+            },
+            headers=auth_headers,
+        )
+        assert second.status_code == 409
+        assert "already exists" in second.json()["detail"].lower()
+
+    async def test_create_saved_model_config_viewer_forbidden(
+        self, client: AsyncClient, viewer_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type(
+                "_Validation",
+                (),
+                {"warnings": []},
+            )(),
+        )
+
+        resp = await client.post(
+            "/models/configs",
+            json={
+                "name": "viewer-blocked",
+                "provider": "ollama",
+                "model_id": "llama3.2",
+            },
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
+    async def test_create_saved_model_config_validation_error_returns_400(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        def _raise(self, **kwargs):
+            raise ValueError("azure_openai requires a base_url")
+
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            _raise,
+        )
+
+        resp = await client.post(
+            "/models/configs",
+            json={
+                "name": "bad-azure",
+                "provider": "azure_openai",
+                "model_id": "deploy-gpt4",
+                "api_version": "2024-10-21",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "base_url" in resp.json()["detail"]
 
     async def test_create_saved_model_config_returns_validation_warnings(
         self, client: AsyncClient, auth_headers, monkeypatch

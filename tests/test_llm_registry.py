@@ -117,3 +117,103 @@ class TestProviderRegistry:
         assert len(result.warnings) == 1
         assert result.warnings[0].code == "model_not_reported"
         assert "Saving anyway" in result.warnings[0].message
+
+    def test_discover_models_without_provider_lists_all(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["ok"]),
+        )
+        registry = ProviderRegistry()
+
+        items = registry.discover_models()
+
+        providers = sorted(item["provider"] for item in items)
+        assert providers == ["anthropic", "azure_openai", "ollama", "openai"]
+        assert all(item["available"] for item in items)
+
+    def test_validate_model_config_azure_missing_base_url_is_hard_error(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["deploy-gpt4"]),
+        )
+        registry = ProviderRegistry()
+
+        with pytest.raises(ValueError, match="base_url"):
+            registry.validate_model_config(
+                provider="azure_openai",
+                model_id="deploy-gpt4",
+                api_version="2024-10-21",
+                allow_unverified=True,
+            )
+
+    def test_validate_model_config_azure_missing_api_version_is_hard_error(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["deploy-gpt4"]),
+        )
+        registry = ProviderRegistry()
+
+        with pytest.raises(ValueError, match="api_version"):
+            registry.validate_model_config(
+                provider="azure_openai",
+                model_id="deploy-gpt4",
+                base_url="https://example-resource.openai.azure.com/",
+                allow_unverified=True,
+            )
+
+    def test_validate_model_config_anthropic_manual_id_does_not_warn(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["claude-sonnet-4-20250514"]),
+        )
+        registry = ProviderRegistry()
+
+        result = registry.validate_model_config(
+            provider="anthropic",
+            model_id="claude-opus-custom",
+            allow_unverified=True,
+        )
+
+        assert result.warnings == []
+        assert result.discovered_models == ["claude-sonnet-4-20250514"]
+
+    def test_validate_model_config_ollama_manual_id_warns(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["llama3.2", "mistral"]),
+        )
+        registry = ProviderRegistry()
+
+        result = registry.validate_model_config(
+            provider="ollama",
+            model_id="llama3-custom",
+            allow_unverified=True,
+        )
+
+        assert len(result.warnings) == 1
+        assert result.warnings[0].code == "model_not_reported"
+
+    def test_validate_model_config_ollama_without_api_key(self, monkeypatch):
+        captured: dict[str, object] = {}
+
+        def _create_provider(**kwargs):
+            captured.update(kwargs)
+            return _FakeProvider(["llama3.2"])
+
+        monkeypatch.setattr("backend.llm.registry.create_provider", _create_provider)
+        registry = ProviderRegistry()
+
+        result = registry.validate_model_config(
+            provider="ollama",
+            model_id="llama3.2",
+        )
+
+        assert result.warnings == []
+        assert captured["provider"] == "ollama"
+        assert captured["api_key_env_var"] is None

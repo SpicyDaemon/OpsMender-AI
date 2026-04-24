@@ -1,6 +1,6 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { ReactNode } from "react";
-import { ShieldCheck } from "lucide-react";
 
 interface AuthShellProps {
   title: string;
@@ -24,9 +24,13 @@ export function AuthShell({
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-4 rounded-lg border border-border-subtle bg-bg-elevated/90 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-accent/30 bg-accent-bg text-accent">
-              <ShieldCheck size={20} />
-            </div>
+            <Image
+              src="/logo.png"
+              alt="AIM"
+              width={44}
+              height={44}
+              className="rounded-lg"
+            />
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-fg-muted">
                 AIM Console

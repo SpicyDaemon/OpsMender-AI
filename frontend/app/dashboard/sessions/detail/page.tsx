@@ -5,13 +5,22 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Brain,
   CheckCircle2,
   CircleDot,
   Clock,
+  ClipboardCopy,
+  Eye,
+  GitBranch,
   MessageSquare,
+  Play,
+  Search,
   Send,
+  Shield,
   Terminal,
+  Wrench,
   XCircle,
+  Zap,
 } from "lucide-react";
 import {
   approveRequest,
@@ -42,10 +51,119 @@ import { SessionDetailSkeleton } from "@/components/ui/Skeleton";
 import { useAuth } from "@/context/auth";
 
 // ---------------------------------------------------------------------------
+// Lightweight markdown renderer for co-pilot chat
+// ---------------------------------------------------------------------------
+
+function renderMarkdown(text: string): React.ReactNode[] {
+  const lines = text.split("\n");
+  const result: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    // Fenced code block
+    const fenceMatch = lines[i].match(/^```(\w*)/);
+    if (fenceMatch) {
+      const lang = fenceMatch[1] || "text";
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing fence
+      const code = codeLines.join("\n");
+      result.push(
+        <CodeBlock key={`cb-${result.length}`} code={code} language={lang} />,
+      );
+      continue;
+    }
+    // Inline code + bold + italic in a paragraph line
+    result.push(
+      <span key={`ln-${result.length}`} className="block">
+        {renderInline(lines[i])}
+      </span>,
+    );
+    i++;
+  }
+  return result;
+}
+
+function renderInline(text: string): React.ReactNode[] {
+  // Split by inline code first, then bold/italic
+  const parts: React.ReactNode[] = [];
+  const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const m = match[0];
+    if (m.startsWith("`")) {
+      parts.push(
+        <code
+          key={`ic-${parts.length}`}
+          className="rounded bg-bg-elevated px-1.5 py-0.5 text-[12px] font-mono text-accent"
+        >
+          {m.slice(1, -1)}
+        </code>,
+      );
+    } else if (m.startsWith("**")) {
+      parts.push(
+        <strong key={`b-${parts.length}`} className="font-semibold">
+          {m.slice(2, -2)}
+        </strong>,
+      );
+    } else if (m.startsWith("*")) {
+      parts.push(
+        <em key={`i-${parts.length}`}>{m.slice(1, -1)}</em>,
+      );
+    }
+    lastIndex = match.index + m.length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
+
+function CodeBlock({ code, language }: { code: string; language: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  return (
+    <div className="my-2 rounded-lg border border-border-subtle bg-bg-elevated overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle bg-bg-panel">
+        <span className="text-[10px] font-mono text-fg-muted uppercase tracking-wide">
+          {language}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg-primary transition-colors"
+        >
+          <ClipboardCopy size={10} />
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+      <pre className="px-3 py-2.5 overflow-x-auto text-[12px] leading-relaxed font-mono text-fg-primary">
+        {code}
+      </pre>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Event log types
 // ---------------------------------------------------------------------------
 
-type EventKind = "node" | "tool" | "approval" | "error" | "end" | "llm";
+type EventKind = "node" | "tool" | "approval" | "error" | "end" | "llm" | "tier_gate";
 
 interface LogEvent {
   id: number;
@@ -53,6 +171,7 @@ interface LogEvent {
   label: string;
   detail?: string;
   ts: Date;
+  durationMs?: number;
   raw?: Record<string, unknown>;
 }
 
@@ -63,25 +182,30 @@ function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
   }
   const ts = new Date();
   switch (msg.type) {
-    case "node_transition":
+    case "node_transition": {
+      const node = String(msg.data.node ?? "unknown");
+      const kind: EventKind = node === "tier_gate" ? "tier_gate" : "node";
       return {
         id: idGen(),
-        kind: "node",
-        label: `Node: ${msg.data.node ?? "unknown"}`,
+        kind,
+        label: node === "tier_gate" ? "Tier Gate" : `${node.charAt(0).toUpperCase()}${node.slice(1)}`,
         detail: msg.data.status as string | undefined,
         ts,
+        durationMs: typeof msg.data.duration_ms === "number" ? msg.data.duration_ms : undefined,
         raw: msg.data,
       };
+    }
     case "tool_call":
       return {
         id: idGen(),
         kind: "tool",
-        label: `Tool: ${msg.data.tool_name ?? "unknown"}`,
+        label: `${msg.data.tool_name ?? "unknown"}`,
         detail:
           msg.data.permitted === false
             ? `BLOCKED — ${msg.data.block_reason ?? ""}`
             : JSON.stringify(msg.data.parameters ?? {}, null, 2),
         ts,
+        durationMs: typeof msg.data.duration_ms === "number" ? msg.data.duration_ms : undefined,
         raw: msg.data,
       };
     case "approval_requested":
@@ -133,14 +257,55 @@ function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
   }
 }
 
-const KIND_STYLES: Record<EventKind, { icon: React.ReactNode; line: string }> = {
-  node: { icon: <CircleDot size={14} className="text-accent" />, line: "border-accent" },
-  tool: { icon: <Terminal size={14} className="text-fg-secondary" />, line: "border-border-subtle" },
-  approval: { icon: <Clock size={14} className="text-status-medium" />, line: "border-status-medium-border" },
-  error: { icon: <XCircle size={14} className="text-status-critical" />, line: "border-status-critical-border" },
-  end: { icon: <CheckCircle2 size={14} className="text-status-low" />, line: "border-status-low-border" },
-  llm: { icon: <CircleDot size={14} className="text-accent" />, line: "border-accent" },
+const KIND_STYLES: Record<EventKind, { icon: React.ReactNode; line: string; bg: string }> = {
+  node: {
+    icon: <CircleDot size={14} className="text-accent" />,
+    line: "border-accent/60",
+    bg: "bg-accent/5",
+  },
+  tier_gate: {
+    icon: <Shield size={14} className="text-status-medium" />,
+    line: "border-status-medium/60",
+    bg: "bg-status-medium/5",
+  },
+  tool: {
+    icon: <Wrench size={14} className="text-fg-secondary" />,
+    line: "border-border-strong",
+    bg: "",
+  },
+  approval: {
+    icon: <Clock size={14} className="text-status-medium" />,
+    line: "border-status-medium/60",
+    bg: "bg-status-medium/5",
+  },
+  error: {
+    icon: <XCircle size={14} className="text-status-critical" />,
+    line: "border-status-critical/60",
+    bg: "bg-status-critical/5",
+  },
+  end: {
+    icon: <CheckCircle2 size={14} className="text-status-low" />,
+    line: "border-status-low/60",
+    bg: "bg-status-low/5",
+  },
+  llm: {
+    icon: <Brain size={14} className="text-accent" />,
+    line: "border-accent/40",
+    bg: "bg-accent/5",
+  },
 };
+
+/** Icons per well-known workflow node */
+function nodeIcon(label: string): React.ReactNode {
+  const lower = label.toLowerCase();
+  if (lower.includes("observe")) return <Eye size={14} className="text-status-info" />;
+  if (lower.includes("diagnose")) return <Search size={14} className="text-status-high" />;
+  if (lower.includes("plan")) return <GitBranch size={14} className="text-accent-hover" />;
+  if (lower.includes("execute")) return <Zap size={14} className="text-status-medium" />;
+  if (lower.includes("verify")) return <CheckCircle2 size={14} className="text-status-low" />;
+  if (lower.includes("summarize")) return <Brain size={14} className="text-fg-secondary" />;
+  return null;
+}
 
 function chatMessageFromWS(msg: WSMessage): SessionMessageResponse | null {
   if (msg.type !== "chat_message_user" && msg.type !== "chat_message_assistant") {
@@ -163,6 +328,11 @@ function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 // ---------------------------------------------------------------------------
@@ -398,15 +568,15 @@ function SessionPageContent() {
       <div>
         <Link
           href="/dashboard/incidents"
-          className="inline-flex items-center gap-1.5 text-sm text-fg-secondary hover:text-fg-primary mb-3"
+          className="inline-flex items-center gap-1.5 text-sm text-fg-secondary hover:text-fg-primary mb-3 transition-colors"
         >
           <ArrowLeft size={14} /> Incidents
         </Link>
 
-        <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm px-4 py-3">
+        <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 {incident ? (
                   <Link
                     href={`/dashboard/incidents/detail?id=${incident.id}`}
@@ -432,20 +602,29 @@ function SessionPageContent() {
                 <Badge variant={session.status as Parameters<typeof Badge>[0]["variant"]}>
                   {session.status.replace("_", " ")}
                 </Badge>
-                <span className="text-xs text-fg-muted">Tier {session.tier}</span>
+                <span className="inline-flex items-center gap-1 text-xs text-fg-muted">
+                  <Shield size={11} />
+                  Tier {session.tier}
+                </span>
                 {tier0Timer && (
                   <Badge variant={tier0Timer.expired ? "failed" : "pending"}>
+                    <Clock size={10} className="mr-1" />
                     {tier0Timer.label}
                   </Badge>
                 )}
                 {session.model_provider && (
-                  <span className="text-xs text-fg-muted">
+                  <span className="text-xs text-fg-muted font-mono">
                     {session.model_provider}/{session.model_id ?? "default"}
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-fg-muted font-mono">
+              <p className="mt-1.5 text-xs text-fg-muted font-mono tabular-nums">
                 session {session.id.slice(0, 8)}…
+                {session.started_at && (
+                  <span className="ml-2">
+                    started {new Date(session.started_at).toLocaleTimeString()}
+                  </span>
+                )}
               </p>
             </div>
             <span
@@ -476,32 +655,42 @@ function SessionPageContent() {
 
       {/* Pending approvals (above the split so they're always visible) */}
       {pendingApprovals.length > 0 && (
-        <div className="rounded-xl border border-status-medium-border bg-status-medium-bg p-4 space-y-2">
-          <p className="text-sm font-semibold text-status-medium">
-            {pendingApprovals.length} pending approval
-            {pendingApprovals.length > 1 ? "s" : ""}
-          </p>
+        <div className="rounded-xl border border-status-medium-border bg-status-medium-bg/40 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-status-medium" />
+            <p className="text-sm font-semibold text-status-medium">
+              {pendingApprovals.length} pending approval
+              {pendingApprovals.length > 1 ? "s" : ""}
+            </p>
+          </div>
           {pendingApprovals.map((a) => (
             <div
               key={a.id}
-              className="flex items-start gap-3 rounded-lg bg-bg-panel border border-status-medium-border p-3"
+              className="flex items-start gap-4 rounded-lg bg-bg-panel border border-status-medium-border/60 p-4"
             >
               <div className="flex-1 min-w-0">
-                <pre className="text-xs text-fg-primary bg-bg-elevated rounded p-2 overflow-x-auto">
+                <p className="text-xs font-medium text-fg-secondary uppercase tracking-wide mb-1.5">
+                  Action context
+                </p>
+                <pre className="text-xs text-fg-primary bg-bg-elevated rounded-lg p-3 overflow-x-auto font-mono">
                   {JSON.stringify(a.action, null, 2)}
                 </pre>
                 {a.justification && (
-                  <p className="text-xs text-fg-secondary mt-1">{a.justification}</p>
+                  <p className="text-xs text-fg-secondary mt-2">
+                    <span className="font-medium text-fg-muted">Reason:</span> {a.justification}
+                  </p>
                 )}
-                <p className="text-xs text-fg-muted mt-1">
+                <p className="text-xs text-fg-muted mt-1.5 tabular-nums font-mono">
                   Expires {new Date(a.expires_at).toLocaleTimeString()}
                 </p>
               </div>
-              <div className="flex flex-col gap-1.5 shrink-0">
-                <Button size="sm" variant="success" onClick={() => handleApprove(a.id)}>
+              <div className="flex flex-col gap-2 shrink-0">
+                <Button size="sm" variant="success" onClick={() => handleApprove(a.id)} className="min-w-[100px]">
+                  <CheckCircle2 size={14} />
                   Approve
                 </Button>
-                <Button size="sm" variant="danger" onClick={() => handleReject(a.id)}>
+                <Button size="sm" variant="danger" onClick={() => handleReject(a.id)} className="min-w-[100px]">
+                  <XCircle size={14} />
                   Reject
                 </Button>
               </div>
@@ -519,6 +708,9 @@ function SessionPageContent() {
             <span className="text-xs font-medium text-fg-secondary uppercase tracking-wide">
               Event Stream
             </span>
+            <span className="ml-auto text-[10px] text-fg-muted tabular-nums font-mono">
+              {events.length} events
+            </span>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -528,24 +720,32 @@ function SessionPageContent() {
                 <p className="text-sm">Waiting for events…</p>
               </div>
             ) : (
-              <div className="divide-y divide-border-subtle">
+              <div className="divide-y divide-border-subtle/50">
                 {events.map((ev) => {
-                  const { icon, line } = KIND_STYLES[ev.kind];
+                  const style = KIND_STYLES[ev.kind];
+                  const customIcon = ev.kind === "node" ? nodeIcon(ev.label) : null;
                   return (
                     <div
                       key={ev.id}
-                      className={`flex gap-3 px-4 py-3 border-l-2 ${line}`}
+                      className={`flex gap-3 px-4 py-3 border-l-2 ${style.line} ${style.bg} transition-colors hover:bg-bg-hover/40`}
                     >
-                      <div className="mt-0.5 shrink-0">{icon}</div>
+                      <div className="mt-0.5 shrink-0">{customIcon ?? style.icon}</div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
-                          <p className="text-sm font-medium text-fg-primary">{ev.label}</p>
-                          <span className="text-xs text-fg-muted shrink-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-fg-primary">{ev.label}</p>
+                            {ev.durationMs != null && (
+                              <span className="text-[10px] text-fg-muted font-mono tabular-nums bg-bg-elevated rounded px-1.5 py-0.5">
+                                {formatMs(ev.durationMs)}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-fg-muted shrink-0 tabular-nums font-mono">
                             {ev.ts.toLocaleTimeString()}
                           </span>
                         </div>
                         {ev.detail && (
-                          <pre className="mt-1 text-xs text-fg-secondary whitespace-pre-wrap break-words font-mono">
+                          <pre className="mt-1.5 text-xs text-fg-secondary whitespace-pre-wrap break-words font-mono leading-relaxed">
                             {ev.detail}
                           </pre>
                         )}
@@ -559,11 +759,11 @@ function SessionPageContent() {
           </div>
 
           {session.summary && (
-            <div className="border-t border-status-low-border bg-status-low-bg px-4 py-3">
-              <p className="text-xs font-semibold text-status-low uppercase tracking-wide mb-1">
+            <div className="border-t border-status-low-border bg-status-low-bg/40 px-4 py-3">
+              <p className="text-[10px] font-semibold text-status-low uppercase tracking-wide mb-1.5">
                 Summary
               </p>
-              <p className="text-sm text-status-low whitespace-pre-wrap">
+              <p className="text-sm text-status-low whitespace-pre-wrap leading-relaxed">
                 {session.summary}
               </p>
             </div>
@@ -577,9 +777,12 @@ function SessionPageContent() {
             <span className="text-xs font-medium text-fg-secondary uppercase tracking-wide">
               Co-pilot
             </span>
+            <span className="ml-auto text-[10px] text-fg-muted tabular-nums font-mono">
+              {messages.length} messages
+            </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2 bg-bg-elevated/40">
+          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-bg-elevated/30">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-fg-muted">
                 <MessageSquare size={22} className="mb-2 opacity-60" />
@@ -613,7 +816,7 @@ function SessionPageContent() {
                 disabled={!canChat}
                 placeholder={inputPlaceholder}
                 rows={2}
-                className="flex-1 resize-none rounded-lg border border-border-subtle bg-bg-panel px-3 py-2 text-sm shadow-sm placeholder:text-fg-muted focus:border-accent focus:ring-1 focus:ring-accent disabled:bg-bg-elevated disabled:text-fg-muted"
+                className="flex-1 resize-none rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm shadow-sm placeholder:text-fg-muted focus:border-accent focus:ring-1 focus:ring-accent disabled:bg-bg-elevated disabled:text-fg-muted transition-colors"
               />
               <Button
                 size="sm"
@@ -817,7 +1020,7 @@ function RollbackModal({
 }
 
 // ---------------------------------------------------------------------------
-// ChatBubble
+// ChatBubble — with markdown rendering, code blocks, copy buttons
 // ---------------------------------------------------------------------------
 
 function ChatBubble({ message }: { message: SessionMessageResponse }) {
@@ -826,21 +1029,23 @@ function ChatBubble({ message }: { message: SessionMessageResponse }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm ${
+        className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm shadow-sm ${
           isUser
-            ? "bg-accent text-fg-primary"
-            : "bg-bg-panel text-fg-primary border border-border-subtle"
+            ? "bg-accent/90 text-fg-primary rounded-br-sm"
+            : "bg-bg-panel text-fg-primary border border-border-subtle rounded-bl-sm"
         }`}
       >
-        {message.content}
+        <div className="leading-relaxed">
+          {isUser ? message.content : renderMarkdown(message.content)}
+        </div>
         <div
-          className={`mt-1 text-[10px] ${
-            isUser ? "text-accent" : "text-fg-muted"
+          className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${
+            isUser ? "text-fg-primary/60" : "text-fg-muted"
           }`}
         >
-          {ts.toLocaleTimeString()}
+          <span className="tabular-nums font-mono">{ts.toLocaleTimeString()}</span>
           {message.node_context && (
-            <span className="ml-1.5 opacity-75">· {message.node_context}</span>
+            <span className="opacity-75">· {message.node_context}</span>
           )}
         </div>
       </div>

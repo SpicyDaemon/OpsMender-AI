@@ -3,11 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
+  CheckCircle2,
   Eye,
+  Pause,
   Play,
   Plus,
   RefreshCw,
   Trash2,
+  Zap,
 } from "lucide-react";
 import {
   createDetector,
@@ -63,6 +67,17 @@ function fmtInterval(seconds: number) {
   return `${seconds}s`;
 }
 
+function timeSince(iso: string | null): string {
+  if (!iso) return "never";
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60000) return "just now";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 function toForm(rule: DetectorRuleResponse | null): FormState {
   return {
     name: rule?.name ?? "",
@@ -74,6 +89,115 @@ function toForm(rule: DetectorRuleResponse | null): FormState {
     prompt_template: rule?.prompt_template ?? "",
   };
 }
+
+// ---------------------------------------------------------------------------
+// Mini sparkline SVG — shows last N runs as dots/bars
+// ---------------------------------------------------------------------------
+
+function RunSparkline({ history }: { history: DetectorHistoryResponse[] }) {
+  // Show last 10 runs as small dots
+  const recent = history.slice(0, 10).reverse();
+  if (recent.length === 0) {
+    return <span className="text-[10px] text-fg-muted">no runs</span>;
+  }
+
+  const w = 80;
+  const h = 16;
+  const dotR = 3;
+  const gap = w / (recent.length + 1);
+
+  return (
+    <div className="inline-flex items-center gap-1.5" title={`Last ${recent.length} runs`}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block">
+        {recent.map((run, i) => {
+          const cx = gap * (i + 1);
+          const cy = h / 2;
+          let fill: string;
+          if (run.error) {
+            fill = "var(--color-status-critical)";
+          } else if (run.issue_detected) {
+            fill = "var(--color-status-high)";
+          } else {
+            fill = "var(--color-status-low)";
+          }
+          return (
+            <circle key={run.id} cx={cx} cy={cy} r={dotR} fill={fill} opacity={0.9}>
+              <title>
+                {new Date(run.ran_at).toLocaleString()}
+                {run.error ? ` (error: ${run.error})` : run.issue_detected ? " (issue)" : " (ok)"}
+              </title>
+            </circle>
+          );
+        })}
+      </svg>
+      <span className="text-[10px] text-fg-muted tabular-nums">{recent.length}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status indicator per rule
+// ---------------------------------------------------------------------------
+
+function StatusIndicator({
+  rule,
+  runningId,
+}: {
+  rule: DetectorRuleResponse;
+  runningId: string | null;
+}) {
+  const isRunning = runningId === rule.id;
+
+  if (isRunning) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-accent font-medium">
+        <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+        Running
+      </span>
+    );
+  }
+
+  if (!rule.is_active) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted">
+        <Pause size={12} className="text-fg-muted" />
+        Paused
+      </span>
+    );
+  }
+
+  if (rule.last_ran_at) {
+    const msSince = Date.now() - new Date(rule.last_ran_at).getTime();
+    const overdue = msSince > rule.interval_seconds * 1000 * 2;
+
+    if (overdue) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-status-high font-medium">
+          <AlertTriangle size={12} />
+          Overdue
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-status-low">
+        <CheckCircle2 size={12} />
+        Idle
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted">
+      <span className="h-2 w-2 rounded-full bg-fg-muted" />
+      Waiting
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DetectorModal (unchanged logic, visual tweaks)
+// ---------------------------------------------------------------------------
 
 function DetectorModal({
   open,
@@ -354,24 +478,44 @@ function HistoryModal({
             history.map((item) => (
               <div
                 key={item.id}
-                className="rounded-xl border border-border-subtle bg-bg-elevated p-4"
+                className={`rounded-xl border p-4 ${
+                  item.error
+                    ? "border-status-critical-border bg-status-critical-bg/20"
+                    : item.issue_detected
+                      ? "border-status-high-border bg-status-high-bg/20"
+                      : "border-border-subtle bg-bg-elevated"
+                }`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <Badge variant={item.issue_detected ? "high" : "default"}>
-                      {item.issue_detected ? "issue detected" : "no issue"}
-                    </Badge>
-                    {item.error && <Badge variant="rejected">error</Badge>}
+                    {item.error ? (
+                      <Badge variant="rejected">error</Badge>
+                    ) : item.issue_detected ? (
+                      <Badge variant="high">issue detected</Badge>
+                    ) : (
+                      <Badge variant="approved">no issue</Badge>
+                    )}
+                    {item.duration_ms != null && (
+                      <span className="text-[10px] text-fg-muted font-mono tabular-nums bg-bg-elevated rounded px-1.5 py-0.5">
+                        {item.duration_ms}ms
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-fg-secondary">{fmtDate(item.ran_at)}</p>
+                  <p className="text-xs text-fg-secondary tabular-nums font-mono">{fmtDate(item.ran_at)}</p>
                 </div>
-                <div className="mt-2 grid grid-cols-3 gap-3 text-xs text-fg-secondary">
-                  <div>Duration: {item.duration_ms ?? 0}ms</div>
-                  <div>Incident: {item.incident_id ? `${item.incident_id.slice(0, 8)}…` : "none"}</div>
-                  <div>Error: {item.error ?? "none"}</div>
-                </div>
+                {item.incident_id && (
+                  <p className="mt-2 text-xs text-fg-secondary">
+                    <span className="text-fg-muted">Incident:</span>{" "}
+                    <span className="font-mono">{item.incident_id.slice(0, 8)}…</span>
+                  </p>
+                )}
+                {item.error && (
+                  <p className="mt-2 text-xs text-status-critical">
+                    {item.error}
+                  </p>
+                )}
                 {item.raw_verdict && (
-                  <pre className="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-panel p-3 text-xs text-fg-primary">
+                  <pre className="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-base p-3 text-xs text-fg-primary font-mono leading-relaxed">
                     {JSON.stringify(item.raw_verdict, null, 2)}
                   </pre>
                 )}
@@ -401,6 +545,8 @@ export default function DetectorsPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<DetectorHistoryResponse[]>([]);
   const [runningId, setRunningId] = useState<string | null>(null);
+  // Per-rule sparkline history (loaded in bulk)
+  const [sparklineData, setSparklineData] = useState<Record<string, DetectorHistoryResponse[]>>({});
   const toast = useToast();
 
   const templateMap = useMemo(
@@ -421,6 +567,20 @@ export default function DetectorsPage() {
       setTemplates(templateRes.items);
       setServers(serverRes.items.filter((item) => item.is_active));
       setModels(modelRes.items);
+
+      // Fetch sparkline history for each rule (last 10 runs)
+      const sparklines: Record<string, DetectorHistoryResponse[]> = {};
+      await Promise.allSettled(
+        ruleRes.items.map(async (rule) => {
+          try {
+            const hist = await listDetectorHistory(rule.id);
+            sparklines[rule.id] = hist.items.slice(0, 10);
+          } catch {
+            sparklines[rule.id] = [];
+          }
+        }),
+      );
+      setSparklineData(sparklines);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load detectors");
     } finally {
@@ -491,6 +651,10 @@ export default function DetectorsPage() {
     }
   }
 
+  // Summary counts
+  const activeCount = rules.filter((r) => r.is_active).length;
+  const inactiveCount = rules.length - activeCount;
+
   if (loading) {
     return (
       <div className="mx-auto max-w-7xl space-y-8">
@@ -503,12 +667,16 @@ export default function DetectorsPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-fg-primary">Detectors</h1>
-          <p className="mt-1 max-w-3xl text-sm text-fg-secondary">
-            Turn MCP servers into incident sources with scheduled observation-only
-            rules. Start from a built-in template or write a custom prompt.
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-accent-bg border border-status-info-border">
+            <Activity size={18} className="text-accent" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold text-fg-primary">Detectors</h1>
+            <p className="mt-0.5 text-sm text-fg-secondary">
+              {rules.length} rules · {activeCount} active · {inactiveCount} paused
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={load}>
@@ -524,16 +692,18 @@ export default function DetectorsPage() {
         </div>
       </div>
 
+      {/* Built-in templates */}
       <section className="rounded-2xl border border-border-subtle bg-bg-panel p-5 shadow-sm">
         <div className="mb-4 flex items-center gap-2">
-          <Activity size={16} className="text-accent" />
+          <Zap size={16} className="text-accent" />
           <h2 className="text-sm font-semibold text-fg-primary">Built-in templates</h2>
+          <span className="text-xs text-fg-muted ml-1">{templates.length} available</span>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {templates.map((tpl) => (
             <div
               key={tpl.key}
-              className="rounded-xl border border-border-subtle bg-bg-elevated p-4"
+              className="rounded-xl border border-border-subtle bg-bg-elevated p-4 hover:border-border-strong transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -542,14 +712,15 @@ export default function DetectorsPage() {
                 </div>
                 <Badge variant={tpl.severity_default}>{tpl.severity_default}</Badge>
               </div>
-              <p className="mt-3 text-xs text-fg-secondary">
-                Suggested interval: {fmtInterval(tpl.interval_seconds)}
+              <p className="mt-3 text-xs text-fg-muted tabular-nums font-mono">
+                interval: {fmtInterval(tpl.interval_seconds)}
               </p>
             </div>
           ))}
         </div>
       </section>
 
+      {/* Detector rules table */}
       <section className="rounded-2xl border border-border-subtle bg-bg-panel shadow-sm">
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
           <div>
@@ -568,13 +739,14 @@ export default function DetectorsPage() {
                 <th className="px-5 py-3">Severity</th>
                 <th className="px-5 py-3">Last Run</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">Recent Runs</th>
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-6">
+                  <td colSpan={8} className="p-6">
                     <EmptyState
                       icon={Activity}
                       title="No detector rules yet"
@@ -595,14 +767,20 @@ export default function DetectorsPage() {
                 const server = servers.find((item) => item.id === rule.mcp_server_id);
                 const model = models.find((item) => item.id === rule.model_config_id);
                 const template = templateMap.get(rule.prompt_template);
+                const ruleSparkline = sparklineData[rule.id] ?? [];
                 return (
-                  <tr key={rule.id} className="align-top">
+                  <tr
+                    key={rule.id}
+                    className={`align-top transition-colors ${
+                      !rule.is_active ? "opacity-60" : "hover:bg-bg-elevated"
+                    }`}
+                  >
                     <td className="px-5 py-4">
                       <div className="space-y-1">
                         <p className="font-medium text-fg-primary">{rule.name}</p>
                         <p className="max-w-md text-xs text-fg-secondary">
                           {template?.label ?? "Custom template"}
-                          {model ? ` • model: ${model.name}` : " • default model"}
+                          {model ? ` · model: ${model.name}` : " · default model"}
                         </p>
                         <p className="max-w-xl line-clamp-2 text-xs text-fg-muted">
                           {rule.prompt_template}
@@ -612,22 +790,23 @@ export default function DetectorsPage() {
                     <td className="px-5 py-4 text-sm text-fg-secondary">
                       {server?.name ?? rule.mcp_server_id.slice(0, 8)}
                     </td>
-                    <td className="px-5 py-4 text-sm text-fg-secondary">
+                    <td className="px-5 py-4 text-sm text-fg-secondary tabular-nums font-mono">
                       {fmtInterval(rule.interval_seconds)}
                     </td>
                     <td className="px-5 py-4">
                       <Badge variant={rule.severity_default}>{rule.severity_default}</Badge>
                     </td>
-                    <td className="px-5 py-4 text-sm text-fg-secondary">
-                      <div>{fmtDate(rule.last_ran_at)}</div>
-                      <div className="mt-1 text-xs text-fg-muted">
-                        {rule.last_fingerprint ? `fp: ${rule.last_fingerprint}` : "no fingerprint"}
+                    <td className="px-5 py-4">
+                      <div className="text-sm text-fg-secondary">{fmtDate(rule.last_ran_at)}</div>
+                      <div className="mt-0.5 text-[10px] text-fg-muted tabular-nums font-mono">
+                        {timeSince(rule.last_ran_at)}
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <Badge variant={rule.is_active ? "approved" : "paused"}>
-                        {rule.is_active ? "active" : "inactive"}
-                      </Badge>
+                      <StatusIndicator rule={rule} runningId={runningId} />
+                    </td>
+                    <td className="px-5 py-4">
+                      <RunSparkline history={ruleSparkline} />
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-2">

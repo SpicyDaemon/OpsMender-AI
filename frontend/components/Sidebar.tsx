@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -77,9 +78,13 @@ export function Sidebar() {
     >
       {/* Brand */}
       <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-4 h-16">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-bg text-accent text-sm font-bold tracking-tight">
-          A
-        </div>
+        <Image
+          src="/logo.png"
+          alt="AIM"
+          width={32}
+          height={32}
+          className="shrink-0 rounded-md"
+        />
         {!collapsed && (
           <div className="min-w-0 leading-tight">
             <p className="text-sm font-semibold text-fg-primary tracking-tight">AIM</p>

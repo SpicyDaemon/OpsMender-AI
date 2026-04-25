@@ -30,6 +30,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     TypeDecorator,
@@ -512,3 +513,121 @@ class DetectorHistory(Base):
     )
     raw_verdict: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# SLA Targets (Sprint 25)
+# ---------------------------------------------------------------------------
+
+class SLATarget(Base):
+    """Reliability tracking target (HTTP, TCP, or externally ingested)."""
+    __tablename__ = "sla_targets"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(50), nullable=False)  # http | tcp | external
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # url, method, expected_status, etc.
+    owner_team: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Uptime Samples (Sprint 25)
+# ---------------------------------------------------------------------------
+
+class UptimeSample(Base):
+    """Raw availability probes for SLA targets."""
+    __tablename__ = "uptime_samples"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    target_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("sla_targets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
+    )
+    up: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)  # poller | ingest
+    suppressed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class UptimeSample5m(Base):
+    """5-minute downsampled availability probes."""
+    __tablename__ = "uptime_samples_5m"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    target_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("sla_targets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    bucket_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    up_pct: Mapped[float] = mapped_column(Numeric(5, 4, asdecimal=False), nullable=False)
+    total_samples: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class UptimeSample1h(Base):
+    """1-hour downsampled availability probes."""
+    __tablename__ = "uptime_samples_1h"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    target_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("sla_targets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    bucket_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    up_pct: Mapped[float] = mapped_column(Numeric(5, 4, asdecimal=False), nullable=False)
+    total_samples: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# SLOs (Sprint 25)
+# ---------------------------------------------------------------------------
+
+class SLO(Base):
+    """Service Level Objectives linked to an SLA Target."""
+    __tablename__ = "slos"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    target_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("sla_targets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    objective_pct: Mapped[float] = mapped_column(Numeric(5, 4, asdecimal=False), nullable=False)
+    window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    burn_alert_threshold: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Maintenance Windows (Sprint 25)
+# ---------------------------------------------------------------------------
+
+class MaintenanceWindow(Base):
+    """Scheduled downtime suppressing SLA hits."""
+    __tablename__ = "maintenance_windows"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    rrule: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)  # UUIDs as strings
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

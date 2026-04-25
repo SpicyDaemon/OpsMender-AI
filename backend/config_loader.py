@@ -163,6 +163,14 @@ class DetectorConfig:
 
 
 @dataclasses.dataclass
+class SLAConfig:
+    """SLA polling settings."""
+
+    poller_enabled: bool = False
+    poll_interval_default: int = 60
+
+
+@dataclasses.dataclass
 class Tier0Config:
     """Tier 0 sandbox hard time limits (Sprint 17)."""
 
@@ -261,6 +269,7 @@ class AppConfig:
     approvals: ApprovalConfig
     ingest: IngestConfig
     detector: DetectorConfig
+    sla: SLAConfig
     tier0: "Tier0Config"
     app: AppSettings
     db: DatabaseConfig
@@ -315,6 +324,10 @@ class AppConfig:
             max_runs_per_hour=_env_int(env, "AIM_DETECTOR_MAX_RUNS_PER_HOUR", 12),
             budget=_env_int(env, "AIM_DETECTOR_BUDGET", 500),
         )
+        sla = SLAConfig(
+            poller_enabled=_env_bool(env, "AIM_SLA_POLLER_ENABLED", False),
+            poll_interval_default=_env_int(env, "AIM_SLA_POLL_INTERVAL_DEFAULT", 60),
+        )
         tier0 = Tier0Config(
             max_session_seconds=_env_int(
                 env, "AIM_TIER0_MAX_SESSION_SECONDS", 600
@@ -330,6 +343,7 @@ class AppConfig:
             approvals=approvals,
             ingest=ingest,
             detector=detector,
+            sla=sla,
             tier0=tier0,
             app=app,
             db=DatabaseConfig(

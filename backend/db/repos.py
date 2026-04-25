@@ -38,6 +38,10 @@ from backend.db.models import (
     User,
     WebhookTrigger,
     WorkflowProfile,
+    SLATarget,
+    UptimeSample,
+    SLO,
+    MaintenanceWindow,
 )
 
 
@@ -1577,6 +1581,97 @@ class DetectorHistoryRepo:
             .order_by(DetectorHistory.ran_at.desc())
             .limit(limit)
             .offset(offset)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+
+# ---------------------------------------------------------------------------
+# SLA Targets
+# ---------------------------------------------------------------------------
+
+class SLATargetRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        kind: str,
+        config: dict[str, Any] | None = None,
+        owner_team: str | None = None,
+        is_active: bool = True,
+    ) -> SLATarget:
+        target = SLATarget(
+            name=name,
+            kind=kind,
+            config=config,
+            owner_team=owner_team,
+            is_active=is_active,
+        )
+        db.add(target)
+        await db.flush()
+        return target
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession, *, active_only: bool = False
+    ) -> Sequence[SLATarget]:
+        stmt = select(SLATarget).order_by(SLATarget.created_at)
+        if active_only:
+            stmt = stmt.where(SLATarget.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, target_id: uuid.UUID) -> SLATarget | None:
+        return await db.get(SLATarget, target_id)
+
+
+# ---------------------------------------------------------------------------
+# Uptime Samples
+# ---------------------------------------------------------------------------
+
+class UptimeSampleRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        target_id: uuid.UUID,
+        up: bool,
+        latency_ms: int | None = None,
+        source: str = "poller",
+        suppressed: bool = False,
+    ) -> UptimeSample:
+        sample = UptimeSample(
+            target_id=target_id,
+            up=up,
+            latency_ms=latency_ms,
+            source=source,
+            suppressed=suppressed,
+        )
+        db.add(sample)
+        await db.flush()
+        return sample
+
+
+# ---------------------------------------------------------------------------
+# Maintenance Windows
+# ---------------------------------------------------------------------------
+
+class MaintenanceWindowRepo:
+
+    @staticmethod
+    async def list_active_at(
+        db: AsyncSession, dt: datetime
+    ) -> Sequence[MaintenanceWindow]:
+        """Return all maintenance windows active exactly at `dt`.
+        For v1, we simply check starts_at <= dt <= ends_at. RRULE is omitted from this quick check for now.
+        """
+        stmt = select(MaintenanceWindow).where(
+            MaintenanceWindow.starts_at <= dt,
+            MaintenanceWindow.ends_at >= dt,
         )
         result = await db.execute(stmt)
         return result.scalars().all()

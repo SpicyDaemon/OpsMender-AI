@@ -22,6 +22,7 @@ from backend.db.engine import get_engine, get_session_factory, resolve_database_
 from backend.detector.runner import DetectorBudgetGuard
 from backend.detector.scheduler import DetectorScheduler
 from backend.mcp.pool import MCPServerPool
+from backend.sla.poller import SLAPoller
 from backend.skills.importer import auto_import as auto_import_skills
 
 
@@ -62,6 +63,11 @@ async def _lifespan(app: FastAPI):
     if config.detector.enabled:
         await scheduler.start()
 
+    sla_poller = SLAPoller(factory, config)
+    app.state.sla_poller = sla_poller
+    if config.sla.poller_enabled:
+        await sla_poller.start()
+
     # Import any SKILL.md files under ./skills/ that aren't already in the DB.
     # Best-effort: failures are logged but do not block startup.
     try:
@@ -88,6 +94,7 @@ async def _lifespan(app: FastAPI):
         import asyncio
         await asyncio.gather(*background_tasks, return_exceptions=True)
 
+    await sla_poller.stop()
     await scheduler.stop()
     await engine.dispose()
 

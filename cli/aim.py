@@ -448,7 +448,7 @@ async def _run_check(cfg: Config) -> int:
 def _format_entry(entry: AuditEntry) -> str:
     """Format a single audit entry as a human-readable line."""
     ts = entry.timestamp[:19].replace("T", " ")  # trim to seconds
-    status = "\u2713" if entry.permitted else "\u2717"
+    status = "PASS" if entry.permitted else "FAIL"
     etype = entry.entry_type.value
     tool = entry.tool_name or "-"
     duration = f"{entry.duration_ms}ms" if entry.duration_ms is not None else "-"
@@ -794,7 +794,7 @@ def _run_config(cfg: Config, args: argparse.Namespace) -> int:
     print(f"MCP servers: {len(cfg.mcp_servers)}")
     for s in cfg.mcp_servers:
         detail = s.command if s.transport == "stdio" else s.url
-        print(f"  - {s.name} ({s.transport}) → {detail}")
+        print(f"  - {s.name} ({s.transport}) -> {detail}")
     if not cfg.mcp_servers:
         print("  (none configured)")
     return 0
@@ -840,7 +840,7 @@ def _validate_config(cfg: Config, args: argparse.Namespace) -> int:
     if errors:
         print("Validation FAILED:\n")
         for err in errors:
-            print(f"  ✗ {err}")
+            print(f"  x {err}")
         return 1
 
     print("Validation OK — configuration is valid.")
@@ -1082,7 +1082,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             tool_caller=tier0_sandbox.call_tool if tier0_sandbox is not None else None,
         )
 
-        print("Running workflow: observe → diagnose → plan → tier_gate → execute → verify → summarize\n")
+        print("Running workflow: observe -> diagnose -> plan -> tier_gate -> execute -> verify -> summarize\n")
 
         initial_state = {
             "session_id": session_id,
@@ -1146,24 +1146,27 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         # 9. Log session end
         audit_logger.log_session_end(session_id, tier)
         if session_factory is not None:
-            async with session_factory() as db:
-                final_status = result.get("status", "completed")
-                if final_status == "timed_out":
-                    await SessionRepo.set_status(
-                        db,
-                        uuid.UUID(session_id),
-                        status="timed_out",
-                        summary=result.get("summary"),
-                        ended_at=datetime.now(timezone.utc),
-                    )
-                else:
-                    await SessionRepo.end_session(
-                        db,
-                        uuid.UUID(session_id),
-                        status=final_status,
-                        summary=result.get("summary"),
-                    )
-                await db.commit()
+            try:
+                async with session_factory() as db:
+                    final_status = result.get("status", "completed")
+                    if final_status == "timed_out":
+                        await SessionRepo.set_status(
+                            db,
+                            uuid.UUID(session_id),
+                            status="timed_out",
+                            summary=result.get("summary"),
+                            ended_at=datetime.now(timezone.utc),
+                        )
+                    else:
+                        await SessionRepo.end_session(
+                            db,
+                            uuid.UUID(session_id),
+                            status=final_status,
+                            summary=result.get("summary"),
+                        )
+                    await db.commit()
+            except Exception:
+                pass  # DB may not have tables (e.g. local SQLite without migrations)
 
         # 10. Display results
         _print_result(result)
@@ -1181,14 +1184,17 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     except Exception as exc:
         audit_logger.log_session_end(session_id, tier)
         if session_factory is not None:
-            async with session_factory() as db:
-                await SessionRepo.end_session(
-                    db,
-                    uuid.UUID(session_id),
-                    status="failed",
-                    summary=str(exc),
-                )
-                await db.commit()
+            try:
+                async with session_factory() as db:
+                    await SessionRepo.end_session(
+                        db,
+                        uuid.UUID(session_id),
+                        status="failed",
+                        summary=str(exc),
+                    )
+                    await db.commit()
+            except Exception:
+                pass  # DB may not have tables
         print(f"\nWorkflow failed: {exc}", file=sys.stderr)
         return 1
     finally:

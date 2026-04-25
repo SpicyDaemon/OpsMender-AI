@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AIM Frontend
+
+This is the Next.js dashboard for the AI Incident Manager.
+
+**Important Note:** As of Sprint 13, AIM is a unified single-container application. We do not run the frontend and backend on separate ports in production or dev. The Python backend (FastAPI) automatically serves the statically exported Next.js frontend.
 
 ## Getting Started
 
-First, run the development server:
+Do **not** use `npm run dev` to start the web server on port 3000. 
+
+To run the full stack (frontend + backend API endpoints), use the unified dev server from the project root:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd ..
+uv run python scripts/dev_server.py
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This will start the backend on port `8000`, and it will serve both the API endpoints and the frontend dashboard at [http://localhost:8000](http://localhost:8000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Building the Frontend
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+When you make changes to the React code, you must rebuild the static export so the backend can serve the new files:
 
-## Learn More
+```bash
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This compiles the Next.js application into static HTML/JS/CSS inside the `frontend/out/` directory, which FastAPI then mounts and serves.

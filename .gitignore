@@ -29,6 +29,9 @@ logs/
 # AI Agent Files
 .claude/
 .codex/
+.gemini/
+.anthropic/
+
 
 # local DB Files
 *.db

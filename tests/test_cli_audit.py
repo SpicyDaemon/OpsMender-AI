@@ -101,7 +101,7 @@ class TestAuditShowAll:
         with pytest.raises(SystemExit) as exc_info:
             main(["--config", str(cfg), "audit"])
         out = capsys.readouterr().out
-        assert "\u2717" in out  # ✗
+        assert "FAIL" in out  # blocked entries show FAIL marker
 
 
 class TestAuditLastN:

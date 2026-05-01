@@ -314,6 +314,64 @@ export interface MCPServerTestResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Bot Connectors
+// ---------------------------------------------------------------------------
+
+export type BotConnectorPlatform = "telegram" | "signal" | "whatsapp" | "custom";
+
+export type BotConnectorCapability =
+  | "incident_lookup"
+  | "session_status"
+  | "approvals"
+  | "copilot_chat"
+  | "notifications";
+
+export type BotConnectorStatus =
+  | "not_configured"
+  | "configured"
+  | "healthy"
+  | "error"
+  | "disabled";
+
+export interface BotConnectorResponse {
+  id: string;
+  name: string;
+  platform: BotConnectorPlatform;
+  config: Record<string, unknown> | null;
+  allowed_capabilities: BotConnectorCapability[];
+  status: BotConnectorStatus;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  last_checked_at: string | null;
+  last_error: string | null;
+  credential_keys: string[];
+  has_credentials: boolean;
+}
+
+export interface BotConnectorListResponse {
+  items: BotConnectorResponse[];
+  total: number;
+}
+
+export interface BotConnectorUpsert {
+  name: string;
+  platform: BotConnectorPlatform;
+  config?: Record<string, unknown> | null;
+  credentials?: Record<string, string> | null;
+  clear_credentials?: boolean;
+  allowed_capabilities: BotConnectorCapability[];
+  status?: BotConnectorStatus;
+  is_enabled?: boolean;
+}
+
+export interface BotConnectorTestResponse {
+  success: boolean;
+  detail: string;
+  status: BotConnectorStatus;
+}
+
+// ---------------------------------------------------------------------------
 // Webhook Triggers
 // ---------------------------------------------------------------------------
 

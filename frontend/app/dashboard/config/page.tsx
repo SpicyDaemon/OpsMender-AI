@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ComponentProps } from "react";
 import { useCallback, useEffect, useState } from "react";
 import {
   Bell,
@@ -19,12 +20,14 @@ import {
 } from "lucide-react";
 import {
   createAgentTeamProfile,
+  createBotConnector,
   createIngestToken,
   createMCPServer,
   createModelConfig,
   createWebhookTrigger,
   createWorkflowProfile,
   deleteAgentTeamProfile,
+  deleteBotConnector,
   deleteIngestToken,
   deleteMCPServer,
   deleteModelConfig,
@@ -33,6 +36,7 @@ import {
   getConfig,
   getModelBootstrapStatus,
   listAgentTeamProfiles,
+  listBotConnectors,
   listIngestProviders,
   listIngestTokens,
   listMCPServers,
@@ -43,8 +47,10 @@ import {
   revokeIngestToken,
   setDefaultModelConfig,
   testMCPServer,
+  testBotConnector,
   testWebhookTrigger,
   updateAgentTeamProfile,
+  updateBotConnector,
   updateConfig,
   updateMCPServer,
   updateModelConfigById,
@@ -55,6 +61,12 @@ import type {
   AgentRole,
   AgentTeamProfileResponse,
   AgentTeamProfileUpsert,
+  BotConnectorCapability,
+  BotConnectorPlatform,
+  BotConnectorResponse,
+  BotConnectorStatus,
+  BotConnectorTestResponse,
+  BotConnectorUpsert,
   ConfigResponse,
   IngestProviderItem,
   IngestTokenCreate,
@@ -114,6 +126,7 @@ type ConfigTabId =
   | "skills"
   | "detectors"
   | "ingest"
+  | "integrations"
   | "webhooks"
   | "workflows"
   | "agent-teams";
@@ -152,6 +165,11 @@ const CONFIG_TABS: Array<{
     id: "ingest",
     label: "Ingest",
     blurb: "Webhook tokens and ingest auto-start rules.",
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    blurb: "External chat bot connector setup.",
   },
   {
     id: "webhooks",
@@ -1534,6 +1552,653 @@ function MCPSection({
         saving={saving}
         error={error}
         initialServer={editing}
+      />
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bot Connectors
+// ---------------------------------------------------------------------------
+
+const BOT_CAPABILITY_OPTIONS: Array<{
+  value: BotConnectorCapability;
+  label: string;
+}> = [
+  { value: "incident_lookup", label: "Incident lookup" },
+  { value: "session_status", label: "Session status" },
+  { value: "approvals", label: "Approvals" },
+  { value: "copilot_chat", label: "Co-pilot chat" },
+  { value: "notifications", label: "Notifications" },
+];
+
+const BOT_STATUS_VARIANTS: Record<BotConnectorStatus, ComponentProps<typeof Badge>["variant"]> = {
+  not_configured: "closed",
+  configured: "info",
+  healthy: "resolved",
+  error: "failed",
+  disabled: "closed",
+};
+
+type CredentialMode = "keep" | "replace" | "clear";
+
+type BotConnectorFormState = {
+  name: string;
+  platform: BotConnectorPlatform;
+  configText: string;
+  credentialsText: string;
+  credentialMode: CredentialMode;
+  allowed_capabilities: BotConnectorCapability[];
+  status: BotConnectorStatus;
+  is_enabled: boolean;
+};
+
+function formatJson(value: Record<string, unknown> | null): string {
+  if (!value || Object.keys(value).length === 0) return "";
+  return JSON.stringify(value, null, 2);
+}
+
+function createBotConnectorFormState(
+  current?: BotConnectorResponse | null,
+): BotConnectorFormState {
+  return {
+    name: current?.name ?? "",
+    platform: current?.platform ?? "telegram",
+    configText: formatJson(current?.config ?? null),
+    credentialsText: "",
+    credentialMode: current?.has_credentials ? "keep" : "replace",
+    allowed_capabilities: current?.allowed_capabilities ?? [
+      "incident_lookup",
+      "session_status",
+      "notifications",
+    ],
+    status: current?.status ?? "not_configured",
+    is_enabled: current?.is_enabled ?? true,
+  };
+}
+
+function parseJsonObject(
+  text: string,
+  label: string,
+): { value?: Record<string, unknown> | null; error?: string } {
+  if (!text.trim()) return { value: null };
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      return { error: `${label} must be a JSON object.` };
+    }
+    return { value: parsed as Record<string, unknown> };
+  } catch {
+    return { error: `${label} must be valid JSON.` };
+  }
+}
+
+function parseKeyValueSecrets(
+  text: string,
+): { value?: Record<string, string> | null; error?: string } {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return { value: null };
+  const value: Record<string, string> = {};
+  for (const line of lines) {
+    const eq = line.indexOf("=");
+    if (eq <= 0) {
+      return { error: `Credential line "${line}" must be key=value.` };
+    }
+    const key = line.slice(0, eq).trim();
+    const secret = line.slice(eq + 1);
+    if (!key) return { error: `Credential line "${line}" is missing a key.` };
+    value[key] = secret;
+  }
+  return { value };
+}
+
+function buildBotConnectorPayload(
+  form: BotConnectorFormState,
+): { payload?: BotConnectorUpsert; error?: string } {
+  if (!form.name.trim()) return { error: "Name is required." };
+  if (form.allowed_capabilities.length === 0) {
+    return { error: "Select at least one allowed capability." };
+  }
+
+  const config = parseJsonObject(form.configText, "Config");
+  if (config.error) return { error: config.error };
+
+  const payload: BotConnectorUpsert = {
+    name: form.name.trim(),
+    platform: form.platform,
+    config: config.value ?? null,
+    allowed_capabilities: form.allowed_capabilities,
+    status: form.status,
+    is_enabled: form.is_enabled,
+  };
+
+  if (form.credentialMode === "clear") {
+    payload.clear_credentials = true;
+  } else if (form.credentialMode === "replace") {
+    const credentials = parseKeyValueSecrets(form.credentialsText);
+    if (credentials.error) return { error: credentials.error };
+    if (credentials.value) payload.credentials = credentials.value;
+  }
+
+  return { payload };
+}
+
+function BotConnectorModal({
+  open,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+  initialConnector,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (form: BotConnectorFormState) => Promise<void>;
+  saving: boolean;
+  error: string;
+  initialConnector: BotConnectorResponse | null;
+}) {
+  const [form, setForm] = useState<BotConnectorFormState>(() =>
+    createBotConnectorFormState(initialConnector),
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setForm(createBotConnectorFormState(initialConnector));
+  }, [open, initialConnector]);
+
+  function setField<K extends keyof BotConnectorFormState>(
+    key: K,
+    value: BotConnectorFormState[K],
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleCapability(capability: BotConnectorCapability) {
+    setForm((current) => {
+      const hasCapability = current.allowed_capabilities.includes(capability);
+      return {
+        ...current,
+        allowed_capabilities: hasCapability
+          ? current.allowed_capabilities.filter((item) => item !== capability)
+          : [...current.allowed_capabilities, capability],
+      };
+    });
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await onSubmit(form);
+  }
+
+  const hasExistingCredentials = Boolean(initialConnector?.has_credentials);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={initialConnector ? "Edit Bot Connector" : "Add Bot Connector"}
+      maxWidth="max-w-2xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="bot-name">Name</Label>
+            <Input
+              id="bot-name"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              placeholder="telegram-ops"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="bot-platform">Platform</Label>
+            <Select
+              id="bot-platform"
+              value={form.platform}
+              onChange={(e) => setField("platform", e.target.value as BotConnectorPlatform)}
+            >
+              <option value="telegram">Telegram</option>
+              <option value="signal">Signal</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="custom">Custom</option>
+            </Select>
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="bot-config">Config JSON</Label>
+          <Textarea
+            id="bot-config"
+            rows={5}
+            value={form.configText}
+            onChange={(e) => setField("configText", e.target.value)}
+            placeholder={'{\n  "default_chat_id": "-100123"\n}'}
+            className="font-mono text-xs"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="bot-credentials">Credentials (key=value, one per line)</Label>
+          {hasExistingCredentials && form.credentialMode === "keep" ? (
+            <div className="flex items-center gap-3 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-secondary">
+              <span className="font-mono tracking-widest">********</span>
+              <span className="text-xs text-fg-muted">
+                saved keys: {initialConnector?.credential_keys.join(", ")}
+              </span>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setField("credentialMode", "replace")}
+                >
+                  Replace
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setField("credentialMode", "clear")}
+                >
+                  Remove
+                </Button>
+              </div>
+            </div>
+          ) : form.credentialMode === "clear" ? (
+            <div className="flex items-center justify-between rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-sm text-status-critical">
+              <span>Credentials will be removed on save.</span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setField("credentialMode", "keep")}
+              >
+                Undo
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Textarea
+                id="bot-credentials"
+                rows={4}
+                value={form.credentialsText}
+                onChange={(e) => setField("credentialsText", e.target.value)}
+                placeholder="bot_token=..."
+                className="font-mono text-xs"
+              />
+              {hasExistingCredentials && (
+                <button
+                  type="button"
+                  className="mt-1 text-xs text-fg-secondary underline-offset-2 hover:text-fg-primary hover:underline"
+                  onClick={() => setField("credentialMode", "keep")}
+                >
+                  Keep existing credentials
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        <div>
+          <Label>Allowed Capabilities</Label>
+          <div className="grid gap-2 md:grid-cols-2">
+            {BOT_CAPABILITY_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className="flex items-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-primary"
+              >
+                <input
+                  type="checkbox"
+                  checked={form.allowed_capabilities.includes(option.value)}
+                  onChange={() => toggleCapability(option.value)}
+                  className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="bot-status">Status</Label>
+            <Select
+              id="bot-status"
+              value={form.status}
+              onChange={(e) => setField("status", e.target.value as BotConnectorStatus)}
+            >
+              <option value="not_configured">Not configured</option>
+              <option value="configured">Configured</option>
+              <option value="healthy">Healthy</option>
+              <option value="error">Error</option>
+              <option value="disabled">Disabled</option>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <label className="inline-flex items-center gap-2 text-sm text-fg-primary">
+              <input
+                type="checkbox"
+                checked={form.is_enabled}
+                onChange={(e) => setField("is_enabled", e.target.checked)}
+                className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+              />
+              Enabled for chat workflows
+            </label>
+          </div>
+        </div>
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={!form.name.trim() || form.allowed_capabilities.length === 0}
+          >
+            <Save size={13} /> {initialConnector ? "Save Changes" : "Create Connector"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+type BotConnectorTestState = {
+  status: "idle" | "running" | "success" | "failure";
+  result?: BotConnectorTestResponse;
+};
+
+function BotConnectorTestPill({ state }: { state: BotConnectorTestState }) {
+  if (state.status === "idle") return null;
+  if (state.status === "running") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-elevated px-2 py-0.5 text-xs text-fg-secondary">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+        Testing...
+      </span>
+    );
+  }
+  if (state.status === "success") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-status-low-border bg-status-low-bg px-2 py-0.5 text-xs text-status-low"
+        title={state.result?.detail}
+      >
+        <CheckCircle2 size={12} /> Ready
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-status-critical-border bg-status-critical-bg px-2 py-0.5 text-xs text-status-critical"
+      title={state.result?.detail}
+    >
+      <XCircle size={12} /> Failed
+    </span>
+  );
+}
+
+function BotConnectorSection({
+  connectors,
+  onReload,
+  canEdit,
+}: {
+  connectors: BotConnectorResponse[];
+  onReload: () => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<BotConnectorResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [testStates, setTestStates] = useState<Record<string, BotConnectorTestState>>({});
+
+  function openCreateModal() {
+    setEditing(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEditModal(connector: BotConnectorResponse) {
+    setEditing(connector);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setEditing(null);
+    setError("");
+  }
+
+  async function handleSubmit(form: BotConnectorFormState) {
+    const { payload, error: buildError } = buildBotConnectorPayload(form);
+    if (buildError || !payload) {
+      setError(buildError ?? "Invalid form values.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      if (editing) {
+        await updateBotConnector(editing.id, payload);
+        setNotice("Bot connector updated.");
+      } else {
+        await createBotConnector(payload);
+        setNotice("Bot connector created.");
+      }
+      setModalOpen(false);
+      setEditing(null);
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(connector: BotConnectorResponse) {
+    const confirmed = window.confirm(`Delete bot connector "${connector.name}"?`);
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    try {
+      await deleteBotConnector(connector.id);
+      setNotice("Bot connector deleted.");
+      setTestStates((current) => {
+        const next = { ...current };
+        delete next[connector.id];
+        return next;
+      });
+      await onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  async function handleTest(connector: BotConnectorResponse) {
+    setTestStates((current) => ({
+      ...current,
+      [connector.id]: { status: "running" },
+    }));
+    try {
+      const result = await testBotConnector(connector.id);
+      setTestStates((current) => ({
+        ...current,
+        [connector.id]: {
+          status: result.success ? "success" : "failure",
+          result,
+        },
+      }));
+      await onReload();
+    } catch (err) {
+      setTestStates((current) => ({
+        ...current,
+        [connector.id]: {
+          status: "failure",
+          result: {
+            success: false,
+            detail: err instanceof Error ? err.message : "Request failed",
+            status: "error",
+          },
+        },
+      }));
+    }
+  }
+
+  return (
+    <Section
+      title="Chat Bot Connectors"
+      description="Configure external chat channels for incident lookup, session status, approvals, co-pilot relay, and notifications."
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-fg-secondary">
+            {connectors.length} saved connector{connectors.length === 1 ? "" : "s"}
+          </p>
+          {!canEdit && (
+            <p className="text-sm text-fg-secondary">
+              Admin role required to manage chat bot connectors.
+            </p>
+          )}
+        </div>
+        <Button onClick={openCreateModal} disabled={!canEdit}>
+          <Plus size={14} /> Add Connector
+        </Button>
+      </div>
+
+      {error && <FormError message={error} />}
+      {notice && <p className="text-sm text-status-low">{notice}</p>}
+
+      {connectors.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+          No chat bot connectors yet. Add one to prepare Telegram, Signal, WhatsApp, or custom chat surfaces.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border-subtle">
+          <table className="min-w-full divide-y divide-border-subtle text-sm">
+            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+              <tr>
+                <th className="px-4 py-3">Connector</th>
+                <th className="px-4 py-3">Capabilities</th>
+                <th className="px-4 py-3">Credentials</th>
+                <th className="px-4 py-3">Health</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-subtle bg-bg-panel">
+              {connectors.map((connector) => {
+                const testState = testStates[connector.id] ?? { status: "idle" };
+                return (
+                  <tr
+                    key={connector.id}
+                    className={!connector.is_enabled ? "bg-bg-elevated opacity-70" : ""}
+                  >
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex items-center gap-2">
+                        <Plug size={14} className="text-fg-muted" />
+                        <span className="font-medium text-fg-primary">
+                          {connector.name}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Badge>{connector.platform}</Badge>
+                        <Badge variant={connector.is_enabled ? "resolved" : "closed"}>
+                          {connector.is_enabled ? "Enabled" : "Disabled"}
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex max-w-xs flex-wrap gap-1.5">
+                        {connector.allowed_capabilities.map((capability) => (
+                          <Badge key={capability}>
+                            {capability.replace(/_/g, " ")}
+                          </Badge>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      {connector.has_credentials ? (
+                        <p className="font-mono text-xs text-fg-secondary">
+                          {connector.credential_keys.join(", ")}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-fg-muted">No credentials stored.</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        <Badge variant={BOT_STATUS_VARIANTS[connector.status]}>
+                          {connector.status.replace(/_/g, " ")}
+                        </Badge>
+                        <BotConnectorTestPill state={testState} />
+                        <p className="text-xs text-fg-muted">
+                          Last checked: {formatRelativeTimestamp(connector.last_checked_at)}
+                        </p>
+                        {connector.last_error && (
+                          <p
+                            className="line-clamp-2 text-xs text-status-critical"
+                            title={connector.last_error}
+                          >
+                            {connector.last_error}
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleTest(connector)}
+                          loading={testState.status === "running"}
+                          disabled={!canEdit}
+                        >
+                          <Plug size={13} /> Test
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openEditModal(connector)}
+                          disabled={!canEdit}
+                        >
+                          <Pencil size={13} /> Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDelete(connector)}
+                          disabled={!canEdit}
+                        >
+                          <Trash2 size={13} /> Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <BotConnectorModal
+        open={modalOpen}
+        onClose={closeModal}
+        onSubmit={handleSubmit}
+        saving={saving}
+        error={error}
+        initialConnector={editing}
       />
     </Section>
   );
@@ -3474,6 +4139,7 @@ export default function ConfigPage() {
   const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
   const [modelBootstrap, setModelBootstrap] = useState<ModelBootstrapStatusResponse | null>(null);
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
+  const [botConnectors, setBotConnectors] = useState<BotConnectorResponse[]>([]);
   const [ingestTokens, setIngestTokens] = useState<IngestTokenResponse[]>([]);
   const [ingestProviderList, setIngestProviderList] = useState<IngestProviderItem[]>([]);
   const [webhookTriggers, setWebhookTriggers] = useState<WebhookTriggerResponse[]>([]);
@@ -3489,6 +4155,7 @@ export default function ConfigPage() {
       savedConfigs,
       bootstrapStatus,
       mcpList,
+      botConnectorList,
       tokenList,
       ipList,
       triggerList,
@@ -3501,6 +4168,7 @@ export default function ConfigPage() {
         listModelConfigs(),
         getModelBootstrapStatus(),
         listMCPServers(),
+        listBotConnectors().catch(() => ({ items: [], total: 0 })),
         listIngestTokens().catch(() => ({ items: [], total: 0 })),
         listIngestProviders().catch(() => ({ items: [] })),
         listWebhookTriggers().catch(() => ({ items: [], total: 0 })),
@@ -3512,6 +4180,7 @@ export default function ConfigPage() {
     setModelConfigs(savedConfigs.items);
     setModelBootstrap(bootstrapStatus);
     setMcpServers(mcpList.items);
+    setBotConnectors(botConnectorList.items);
     setIngestTokens(tokenList.items);
     setIngestProviderList(ipList.items);
     setWebhookTriggers(triggerList.items);
@@ -3555,6 +4224,10 @@ export default function ConfigPage() {
         ? `Auto-start from ${config.ingest_auto_start_min_severity}+`
         : "Auto-start disabled",
     },
+    integrations: {
+      stat: `${botConnectors.length} connector${botConnectors.length === 1 ? "" : "s"}`,
+      detail: `${botConnectors.filter((connector) => connector.is_enabled).length} enabled`,
+    },
     webhooks: {
       stat: `${webhookTriggers.length} trigger${webhookTriggers.length === 1 ? "" : "s"}`,
       detail: `${webhookTriggers.filter((trigger) => trigger.is_active).length} active`,
@@ -3574,7 +4247,7 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-2xl font-bold text-fg-primary">Config</h1>
         <p className="mt-1 text-sm text-fg-secondary">
-          Manage runtime defaults, ingest automation, saved model profiles, agent teams, workflow profiles, MCP server connections, outbound webhook triggers, and external ingest tokens.
+          Manage runtime defaults, ingest automation, saved model profiles, agent teams, workflow profiles, MCP server connections, chat bot connectors, outbound webhook triggers, and external ingest tokens.
         </p>
       </div>
 
@@ -3668,6 +4341,14 @@ export default function ConfigPage() {
       {activeTab === "webhooks" && (
         <WebhookTriggerSection
           triggers={webhookTriggers}
+          onReload={loadPageData}
+          canEdit={canEdit}
+        />
+      )}
+
+      {activeTab === "integrations" && (
+        <BotConnectorSection
+          connectors={botConnectors}
           onReload={loadPageData}
           canEdit={canEdit}
         />

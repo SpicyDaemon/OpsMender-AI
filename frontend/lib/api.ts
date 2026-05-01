@@ -390,6 +390,53 @@ export async function testMCPServer(
 }
 
 // ---------------------------------------------------------------------------
+// Bot Connectors
+// ---------------------------------------------------------------------------
+
+import type {
+  BotConnectorListResponse,
+  BotConnectorResponse,
+  BotConnectorTestResponse,
+  BotConnectorUpsert,
+} from "./types";
+
+export async function listBotConnectors(params?: {
+  platform?: string;
+  enabled_only?: boolean;
+}): Promise<BotConnectorListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.enabled_only !== undefined) {
+    qs.set("enabled_only", String(params.enabled_only));
+  }
+  const q = qs.toString();
+  return api.get<BotConnectorListResponse>(`/bot-connectors${q ? `?${q}` : ""}`);
+}
+
+export async function createBotConnector(
+  body: BotConnectorUpsert,
+): Promise<BotConnectorResponse> {
+  return api.post<BotConnectorResponse>("/bot-connectors", body);
+}
+
+export async function updateBotConnector(
+  id: string,
+  body: BotConnectorUpsert,
+): Promise<BotConnectorResponse> {
+  return api.put<BotConnectorResponse>(`/bot-connectors/${id}`, body);
+}
+
+export async function deleteBotConnector(id: string): Promise<void> {
+  return api.del<void>(`/bot-connectors/${id}`);
+}
+
+export async function testBotConnector(
+  id: string,
+): Promise<BotConnectorTestResponse> {
+  return api.post<BotConnectorTestResponse>(`/bot-connectors/${id}/test`);
+}
+
+// ---------------------------------------------------------------------------
 // Webhook Triggers
 // ---------------------------------------------------------------------------
 

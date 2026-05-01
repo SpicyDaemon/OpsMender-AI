@@ -879,6 +879,12 @@ class BotConnectorListResponse(BaseModel):
     total: int
 
 
+class BotConnectorTestResponse(BaseModel):
+    success: bool
+    detail: str
+    status: str
+
+
 # ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------

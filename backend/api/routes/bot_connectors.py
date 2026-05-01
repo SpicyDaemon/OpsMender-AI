@@ -13,6 +13,7 @@ from backend.api.deps import get_db
 from backend.api.schemas import (
     BotConnectorListResponse,
     BotConnectorResponse,
+    BotConnectorTestResponse,
     BotConnectorUpsert,
 )
 from backend.db.models import BotConnector, User
@@ -26,6 +27,13 @@ ALLOWED_CAPABILITIES = {
     "approvals",
     "copilot_chat",
     "notifications",
+}
+
+REQUIRED_CREDENTIAL_KEYS = {
+    "telegram": ("bot_token",),
+    "signal": ("service_url",),
+    "whatsapp": ("access_token", "phone_number_id"),
+    "custom": (),
 }
 
 
@@ -74,6 +82,31 @@ def _to_response(connector: BotConnector) -> BotConnectorResponse:
         last_error=connector.last_error,
         credential_keys=sorted(credentials.keys()),
         has_credentials=bool(credentials),
+    )
+
+
+def _test_connector_configuration(
+    connector: BotConnector,
+) -> tuple[bool, str, str, str | None]:
+    if not connector.is_enabled:
+        return False, "Connector is disabled.", "disabled", "Connector is disabled."
+
+    credentials = connector.credentials or {}
+    required_keys = REQUIRED_CREDENTIAL_KEYS.get(connector.platform, ())
+    missing = [key for key in required_keys if not credentials.get(key)]
+    if missing:
+        detail = f"Missing required credential keys: {', '.join(missing)}."
+        return False, detail, "not_configured", detail
+
+    if not connector.allowed_capabilities:
+        detail = "At least one allowed capability is required."
+        return False, detail, "error", detail
+
+    return (
+        True,
+        "Connector configuration looks ready. Platform-specific delivery checks will run once that connector is implemented.",
+        "healthy",
+        None,
     )
 
 
@@ -181,6 +214,38 @@ async def update_bot_connector(
             status_code=status.HTTP_409_CONFLICT,
             detail="Bot connector name already exists",
         ) from exc
+
+
+@router.post(
+    "/{connector_id}/test",
+    response_model=BotConnectorTestResponse,
+    summary="Validate an external chat bot connector configuration",
+)
+async def test_bot_connector(
+    connector_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    if connector is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bot connector not found",
+        )
+
+    success, detail, next_status, error = _test_connector_configuration(connector)
+    await BotConnectorRepo.mark_status(
+        db,
+        connector_id,
+        status=next_status,
+        error=error,
+    )
+    await db.commit()
+    return BotConnectorTestResponse(
+        success=success,
+        detail=detail,
+        status=next_status,
+    )
 
 
 @router.delete(

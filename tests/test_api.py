@@ -1541,6 +1541,64 @@ class TestBotConnectorsAPI:
         )
         assert second.status_code == 409
 
+    async def test_bot_connector_test_marks_health(
+        self, client: AsyncClient, auth_headers
+    ):
+        create_resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "telegram-health",
+                "platform": "telegram",
+                "credentials": {"bot_token": "secret-token"},
+                "allowed_capabilities": ["notifications"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+
+        connector_id = create_resp.json()["id"]
+        test_resp = await client.post(
+            f"/bot-connectors/{connector_id}/test",
+            headers=auth_headers,
+        )
+        assert test_resp.status_code == 200
+        data = test_resp.json()
+        assert data["success"] is True
+        assert data["status"] == "healthy"
+
+        list_resp = await client.get("/bot-connectors", headers=auth_headers)
+        item = list_resp.json()["items"][0]
+        assert item["status"] == "healthy"
+        assert item["last_checked_at"] is not None
+        assert item["last_error"] is None
+
+    async def test_bot_connector_test_reports_missing_credentials(
+        self, client: AsyncClient, auth_headers
+    ):
+        create_resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "telegram-missing-token",
+                "platform": "telegram",
+                "allowed_capabilities": ["notifications"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+
+        connector_id = create_resp.json()["id"]
+        test_resp = await client.post(
+            f"/bot-connectors/{connector_id}/test",
+            headers=auth_headers,
+        )
+        assert test_resp.status_code == 200
+        data = test_resp.json()
+        assert data["success"] is False
+        assert data["status"] == "not_configured"
+        assert "bot_token" in data["detail"]
+
     async def test_bot_connector_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):

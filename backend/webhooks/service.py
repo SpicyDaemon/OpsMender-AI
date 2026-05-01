@@ -23,6 +23,9 @@ SESSION_TRIGGER_EVENTS = {
     "session.completed",
     "session.failed",
     "session.timed_out",
+    "slo.burn_rate_violated",
+    "maintenance_window.started",
+    "maintenance_window.ended",
 }
 
 
@@ -64,6 +67,13 @@ def _severity_label(incident: dict[str, Any] | None) -> str:
 
 def _build_notification_text(payload: dict[str, Any]) -> str:
     event_label = _event_label(payload["event"])
+    
+    if "session" not in payload:
+        incident = payload.get("incident")
+        incident_title = incident["title"] if incident else "No linked incident"
+        msg = payload.get("message", incident_title)
+        return f"AIM {event_label}: {msg}"
+        
     session = payload["session"]
     incident = payload.get("incident")
     incident_title = incident["title"] if incident else "No linked incident"
@@ -77,9 +87,32 @@ def _build_notification_text(payload: dict[str, Any]) -> str:
 
 
 def _format_slack_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    text = _build_notification_text(payload)
+    
+    if "session" not in payload:
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*AIM {_event_label(payload['event'])}*\n{text}",
+                },
+            }
+        ]
+        if "incident" in payload and payload["incident"]:
+            blocks.append({
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"Incident `{payload['incident']['id']}`",
+                    }
+                ],
+            })
+        return {"text": text, "blocks": blocks}
+
     session = payload["session"]
     incident = payload.get("incident")
-    text = _build_notification_text(payload)
     fields = [
         {
             "type": "mrkdwn",
@@ -102,7 +135,7 @@ def _format_slack_payload(payload: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    blocks: list[dict[str, Any]] = [
+    blocks = [
         {
             "type": "section",
             "text": {
@@ -144,8 +177,23 @@ def _format_teams_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _format_sumo_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    session = payload["session"]
     incident = payload.get("incident") or {}
+    
+    if "session" not in payload:
+        return {
+            "eventType": payload["event"],
+            "source": payload["source"],
+            "sentAt": payload["sent_at"],
+            "message": _build_notification_text(payload),
+            "incidentId": incident.get("id"),
+            "incidentTitle": incident.get("title"),
+            "incidentSeverity": incident.get("severity"),
+            "incident": incident or None,
+            "trigger": payload.get("trigger"),
+            **{k: v for k, v in payload.items() if k not in ("event", "source", "sent_at", "incident", "trigger", "message")}
+        }
+
+    session = payload["session"]
     return {
         "eventType": payload["event"],
         "source": payload["source"],
@@ -318,6 +366,51 @@ def schedule_session_event(
             session_factory,
             event_type=event_type,
             session_id=session_id,
+        ),
+    )
+
+
+async def deliver_generic_event(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    event_type: str,
+    payload_data: dict[str, Any],
+) -> None:
+    if event_type not in SESSION_TRIGGER_EVENTS:
+        raise ValueError(f"Unsupported webhook trigger event: {event_type}")
+
+    payload = {
+        "event": event_type,
+        "source": "aim",
+        "sent_at": _utcnow().isoformat(),
+        **payload_data,
+    }
+
+    async with session_factory() as db:
+        triggers = list(await WebhookTriggerRepo.list_matching_event(db, event_type))
+
+    for trigger in triggers:
+        await _deliver_payload_to_trigger(
+            session_factory,
+            trigger=trigger,
+            payload=payload,
+            event_type=event_type,
+        )
+
+
+def schedule_generic_event(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    task_registry: set[asyncio.Task] | None,
+    event_type: str,
+    payload_data: dict[str, Any],
+) -> asyncio.Task:
+    return _track_task(
+        task_registry,
+        deliver_generic_event(
+            session_factory,
+            event_type=event_type,
+            payload_data=payload_data,
         ),
     )
 

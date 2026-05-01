@@ -6,13 +6,16 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from backend.db.repos import MaintenanceWindowRepo, SLATargetRepo, UptimeSampleRepo
+from backend.db.models import Incident
+from backend.db.repos import IncidentRepo, MaintenanceWindowRepo, SessionRepo, SLATargetRepo, SLORepo, UptimeSampleRepo
+from backend.ingest.autostart import has_active_session_for_incident, load_auto_start_policy, should_auto_start_session
+from backend.webhooks import schedule_generic_event
 
 if TYPE_CHECKING:
     from backend.config_loader import AppConfig
@@ -34,6 +37,8 @@ class SLAPoller:
         self._task: asyncio.Task | None = None
         # Track ongoing probes so we don't spawn duplicates if polling interval < latency
         self._running_probes: set[uuid.UUID] = set()
+        self._active_mw_ids: set[uuid.UUID] = set()
+        self._violated_slo_ids: set[uuid.UUID] = set()
 
     async def start(self) -> None:
         if not self._config.sla.poller_enabled:
@@ -67,12 +72,142 @@ class SLAPoller:
     async def _tick(self) -> None:
         async with self._session_factory() as db:
             targets = await SLATargetRepo.list_all(db, active_only=True)
+            windows = await MaintenanceWindowRepo.list_active_at(db, datetime.now(timezone.utc))
+
+        current_mw_ids = {w.id for w in windows}
+        started_mws = current_mw_ids - self._active_mw_ids
+        ended_mws = self._active_mw_ids - current_mw_ids
+
+        for w in windows:
+            if w.id in started_mws:
+                schedule_generic_event(
+                    self._session_factory,
+                    task_registry=None,
+                    event_type="maintenance_window.started",
+                    payload_data={
+                        "message": f"Maintenance window started: {w.name}",
+                        "maintenance_window": {
+                            "id": str(w.id),
+                            "name": w.name,
+                            "reason": w.reason,
+                        }
+                    }
+                )
+
+        if ended_mws:
+            async with self._session_factory() as db:
+                for wid in ended_mws:
+                    w = await MaintenanceWindowRepo.get_by_id(db, wid)
+                    if w:
+                        schedule_generic_event(
+                            self._session_factory,
+                            task_registry=None,
+                            event_type="maintenance_window.ended",
+                            payload_data={
+                                "message": f"Maintenance window ended: {w.name}",
+                                "maintenance_window": {
+                                    "id": str(w.id),
+                                    "name": w.name,
+                                    "reason": w.reason,
+                                }
+                            }
+                        )
+
+        self._active_mw_ids = current_mw_ids
 
         for target in targets:
             if target.id in self._running_probes:
                 continue
             self._running_probes.add(target.id)
             asyncio.create_task(self._probe_and_record(target))
+
+        await self._check_slos()
+
+    async def _check_slos(self) -> None:
+        async with self._session_factory() as db:
+            slos = await SLORepo.list_all(db, active_only=True)
+            
+            for slo in slos:
+                if slo.burn_alert_threshold is None:
+                    continue
+
+                now = datetime.now(timezone.utc)
+                since = now - timedelta(seconds=slo.window_seconds)
+
+                stats = await UptimeSampleRepo.compute_uptime(
+                    db, slo.target_id, since=since, until=now
+                )
+                actual_pct = stats["uptime_pct"]
+                objective = slo.objective_pct
+
+                error_budget_total = 100.0 - objective
+                error_used = 100.0 - actual_pct
+                if error_budget_total > 0:
+                    burn_rate = error_used / error_budget_total
+                else:
+                    burn_rate = float("inf") if error_used > 0 else 0.0
+
+                if burn_rate > float(slo.burn_alert_threshold):
+                    if slo.id not in self._violated_slo_ids:
+                        self._violated_slo_ids.add(slo.id)
+                        schedule_generic_event(
+                            self._session_factory,
+                            task_registry=None,
+                            event_type="slo.burn_rate_violated",
+                            payload_data={
+                                "message": f"SLO burn rate exceeded for {slo.name}",
+                                "slo": {
+                                    "id": str(slo.id),
+                                    "name": slo.name,
+                                    "objective_pct": float(slo.objective_pct),
+                                    "burn_alert_threshold": float(slo.burn_alert_threshold),
+                                    "burn_rate": float(burn_rate),
+                                    "actual_pct": float(actual_pct),
+                                }
+                            }
+                        )
+
+                    external_source = f"slo:{slo.id}"
+                    external_id = "burn_rate_violation"
+                    
+                    existing = await IncidentRepo.get_by_external_fingerprint(
+                        db, external_source=external_source, external_id=external_id
+                    )
+                    
+                    if existing and existing.status not in ("resolved", "closed"):
+                        continue
+                        
+                    dedup_action = "created"
+                    if existing:
+                        await IncidentRepo.update_status(db, existing.id, "open")
+                        incident = existing
+                        dedup_action = "updated"
+                        logger.warning("Re-opened incident %s for SLO violation: %s", incident.id, slo.name)
+                    else:
+                        incident = Incident(
+                            title=f"SLO Violation: {slo.name}",
+                            description=f"SLO {slo.name} has exceeded its burn rate alert threshold.\n\nObjective: {slo.objective_pct}%\nActual: {actual_pct:.2f}%\nBurn Rate: {burn_rate:.2f}x\nThreshold: {slo.burn_alert_threshold}x",
+                            severity="high",
+                            status="open",
+                            external_id=external_id,
+                            external_source=external_source,
+                            target_id=slo.target_id,
+                        )
+                        db.add(incident)
+                        await db.flush()
+                        logger.warning("Created incident %s for SLO violation: %s", incident.id, slo.name)
+
+                    policy = await load_auto_start_policy(db, self._config)
+                    if should_auto_start_session(incident, dedup_action=dedup_action, policy=policy):
+                        if not await has_active_session_for_incident(db, incident.id):
+                            await SessionRepo.create(
+                                db,
+                                tier=policy.session_tier,
+                                incident_id=incident.id,
+                            )
+                else:
+                    self._violated_slo_ids.discard(slo.id)
+            await db.commit()
 
     async def _probe_and_record(self, target: SLATarget) -> None:
         try:

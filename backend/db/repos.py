@@ -236,6 +236,21 @@ class SessionRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[Session]:
+        stmt = select(Session).order_by(Session.started_at.desc())
+        if status is not None:
+            stmt = stmt.where(Session.status == status)
+        stmt = stmt.limit(limit).offset(offset)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
     async def end_session(
         db: AsyncSession,
         session_id: uuid.UUID,

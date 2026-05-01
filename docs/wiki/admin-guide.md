@@ -43,7 +43,7 @@ External chat bot connectors are managed in **Config** > **Integrations**.
 2. Choose the platform (`telegram`, `signal`, `whatsapp`, or `custom`).
 3. Add non-secret connector settings as JSON. For Telegram, use `allowed_chat_ids` to restrict which chats can issue commands.
 4. Add credentials as `key=value` lines. Telegram currently uses `bot_token` for readiness checks and `webhook_secret` for inbound webhook verification.
-5. Select allowed capabilities. Telegram currently supports read-only `incident_lookup` commands.
+5. Select allowed capabilities. Telegram currently supports `incident_lookup`, `session_status`, and `approvals` commands.
 6. Click **Test** to validate the saved configuration.
 
 Telegram webhook URL:
@@ -57,6 +57,11 @@ Configure Telegram to send the `X-Telegram-Bot-Api-Secret-Token` header with the
 Supported Telegram commands:
 - `/incidents`
 - `/incident <incident-id>`
+- `/sessions`
+- `/session <session-id>`
+- `/approvals`
+- `/approve <approval-id>`
+- `/reject <approval-id>`
 - `/help`
 
 ## 6. Webhooks & Triggers

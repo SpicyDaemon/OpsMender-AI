@@ -26,10 +26,15 @@ Credentials are write-only: AIM shows whether credentials exist and which keys a
 
 ### Telegram
 
-Telegram currently supports read-only incident lookup commands:
+Telegram currently supports incident lookup, session status, and approval commands:
 
 - `/incidents` lists the five most recent incidents.
 - `/incident <incident-id>` shows one incident.
+- `/sessions` lists the five most recent sessions.
+- `/session <session-id>` shows one session.
+- `/approvals` lists pending approval requests.
+- `/approve <approval-id>` approves a pending request.
+- `/reject <approval-id>` rejects a pending request.
 - `/help` lists supported commands.
 
 Required connector credentials:

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_db
 from backend.db.models import BotConnector, Incident
-from backend.db.repos import BotConnectorRepo, IncidentRepo
+from backend.db.repos import ApprovalRequestRepo, BotConnectorRepo, IncidentRepo, SessionRepo
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-webhooks"])
 
@@ -43,7 +43,12 @@ def _help_text() -> str:
     return (
         "AIM Telegram connector commands:\n"
         "/incidents - list recent incidents\n"
-        "/incident <id> - show one incident"
+        "/incident <id> - show one incident\n"
+        "/sessions - list recent sessions\n"
+        "/session <id> - show one session\n"
+        "/approvals - list pending approvals\n"
+        "/approve <id> - approve a pending request\n"
+        "/reject <id> - reject a pending request"
     )
 
 
@@ -68,6 +73,74 @@ def _format_incident_list(incidents: list[Incident]) -> str:
             f"- `{incident.id}` {incident.title} ({severity}, {incident.status})"
         )
     return "\n".join(lines)
+
+
+def _has_capability(connector: BotConnector, capability: str) -> bool:
+    return capability in set(connector.allowed_capabilities or [])
+
+
+def _capability_denied(capability: str) -> str:
+    return f"{capability.replace('_', ' ').title()} is not enabled for this connector."
+
+
+def _format_session(session) -> str:
+    lines = [
+        f"*Session `{session.id}`*",
+        f"Status: `{session.status}`",
+        f"Tier: `{session.tier}`",
+    ]
+    if session.incident_id:
+        lines.append(f"Incident: `{session.incident_id}`")
+    if session.model_provider or session.model_id:
+        lines.append(
+            f"Model: `{session.model_provider or 'unknown'} / {session.model_id or 'unknown'}`"
+        )
+    if session.summary:
+        lines.append(f"Summary: {session.summary}")
+    return "\n".join(lines)
+
+
+def _format_session_list(sessions: list) -> str:
+    if not sessions:
+        return "No sessions found."
+    lines = ["Recent sessions:"]
+    for session in sessions:
+        incident = f" incident `{session.incident_id}`" if session.incident_id else ""
+        lines.append(
+            f"- `{session.id}` ({session.status}, tier {session.tier}){incident}"
+        )
+    return "\n".join(lines)
+
+
+def _format_approval_list(requests: list) -> str:
+    if not requests:
+        return "No pending approvals."
+    lines = ["Pending approvals:"]
+    for request in requests:
+        tool_name = request.action.get("tool_name") or request.action.get("name") or "action"
+        lines.append(f"- `{request.id}` session `{request.session_id}` action `{tool_name}`")
+    return "\n".join(lines)
+
+
+async def _resolve_approval_from_bot(
+    db: AsyncSession,
+    request_id: uuid.UUID,
+    *,
+    decision: str,
+) -> str:
+    request = await ApprovalRequestRepo.get_by_id(db, request_id)
+    if request is None:
+        return "Approval request not found."
+    if request.status != "pending":
+        return f"Approval request is already {request.status}."
+
+    updated = await ApprovalRequestRepo.resolve(db, request.id, status=decision)
+    if not updated:
+        return "Approval request could not be resolved."
+
+    await SessionRepo.set_status(db, request.session_id, status="active")
+    await db.commit()
+    return f"Approval request `{request.id}` {decision}."
 
 
 def _validate_telegram_connector(
@@ -148,17 +221,15 @@ async def telegram_webhook(
     if command in {"/start", "/help", "help"}:
         return _telegram_reply(chat_id, _help_text())
 
-    if "incident_lookup" not in set(connector.allowed_capabilities or []):
-        return _telegram_reply(
-            chat_id,
-            "Incident lookup is not enabled for this connector.",
-        )
-
     if command == "/incidents":
+        if not _has_capability(connector, "incident_lookup"):
+            return _telegram_reply(chat_id, _capability_denied("incident_lookup"))
         incidents = list(await IncidentRepo.list_all(db, limit=5, offset=0))
         return _telegram_reply(chat_id, _format_incident_list(incidents))
 
     if command == "/incident":
+        if not _has_capability(connector, "incident_lookup"):
+            return _telegram_reply(chat_id, _capability_denied("incident_lookup"))
         if not arg:
             return _telegram_reply(chat_id, "Usage: /incident <incident-id>")
         try:
@@ -169,5 +240,44 @@ async def telegram_webhook(
         if incident is None:
             return _telegram_reply(chat_id, "Incident not found.")
         return _telegram_reply(chat_id, _format_incident(incident))
+
+    if command == "/sessions":
+        if not _has_capability(connector, "session_status"):
+            return _telegram_reply(chat_id, _capability_denied("session_status"))
+        sessions = list(await SessionRepo.list_all(db, limit=5, offset=0))
+        return _telegram_reply(chat_id, _format_session_list(sessions))
+
+    if command == "/session":
+        if not _has_capability(connector, "session_status"):
+            return _telegram_reply(chat_id, _capability_denied("session_status"))
+        if not arg:
+            return _telegram_reply(chat_id, "Usage: /session <session-id>")
+        try:
+            session_id = uuid.UUID(arg)
+        except ValueError:
+            return _telegram_reply(chat_id, "Session ID must be a valid UUID.")
+        session = await SessionRepo.get_by_id(db, session_id)
+        if session is None:
+            return _telegram_reply(chat_id, "Session not found.")
+        return _telegram_reply(chat_id, _format_session(session))
+
+    if command == "/approvals":
+        if not _has_capability(connector, "approvals"):
+            return _telegram_reply(chat_id, _capability_denied("approvals"))
+        requests = list(await ApprovalRequestRepo.list(db, status="pending", limit=5))
+        return _telegram_reply(chat_id, _format_approval_list(requests))
+
+    if command in {"/approve", "/reject"}:
+        if not _has_capability(connector, "approvals"):
+            return _telegram_reply(chat_id, _capability_denied("approvals"))
+        if not arg:
+            return _telegram_reply(chat_id, f"Usage: {command} <approval-id>")
+        try:
+            request_id = uuid.UUID(arg)
+        except ValueError:
+            return _telegram_reply(chat_id, "Approval ID must be a valid UUID.")
+        decision = "approved" if command == "/approve" else "rejected"
+        text = await _resolve_approval_from_bot(db, request_id, decision=decision)
+        return _telegram_reply(chat_id, text)
 
     return _telegram_reply(chat_id, _help_text())

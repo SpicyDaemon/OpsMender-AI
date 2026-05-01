@@ -1715,6 +1715,139 @@ class TestTelegramBotWebhook:
         assert resp.status_code == 200
         assert "not enabled" in resp.json()["text"]
 
+    async def test_telegram_webhook_session_status(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            capabilities=["session_status"],
+        )
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                title="Worker crash loop",
+                description="worker deployment is restarting",
+                severity="medium",
+            )
+            session = await SessionRepo.create(
+                db,
+                incident_id=incident.id,
+                tier=2,
+                model_provider="openai",
+                model_id="gpt-4o-mini",
+            )
+            await db.commit()
+            session_id = str(session.id)
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={
+                "message": {
+                    "chat": {"id": "-100123"},
+                    "text": f"/session {session_id}",
+                }
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        text = resp.json()["text"]
+        assert session_id in text
+        assert "Status: `active`" in text
+        assert "Tier: `2`" in text
+
+    async def test_telegram_webhook_lists_pending_approvals(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            capabilities=["approvals"],
+        )
+        async with app.state.session_factory() as db:
+            session = await SessionRepo.create(db, tier=1)
+            approval = await ApprovalRequestRepo.create(
+                db,
+                session_id=session.id,
+                action={"tool_name": "restart_deployment"},
+                justification="restart unhealthy pods",
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            )
+            await db.commit()
+            approval_id = str(approval.id)
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100123"}, "text": "/approvals"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        text = resp.json()["text"]
+        assert approval_id in text
+        assert "restart_deployment" in text
+
+    async def test_telegram_webhook_can_approve_pending_request(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            capabilities=["approvals"],
+        )
+        async with app.state.session_factory() as db:
+            session = await SessionRepo.create(db, tier=1)
+            await SessionRepo.set_status(db, session.id, status="awaiting_approval")
+            approval = await ApprovalRequestRepo.create(
+                db,
+                session_id=session.id,
+                action={"tool_name": "scale_deployment"},
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            )
+            await db.commit()
+            approval_id = str(approval.id)
+            session_id = session.id
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={
+                "message": {
+                    "chat": {"id": "-100123"},
+                    "text": f"/approve {approval_id}",
+                }
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        assert "approved" in resp.json()["text"]
+        async with app.state.session_factory() as db:
+            updated = await ApprovalRequestRepo.get_by_id(db, uuid.UUID(approval_id))
+            session = await SessionRepo.get_by_id(db, session_id)
+            assert updated is not None
+            assert updated.status == "approved"
+            assert session is not None
+            assert session.status == "active"
+
+    async def test_telegram_webhook_rejects_session_command_without_capability(
+        self, client: AsyncClient, auth_headers
+    ):
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            capabilities=["incident_lookup"],
+        )
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100123"}, "text": "/sessions"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        assert "Session Status is not enabled" in resp.json()["text"]
+
 
 class TestModelConfigAPI:
 

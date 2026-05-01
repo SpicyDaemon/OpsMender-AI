@@ -305,7 +305,7 @@ Saved model profiles and MCP server definitions are also persisted in the databa
 
 MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-reads the DB on every lookup — servers added via `POST /mcp-servers` or the dashboard are visible to already-running sessions with no reload. `AIM_MCP_SERVERS_JSON` stays supported as a read-only fallback for bootstrapping before any DB entries exist.
 
-External chat bot connectors are managed in **Config -> Integrations** or through the `/bot-connectors` API. Credentials are write-only: API responses expose `credential_keys` and `has_credentials`, never raw token values. Telegram currently supports inbound `/incidents` and `/incident <id>` lookups through `POST /bot-connectors/{id}/telegram/webhook` using Telegram's `X-Telegram-Bot-Api-Secret-Token` header.
+External chat bot connectors are managed in **Config -> Integrations** or through the `/bot-connectors` API. Credentials are write-only: API responses expose `credential_keys` and `has_credentials`, never raw token values. Telegram currently supports inbound `/incidents`, `/incident <id>`, `/sessions`, `/session <id>`, `/approvals`, `/approve <id>`, and `/reject <id>` commands through `POST /bot-connectors/{id}/telegram/webhook` using Telegram's `X-Telegram-Bot-Api-Secret-Token` header.
 
 Example `.env` keys:
 
@@ -652,7 +652,7 @@ ai-incident-manager/
 - **Sprint 24:** ✅ Complete — UI polish + public release
 - **Sprint 25:** ✅ Complete — SLA / SLO dashboard + maintenance windows, downsampling, availability ingest, and SLO incident wiring
 - **Sprint 26:** ✅ Complete — repo-hosted user documentation wiki and operator/admin guides
-- **Sprint 27 (in progress):** Chat bot integrations — persisted connector configs, Config/Integrations management UI, and initial Telegram incident lookup webhook support. See [`docs/TASKS.md`](docs/TASKS.md).
+- **Sprint 27 (in progress):** Chat bot integrations — persisted connector configs, Config/Integrations management UI, and Telegram incident/session/approval webhook commands. See [`docs/TASKS.md`](docs/TASKS.md).
 
 ### Sprint breakdown
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
@@ -675,7 +675,7 @@ ai-incident-manager/
   - Sprint 24: ✅ UI polish + public release prep
   - Sprint 25: ✅ Reliability dashboard + SLA/SLO APIs + maintenance windows
   - Sprint 26: ✅ User documentation wiki + operator guides
-  - Sprint 27: In progress — chat bot integrations, with connector management complete and Telegram incident lookup started
+  - Sprint 27: In progress — chat bot integrations, with connector management complete and Telegram incident/session/approval commands started
 
 ## Distribution Status
 

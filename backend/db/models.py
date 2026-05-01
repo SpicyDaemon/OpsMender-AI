@@ -97,6 +97,9 @@ class Incident(Base):
     # External ingestion fingerprint — dedup by (external_source, external_id)
     external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    target_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("sla_targets.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

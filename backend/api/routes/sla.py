@@ -201,6 +201,40 @@ async def probe_sla_target(
     return {"up": up, "latency_ms": latency_ms}
 
 
+@router.get(
+    _targets_prefix + "/{target_id}/incidents",
+    response_model=list[dict],
+    summary="Get incidents linked to an SLA target",
+)
+async def get_sla_target_incidents(
+    target_id: uuid.UUID,
+    limit: int = 100,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin", "operator", "viewer")),
+):
+    target = await SLATargetRepo.get_by_id(db, target_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
+
+    from backend.db.repos import IncidentRepo
+    incidents = await IncidentRepo.list_by_target(db, target_id, limit=limit, offset=offset)
+
+    return [
+        {
+            "id": i.id,
+            "title": i.title,
+            "description": i.description,
+            "status": i.status,
+            "severity": i.severity,
+            "external_source": i.external_source,
+            "external_id": i.external_id,
+            "created_at": i.created_at,
+        }
+        for i in incidents
+    ]
+
+
 # -- Uptime query ----------------------------------------------------------
 
 WINDOW_MAP = {

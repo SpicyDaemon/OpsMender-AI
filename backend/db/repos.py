@@ -168,6 +168,24 @@ class IncidentRepo:
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
+    @staticmethod
+    async def list_by_target(
+        db: AsyncSession,
+        target_id: uuid.UUID,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[Incident]:
+        """List incidents linked to an SLA target."""
+        stmt = (
+            select(Incident)
+            .where(Incident.target_id == target_id)
+            .order_by(Incident.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
 
 # ---------------------------------------------------------------------------
 # Sessions

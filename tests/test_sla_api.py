@@ -478,3 +478,23 @@ class TestUptimeAPI:
         assert data["up_samples"] == 8
         assert data["uptime_pct"] == 100.0  # all non-suppressed are up
         assert data["suppressed_seconds"] == 120  # 2 * 60s
+
+    @pytest.mark.asyncio
+    async def test_sla_target_incidents(self, client: AsyncClient, db: AsyncSession):
+        target_resp = await client.post("/sla-targets", json={
+            "name": "target-incidents", "kind": "http",
+        })
+        target_id = target_resp.json()["id"]
+
+        from backend.db.repos import IncidentRepo
+        import uuid
+        incident = await IncidentRepo.create(db, title="Target Outage", description="Test")
+        incident.target_id = uuid.UUID(target_id)
+        await db.commit()
+
+        resp = await client.get(f"/sla-targets/{target_id}/incidents")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["title"] == "Target Outage"
+        assert data[0]["id"] == str(incident.id)

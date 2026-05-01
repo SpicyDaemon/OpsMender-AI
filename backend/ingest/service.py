@@ -201,6 +201,7 @@ async def ingest_incident(
         avail = parsed.availability
         sla_target = await SLATargetRepo.get_by_name(db, avail.target_name)
         if sla_target is not None:
+            incident.target_id = sla_target.id
             await UptimeSampleRepo.create(
                 db,
                 target_id=sla_target.id,

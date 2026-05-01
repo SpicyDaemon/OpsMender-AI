@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from backend.ingest.adapters.base import IngestAdapter, ParsedIncident
+from backend.ingest.adapters.base import AvailabilitySignal, IngestAdapter, ParsedIncident
 
 _SEVERITY_MAP = {
     "ALARM": "high",
@@ -71,6 +71,14 @@ class CloudWatchAdapter(IngestAdapter):
         # Fingerprint: alarm name + account + region
         external_id = f"{account}:{region}:{alarm_name}"
 
+        # Emit an availability signal — CloudWatch alarms map naturally
+        # to up/down: OK = up, ALARM/INSUFFICIENT_DATA = down.
+        availability = AvailabilitySignal(
+            target_name=alarm_name,
+            up=(new_state == "OK"),
+            source="cloudwatch",
+        )
+
         return ParsedIncident(
             title=title,
             description=description,
@@ -78,4 +86,5 @@ class CloudWatchAdapter(IngestAdapter):
             external_id=external_id,
             external_source="cloudwatch",
             status=status,
+            availability=availability,
         )

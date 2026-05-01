@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.ingest.adapters.base import IngestAdapter, ParsedIncident
+from backend.ingest.adapters.base import AvailabilitySignal, IngestAdapter, ParsedIncident
 
 
 # ─── Field-name synonyms ordered by preference ─────────────────────────────
@@ -103,6 +103,39 @@ ENVELOPE_KEYS = (
     "message",
     "incident",
     "notification",
+)
+
+# Keys that indicate the payload carries a health-check / availability result
+_AVAILABILITY_TITLE_HINTS = {
+    "probe_success", "health_check", "healthcheck", "health-check",
+    "synthetic_check", "uptime_check", "uptime-check", "availability_check",
+    "status_check", "statuscheckfailed", "ping", "heartbeat",
+    "synthetic", "http_check", "tcp_check",
+}
+
+_AVAILABILITY_CHECK_KEYS = (
+    "probe_success",  # Prometheus blackbox exporter
+    "health_status",
+    "check_result",
+    "check_status",
+    "synthetic_result",
+    "status_check",
+    "is_up",
+    "up",
+    "healthy",
+    "available",
+)
+
+_LATENCY_KEYS = (
+    "latency_ms",
+    "latency",
+    "response_time_ms",
+    "response_time",
+    "duration_ms",
+    "duration",
+    "elapsed_ms",
+    "elapsed",
+    "probe_duration_seconds",
 )
 
 # Alert-system severity synonyms mapped to AIM's 4-level scale
@@ -351,4 +384,100 @@ class UniversalAdapter(IngestAdapter):
             status=status,
             needs_llm=needs_llm,
             extracted_paths=extracted or None,
+            availability=self._detect_availability(payload, title, status),
         )
+
+    def _detect_availability(
+        self,
+        payload: dict[str, Any],
+        title: str | None,
+        status: str,
+    ) -> AvailabilitySignal | None:
+        """Try to detect an availability/health-check signal in the payload.
+
+        Heuristic approach:
+        1. Check if the title contains availability-related keywords.
+        2. Look for explicit availability keys (probe_success, is_up, etc.).
+        3. Look for Datadog synthetics-specific shapes.
+        4. Infer up/down from the status field.
+        """
+        target_name: str | None = None
+        up: bool | None = None
+        latency_ms: int | None = None
+        source = "ingest"
+
+        # 1. Title-based hint
+        title_lower = (title or "").lower()
+        is_avail_title = any(hint in title_lower for hint in _AVAILABILITY_TITLE_HINTS)
+
+        # 2. Look for explicit up/down keys
+        avail_hit = _find_first(payload, _AVAILABILITY_CHECK_KEYS)
+        if avail_hit is not None:
+            _, raw_value = avail_hit
+            up = _interpret_up(raw_value)
+            is_avail_title = True  # presence of these keys confirms it's availability
+
+        # 3. Look for Datadog synthetics
+        if payload.get("check_type") or payload.get("org", {}).get("name"):
+            result = payload.get("result") or payload.get("data", {}).get("result")
+            if isinstance(result, dict):
+                passed = result.get("passed", result.get("healthy", result.get("status")))
+                if passed is not None:
+                    up = _interpret_up(passed)
+                    is_avail_title = True
+                    source = "datadog"
+                timing = result.get("timings", {}).get("total") or result.get("duration")
+                if timing is not None:
+                    latency_ms = _to_latency_ms(timing)
+
+        # 4. Prometheus probe_duration_seconds
+        latency_hit = _find_first(payload, _LATENCY_KEYS)
+        if latency_hit is not None:
+            _, lat_val = latency_hit
+            latency_ms = _to_latency_ms(lat_val)
+
+        if not is_avail_title:
+            return None
+
+        # Determine target name: prefer alertname/check_name/monitor_name, fallback to title
+        for key in ("alertname", "check_name", "monitor_name", "target", "host"):
+            if key in payload and isinstance(payload[key], str) and payload[key].strip():
+                target_name = payload[key].strip()
+                break
+        if target_name is None:
+            target_name = title_lower.strip() if title_lower.strip() else "unknown"
+
+        # If up is still None, infer from status
+        if up is None:
+            up = status == "resolved" or status == "ok"
+
+        return AvailabilitySignal(
+            target_name=target_name,
+            up=up,
+            latency_ms=latency_ms,
+            source=source,
+        )
+
+
+def _interpret_up(value: Any) -> bool:
+    """Interpret various payload values as up (True) / down (False)."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value > 0  # probe_success=1 means up
+    if isinstance(value, str):
+        low = value.strip().lower()
+        return low in {"true", "1", "up", "ok", "healthy", "passed", "success", "yes"}
+    return False
+
+
+def _to_latency_ms(value: Any) -> int | None:
+    """Convert a latency value to milliseconds."""
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    # Heuristic: if value < 10, it's probably seconds → convert to ms
+    if num < 10:
+        return int(num * 1000)
+    return int(num)

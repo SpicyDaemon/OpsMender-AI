@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config_loader import AppConfig
 from backend.db.models import Incident, IngestToken
-from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo, SessionRepo
+from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo, SLATargetRepo, SessionRepo, UptimeSampleRepo
 from backend.ingest.autostart import (
     has_active_session_for_incident,
     load_auto_start_policy,
@@ -195,6 +195,31 @@ async def ingest_incident(
         incident.id,
         parsed.external_id,
     )
+
+    # ── Write uptime sample if availability signal present ──────────
+    if parsed.availability is not None:
+        avail = parsed.availability
+        sla_target = await SLATargetRepo.get_by_name(db, avail.target_name)
+        if sla_target is not None:
+            await UptimeSampleRepo.create(
+                db,
+                target_id=sla_target.id,
+                up=avail.up,
+                latency_ms=avail.latency_ms,
+                source=avail.source,
+            )
+            logger.info(
+                "ingest.availability: target=%s up=%s latency_ms=%s source=%s",
+                avail.target_name,
+                avail.up,
+                avail.latency_ms,
+                avail.source,
+            )
+        else:
+            logger.debug(
+                "ingest.availability: no SLA target matched for name=%r",
+                avail.target_name,
+            )
 
     session_id: uuid.UUID | None = None
     policy = await load_auto_start_policy(db, config)

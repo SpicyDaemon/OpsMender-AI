@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
   BookOpen,
   CheckSquare,
@@ -24,6 +25,7 @@ const NAV = [
   { href: "/dashboard/detectors", label: "Detectors", icon: Radar },
   { href: "/dashboard/skills", label: "Skills", icon: FileText },
   { href: "/dashboard/audit", label: "Audit Log", icon: BookOpen },
+  { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
   { href: "/dashboard/config", label: "Config", icon: Settings },
 ];
 

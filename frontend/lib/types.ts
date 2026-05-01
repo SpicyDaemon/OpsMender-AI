@@ -638,3 +638,74 @@ export interface WSMessage {
   type: WSMessageType;
   data: Record<string, unknown>;
 }
+
+// ---------------------------------------------------------------------------
+// Reliability (Sprint 25)
+// ---------------------------------------------------------------------------
+
+export type SLATargetKind = "http" | "tcp" | "external";
+
+export interface SLATargetResponse {
+  id: string;
+  name: string;
+  kind: SLATargetKind;
+  config: Record<string, unknown> | null;
+  owner_team: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SLATargetListResponse {
+  items: SLATargetResponse[];
+  total: number;
+}
+
+export interface SLOResponse {
+  id: string;
+  target_id: string;
+  name: string;
+  objective_pct: number;
+  window_seconds: number;
+  burn_alert_threshold: number | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SLOListResponse {
+  items: SLOResponse[];
+  total: number;
+}
+
+export interface MaintenanceWindowResponse {
+  id: string;
+  name: string;
+  reason: string;
+  starts_at: string;
+  ends_at: string;
+  rrule: string | null;
+  target_ids: string[];
+  created_by: string;
+  created_at: string;
+}
+
+export interface MaintenanceWindowListResponse {
+  items: MaintenanceWindowResponse[];
+  total: number;
+}
+
+export interface SLATargetUptimeResponse {
+  uptime_pct: number;
+  total_samples: number;
+  up_samples: number;
+  downtime_seconds: number;
+  suppressed_seconds: number;
+}
+
+export interface SLOStatusResponse {
+  objective_pct: number;
+  actual_pct: number;
+  error_budget_remaining_pct: number;
+  burn_rate: number;
+  compliant: boolean;
+}

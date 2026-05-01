@@ -501,7 +501,7 @@ class IngestTokenCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     provider: str = Field(
         default="auto",
-        pattern="^(auto|cloudwatch|azure_monitor|legacy_alert_vendor|legacy_alert_relay|generic)$",
+        pattern="^(auto|cloudwatch|azure_monitor|gcp_monitoring|oci_monitoring|legacy_alert_vendor|legacy_alert_relay|generic)$",
     )
     # Optional sample payload from the source tool — if supplied, the
     # server parses it on create so future payloads with the same shape

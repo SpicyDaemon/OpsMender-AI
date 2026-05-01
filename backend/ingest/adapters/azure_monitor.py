@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.ingest.adapters.base import IngestAdapter, ParsedIncident
+from backend.ingest.adapters.base import AvailabilitySignal, IngestAdapter, ParsedIncident
 
 # Azure Monitor severity: 0=Critical, 1=Error, 2=Warning, 3=Informational, 4=Verbose
 _SEVERITY_MAP = {
@@ -64,6 +64,13 @@ class AzureMonitorAdapter(IngestAdapter):
         severity = _SEVERITY_MAP.get(severity_raw, "medium")
         status = _STATUS_MAP.get(monitor_condition, "open")
 
+        # Emit availability signal — Fired=down, Resolved=up
+        availability = AvailabilitySignal(
+            target_name=alert_rule,
+            up=(monitor_condition in ("Resolved", "Deactivated")),
+            source="azure_monitor",
+        )
+
         return ParsedIncident(
             title=title,
             description=desc_text,
@@ -71,4 +78,6 @@ class AzureMonitorAdapter(IngestAdapter):
             external_id=alert_id or alert_rule,
             external_source="azure_monitor",
             status=status,
+            availability=availability,
         )
+

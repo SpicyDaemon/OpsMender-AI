@@ -2,9 +2,7 @@ import { api } from "./api";
 import {
   SLATargetResponse,
   SLATargetListResponse,
-  SLOResponse,
   SLOListResponse,
-  MaintenanceWindowResponse,
   MaintenanceWindowListResponse,
   SLATargetUptimeResponse,
   SLOStatusResponse,
@@ -19,7 +17,7 @@ export async function getSLATarget(id: string): Promise<SLATargetResponse> {
   return api.get(`/sla-targets/${id}`);
 }
 
-export async function createSLATarget(payload: any): Promise<SLATargetResponse> {
+export async function createSLATarget(payload: Record<string, unknown>): Promise<SLATargetResponse> {
   return api.post("/sla-targets", payload);
 }
 

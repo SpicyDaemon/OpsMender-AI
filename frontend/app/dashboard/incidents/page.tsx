@@ -374,7 +374,7 @@ export default function IncidentsPage() {
       <CreateIncidentModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreated={(inc) => {
+        onCreated={() => {
           setShowCreate(false);
           load();
         }}

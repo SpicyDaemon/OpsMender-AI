@@ -500,6 +500,7 @@ function ModelConfigModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(createModelFormState(providers, initialConfig));
     setUseManualModelId(
       shouldUseManualModelId(
@@ -1076,6 +1077,7 @@ function MCPServerModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(createMCPFormState(initialServer));
   }, [open, initialServer]);
 
@@ -2040,6 +2042,7 @@ function AgentTeamProfileModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(createAgentTeamProfileFormState(initialProfile));
   }, [open, initialProfile]);
 
@@ -3517,6 +3520,7 @@ export default function ConfigPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPageData().finally(() => setLoading(false));
   }, [loadPageData]);
 

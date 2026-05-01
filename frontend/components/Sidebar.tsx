@@ -53,6 +53,7 @@ export function Sidebar() {
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored === "1") setCollapsed(true);
     setHydrated(true);
   }, []);

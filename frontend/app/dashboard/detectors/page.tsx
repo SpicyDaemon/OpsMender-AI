@@ -167,6 +167,7 @@ function StatusIndicator({
   }
 
   if (rule.last_ran_at) {
+    // eslint-disable-next-line react-hooks/purity
     const msSince = Date.now() - new Date(rule.last_ran_at).getTime();
     const overdue = msSince > rule.interval_seconds * 1000 * 2;
 

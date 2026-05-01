@@ -13,7 +13,6 @@ import {
   Eye,
   GitBranch,
   MessageSquare,
-  Play,
   Search,
   Send,
   Shield,

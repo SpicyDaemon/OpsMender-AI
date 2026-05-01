@@ -16,6 +16,7 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``ingest_log``         — raw payloads from external ingest for replay/debugging
 - ``detector_rules``     — MCP-driven incident detection probes (one per MCP server)
 - ``detector_history``   — run history for each detector rule
+- ``bot_connectors``     — external chat bot connector configurations
 """
 
 from __future__ import annotations
@@ -51,8 +52,10 @@ def _uuid() -> uuid.UUID:
 # Base
 # ---------------------------------------------------------------------------
 
+
 class Base(DeclarativeBase):
     """Shared base for all ORM models."""
+
     pass
 
 
@@ -60,12 +63,11 @@ class Base(DeclarativeBase):
 # Users
 # ---------------------------------------------------------------------------
 
+
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=_uuid
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     username: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
@@ -82,12 +84,11 @@ class User(Base):
 # Incidents
 # ---------------------------------------------------------------------------
 
+
 class Incident(Base):
     __tablename__ = "incidents"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=_uuid
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
@@ -114,12 +115,11 @@ class Incident(Base):
 # Sessions
 # ---------------------------------------------------------------------------
 
+
 class Session(Base):
     __tablename__ = "sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=_uuid
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     incident_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("incidents.id"), nullable=True
     )
@@ -156,12 +156,11 @@ class Session(Base):
 # Audit entries
 # ---------------------------------------------------------------------------
 
+
 class AuditEntry(Base):
     __tablename__ = "audit_entries"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=_uuid
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     session_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("sessions.id"), nullable=False
     )
@@ -186,12 +185,11 @@ class AuditEntry(Base):
 # Approval requests (Tier 1)
 # ---------------------------------------------------------------------------
 
+
 class ApprovalRequest(Base):
     __tablename__ = "approval_requests"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=_uuid
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     session_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("sessions.id"), nullable=False
     )
@@ -221,12 +219,11 @@ class ApprovalRequest(Base):
 # Model configs (BYOM)
 # ---------------------------------------------------------------------------
 
+
 class ModelConfig(Base):
     __tablename__ = "model_configs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=_uuid
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False
@@ -246,6 +243,7 @@ class ModelConfig(Base):
 # ---------------------------------------------------------------------------
 # MCP servers
 # ---------------------------------------------------------------------------
+
 
 class MCPServer(Base):
     __tablename__ = "mcp_servers"
@@ -267,6 +265,7 @@ class MCPServer(Base):
 # ---------------------------------------------------------------------------
 # Skills
 # ---------------------------------------------------------------------------
+
 
 class Skill(Base):
     __tablename__ = "skills"
@@ -290,6 +289,7 @@ class Skill(Base):
 # Session messages (co-pilot chat)
 # ---------------------------------------------------------------------------
 
+
 class SessionMessage(Base):
     __tablename__ = "session_messages"
 
@@ -297,9 +297,7 @@ class SessionMessage(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
     )
-    role: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )  # user | assistant
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # user | assistant
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -314,6 +312,7 @@ class SessionMessage(Base):
 # Runtime config
 # ---------------------------------------------------------------------------
 
+
 class RuntimeConfig(Base):
     __tablename__ = "runtime_config"
 
@@ -327,6 +326,7 @@ class RuntimeConfig(Base):
 # ---------------------------------------------------------------------------
 # Webhook triggers (outbound session-state notifications)
 # ---------------------------------------------------------------------------
+
 
 class WebhookTrigger(Base):
     __tablename__ = "webhook_triggers"
@@ -355,6 +355,7 @@ class WebhookTrigger(Base):
 # Workflow profiles (custom workflow builder — Phase 3)
 # ---------------------------------------------------------------------------
 
+
 class WorkflowProfile(Base):
     __tablename__ = "workflow_profiles"
 
@@ -375,6 +376,7 @@ class WorkflowProfile(Base):
 # ---------------------------------------------------------------------------
 # Agent team profiles (multi-agent support — Phase 3)
 # ---------------------------------------------------------------------------
+
 
 class AgentTeamProfile(Base):
     __tablename__ = "agent_team_profiles"
@@ -397,6 +399,7 @@ class AgentTeamProfile(Base):
 # Ingest tokens (external incident ingestion — Sprint 14)
 # ---------------------------------------------------------------------------
 
+
 class IngestToken(Base):
     """Per-source credentials for the ``POST /incidents/ingest`` webhook.
 
@@ -409,6 +412,7 @@ class IngestToken(Base):
     payloads during token creation — the Universal adapter uses it to
     skip heuristics on repeat traffic.
     """
+
     __tablename__ = "ingest_tokens"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
@@ -431,8 +435,10 @@ class IngestToken(Base):
 # Ingest log (raw payload audit trail)
 # ---------------------------------------------------------------------------
 
+
 class IngestLog(Base):
     """Every inbound webhook payload stored raw for replay/debugging."""
+
     __tablename__ = "ingest_log"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
@@ -457,12 +463,14 @@ class IngestLog(Base):
 # Detector rules (MCP-driven incident detection — Sprint 14)
 # ---------------------------------------------------------------------------
 
+
 class DetectorRule(Base):
     """One detection probe against one MCP server.
 
     Periodically runs a read-only LLM loop to inspect the MCP server
     and auto-files an incident when something looks wrong.
     """
+
     __tablename__ = "detector_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
@@ -497,13 +505,17 @@ class DetectorRule(Base):
 # Detector history (run log for detector rules)
 # ---------------------------------------------------------------------------
 
+
 class DetectorHistory(Base):
     """One row per detector rule execution."""
+
     __tablename__ = "detector_history"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     rule_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("detector_rules.id", ondelete="CASCADE"), nullable=False,
+        Uuid,
+        ForeignKey("detector_rules.id", ondelete="CASCADE"),
+        nullable=False,
         index=True,
     )
     ran_at: Mapped[datetime] = mapped_column(
@@ -522,14 +534,20 @@ class DetectorHistory(Base):
 # SLA Targets (Sprint 25)
 # ---------------------------------------------------------------------------
 
+
 class SLATarget(Base):
     """Reliability tracking target (HTTP, TCP, or externally ingested)."""
+
     __tablename__ = "sla_targets"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
-    kind: Mapped[str] = mapped_column(String(50), nullable=False)  # http | tcp | external
-    config: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # url, method, expected_status, etc.
+    kind: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # http | tcp | external
+    config: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True
+    )  # url, method, expected_status, etc.
     owner_team: Mapped[str | None] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -544,13 +562,18 @@ class SLATarget(Base):
 # Uptime Samples (Sprint 25)
 # ---------------------------------------------------------------------------
 
+
 class UptimeSample(Base):
     """Raw availability probes for SLA targets."""
+
     __tablename__ = "uptime_samples"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     target_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("sla_targets.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("sla_targets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     observed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False, index=True
@@ -563,31 +586,43 @@ class UptimeSample(Base):
 
 class UptimeSample5m(Base):
     """5-minute downsampled availability probes."""
+
     __tablename__ = "uptime_samples_5m"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     target_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("sla_targets.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("sla_targets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     bucket_start: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
-    up_pct: Mapped[float] = mapped_column(Numeric(5, 4, asdecimal=False), nullable=False)
+    up_pct: Mapped[float] = mapped_column(
+        Numeric(5, 4, asdecimal=False), nullable=False
+    )
     total_samples: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class UptimeSample1h(Base):
     """1-hour downsampled availability probes."""
+
     __tablename__ = "uptime_samples_1h"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     target_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("sla_targets.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("sla_targets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     bucket_start: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
-    up_pct: Mapped[float] = mapped_column(Numeric(5, 4, asdecimal=False), nullable=False)
+    up_pct: Mapped[float] = mapped_column(
+        Numeric(5, 4, asdecimal=False), nullable=False
+    )
     total_samples: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
@@ -595,18 +630,27 @@ class UptimeSample1h(Base):
 # SLOs (Sprint 25)
 # ---------------------------------------------------------------------------
 
+
 class SLO(Base):
     """Service Level Objectives linked to an SLA Target."""
+
     __tablename__ = "slos"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     target_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("sla_targets.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("sla_targets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    objective_pct: Mapped[float] = mapped_column(Numeric(5, 4, asdecimal=False), nullable=False)
+    objective_pct: Mapped[float] = mapped_column(
+        Numeric(5, 4, asdecimal=False), nullable=False
+    )
     window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    burn_alert_threshold: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
+    burn_alert_threshold: Mapped[float | None] = mapped_column(
+        Numeric(10, 4, asdecimal=False), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -617,8 +661,10 @@ class SLO(Base):
 # Maintenance Windows (Sprint 25)
 # ---------------------------------------------------------------------------
 
+
 class MaintenanceWindow(Base):
     """Scheduled downtime suppressing SLA hits."""
+
     __tablename__ = "maintenance_windows"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
@@ -627,10 +673,46 @@ class MaintenanceWindow(Base):
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     rrule: Mapped[str | None] = mapped_column(Text, nullable=True)
-    target_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)  # UUIDs as strings
+    target_ids: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False
+    )  # UUIDs as strings
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# Bot connectors (Sprint 27)
+# ---------------------------------------------------------------------------
+
+
+class BotConnector(Base):
+    """External chat bot connector configuration."""
+
+    __tablename__ = "bot_connectors"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    platform: Mapped[str] = mapped_column(
+        String(30), nullable=False
+    )  # telegram | signal | whatsapp | custom
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    credentials: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    allowed_capabilities: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30), default="not_configured", nullable=False
+    )  # not_configured | configured | healthy | error | disabled
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+    last_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

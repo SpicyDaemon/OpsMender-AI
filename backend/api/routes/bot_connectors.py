@@ -1,0 +1,203 @@
+"""External chat bot connector management endpoints."""
+
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.api.auth import require_role
+from backend.api.deps import get_db
+from backend.api.schemas import (
+    BotConnectorListResponse,
+    BotConnectorResponse,
+    BotConnectorUpsert,
+)
+from backend.db.models import BotConnector, User
+from backend.db.repos import BotConnectorRepo
+
+router = APIRouter(prefix="/bot-connectors", tags=["bot-connectors"])
+
+ALLOWED_CAPABILITIES = {
+    "incident_lookup",
+    "session_status",
+    "approvals",
+    "copilot_chat",
+    "notifications",
+}
+
+
+def _validate_capabilities(capabilities: list[str]) -> list[str]:
+    cleaned = sorted({item.strip() for item in capabilities if item and item.strip()})
+    if not cleaned:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one capability is required",
+        )
+
+    invalid = [item for item in cleaned if item not in ALLOWED_CAPABILITIES]
+    if invalid:
+        allowed = ", ".join(sorted(ALLOWED_CAPABILITIES))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported capabilities: {', '.join(invalid)}. Allowed: {allowed}",
+        )
+    return cleaned
+
+
+def _resolve_credentials(
+    body: BotConnectorUpsert,
+    existing: BotConnector | None = None,
+) -> dict | None:
+    if body.clear_credentials:
+        return None
+    if body.credentials is None:
+        return None if existing is None else existing.credentials
+    return body.credentials
+
+
+def _to_response(connector: BotConnector) -> BotConnectorResponse:
+    credentials = connector.credentials or {}
+    return BotConnectorResponse(
+        id=connector.id,
+        name=connector.name,
+        platform=connector.platform,
+        config=connector.config,
+        allowed_capabilities=list(connector.allowed_capabilities or []),
+        status=connector.status,
+        is_enabled=connector.is_enabled,
+        created_at=connector.created_at,
+        updated_at=connector.updated_at,
+        last_checked_at=connector.last_checked_at,
+        last_error=connector.last_error,
+        credential_keys=sorted(credentials.keys()),
+        has_credentials=bool(credentials),
+    )
+
+
+@router.get(
+    "",
+    response_model=BotConnectorListResponse,
+    summary="List external chat bot connectors",
+)
+async def list_bot_connectors(
+    platform: str | None = Query(default=None),
+    enabled_only: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    items = await BotConnectorRepo.list_all(
+        db,
+        platform=platform,
+        enabled_only=enabled_only,
+    )
+    return BotConnectorListResponse(
+        items=[_to_response(item) for item in items],
+        total=len(items),
+    )
+
+
+@router.post(
+    "",
+    response_model=BotConnectorResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an external chat bot connector",
+)
+async def create_bot_connector(
+    body: BotConnectorUpsert,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    try:
+        connector = await BotConnectorRepo.create(
+            db,
+            name=body.name,
+            platform=body.platform,
+            config=body.config,
+            credentials=_resolve_credentials(body),
+            allowed_capabilities=_validate_capabilities(body.allowed_capabilities),
+            status="configured" if body.credentials else body.status,
+            is_enabled=body.is_enabled,
+        )
+        await db.commit()
+        await db.refresh(connector)
+        return _to_response(connector)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bot connector name already exists",
+        ) from exc
+
+
+@router.put(
+    "/{connector_id}",
+    response_model=BotConnectorResponse,
+    summary="Update an external chat bot connector",
+)
+async def update_bot_connector(
+    connector_id: uuid.UUID,
+    body: BotConnectorUpsert,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    existing = await BotConnectorRepo.get_by_id(db, connector_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bot connector not found",
+        )
+
+    credentials = _resolve_credentials(body, existing)
+    try:
+        updated = await BotConnectorRepo.update(
+            db,
+            connector_id,
+            name=body.name,
+            platform=body.platform,
+            config=body.config,
+            credentials=credentials,
+            allowed_capabilities=_validate_capabilities(body.allowed_capabilities),
+            status=(
+                "configured"
+                if credentials and body.status == "not_configured"
+                else body.status
+            ),
+            is_enabled=body.is_enabled,
+        )
+        await db.commit()
+        if updated is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Bot connector not found",
+            )
+        await db.refresh(updated)
+        return _to_response(updated)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bot connector name already exists",
+        ) from exc
+
+
+@router.delete(
+    "/{connector_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an external chat bot connector",
+)
+async def delete_bot_connector(
+    connector_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    deleted = await BotConnectorRepo.delete(db, connector_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bot connector not found",
+        )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

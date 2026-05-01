@@ -24,6 +24,7 @@ from backend.db.repos import (
     AgentTeamProfileRepo,
     ApprovalRequestRepo,
     AuditEntryRepo,
+    BotConnectorRepo,
     IncidentRepo,
     MCPServerRepo,
     ModelConfigRepo,
@@ -33,10 +34,10 @@ from backend.db.repos import (
     WorkflowProfileRepo,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def app(tmp_path):
@@ -82,6 +83,7 @@ def _override_get_db(factory):
             except Exception:
                 await session.rollback()
                 raise
+
     return _get_db
 
 
@@ -96,15 +98,21 @@ async def client(app):
 @pytest.fixture
 async def auth_headers(client: AsyncClient) -> dict[str, str]:
     """Register + login a user and return auth headers."""
-    await client.post("/auth/register", json={
-        "username": "testadmin",
-        "email": "admin@test.com",
-        "password": "securepass123",
-    })
-    resp = await client.post("/auth/login", json={
-        "username": "testadmin",
-        "password": "securepass123",
-    })
+    await client.post(
+        "/auth/register",
+        json={
+            "username": "testadmin",
+            "email": "admin@test.com",
+            "password": "securepass123",
+        },
+    )
+    resp = await client.post(
+        "/auth/login",
+        json={
+            "username": "testadmin",
+            "password": "securepass123",
+        },
+    )
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
@@ -112,21 +120,29 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
 @pytest.fixture
 async def viewer_headers(client: AsyncClient, auth_headers) -> dict[str, str]:
     """Register a viewer user and return auth headers."""
-    await client.post("/auth/register", json={
-        "username": "viewer1",
-        "email": "viewer@test.com",
-        "password": "viewerpass123",
-        "role": "viewer",
-    })
-    resp = await client.post("/auth/login", json={
-        "username": "viewer1",
-        "password": "viewerpass123",
-    })
+    await client.post(
+        "/auth/register",
+        json={
+            "username": "viewer1",
+            "email": "viewer@test.com",
+            "password": "viewerpass123",
+            "role": "viewer",
+        },
+    )
+    resp = await client.post(
+        "/auth/login",
+        json={
+            "username": "viewer1",
+            "password": "viewerpass123",
+        },
+    )
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _create_approval_request(app, *, tier: int = 1, expires_delta_minutes: int = 15):
+async def _create_approval_request(
+    app, *, tier: int = 1, expires_delta_minutes: int = 15
+):
     factory = app.state.session_factory
     async with factory() as db:
         session = await SessionRepo.create(db, tier=tier)
@@ -135,7 +151,8 @@ async def _create_approval_request(app, *, tier: int = 1, expires_delta_minutes:
             session_id=session.id,
             action={"tool_name": "delete_pod", "tool_parameters": {"pod": "api"}},
             justification="Pod is causing the incident",
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=expires_delta_minutes),
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(minutes=expires_delta_minutes),
         )
         await db.commit()
         await db.refresh(session)
@@ -170,6 +187,7 @@ async def _wait_for_session_status(
 # Health
 # ===========================================================================
 
+
 class TestHealth:
 
     async def test_health(self, client: AsyncClient):
@@ -182,14 +200,18 @@ class TestHealth:
 # Auth
 # ===========================================================================
 
+
 class TestAuth:
 
     async def test_register_first_user_is_admin(self, client: AsyncClient):
-        resp = await client.post("/auth/register", json={
-            "username": "first",
-            "email": "first@test.com",
-            "password": "password123",
-        })
+        resp = await client.post(
+            "/auth/register",
+            json={
+                "username": "first",
+                "email": "first@test.com",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["username"] == "first"
@@ -197,78 +219,111 @@ class TestAuth:
 
     async def test_register_second_user_uses_given_role(self, client: AsyncClient):
         # First user (becomes admin)
-        await client.post("/auth/register", json={
-            "username": "admin1",
-            "email": "a1@test.com",
-            "password": "password123",
-        })
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "admin1",
+                "email": "a1@test.com",
+                "password": "password123",
+            },
+        )
         # Second user (viewer by default)
-        resp = await client.post("/auth/register", json={
-            "username": "user2",
-            "email": "u2@test.com",
-            "password": "password123",
-        })
+        resp = await client.post(
+            "/auth/register",
+            json={
+                "username": "user2",
+                "email": "u2@test.com",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 201
         assert resp.json()["role"] == "viewer"
 
     async def test_register_duplicate_username(self, client: AsyncClient):
-        await client.post("/auth/register", json={
-            "username": "dupuser",
-            "email": "dup1@test.com",
-            "password": "password123",
-        })
-        resp = await client.post("/auth/register", json={
-            "username": "dupuser",
-            "email": "dup2@test.com",
-            "password": "password123",
-        })
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "dupuser",
+                "email": "dup1@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/auth/register",
+            json={
+                "username": "dupuser",
+                "email": "dup2@test.com",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 409
 
     async def test_register_duplicate_email(self, client: AsyncClient):
-        await client.post("/auth/register", json={
-            "username": "emaildup1",
-            "email": "same@test.com",
-            "password": "password123",
-        })
-        resp = await client.post("/auth/register", json={
-            "username": "emaildup2",
-            "email": "same@test.com",
-            "password": "password123",
-        })
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "emaildup1",
+                "email": "same@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/auth/register",
+            json={
+                "username": "emaildup2",
+                "email": "same@test.com",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 409
 
     async def test_login_success(self, client: AsyncClient):
-        await client.post("/auth/register", json={
-            "username": "logintest",
-            "email": "lt@test.com",
-            "password": "password123",
-        })
-        resp = await client.post("/auth/login", json={
-            "username": "logintest",
-            "password": "password123",
-        })
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "logintest",
+                "email": "lt@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/auth/login",
+            json={
+                "username": "logintest",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
 
     async def test_login_wrong_password(self, client: AsyncClient):
-        await client.post("/auth/register", json={
-            "username": "wrongpw",
-            "email": "wp@test.com",
-            "password": "password123",
-        })
-        resp = await client.post("/auth/login", json={
-            "username": "wrongpw",
-            "password": "wrongpassword",
-        })
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "wrongpw",
+                "email": "wp@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/auth/login",
+            json={
+                "username": "wrongpw",
+                "password": "wrongpassword",
+            },
+        )
         assert resp.status_code == 401
 
     async def test_login_nonexistent_user(self, client: AsyncClient):
-        resp = await client.post("/auth/login", json={
-            "username": "nobody",
-            "password": "password123",
-        })
+        resp = await client.post(
+            "/auth/login",
+            json={
+                "username": "nobody",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 401
 
     async def test_me_authenticated(self, client: AsyncClient, auth_headers):
@@ -281,9 +336,9 @@ class TestAuth:
         assert resp.status_code == 401
 
     async def test_me_invalid_token(self, client: AsyncClient):
-        resp = await client.get("/auth/me", headers={
-            "Authorization": "Bearer invalid-token"
-        })
+        resp = await client.get(
+            "/auth/me", headers={"Authorization": "Bearer invalid-token"}
+        )
         assert resp.status_code == 401
 
 
@@ -291,14 +346,19 @@ class TestAuth:
 # Incidents
 # ===========================================================================
 
+
 class TestIncidents:
 
     async def test_create_incident(self, client: AsyncClient, auth_headers):
-        resp = await client.post("/incidents", json={
-            "title": "High CPU on api-server",
-            "description": "CPU at 95% for 10 minutes",
-            "severity": "high",
-        }, headers=auth_headers)
+        resp = await client.post(
+            "/incidents",
+            json={
+                "title": "High CPU on api-server",
+                "description": "CPU at 95% for 10 minutes",
+                "severity": "high",
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["title"] == "High CPU on api-server"
@@ -308,19 +368,34 @@ class TestIncidents:
     async def test_create_incident_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):
-        resp = await client.post("/incidents", json={
-            "title": "Blocked", "description": "should fail",
-        }, headers=viewer_headers)
+        resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Blocked",
+                "description": "should fail",
+            },
+            headers=viewer_headers,
+        )
         assert resp.status_code == 403
 
     async def test_list_incidents(self, client: AsyncClient, auth_headers):
         # Create two incidents
-        await client.post("/incidents", json={
-            "title": "Inc1", "description": "d1",
-        }, headers=auth_headers)
-        await client.post("/incidents", json={
-            "title": "Inc2", "description": "d2",
-        }, headers=auth_headers)
+        await client.post(
+            "/incidents",
+            json={
+                "title": "Inc1",
+                "description": "d1",
+            },
+            headers=auth_headers,
+        )
+        await client.post(
+            "/incidents",
+            json={
+                "title": "Inc2",
+                "description": "d2",
+            },
+            headers=auth_headers,
+        )
 
         resp = await client.get("/incidents", headers=auth_headers)
         assert resp.status_code == 200
@@ -331,12 +406,22 @@ class TestIncidents:
     async def test_list_incidents_with_status_filter(
         self, client: AsyncClient, auth_headers
     ):
-        await client.post("/incidents", json={
-            "title": "Open", "description": "d",
-        }, headers=auth_headers)
-        await client.post("/incidents", json={
-            "title": "Open2", "description": "d",
-        }, headers=auth_headers)
+        await client.post(
+            "/incidents",
+            json={
+                "title": "Open",
+                "description": "d",
+            },
+            headers=auth_headers,
+        )
+        await client.post(
+            "/incidents",
+            json={
+                "title": "Open2",
+                "description": "d",
+            },
+            headers=auth_headers,
+        )
 
         resp = await client.get("/incidents?status=open", headers=auth_headers)
         assert resp.status_code == 200
@@ -346,9 +431,14 @@ class TestIncidents:
         assert resp.json()["total"] == 0
 
     async def test_get_incident(self, client: AsyncClient, auth_headers):
-        create_resp = await client.post("/incidents", json={
-            "title": "Look me up", "description": "d",
-        }, headers=auth_headers)
+        create_resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Look me up",
+                "description": "d",
+            },
+            headers=auth_headers,
+        )
         inc_id = create_resp.json()["id"]
 
         resp = await client.get(f"/incidents/{inc_id}", headers=auth_headers)
@@ -356,37 +446,65 @@ class TestIncidents:
         assert resp.json()["title"] == "Look me up"
 
     async def test_list_sessions_for_incident(self, client: AsyncClient, auth_headers):
-        incident = await client.post("/incidents", json={
-            "title": "Timeline target", "description": "d",
-        }, headers=auth_headers)
+        incident = await client.post(
+            "/incidents",
+            json={
+                "title": "Timeline target",
+                "description": "d",
+            },
+            headers=auth_headers,
+        )
         incident_id = incident.json()["id"]
 
-        await client.post("/sessions", json={
-            "tier": 2,
-            "incident_id": incident_id,
-        }, headers=auth_headers)
-        await client.post("/sessions", json={
-            "tier": 1,
-            "incident_id": incident_id,
-        }, headers=auth_headers)
+        await client.post(
+            "/sessions",
+            json={
+                "tier": 2,
+                "incident_id": incident_id,
+            },
+            headers=auth_headers,
+        )
+        await client.post(
+            "/sessions",
+            json={
+                "tier": 1,
+                "incident_id": incident_id,
+            },
+            headers=auth_headers,
+        )
 
-        other_incident = await client.post("/incidents", json={
-            "title": "Other", "description": "d",
-        }, headers=auth_headers)
-        await client.post("/sessions", json={
-            "tier": 3,
-            "incident_id": other_incident.json()["id"],
-        }, headers=auth_headers)
+        other_incident = await client.post(
+            "/incidents",
+            json={
+                "title": "Other",
+                "description": "d",
+            },
+            headers=auth_headers,
+        )
+        await client.post(
+            "/sessions",
+            json={
+                "tier": 3,
+                "incident_id": other_incident.json()["id"],
+            },
+            headers=auth_headers,
+        )
 
-        resp = await client.get(f"/incidents/{incident_id}/sessions", headers=auth_headers)
+        resp = await client.get(
+            f"/incidents/{incident_id}/sessions", headers=auth_headers
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 2
         assert {item["tier"] for item in data["items"]} == {1, 2}
         assert all(item["incident_id"] == incident_id for item in data["items"])
 
-    async def test_list_sessions_for_incident_not_found(self, client: AsyncClient, auth_headers):
-        resp = await client.get(f"/incidents/{uuid.uuid4()}/sessions", headers=auth_headers)
+    async def test_list_sessions_for_incident_not_found(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get(
+            f"/incidents/{uuid.uuid4()}/sessions", headers=auth_headers
+        )
         assert resp.status_code == 404
 
     async def test_get_incident_not_found(self, client: AsyncClient, auth_headers):
@@ -396,9 +514,14 @@ class TestIncidents:
 
     async def test_list_incidents_pagination(self, client: AsyncClient, auth_headers):
         for i in range(5):
-            await client.post("/incidents", json={
-                "title": f"Inc-{i}", "description": "d",
-            }, headers=auth_headers)
+            await client.post(
+                "/incidents",
+                json={
+                    "title": f"Inc-{i}",
+                    "description": "d",
+                },
+                headers=auth_headers,
+            )
 
         resp = await client.get("/incidents?limit=2&offset=0", headers=auth_headers)
         data = resp.json()
@@ -410,51 +533,79 @@ class TestIncidents:
 # Sessions
 # ===========================================================================
 
+
 class TestSessions:
 
     async def test_create_session(self, client: AsyncClient, auth_headers):
-        resp = await client.post("/sessions", json={
-            "tier": 2,
-        }, headers=auth_headers)
+        resp = await client.post(
+            "/sessions",
+            json={
+                "tier": 2,
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["tier"] == 2
         assert data["status"] == "active"
 
-    async def test_create_session_with_incident(self, client: AsyncClient, auth_headers):
-        inc_resp = await client.post("/incidents", json={
-            "title": "T", "description": "d",
-        }, headers=auth_headers)
+    async def test_create_session_with_incident(
+        self, client: AsyncClient, auth_headers
+    ):
+        inc_resp = await client.post(
+            "/incidents",
+            json={
+                "title": "T",
+                "description": "d",
+            },
+            headers=auth_headers,
+        )
         inc_id = inc_resp.json()["id"]
 
-        resp = await client.post("/sessions", json={
-            "incident_id": inc_id,
-            "tier": 1,
-        }, headers=auth_headers)
+        resp = await client.post(
+            "/sessions",
+            json={
+                "incident_id": inc_id,
+                "tier": 1,
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
         assert resp.json()["incident_id"] == inc_id
 
     async def test_create_session_invalid_incident(
         self, client: AsyncClient, auth_headers
     ):
-        resp = await client.post("/sessions", json={
-            "incident_id": str(uuid.uuid4()),
-            "tier": 2,
-        }, headers=auth_headers)
+        resp = await client.post(
+            "/sessions",
+            json={
+                "incident_id": str(uuid.uuid4()),
+                "tier": 2,
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 404
 
     async def test_create_session_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):
-        resp = await client.post("/sessions", json={
-            "tier": 2,
-        }, headers=viewer_headers)
+        resp = await client.post(
+            "/sessions",
+            json={
+                "tier": 2,
+            },
+            headers=viewer_headers,
+        )
         assert resp.status_code == 403
 
     async def test_get_session(self, client: AsyncClient, auth_headers):
-        create_resp = await client.post("/sessions", json={
-            "tier": 3,
-        }, headers=auth_headers)
+        create_resp = await client.post(
+            "/sessions",
+            json={
+                "tier": 3,
+            },
+            headers=auth_headers,
+        )
         sess_id = create_resp.json()["id"]
 
         resp = await client.get(f"/sessions/{sess_id}", headers=auth_headers)
@@ -462,17 +613,19 @@ class TestSessions:
         assert resp.json()["tier"] == 3
 
     async def test_get_session_not_found(self, client: AsyncClient, auth_headers):
-        resp = await client.get(
-            f"/sessions/{uuid.uuid4()}", headers=auth_headers
-        )
+        resp = await client.get(f"/sessions/{uuid.uuid4()}", headers=auth_headers)
         assert resp.status_code == 404
 
     async def test_tier_0_session_includes_time_limit(
         self, client: AsyncClient, auth_headers
     ):
-        resp = await client.post("/sessions", json={
-            "tier": 0,
-        }, headers=auth_headers)
+        resp = await client.post(
+            "/sessions",
+            json={
+                "tier": 0,
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
         assert resp.json()["tier0_max_session_seconds"] == 600
 
@@ -732,14 +885,19 @@ class TestSessions:
 # Audit
 # ===========================================================================
 
+
 class TestAudit:
 
     async def _seed_audit(self, client, auth_headers):
         """Create a session and seed audit entries directly via DB."""
         # Create session via API
-        resp = await client.post("/sessions", json={
-            "tier": 2,
-        }, headers=auth_headers)
+        resp = await client.post(
+            "/sessions",
+            json={
+                "tier": 2,
+            },
+            headers=auth_headers,
+        )
         return resp.json()["id"]
 
     async def test_list_audit_empty(self, client: AsyncClient, auth_headers):
@@ -755,6 +913,7 @@ class TestAudit:
 # ===========================================================================
 # Config
 # ===========================================================================
+
 
 class TestConfig:
 
@@ -774,6 +933,7 @@ class TestConfig:
 # ===========================================================================
 # Webhook triggers
 # ===========================================================================
+
 
 class TestWebhookTriggers:
 
@@ -1051,6 +1211,7 @@ class TestWebhookTriggers:
         assert payload["sessionStatus"] == "completed"
         assert payload["session"]["id"] == "test-session"
 
+
 class TestWorkflowProfiles:
 
     async def test_create_list_update_delete_workflow_profile(
@@ -1061,7 +1222,14 @@ class TestWorkflowProfiles:
             json={
                 "name": "fast-track",
                 "description": "Skip observe",
-                "node_order": ["diagnose", "plan", "tier_gate", "execute", "verify", "summarize"],
+                "node_order": [
+                    "diagnose",
+                    "plan",
+                    "tier_gate",
+                    "execute",
+                    "verify",
+                    "summarize",
+                ],
                 "is_active": True,
                 "is_default": True,
             },
@@ -1088,7 +1256,11 @@ class TestWorkflowProfiles:
         )
         assert update_resp.status_code == 200
         assert update_resp.json()["node_order"] == [
-            "diagnose", "plan", "tier_gate", "execute", "summarize"
+            "diagnose",
+            "plan",
+            "tier_gate",
+            "execute",
+            "summarize",
         ]
 
         delete_resp = await client.delete(
@@ -1225,13 +1397,17 @@ class TestAgentTeamProfiles:
         assert resp.status_code == 403
 
     async def test_update_config_admin(self, client: AsyncClient, auth_headers):
-        resp = await client.put("/config", json={
-            "tier": 3,
-            "logging_level": "DEBUG",
-            "ingest_auto_start_enabled": True,
-            "ingest_auto_start_min_severity": "high",
-            "ingest_auto_start_source": "legacy_alert_vendor",
-        }, headers=auth_headers)
+        resp = await client.put(
+            "/config",
+            json={
+                "tier": 3,
+                "logging_level": "DEBUG",
+                "ingest_auto_start_enabled": True,
+                "ingest_auto_start_min_severity": "high",
+                "ingest_auto_start_source": "legacy_alert_vendor",
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["tier"] == 3
@@ -1259,9 +1435,116 @@ class TestAgentTeamProfiles:
     async def test_update_config_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):
-        resp = await client.put("/config", json={
-            "tier": 1,
-        }, headers=viewer_headers)
+        resp = await client.put(
+            "/config",
+            json={
+                "tier": 1,
+            },
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
+
+class TestBotConnectorsAPI:
+
+    async def test_create_list_update_delete_bot_connector(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        create_resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "telegram-ops",
+                "platform": "telegram",
+                "config": {"default_chat_id": "-100123"},
+                "credentials": {"bot_token": "secret-token"},
+                "allowed_capabilities": ["approvals", "incident_lookup"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+        data = create_resp.json()
+        connector_id = data["id"]
+        assert data["status"] == "configured"
+        assert data["credential_keys"] == ["bot_token"]
+        assert data["has_credentials"] is True
+        assert "credentials" not in data
+
+        async with app.state.session_factory() as db:
+            stored = await BotConnectorRepo.get_by_id(db, uuid.UUID(connector_id))
+            assert stored is not None
+            assert stored.credentials == {"bot_token": "secret-token"}
+
+        list_resp = await client.get("/bot-connectors", headers=auth_headers)
+        assert list_resp.status_code == 200
+        assert list_resp.json()["total"] == 1
+
+        update_resp = await client.put(
+            f"/bot-connectors/{connector_id}",
+            json={
+                "name": "telegram-ops",
+                "platform": "telegram",
+                "config": {"default_chat_id": "-100999"},
+                "clear_credentials": True,
+                "allowed_capabilities": ["notifications"],
+                "status": "disabled",
+                "is_enabled": False,
+            },
+            headers=auth_headers,
+        )
+        assert update_resp.status_code == 200
+        updated = update_resp.json()
+        assert updated["has_credentials"] is False
+        assert updated["credential_keys"] == []
+        assert updated["allowed_capabilities"] == ["notifications"]
+
+        delete_resp = await client.delete(
+            f"/bot-connectors/{connector_id}",
+            headers=auth_headers,
+        )
+        assert delete_resp.status_code == 204
+
+    async def test_bot_connector_rejects_unknown_capability(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "unsafe-bot",
+                "platform": "custom",
+                "allowed_capabilities": ["execute_shell"],
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "Unsupported capabilities" in resp.json()["detail"]
+
+    async def test_bot_connector_duplicate_name_conflict(
+        self, client: AsyncClient, auth_headers
+    ):
+        payload = {
+            "name": "signal-ops",
+            "platform": "signal",
+            "allowed_capabilities": ["session_status"],
+        }
+        first = await client.post(
+            "/bot-connectors",
+            json=payload,
+            headers=auth_headers,
+        )
+        assert first.status_code == 201
+
+        second = await client.post(
+            "/bot-connectors",
+            json=payload,
+            headers=auth_headers,
+        )
+        assert second.status_code == 409
+
+    async def test_bot_connector_viewer_forbidden(
+        self, client: AsyncClient, viewer_headers
+    ):
+        resp = await client.get("/bot-connectors", headers=viewer_headers)
         assert resp.status_code == 403
 
 
@@ -1889,7 +2172,9 @@ class TestMCPServerAPI:
             return [_Tool("get_pods"), _Tool("describe_pod")]
 
         monkeypatch.setattr("backend.api.routes.mcp_servers.connect", _fake_connect)
-        monkeypatch.setattr("backend.api.routes.mcp_servers.list_tools", _fake_list_tools)
+        monkeypatch.setattr(
+            "backend.api.routes.mcp_servers.list_tools", _fake_list_tools
+        )
 
         resp = await client.post(
             f"/mcp-servers/{server_id}/test",
@@ -1936,6 +2221,7 @@ class TestMCPServerAPI:
 # Approvals
 # ===========================================================================
 
+
 class TestApprovals:
 
     async def test_list_approvals(self, client: AsyncClient, app, auth_headers):
@@ -1981,7 +2267,9 @@ class TestApprovals:
         assert resp.status_code == 200
         assert resp.json()["status"] == "rejected"
 
-    async def test_viewer_cannot_approve(self, client: AsyncClient, app, viewer_headers):
+    async def test_viewer_cannot_approve(
+        self, client: AsyncClient, app, viewer_headers
+    ):
         _, request = await _create_approval_request(app)
 
         resp = await client.post(
@@ -2006,6 +2294,7 @@ class TestApprovals:
 # ===========================================================================
 # WebSocket
 # ===========================================================================
+
 
 class TestWebSocket:
 

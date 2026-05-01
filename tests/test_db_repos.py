@@ -16,6 +16,7 @@ from backend.db.repos import (
     AgentTeamProfileRepo,
     ApprovalRequestRepo,
     AuditEntryRepo,
+    BotConnectorRepo,
     DetectorHistoryRepo,
     DetectorRuleRepo,
     IncidentRepo,
@@ -27,10 +28,10 @@ from backend.db.repos import (
     WorkflowProfileRepo,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def db():
@@ -46,6 +47,7 @@ async def db():
 # ---------------------------------------------------------------------------
 # UserRepo
 # ---------------------------------------------------------------------------
+
 
 class TestUserRepo:
 
@@ -94,6 +96,7 @@ class TestUserRepo:
 # ---------------------------------------------------------------------------
 # IncidentRepo
 # ---------------------------------------------------------------------------
+
 
 class TestIncidentRepo:
 
@@ -146,6 +149,7 @@ class TestIncidentRepo:
 # SessionRepo
 # ---------------------------------------------------------------------------
 
+
 class TestSessionRepo:
 
     async def test_create_and_get(self, db: AsyncSession):
@@ -196,6 +200,7 @@ class TestSessionRepo:
 # WebhookTriggerRepo
 # ---------------------------------------------------------------------------
 
+
 class TestWebhookTriggerRepo:
 
     async def test_create_and_list_matching_event(self, db: AsyncSession):
@@ -238,6 +243,7 @@ class TestWebhookTriggerRepo:
 # WorkflowProfileRepo
 # ---------------------------------------------------------------------------
 
+
 class TestWorkflowProfileRepo:
 
     async def test_create_and_get_default(self, db: AsyncSession):
@@ -245,7 +251,15 @@ class TestWorkflowProfileRepo:
             db,
             name="default-linear",
             description="default",
-            node_order=["observe", "diagnose", "plan", "tier_gate", "execute", "verify", "summarize"],
+            node_order=[
+                "observe",
+                "diagnose",
+                "plan",
+                "tier_gate",
+                "execute",
+                "verify",
+                "summarize",
+            ],
             is_default=True,
         )
         await db.flush()
@@ -258,6 +272,7 @@ class TestWorkflowProfileRepo:
 # ---------------------------------------------------------------------------
 # AgentTeamProfileRepo
 # ---------------------------------------------------------------------------
+
 
 class TestAgentTeamProfileRepo:
 
@@ -279,6 +294,7 @@ class TestAgentTeamProfileRepo:
 # ---------------------------------------------------------------------------
 # AuditEntryRepo
 # ---------------------------------------------------------------------------
+
 
 class TestAuditEntryRepo:
 
@@ -349,7 +365,11 @@ class TestAuditEntryRepo:
         sid = await self._make_session(db)
         for i in range(5):
             await AuditEntryRepo.create(
-                db, session_id=sid, tier=2, entry_type="tool_call_end", tool_name=f"t{i}"
+                db,
+                session_id=sid,
+                tier=2,
+                entry_type="tool_call_end",
+                tool_name=f"t{i}",
             )
         await db.flush()
 
@@ -360,6 +380,7 @@ class TestAuditEntryRepo:
 # ---------------------------------------------------------------------------
 # ApprovalRequestRepo
 # ---------------------------------------------------------------------------
+
 
 class TestApprovalRequestRepo:
 
@@ -444,7 +465,9 @@ class TestApprovalRequestRepo:
         await ApprovalRequestRepo.resolve(db, req2.id, status="approved")
         await db.flush()
 
-        pending = await ApprovalRequestRepo.list(db, status="pending", session_id=sess1.id)
+        pending = await ApprovalRequestRepo.list(
+            db, status="pending", session_id=sess1.id
+        )
         assert len(pending) == 1
         assert pending[0].id == req1.id
 
@@ -470,6 +493,7 @@ class TestApprovalRequestRepo:
 # ---------------------------------------------------------------------------
 # ModelConfigRepo
 # ---------------------------------------------------------------------------
+
 
 class TestModelConfigRepo:
 
@@ -581,6 +605,7 @@ class TestModelConfigRepo:
 # MCPServerRepo
 # ---------------------------------------------------------------------------
 
+
 class TestMCPServerRepo:
 
     async def test_create_and_list(self, db: AsyncSession):
@@ -609,8 +634,70 @@ class TestMCPServerRepo:
 
 
 # ---------------------------------------------------------------------------
+# BotConnectorRepo
+# ---------------------------------------------------------------------------
+
+
+class TestBotConnectorRepo:
+
+    async def test_create_list_update_status_and_delete(self, db: AsyncSession):
+        connector = await BotConnectorRepo.create(
+            db,
+            name="telegram-ops",
+            platform="telegram",
+            config={"default_chat_id": "-100123"},
+            credentials={"bot_token": "secret"},
+            allowed_capabilities=["approvals", "incident_lookup"],
+            is_enabled=True,
+        )
+        await db.flush()
+
+        fetched = await BotConnectorRepo.get_by_id(db, connector.id)
+        assert fetched is not None
+        assert fetched.name == "telegram-ops"
+        assert fetched.credentials == {"bot_token": "secret"}
+
+        items = await BotConnectorRepo.list_all(db, enabled_only=True)
+        assert [item.name for item in items] == ["telegram-ops"]
+
+        updated = await BotConnectorRepo.update(
+            db,
+            connector.id,
+            name="telegram-major-incidents",
+            platform="telegram",
+            config={"default_chat_id": "-100999"},
+            credentials=None,
+            allowed_capabilities=["notifications"],
+            status="disabled",
+            is_enabled=False,
+        )
+        await db.flush()
+
+        assert updated is not None
+        assert updated.name == "telegram-major-incidents"
+        assert updated.credentials is None
+        assert updated.status == "disabled"
+
+        await BotConnectorRepo.mark_status(
+            db, connector.id, status="error", error="bad token"
+        )
+        await db.flush()
+
+        marked = await BotConnectorRepo.get_by_id(db, connector.id)
+        assert marked is not None
+        assert marked.status == "error"
+        assert marked.last_error == "bad token"
+        assert marked.last_checked_at is not None
+
+        deleted = await BotConnectorRepo.delete(db, connector.id)
+        assert deleted is True
+        assert await BotConnectorRepo.get_by_id(db, connector.id) is None
+
+
+# ---------------------------------------------------------------------------
 # Detector repos
 # ---------------------------------------------------------------------------
+
 
 class TestDetectorRepos:
 

@@ -17,6 +17,7 @@ from backend.db.models import (
     ApprovalRequest,
     AuditEntry,
     Base,
+    BotConnector,
     Incident,
     MCPServer,
     ModelConfig,
@@ -24,10 +25,10 @@ from backend.db.models import (
     User,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def db():
@@ -48,6 +49,7 @@ async def db():
 # ---------------------------------------------------------------------------
 # User model
 # ---------------------------------------------------------------------------
+
 
 class TestUserModel:
 
@@ -84,6 +86,7 @@ class TestUserModel:
 # Incident model
 # ---------------------------------------------------------------------------
 
+
 class TestIncidentModel:
 
     async def test_create_incident(self, db: AsyncSession):
@@ -116,6 +119,7 @@ class TestIncidentModel:
 # Session model
 # ---------------------------------------------------------------------------
 
+
 class TestSessionModel:
 
     async def test_create_session(self, db: AsyncSession):
@@ -143,6 +147,7 @@ class TestSessionModel:
 # ---------------------------------------------------------------------------
 # AuditEntry model
 # ---------------------------------------------------------------------------
+
 
 class TestAuditEntryModel:
 
@@ -190,6 +195,7 @@ class TestAuditEntryModel:
 # ApprovalRequest model
 # ---------------------------------------------------------------------------
 
+
 class TestApprovalRequestModel:
 
     async def test_create_approval_request(self, db: AsyncSession):
@@ -214,6 +220,7 @@ class TestApprovalRequestModel:
 # ---------------------------------------------------------------------------
 # ModelConfig model
 # ---------------------------------------------------------------------------
+
 
 class TestModelConfigModel:
 
@@ -241,6 +248,7 @@ class TestModelConfigModel:
 # MCPServer model
 # ---------------------------------------------------------------------------
 
+
 class TestMCPServerModel:
 
     async def test_create_mcp_server(self, db: AsyncSession):
@@ -262,3 +270,32 @@ class TestMCPServerModel:
         assert server.args == ["-y", "@anthropic/mcp-server-k8s"]
         assert server.env_vars == {"KUBECONFIG": "/tmp/config"}
         assert server.is_active is True
+
+
+# ---------------------------------------------------------------------------
+# BotConnector model
+# ---------------------------------------------------------------------------
+
+
+class TestBotConnectorModel:
+
+    async def test_create_bot_connector(self, db: AsyncSession):
+        connector = BotConnector(
+            name="telegram-primary",
+            platform="telegram",
+            config={"default_chat_id": "-100123"},
+            credentials={"bot_token": "secret"},
+            allowed_capabilities=["incident_lookup", "approvals"],
+            status="configured",
+            is_enabled=True,
+        )
+        db.add(connector)
+        await db.flush()
+
+        assert connector.id is not None
+        assert connector.platform == "telegram"
+        assert connector.config == {"default_chat_id": "-100123"}
+        assert connector.credentials == {"bot_token": "secret"}
+        assert connector.allowed_capabilities == ["incident_lookup", "approvals"]
+        assert connector.status == "configured"
+        assert connector.is_enabled is True

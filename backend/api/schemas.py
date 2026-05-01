@@ -12,10 +12,10 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+
 
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=150)
@@ -49,6 +49,7 @@ class UserResponse(BaseModel):
 # Incidents
 # ---------------------------------------------------------------------------
 
+
 class IncidentCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     description: str = Field(..., min_length=1)
@@ -79,6 +80,7 @@ class IncidentListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Sessions
 # ---------------------------------------------------------------------------
+
 
 class SessionCreate(BaseModel):
     incident_id: Optional[uuid.UUID] = None
@@ -113,6 +115,7 @@ class SessionListResponse(BaseModel):
 
 
 # -- Rollback (Sprint 17) ----------------------------------------------------
+
 
 class SessionRollbackRequest(BaseModel):
     """Trigger rollback of a session's executed operations.
@@ -151,6 +154,7 @@ class SessionRollbackResponse(BaseModel):
 # Audit
 # ---------------------------------------------------------------------------
 
+
 class AuditEntryResponse(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
@@ -176,6 +180,7 @@ class AuditListResponse(BaseModel):
 # Approvals
 # ---------------------------------------------------------------------------
 
+
 class ApprovalRequestResponse(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
@@ -198,6 +203,7 @@ class ApprovalListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+
 
 class ConfigResponse(BaseModel):
     tier: int
@@ -367,6 +373,7 @@ class ProviderModelsListResponse(BaseModel):
 # Session messages (co-pilot chat)
 # ---------------------------------------------------------------------------
 
+
 class SessionMessageCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=10000)
 
@@ -391,6 +398,7 @@ class SessionMessageListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Webhook triggers (outbound session-state notifications)
 # ---------------------------------------------------------------------------
+
 
 class WebhookTriggerUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
@@ -437,6 +445,7 @@ class WebhookTriggerTestResponse(BaseModel):
 # Workflow profiles (custom workflow builder — Phase 3)
 # ---------------------------------------------------------------------------
 
+
 class WorkflowProfileUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     description: Optional[str] = None
@@ -466,6 +475,7 @@ class WorkflowProfileListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Agent team profiles (multi-agent support — Phase 3)
 # ---------------------------------------------------------------------------
+
 
 class AgentTeamProfileUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
@@ -497,6 +507,7 @@ class AgentTeamProfileListResponse(BaseModel):
 # Ingest tokens (Sprint 14)
 # ---------------------------------------------------------------------------
 
+
 class IngestTokenCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     provider: str = Field(
@@ -511,6 +522,7 @@ class IngestTokenCreate(BaseModel):
 
 class IngestTokenResponse(BaseModel):
     """Returned on list/get — never exposes the raw token."""
+
     id: uuid.UUID
     name: str
     provider: str
@@ -524,6 +536,7 @@ class IngestTokenResponse(BaseModel):
 
 class IngestTokenCreatedResponse(BaseModel):
     """Returned only on creation — includes the raw token once."""
+
     id: uuid.UUID
     name: str
     provider: str
@@ -546,6 +559,7 @@ class IngestLearnPreview(BaseModel):
 
 class IngestTokenLearnShapeResponse(BaseModel):
     """Result of training a token on a sample payload."""
+
     shape_hash: str
     paths: dict[str, str]
     cache_hit: bool
@@ -559,6 +573,7 @@ class IngestTokenListResponse(BaseModel):
 
 class IngestResponse(BaseModel):
     """Response from POST /incidents/ingest webhook."""
+
     success: bool
     incident_id: Optional[uuid.UUID] = None
     dedup_action: Optional[str] = None  # created | updated | skipped
@@ -578,13 +593,16 @@ class IngestProviderListResponse(BaseModel):
 # Detector rules (MCP-driven incident detection)
 # ---------------------------------------------------------------------------
 
+
 class DetectorRuleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     mcp_server_id: uuid.UUID
     prompt_template: str = Field(..., min_length=1)
     model_config_id: Optional[uuid.UUID] = None
     interval_seconds: int = Field(default=300, ge=30, le=86400)
-    severity_default: str = Field(default="medium", pattern="^(critical|high|medium|low)$")
+    severity_default: str = Field(
+        default="medium", pattern="^(critical|high|medium|low)$"
+    )
     is_active: bool = True
 
 
@@ -594,7 +612,9 @@ class DetectorRuleUpdate(BaseModel):
     prompt_template: Optional[str] = Field(None, min_length=1)
     model_config_id: Optional[uuid.UUID] = None
     interval_seconds: Optional[int] = Field(None, ge=30, le=86400)
-    severity_default: Optional[str] = Field(None, pattern="^(critical|high|medium|low)$")
+    severity_default: Optional[str] = Field(
+        None, pattern="^(critical|high|medium|low)$"
+    )
     is_active: Optional[bool] = None
 
 
@@ -640,6 +660,7 @@ class DetectorHistoryListResponse(BaseModel):
 
 class DetectorRunResponse(BaseModel):
     """Response from POST /detectors/{id}/run (on-demand execution)."""
+
     success: bool
     issue_detected: bool = False
     incident_id: Optional[uuid.UUID] = None
@@ -663,6 +684,7 @@ class DetectorTemplateListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # SLA Targets (Sprint 25)
 # ---------------------------------------------------------------------------
+
 
 class SLATargetCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
@@ -702,6 +724,7 @@ class SLATargetListResponse(BaseModel):
 # SLOs (Sprint 25)
 # ---------------------------------------------------------------------------
 
+
 class SLOCreate(BaseModel):
     target_id: uuid.UUID
     name: str = Field(..., min_length=1, max_length=200)
@@ -739,6 +762,7 @@ class SLOListResponse(BaseModel):
 
 class SLOStatusResponse(BaseModel):
     """Computed SLO compliance status."""
+
     slo_id: uuid.UUID
     target_id: uuid.UUID
     name: str
@@ -752,6 +776,7 @@ class SLOStatusResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Maintenance Windows (Sprint 25)
 # ---------------------------------------------------------------------------
+
 
 class MaintenanceWindowCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
@@ -794,6 +819,7 @@ class MaintenanceWindowListResponse(BaseModel):
 # Uptime queries (Sprint 25)
 # ---------------------------------------------------------------------------
 
+
 class UptimeSeriesPoint(BaseModel):
     ts: datetime
     up_pct: float
@@ -801,6 +827,7 @@ class UptimeSeriesPoint(BaseModel):
 
 class UptimeResponse(BaseModel):
     """Aggregated uptime statistics for a target over a window."""
+
     target_id: uuid.UUID
     uptime_pct: float
     total_samples: int
@@ -811,10 +838,54 @@ class UptimeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Bot connectors (Sprint 27)
+# ---------------------------------------------------------------------------
+
+
+class BotConnectorUpsert(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    platform: str = Field(pattern="^(telegram|signal|whatsapp|custom)$")
+    config: Optional[dict] = None
+    credentials: Optional[dict] = None
+    clear_credentials: bool = False
+    allowed_capabilities: list[str] = Field(..., min_length=1)
+    status: str = Field(
+        default="not_configured",
+        pattern="^(not_configured|configured|healthy|error|disabled)$",
+    )
+    is_enabled: bool = False
+
+
+class BotConnectorResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    platform: str
+    config: Optional[dict]
+    allowed_capabilities: list[str]
+    status: str
+    is_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+    last_checked_at: Optional[datetime]
+    last_error: Optional[str]
+    credential_keys: list[str] = Field(default_factory=list)
+    has_credentials: bool
+
+    model_config = {"from_attributes": True}
+
+
+class BotConnectorListResponse(BaseModel):
+    items: list[BotConnectorResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------
 
+
 class WSMessage(BaseModel):
     """Outbound WebSocket message."""
+
     type: str  # node_transition | tool_call | approval_requested | approval_resolved | chat_message_user | chat_message_assistant | error | session_end
     data: dict[str, Any] = Field(default_factory=dict)

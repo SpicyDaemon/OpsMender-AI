@@ -79,6 +79,7 @@ async def _lifespan(app: FastAPI):
         await auto_import_skills(factory, skills_dir="skills")
     except Exception as exc:  # noqa: BLE001
         import logging
+
         logging.getLogger(__name__).warning(
             "skills.auto_import: startup scan failed: %s", exc
         )
@@ -90,6 +91,7 @@ async def _lifespan(app: FastAPI):
         task.cancel()
     if session_tasks:
         import asyncio
+
         await asyncio.gather(*session_tasks, return_exceptions=True)
 
     background_tasks = list(getattr(app.state, "background_tasks", set()))
@@ -97,6 +99,7 @@ async def _lifespan(app: FastAPI):
         task.cancel()
     if background_tasks:
         import asyncio
+
         await asyncio.gather(*background_tasks, return_exceptions=True)
 
     await downsampler.stop()
@@ -123,6 +126,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     # -- Ingest rate limiter ------------------------------------------------
     from backend.ingest.rate_limiter import IngestRateLimiter
+
     app.state.ingest_limiter = IngestRateLimiter(
         max_requests=config.ingest.rate_limit,
         window_seconds=config.ingest.rate_window,
@@ -155,8 +159,11 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.detectors import router as detectors_router
     from backend.api.routes.webhook_triggers import router as webhook_triggers_router
     from backend.api.routes.workflow_profiles import router as workflow_profiles_router
-    from backend.api.routes.agent_team_profiles import router as agent_team_profiles_router
+    from backend.api.routes.agent_team_profiles import (
+        router as agent_team_profiles_router,
+    )
     from backend.api.routes.sla import router as sla_router
+    from backend.api.routes.bot_connectors import router as bot_connectors_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -174,6 +181,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(workflow_profiles_router)
     app.include_router(agent_team_profiles_router)
     app.include_router(sla_router)
+    app.include_router(bot_connectors_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])
@@ -182,6 +190,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     # -- Frontend (static export) — MUST be registered last so API routes win
     from backend.api.static import mount_frontend
+
     mount_frontend(app, config.app.frontend_static_dir)
 
     return app

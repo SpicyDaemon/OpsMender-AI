@@ -24,6 +24,7 @@ from backend.db.models import (
     AgentTeamProfile,
     ApprovalRequest,
     AuditEntry,
+    BotConnector,
     DetectorHistory,
     DetectorRule,
     Incident,
@@ -44,10 +45,10 @@ from backend.db.models import (
     MaintenanceWindow,
 )
 
-
 # ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
+
 
 class UserRepo:
 
@@ -96,6 +97,7 @@ class UserRepo:
 # ---------------------------------------------------------------------------
 # Incidents
 # ---------------------------------------------------------------------------
+
 
 class IncidentRepo:
 
@@ -191,6 +193,7 @@ class IncidentRepo:
 # Sessions
 # ---------------------------------------------------------------------------
 
+
 class SessionRepo:
 
     @staticmethod
@@ -274,6 +277,7 @@ class SessionRepo:
 # Audit entries
 # ---------------------------------------------------------------------------
 
+
 class AuditEntryRepo:
 
     @staticmethod
@@ -352,6 +356,7 @@ class AuditEntryRepo:
 # ---------------------------------------------------------------------------
 # Approval requests
 # ---------------------------------------------------------------------------
+
 
 class ApprovalRequestRepo:
 
@@ -438,6 +443,7 @@ class ApprovalRequestRepo:
 # ---------------------------------------------------------------------------
 # Model configs
 # ---------------------------------------------------------------------------
+
 
 class ModelConfigRepo:
 
@@ -536,13 +542,9 @@ class ModelConfigRepo:
         return True
 
     @staticmethod
-    async def set_default(
-        db: AsyncSession, config_id: uuid.UUID
-    ) -> None:
+    async def set_default(db: AsyncSession, config_id: uuid.UUID) -> None:
         # Clear existing default
-        await db.execute(
-            update(ModelConfig).values(is_default=False)
-        )
+        await db.execute(update(ModelConfig).values(is_default=False))
         # Set new default
         await db.execute(
             update(ModelConfig)
@@ -604,6 +606,7 @@ class ModelConfigRepo:
 # ---------------------------------------------------------------------------
 # MCP servers
 # ---------------------------------------------------------------------------
+
 
 class MCPServerRepo:
 
@@ -701,6 +704,7 @@ class MCPServerRepo:
 # ---------------------------------------------------------------------------
 # Skills
 # ---------------------------------------------------------------------------
+
 
 class SkillRepo:
 
@@ -822,6 +826,7 @@ class SkillRepo:
 # Session messages (co-pilot chat)
 # ---------------------------------------------------------------------------
 
+
 class SessionMessageRepo:
 
     @staticmethod
@@ -917,6 +922,7 @@ class SessionMessageRepo:
 # Runtime config
 # ---------------------------------------------------------------------------
 
+
 class RuntimeConfigRepo:
 
     @staticmethod
@@ -929,9 +935,7 @@ class RuntimeConfigRepo:
         return None if item is None else item.value
 
     @staticmethod
-    async def get_many(
-        db: AsyncSession, keys: Sequence[str]
-    ) -> dict[str, str]:
+    async def get_many(db: AsyncSession, keys: Sequence[str]) -> dict[str, str]:
         stmt = select(RuntimeConfig).where(RuntimeConfig.key.in_(list(keys)))
         result = await db.execute(stmt)
         return {item.key: item.value for item in result.scalars().all()}
@@ -960,6 +964,7 @@ class RuntimeConfigRepo:
 # ---------------------------------------------------------------------------
 # Webhook triggers (outbound session-state notifications)
 # ---------------------------------------------------------------------------
+
 
 class WebhookTriggerRepo:
 
@@ -995,9 +1000,7 @@ class WebhookTriggerRepo:
         return await db.get(WebhookTrigger, trigger_id)
 
     @staticmethod
-    async def get_by_name(
-        db: AsyncSession, name: str
-    ) -> WebhookTrigger | None:
+    async def get_by_name(db: AsyncSession, name: str) -> WebhookTrigger | None:
         stmt = select(WebhookTrigger).where(WebhookTrigger.name == name)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -1091,6 +1094,7 @@ class WebhookTriggerRepo:
 # Workflow profiles (custom workflow builder — Phase 3)
 # ---------------------------------------------------------------------------
 
+
 class WorkflowProfileRepo:
 
     @staticmethod
@@ -1123,9 +1127,7 @@ class WorkflowProfileRepo:
         return await db.get(WorkflowProfile, profile_id)
 
     @staticmethod
-    async def get_by_name(
-        db: AsyncSession, name: str
-    ) -> WorkflowProfile | None:
+    async def get_by_name(db: AsyncSession, name: str) -> WorkflowProfile | None:
         stmt = select(WorkflowProfile).where(WorkflowProfile.name == name)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -1200,6 +1202,7 @@ class WorkflowProfileRepo:
 # Agent team profiles (multi-agent support — Phase 3)
 # ---------------------------------------------------------------------------
 
+
 class AgentTeamProfileRepo:
 
     @staticmethod
@@ -1232,9 +1235,7 @@ class AgentTeamProfileRepo:
         return await db.get(AgentTeamProfile, profile_id)
 
     @staticmethod
-    async def get_by_name(
-        db: AsyncSession, name: str
-    ) -> AgentTeamProfile | None:
+    async def get_by_name(db: AsyncSession, name: str) -> AgentTeamProfile | None:
         stmt = select(AgentTeamProfile).where(AgentTeamProfile.name == name)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -1308,6 +1309,7 @@ class AgentTeamProfileRepo:
 # ---------------------------------------------------------------------------
 # Ingest tokens (Sprint 14)
 # ---------------------------------------------------------------------------
+
 
 class IngestTokenRepo:
 
@@ -1400,6 +1402,7 @@ class IngestTokenRepo:
 # Ingest log (Sprint 14)
 # ---------------------------------------------------------------------------
 
+
 class IngestLogRepo:
 
     @staticmethod
@@ -1444,6 +1447,7 @@ class IngestLogRepo:
 # ---------------------------------------------------------------------------
 # Detector rules / history (MCP-driven incident detection — Sprint 14)
 # ---------------------------------------------------------------------------
+
 
 class DetectorRuleRepo:
 
@@ -1608,6 +1612,7 @@ class DetectorHistoryRepo:
 # SLA Targets
 # ---------------------------------------------------------------------------
 
+
 class SLATargetRepo:
 
     @staticmethod
@@ -1698,6 +1703,7 @@ class SLATargetRepo:
 # ---------------------------------------------------------------------------
 # Uptime Samples
 # ---------------------------------------------------------------------------
+
 
 class UptimeSampleRepo:
 
@@ -1796,6 +1802,7 @@ class UptimeSampleRepo:
 # SLOs
 # ---------------------------------------------------------------------------
 
+
 class SLORepo:
 
     @staticmethod
@@ -1826,9 +1833,7 @@ class SLORepo:
         return await db.get(SLO, slo_id)
 
     @staticmethod
-    async def list_all(
-        db: AsyncSession, *, active_only: bool = False
-    ) -> Sequence[SLO]:
+    async def list_all(db: AsyncSession, *, active_only: bool = False) -> Sequence[SLO]:
         stmt = select(SLO).order_by(SLO.created_at)
         if active_only:
             stmt = stmt.where(SLO.is_active == True)
@@ -1842,11 +1847,7 @@ class SLORepo:
         *,
         active_only: bool = False,
     ) -> Sequence[SLO]:
-        stmt = (
-            select(SLO)
-            .where(SLO.target_id == target_id)
-            .order_by(SLO.created_at)
-        )
+        stmt = select(SLO).where(SLO.target_id == target_id).order_by(SLO.created_at)
         if active_only:
             stmt = stmt.where(SLO.is_active == True)
         result = await db.execute(stmt)
@@ -1898,6 +1899,7 @@ class SLORepo:
 # ---------------------------------------------------------------------------
 # Maintenance Windows
 # ---------------------------------------------------------------------------
+
 
 class MaintenanceWindowRepo:
 
@@ -1980,7 +1982,11 @@ class MaintenanceWindowRepo:
         if not values:
             return await MaintenanceWindowRepo.get_by_id(db, mw_id)
 
-        stmt = update(MaintenanceWindow).where(MaintenanceWindow.id == mw_id).values(**values)
+        stmt = (
+            update(MaintenanceWindow)
+            .where(MaintenanceWindow.id == mw_id)
+            .values(**values)
+        )
         result = await db.execute(stmt)
         if not result.rowcount:
             return None
@@ -1996,3 +2002,124 @@ class MaintenanceWindowRepo:
         await db.flush()
         return True
 
+
+# ---------------------------------------------------------------------------
+# Bot connectors
+# ---------------------------------------------------------------------------
+
+
+class BotConnectorRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        platform: str,
+        config: dict[str, Any] | None = None,
+        credentials: dict[str, Any] | None = None,
+        allowed_capabilities: list[str],
+        status: str = "not_configured",
+        is_enabled: bool = False,
+    ) -> BotConnector:
+        connector = BotConnector(
+            name=name,
+            platform=platform,
+            config=config,
+            credentials=credentials,
+            allowed_capabilities=allowed_capabilities,
+            status=status,
+            is_enabled=is_enabled,
+        )
+        db.add(connector)
+        await db.flush()
+        return connector
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, connector_id: uuid.UUID
+    ) -> BotConnector | None:
+        return await db.get(BotConnector, connector_id)
+
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str) -> BotConnector | None:
+        stmt = select(BotConnector).where(BotConnector.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        *,
+        enabled_only: bool = False,
+        platform: str | None = None,
+    ) -> Sequence[BotConnector]:
+        stmt = select(BotConnector).order_by(BotConnector.name)
+        if enabled_only:
+            stmt = stmt.where(BotConnector.is_enabled == True)
+        if platform is not None:
+            stmt = stmt.where(BotConnector.platform == platform)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        connector_id: uuid.UUID,
+        *,
+        name: str,
+        platform: str,
+        config: dict[str, Any] | None = None,
+        credentials: dict[str, Any] | None = None,
+        allowed_capabilities: list[str],
+        status: str,
+        is_enabled: bool,
+    ) -> BotConnector | None:
+        stmt = (
+            update(BotConnector)
+            .where(BotConnector.id == connector_id)
+            .values(
+                name=name,
+                platform=platform,
+                config=config,
+                credentials=credentials,
+                allowed_capabilities=allowed_capabilities,
+                status=status,
+                is_enabled=is_enabled,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await BotConnectorRepo.get_by_id(db, connector_id)
+
+    @staticmethod
+    async def mark_status(
+        db: AsyncSession,
+        connector_id: uuid.UUID,
+        *,
+        status: str,
+        error: str | None = None,
+    ) -> None:
+        stmt = (
+            update(BotConnector)
+            .where(BotConnector.id == connector_id)
+            .values(
+                status=status,
+                last_checked_at=datetime.now(timezone.utc),
+                last_error=error,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        await db.execute(stmt)
+
+    @staticmethod
+    async def delete(db: AsyncSession, connector_id: uuid.UUID) -> bool:
+        connector = await BotConnectorRepo.get_by_id(db, connector_id)
+        if connector is None:
+            return False
+        await db.delete(connector)
+        await db.flush()
+        return True

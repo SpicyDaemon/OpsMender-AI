@@ -3,7 +3,9 @@ import {
   SLATargetResponse,
   SLATargetListResponse,
   SLOListResponse,
+  SLOResponse,
   MaintenanceWindowListResponse,
+  MaintenanceWindowResponse,
   SLATargetUptimeResponse,
   SLOStatusResponse,
   IncidentResponse,
@@ -33,12 +35,36 @@ export async function listSLOs(): Promise<SLOListResponse> {
   return api.get("/slos");
 }
 
+export async function createSLO(payload: Record<string, unknown>): Promise<SLOResponse> {
+  return api.post("/slos", payload);
+}
+
+export async function updateSLO(id: string, payload: Record<string, unknown>): Promise<SLOResponse> {
+  return api.put(`/slos/${id}`, payload);
+}
+
+export async function deleteSLO(id: string): Promise<void> {
+  return api.del(`/slos/${id}`);
+}
+
 export async function getSLOStatus(id: string): Promise<SLOStatusResponse> {
   return api.get(`/slos/${id}/status`);
 }
 
 export async function listMaintenanceWindows(): Promise<MaintenanceWindowListResponse> {
   return api.get("/maintenance-windows");
+}
+
+export async function createMaintenanceWindow(payload: Record<string, unknown>): Promise<MaintenanceWindowResponse> {
+  return api.post("/maintenance-windows", payload);
+}
+
+export async function updateMaintenanceWindow(id: string, payload: Record<string, unknown>): Promise<MaintenanceWindowResponse> {
+  return api.put(`/maintenance-windows/${id}`, payload);
+}
+
+export async function deleteMaintenanceWindow(id: string): Promise<void> {
+  return api.del(`/maintenance-windows/${id}`);
 }
 
 export async function getSLATargetIncidents(id: string): Promise<IncidentResponse[]> {

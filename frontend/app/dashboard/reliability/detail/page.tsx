@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Activity, ArrowLeft, Clock, ServerCrash, ShieldAlert, ShieldCheck, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Clock, ServerCrash, ShieldAlert, ShieldCheck, Zap, Plus, Trash2, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { SLOModal } from "@/components/reliability/SLOModal";
 import {
   getSLATarget,
   getSLATargetUptime,
   listSLOs,
   getSLOStatus,
   getSLATargetIncidents,
+  deleteSLO,
 } from "@/lib/api_reliability";
 import type {
   SLATargetResponse,
@@ -21,7 +24,16 @@ import type {
 } from "@/lib/types";
 
 export default function TargetDetailPage() {
-  const { id } = useParams() as { id: string };
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-fg-muted">Loading target...</div>}>
+      <TargetDetailContent />
+    </Suspense>
+  );
+}
+
+function TargetDetailContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id") || "";
   const router = useRouter();
 
   const [target, setTarget] = useState<SLATargetResponse | null>(null);
@@ -30,43 +42,51 @@ export default function TargetDetailPage() {
   const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [slos, setSlos] = useState<(SLOResponse & { status: SLOStatusResponse | null })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showSLOModal, setShowSLOModal] = useState(false);
+  const [editingSLO, setEditingSLO] = useState<SLOResponse | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [targetData, uptimeData, incData, allSlos] = await Promise.all([
+        getSLATarget(id),
+        getSLATargetUptime(id, window).catch(() => null),
+        getSLATargetIncidents(id).catch(() => []),
+        listSLOs().catch(() => ({ items: [] })),
+      ]);
+
+      const targetSlos = allSlos.items.filter((s) => s.target_id === id);
+      const slosWithStatus = await Promise.all(
+        targetSlos.map(async (slo) => {
+          const status = await getSLOStatus(slo.id).catch(() => null);
+          return { ...slo, status };
+        })
+      );
+
+      setTarget(targetData);
+      setUptime(uptimeData);
+      setIncidents(incData);
+      setSlos(slosWithStatus);
+    } catch (err) {
+      console.error("Failed to load target details:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSLO = async (sloId: string) => {
+    if (!confirm("Are you sure you want to delete this SLO?")) return;
+    try {
+      await deleteSLO(sloId);
+      load();
+    } catch (err) {
+      console.error("Failed to delete SLO", err);
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const [targetData, uptimeData, incData, allSlos] = await Promise.all([
-          getSLATarget(id),
-          getSLATargetUptime(id, window).catch(() => null),
-          getSLATargetIncidents(id).catch(() => []),
-          listSLOs().catch(() => ({ items: [] })),
-        ]);
-
-        const targetSlos = allSlos.items.filter((s) => s.target_id === id);
-        const slosWithStatus = await Promise.all(
-          targetSlos.map(async (slo) => {
-            const status = await getSLOStatus(slo.id).catch(() => null);
-            return { ...slo, status };
-          })
-        );
-
-        if (!cancelled) {
-          setTarget(targetData);
-          setUptime(uptimeData);
-          setIncidents(incData);
-          setSlos(slosWithStatus);
-        }
-      } catch (err) {
-        console.error("Failed to load target details:", err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
     load();
-    return () => {
-      cancelled = true;
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, window]);
 
   if (!loading && !target) {
@@ -169,9 +189,14 @@ export default function TargetDetailPage() {
               <div className="grid gap-6 md:grid-cols-2">
                 {/* SLOs */}
                 <div className="rounded-xl border border-border-subtle bg-bg-panel p-6 shadow-sm flex flex-col">
-                  <h2 className="text-sm font-medium text-fg-secondary mb-4 uppercase tracking-wider">
-                    Service Level Objectives
-                  </h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-sm font-medium text-fg-secondary uppercase tracking-wider">
+                      Service Level Objectives
+                    </h2>
+                    <Button variant="secondary" size="sm" onClick={() => { setEditingSLO(null); setShowSLOModal(true); }}>
+                      <Plus size={14} /> New SLO
+                    </Button>
+                  </div>
                   <div className="flex-1 space-y-4">
                     {slos.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-center text-fg-muted">
@@ -183,15 +208,23 @@ export default function TargetDetailPage() {
                         <div key={slo.id} className="rounded-lg border border-border-subtle bg-bg-elevated p-4">
                           <div className="flex items-center justify-between mb-3">
                             <span className="font-medium text-sm text-fg-primary">{slo.name}</span>
-                            {slo.status?.compliant ? (
-                              <Badge className="bg-status-success-bg text-status-success border-status-success-border gap-1">
-                                <ShieldCheck size={12} /> Compliant
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-status-critical-bg text-status-critical border-status-critical-border gap-1">
-                                <Activity size={12} /> Violating
-                              </Badge>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {slo.status?.compliant ? (
+                                <Badge className="bg-status-success-bg text-status-success border-status-success-border gap-1">
+                                  <ShieldCheck size={12} /> Compliant
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-status-critical-bg text-status-critical border-status-critical-border gap-1">
+                                  <Activity size={12} /> Violating
+                                </Badge>
+                              )}
+                              <button onClick={() => { setEditingSLO(slo); setShowSLOModal(true); }} className="text-fg-muted hover:text-fg-primary" title="Edit">
+                                <Pencil size={14} />
+                              </button>
+                              <button onClick={() => handleDeleteSLO(slo.id)} className="text-fg-muted hover:text-status-critical" title="Delete">
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </div>
                           
                           <div className="flex items-center justify-between text-xs text-fg-secondary mb-1.5">
@@ -267,6 +300,14 @@ export default function TargetDetailPage() {
           )}
         </div>
       </main>
+
+      <SLOModal
+        open={showSLOModal}
+        onClose={() => setShowSLOModal(false)}
+        onSaved={load}
+        targetId={id}
+        initialData={editingSLO}
+      />
     </div>
   );
 }

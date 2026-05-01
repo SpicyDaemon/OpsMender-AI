@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Plus, ServerCrash, Shield, Clock } from "lucide-react";
+import { Activity, Plus, ServerCrash, Shield, Clock, Calendar, Trash2, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { MaintenanceWindowModal } from "@/components/reliability/MaintenanceWindowModal";
 import {
   listSLATargets,
   getSLATargetUptime,
   listSLOs,
   getSLOStatus,
   listMaintenanceWindows,
+  deleteMaintenanceWindow,
 } from "@/lib/api_reliability";
 import type {
   SLATargetResponse,
@@ -28,14 +30,15 @@ interface TargetWithMetrics extends SLATargetResponse {
 
 export default function ReliabilityPage() {
   const [targets, setTargets] = useState<TargetWithMetrics[]>([]);
+  const [maintenanceWindows, setMaintenanceWindows] = useState<MaintenanceWindowResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showMWModal, setShowMWModal] = useState(false);
+  const [editingMW, setEditingMW] = useState<MaintenanceWindowResponse | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadData() {
-      try {
-        const [targetsData, slosData, mwData] = await Promise.all([
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [targetsData, slosData, mwData] = await Promise.all([
           listSLATargets(),
           listSLOs(),
           listMaintenanceWindows(),
@@ -74,22 +77,27 @@ export default function ReliabilityPage() {
           })
         );
 
-        if (!cancelled) {
-          setTargets(targetMetrics);
-        }
+        setTargets(targetMetrics);
+        setMaintenanceWindows(mwData.items);
       } catch (err) {
         console.error("Failed to load reliability data:", err);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
-    }
+  };
 
+  const handleDeleteMW = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this maintenance window?")) return;
+    try {
+      await deleteMaintenanceWindow(id);
+      loadData();
+    } catch (err) {
+      console.error("Failed to delete maintenance window", err);
+    }
+  };
+
+  useEffect(() => {
     loadData();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   return (
@@ -136,7 +144,7 @@ export default function ReliabilityPage() {
               {targets.map((target) => (
                 <Link
                   key={target.id}
-                  href={`/dashboard/reliability/${target.id}`}
+                  href={`/dashboard/reliability/detail?id=${target.id}`}
                   className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm transition-all hover:border-border-strong hover:shadow-md"
                 >
                   <div>
@@ -189,8 +197,106 @@ export default function ReliabilityPage() {
               ))}
             </div>
           )}
+
+          {/* Maintenance Windows Section */}
+          <div className="pt-8 border-t border-border-subtle">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-base font-semibold text-fg-primary">Maintenance Windows</h2>
+                <p className="text-sm text-fg-secondary">Scheduled downtime periods where SLA alerts are suppressed.</p>
+              </div>
+              <Button size="sm" onClick={() => { setEditingMW(null); setShowMWModal(true); }}>
+                <Plus size={14} /> Schedule Maintenance
+              </Button>
+            </div>
+
+            {loading ? (
+              <div className="h-40 rounded-xl border border-border-subtle bg-bg-elevated animate-pulse" />
+            ) : maintenanceWindows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-strong px-6 py-12 text-center">
+                <Calendar className="mb-3 h-8 w-8 text-fg-muted" />
+                <p className="text-sm font-medium text-fg-primary">No maintenance windows</p>
+                <p className="mt-1 text-sm text-fg-secondary max-w-md">
+                  Schedule maintenance to temporarily disable alerts and exclude time from SLA calculations.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Targets</th>
+                      <th className="px-4 py-3">Schedule</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-subtle">
+                    {maintenanceWindows.map((mw) => {
+                      const start = new Date(mw.starts_at);
+                      const end = new Date(mw.ends_at);
+                      const now = new Date();
+                      const isActive = start <= now && end >= now;
+
+                      return (
+                        <tr key={mw.id} className="hover:bg-bg-elevated transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-fg-primary">{mw.name}</span>
+                              {isActive && (
+                                <Badge className="bg-status-warning-bg text-status-warning border-status-warning-border">Active</Badge>
+                              )}
+                            </div>
+                            {mw.reason && <p className="mt-0.5 text-xs text-fg-muted max-w-md truncate">{mw.reason}</p>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {mw.target_ids.includes("*") ? (
+                                <Badge variant="default" className="text-[10px]">All Targets</Badge>
+                              ) : (
+                                mw.target_ids.map(id => {
+                                  const t = targets.find(t => t.id === id);
+                                  return (
+                                    <Badge key={id} variant="default" className="text-[10px]">
+                                      {t?.name || id.slice(0, 8)}
+                                    </Badge>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <p className="text-sm text-fg-primary">{start.toLocaleString()} - {end.toLocaleString()}</p>
+                            {mw.rrule && <p className="mt-0.5 text-xs font-mono text-fg-muted">Repeats: {mw.rrule}</p>}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => { setEditingMW(mw); setShowMWModal(true); }} className="text-fg-muted hover:text-fg-primary p-1" title="Edit">
+                                <Pencil size={14} />
+                              </button>
+                              <button onClick={() => handleDeleteMW(mw.id)} className="text-fg-muted hover:text-status-critical p-1" title="Delete">
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </main>
+
+      <MaintenanceWindowModal
+        open={showMWModal}
+        onClose={() => setShowMWModal(false)}
+        onSaved={loadData}
+        targets={targets}
+        initialData={editingMW}
+      />
     </div>
   );
 }

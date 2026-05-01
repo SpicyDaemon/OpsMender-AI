@@ -15,7 +15,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Org-owned skill definitions** — a single `SKILL.md` classifies every operation as `safe`, `caution`, or `destructive`. Your call, not ours.
 - **Full audit log** — every node transition, every tool call, every approval, every rollback step.
 - **Bring your own model** — Anthropic, OpenAI, Azure OpenAI, or local Ollama.
-- **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
+- **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
 - **Outbound triggers** — fire session-lifecycle notifications to Slack, Teams, Sumo Logic, or any generic webhook endpoint.
 
 ## Quick Start
@@ -474,6 +474,8 @@ When enabled, AIM auto-creates a single session only for newly created incidents
 | **Universal (auto-detect)** | `auto` | **Default.** Any JSON webhook — Slack, Datadog, Teams, Sumo Logic, Grafana, Alertmanager, custom scripts. Heuristics + LLM fallback with per-token shape cache. |
 | CloudWatch | `cloudwatch` | SNS `SubscriptionConfirmation` + `Notification` envelopes with embedded alarm JSON |
 | Azure Monitor | `azure_monitor` | Common alert schema v2 — maps severity (Sev0–4) and monitor condition |
+| GCP Cloud Monitoring | `gcp_monitoring` | GCP incident webhook v1.2 — maps `state` (open/closed/acknowledged) |
+| Oracle Cloud (OCI) | `oci_monitoring` | OCI alarm notifications — maps `status` (FIRING/OK/RESET) |
 | LegacyAlertVendor | `legacy_alert_vendor` | v2 webhooks — `incident.triggered`, `.acknowledged`, `.resolved` |
 | LegacyAlertRelay | `legacy_alert_relay` | Webhook integration payloads — `Create`, `Acknowledge`, `Close`, and update-style alert actions |
 | Generic JSON | `generic` | Configurable dot-path field mapping — works with tools needing strict, deterministic parsing |
@@ -608,9 +610,9 @@ ai-incident-manager/
 │   │   └── routes/         # Route modules (auth, incidents, sessions + chat, approvals, audit, config, models, mcp_servers, skills, ws, ingest)
 │   ├── chat/               # Async co-pilot chat responder (parallel LLM call + WS push)
 │   ├── ingest/             # External incident ingestion (Sprint 14)
-│   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, legacy_alert_vendor, legacy_alert_relay, generic)
+│   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, gcp_monitoring, oci_monitoring, legacy_alert_vendor, legacy_alert_relay, generic)
 │   │   ├── registry.py     # Adapter registry (provider key → adapter class)
-│   │   └── service.py      # Token auth, adapter dispatch, dedup, audit logging
+│   │   └── service.py      # Token auth, adapter dispatch, dedup, audit logging, availability signal → uptime_samples
 │   ├── detector/           # MCP-driven detector runner + scheduler + templates (Sprint 14)
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic
 │   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
@@ -636,8 +638,8 @@ ai-incident-manager/
 - **Phase 1 (Sprints 1–6):** ✅ Complete — CLI, MCP, skills, tiers, audit, LangGraph workflow
 - **Phase 2 (Sprints 7–16):** ✅ Complete — persistence, REST/WebSocket API, approvals, BYOM, frontend, single-container distribution, external ingestion
 - **Phase 3 (Sprints 17–23):** ✅ Complete — Tier 0 sandbox + rollback, outbound webhook triggers (Slack/Teams/Sumo), custom workflow profiles, multi-agent team profiles
-- **Sprint 24 (in progress):** UI polish + public release — see [`docs/TASKS.md`](docs/TASKS.md)
-- **Sprint 25 (planned):** SLA / SLO dashboard + maintenance windows — per-target uptime (rolling 7d / 30d / 90d / 1y), user-defined SLOs with error-budget tracking, and scheduled maintenance windows that exclude suppressed samples from SLO math. See [`docs/TASKS.md`](docs/TASKS.md).
+- **Sprint 24:** ✅ Complete — UI polish + public release
+- **Sprint 25 (in progress):** SLA / SLO dashboard + maintenance windows — per-target uptime (rolling 7d / 30d / 90d / 1y), user-defined SLOs with error-budget tracking, scheduled maintenance windows, downsampling job, universal availability ingest (AWS, Azure, GCP, OCI). See [`docs/TASKS.md`](docs/TASKS.md).
 
 ### Sprint breakdown
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)

@@ -392,7 +392,7 @@ function IngestAutoStartSection({
             disabled={!canEdit}
           />
           <p className="mt-1 text-xs text-fg-muted">
-            Exact provider key such as `cloudwatch`, `azure_monitor`, `legacy_alert_vendor`, `legacy_alert_relay`, or `generic`.
+            Exact provider key such as `cloudwatch`, `azure_monitor`, `gcp_monitoring`, `oci_monitoring`, `legacy_alert_vendor`, `legacy_alert_relay`, or `generic`.
             Leave blank to match any source.
           </p>
         </div>
@@ -1716,7 +1716,7 @@ function IngestTokenSection({
   return (
     <Section
       title="Ingest Tokens"
-      description="Manage webhook tokens for external alerting systems (CloudWatch, Azure Monitor, LegacyAlertVendor, etc.)."
+      description="Manage webhook tokens for external alerting systems (CloudWatch, Azure Monitor, GCP Monitoring, OCI, LegacyAlertVendor, etc.)."
     >
       <div className="flex items-center justify-between gap-3">
         <div>

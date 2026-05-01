@@ -10,8 +10,8 @@ If you are a developer looking for internal architecture documentation, API deta
 * [Getting Started](getting-started.md) — Installation, your first login, and running your first AI-assisted incident session.
 
 ### 2. Administrator Guide
-* [Administrator Guide](admin-guide.md) — User authentication, runtime configurations, LLM providers, setting up MCP servers, webhooks, and ingest tokens.
-* [Integrations Guide](integrations-guide.md) — Incident ingest adapters, outbound webhooks, and Docker deployment basics.
+* [Administrator Guide](admin-guide.md) — User authentication, runtime configurations, LLM providers, setting up MCP servers, chat bot connectors, webhooks, and ingest tokens.
+* [Integrations Guide](integrations-guide.md) — Incident ingest adapters, chat bot connectors, outbound webhooks, and Docker deployment basics.
 * [Skills Guide](skills-guide.md) — Managing MCP servers, enforcement tiers, and capability examples.
 * [Detectors Guide](detectors-guide.md) — Creating LLM-based proactive detection rules.
 

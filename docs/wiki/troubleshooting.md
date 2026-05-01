@@ -13,7 +13,7 @@ This guide covers common issues you might encounter while deploying, configuring
 
 **Symptom:** The AI session fails to start, or the chat immediately responds with an "Authentication Error" or "Invalid API Key."
 **Resolution:**
-- Navigate to **Config** > **LLM Providers**.
+- Navigate to **Config** > **Models**.
 - Ensure the API key for your selected provider is entered correctly.
 - Verify that your API key has the necessary permissions and sufficient billing credits.
 - If using AWS or GCP, ensure the environment where the AIM backend is running has the correct IAM roles or Service Account JSON configured.

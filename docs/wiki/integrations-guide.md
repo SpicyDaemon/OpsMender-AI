@@ -18,18 +18,57 @@ AIM natively supports several popular monitoring tools:
 **Universal (Auto) Adapter:**
 If your tool is not listed above, AIM provides an `auto` provider option. The Universal Adapter uses an LLM to dynamically inspect the incoming JSON payload, learn its structure, and extract the title, description, and severity automatically. It caches the structural mapping for performance on subsequent alerts.
 
-## 2. Outbound Webhooks
+## 2. Chat Bot Connectors
+
+AIM can expose selected incident workflows through external chat platforms. Connector setup lives in **Config** > **Integrations** and is also available through the `/bot-connectors` API.
+
+Credentials are write-only: AIM shows whether credentials exist and which keys are stored, but it never returns raw credential values.
+
+### Telegram
+
+Telegram currently supports read-only incident lookup commands:
+
+- `/incidents` lists the five most recent incidents.
+- `/incident <incident-id>` shows one incident.
+- `/help` lists supported commands.
+
+Required connector credentials:
+
+```text
+bot_token=<telegram-bot-token>
+webhook_secret=<random-shared-secret>
+```
+
+Optional connector config:
+
+```json
+{
+  "allowed_chat_ids": ["-1001234567890"]
+}
+```
+
+Set the Telegram webhook URL to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/telegram/webhook
+```
+
+When registering the webhook with Telegram, configure the secret token so Telegram sends `X-Telegram-Bot-Api-Secret-Token: <webhook_secret>` on each update.
+
+Signal and WhatsApp are planned next and will use the same persisted connector model.
+
+## 3. Outbound Webhooks
 
 AIM can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.
 
-1. Navigate to **Config** > **Webhook Triggers**.
+1. Navigate to **Config** > **Webhooks**.
 2. AIM supports formatted payloads for:
    - **Slack:** Sends beautifully formatted block-kit messages with incident details and links.
    - **Microsoft Teams:** Sends adaptive cards.
    - **Sumo Logic:** Sends structured JSON for ingestion into log analytics.
    - **Generic:** Sends a standard JSON payload containing the event data.
 
-## 3. Docker Deployment Basics
+## 4. Docker Deployment Basics
 
 If you are deploying AIM in a production environment, use the provided Dockerfiles.
 

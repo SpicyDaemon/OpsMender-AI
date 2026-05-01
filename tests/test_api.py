@@ -1606,6 +1606,116 @@ class TestBotConnectorsAPI:
         assert resp.status_code == 403
 
 
+class TestTelegramBotWebhook:
+
+    async def _create_connector(
+        self,
+        client: AsyncClient,
+        auth_headers,
+        *,
+        config: dict | None = None,
+        capabilities: list[str] | None = None,
+    ) -> str:
+        resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": f"telegram-{uuid.uuid4()}",
+                "platform": "telegram",
+                "config": config or {},
+                "credentials": {
+                    "bot_token": "secret-token",
+                    "webhook_secret": "telegram-secret",
+                },
+                "allowed_capabilities": capabilities or ["incident_lookup"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        return resp.json()["id"]
+
+    async def test_telegram_webhook_incident_lookup(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        connector_id = await self._create_connector(client, auth_headers)
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                title="API latency spike",
+                description="p95 latency crossed the SLO threshold.",
+                severity="high",
+            )
+            await db.commit()
+            incident_id = str(incident.id)
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={
+                "message": {
+                    "chat": {"id": "-100123"},
+                    "text": f"/incident {incident_id}",
+                }
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["method"] == "sendMessage"
+        assert data["chat_id"] == "-100123"
+        assert "API latency spike" in data["text"]
+        assert incident_id in data["text"]
+
+    async def test_telegram_webhook_rejects_invalid_secret(
+        self, client: AsyncClient, auth_headers
+    ):
+        connector_id = await self._create_connector(client, auth_headers)
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100123"}, "text": "/incidents"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"},
+        )
+
+        assert resp.status_code == 403
+
+    async def test_telegram_webhook_enforces_allowed_chat_ids(
+        self, client: AsyncClient, auth_headers
+    ):
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            config={"allowed_chat_ids": ["-100999"]},
+        )
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100123"}, "text": "/incidents"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["text"] == "This chat is not allowed to use AIM."
+
+    async def test_telegram_webhook_respects_incident_lookup_capability(
+        self, client: AsyncClient, auth_headers
+    ):
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            capabilities=["notifications"],
+        )
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100123"}, "text": "/incidents"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        assert "not enabled" in resp.json()["text"]
+
+
 class TestModelConfigAPI:
 
     async def test_list_models(self, client: AsyncClient, auth_headers, monkeypatch):

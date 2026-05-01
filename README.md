@@ -249,6 +249,12 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `PUT` | `/mcp-servers/{id}` | admin | Update saved MCP server |
 | `DELETE` | `/mcp-servers/{id}` | admin | Delete saved MCP server |
 | `POST` | `/mcp-servers/{id}/test` | admin | Test live connectivity to a saved MCP server |
+| `GET` | `/bot-connectors` | admin | List external chat bot connectors |
+| `POST` | `/bot-connectors` | admin | Create external chat bot connector |
+| `PUT` | `/bot-connectors/{id}` | admin | Update external chat bot connector |
+| `DELETE` | `/bot-connectors/{id}` | admin | Delete external chat bot connector |
+| `POST` | `/bot-connectors/{id}/test` | admin | Validate connector configuration |
+| `POST` | `/bot-connectors/{id}/telegram/webhook` | Telegram secret header | Handle inbound Telegram bot commands |
 | `GET` | `/skills` | any | List saved skills (optional `?mcp_server_id=` filter) |
 | `GET` | `/skills/{id}` | any | Get a saved skill |
 | `POST` | `/skills` | admin | Create a saved skill |
@@ -298,6 +304,8 @@ Runtime defaults now live in `.env`, and UI edits to tier/log level are persiste
 Saved model profiles and MCP server definitions are also persisted in the database, with `.env` remaining the source of truth for deployment defaults and secrets.
 
 MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-reads the DB on every lookup — servers added via `POST /mcp-servers` or the dashboard are visible to already-running sessions with no reload. `AIM_MCP_SERVERS_JSON` stays supported as a read-only fallback for bootstrapping before any DB entries exist.
+
+External chat bot connectors are managed in **Config -> Integrations** or through the `/bot-connectors` API. Credentials are write-only: API responses expose `credential_keys` and `has_credentials`, never raw token values. Telegram currently supports inbound `/incidents` and `/incident <id>` lookups through `POST /bot-connectors/{id}/telegram/webhook` using Telegram's `X-Telegram-Bot-Api-Secret-Token` header.
 
 Example `.env` keys:
 
@@ -624,6 +632,7 @@ ai-incident-manager/
 │   ├── mcp/                # MCP client wrapper (stdio/sse/http) + dynamic server pool
 │   ├── skills/             # Skill definition parser (SKILL.md) + startup auto-importer
 │   ├── webhooks/           # Outbound webhook trigger rendering + delivery
+│   ├── api/routes/bot_*    # Chat connector management + inbound bot webhooks
 │   └── tiers/              # Tier enforcement layer
 ├── cli/
 │   └── aim.py              # CLI entry point (run, check, audit, config, approvals)
@@ -641,7 +650,9 @@ ai-incident-manager/
 - **Phase 2 (Sprints 7–16):** ✅ Complete — persistence, REST/WebSocket API, approvals, BYOM, frontend, single-container distribution, external ingestion
 - **Phase 3 (Sprints 17–23):** ✅ Complete — Tier 0 sandbox + rollback, outbound webhook triggers (Slack/Teams/Sumo), custom workflow profiles, multi-agent team profiles
 - **Sprint 24:** ✅ Complete — UI polish + public release
-- **Sprint 25 (in progress):** SLA / SLO dashboard + maintenance windows — per-target uptime (rolling 7d / 30d / 90d / 1y), user-defined SLOs with error-budget tracking, scheduled maintenance windows, downsampling job, universal availability ingest (AWS, Azure, GCP, OCI). See [`docs/TASKS.md`](docs/TASKS.md).
+- **Sprint 25:** ✅ Complete — SLA / SLO dashboard + maintenance windows, downsampling, availability ingest, and SLO incident wiring
+- **Sprint 26:** ✅ Complete — repo-hosted user documentation wiki and operator/admin guides
+- **Sprint 27 (in progress):** Chat bot integrations — persisted connector configs, Config/Integrations management UI, and initial Telegram incident lookup webhook support. See [`docs/TASKS.md`](docs/TASKS.md).
 
 ### Sprint breakdown
   - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
@@ -661,6 +672,10 @@ ai-incident-manager/
   - Sprint 21: ✅ Sumo Logic outbound trigger format on top of the generic webhook trigger system
   - Sprint 22: ✅ Custom workflow builder — saved workflow profiles wired into sessions, API, graph builder, and config UI
   - Sprint 23: ✅ Multi-agent support — saved agent team profiles wired into sessions, API, multi-agent node synthesis, and config UI
+  - Sprint 24: ✅ UI polish + public release prep
+  - Sprint 25: ✅ Reliability dashboard + SLA/SLO APIs + maintenance windows
+  - Sprint 26: ✅ User documentation wiki + operator guides
+  - Sprint 27: In progress — chat bot integrations, with connector management complete and Telegram incident lookup started
 
 ## Distribution Status
 

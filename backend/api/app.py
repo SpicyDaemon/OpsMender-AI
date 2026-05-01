@@ -164,6 +164,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     )
     from backend.api.routes.sla import router as sla_router
     from backend.api.routes.bot_connectors import router as bot_connectors_router
+    from backend.api.routes.bot_webhooks import router as bot_webhooks_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -182,6 +183,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(agent_team_profiles_router)
     app.include_router(sla_router)
     app.include_router(bot_connectors_router)
+    app.include_router(bot_webhooks_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

@@ -6,6 +6,8 @@
 
 An AI-powered incident response framework with tiered access controls. Connects AI agents to infrastructure via MCP servers and enforces a tier-based permission system that organizations define themselves.
 
+📚 **[Read the Documentation Wiki](docs/wiki/README.md)** | 🛠 **[Developer Architecture & API Reference](docs/REFERENCE.md)**
+
 ## Why AIM
 
 - **MCP-first** — every infrastructure action goes through an MCP server the operator provides. No native integrations locked to one cloud or tool.

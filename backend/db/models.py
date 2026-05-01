@@ -716,3 +716,26 @@ class BotConnector(Base):
         DateTime(timezone=True), nullable=True
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class BotActionAudit(Base):
+    """Audit log entry for an inbound bot connector action."""
+
+    __tablename__ = "bot_action_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("bot_connectors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    platform: Mapped[str] = mapped_column(String(30), nullable=False)
+    chat_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    command: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
+    )

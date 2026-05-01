@@ -24,6 +24,7 @@ from backend.db.models import (
     AgentTeamProfile,
     ApprovalRequest,
     AuditEntry,
+    BotActionAudit,
     BotConnector,
     DetectorHistory,
     DetectorRule,
@@ -2138,3 +2139,49 @@ class BotConnectorRepo:
         await db.delete(connector)
         await db.flush()
         return True
+
+
+class BotActionAuditRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        connector_id: uuid.UUID,
+        platform: str,
+        chat_id: str | None,
+        command: str | None,
+        status: str,
+        detail: str | None = None,
+        session_id: uuid.UUID | None = None,
+    ) -> BotActionAudit:
+        entry = BotActionAudit(
+            connector_id=connector_id,
+            platform=platform,
+            chat_id=chat_id,
+            command=command,
+            status=status,
+            detail=detail,
+            session_id=session_id,
+        )
+        db.add(entry)
+        await db.flush()
+        return entry
+
+    @staticmethod
+    async def list_by_connector(
+        db: AsyncSession,
+        connector_id: uuid.UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Sequence[BotActionAudit]:
+        stmt = (
+            select(BotActionAudit)
+            .where(BotActionAudit.connector_id == connector_id)
+            .order_by(BotActionAudit.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()

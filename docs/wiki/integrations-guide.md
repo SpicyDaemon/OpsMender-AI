@@ -35,6 +35,10 @@ Telegram currently supports incident lookup, session status, and approval comman
 - `/approvals` lists pending approval requests.
 - `/approve <approval-id>` approves a pending request.
 - `/reject <approval-id>` rejects a pending request.
+- `/chat <session-id> <message>` relays a message into the target session's
+  co-pilot chat (requires the `copilot_chat` capability). The assistant
+  reply appears asynchronously in the AIM dashboard; outbound delivery of
+  the reply back into Telegram is a planned follow-up.
 - `/help` lists supported commands.
 
 Required connector credentials:
@@ -48,9 +52,16 @@ Optional connector config:
 
 ```json
 {
-  "allowed_chat_ids": ["-1001234567890"]
+  "allowed_chat_ids": ["-1001234567890"],
+  "rate_limit_per_minute": 30
 }
 ```
+
+`rate_limit_per_minute` defaults to 30 and applies per-chat. Set to `0`
+to disable. Every inbound command is recorded in the `bot_action_audit`
+table along with its outcome (`ok`, `bad_args`, `not_found`,
+`capability_denied`, `chat_not_allowed`, `rate_limited`,
+`unknown_command`).
 
 Set the Telegram webhook URL to:
 

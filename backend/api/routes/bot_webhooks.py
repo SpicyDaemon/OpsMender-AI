@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import uuid
 from typing import Any
@@ -9,9 +10,20 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.deps import get_db
+from backend.api.deps import get_current_session_factory, get_db
+from backend.api.routes.ws import publish
+from backend.api.schemas import WSMessage
+from backend.bots.rate_limit import rate_limiter, resolve_per_minute
+from backend.chat import respond_to_user_message
 from backend.db.models import BotConnector, Incident
-from backend.db.repos import ApprovalRequestRepo, BotConnectorRepo, IncidentRepo, SessionRepo
+from backend.db.repos import (
+    ApprovalRequestRepo,
+    BotActionAuditRepo,
+    BotConnectorRepo,
+    IncidentRepo,
+    SessionMessageRepo,
+    SessionRepo,
+)
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-webhooks"])
 
@@ -48,7 +60,8 @@ def _help_text() -> str:
         "/session <id> - show one session\n"
         "/approvals - list pending approvals\n"
         "/approve <id> - approve a pending request\n"
-        "/reject <id> - reject a pending request"
+        "/reject <id> - reject a pending request\n"
+        "/chat <session-id> <message> - relay a message to a session co-pilot"
     )
 
 
@@ -120,6 +133,29 @@ def _format_approval_list(requests: list) -> str:
         tool_name = request.action.get("tool_name") or request.action.get("name") or "action"
         lines.append(f"- `{request.id}` session `{request.session_id}` action `{tool_name}`")
     return "\n".join(lines)
+
+
+async def _audit(
+    db: AsyncSession,
+    connector: BotConnector,
+    *,
+    chat_id: str | None,
+    command: str | None,
+    status: str,
+    detail: str | None = None,
+    session_id: uuid.UUID | None = None,
+) -> None:
+    await BotActionAuditRepo.create(
+        db,
+        connector_id=connector.id,
+        platform=connector.platform,
+        chat_id=chat_id,
+        command=command,
+        status=status,
+        detail=detail,
+        session_id=session_id,
+    )
+    await db.commit()
 
 
 async def _resolve_approval_from_bot(
@@ -211,6 +247,13 @@ async def telegram_webhook(
     if not chat_id:
         return {"ok": True}
     if not _chat_allowed(connector, chat_id):
+        await _audit(
+            db,
+            connector,
+            chat_id=chat_id,
+            command=None,
+            status="chat_not_allowed",
+        )
         return _telegram_reply(chat_id, "This chat is not allowed to use AIM.")
 
     text = _telegram_message_text(payload)
@@ -218,66 +261,217 @@ async def telegram_webhook(
     command = command.split("@", 1)[0].lower()
     arg = raw_arg.strip()
 
+    # Rate limit before any meaningful work — skip for /start /help so users
+    # can still discover the bot when their bucket is full.
+    if command not in {"/start", "/help", "help"}:
+        per_minute = resolve_per_minute(connector.config)
+        allowed, _remaining = rate_limiter.check(
+            connector.id, chat_id, per_minute=per_minute
+        )
+        if not allowed:
+            await _audit(
+                db,
+                connector,
+                chat_id=chat_id,
+                command=command or None,
+                status="rate_limited",
+                detail=f"limit={per_minute}/min",
+            )
+            return _telegram_reply(
+                chat_id,
+                f"Rate limit hit ({per_minute}/min). Please wait a moment.",
+            )
+
     if command in {"/start", "/help", "help"}:
+        await _audit(db, connector, chat_id=chat_id, command="/help", status="ok")
         return _telegram_reply(chat_id, _help_text())
 
     if command == "/incidents":
         if not _has_capability(connector, "incident_lookup"):
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="capability_denied", detail="incident_lookup",
+            )
             return _telegram_reply(chat_id, _capability_denied("incident_lookup"))
         incidents = list(await IncidentRepo.list_all(db, limit=5, offset=0))
+        await _audit(db, connector, chat_id=chat_id, command=command, status="ok")
         return _telegram_reply(chat_id, _format_incident_list(incidents))
 
     if command == "/incident":
         if not _has_capability(connector, "incident_lookup"):
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="capability_denied", detail="incident_lookup",
+            )
             return _telegram_reply(chat_id, _capability_denied("incident_lookup"))
         if not arg:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
             return _telegram_reply(chat_id, "Usage: /incident <incident-id>")
         try:
             incident_id = uuid.UUID(arg)
         except ValueError:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
             return _telegram_reply(chat_id, "Incident ID must be a valid UUID.")
         incident = await IncidentRepo.get_by_id(db, incident_id)
         if incident is None:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="not_found")
             return _telegram_reply(chat_id, "Incident not found.")
+        await _audit(db, connector, chat_id=chat_id, command=command, status="ok")
         return _telegram_reply(chat_id, _format_incident(incident))
 
     if command == "/sessions":
         if not _has_capability(connector, "session_status"):
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="capability_denied", detail="session_status",
+            )
             return _telegram_reply(chat_id, _capability_denied("session_status"))
         sessions = list(await SessionRepo.list_all(db, limit=5, offset=0))
+        await _audit(db, connector, chat_id=chat_id, command=command, status="ok")
         return _telegram_reply(chat_id, _format_session_list(sessions))
 
     if command == "/session":
         if not _has_capability(connector, "session_status"):
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="capability_denied", detail="session_status",
+            )
             return _telegram_reply(chat_id, _capability_denied("session_status"))
         if not arg:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
             return _telegram_reply(chat_id, "Usage: /session <session-id>")
         try:
             session_id = uuid.UUID(arg)
         except ValueError:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
             return _telegram_reply(chat_id, "Session ID must be a valid UUID.")
         session = await SessionRepo.get_by_id(db, session_id)
         if session is None:
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="not_found", session_id=session_id,
+            )
             return _telegram_reply(chat_id, "Session not found.")
+        await _audit(
+            db, connector, chat_id=chat_id, command=command,
+            status="ok", session_id=session_id,
+        )
         return _telegram_reply(chat_id, _format_session(session))
 
     if command == "/approvals":
         if not _has_capability(connector, "approvals"):
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="capability_denied", detail="approvals",
+            )
             return _telegram_reply(chat_id, _capability_denied("approvals"))
         requests = list(await ApprovalRequestRepo.list(db, status="pending", limit=5))
+        await _audit(db, connector, chat_id=chat_id, command=command, status="ok")
         return _telegram_reply(chat_id, _format_approval_list(requests))
 
     if command in {"/approve", "/reject"}:
         if not _has_capability(connector, "approvals"):
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="capability_denied", detail="approvals",
+            )
             return _telegram_reply(chat_id, _capability_denied("approvals"))
         if not arg:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
             return _telegram_reply(chat_id, f"Usage: {command} <approval-id>")
         try:
             request_id = uuid.UUID(arg)
         except ValueError:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
             return _telegram_reply(chat_id, "Approval ID must be a valid UUID.")
         decision = "approved" if command == "/approve" else "rejected"
         text = await _resolve_approval_from_bot(db, request_id, decision=decision)
+        await _audit(
+            db, connector, chat_id=chat_id, command=command,
+            status="ok" if decision in text else "noop", detail=decision,
+        )
         return _telegram_reply(chat_id, text)
 
+    if command == "/chat":
+        if not _has_capability(connector, "copilot_chat"):
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="capability_denied", detail="copilot_chat",
+            )
+            return _telegram_reply(chat_id, _capability_denied("copilot_chat"))
+
+        session_token, _, message_body = arg.partition(" ")
+        session_token = session_token.strip()
+        message_body = message_body.strip()
+        if not session_token or not message_body:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            return _telegram_reply(
+                chat_id, "Usage: /chat <session-id> <message>"
+            )
+        try:
+            target_session_id = uuid.UUID(session_token)
+        except ValueError:
+            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            return _telegram_reply(chat_id, "Session ID must be a valid UUID.")
+
+        target_session = await SessionRepo.get_by_id(db, target_session_id)
+        if target_session is None:
+            await _audit(
+                db, connector, chat_id=chat_id, command=command,
+                status="not_found", session_id=target_session_id,
+            )
+            return _telegram_reply(chat_id, "Session not found.")
+
+        message = await SessionMessageRepo.create(
+            db,
+            session_id=target_session_id,
+            role="user",
+            content=f"[telegram chat {chat_id}] {message_body}",
+        )
+        await db.commit()
+
+        await publish(
+            target_session_id,
+            WSMessage(
+                type="chat_message_user",
+                data={
+                    "id": str(message.id),
+                    "session_id": str(target_session_id),
+                    "role": "user",
+                    "content": message.content,
+                    "created_at": message.created_at.isoformat(),
+                    "node_context": message.node_context,
+                },
+            ),
+        )
+
+        try:
+            factory = get_current_session_factory()
+            asyncio.create_task(
+                respond_to_user_message(
+                    factory,
+                    session_id=target_session_id,
+                    user_message_id=message.id,
+                )
+            )
+        except RuntimeError:
+            # Session factory not registered (e.g. unit tests bypassing app
+            # lifespan). The user message is still persisted; skip the
+            # background reply.
+            pass
+
+        await _audit(
+            db, connector, chat_id=chat_id, command=command,
+            status="ok", session_id=target_session_id,
+        )
+        return _telegram_reply(
+            chat_id,
+            f"Message relayed to session `{target_session_id}`. "
+            "The co-pilot reply will appear in the AIM dashboard.",
+        )
+
+    await _audit(
+        db, connector, chat_id=chat_id, command=command or None,
+        status="unknown_command",
+    )
     return _telegram_reply(chat_id, _help_text())

@@ -1848,6 +1848,164 @@ class TestTelegramBotWebhook:
         assert resp.status_code == 200
         assert "Session Status is not enabled" in resp.json()["text"]
 
+    async def test_telegram_webhook_copilot_chat_relay(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        from backend.api.routes import bot_webhooks
+        from backend.bots.rate_limit import rate_limiter
+
+        rate_limiter.reset()
+        scheduled: list[uuid.UUID] = []
+
+        async def fake_responder(factory, *, session_id, user_message_id, **kwargs):
+            scheduled.append(session_id)
+
+        monkeypatch.setattr(
+            bot_webhooks, "respond_to_user_message", fake_responder
+        )
+
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            capabilities=["copilot_chat"],
+        )
+        async with app.state.session_factory() as db:
+            session = await SessionRepo.create(db, tier=2)
+            await db.commit()
+            session_id = session.id
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={
+                "message": {
+                    "chat": {"id": "-100123"},
+                    "text": f"/chat {session_id} restarting api pod now",
+                }
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        assert str(session_id) in resp.json()["text"]
+        assert scheduled, "respond_to_user_message should have been scheduled"
+
+        from backend.db.models import SessionMessage
+        from sqlalchemy import select
+        async with app.state.session_factory() as db:
+            messages = (
+                await db.execute(
+                    select(SessionMessage).where(
+                        SessionMessage.session_id == session_id
+                    )
+                )
+            ).scalars().all()
+            assert len(messages) == 1
+            assert messages[0].role == "user"
+            assert "restarting api pod now" in messages[0].content
+            assert "[telegram chat -100123]" in messages[0].content
+
+    async def test_telegram_webhook_copilot_chat_requires_capability(
+        self, client: AsyncClient, auth_headers
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        rate_limiter.reset()
+
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            capabilities=["incident_lookup"],
+        )
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={
+                "message": {
+                    "chat": {"id": "-100123"},
+                    "text": f"/chat {uuid.uuid4()} hello",
+                }
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        assert resp.status_code == 200
+        assert "Copilot Chat is not enabled" in resp.json()["text"]
+
+    async def test_telegram_webhook_rate_limit(
+        self, client: AsyncClient, auth_headers
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        rate_limiter.reset()
+
+        connector_id = await self._create_connector(
+            client,
+            auth_headers,
+            config={"rate_limit_per_minute": 2},
+        )
+
+        for _ in range(2):
+            resp = await client.post(
+                f"/bot-connectors/{connector_id}/telegram/webhook",
+                json={"message": {"chat": {"id": "-100777"}, "text": "/incidents"}},
+                headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+            )
+            assert resp.status_code == 200
+            assert "Rate limit hit" not in resp.json()["text"]
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100777"}, "text": "/incidents"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+        assert resp.status_code == 200
+        assert "Rate limit hit" in resp.json()["text"]
+
+    async def test_telegram_webhook_writes_action_audit(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        from backend.db.models import BotActionAudit
+        from sqlalchemy import select
+
+        rate_limiter.reset()
+
+        connector_id = await self._create_connector(client, auth_headers)
+
+        # capability_denied
+        await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100888"}, "text": "/sessions"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+        # bad_args
+        await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100888"}, "text": "/incident"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+        # ok
+        await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={"message": {"chat": {"id": "-100888"}, "text": "/incidents"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+        async with app.state.session_factory() as db:
+            entries = (
+                await db.execute(
+                    select(BotActionAudit).where(
+                        BotActionAudit.connector_id == uuid.UUID(connector_id)
+                    )
+                )
+            ).scalars().all()
+
+        statuses = {e.status for e in entries}
+        commands = {e.command for e in entries}
+        assert "capability_denied" in statuses
+        assert "bad_args" in statuses
+        assert "ok" in statuses
+        assert "/sessions" in commands
+        assert "/incidents" in commands
+
 
 class TestModelConfigAPI:
 

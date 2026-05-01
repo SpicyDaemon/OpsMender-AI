@@ -661,6 +661,156 @@ class DetectorTemplateListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# SLA Targets (Sprint 25)
+# ---------------------------------------------------------------------------
+
+class SLATargetCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    kind: str = Field(..., pattern="^(http|tcp|external)$")
+    config: Optional[dict[str, Any]] = None
+    owner_team: Optional[str] = Field(default=None, max_length=100)
+    is_active: bool = True
+
+
+class SLATargetUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    kind: Optional[str] = Field(None, pattern="^(http|tcp|external)$")
+    config: Optional[dict[str, Any]] = None
+    owner_team: Optional[str] = Field(default=None, max_length=100)
+    is_active: Optional[bool] = None
+
+
+class SLATargetResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    kind: str
+    config: Optional[dict[str, Any]]
+    owner_team: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SLATargetListResponse(BaseModel):
+    items: list[SLATargetResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# SLOs (Sprint 25)
+# ---------------------------------------------------------------------------
+
+class SLOCreate(BaseModel):
+    target_id: uuid.UUID
+    name: str = Field(..., min_length=1, max_length=200)
+    objective_pct: float = Field(..., ge=0.0, le=100.0)
+    window_seconds: int = Field(..., ge=3600)  # min 1 hour
+    burn_alert_threshold: Optional[float] = Field(default=None, ge=0.0)
+    is_active: bool = True
+
+
+class SLOUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    objective_pct: Optional[float] = Field(None, ge=0.0, le=100.0)
+    window_seconds: Optional[int] = Field(None, ge=3600)
+    burn_alert_threshold: Optional[float] = None
+    is_active: Optional[bool] = None
+
+
+class SLOResponse(BaseModel):
+    id: uuid.UUID
+    target_id: uuid.UUID
+    name: str
+    objective_pct: float
+    window_seconds: int
+    burn_alert_threshold: Optional[float]
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SLOListResponse(BaseModel):
+    items: list[SLOResponse]
+    total: int
+
+
+class SLOStatusResponse(BaseModel):
+    """Computed SLO compliance status."""
+    slo_id: uuid.UUID
+    target_id: uuid.UUID
+    name: str
+    objective_pct: float
+    actual_pct: float
+    error_budget_remaining_pct: float
+    burn_rate: float
+    compliant: bool
+
+
+# ---------------------------------------------------------------------------
+# Maintenance Windows (Sprint 25)
+# ---------------------------------------------------------------------------
+
+class MaintenanceWindowCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    reason: Optional[str] = None
+    starts_at: datetime
+    ends_at: datetime
+    rrule: Optional[str] = None
+    target_ids: list[str] = Field(..., min_length=1)
+
+
+class MaintenanceWindowUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    reason: Optional[str] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    rrule: Optional[str] = None
+    target_ids: Optional[list[str]] = None
+
+
+class MaintenanceWindowResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    reason: Optional[str]
+    starts_at: datetime
+    ends_at: datetime
+    rrule: Optional[str]
+    target_ids: list[str]
+    created_by: Optional[uuid.UUID]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MaintenanceWindowListResponse(BaseModel):
+    items: list[MaintenanceWindowResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# Uptime queries (Sprint 25)
+# ---------------------------------------------------------------------------
+
+class UptimeSeriesPoint(BaseModel):
+    ts: datetime
+    up_pct: float
+
+
+class UptimeResponse(BaseModel):
+    """Aggregated uptime statistics for a target over a window."""
+    target_id: uuid.UUID
+    uptime_pct: float
+    total_samples: int
+    up_samples: int
+    downtime_seconds: int
+    suppressed_seconds: int
+    series: list[UptimeSeriesPoint] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------
 

@@ -150,6 +150,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.webhook_triggers import router as webhook_triggers_router
     from backend.api.routes.workflow_profiles import router as workflow_profiles_router
     from backend.api.routes.agent_team_profiles import router as agent_team_profiles_router
+    from backend.api.routes.sla import router as sla_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -166,6 +167,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(webhook_triggers_router)
     app.include_router(workflow_profiles_router)
     app.include_router(agent_team_profiles_router)
+    app.include_router(sla_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

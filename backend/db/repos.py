@@ -1627,6 +1627,55 @@ class SLATargetRepo:
     async def get_by_id(db: AsyncSession, target_id: uuid.UUID) -> SLATarget | None:
         return await db.get(SLATarget, target_id)
 
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str) -> SLATarget | None:
+        stmt = select(SLATarget).where(SLATarget.name == name)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        target_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        kind: str | None = None,
+        config: dict[str, Any] | None = None,
+        config_provided: bool = False,
+        owner_team: str | None = None,
+        owner_team_provided: bool = False,
+        is_active: bool | None = None,
+    ) -> SLATarget | None:
+        values: dict[str, Any] = {
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if name is not None:
+            values["name"] = name
+        if kind is not None:
+            values["kind"] = kind
+        if config_provided:
+            values["config"] = config
+        if owner_team_provided:
+            values["owner_team"] = owner_team
+        if is_active is not None:
+            values["is_active"] = is_active
+
+        stmt = update(SLATarget).where(SLATarget.id == target_id).values(**values)
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await SLATargetRepo.get_by_id(db, target_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, target_id: uuid.UUID) -> bool:
+        target = await SLATargetRepo.get_by_id(db, target_id)
+        if target is None:
+            return False
+        await db.delete(target)
+        await db.flush()
+        return True
+
 
 # ---------------------------------------------------------------------------
 # Uptime Samples
@@ -1655,12 +1704,219 @@ class UptimeSampleRepo:
         await db.flush()
         return sample
 
+    @staticmethod
+    async def query_window(
+        db: AsyncSession,
+        target_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> Sequence[UptimeSample]:
+        """Return raw samples in [since, until] for a target."""
+        until = until or datetime.now(timezone.utc)
+        stmt = (
+            select(UptimeSample)
+            .where(
+                UptimeSample.target_id == target_id,
+                UptimeSample.observed_at >= since,
+                UptimeSample.observed_at <= until,
+            )
+            .order_by(UptimeSample.observed_at)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def compute_uptime(
+        db: AsyncSession,
+        target_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Compute aggregate uptime statistics for a target over a window.
+
+        Returns a dict with: uptime_pct, total_samples, up_samples,
+        downtime_seconds, suppressed_seconds.
+        """
+        until = until or datetime.now(timezone.utc)
+        samples = await UptimeSampleRepo.query_window(
+            db, target_id, since=since, until=until
+        )
+
+        total = len(samples)
+        if total == 0:
+            return {
+                "uptime_pct": 100.0,
+                "total_samples": 0,
+                "up_samples": 0,
+                "downtime_seconds": 0,
+                "suppressed_seconds": 0,
+            }
+
+        # Only count non-suppressed samples for uptime math
+        non_suppressed = [s for s in samples if not s.suppressed]
+        suppressed_count = total - len(non_suppressed)
+        up_count = sum(1 for s in non_suppressed if s.up)
+        ns_total = len(non_suppressed)
+
+        uptime_pct = (up_count / ns_total * 100.0) if ns_total > 0 else 100.0
+        # Estimate seconds: assume 60s per sample (1-min polling)
+        downtime_seconds = (ns_total - up_count) * 60
+        suppressed_seconds = suppressed_count * 60
+
+        return {
+            "uptime_pct": round(uptime_pct, 4),
+            "total_samples": total,
+            "up_samples": up_count,
+            "downtime_seconds": downtime_seconds,
+            "suppressed_seconds": suppressed_seconds,
+        }
+
+
+# ---------------------------------------------------------------------------
+# SLOs
+# ---------------------------------------------------------------------------
+
+class SLORepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        target_id: uuid.UUID,
+        name: str,
+        objective_pct: float,
+        window_seconds: int,
+        burn_alert_threshold: float | None = None,
+        is_active: bool = True,
+    ) -> SLO:
+        slo = SLO(
+            target_id=target_id,
+            name=name,
+            objective_pct=objective_pct,
+            window_seconds=window_seconds,
+            burn_alert_threshold=burn_alert_threshold,
+            is_active=is_active,
+        )
+        db.add(slo)
+        await db.flush()
+        return slo
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, slo_id: uuid.UUID) -> SLO | None:
+        return await db.get(SLO, slo_id)
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession, *, active_only: bool = False
+    ) -> Sequence[SLO]:
+        stmt = select(SLO).order_by(SLO.created_at)
+        if active_only:
+            stmt = stmt.where(SLO.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def list_by_target(
+        db: AsyncSession,
+        target_id: uuid.UUID,
+        *,
+        active_only: bool = False,
+    ) -> Sequence[SLO]:
+        stmt = (
+            select(SLO)
+            .where(SLO.target_id == target_id)
+            .order_by(SLO.created_at)
+        )
+        if active_only:
+            stmt = stmt.where(SLO.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        slo_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        objective_pct: float | None = None,
+        window_seconds: int | None = None,
+        burn_alert_threshold: float | None = None,
+        burn_alert_threshold_provided: bool = False,
+        is_active: bool | None = None,
+    ) -> SLO | None:
+        values: dict[str, Any] = {}
+        if name is not None:
+            values["name"] = name
+        if objective_pct is not None:
+            values["objective_pct"] = objective_pct
+        if window_seconds is not None:
+            values["window_seconds"] = window_seconds
+        if burn_alert_threshold_provided:
+            values["burn_alert_threshold"] = burn_alert_threshold
+        if is_active is not None:
+            values["is_active"] = is_active
+        if not values:
+            return await SLORepo.get_by_id(db, slo_id)
+
+        stmt = update(SLO).where(SLO.id == slo_id).values(**values)
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await SLORepo.get_by_id(db, slo_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, slo_id: uuid.UUID) -> bool:
+        slo = await SLORepo.get_by_id(db, slo_id)
+        if slo is None:
+            return False
+        await db.delete(slo)
+        await db.flush()
+        return True
+
 
 # ---------------------------------------------------------------------------
 # Maintenance Windows
 # ---------------------------------------------------------------------------
 
 class MaintenanceWindowRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        reason: str | None = None,
+        starts_at: datetime,
+        ends_at: datetime,
+        rrule: str | None = None,
+        target_ids: list[str],
+        created_by: uuid.UUID | None = None,
+    ) -> MaintenanceWindow:
+        mw = MaintenanceWindow(
+            name=name,
+            reason=reason,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            rrule=rrule,
+            target_ids=target_ids,
+            created_by=created_by,
+        )
+        db.add(mw)
+        await db.flush()
+        return mw
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, mw_id: uuid.UUID) -> MaintenanceWindow | None:
+        return await db.get(MaintenanceWindow, mw_id)
+
+    @staticmethod
+    async def list_all(db: AsyncSession) -> Sequence[MaintenanceWindow]:
+        stmt = select(MaintenanceWindow).order_by(MaintenanceWindow.starts_at.desc())
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
     @staticmethod
     async def list_active_at(
@@ -1675,3 +1931,50 @@ class MaintenanceWindowRepo:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        mw_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        reason: str | None = None,
+        reason_provided: bool = False,
+        starts_at: datetime | None = None,
+        ends_at: datetime | None = None,
+        rrule: str | None = None,
+        rrule_provided: bool = False,
+        target_ids: list[str] | None = None,
+    ) -> MaintenanceWindow | None:
+        values: dict[str, Any] = {}
+        if name is not None:
+            values["name"] = name
+        if reason_provided:
+            values["reason"] = reason
+        if starts_at is not None:
+            values["starts_at"] = starts_at
+        if ends_at is not None:
+            values["ends_at"] = ends_at
+        if rrule_provided:
+            values["rrule"] = rrule
+        if target_ids is not None:
+            values["target_ids"] = target_ids
+        if not values:
+            return await MaintenanceWindowRepo.get_by_id(db, mw_id)
+
+        stmt = update(MaintenanceWindow).where(MaintenanceWindow.id == mw_id).values(**values)
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await MaintenanceWindowRepo.get_by_id(db, mw_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, mw_id: uuid.UUID) -> bool:
+        mw = await MaintenanceWindowRepo.get_by_id(db, mw_id)
+        if mw is None:
+            return False
+        await db.delete(mw)
+        await db.flush()
+        return True
+

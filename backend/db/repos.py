@@ -26,6 +26,7 @@ from backend.db.models import (
     AuditEntry,
     BotActionAudit,
     BotConnector,
+    BotUserLink,
     DetectorHistory,
     DetectorRule,
     Incident,
@@ -2137,6 +2138,70 @@ class BotConnectorRepo:
         if connector is None:
             return False
         await db.delete(connector)
+        await db.flush()
+        return True
+
+
+class BotUserLinkRepo:
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        connector_id: uuid.UUID,
+        platform_user_id: str,
+        aim_user_id: uuid.UUID,
+        created_by: uuid.UUID | None = None,
+    ) -> BotUserLink:
+        link = BotUserLink(
+            connector_id=connector_id,
+            platform_user_id=platform_user_id,
+            aim_user_id=aim_user_id,
+            created_by=created_by,
+        )
+        db.add(link)
+        await db.flush()
+        return link
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, link_id: uuid.UUID
+    ) -> BotUserLink | None:
+        return await db.get(BotUserLink, link_id)
+
+    @staticmethod
+    async def get_by_platform_user(
+        db: AsyncSession,
+        *,
+        connector_id: uuid.UUID,
+        platform_user_id: str,
+    ) -> BotUserLink | None:
+        stmt = select(BotUserLink).where(
+            BotUserLink.connector_id == connector_id,
+            BotUserLink.platform_user_id == platform_user_id,
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_by_connector(
+        db: AsyncSession,
+        connector_id: uuid.UUID,
+    ) -> Sequence[BotUserLink]:
+        stmt = (
+            select(BotUserLink)
+            .where(BotUserLink.connector_id == connector_id)
+            .order_by(BotUserLink.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def delete(db: AsyncSession, link_id: uuid.UUID) -> bool:
+        link = await BotUserLinkRepo.get_by_id(db, link_id)
+        if link is None:
+            return False
+        await db.delete(link)
         await db.flush()
         return True
 

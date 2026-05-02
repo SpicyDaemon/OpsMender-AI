@@ -1788,15 +1788,40 @@ class TestTelegramBotWebhook:
         assert approval_id in text
         assert "restart_deployment" in text
 
+    async def _link_user(
+        self,
+        client: AsyncClient,
+        auth_headers,
+        connector_id: str,
+        platform_user_id: str,
+        aim_user_id: str,
+    ) -> None:
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/user-links",
+            json={
+                "platform_user_id": platform_user_id,
+                "aim_user_id": aim_user_id,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+
     async def test_telegram_webhook_can_approve_pending_request(
         self, client: AsyncClient, app, auth_headers
     ):
+        from backend.bots.rate_limit import rate_limiter
+        from backend.db.repos import UserRepo
+        rate_limiter.reset()
+
         connector_id = await self._create_connector(
             client,
             auth_headers,
             capabilities=["approvals"],
         )
         async with app.state.session_factory() as db:
+            admin = await UserRepo.get_by_username(db, "testadmin")
+            assert admin is not None
+            aim_user_id = str(admin.id)
             session = await SessionRepo.create(db, tier=1)
             await SessionRepo.set_status(db, session.id, status="awaiting_approval")
             approval = await ApprovalRequestRepo.create(
@@ -1809,10 +1834,13 @@ class TestTelegramBotWebhook:
             approval_id = str(approval.id)
             session_id = session.id
 
+        await self._link_user(client, auth_headers, connector_id, "111", aim_user_id)
+
         resp = await client.post(
             f"/bot-connectors/{connector_id}/telegram/webhook",
             json={
                 "message": {
+                    "from": {"id": 111},
                     "chat": {"id": "-100123"},
                     "text": f"/approve {approval_id}",
                 }
@@ -1864,20 +1892,28 @@ class TestTelegramBotWebhook:
             bot_webhooks, "respond_to_user_message", fake_responder
         )
 
+        from backend.db.repos import UserRepo
+
         connector_id = await self._create_connector(
             client,
             auth_headers,
             capabilities=["copilot_chat"],
         )
         async with app.state.session_factory() as db:
+            admin = await UserRepo.get_by_username(db, "testadmin")
+            assert admin is not None
+            aim_user_id = str(admin.id)
             session = await SessionRepo.create(db, tier=2)
             await db.commit()
             session_id = session.id
+
+        await self._link_user(client, auth_headers, connector_id, "111", aim_user_id)
 
         resp = await client.post(
             f"/bot-connectors/{connector_id}/telegram/webhook",
             json={
                 "message": {
+                    "from": {"id": 111},
                     "chat": {"id": "-100123"},
                     "text": f"/chat {session_id} restarting api pod now",
                 }
@@ -2005,6 +2041,180 @@ class TestTelegramBotWebhook:
         assert "ok" in statuses
         assert "/sessions" in commands
         assert "/incidents" in commands
+
+
+    async def test_telegram_webhook_rejects_unlinked_user_for_mutating_command(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        rate_limiter.reset()
+
+        connector_id = await self._create_connector(
+            client, auth_headers, capabilities=["approvals"],
+        )
+        async with app.state.session_factory() as db:
+            session = await SessionRepo.create(db, tier=1)
+            approval = await ApprovalRequestRepo.create(
+                db,
+                session_id=session.id,
+                action={"tool_name": "scale_deployment"},
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            )
+            await db.commit()
+            approval_id = str(approval.id)
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={
+                "message": {
+                    "from": {"id": 999},
+                    "chat": {"id": "-100123"},
+                    "text": f"/approve {approval_id}",
+                }
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+        assert resp.status_code == 200
+        assert "not linked" in resp.json()["text"]
+
+        # Approval must still be pending — no mutation occurred.
+        async with app.state.session_factory() as db:
+            from backend.db.models import BotActionAudit
+            from sqlalchemy import select
+            request = await ApprovalRequestRepo.get_by_id(db, uuid.UUID(approval_id))
+            assert request is not None
+            assert request.status == "pending"
+
+            entries = (
+                await db.execute(
+                    select(BotActionAudit).where(
+                        BotActionAudit.connector_id == uuid.UUID(connector_id)
+                    )
+                )
+            ).scalars().all()
+            assert any(
+                e.status == "unauthorized" and "from=999" in (e.detail or "")
+                for e in entries
+            )
+
+    async def test_telegram_webhook_role_denied_for_viewer(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        from backend.db.repos import UserRepo
+        rate_limiter.reset()
+
+        # Register a viewer-role user (not the first user).
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "viewer-bot",
+                "email": "viewer-bot@test.com",
+                "password": "viewerpass123",
+                "role": "viewer",
+            },
+        )
+
+        connector_id = await self._create_connector(
+            client, auth_headers, capabilities=["approvals"],
+        )
+        async with app.state.session_factory() as db:
+            viewer = await UserRepo.get_by_username(db, "viewer-bot")
+            assert viewer is not None
+            session = await SessionRepo.create(db, tier=1)
+            approval = await ApprovalRequestRepo.create(
+                db,
+                session_id=session.id,
+                action={"tool_name": "scale_deployment"},
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            )
+            await db.commit()
+            approval_id = str(approval.id)
+            viewer_id = str(viewer.id)
+
+        await self._link_user(client, auth_headers, connector_id, "222", viewer_id)
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={
+                "message": {
+                    "from": {"id": 222},
+                    "chat": {"id": "-100123"},
+                    "text": f"/approve {approval_id}",
+                }
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+        assert resp.status_code == 200
+        assert "viewer" in resp.json()["text"]
+        assert "cannot run" in resp.json()["text"]
+
+        async with app.state.session_factory() as db:
+            from backend.db.models import BotActionAudit
+            from sqlalchemy import select
+            entries = (
+                await db.execute(
+                    select(BotActionAudit).where(
+                        BotActionAudit.connector_id == uuid.UUID(connector_id)
+                    )
+                )
+            ).scalars().all()
+            assert any(
+                e.status == "role_denied"
+                and "role=viewer" in (e.detail or "")
+                for e in entries
+            )
+
+    async def test_bot_user_link_crud(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.db.repos import UserRepo
+
+        connector_id = await self._create_connector(client, auth_headers)
+        async with app.state.session_factory() as db:
+            admin = await UserRepo.get_by_username(db, "testadmin")
+            aim_user_id = str(admin.id)
+
+        # Create
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/user-links",
+            json={"platform_user_id": "555", "aim_user_id": aim_user_id},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        link = resp.json()
+        assert link["platform_user_id"] == "555"
+        assert link["aim_username"] == "testadmin"
+        assert link["aim_role"] == "admin"
+
+        # Conflict on duplicate
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/user-links",
+            json={"platform_user_id": "555", "aim_user_id": aim_user_id},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+
+        # List
+        resp = await client.get(
+            f"/bot-connectors/{connector_id}/user-links",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 1
+
+        # Delete
+        resp = await client.delete(
+            f"/bot-connectors/{connector_id}/user-links/{link['id']}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 204
+
+        resp = await client.get(
+            f"/bot-connectors/{connector_id}/user-links",
+            headers=auth_headers,
+        )
+        assert resp.json()["total"] == 0
 
 
 class TestModelConfigAPI:

@@ -718,6 +718,32 @@ class BotConnector(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class BotUserLink(Base):
+    """Map an external chat platform user to an AIM user account."""
+
+    __tablename__ = "bot_user_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("bot_connectors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    platform_user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    aim_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class BotActionAudit(Base):
     """Audit log entry for an inbound bot connector action."""
 

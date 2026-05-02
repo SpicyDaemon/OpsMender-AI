@@ -78,6 +78,25 @@ closes the round-trip so operators can converse with the co-pilot
 entirely from Telegram. Outbound delivery uses the connector's
 `bot_token` credential and records every send in `bot_action_audit`.
 
+#### Identity / RBAC
+
+Read-only commands work for any chat user with access to the connector's
+allowed chats. Mutating commands (`/approve`, `/reject`, `/chat`)
+additionally require the Telegram user ID (`message.from.id`) to be
+linked to an AIM user. Admins create the mapping via:
+
+```bash
+curl -X POST https://<your-aim-url>/bot-connectors/<connector-id>/user-links \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"platform_user_id": "12345678", "aim_user_id": "<aim-user-uuid>"}'
+```
+
+Linked users still need an AIM role of `admin` or `operator` to run any
+mutating command. Viewers are blocked with a `role_denied` reply.
+Unlinked users see a "not linked" reply that includes their Telegram
+user ID for the admin to copy into the link request.
+
 Set the Telegram webhook URL to:
 
 ```text

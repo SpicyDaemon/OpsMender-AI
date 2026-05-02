@@ -885,6 +885,26 @@ class BotConnectorTestResponse(BaseModel):
     status: str
 
 
+class BotUserLinkCreate(BaseModel):
+    platform_user_id: str
+    aim_user_id: uuid.UUID
+
+
+class BotUserLinkResponse(BaseModel):
+    id: uuid.UUID
+    connector_id: uuid.UUID
+    platform_user_id: str
+    aim_user_id: uuid.UUID
+    aim_username: str
+    aim_role: str
+    created_at: datetime
+
+
+class BotUserLinkListResponse(BaseModel):
+    items: list[BotUserLinkResponse]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------

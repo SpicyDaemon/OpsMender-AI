@@ -15,17 +15,59 @@ from backend.api.routes.ws import publish
 from backend.api.schemas import WSMessage
 from backend.bots.rate_limit import rate_limiter, resolve_per_minute
 from backend.chat import respond_to_user_message
-from backend.db.models import BotConnector, Incident
+from backend.db.models import BotConnector, Incident, User
 from backend.db.repos import (
     ApprovalRequestRepo,
     BotActionAuditRepo,
     BotConnectorRepo,
+    BotUserLinkRepo,
     IncidentRepo,
     SessionMessageRepo,
     SessionRepo,
+    UserRepo,
 )
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-webhooks"])
+
+
+_MUTATING_COMMANDS = {"/approve", "/reject", "/chat"}
+_REQUIRED_ROLES_BY_COMMAND = {
+    "/approve": {"admin", "operator"},
+    "/reject": {"admin", "operator"},
+    "/chat": {"admin", "operator"},
+}
+_REQUIRED_CAPABILITY_BY_COMMAND = {
+    "/approve": "approvals",
+    "/reject": "approvals",
+    "/chat": "copilot_chat",
+}
+
+
+def _telegram_from_user_id(payload: dict[str, Any]) -> str | None:
+    message = payload.get("message") or payload.get("edited_message") or {}
+    sender = message.get("from") or {}
+    sender_id = sender.get("id")
+    return None if sender_id is None else str(sender_id)
+
+
+async def _resolve_aim_user(
+    db: AsyncSession,
+    connector: BotConnector,
+    platform_user_id: str | None,
+) -> User | None:
+    if platform_user_id is None:
+        return None
+    link = await BotUserLinkRepo.get_by_platform_user(
+        db,
+        connector_id=connector.id,
+        platform_user_id=platform_user_id,
+    )
+    if link is None:
+        return None
+    aim_user = await UserRepo.get_by_id(db, link.aim_user_id)
+    if aim_user is None or not aim_user.is_active:
+        return None
+    return aim_user
 
 
 def _telegram_chat_id(payload: dict[str, Any]) -> str | None:
@@ -244,6 +286,7 @@ async def telegram_webhook(
     _validate_telegram_connector(connector, telegram_secret_token)
 
     chat_id = _telegram_chat_id(payload)
+    platform_user_id = _telegram_from_user_id(payload)
     if not chat_id:
         return {"ok": True}
     if not _chat_allowed(connector, chat_id):
@@ -253,6 +296,7 @@ async def telegram_webhook(
             chat_id=chat_id,
             command=None,
             status="chat_not_allowed",
+            detail=f"from={platform_user_id}" if platform_user_id else None,
         )
         return _telegram_reply(chat_id, "This chat is not allowed to use AIM.")
 
@@ -260,6 +304,49 @@ async def telegram_webhook(
     command, _, raw_arg = text.partition(" ")
     command = command.split("@", 1)[0].lower()
     arg = raw_arg.strip()
+
+    # Identity check for mutating commands. Read-only commands rely on
+    # connector-level capability gating only. Skip the identity gate when
+    # the connector lacks the required capability so the user gets a
+    # "capability not enabled" reply instead of a confusing "not linked".
+    aim_user: User | None = None
+    capability_for_command = _REQUIRED_CAPABILITY_BY_COMMAND.get(command)
+    if (
+        command in _MUTATING_COMMANDS
+        and capability_for_command is not None
+        and _has_capability(connector, capability_for_command)
+    ):
+        aim_user = await _resolve_aim_user(db, connector, platform_user_id)
+        if aim_user is None:
+            await _audit(
+                db,
+                connector,
+                chat_id=chat_id,
+                command=command,
+                status="unauthorized",
+                detail=f"from={platform_user_id}",
+            )
+            return _telegram_reply(
+                chat_id,
+                "This Telegram user is not linked to an AIM account. "
+                f"Ask an admin to link Telegram user `{platform_user_id}` "
+                "via `POST /bot-connectors/<id>/user-links`.",
+            )
+        required_roles = _REQUIRED_ROLES_BY_COMMAND.get(command, set())
+        if required_roles and aim_user.role not in required_roles:
+            await _audit(
+                db,
+                connector,
+                chat_id=chat_id,
+                command=command,
+                status="role_denied",
+                detail=f"from={platform_user_id} role={aim_user.role}",
+            )
+            return _telegram_reply(
+                chat_id,
+                f"Your AIM role `{aim_user.role}` cannot run `{command}`. "
+                f"Required: {', '.join(sorted(required_roles))}.",
+            )
 
     # Rate limit before any meaningful work — skip for /start /help so users
     # can still discover the bot when their bucket is full.

@@ -15,9 +15,12 @@ from backend.api.schemas import (
     BotConnectorResponse,
     BotConnectorTestResponse,
     BotConnectorUpsert,
+    BotUserLinkCreate,
+    BotUserLinkListResponse,
+    BotUserLinkResponse,
 )
 from backend.db.models import BotConnector, User
-from backend.db.repos import BotConnectorRepo
+from backend.db.repos import BotConnectorRepo, BotUserLinkRepo, UserRepo
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-connectors"])
 
@@ -264,5 +267,122 @@ async def delete_bot_connector(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Bot connector not found",
         )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Bot user links — map external chat-platform identities to AIM users
+# ---------------------------------------------------------------------------
+
+
+async def _link_to_response(db: AsyncSession, link) -> BotUserLinkResponse:
+    aim_user = await UserRepo.get_by_id(db, link.aim_user_id)
+    return BotUserLinkResponse(
+        id=link.id,
+        connector_id=link.connector_id,
+        platform_user_id=link.platform_user_id,
+        aim_user_id=link.aim_user_id,
+        aim_username=aim_user.username if aim_user else "(deleted)",
+        aim_role=aim_user.role if aim_user else "viewer",
+        created_at=link.created_at,
+    )
+
+
+@router.get(
+    "/{connector_id}/user-links",
+    response_model=BotUserLinkListResponse,
+    summary="List chat-platform identity mappings for a connector",
+)
+async def list_bot_user_links(
+    connector_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    if connector is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bot connector not found",
+        )
+    links = await BotUserLinkRepo.list_by_connector(db, connector_id)
+    items = [await _link_to_response(db, link) for link in links]
+    return BotUserLinkListResponse(items=items, total=len(items))
+
+
+@router.post(
+    "/{connector_id}/user-links",
+    response_model=BotUserLinkResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Map a chat-platform user to an AIM user",
+)
+async def create_bot_user_link(
+    connector_id: uuid.UUID,
+    body: BotUserLinkCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    if connector is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bot connector not found",
+        )
+
+    aim_user = await UserRepo.get_by_id(db, body.aim_user_id)
+    if aim_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="AIM user not found",
+        )
+
+    platform_user_id = body.platform_user_id.strip()
+    if not platform_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="platform_user_id is required",
+        )
+
+    existing = await BotUserLinkRepo.get_by_platform_user(
+        db,
+        connector_id=connector_id,
+        platform_user_id=platform_user_id,
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This platform user is already linked on this connector",
+        )
+
+    link = await BotUserLinkRepo.create(
+        db,
+        connector_id=connector_id,
+        platform_user_id=platform_user_id,
+        aim_user_id=body.aim_user_id,
+        created_by=user.id,
+    )
+    await db.commit()
+    await db.refresh(link)
+    return await _link_to_response(db, link)
+
+
+@router.delete(
+    "/{connector_id}/user-links/{link_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a chat-platform identity mapping",
+)
+async def delete_bot_user_link(
+    connector_id: uuid.UUID,
+    link_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("admin")),
+):
+    link = await BotUserLinkRepo.get_by_id(db, link_id)
+    if link is None or link.connector_id != connector_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Link not found",
+        )
+    await BotUserLinkRepo.delete(db, link_id)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

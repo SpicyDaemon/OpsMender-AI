@@ -78,7 +78,6 @@ def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
 async def ingest_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_org),
     authorization: str | None = Header(None),
     x_aim_token: str | None = Header(None, alias="X-AIM-Token"),
 ):

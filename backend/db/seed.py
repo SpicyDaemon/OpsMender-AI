@@ -30,6 +30,12 @@ async def seed(database_url: str) -> None:
     factory = get_session_factory(engine)
 
     async with factory() as db:
+        # -- Organization ----------------------------------------------------
+        from backend.db.repos import OrganizationRepo
+        main_org = await OrganizationRepo.create(db, name="Main Organization", slug="main")
+        org_id = main_org.id
+        print(f"  Created default organization: {main_org.name} ({org_id})")
+
         # -- Users -----------------------------------------------------------
         admin = await UserRepo.create(
             db,
@@ -37,26 +43,35 @@ async def seed(database_url: str) -> None:
             email="admin@aim.local",
             password_hash=hash_password("admin123"),
             role="admin",
+            primary_org_id=org_id,
         )
+        await UserRepo.add_to_organization(db, admin.id, org_id, role="admin")
+
         operator = await UserRepo.create(
             db,
             username="operator",
             email="operator@aim.local",
             password_hash=hash_password("operator123"),
             role="operator",
+            primary_org_id=org_id,
         )
+        await UserRepo.add_to_organization(db, operator.id, org_id, role="operator")
+
         viewer = await UserRepo.create(
             db,
             username="viewer",
             email="viewer@aim.local",
             password_hash=hash_password("viewer123"),
             role="viewer",
+            primary_org_id=org_id,
         )
-        print(f"  Created users: admin, operator, viewer")
+        await UserRepo.add_to_organization(db, viewer.id, org_id, role="viewer")
+        print(f"  Created users: admin, operator, viewer (all assigned to Main Org)")
 
         # -- Model configs ---------------------------------------------------
         anthropic_cfg = await ModelConfigRepo.create(
             db,
+            org_id,
             name="claude-sonnet",
             provider="anthropic",
             model_id="claude-sonnet-4-20250514",
@@ -65,6 +80,7 @@ async def seed(database_url: str) -> None:
         )
         openai_cfg = await ModelConfigRepo.create(
             db,
+            org_id,
             name="gpt-4o",
             provider="openai",
             model_id="gpt-4o",
@@ -72,6 +88,7 @@ async def seed(database_url: str) -> None:
         )
         ollama_cfg = await ModelConfigRepo.create(
             db,
+            org_id,
             name="llama3-local",
             provider="ollama",
             model_id="llama3.2",
@@ -82,12 +99,14 @@ async def seed(database_url: str) -> None:
         # -- Incidents -------------------------------------------------------
         inc1 = await IncidentRepo.create(
             db,
+            org_id,
             title="API latency spike in production",
             description="p95 latency jumped from 200ms to 2s on /api/v1/orders endpoint. Started at 14:30 UTC.",
             severity="high",
         )
         inc2 = await IncidentRepo.create(
             db,
+            org_id,
             title="OOMKilled pods in staging",
             description="Multiple pods in staging namespace getting OOMKilled. Memory limits may need adjustment.",
             severity="medium",
@@ -97,6 +116,7 @@ async def seed(database_url: str) -> None:
         # -- Sessions --------------------------------------------------------
         sess1 = await SessionRepo.create(
             db,
+            org_id,
             tier=2,
             incident_id=inc1.id,
             model_provider="anthropic",
@@ -108,12 +128,14 @@ async def seed(database_url: str) -> None:
         now = datetime.now(timezone.utc)
         await AuditEntryRepo.create(
             db,
+            org_id,
             session_id=sess1.id,
             tier=2,
             entry_type="session_start",
         )
         await AuditEntryRepo.create(
             db,
+            org_id,
             session_id=sess1.id,
             tier=2,
             entry_type="tool_call_start",
@@ -122,6 +144,7 @@ async def seed(database_url: str) -> None:
         )
         await AuditEntryRepo.create(
             db,
+            org_id,
             session_id=sess1.id,
             tier=2,
             entry_type="tool_call_end",
@@ -131,6 +154,7 @@ async def seed(database_url: str) -> None:
         )
         await AuditEntryRepo.create(
             db,
+            org_id,
             session_id=sess1.id,
             tier=2,
             entry_type="tool_call_blocked",
@@ -141,6 +165,7 @@ async def seed(database_url: str) -> None:
         )
         await AuditEntryRepo.create(
             db,
+            org_id,
             session_id=sess1.id,
             tier=2,
             entry_type="session_end",

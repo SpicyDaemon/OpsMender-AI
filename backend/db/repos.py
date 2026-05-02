@@ -56,13 +56,36 @@ class UserRepo:
         email: str,
         password_hash: str,
         role: str = "viewer",
+        primary_org_id: uuid.UUID | None = None,
     ) -> User:
         user = User(
-            username=username, email=email, password_hash=password_hash, role=role
+            username=username,
+            email=email,
+            password_hash=password_hash,
+            role=role,
+            primary_org_id=primary_org_id,
         )
         db.add(user)
         await db.flush()
         return user
+
+    @staticmethod
+    async def set_primary_org(
+        db: AsyncSession, user_id: uuid.UUID, org_id: uuid.UUID
+    ) -> None:
+        """Update a user's primary organization context."""
+        stmt = update(User).where(User.id == user_id).values(primary_org_id=org_id)
+        await db.execute(stmt)
+        await db.flush()
+
+    @staticmethod
+    async def add_to_organization(
+        db: AsyncSession, user_id: uuid.UUID, org_id: uuid.UUID, role: str = "viewer"
+    ) -> None:
+        """Link a user to an organization."""
+        link = UserOrganization(user_id=user_id, org_id=org_id, role=role)
+        db.add(link)
+        await db.flush()
 
     @staticmethod
     async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:

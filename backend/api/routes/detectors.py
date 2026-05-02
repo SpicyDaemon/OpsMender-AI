@@ -41,6 +41,7 @@ def _to_rule_response(item) -> DetectorRuleResponse:
 
 async def _validate_refs(
     db: AsyncSession,
+    org_id: uuid.UUID,
     *,
     mcp_server_id: uuid.UUID | None,
     model_config_id: uuid.UUID | None,
@@ -68,6 +69,7 @@ async def _validate_refs(
 )
 async def list_detector_rules(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
     items = await DetectorRuleRepo.list_all(db, org_id)
@@ -113,6 +115,7 @@ async def create_detector_rule(
 ):
     await _validate_refs(
         db,
+        org_id,
         mcp_server_id=body.mcp_server_id,
         model_config_id=body.model_config_id,
     )
@@ -170,6 +173,7 @@ async def update_detector_rule(
     )
     await _validate_refs(
         db,
+        org_id,
         mcp_server_id=next_mcp_server_id,
         model_config_id=next_model_config_id,
     )

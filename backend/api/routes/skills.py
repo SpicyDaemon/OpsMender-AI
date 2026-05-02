@@ -56,7 +56,7 @@ async def _validate_content(content_md: str) -> None:
 
 
 async def _validate_mcp_server(
-    db: AsyncSession, mcp_server_id: uuid.UUID | None
+    db: AsyncSession, org_id: uuid.UUID, mcp_server_id: uuid.UUID | None
 ) -> None:
     if mcp_server_id is None:
         return
@@ -76,6 +76,7 @@ async def _validate_mcp_server(
 async def list_skills(
     mcp_server_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
     if mcp_server_id is not None:
@@ -121,7 +122,7 @@ async def create_skill(
     user: User = Depends(require_role("admin")),
 ):
     await _validate_content(body.content_md)
-    await _validate_mcp_server(db, body.mcp_server_id)
+    await _validate_mcp_server(db, org_id, body.mcp_server_id)
     try:
         skill = await SkillRepo.create(
             db,
@@ -162,7 +163,7 @@ async def update_skill(
         )
 
     await _validate_content(body.content_md)
-    await _validate_mcp_server(db, body.mcp_server_id)
+    await _validate_mcp_server(db, org_id, body.mcp_server_id)
     try:
         updated = await SkillRepo.update(
             db,
@@ -230,7 +231,7 @@ async def clone_skill(
             detail="Skill not found",
         )
 
-    await _validate_mcp_server(db, body.mcp_server_id)
+    await _validate_mcp_server(db, org_id, body.mcp_server_id)
     description = body.description or f"Cloned from {source.name}"
     try:
         clone = await SkillRepo.create(
@@ -282,7 +283,7 @@ async def import_skill(
         )
 
     await _validate_content(content_md)
-    await _validate_mcp_server(db, mcp_server_id)
+    await _validate_mcp_server(db, org_id, mcp_server_id)
 
     if not name:
         filename = file.filename or "imported-skill.md"

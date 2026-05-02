@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from contextlib import asynccontextmanager
 
 import pytest
@@ -105,6 +107,7 @@ async def _seed_server(app, *, name: str = "k8s-detector") -> str:
     async with app.state.session_factory() as db:
         server = await MCPServerRepo.create(
             db,
+            TEST_ORG_ID,
             name=name,
             transport="stdio",
             command="echo",
@@ -115,7 +118,6 @@ async def _seed_server(app, *, name: str = "k8s-detector") -> str:
 
 
 class TestDetectorAPI:
-
     async def test_list_templates(self, client: AsyncClient, auth_headers):
         resp = await client.get("/detectors/templates", headers=auth_headers)
         assert resp.status_code == 200
@@ -173,6 +175,7 @@ class TestDetectorAPI:
         async with app.state.session_factory() as db:
             cfg = await ModelConfigRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="stub-default",
                 provider="openai",
                 model_id="gpt-4o",
@@ -195,9 +198,12 @@ class TestDetectorAPI:
         async def _fake_run(db, *, rule, pool, config, budget_guard=None):
             from backend.db.repos import DetectorHistoryRepo, DetectorRuleRepo
 
-            await DetectorRuleRepo.mark_run(db, rule.id, last_fingerprint="det-123")
+            await DetectorRuleRepo.mark_run(
+                db, TEST_ORG_ID, rule.id, last_fingerprint="det-123"
+            )
             await DetectorHistoryRepo.create(
                 db,
+                TEST_ORG_ID,
                 rule_id=rule.id,
                 duration_ms=87,
                 issue_detected=True,
@@ -225,11 +231,11 @@ class TestDetectorAPI:
 
 
 class TestDetectorRunner:
-
     async def test_runner_creates_incident_and_history(self, app, monkeypatch):
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="runner-k8s",
                 transport="stdio",
                 command="echo",
@@ -237,8 +243,11 @@ class TestDetectorRunner:
             await db.commit()
             await db.refresh(server)
 
-            rule = await __import__("backend.db.repos", fromlist=["DetectorRuleRepo"]).DetectorRuleRepo.create(
+            rule = await __import__(
+                "backend.db.repos", fromlist=["DetectorRuleRepo"]
+            ).DetectorRuleRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="runner-rule",
                 mcp_server_id=server.id,
                 prompt_template="Detect crashlooping pods",
@@ -288,7 +297,10 @@ class TestDetectorRunner:
                     self.isError = False
                     self.content = [_Content(text)]
 
-            monkeypatch.setattr("backend.detector.runner.create_provider", lambda **kwargs: _FakeProvider())
+            monkeypatch.setattr(
+                "backend.detector.runner.create_provider",
+                lambda **kwargs: _FakeProvider(),
+            )
 
             async def _fake_list_tools(session):
                 return [_Tool("get_pods"), _Tool("delete_pod")]
@@ -327,6 +339,7 @@ class TestDetectorRunner:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="runner-filter",
                 transport="stdio",
                 command="echo",
@@ -338,6 +351,7 @@ class TestDetectorRunner:
 
             rule = await DetectorRuleRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="runner-filter-rule",
                 mcp_server_id=server.id,
                 prompt_template="Check pods only",
@@ -435,6 +449,7 @@ class TestDetectorRunner:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="runner-invalid-json",
                 transport="stdio",
                 command="echo",
@@ -446,6 +461,7 @@ class TestDetectorRunner:
 
             rule = await DetectorRuleRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="runner-invalid-json-rule",
                 mcp_server_id=server.id,
                 prompt_template="Check health",
@@ -498,7 +514,7 @@ class TestDetectorRunner:
             )
             await db.commit()
 
-            history = await DetectorHistoryRepo.list_by_rule(db, rule.id)
+            history = await DetectorHistoryRepo.list_by_rule(db, TEST_ORG_ID, rule.id)
             assert result.success is False
             assert result.incident_id is None
             assert history[0].error is not None
@@ -507,6 +523,7 @@ class TestDetectorRunner:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="runner-dedup",
                 transport="stdio",
                 command="echo",
@@ -514,10 +531,15 @@ class TestDetectorRunner:
             await db.commit()
             await db.refresh(server)
 
-            from backend.db.repos import DetectorHistoryRepo, DetectorRuleRepo, IncidentRepo
+            from backend.db.repos import (
+                DetectorHistoryRepo,
+                DetectorRuleRepo,
+                IncidentRepo,
+            )
 
             rule = await DetectorRuleRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="runner-dedup-rule",
                 mcp_server_id=server.id,
                 prompt_template="Detect repeated issue",
@@ -587,10 +609,11 @@ class TestDetectorRunner:
 
             incident = await IncidentRepo.get_by_external_fingerprint(
                 db,
+                TEST_ORG_ID,
                 external_source=f"detector:{rule.id}",
                 external_id="same-fingerprint",
             )
-            history = await DetectorHistoryRepo.list_by_rule(db, rule.id)
+            history = await DetectorHistoryRepo.list_by_rule(db, TEST_ORG_ID, rule.id)
 
             assert first.success is True
             assert second.success is True
@@ -600,7 +623,6 @@ class TestDetectorRunner:
 
 
 class TestDetectorScheduler:
-
     async def test_tick_schedules_due_active_rule(self, app, monkeypatch):
         class _Pool:
             async def get_server(self, name: str):
@@ -616,13 +638,16 @@ class TestDetectorScheduler:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="scheduler-k8s",
                 transport="stdio",
                 command="echo",
             )
             from backend.db.repos import DetectorRuleRepo
+
             rule = await DetectorRuleRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="scheduler-due",
                 mcp_server_id=server.id,
                 prompt_template="Detect issues",
@@ -634,6 +659,7 @@ class TestDetectorScheduler:
 
             await DetectorRuleRepo.mark_run(
                 db,
+                TEST_ORG_ID,
                 rule.id,
                 last_ran_at=rule.created_at.replace(year=2020),
             )
@@ -671,13 +697,16 @@ class TestDetectorScheduler:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="scheduler-inactive-k8s",
                 transport="stdio",
                 command="echo",
             )
             from backend.db.repos import DetectorRuleRepo
+
             await DetectorRuleRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="scheduler-inactive",
                 mcp_server_id=server.id,
                 prompt_template="Detect issues",

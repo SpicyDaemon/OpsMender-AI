@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import pytest
+import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.config_loader import MCPServerConfig
@@ -28,9 +31,7 @@ class TestMCPServerPoolFreshness:
         pool = MCPServerPool(session_factory)
         assert await pool.list_servers() == []
 
-    async def test_newly_added_server_is_visible_without_reload(
-        self, session_factory
-    ):
+    async def test_newly_added_server_is_visible_without_reload(self, session_factory):
         pool = MCPServerPool(session_factory)
         assert await pool.list_servers() == []
 
@@ -38,6 +39,7 @@ class TestMCPServerPoolFreshness:
         async with session_factory() as db:
             await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="k8s-dev",
                 transport="stdio",
                 command="/usr/bin/mcp-k8s",
@@ -55,7 +57,7 @@ class TestMCPServerPoolFreshness:
         pool = MCPServerPool(session_factory)
         async with session_factory() as db:
             server = await MCPServerRepo.create(
-                db, name="k8s", transport="sse", url="http://old.example"
+                db, TEST_ORG_ID, name="k8s", transport="sse", url="http://old.example"
             )
             await db.commit()
             server_id = server.id
@@ -67,6 +69,7 @@ class TestMCPServerPoolFreshness:
         async with session_factory() as db:
             await MCPServerRepo.update(
                 db,
+                TEST_ORG_ID,
                 server_id,
                 name="k8s",
                 transport="sse",
@@ -82,10 +85,20 @@ class TestMCPServerPoolFreshness:
         pool = MCPServerPool(session_factory)
         async with session_factory() as db:
             await MCPServerRepo.create(
-                db, name="on", transport="stdio", command="/bin/on", is_active=True
+                db,
+                TEST_ORG_ID,
+                name="on",
+                transport="stdio",
+                command="/bin/on",
+                is_active=True,
             )
             await MCPServerRepo.create(
-                db, name="off", transport="stdio", command="/bin/off", is_active=False
+                db,
+                TEST_ORG_ID,
+                name="off",
+                transport="stdio",
+                command="/bin/off",
+                is_active=False,
             )
             await db.commit()
 
@@ -107,7 +120,7 @@ class TestMCPServerPoolFallback:
 
         async with session_factory() as db:
             await MCPServerRepo.create(
-                db, name="db-only", transport="stdio", command="/bin/db"
+                db, TEST_ORG_ID, name="db-only", transport="stdio", command="/bin/db"
             )
             await db.commit()
 

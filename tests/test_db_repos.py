@@ -6,6 +6,8 @@ Uses in-memory SQLite via aiosqlite.
 from __future__ import annotations
 
 import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -50,7 +52,6 @@ async def db():
 
 
 class TestUserRepo:
-
     async def test_create_and_get(self, db: AsyncSession):
         user = await UserRepo.create(
             db, username="alice", email="alice@test.com", password_hash="h"
@@ -99,49 +100,50 @@ class TestUserRepo:
 
 
 class TestIncidentRepo:
-
     async def test_create_and_get(self, db: AsyncSession):
         inc = await IncidentRepo.create(
-            db, title="Test", description="desc", severity="high"
+            db, TEST_ORG_ID, title="Test", description="desc", severity="high"
         )
         await db.flush()
 
-        fetched = await IncidentRepo.get_by_id(db, inc.id)
+        fetched = await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)
         assert fetched is not None
         assert fetched.title == "Test"
         assert fetched.status == "open"
 
     async def test_list_with_status_filter(self, db: AsyncSession):
-        await IncidentRepo.create(db, title="A", description="d")
-        inc2 = await IncidentRepo.create(db, title="B", description="d")
+        await IncidentRepo.create(db, TEST_ORG_ID, title="A", description="d")
+        inc2 = await IncidentRepo.create(db, TEST_ORG_ID, title="B", description="d")
         await db.flush()
 
-        await IncidentRepo.update_status(db, inc2.id, "resolved")
+        await IncidentRepo.update_status(db, TEST_ORG_ID, inc2.id, "resolved")
         await db.flush()
 
-        open_incs = await IncidentRepo.list_all(db, status="open")
+        open_incs = await IncidentRepo.list_all(db, TEST_ORG_ID, status="open")
         assert len(open_incs) == 1
         assert open_incs[0].title == "A"
 
     async def test_list_pagination(self, db: AsyncSession):
         for i in range(5):
-            await IncidentRepo.create(db, title=f"Inc-{i}", description="d")
+            await IncidentRepo.create(
+                db, TEST_ORG_ID, title=f"Inc-{i}", description="d"
+            )
         await db.flush()
 
-        page = await IncidentRepo.list_all(db, limit=2, offset=0)
+        page = await IncidentRepo.list_all(db, TEST_ORG_ID, limit=2, offset=0)
         assert len(page) == 2
 
-        page2 = await IncidentRepo.list_all(db, limit=2, offset=2)
+        page2 = await IncidentRepo.list_all(db, TEST_ORG_ID, limit=2, offset=2)
         assert len(page2) == 2
 
     async def test_update_status(self, db: AsyncSession):
-        inc = await IncidentRepo.create(db, title="T", description="d")
+        inc = await IncidentRepo.create(db, TEST_ORG_ID, title="T", description="d")
         await db.flush()
 
-        await IncidentRepo.update_status(db, inc.id, "closed")
+        await IncidentRepo.update_status(db, TEST_ORG_ID, inc.id, "closed")
         await db.flush()
 
-        fetched = await IncidentRepo.get_by_id(db, inc.id)
+        fetched = await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)
         assert fetched.status == "closed"
 
 
@@ -151,33 +153,34 @@ class TestIncidentRepo:
 
 
 class TestSessionRepo:
-
     async def test_create_and_get(self, db: AsyncSession):
-        sess = await SessionRepo.create(db, tier=2)
+        sess = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
         await db.flush()
 
-        fetched = await SessionRepo.get_by_id(db, sess.id)
+        fetched = await SessionRepo.get_by_id(db, TEST_ORG_ID, sess.id)
         assert fetched is not None
         assert fetched.tier == 2
         assert fetched.status == "active"
 
     async def test_list_by_incident(self, db: AsyncSession):
-        inc = await IncidentRepo.create(db, title="T", description="d")
+        inc = await IncidentRepo.create(db, TEST_ORG_ID, title="T", description="d")
         await db.flush()
 
-        await SessionRepo.create(db, tier=2, incident_id=inc.id)
-        await SessionRepo.create(db, tier=3, incident_id=inc.id)
+        await SessionRepo.create(db, TEST_ORG_ID, tier=2, incident_id=inc.id)
+        await SessionRepo.create(db, TEST_ORG_ID, tier=3, incident_id=inc.id)
         await db.flush()
 
-        sessions = await SessionRepo.list_by_incident(db, inc.id)
+        sessions = await SessionRepo.list_by_incident(db, TEST_ORG_ID, inc.id)
         assert len(sessions) == 2
 
     async def test_end_session(self, db: AsyncSession):
-        sess = await SessionRepo.create(db, tier=2)
+        sess = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
         await db.flush()
         sess_id = sess.id
 
-        await SessionRepo.end_session(db, sess_id, status="completed", summary="done")
+        await SessionRepo.end_session(
+            db, TEST_ORG_ID, sess_id, status="completed", summary="done"
+        )
         await db.flush()
 
         await db.refresh(sess)
@@ -186,10 +189,12 @@ class TestSessionRepo:
         assert sess.ended_at is not None
 
     async def test_set_status(self, db: AsyncSession):
-        sess = await SessionRepo.create(db, tier=1)
+        sess = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
         await db.flush()
 
-        await SessionRepo.set_status(db, sess.id, status="awaiting_approval")
+        await SessionRepo.set_status(
+            db, TEST_ORG_ID, sess.id, status="awaiting_approval"
+        )
         await db.flush()
         await db.refresh(sess)
 
@@ -202,10 +207,10 @@ class TestSessionRepo:
 
 
 class TestWebhookTriggerRepo:
-
     async def test_create_and_list_matching_event(self, db: AsyncSession):
         trigger = await WebhookTriggerRepo.create(
             db,
+            TEST_ORG_ID,
             name="session-complete",
             url="https://example.com/hook",
             event_types=["session.completed"],
@@ -214,13 +219,16 @@ class TestWebhookTriggerRepo:
         )
         await db.flush()
 
-        items = await WebhookTriggerRepo.list_matching_event(db, "session.completed")
+        items = await WebhookTriggerRepo.list_matching_event(
+            db, TEST_ORG_ID, "session.completed"
+        )
         assert [item.id for item in items] == [trigger.id]
         assert trigger.format == "generic"
 
     async def test_mark_delivery_updates_timestamp_and_error(self, db: AsyncSession):
         trigger = await WebhookTriggerRepo.create(
             db,
+            TEST_ORG_ID,
             name="session-fail",
             url="https://example.com/fail",
             event_types=["session.failed"],
@@ -229,6 +237,7 @@ class TestWebhookTriggerRepo:
 
         await WebhookTriggerRepo.mark_delivery(
             db,
+            TEST_ORG_ID,
             trigger.id,
             error="boom",
         )
@@ -245,10 +254,10 @@ class TestWebhookTriggerRepo:
 
 
 class TestWorkflowProfileRepo:
-
     async def test_create_and_get_default(self, db: AsyncSession):
         created = await WorkflowProfileRepo.create(
             db,
+            TEST_ORG_ID,
             name="default-linear",
             description="default",
             node_order=[
@@ -264,7 +273,7 @@ class TestWorkflowProfileRepo:
         )
         await db.flush()
 
-        default = await WorkflowProfileRepo.get_default(db)
+        default = await WorkflowProfileRepo.get_default(db, TEST_ORG_ID)
         assert default is not None
         assert default.id == created.id
 
@@ -275,10 +284,10 @@ class TestWorkflowProfileRepo:
 
 
 class TestAgentTeamProfileRepo:
-
     async def test_create_and_get_default(self, db: AsyncSession):
         created = await AgentTeamProfileRepo.create(
             db,
+            TEST_ORG_ID,
             name="triage-council",
             description="default team",
             roles=["incident_commander", "investigator", "skeptic"],
@@ -286,7 +295,7 @@ class TestAgentTeamProfileRepo:
         )
         await db.flush()
 
-        default = await AgentTeamProfileRepo.get_default(db)
+        default = await AgentTeamProfileRepo.get_default(db, TEST_ORG_ID)
         assert default is not None
         assert default.id == created.id
 
@@ -297,9 +306,8 @@ class TestAgentTeamProfileRepo:
 
 
 class TestAuditEntryRepo:
-
     async def _make_session(self, db: AsyncSession) -> uuid.UUID:
-        sess = await SessionRepo.create(db, tier=2)
+        sess = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
         await db.flush()
         return sess.id
 
@@ -307,10 +315,11 @@ class TestAuditEntryRepo:
         sid = await self._make_session(db)
 
         await AuditEntryRepo.create(
-            db, session_id=sid, tier=2, entry_type="session_start"
+            db, TEST_ORG_ID, session_id=sid, tier=2, entry_type="session_start"
         )
         await AuditEntryRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sid,
             tier=2,
             entry_type="tool_call_start",
@@ -318,17 +327,23 @@ class TestAuditEntryRepo:
         )
         await db.flush()
 
-        entries = await AuditEntryRepo.list_by_session(db, sid)
+        entries = await AuditEntryRepo.list_by_session(db, TEST_ORG_ID, sid)
         assert len(entries) == 2
 
     async def test_query_by_tool_name(self, db: AsyncSession):
         sid = await self._make_session(db)
 
         await AuditEntryRepo.create(
-            db, session_id=sid, tier=2, entry_type="tool_call_end", tool_name="get_pods"
+            db,
+            TEST_ORG_ID,
+            session_id=sid,
+            tier=2,
+            entry_type="tool_call_end",
+            tool_name="get_pods",
         )
         await AuditEntryRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sid,
             tier=2,
             entry_type="tool_call_blocked",
@@ -337,7 +352,7 @@ class TestAuditEntryRepo:
         )
         await db.flush()
 
-        results = await AuditEntryRepo.query(db, tool_name="delete_pod")
+        results = await AuditEntryRepo.query(db, TEST_ORG_ID, tool_name="delete_pod")
         assert len(results) == 1
         assert results[0].tool_name == "delete_pod"
 
@@ -345,10 +360,16 @@ class TestAuditEntryRepo:
         sid = await self._make_session(db)
 
         await AuditEntryRepo.create(
-            db, session_id=sid, tier=2, entry_type="tool_call_end", tool_name="get_pods"
+            db,
+            TEST_ORG_ID,
+            session_id=sid,
+            tier=2,
+            entry_type="tool_call_end",
+            tool_name="get_pods",
         )
         await AuditEntryRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sid,
             tier=2,
             entry_type="tool_call_blocked",
@@ -357,7 +378,7 @@ class TestAuditEntryRepo:
         )
         await db.flush()
 
-        blocked = await AuditEntryRepo.query(db, permitted=False)
+        blocked = await AuditEntryRepo.query(db, TEST_ORG_ID, permitted=False)
         assert len(blocked) == 1
         assert blocked[0].permitted is False
 
@@ -366,6 +387,7 @@ class TestAuditEntryRepo:
         for i in range(5):
             await AuditEntryRepo.create(
                 db,
+                TEST_ORG_ID,
                 session_id=sid,
                 tier=2,
                 entry_type="tool_call_end",
@@ -373,7 +395,7 @@ class TestAuditEntryRepo:
             )
         await db.flush()
 
-        page = await AuditEntryRepo.query(db, limit=2, offset=0)
+        page = await AuditEntryRepo.query(db, TEST_ORG_ID, limit=2, offset=0)
         assert len(page) == 2
 
 
@@ -383,13 +405,13 @@ class TestAuditEntryRepo:
 
 
 class TestApprovalRequestRepo:
-
     async def test_create_and_list_pending(self, db: AsyncSession):
-        sess = await SessionRepo.create(db, tier=1)
+        sess = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
         await db.flush()
 
         req = await ApprovalRequestRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sess.id,
             action={"tool": "delete_pod"},
             justification="CrashLoop",
@@ -397,12 +419,12 @@ class TestApprovalRequestRepo:
         )
         await db.flush()
 
-        pending = await ApprovalRequestRepo.list_pending(db)
+        pending = await ApprovalRequestRepo.list_pending(db, TEST_ORG_ID)
         assert len(pending) == 1
         assert pending[0].id == req.id
 
     async def test_resolve_approval(self, db: AsyncSession):
-        sess = await SessionRepo.create(db, tier=1)
+        sess = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
         user = await UserRepo.create(
             db, username="approver", email="a@t.com", password_hash="h", role="operator"
         )
@@ -410,6 +432,7 @@ class TestApprovalRequestRepo:
 
         req = await ApprovalRequestRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sess.id,
             action={"tool": "delete_pod"},
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
@@ -417,7 +440,7 @@ class TestApprovalRequestRepo:
         await db.flush()
 
         await ApprovalRequestRepo.resolve(
-            db, req.id, status="approved", resolved_by=user.id
+            db, TEST_ORG_ID, req.id, status="approved", resolved_by=user.id
         )
         await db.flush()
 
@@ -427,64 +450,72 @@ class TestApprovalRequestRepo:
         assert req.resolved_by == user.id
 
     async def test_resolved_not_in_pending(self, db: AsyncSession):
-        sess = await SessionRepo.create(db, tier=1)
+        sess = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
         await db.flush()
 
         req = await ApprovalRequestRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sess.id,
             action={"tool": "restart_pod"},
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
         )
         await db.flush()
 
-        await ApprovalRequestRepo.resolve(db, req.id, status="rejected")
+        await ApprovalRequestRepo.resolve(db, TEST_ORG_ID, req.id, status="rejected")
         await db.flush()
 
-        pending = await ApprovalRequestRepo.list_pending(db)
+        pending = await ApprovalRequestRepo.list_pending(db, TEST_ORG_ID)
         assert len(pending) == 0
 
     async def test_list_filters(self, db: AsyncSession):
-        sess1 = await SessionRepo.create(db, tier=1)
-        sess2 = await SessionRepo.create(db, tier=1)
+        sess1 = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
+        sess2 = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
         await db.flush()
 
         req1 = await ApprovalRequestRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sess1.id,
             action={"tool": "delete_pod"},
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
         )
         req2 = await ApprovalRequestRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sess2.id,
             action={"tool": "restart_pod"},
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
         )
         await db.flush()
-        await ApprovalRequestRepo.resolve(db, req2.id, status="approved")
+        await ApprovalRequestRepo.resolve(db, TEST_ORG_ID, req2.id, status="approved")
         await db.flush()
 
         pending = await ApprovalRequestRepo.list(
-            db, status="pending", session_id=sess1.id
+            db, TEST_ORG_ID, status="pending", session_id=sess1.id
         )
         assert len(pending) == 1
         assert pending[0].id == req1.id
 
     async def test_resolve_returns_false_for_non_pending(self, db: AsyncSession):
-        sess = await SessionRepo.create(db, tier=1)
+        sess = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
         await db.flush()
 
         req = await ApprovalRequestRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=sess.id,
             action={"tool": "restart_pod"},
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
         )
         await db.flush()
 
-        first = await ApprovalRequestRepo.resolve(db, req.id, status="approved")
-        second = await ApprovalRequestRepo.resolve(db, req.id, status="rejected")
+        first = await ApprovalRequestRepo.resolve(
+            db, TEST_ORG_ID, req.id, status="approved"
+        )
+        second = await ApprovalRequestRepo.resolve(
+            db, TEST_ORG_ID, req.id, status="rejected"
+        )
 
         assert first is True
         assert second is False
@@ -496,39 +527,48 @@ class TestApprovalRequestRepo:
 
 
 class TestModelConfigRepo:
-
     async def test_create_and_list(self, db: AsyncSession):
         await ModelConfigRepo.create(
-            db, name="m1", provider="anthropic", model_id="claude-sonnet"
+            db, TEST_ORG_ID, name="m1", provider="anthropic", model_id="claude-sonnet"
         )
         await ModelConfigRepo.create(
-            db, name="m2", provider="openai", model_id="gpt-4o"
+            db, TEST_ORG_ID, name="m2", provider="openai", model_id="gpt-4o"
         )
         await db.flush()
 
-        configs = await ModelConfigRepo.list_all(db)
+        configs = await ModelConfigRepo.list_all(db, TEST_ORG_ID)
         assert len(configs) == 2
 
     async def test_get_default(self, db: AsyncSession):
         await ModelConfigRepo.create(
-            db, name="m1", provider="anthropic", model_id="s", is_default=True
+            db,
+            TEST_ORG_ID,
+            name="m1",
+            provider="anthropic",
+            model_id="s",
+            is_default=True,
         )
         await db.flush()
 
-        default = await ModelConfigRepo.get_default(db)
+        default = await ModelConfigRepo.get_default(db, TEST_ORG_ID)
         assert default is not None
         assert default.name == "m1"
 
     async def test_set_default(self, db: AsyncSession):
         c1 = await ModelConfigRepo.create(
-            db, name="m1", provider="anthropic", model_id="s", is_default=True
+            db,
+            TEST_ORG_ID,
+            name="m1",
+            provider="anthropic",
+            model_id="s",
+            is_default=True,
         )
         c2 = await ModelConfigRepo.create(
-            db, name="m2", provider="openai", model_id="g"
+            db, TEST_ORG_ID, name="m2", provider="openai", model_id="g"
         )
         await db.flush()
 
-        await ModelConfigRepo.set_default(db, c2.id)
+        await ModelConfigRepo.set_default(db, TEST_ORG_ID, c2.id)
         await db.flush()
 
         # Refresh objects from DB
@@ -540,6 +580,7 @@ class TestModelConfigRepo:
     async def test_get_by_name(self, db: AsyncSession):
         await ModelConfigRepo.create(
             db,
+            TEST_ORG_ID,
             name="azure-prod",
             provider="azure_openai",
             model_id="gpt-4o",
@@ -547,7 +588,7 @@ class TestModelConfigRepo:
         )
         await db.flush()
 
-        cfg = await ModelConfigRepo.get_by_name(db, "azure-prod")
+        cfg = await ModelConfigRepo.get_by_name(db, TEST_ORG_ID, "azure-prod")
         assert cfg is not None
         assert cfg.provider == "azure_openai"
         assert cfg.api_version == "2024-10-21"
@@ -555,6 +596,7 @@ class TestModelConfigRepo:
     async def test_upsert_creates_when_missing(self, db: AsyncSession):
         cfg = await ModelConfigRepo.upsert(
             db,
+            TEST_ORG_ID,
             name="local",
             provider="ollama",
             model_id="llama3.2",
@@ -569,6 +611,7 @@ class TestModelConfigRepo:
     async def test_upsert_updates_existing(self, db: AsyncSession):
         created = await ModelConfigRepo.create(
             db,
+            TEST_ORG_ID,
             name="shared",
             provider="openai",
             model_id="gpt-4o-mini",
@@ -578,6 +621,7 @@ class TestModelConfigRepo:
 
         updated = await ModelConfigRepo.upsert(
             db,
+            TEST_ORG_ID,
             name="shared",
             provider="azure_openai",
             model_id="deployment-gpt4",
@@ -607,10 +651,10 @@ class TestModelConfigRepo:
 
 
 class TestMCPServerRepo:
-
     async def test_create_and_list(self, db: AsyncSession):
         await MCPServerRepo.create(
             db,
+            TEST_ORG_ID,
             name="k8s",
             transport="stdio",
             command="npx",
@@ -618,6 +662,7 @@ class TestMCPServerRepo:
         )
         await MCPServerRepo.create(
             db,
+            TEST_ORG_ID,
             name="sourcebot",
             transport="http",
             url="https://sb.example.com/api/mcp",
@@ -625,10 +670,10 @@ class TestMCPServerRepo:
         )
         await db.flush()
 
-        servers = await MCPServerRepo.list_all(db)
+        servers = await MCPServerRepo.list_all(db, TEST_ORG_ID)
         assert len(servers) == 2
 
-        active_servers = await MCPServerRepo.list_all(db, active_only=True)
+        active_servers = await MCPServerRepo.list_all(db, TEST_ORG_ID, active_only=True)
         assert len(active_servers) == 1
         assert active_servers[0].name == "k8s"
 
@@ -639,10 +684,10 @@ class TestMCPServerRepo:
 
 
 class TestBotConnectorRepo:
-
     async def test_create_list_update_status_and_delete(self, db: AsyncSession):
         connector = await BotConnectorRepo.create(
             db,
+            TEST_ORG_ID,
             name="telegram-ops",
             platform="telegram",
             config={"default_chat_id": "-100123"},
@@ -652,16 +697,17 @@ class TestBotConnectorRepo:
         )
         await db.flush()
 
-        fetched = await BotConnectorRepo.get_by_id(db, connector.id)
+        fetched = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
         assert fetched is not None
         assert fetched.name == "telegram-ops"
         assert fetched.credentials == {"bot_token": "secret"}
 
-        items = await BotConnectorRepo.list_all(db, enabled_only=True)
+        items = await BotConnectorRepo.list_all(db, TEST_ORG_ID, enabled_only=True)
         assert [item.name for item in items] == ["telegram-ops"]
 
         updated = await BotConnectorRepo.update(
             db,
+            TEST_ORG_ID,
             connector.id,
             name="telegram-major-incidents",
             platform="telegram",
@@ -679,19 +725,19 @@ class TestBotConnectorRepo:
         assert updated.status == "disabled"
 
         await BotConnectorRepo.mark_status(
-            db, connector.id, status="error", error="bad token"
+            db, TEST_ORG_ID, connector.id, status="error", error="bad token"
         )
         await db.flush()
 
-        marked = await BotConnectorRepo.get_by_id(db, connector.id)
+        marked = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
         assert marked is not None
         assert marked.status == "error"
         assert marked.last_error == "bad token"
         assert marked.last_checked_at is not None
 
-        deleted = await BotConnectorRepo.delete(db, connector.id)
+        deleted = await BotConnectorRepo.delete(db, TEST_ORG_ID, connector.id)
         assert deleted is True
-        assert await BotConnectorRepo.get_by_id(db, connector.id) is None
+        assert await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id) is None
 
 
 # ---------------------------------------------------------------------------
@@ -700,10 +746,10 @@ class TestBotConnectorRepo:
 
 
 class TestDetectorRepos:
-
     async def test_create_rule_and_history(self, db: AsyncSession):
         server = await MCPServerRepo.create(
             db,
+            TEST_ORG_ID,
             name="detector-k8s",
             transport="stdio",
             command="echo",
@@ -712,6 +758,7 @@ class TestDetectorRepos:
 
         rule = await DetectorRuleRepo.create(
             db,
+            TEST_ORG_ID,
             name="watch-crashloops",
             mcp_server_id=server.id,
             prompt_template="Find unhealthy pods",
@@ -720,13 +767,14 @@ class TestDetectorRepos:
         )
         await db.flush()
 
-        fetched = await DetectorRuleRepo.get_by_id(db, rule.id)
+        fetched = await DetectorRuleRepo.get_by_id(db, TEST_ORG_ID, rule.id)
         assert fetched is not None
         assert fetched.name == "watch-crashloops"
         assert fetched.interval_seconds == 600
 
         history = await DetectorHistoryRepo.create(
             db,
+            TEST_ORG_ID,
             rule_id=rule.id,
             duration_ms=123,
             issue_detected=True,
@@ -734,7 +782,7 @@ class TestDetectorRepos:
         )
         await db.flush()
 
-        entries = await DetectorHistoryRepo.list_by_rule(db, rule.id)
+        entries = await DetectorHistoryRepo.list_by_rule(db, TEST_ORG_ID, rule.id)
         assert len(entries) == 1
         assert entries[0].id == history.id
         assert entries[0].issue_detected is True
@@ -742,6 +790,7 @@ class TestDetectorRepos:
     async def test_update_mark_run_and_delete_rule(self, db: AsyncSession):
         server = await MCPServerRepo.create(
             db,
+            TEST_ORG_ID,
             name="detector-db",
             transport="stdio",
             command="echo",
@@ -750,6 +799,7 @@ class TestDetectorRepos:
 
         rule = await DetectorRuleRepo.create(
             db,
+            TEST_ORG_ID,
             name="watch-errors",
             mcp_server_id=server.id,
             prompt_template="Find database issues",
@@ -758,6 +808,7 @@ class TestDetectorRepos:
 
         updated = await DetectorRuleRepo.update(
             db,
+            TEST_ORG_ID,
             rule.id,
             interval_seconds=900,
             is_active=False,
@@ -769,6 +820,7 @@ class TestDetectorRepos:
 
         await DetectorRuleRepo.mark_run(
             db,
+            TEST_ORG_ID,
             rule.id,
             last_fingerprint="fp-123",
         )
@@ -777,14 +829,15 @@ class TestDetectorRepos:
         assert rule.last_ran_at is not None
         assert rule.last_fingerprint == "fp-123"
 
-        deleted = await DetectorRuleRepo.delete(db, rule.id)
+        deleted = await DetectorRuleRepo.delete(db, TEST_ORG_ID, rule.id)
         await db.flush()
         assert deleted is True
-        assert await DetectorRuleRepo.get_by_id(db, rule.id) is None
+        assert await DetectorRuleRepo.get_by_id(db, TEST_ORG_ID, rule.id) is None
 
     async def test_update_server(self, db: AsyncSession):
         server = await MCPServerRepo.create(
             db,
+            TEST_ORG_ID,
             name="remote",
             transport="sse",
             url="http://localhost:8080/sse",
@@ -793,6 +846,7 @@ class TestDetectorRepos:
 
         updated = await MCPServerRepo.update(
             db,
+            TEST_ORG_ID,
             server.id,
             name="remote-prod",
             transport="http",
@@ -812,14 +866,15 @@ class TestDetectorRepos:
     async def test_delete_server(self, db: AsyncSession):
         server = await MCPServerRepo.create(
             db,
+            TEST_ORG_ID,
             name="delete-me",
             transport="stdio",
             command="echo",
         )
         await db.flush()
 
-        deleted = await MCPServerRepo.delete(db, server.id)
+        deleted = await MCPServerRepo.delete(db, TEST_ORG_ID, server.id)
         await db.flush()
 
         assert deleted is True
-        assert await MCPServerRepo.get_by_id(db, server.id) is None
+        assert await MCPServerRepo.get_by_id(db, TEST_ORG_ID, server.id) is None

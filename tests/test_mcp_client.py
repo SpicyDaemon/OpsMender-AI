@@ -9,7 +9,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.config_loader import MCPServerConfig
-from backend.mcp.client import MCPClientError, _resolve_node_command, call_tool, connect, list_tools
+from backend.mcp.client import (
+    MCPClientError,
+    _resolve_node_command,
+    call_tool,
+    connect,
+    list_tools,
+)
 
 
 # -- Unit tests using mocks ---------------------------------------------------
@@ -147,7 +153,9 @@ class TestResolveNodeCommand:
         env = {k: v for k, v in os.environ.items() if k != "AIM_NODE_PATH"}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value=None):
-                with pytest.raises(MCPClientError, match="not installed or not on PATH"):
+                with pytest.raises(
+                    MCPClientError, match="not installed or not on PATH"
+                ):
                     _resolve_node_command("npx")
 
     def test_fail_loud_message_contains_install_hints(self):

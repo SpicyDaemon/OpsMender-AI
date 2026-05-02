@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from datetime import datetime, timezone
 
 import pytest
@@ -28,7 +30,6 @@ from backend.ingest.adapters.universal import (
 
 
 class TestInterpretUp:
-
     def test_bool_true(self):
         assert _interpret_up(True) is True
 
@@ -61,7 +62,6 @@ class TestInterpretUp:
 
 
 class TestToLatencyMs:
-
     def test_milliseconds(self):
         assert _to_latency_ms(150) == 150
 
@@ -85,17 +85,18 @@ class TestToLatencyMs:
 
 
 class TestCloudWatchAvailability:
-
     def _make_cw_payload(self, state: str = "ALARM") -> dict:
         return {
             "Type": "Notification",
-            "Message": json.dumps({
-                "AlarmName": "web-api-health",
-                "NewStateValue": state,
-                "NewStateReason": "Threshold crossed",
-                "Region": "us-east-1",
-                "AWSAccountId": "123456789",
-            }),
+            "Message": json.dumps(
+                {
+                    "AlarmName": "web-api-health",
+                    "NewStateValue": state,
+                    "NewStateReason": "Threshold crossed",
+                    "Region": "us-east-1",
+                    "AWSAccountId": "123456789",
+                }
+            ),
         }
 
     def test_alarm_emits_down(self):
@@ -121,7 +122,6 @@ class TestCloudWatchAvailability:
 
 
 class TestUniversalAvailability:
-
     def test_prometheus_probe_success(self):
         """Prometheus blackbox exporter payload should detect availability."""
         payload = {
@@ -243,7 +243,6 @@ async def db(factory):
 
 
 class TestIngestServiceAvailability:
-
     @pytest.mark.asyncio
     async def test_writes_uptime_sample_on_match(self, factory, db: AsyncSession):
         """When a matching SLA target exists, ingest should write an uptime sample."""
@@ -253,7 +252,10 @@ class TestIngestServiceAvailability:
 
         # Create matching SLA target
         target = await SLATargetRepo.create(
-            db, name="web-api-health", kind="external",
+            db,
+            TEST_ORG_ID,
+            name="web-api-health",
+            kind="external",
         )
 
         # Create ingest token
@@ -271,17 +273,22 @@ class TestIngestServiceAvailability:
         config = AppConfig.load()
         cw_payload = {
             "Type": "Notification",
-            "Message": json.dumps({
-                "AlarmName": "web-api-health",
-                "NewStateValue": "ALARM",
-                "NewStateReason": "Threshold crossed",
-                "Region": "us-east-1",
-                "AWSAccountId": "123456789",
-            }),
+            "Message": json.dumps(
+                {
+                    "AlarmName": "web-api-health",
+                    "NewStateValue": "ALARM",
+                    "NewStateReason": "Threshold crossed",
+                    "Region": "us-east-1",
+                    "AWSAccountId": "123456789",
+                }
+            ),
         }
 
         result = await ingest_incident(
-            db, token=tok, payload=cw_payload, config=config,
+            db,
+            token=tok,
+            payload=cw_payload,
+            config=config,
         )
         await db.commit()
 
@@ -289,7 +296,9 @@ class TestIngestServiceAvailability:
 
         # Check uptime sample was created
         samples = await UptimeSampleRepo.query_window(
-            db, target.id,
+            db,
+            TEST_ORG_ID,
+            target.id,
             since=datetime(2020, 1, 1, tzinfo=timezone.utc),
         )
         assert len(samples) == 1
@@ -317,17 +326,22 @@ class TestIngestServiceAvailability:
         config = AppConfig.load()
         cw_payload = {
             "Type": "Notification",
-            "Message": json.dumps({
-                "AlarmName": "no-matching-target",
-                "NewStateValue": "OK",
-                "NewStateReason": "All clear",
-                "Region": "us-west-2",
-                "AWSAccountId": "123456789",
-            }),
+            "Message": json.dumps(
+                {
+                    "AlarmName": "no-matching-target",
+                    "NewStateValue": "OK",
+                    "NewStateReason": "All clear",
+                    "Region": "us-west-2",
+                    "AWSAccountId": "123456789",
+                }
+            ),
         }
 
         result = await ingest_incident(
-            db, token=tok, payload=cw_payload, config=config,
+            db,
+            token=tok,
+            payload=cw_payload,
+            config=config,
         )
         await db.commit()
 

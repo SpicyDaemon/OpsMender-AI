@@ -83,7 +83,6 @@ async def client(tmp_path):
 
 
 class TestFrontendMount:
-
     async def test_root_serves_index(self, client: AsyncClient):
         resp = await client.get("/")
         assert resp.status_code == 200
@@ -126,4 +125,7 @@ class TestFrontendMount:
         resp = await client.get(f"/{rel}")
         assert resp.status_code == 200
         # Next emits .js; content-type may be application/javascript or text/*
-        assert "javascript" in resp.headers["content-type"] or "text" in resp.headers["content-type"]
+        assert (
+            "javascript" in resp.headers["content-type"]
+            or "text" in resp.headers["content-type"]
+        )

@@ -279,9 +279,7 @@ class TestAuditLoggerThreadSafety:
                     f"sess-{thread_id}", TIER, f"tool_{thread_id}_{i}"
                 )
 
-        threads = [
-            threading.Thread(target=writer, args=(t,)) for t in range(n_threads)
-        ]
+        threads = [threading.Thread(target=writer, args=(t,)) for t in range(n_threads)]
         for t in threads:
             t.start()
         for t in threads:

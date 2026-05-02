@@ -263,7 +263,9 @@ class TestOllamaProvider:
             seen["body"] = request.data.decode("utf-8")
             return _FakeURLResponse(b'{"response":"local-reply","done":true}')
 
-        monkeypatch.setattr("backend.llm.providers.urllib.request.urlopen", _fake_urlopen)
+        monkeypatch.setattr(
+            "backend.llm.providers.urllib.request.urlopen", _fake_urlopen
+        )
         provider = OllamaProvider(model="llama3.2", base_url="http://localhost:11434")
         assert provider.complete("hello") == "local-reply"
         assert seen["url"] == "http://localhost:11434/api/generate"
@@ -280,7 +282,9 @@ class TestOllamaProvider:
         def _fake_urlopen(request):
             return _FakeURLResponse(b"", lines=lines)
 
-        monkeypatch.setattr("backend.llm.providers.urllib.request.urlopen", _fake_urlopen)
+        monkeypatch.setattr(
+            "backend.llm.providers.urllib.request.urlopen", _fake_urlopen
+        )
         provider = OllamaProvider(base_url="http://localhost:11434")
         assert list(provider.stream("test")) == ["hello ", "world"]
 
@@ -291,7 +295,9 @@ class TestOllamaProvider:
                 b'{"models":[{"name":"llama3.2"},{"name":"mistral"}]}'
             )
 
-        monkeypatch.setattr("backend.llm.providers.urllib.request.urlopen", _fake_urlopen)
+        monkeypatch.setattr(
+            "backend.llm.providers.urllib.request.urlopen", _fake_urlopen
+        )
         provider = OllamaProvider(base_url="http://localhost:11434")
         assert provider.list_models() == ["llama3.2", "mistral"]
 
@@ -299,7 +305,9 @@ class TestOllamaProvider:
         def _fake_urlopen(request):
             raise OSError("connection refused")
 
-        monkeypatch.setattr("backend.llm.providers.urllib.request.urlopen", _fake_urlopen)
+        monkeypatch.setattr(
+            "backend.llm.providers.urllib.request.urlopen", _fake_urlopen
+        )
         provider = OllamaProvider(base_url="http://localhost:11434")
         with pytest.raises(RuntimeError, match="Ollama completion failed"):
             provider.complete("hello")

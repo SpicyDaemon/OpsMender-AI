@@ -15,14 +15,11 @@ from cli.aim import main
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _write_config(tmp_path: pathlib.Path, audit_path: pathlib.Path) -> pathlib.Path:
     """Write a minimal .env file that points to *audit_path*."""
     cfg = tmp_path / ".env"
-    cfg.write_text(
-        "AIM_TIER=2\n"
-        "AIM_LOG_LEVEL=INFO\n"
-        f"AIM_AUDIT_LOG={audit_path}\n"
-    )
+    cfg.write_text(f"AIM_TIER=2\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG={audit_path}\n")
     return cfg
 
 
@@ -30,16 +27,30 @@ def _seed_log(audit_path: pathlib.Path) -> AuditLogger:
     """Create an audit log with a handful of entries and return the logger."""
     logger = AuditLogger(audit_path)
     logger.log_session_start("sess-aaa", tier=2)
-    logger.log_tool_call_start("sess-aaa", tier=2, tool_name="get_pods", tool_parameters={"ns": "default"})
-    logger.log_tool_call_end("sess-aaa", tier=2, tool_name="get_pods", result={"pods": 3}, duration_ms=42)
-    logger.log_tool_call_start("sess-aaa", tier=2, tool_name="delete_pod", tool_parameters={"pod": "x"})
-    logger.log_tool_call_blocked("sess-aaa", tier=2, tool_name="delete_pod", tool_parameters={"pod": "x"}, block_reason="destructive at tier 2")
+    logger.log_tool_call_start(
+        "sess-aaa", tier=2, tool_name="get_pods", tool_parameters={"ns": "default"}
+    )
+    logger.log_tool_call_end(
+        "sess-aaa", tier=2, tool_name="get_pods", result={"pods": 3}, duration_ms=42
+    )
+    logger.log_tool_call_start(
+        "sess-aaa", tier=2, tool_name="delete_pod", tool_parameters={"pod": "x"}
+    )
+    logger.log_tool_call_blocked(
+        "sess-aaa",
+        tier=2,
+        tool_name="delete_pod",
+        tool_parameters={"pod": "x"},
+        block_reason="destructive at tier 2",
+    )
     logger.log_session_end("sess-aaa", tier=2)
 
     # Second session
     logger.log_session_start("sess-bbb", tier=3)
     logger.log_tool_call_start("sess-bbb", tier=3, tool_name="get_logs")
-    logger.log_tool_call_end("sess-bbb", tier=3, tool_name="get_logs", result={"lines": 50}, duration_ms=10)
+    logger.log_tool_call_end(
+        "sess-bbb", tier=3, tool_name="get_logs", result={"lines": 50}, duration_ms=10
+    )
     logger.log_session_end("sess-bbb", tier=3)
     return logger
 

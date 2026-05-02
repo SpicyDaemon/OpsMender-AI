@@ -36,12 +36,14 @@ class TestRegistry:
     def test_telegram_adapter_registered(self):
         # Importing backend.bots registers built-in adapters.
         import backend.bots  # noqa: F401
+
         adapter = get_adapter("telegram")
         assert adapter is not None
         assert adapter.platform == "telegram"
 
     def test_unknown_platform_returns_none(self):
         import backend.bots  # noqa: F401
+
         assert get_adapter("does-not-exist") is None
 
 
@@ -160,9 +162,9 @@ def _make_signal_connector(
 
 
 class TestSignalAdapter:
-
     def test_registered(self):
         import backend.bots  # noqa: F401
+
         assert get_adapter("signal") is not None
 
     def test_verify_rejects_wrong_platform(self):
@@ -241,7 +243,9 @@ class TestSignalAdapter:
 
         captured: dict = {}
 
-        async def fake_send(*, service_url, bot_number, chat_id, text, timeout_seconds=10.0):
+        async def fake_send(
+            *, service_url, bot_number, chat_id, text, timeout_seconds=10.0
+        ):
             captured.update(
                 service_url=service_url,
                 bot_number=bot_number,
@@ -308,16 +312,17 @@ def _whatsapp_signature(secret: str, body: bytes) -> str:
 
 
 class TestWhatsAppAdapter:
-
     def test_registered(self):
         from backend.bots.connectors import WhatsAppAdapter
         import backend.bots  # noqa: F401
+
         adapter = get_adapter("whatsapp")
         assert adapter is not None
         assert adapter.platform == "whatsapp"
 
     def test_verify_rejects_wrong_platform(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         connector = _make_whatsapp_connector()
         connector.platform = "telegram"
@@ -327,6 +332,7 @@ class TestWhatsAppAdapter:
 
     def test_verify_rejects_disabled(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         connector = _make_whatsapp_connector(is_enabled=False)
         with pytest.raises(HTTPException) as exc:
@@ -335,6 +341,7 @@ class TestWhatsAppAdapter:
 
     def test_verify_rejects_missing_app_secret(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         connector = _make_whatsapp_connector(app_secret=None)
         with pytest.raises(HTTPException) as exc:
@@ -347,6 +354,7 @@ class TestWhatsAppAdapter:
 
     def test_verify_rejects_missing_signature_header(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         connector = _make_whatsapp_connector()
         with pytest.raises(HTTPException) as exc:
@@ -355,6 +363,7 @@ class TestWhatsAppAdapter:
 
     def test_verify_rejects_wrong_signature(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         connector = _make_whatsapp_connector()
         with pytest.raises(HTTPException) as exc:
@@ -367,6 +376,7 @@ class TestWhatsAppAdapter:
 
     def test_verify_accepts_correct_signature(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         connector = _make_whatsapp_connector()
         body = b'{"test": true}'
@@ -380,6 +390,7 @@ class TestWhatsAppAdapter:
 
     def test_parse_inbound_extracts_text_message(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         msg = adapter.parse_inbound(
             {
@@ -419,12 +430,14 @@ class TestWhatsAppAdapter:
 
     def test_parse_inbound_returns_none_without_messages(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         assert adapter.parse_inbound({}) is None
         assert adapter.parse_inbound({"entry": []}) is None
 
     def test_parse_inbound_skips_non_text_messages(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         msg = adapter.parse_inbound(
             {
@@ -448,6 +461,7 @@ class TestWhatsAppAdapter:
 
     def test_inline_reply_is_none(self):
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         assert adapter.inline_reply("15559998888", "hi") is None
 
@@ -470,6 +484,7 @@ class TestWhatsAppAdapter:
         monkeypatch.setattr(whatsapp_mod, "whatsapp_send", fake_send)
 
         from backend.bots.connectors import WhatsAppAdapter
+
         adapter = WhatsAppAdapter()
         connector = _make_whatsapp_connector()
         ok, err = await adapter.send_message(
@@ -481,4 +496,3 @@ class TestWhatsAppAdapter:
         assert captured["phone_number_id"] == "123456789"
         assert captured["recipient"] == "15559998888"
         assert captured["text"] == "hello"
-

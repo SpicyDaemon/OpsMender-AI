@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import pytest
+import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -37,6 +40,7 @@ async def _make_connector(
     async with factory() as db:
         connector = await BotConnectorRepo.create(
             db,
+            TEST_ORG_ID,
             name=name,
             platform="telegram",
             config={"allowed_chat_ids": allowed_chat_ids or []},
@@ -50,14 +54,14 @@ async def _make_connector(
 
 
 class TestSessionChatEventFanOut:
-
     async def test_delivers_to_notifications_capable_connector(
         self, factory, monkeypatch
     ):
         sent = []
 
-        async def fake_send(*, bot_token, chat_id, text, parse_mode="Markdown",
-                            timeout_seconds=10.0):
+        async def fake_send(
+            *, bot_token, chat_id, text, parse_mode="Markdown", timeout_seconds=10.0
+        ):
             sent.append({"token": bot_token, "chat_id": chat_id, "text": text})
             return True, None
 
@@ -71,15 +75,22 @@ class TestSessionChatEventFanOut:
 
         async with factory() as db:
             incident = await IncidentRepo.create(
-                db, title="DB outage", description="conn pool exhausted",
+                db,
+                TEST_ORG_ID,
+                title="DB outage",
+                description="conn pool exhausted",
                 severity="high",
             )
-            session = await SessionRepo.create(db, incident_id=incident.id, tier=1)
+            session = await SessionRepo.create(
+                db, TEST_ORG_ID, incident_id=incident.id, tier=1
+            )
             await db.commit()
             session_id = session.id
 
         await notifier.deliver_session_chat_event(
-            factory, event_type="session.created", session_id=session_id,
+            factory,
+            event_type="session.created",
+            session_id=session_id,
         )
 
         assert len(sent) == 2
@@ -105,12 +116,14 @@ class TestSessionChatEventFanOut:
         )
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=2)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
             await db.commit()
             session_id = session.id
 
         await notifier.deliver_session_chat_event(
-            factory, event_type="session.completed", session_id=session_id,
+            factory,
+            event_type="session.completed",
+            session_id=session_id,
         )
 
         assert sent == []
@@ -132,12 +145,14 @@ class TestSessionChatEventFanOut:
         )
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=2)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
             await db.commit()
             session_id = session.id
 
         await notifier.deliver_session_chat_event(
-            factory, event_type="session.created", session_id=session_id,
+            factory,
+            event_type="session.created",
+            session_id=session_id,
         )
 
         assert sent == []
@@ -157,34 +172,39 @@ class TestSessionChatEventFanOut:
         )
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=2)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
             await db.commit()
             session_id = session.id
 
         await notifier.deliver_session_chat_event(
-            factory, event_type="session.created", session_id=session_id,
+            factory,
+            event_type="session.created",
+            session_id=session_id,
         )
 
         async with factory() as db:
-            connector = await BotConnectorRepo.get_by_id(db, connector_id)
+            connector = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector_id)
             assert connector is not None
             assert connector.status == "error"
             assert "502" in (connector.last_error or "")
 
             entries = (
-                await db.execute(
-                    select(BotActionAudit).where(
-                        BotActionAudit.connector_id == connector_id
+                (
+                    await db.execute(
+                        select(BotActionAudit).where(
+                            BotActionAudit.connector_id == connector_id
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert len(entries) == 1
             assert entries[0].status == "delivery_failed"
             assert entries[0].command == "notify:session.created"
 
 
 class TestCopilotRelayBack:
-
     async def test_relays_to_originating_chats(self, factory, monkeypatch):
         sent = []
 
@@ -200,30 +220,47 @@ class TestCopilotRelayBack:
         )
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=2)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
             await db.commit()
             session_id = session.id
 
             # Two distinct originating chats + one duplicate (newest wins)
             await BotActionAuditRepo.create(
-                db, connector_id=connector_id, platform="telegram",
-                chat_id="-100A", command="/chat", status="ok",
+                db,
+                TEST_ORG_ID,
+                connector_id=connector_id,
+                platform="telegram",
+                chat_id="-100A",
+                command="/chat",
+                status="ok",
                 session_id=session_id,
             )
             await BotActionAuditRepo.create(
-                db, connector_id=connector_id, platform="telegram",
-                chat_id="-100B", command="/chat", status="ok",
+                db,
+                TEST_ORG_ID,
+                connector_id=connector_id,
+                platform="telegram",
+                chat_id="-100B",
+                command="/chat",
+                status="ok",
                 session_id=session_id,
             )
             await BotActionAuditRepo.create(
-                db, connector_id=connector_id, platform="telegram",
-                chat_id="-100A", command="/chat", status="ok",
+                db,
+                TEST_ORG_ID,
+                connector_id=connector_id,
+                platform="telegram",
+                chat_id="-100A",
+                command="/chat",
+                status="ok",
                 session_id=session_id,
             )
             await db.commit()
 
         await notifier.deliver_copilot_relay(
-            factory, session_id=session_id, reply_text="restart succeeded",
+            factory,
+            session_id=session_id,
+            reply_text="restart succeeded",
         )
 
         assert {s["chat_id"] for s in sent} == {"-100A", "-100B"}
@@ -246,18 +283,25 @@ class TestCopilotRelayBack:
         )
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=2)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
             await db.commit()
             session_id = session.id
             await BotActionAuditRepo.create(
-                db, connector_id=connector_id, platform="telegram",
-                chat_id="-100A", command="/chat", status="ok",
+                db,
+                TEST_ORG_ID,
+                connector_id=connector_id,
+                platform="telegram",
+                chat_id="-100A",
+                command="/chat",
+                status="ok",
                 session_id=session_id,
             )
             await db.commit()
 
         await notifier.deliver_copilot_relay(
-            factory, session_id=session_id, reply_text="hello",
+            factory,
+            session_id=session_id,
+            reply_text="hello",
         )
 
         assert sent == []
@@ -272,12 +316,14 @@ class TestCopilotRelayBack:
         monkeypatch.setattr(notifier_mod, "telegram_send", fake_send)
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=2)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
             await db.commit()
             session_id = session.id
 
         await notifier.deliver_copilot_relay(
-            factory, session_id=session_id, reply_text="hello",
+            factory,
+            session_id=session_id,
+            reply_text="hello",
         )
 
         assert sent == []

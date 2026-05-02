@@ -141,7 +141,9 @@ class TestTier0SandboxFloor:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(tool="delete_all", classification="destructive"),
+                OperationClassification(
+                    tool="delete_all", classification="destructive"
+                ),
             ],
         )
         r = check("delete_all", 0, sd)
@@ -186,7 +188,9 @@ class TestTier0SandboxFloor:
         sd = SkillDefinition(
             version="1",
             environment="test",
-            operations=[OperationClassification(tool="get_pods", classification="safe")],
+            operations=[
+                OperationClassification(tool="get_pods", classification="safe")
+            ],
         )
         r = check("get_pods", 0, sd)
         assert r.permitted is True
@@ -198,7 +202,9 @@ class TestTier0SandboxFloor:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(tool="rollout_restart", classification="caution"),
+                OperationClassification(
+                    tool="rollout_restart", classification="caution"
+                ),
             ],
         )
         assert check("rollout_restart", 1, sd).permitted is True

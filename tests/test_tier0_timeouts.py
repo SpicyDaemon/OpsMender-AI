@@ -14,7 +14,6 @@ from backend.agent.timeouts import (
 
 
 class TestTier0TimeConfig:
-
     def test_defaults(self):
         cfg = Tier0TimeConfig()
         assert cfg.max_session_seconds == 600
@@ -34,7 +33,6 @@ class TestTier0TimeConfig:
 
 
 class TestWrapNodeWithTimeout:
-
     async def test_async_node_within_limit_passes(self):
         async def fast_node(state):
             await asyncio.sleep(0)
@@ -90,7 +88,6 @@ class _FakeGraph:
 
 
 class TestAinvokeWithSessionTimeout:
-
     async def test_returns_graph_result_within_limit(self):
         graph = _FakeGraph(delay=0.01, outcome={"summary": "done"})
         result = await ainvoke_with_session_timeout(
@@ -134,8 +131,7 @@ class TestConfigLoaderWiresTier0(object):
 
         env_file = tmp_path / ".env"
         env_file.write_text(
-            "AIM_TIER0_MAX_SESSION_SECONDS=300\n"
-            "AIM_TIER0_MAX_NODE_SECONDS=45\n"
+            "AIM_TIER0_MAX_SESSION_SECONDS=300\nAIM_TIER0_MAX_NODE_SECONDS=45\n"
         )
         for k in ("AIM_TIER0_MAX_SESSION_SECONDS", "AIM_TIER0_MAX_NODE_SECONDS"):
             monkeypatch.delenv(k, raising=False)

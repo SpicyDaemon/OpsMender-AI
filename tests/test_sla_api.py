@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+
+TEST_ORG_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -394,8 +396,7 @@ class TestUptimeAPI:
         from backend.db.repos import UptimeSampleRepo
         now = datetime.now(timezone.utc)
         for i in range(10):
-            await UptimeSampleRepo.create(
-                db,
+            await UptimeSampleRepo.create(db, TEST_ORG_ID,
                 target_id=uuid.UUID(target_id),
                 up=(i < 9),  # 9 up, 1 down = 90% uptime
                 latency_ms=50,
@@ -429,8 +430,7 @@ class TestUptimeAPI:
         # Insert 100 samples: 90 up, 10 down = 90% uptime (violating 95% SLO)
         from backend.db.repos import UptimeSampleRepo
         for i in range(100):
-            await UptimeSampleRepo.create(
-                db,
+            await UptimeSampleRepo.create(db, TEST_ORG_ID,
                 target_id=uuid.UUID(target_id),
                 up=(i < 90),
                 latency_ms=50,
@@ -456,15 +456,13 @@ class TestUptimeAPI:
         from backend.db.repos import UptimeSampleRepo
         # 8 up, 2 down but suppressed = 100% effective uptime
         for i in range(8):
-            await UptimeSampleRepo.create(
-                db,
+            await UptimeSampleRepo.create(db, TEST_ORG_ID,
                 target_id=uuid.UUID(target_id),
                 up=True,
                 source="poller",
             )
         for _ in range(2):
-            await UptimeSampleRepo.create(
-                db,
+            await UptimeSampleRepo.create(db, TEST_ORG_ID,
                 target_id=uuid.UUID(target_id),
                 up=False,
                 source="poller",
@@ -487,8 +485,7 @@ class TestUptimeAPI:
         target_id = target_resp.json()["id"]
 
         from backend.db.repos import IncidentRepo
-        import uuid
-        incident = await IncidentRepo.create(db, title="Target Outage", description="Test")
+        incident = await IncidentRepo.create(db, TEST_ORG_ID, title="Target Outage", description="Test")
         incident.target_id = uuid.UUID(target_id)
         await db.commit()
 

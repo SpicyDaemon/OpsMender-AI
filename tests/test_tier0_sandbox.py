@@ -46,9 +46,11 @@ def mixed_skill():
 
 
 class TestFromSkill:
-
     def test_intersection_with_available_tools(self, mixed_skill):
-        tools = [_tool(n) for n in ("get_pods", "cordon_node", "delete_pod", "rollout_restart")]
+        tools = [
+            _tool(n)
+            for n in ("get_pods", "cordon_node", "delete_pod", "rollout_restart")
+        ]
         sandbox = Tier0Sandbox.from_skill(mixed_skill, available_tools=tools)
         assert sandbox.allowed_tool_names == frozenset({"get_pods", "cordon_node"})
 
@@ -97,11 +99,14 @@ class TestFromSkill:
 
 
 class TestFilterTools:
-
     def test_filters_out_non_reversible(self, mixed_skill):
         sandbox = Tier0Sandbox.from_skill(
             mixed_skill,
-            available_tools=[_tool("get_pods"), _tool("cordon_node"), _tool("delete_pod")],
+            available_tools=[
+                _tool("get_pods"),
+                _tool("cordon_node"),
+                _tool("delete_pod"),
+            ],
         )
         visible = sandbox.filter_tools(
             [_tool("get_pods"), _tool("delete_pod"), _tool("cordon_node")]
@@ -110,7 +115,6 @@ class TestFilterTools:
 
 
 class TestCallToolGate:
-
     async def test_allowed_call_passes_through(self, mixed_skill, monkeypatch):
         sandbox = Tier0Sandbox.from_skill(
             mixed_skill, available_tools=[_tool("get_pods")]
@@ -147,7 +151,6 @@ class TestCallToolGate:
 
 
 class TestBuildSandboxForSession:
-
     async def test_uses_live_list_tools(self, mixed_skill, monkeypatch):
         fake_tools = [_tool("get_pods"), _tool("cordon_node"), _tool("delete_pod")]
 

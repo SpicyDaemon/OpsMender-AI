@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import uuid
 
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -29,6 +31,7 @@ from backend.ingest.service import generate_token, hash_token
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def app(tmp_path):
@@ -71,6 +74,7 @@ def _override_get_db(factory):
             except Exception:
                 await session.rollback()
                 raise
+
     return _get_db
 
 
@@ -84,15 +88,21 @@ async def client(app):
 @pytest.fixture
 async def admin_headers(client: AsyncClient) -> dict[str, str]:
     """Register + login an admin user."""
-    await client.post("/auth/register", json={
-        "username": "ingest_admin",
-        "email": "ingest@test.com",
-        "password": "securepass123",
-    })
-    resp = await client.post("/auth/login", json={
-        "username": "ingest_admin",
-        "password": "securepass123",
-    })
+    await client.post(
+        "/auth/register",
+        json={
+            "username": "ingest_admin",
+            "email": "ingest@test.com",
+            "password": "securepass123",
+        },
+    )
+    resp = await client.post(
+        "/auth/login",
+        json={
+            "username": "ingest_admin",
+            "password": "securepass123",
+        },
+    )
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
@@ -100,16 +110,22 @@ async def admin_headers(client: AsyncClient) -> dict[str, str]:
 @pytest.fixture
 async def viewer_headers(client: AsyncClient, admin_headers) -> dict[str, str]:
     """Register a viewer user."""
-    await client.post("/auth/register", json={
-        "username": "ingest_viewer",
-        "email": "viewer_ingest@test.com",
-        "password": "viewerpass123",
-        "role": "viewer",
-    })
-    resp = await client.post("/auth/login", json={
-        "username": "ingest_viewer",
-        "password": "viewerpass123",
-    })
+    await client.post(
+        "/auth/register",
+        json={
+            "username": "ingest_viewer",
+            "email": "viewer_ingest@test.com",
+            "password": "viewerpass123",
+            "role": "viewer",
+        },
+    )
+    resp = await client.post(
+        "/auth/login",
+        json={
+            "username": "ingest_viewer",
+            "password": "viewerpass123",
+        },
+    )
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
@@ -119,7 +135,11 @@ async def _create_token(app, provider: str = "generic", name: str = "test-token"
     raw = generate_token()
     async with app.state.session_factory() as db:
         tok = await IngestTokenRepo.create(
-            db, name=name, provider=provider, token_hash=hash_token(raw),
+            db,
+            TEST_ORG_ID,
+            name=name,
+            provider=provider,
+            token_hash=hash_token(raw),
         )
         await db.commit()
         await db.refresh(tok)
@@ -130,13 +150,17 @@ async def _create_token(app, provider: str = "generic", name: str = "test-token"
 # Ingest Token CRUD
 # ===========================================================================
 
-class TestIngestTokenCRUD:
 
+class TestIngestTokenCRUD:
     async def test_create_token_admin(self, client: AsyncClient, admin_headers):
-        resp = await client.post("/ingest-tokens", json={
-            "name": "cloudwatch-prod",
-            "provider": "cloudwatch",
-        }, headers=admin_headers)
+        resp = await client.post(
+            "/ingest-tokens",
+            json={
+                "name": "cloudwatch-prod",
+                "provider": "cloudwatch",
+            },
+            headers=admin_headers,
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "cloudwatch-prod"
@@ -148,29 +172,54 @@ class TestIngestTokenCRUD:
     async def test_create_token_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):
-        resp = await client.post("/ingest-tokens", json={
-            "name": "denied", "provider": "generic",
-        }, headers=viewer_headers)
+        resp = await client.post(
+            "/ingest-tokens",
+            json={
+                "name": "denied",
+                "provider": "generic",
+            },
+            headers=viewer_headers,
+        )
         assert resp.status_code == 403
 
     async def test_create_token_duplicate_name(
         self, client: AsyncClient, admin_headers
     ):
-        await client.post("/ingest-tokens", json={
-            "name": "dup-token", "provider": "generic",
-        }, headers=admin_headers)
-        resp = await client.post("/ingest-tokens", json={
-            "name": "dup-token", "provider": "cloudwatch",
-        }, headers=admin_headers)
+        await client.post(
+            "/ingest-tokens",
+            json={
+                "name": "dup-token",
+                "provider": "generic",
+            },
+            headers=admin_headers,
+        )
+        resp = await client.post(
+            "/ingest-tokens",
+            json={
+                "name": "dup-token",
+                "provider": "cloudwatch",
+            },
+            headers=admin_headers,
+        )
         assert resp.status_code == 409
 
     async def test_list_tokens_admin(self, client: AsyncClient, admin_headers):
-        await client.post("/ingest-tokens", json={
-            "name": "tok1", "provider": "generic",
-        }, headers=admin_headers)
-        await client.post("/ingest-tokens", json={
-            "name": "tok2", "provider": "legacy_alert_vendor",
-        }, headers=admin_headers)
+        await client.post(
+            "/ingest-tokens",
+            json={
+                "name": "tok1",
+                "provider": "generic",
+            },
+            headers=admin_headers,
+        )
+        await client.post(
+            "/ingest-tokens",
+            json={
+                "name": "tok2",
+                "provider": "legacy_alert_vendor",
+            },
+            headers=admin_headers,
+        )
 
         resp = await client.get("/ingest-tokens", headers=admin_headers)
         assert resp.status_code == 200
@@ -189,31 +238,35 @@ class TestIngestTokenCRUD:
     async def test_revoke_token_admin(self, client: AsyncClient, app, admin_headers):
         raw, tok = await _create_token(app, name="revoke-me")
         resp = await client.post(
-            f"/ingest-tokens/{tok.id}/revoke", headers=admin_headers,
+            f"/ingest-tokens/{tok.id}/revoke",
+            headers=admin_headers,
         )
         assert resp.status_code == 200
         assert resp.json()["is_active"] is False
 
     async def test_revoke_token_not_found(self, client: AsyncClient, admin_headers):
         resp = await client.post(
-            f"/ingest-tokens/{uuid.uuid4()}/revoke", headers=admin_headers,
+            f"/ingest-tokens/{uuid.uuid4()}/revoke",
+            headers=admin_headers,
         )
         assert resp.status_code == 404
 
     async def test_delete_token_admin(self, client: AsyncClient, app, admin_headers):
         raw, tok = await _create_token(app, name="delete-me")
         resp = await client.delete(
-            f"/ingest-tokens/{tok.id}", headers=admin_headers,
+            f"/ingest-tokens/{tok.id}",
+            headers=admin_headers,
         )
         assert resp.status_code == 204
 
         # Verify gone
         async with app.state.session_factory() as db:
-            assert await IngestTokenRepo.get_by_id(db, tok.id) is None
+            assert await IngestTokenRepo.get_by_id(db, TEST_ORG_ID, tok.id) is None
 
     async def test_delete_token_not_found(self, client: AsyncClient, admin_headers):
         resp = await client.delete(
-            f"/ingest-tokens/{uuid.uuid4()}", headers=admin_headers,
+            f"/ingest-tokens/{uuid.uuid4()}",
+            headers=admin_headers,
         )
         assert resp.status_code == 404
 
@@ -222,8 +275,8 @@ class TestIngestTokenCRUD:
 # Provider listing
 # ===========================================================================
 
-class TestIngestProviders:
 
+class TestIngestProviders:
     async def test_list_providers(self, client: AsyncClient, admin_headers):
         resp = await client.get("/ingest-providers", headers=admin_headers)
         assert resp.status_code == 200
@@ -240,8 +293,8 @@ class TestIngestProviders:
 # Webhook — Authentication
 # ===========================================================================
 
-class TestIngestAuth:
 
+class TestIngestAuth:
     async def test_missing_token(self, client: AsyncClient):
         resp = await client.post("/incidents/ingest", json={"title": "test"})
         assert resp.status_code == 401
@@ -260,7 +313,7 @@ class TestIngestAuth:
         raw, tok = await _create_token(app, name="revoked-tok")
         # Revoke it
         async with app.state.session_factory() as db:
-            await IngestTokenRepo.revoke(db, tok.id)
+            await IngestTokenRepo.revoke(db, TEST_ORG_ID, tok.id)
             await db.commit()
 
         resp = await client.post(
@@ -295,8 +348,8 @@ class TestIngestAuth:
 # Webhook — Generic adapter
 # ===========================================================================
 
-class TestIngestGeneric:
 
+class TestIngestGeneric:
     async def test_ingest_generic_creates_incident(self, client: AsyncClient, app):
         raw, tok = await _create_token(app, provider="generic", name="generic1")
         resp = await client.post(
@@ -327,14 +380,18 @@ class TestIngestGeneric:
 
         # First ingest — creates
         resp1 = await client.post(
-            "/incidents/ingest", json=payload, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
         )
         assert resp1.json()["dedup_action"] == "created"
         inc_id = resp1.json()["incident_id"]
 
         # Second ingest — same fingerprint → skipped
         resp2 = await client.post(
-            "/incidents/ingest", json=payload, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
         )
         assert resp2.json()["dedup_action"] == "skipped"
         assert resp2.json()["incident_id"] == inc_id
@@ -373,7 +430,9 @@ class TestIngestGeneric:
 
         # Verify the incident status is now resolved
         async with app.state.session_factory() as db:
-            inc = await IncidentRepo.get_by_id(db, uuid.UUID(data["incident_id"]))
+            inc = await IncidentRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(data["incident_id"])
+            )
             assert inc is not None
             assert inc.status == "resolved"
 
@@ -407,7 +466,7 @@ class TestIngestGeneric:
         incident_id = uuid.UUID(resp.json()["incident_id"])
 
         async with app.state.session_factory() as db:
-            sessions = await SessionRepo.list_by_incident(db, incident_id)
+            sessions = await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
             assert len(sessions) == 1
             assert sessions[0].tier == 1
             assert sessions[0].status == "active"
@@ -425,7 +484,9 @@ class TestIngestGeneric:
             headers=admin_headers,
         )
 
-        raw, _ = await _create_token(app, provider="generic", name="generic-no-autostart")
+        raw, _ = await _create_token(
+            app, provider="generic", name="generic-no-autostart"
+        )
         resp = await client.post(
             "/incidents/ingest",
             json={
@@ -440,7 +501,7 @@ class TestIngestGeneric:
         incident_id = uuid.UUID(resp.json()["incident_id"])
 
         async with app.state.session_factory() as db:
-            sessions = await SessionRepo.list_by_incident(db, incident_id)
+            sessions = await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
             assert sessions == []
 
     async def test_ingest_auto_start_does_not_duplicate_sessions_on_dedup(
@@ -456,7 +517,9 @@ class TestIngestGeneric:
             headers=admin_headers,
         )
 
-        raw, _ = await _create_token(app, provider="generic", name="generic-autostart-dedup")
+        raw, _ = await _create_token(
+            app, provider="generic", name="generic-autostart-dedup"
+        )
         payload = {
             "title": "API outage",
             "description": "503s spiking",
@@ -478,7 +541,7 @@ class TestIngestGeneric:
 
         incident_id = uuid.UUID(first.json()["incident_id"])
         async with app.state.session_factory() as db:
-            sessions = await SessionRepo.list_by_incident(db, incident_id)
+            sessions = await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
             assert len(sessions) == 1
 
 
@@ -486,24 +549,30 @@ class TestIngestGeneric:
 # Webhook — CloudWatch adapter
 # ===========================================================================
 
-class TestIngestCloudWatch:
 
+class TestIngestCloudWatch:
     async def test_cloudwatch_alarm(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="cloudwatch", name="cw-alarm",
+            app,
+            provider="cloudwatch",
+            name="cw-alarm",
         )
         payload = {
             "Type": "Notification",
-            "Message": json.dumps({
-                "AlarmName": "HighCPU",
-                "NewStateValue": "ALARM",
-                "NewStateReason": "Threshold crossed",
-                "Region": "us-east-1",
-                "AWSAccountId": "123456789012",
-            }),
+            "Message": json.dumps(
+                {
+                    "AlarmName": "HighCPU",
+                    "NewStateValue": "ALARM",
+                    "NewStateReason": "Threshold crossed",
+                    "Region": "us-east-1",
+                    "AWSAccountId": "123456789012",
+                }
+            ),
         }
         resp = await client.post(
-            "/incidents/ingest", json=payload, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -511,7 +580,9 @@ class TestIngestCloudWatch:
 
     async def test_cloudwatch_ok_resolves(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="cloudwatch", name="cw-resolve",
+            app,
+            provider="cloudwatch",
+            name="cw-resolve",
         )
         alarm_msg = {
             "AlarmName": "HighMem",
@@ -538,11 +609,11 @@ class TestIngestCloudWatch:
         )
         assert resp.json()["dedup_action"] == "updated"
 
-    async def test_cloudwatch_subscription_confirmation(
-        self, client: AsyncClient, app
-    ):
+    async def test_cloudwatch_subscription_confirmation(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="cloudwatch", name="cw-sub",
+            app,
+            provider="cloudwatch",
+            name="cw-sub",
         )
         payload = {
             "Type": "SubscriptionConfirmation",
@@ -550,7 +621,9 @@ class TestIngestCloudWatch:
             "Token": "abc123",
         }
         resp = await client.post(
-            "/incidents/ingest", json=payload, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -562,11 +635,13 @@ class TestIngestCloudWatch:
 # Webhook — Azure Monitor adapter
 # ===========================================================================
 
-class TestIngestAzureMonitor:
 
+class TestIngestAzureMonitor:
     async def test_azure_monitor_alert(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="azure_monitor", name="azure-alert",
+            app,
+            provider="azure_monitor",
+            name="azure-alert",
         )
         payload = {
             "data": {
@@ -582,7 +657,9 @@ class TestIngestAzureMonitor:
             },
         }
         resp = await client.post(
-            "/incidents/ingest", json=payload, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -590,7 +667,9 @@ class TestIngestAzureMonitor:
 
     async def test_azure_monitor_resolved(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="azure_monitor", name="azure-resolve",
+            app,
+            provider="azure_monitor",
+            name="azure-resolve",
         )
         essentials = {
             "alertId": "alert-resolve-001",
@@ -623,11 +702,13 @@ class TestIngestAzureMonitor:
 # Webhook — LegacyAlertVendor adapter
 # ===========================================================================
 
-class TestIngestLegacyAlertVendor:
 
+class TestIngestLegacyAlertVendor:
     async def test_legacy_alert_vendor_triggered(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="legacy_alert_vendor", name="pd-trigger",
+            app,
+            provider="legacy_alert_vendor",
+            name="pd-trigger",
         )
         payload = {
             "event": {
@@ -643,7 +724,9 @@ class TestIngestLegacyAlertVendor:
             },
         }
         resp = await client.post(
-            "/incidents/ingest", json=payload, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -651,7 +734,9 @@ class TestIngestLegacyAlertVendor:
 
     async def test_legacy_alert_vendor_resolved(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="legacy_alert_vendor", name="pd-resolve",
+            app,
+            provider="legacy_alert_vendor",
+            name="pd-resolve",
         )
         base = {
             "event": {
@@ -667,13 +752,17 @@ class TestIngestLegacyAlertVendor:
 
         # Trigger
         await client.post(
-            "/incidents/ingest", json=base, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=base,
+            headers={"X-AIM-Token": raw},
         )
 
         # Resolve
         base["event"]["event_type"] = "incident.resolved"
         resp = await client.post(
-            "/incidents/ingest", json=base, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=base,
+            headers={"X-AIM-Token": raw},
         )
         assert resp.json()["dedup_action"] == "updated"
 
@@ -682,11 +771,13 @@ class TestIngestLegacyAlertVendor:
 # Webhook — LegacyAlertRelay adapter
 # ===========================================================================
 
-class TestIngestLegacyAlertRelay:
 
+class TestIngestLegacyAlertRelay:
     async def test_legacy_alert_relay_create(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="legacy_alert_relay", name="legacy_alert_relay-create",
+            app,
+            provider="legacy_alert_relay",
+            name="legacy_alert_relay-create",
         )
         payload = {
             "action": "Create",
@@ -706,7 +797,9 @@ class TestIngestLegacyAlertRelay:
             "integrationName": "AIM webhook",
         }
         resp = await client.post(
-            "/incidents/ingest", json=payload, headers={"X-AIM-Token": raw},
+            "/incidents/ingest",
+            json=payload,
+            headers={"X-AIM-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -716,7 +809,9 @@ class TestIngestLegacyAlertRelay:
         self, client: AsyncClient, app
     ):
         raw, tok = await _create_token(
-            app, provider="legacy_alert_relay", name="legacy_alert_relay-close",
+            app,
+            provider="legacy_alert_relay",
+            name="legacy_alert_relay-close",
         )
         base_alert = {
             "alertId": "OG-ALERT-002",
@@ -743,8 +838,8 @@ class TestIngestLegacyAlertRelay:
 # Ingest audit log
 # ===========================================================================
 
-class TestIngestAuditLog:
 
+class TestIngestAuditLog:
     async def test_ingest_creates_log_entry(self, client: AsyncClient, app):
         raw, tok = await _create_token(app, name="log-tok")
         await client.post(
@@ -754,7 +849,7 @@ class TestIngestAuditLog:
         )
 
         async with app.state.session_factory() as db:
-            logs = await IngestLogRepo.list_recent(db, token_id=tok.id)
+            logs = await IngestLogRepo.list_recent(db, TEST_ORG_ID, token_id=tok.id)
             assert len(logs) == 1
             assert logs[0].provider == "generic"
             assert logs[0].dedup_action == "created"
@@ -762,7 +857,9 @@ class TestIngestAuditLog:
 
     async def test_parse_error_logged(self, client: AsyncClient, app):
         raw, tok = await _create_token(
-            app, provider="azure_monitor", name="log-error-tok",
+            app,
+            provider="azure_monitor",
+            name="log-error-tok",
         )
         # Azure adapter expects data.essentials — this will fail
         resp = await client.post(
@@ -773,7 +870,7 @@ class TestIngestAuditLog:
         assert resp.status_code == 422
 
         async with app.state.session_factory() as db:
-            logs = await IngestLogRepo.list_recent(db, token_id=tok.id)
+            logs = await IngestLogRepo.list_recent(db, TEST_ORG_ID, token_id=tok.id)
             assert len(logs) == 1
             assert logs[0].error is not None
 
@@ -788,7 +885,7 @@ class TestIngestAuditLog:
         )
 
         async with app.state.session_factory() as db:
-            refreshed = await IngestTokenRepo.get_by_id(db, tok.id)
+            refreshed = await IngestTokenRepo.get_by_id(db, TEST_ORG_ID, tok.id)
             assert refreshed is not None
             assert refreshed.last_used_at is not None
 
@@ -797,76 +894,91 @@ class TestIngestAuditLog:
 # Adapter unit tests (no HTTP, pure logic)
 # ===========================================================================
 
-class TestAdaptersUnit:
 
+class TestAdaptersUnit:
     def test_generic_fallback_fields(self):
         from backend.ingest.adapters.generic import GenericAdapter
+
         adapter = GenericAdapter()
-        result = adapter.parse({
-            "summary": "Fall back",
-            "message": "Description from message",
-        })
+        result = adapter.parse(
+            {
+                "summary": "Fall back",
+                "message": "Description from message",
+            }
+        )
         assert result.title == "Fall back"
         assert result.description == "Description from message"
 
     def test_generic_custom_mapping(self):
         from backend.ingest.adapters.generic import GenericAdapter
-        adapter = GenericAdapter(field_mapping={
-            "title": "alert.name",
-            "description": "alert.body",
-            "severity": "alert.level",
-            "external_id": "alert.uid",
-        })
-        result = adapter.parse({
-            "alert": {
-                "name": "Custom Alert",
-                "body": "Something broke",
-                "level": "critical",
-                "uid": "custom-123",
-            },
-        })
+
+        adapter = GenericAdapter(
+            field_mapping={
+                "title": "alert.name",
+                "description": "alert.body",
+                "severity": "alert.level",
+                "external_id": "alert.uid",
+            }
+        )
+        result = adapter.parse(
+            {
+                "alert": {
+                    "name": "Custom Alert",
+                    "body": "Something broke",
+                    "level": "critical",
+                    "uid": "custom-123",
+                },
+            }
+        )
         assert result.title == "Custom Alert"
         assert result.severity == "critical"
         assert result.external_id == "custom-123"
 
     def test_cloudwatch_invalid_message(self):
         from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
+
         adapter = CloudWatchAdapter()
         with pytest.raises(ValueError, match="Unsupported SNS"):
             adapter.parse({"Type": "UnknownType"})
 
     def test_azure_monitor_missing_essentials(self):
         from backend.ingest.adapters.azure_monitor import AzureMonitorAdapter
+
         adapter = AzureMonitorAdapter()
         with pytest.raises(ValueError, match="Missing"):
             adapter.parse({"data": {}})
 
     def test_legacy_alert_vendor_missing_event(self):
         from backend.ingest.adapters.legacy_alert_vendor import LegacyAlertVendorAdapter
+
         adapter = LegacyAlertVendorAdapter()
         with pytest.raises(ValueError, match="Missing"):
             adapter.parse({})
 
     def test_legacy_alert_relay_missing_alert(self):
         from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
+
         adapter = LegacyAlertRelayAdapter()
         with pytest.raises(ValueError, match="Missing"):
             adapter.parse({"action": "Create"})
 
     def test_legacy_alert_relay_create_mapping(self):
         from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
+
         adapter = LegacyAlertRelayAdapter()
-        result = adapter.parse({
-            "action": "Create",
-            "alert": {
-                "alertId": "OG-UNIT-001",
-                "message": "API latency above threshold",
-                "description": "P95 latency exceeded 800ms",
-                "priority": "P2",
-                "alias": "latency-prod-api",
-                "tags": ["latency", "prod"],
-            },
-        })
+        result = adapter.parse(
+            {
+                "action": "Create",
+                "alert": {
+                    "alertId": "OG-UNIT-001",
+                    "message": "API latency above threshold",
+                    "description": "P95 latency exceeded 800ms",
+                    "priority": "P2",
+                    "alias": "latency-prod-api",
+                    "tags": ["latency", "prod"],
+                },
+            }
+        )
         assert result.title == "[LegacyAlertRelay] API latency above threshold"
         assert result.status == "open"
         assert result.severity == "high"
@@ -875,15 +987,18 @@ class TestAdaptersUnit:
 
     def test_legacy_alert_relay_close_mapping(self):
         from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
+
         adapter = LegacyAlertRelayAdapter()
-        result = adapter.parse({
-            "action": "Close",
-            "alert": {
-                "alertId": "OG-UNIT-002",
-                "message": "Checkout error spike",
-                "priority": "P1",
-            },
-        })
+        result = adapter.parse(
+            {
+                "action": "Close",
+                "alert": {
+                    "alertId": "OG-UNIT-002",
+                    "message": "Checkout error spike",
+                    "priority": "P1",
+                },
+            }
+        )
         assert result.status == "resolved"
         assert result.severity == "critical"
         assert result.external_id == "OG-UNIT-002"
@@ -891,6 +1006,7 @@ class TestAdaptersUnit:
     def test_registry_fallback_to_universal(self):
         from backend.ingest.registry import get_adapter
         from backend.ingest.adapters.universal import UniversalAdapter
+
         adapter = get_adapter("unknown_provider")
         assert isinstance(adapter, UniversalAdapter)
 
@@ -899,10 +1015,11 @@ class TestAdaptersUnit:
 # Rate limiter — unit tests
 # ===========================================================================
 
-class TestRateLimiterUnit:
 
+class TestRateLimiterUnit:
     async def test_allows_under_limit(self):
         from backend.ingest.rate_limiter import IngestRateLimiter
+
         limiter = IngestRateLimiter(max_requests=5, window_seconds=60)
         token_id = uuid.uuid4()
 
@@ -912,6 +1029,7 @@ class TestRateLimiterUnit:
 
     async def test_blocks_over_limit(self):
         from backend.ingest.rate_limiter import IngestRateLimiter
+
         limiter = IngestRateLimiter(max_requests=3, window_seconds=60)
         token_id = uuid.uuid4()
 
@@ -928,6 +1046,7 @@ class TestRateLimiterUnit:
 
     async def test_remaining_decreases(self):
         from backend.ingest.rate_limiter import IngestRateLimiter
+
         limiter = IngestRateLimiter(max_requests=5, window_seconds=60)
         token_id = uuid.uuid4()
 
@@ -939,6 +1058,7 @@ class TestRateLimiterUnit:
 
     async def test_separate_tokens_independent(self):
         from backend.ingest.rate_limiter import IngestRateLimiter
+
         limiter = IngestRateLimiter(max_requests=2, window_seconds=60)
         t1 = uuid.uuid4()
         t2 = uuid.uuid4()
@@ -953,6 +1073,7 @@ class TestRateLimiterUnit:
 
     async def test_reset_clears_bucket(self):
         from backend.ingest.rate_limiter import IngestRateLimiter
+
         limiter = IngestRateLimiter(max_requests=2, window_seconds=60)
         token_id = uuid.uuid4()
 
@@ -966,6 +1087,7 @@ class TestRateLimiterUnit:
 
     async def test_disabled_when_zero(self):
         from backend.ingest.rate_limiter import IngestRateLimiter
+
         limiter = IngestRateLimiter(max_requests=0, window_seconds=60)
         token_id = uuid.uuid4()
 
@@ -980,14 +1102,16 @@ class TestRateLimiterUnit:
 # Rate limiter — integration test via webhook
 # ===========================================================================
 
-class TestRateLimitIntegration:
 
+class TestRateLimitIntegration:
     async def test_rate_limit_returns_429(self, client: AsyncClient, app):
         """Hit the webhook endpoint until rate limited, verify 429 + headers."""
         # Set a very low limit on the app's limiter
         from backend.ingest.rate_limiter import IngestRateLimiter
+
         app.state.ingest_limiter = IngestRateLimiter(
-            max_requests=2, window_seconds=60,
+            max_requests=2,
+            window_seconds=60,
         )
 
         raw, tok = await _create_token(app, name="rl-test")
@@ -1020,6 +1144,7 @@ class TestRateLimitIntegration:
 # ===========================================================================
 # Universal adapter — heuristic + LLM fallback + shape cache
 # ===========================================================================
+
 
 class TestUniversalAdapterUnit:
     """Pure unit tests for the heuristic parser — no DB, no HTTP."""
@@ -1109,8 +1234,7 @@ class TestUniversalAdapterUnit:
             == "medium"
         )
         assert (
-            UniversalAdapter().parse({"title": "x", "severity": "2"}).severity
-            == "high"
+            UniversalAdapter().parse({"title": "x", "severity": "2"}).severity == "high"
         )
         assert (
             UniversalAdapter().parse({"title": "x", "severity": "notice"}).severity
@@ -1161,7 +1285,6 @@ class TestUniversalAdapterUnit:
 
 
 class TestShapeHash:
-
     def test_same_shape_same_hash(self):
         from backend.ingest.llm_extractor import compute_shape_hash
 
@@ -1208,7 +1331,7 @@ class TestUniversalIngestIntegration:
         # Dedup namespaced per token
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.get_by_id(
-                db, uuid.UUID(body["incident_id"])
+                db, TEST_ORG_ID, uuid.UUID(body["incident_id"])
             )
             assert incident.external_source == "auto:auto-token"
             assert incident.external_id == "universal-001"
@@ -1235,7 +1358,7 @@ class TestUniversalIngestIntegration:
 
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.get_by_id(
-                db, uuid.UUID(body["incident_id"])
+                db, TEST_ORG_ID, uuid.UUID(body["incident_id"])
             )
             assert incident.title == "QueueDepthHigh"
             assert incident.severity == "high"
@@ -1305,7 +1428,7 @@ class TestUniversalIngestIntegration:
 
         async with app.state.session_factory() as db:
             inc = await IncidentRepo.get_by_id(
-                db, uuid.UUID(body["incident_id"])
+                db, TEST_ORG_ID, uuid.UUID(body["incident_id"])
             )
             assert inc.title == "StrangeAlert"
             assert inc.severity == "high"
@@ -1351,7 +1474,7 @@ class TestUniversalIngestIntegration:
         # The second incident reuses the same learned paths and is a distinct incident
         async with app.state.session_factory() as db:
             inc2 = await IncidentRepo.get_by_id(
-                db, uuid.UUID(resp2.json()["incident_id"])
+                db, TEST_ORG_ID, uuid.UUID(resp2.json()["incident_id"])
             )
             assert inc2.title == "AlertB"
 
@@ -1379,13 +1502,12 @@ class TestUniversalIngestIntegration:
 
         async with app.state.session_factory() as db:
             inc = await IncidentRepo.get_by_id(
-                db, uuid.UUID(body["incident_id"])
+                db, TEST_ORG_ID, uuid.UUID(body["incident_id"])
             )
             assert inc.title == "Untitled Incident"
 
 
 class TestLearnShapeAPI:
-
     async def test_learn_shape_endpoint_persists_paths(
         self, client: AsyncClient, app, admin_headers
     ):
@@ -1457,7 +1579,5 @@ class TestLearnShapeAPI:
         assert resp.status_code == 201
 
         lst = await client.get("/ingest-tokens", headers=admin_headers)
-        match = next(
-            i for i in lst.json()["items"] if i["name"] == "pre-warmed"
-        )
+        match = next(i for i in lst.json()["items"] if i["name"] == "pre-warmed")
         assert match["shape_cache_size"] == 1

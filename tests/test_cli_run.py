@@ -30,15 +30,22 @@ class TestRunArgParsing:
         assert args.output is None
 
     def test_run_with_all_options(self):
-        args = _parse_args([
-            "run",
-            "--incident", "high latency",
-            "--tier", "3",
-            "--skill-file", "my/SKILL.md",
-            "--model", "claude-haiku-4-5-20251001",
-            "--dry-run",
-            "--output", "out.json",
-        ])
+        args = _parse_args(
+            [
+                "run",
+                "--incident",
+                "high latency",
+                "--tier",
+                "3",
+                "--skill-file",
+                "my/SKILL.md",
+                "--model",
+                "claude-haiku-4-5-20251001",
+                "--dry-run",
+                "--output",
+                "out.json",
+            ]
+        )
         assert args.tier == 3
         assert args.skill_file == "my/SKILL.md"
         assert args.model == "claude-haiku-4-5-20251001"
@@ -56,11 +63,14 @@ class TestRunDryRun:
 
     def test_dry_run_succeeds(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            main([
-                "run",
-                "--incident", "test incident",
-                "--dry-run",
-            ])
+            main(
+                [
+                    "run",
+                    "--incident",
+                    "test incident",
+                    "--dry-run",
+                ]
+            )
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
         assert "INCIDENT RESPONSE COMPLETE" in out
@@ -69,12 +79,16 @@ class TestRunDryRun:
 
     def test_dry_run_with_tier_override(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            main([
-                "run",
-                "--incident", "pod OOMKilled",
-                "--tier", "3",
-                "--dry-run",
-            ])
+            main(
+                [
+                    "run",
+                    "--incident",
+                    "pod OOMKilled",
+                    "--tier",
+                    "3",
+                    "--dry-run",
+                ]
+            )
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
         assert "Tier:     3" in out
@@ -82,12 +96,16 @@ class TestRunDryRun:
     def test_dry_run_writes_output_file(self, tmp_path, capsys):
         out_file = tmp_path / "result.json"
         with pytest.raises(SystemExit) as exc_info:
-            main([
-                "run",
-                "--incident", "disk full",
-                "--dry-run",
-                "--output", str(out_file),
-            ])
+            main(
+                [
+                    "run",
+                    "--incident",
+                    "disk full",
+                    "--dry-run",
+                    "--output",
+                    str(out_file),
+                ]
+            )
         assert exc_info.value.code == 0
         assert out_file.is_file()
         data = json.loads(out_file.read_text())
@@ -99,17 +117,19 @@ class TestRunDryRun:
         cfg_file = tmp_path / ".env"
         audit_file = tmp_path / "audit.jsonl"
         cfg_file.write_text(
-            "AIM_TIER=2\n"
-            "AIM_LOG_LEVEL=INFO\n"
-            f"AIM_AUDIT_LOG={audit_file}\n"
+            f"AIM_TIER=2\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG={audit_file}\n"
         )
         with pytest.raises(SystemExit) as exc_info:
-            main([
-                "--config", str(cfg_file),
-                "run",
-                "--incident", "test",
-                "--dry-run",
-            ])
+            main(
+                [
+                    "--config",
+                    str(cfg_file),
+                    "run",
+                    "--incident",
+                    "test",
+                    "--dry-run",
+                ]
+            )
         assert exc_info.value.code == 0
         assert audit_file.is_file()
         lines = audit_file.read_text().strip().splitlines()
@@ -121,24 +141,32 @@ class TestRunDryRun:
 
     def test_invalid_tier_fails(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            main([
-                "run",
-                "--incident", "test",
-                "--tier", "5",
-                "--dry-run",
-            ])
+            main(
+                [
+                    "run",
+                    "--incident",
+                    "test",
+                    "--tier",
+                    "5",
+                    "--dry-run",
+                ]
+            )
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "Invalid tier" in err
 
     def test_missing_skill_file_fails(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            main([
-                "run",
-                "--incident", "test",
-                "--skill-file", "/tmp/nonexistent_skill.md",
-                "--dry-run",
-            ])
+            main(
+                [
+                    "run",
+                    "--incident",
+                    "test",
+                    "--skill-file",
+                    "/tmp/nonexistent_skill.md",
+                    "--dry-run",
+                ]
+            )
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "Skill file not found" in err
@@ -153,18 +181,21 @@ class TestAnthropicLLM:
     def test_missing_api_key_raises(self, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         from backend.agent.llm import AnthropicLLM
+
         with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
             AnthropicLLM()
 
     def test_missing_package_raises(self, monkeypatch):
         """Simulate anthropic not being installed."""
         import sys
+
         # Save and remove anthropic from sys.modules temporarily
         saved = sys.modules.get("anthropic")
         sys.modules["anthropic"] = None  # type: ignore[assignment]
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         try:
             from backend.agent.llm import AnthropicLLM
+
             with pytest.raises((ImportError, EnvironmentError)):
                 AnthropicLLM()
         finally:

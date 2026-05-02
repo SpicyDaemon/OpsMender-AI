@@ -39,6 +39,7 @@ from backend.skills.parser import load as load_skill_def
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _mock_mcp_result(text="ok"):
     from unittest.mock import MagicMock
 
@@ -86,9 +87,15 @@ class TestSimulatedEndToEnd:
         session.call_tool = AsyncMock(return_value=_mock_mcp_result("3 pods running"))
 
         # LLM that proposes a safe action
-        llm = _make_plan_llm([
-            {"tool_name": "get_pods", "tool_parameters": {"namespace": "default"}, "justification": "Check pods"},
-        ])
+        llm = _make_plan_llm(
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"namespace": "default"},
+                    "justification": "Check pods",
+                },
+            ]
+        )
         logger = AuditLogger(audit_path)
         logger.log_session_start("integration-test-001", 2)
 
@@ -100,11 +107,13 @@ class TestSimulatedEndToEnd:
             audit_logger=logger,
         )
 
-        result = await graph.ainvoke({
-            "session_id": "integration-test-001",
-            "tier": 2,
-            "incident_description": "Pods crashing in namespace default",
-        })
+        result = await graph.ainvoke(
+            {
+                "session_id": "integration-test-001",
+                "tier": 2,
+                "incident_description": "Pods crashing in namespace default",
+            }
+        )
 
         logger.log_session_end("integration-test-001", 2)
 
@@ -140,10 +149,20 @@ class TestSimulatedEndToEnd:
         session = AsyncMock()
         session.call_tool = AsyncMock(return_value=_mock_mcp_result())
 
-        llm = _make_plan_llm([
-            {"tool_name": "get_pods", "tool_parameters": {}, "justification": "Read"},
-            {"tool_name": "delete_pod", "tool_parameters": {"name": "bad-pod"}, "justification": "Kill it"},
-        ])
+        llm = _make_plan_llm(
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {},
+                    "justification": "Read",
+                },
+                {
+                    "tool_name": "delete_pod",
+                    "tool_parameters": {"name": "bad-pod"},
+                    "justification": "Kill it",
+                },
+            ]
+        )
         logger = AuditLogger(audit_path)
 
         graph = build_graph(
@@ -154,15 +173,17 @@ class TestSimulatedEndToEnd:
             audit_logger=logger,
         )
 
-        result = await graph.ainvoke({
-            "session_id": "integration-test-002",
-            "tier": 2,
-            "incident_description": "Bad pod needs removal",
-        })
+        result = await graph.ainvoke(
+            {
+                "session_id": "integration-test-002",
+                "tier": 2,
+                "incident_description": "Bad pod needs removal",
+            }
+        )
 
         assert result["status"] == "completed"
         assert len(result["approved_actions"]) == 1  # get_pods
-        assert len(result["blocked_actions"]) == 1   # delete_pod
+        assert len(result["blocked_actions"]) == 1  # delete_pod
         assert result["blocked_actions"][0]["tool_name"] == "delete_pod"
         assert result["blocked_actions"][0]["classification"] == "destructive"
 
@@ -176,9 +197,15 @@ class TestSimulatedEndToEnd:
         skill_def = load_skill_def("examples/SKILL.md")
 
         session = AsyncMock()
-        llm = _make_plan_llm([
-            {"tool_name": "get_pods", "tool_parameters": {}, "justification": "Look"},
-        ])
+        llm = _make_plan_llm(
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {},
+                    "justification": "Look",
+                },
+            ]
+        )
         logger = AuditLogger(audit_path)
 
         graph = build_graph(
@@ -189,11 +216,13 @@ class TestSimulatedEndToEnd:
             audit_logger=logger,
         )
 
-        result = await graph.ainvoke({
-            "session_id": "integration-test-003",
-            "tier": 3,
-            "incident_description": "Advise only test",
-        })
+        result = await graph.ainvoke(
+            {
+                "session_id": "integration-test-003",
+                "tier": 3,
+                "incident_description": "Advise only test",
+            }
+        )
 
         assert result["status"] == "completed"
         assert len(result["approved_actions"]) == 0
@@ -212,11 +241,13 @@ class TestSimulatedEndToEnd:
             llm=llm,
         )
 
-        result = await graph.ainvoke({
-            "session_id": "integration-test-004",
-            "tier": 2,
-            "incident_description": "Offline test",
-        })
+        result = await graph.ainvoke(
+            {
+                "session_id": "integration-test-004",
+                "tier": 2,
+                "incident_description": "Offline test",
+            }
+        )
 
         assert result["status"] == "completed"
         assert len(result["tool_calls"]) == 0
@@ -233,21 +264,24 @@ class TestSimulatedEndToEnd:
         audit_file = tmp_path / "audit.jsonl"
 
         cfg_file.write_text(
-            "AIM_TIER=2\n"
-            "AIM_LOG_LEVEL=INFO\n"
-            f"AIM_AUDIT_LOG={audit_file}\n"
+            f"AIM_TIER=2\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG={audit_file}\n"
         )
 
         import subprocess, sys
 
         result = subprocess.run(
             [
-                sys.executable, "-m", "cli.aim",
-                "--config", str(cfg_file),
+                sys.executable,
+                "-m",
+                "cli.aim",
+                "--config",
+                str(cfg_file),
                 "run",
-                "--incident", "Integration test incident",
+                "--incident",
+                "Integration test incident",
                 "--dry-run",
-                "--output", str(out_file),
+                "--output",
+                str(out_file),
             ],
             capture_output=True,
             text=True,
@@ -339,9 +373,15 @@ class TestLiveK8sMCP:
 
         async with connect(k8s_server) as session:
             # Use stub LLM — we're testing MCP integration, not LLM quality
-            llm = _make_plan_llm([
-                {"tool_name": "get_pods", "tool_parameters": {"namespace": "default"}, "justification": "List pods"},
-            ])
+            llm = _make_plan_llm(
+                [
+                    {
+                        "tool_name": "get_pods",
+                        "tool_parameters": {"namespace": "default"},
+                        "justification": "List pods",
+                    },
+                ]
+            )
 
             logger.log_session_start("live-test-001", 2)
 
@@ -353,11 +393,13 @@ class TestLiveK8sMCP:
                 audit_logger=logger,
             )
 
-            result = await graph.ainvoke({
-                "session_id": "live-test-001",
-                "tier": 2,
-                "incident_description": "Live integration test — list pods",
-            })
+            result = await graph.ainvoke(
+                {
+                    "session_id": "live-test-001",
+                    "tier": 2,
+                    "incident_description": "Live integration test — list pods",
+                }
+            )
 
             logger.log_session_end("live-test-001", 2)
 

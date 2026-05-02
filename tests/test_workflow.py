@@ -16,6 +16,8 @@ import asyncio
 import json
 import pathlib
 import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -50,6 +52,7 @@ from backend.skills.parser import OperationClassification, SkillDefinition
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _skill_def() -> SkillDefinition:
     """Return a minimal skill definition for testing."""
@@ -129,7 +132,16 @@ class TestGraphStructure:
     def test_graph_has_all_nodes(self):
         graph = build_graph(tier=2, skill_def=_skill_def())
         node_names = set(graph.nodes.keys())
-        expected = {"observe", "diagnose", "plan", "tier_gate", "execute", "verify", "summarize", "__start__"}
+        expected = {
+            "observe",
+            "diagnose",
+            "plan",
+            "tier_gate",
+            "execute",
+            "verify",
+            "summarize",
+            "__start__",
+        }
         assert expected.issubset(node_names)
 
     def test_graph_supports_custom_node_order(self):
@@ -140,7 +152,9 @@ class TestGraphStructure:
         )
         node_names = set(graph.nodes.keys())
         assert "observe" not in node_names
-        assert {"diagnose", "plan", "tier_gate", "execute", "summarize"}.issubset(node_names)
+        assert {"diagnose", "plan", "tier_gate", "execute", "summarize"}.issubset(
+            node_names
+        )
 
     def test_validate_workflow_node_order_rejects_execute_without_gate(self):
         with pytest.raises(ValueError):
@@ -263,7 +277,10 @@ class TestObserveWithLLM:
         assert len(llm.calls) == 3
         assert "Investigator" in llm.calls[0]
         assert "Skeptic" in llm.calls[1]
-        assert "consolidating outputs from a multi-agent incident response team" in llm.calls[2]
+        assert (
+            "consolidating outputs from a multi-agent incident response team"
+            in llm.calls[2]
+        )
 
 
 class TestDiagnoseWithLLM:
@@ -283,7 +300,9 @@ class TestDiagnoseWithLLM:
 
 class TestPlanWithLLM:
     def test_parses_json_response(self):
-        actions = [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "check"}]
+        actions = [
+            {"tool_name": "get_pods", "tool_parameters": {}, "justification": "check"}
+        ]
         llm = StubLLM(response=json.dumps(actions))
         node = _build_plan(llm, tier=2, skill_def=_skill_def())
         result = node(_base_state(diagnosis="OOM"))
@@ -302,10 +321,10 @@ class TestPlanWithLLM:
         assert result["plan"] == []
 
     def test_multi_agent_plan_uses_synthesized_json(self):
-        actions = [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "check"}]
-        llm = SequenceLLM(
-            ["[]", "[]", json.dumps(actions)]
-        )
+        actions = [
+            {"tool_name": "get_pods", "tool_parameters": {}, "justification": "check"}
+        ]
+        llm = SequenceLLM(["[]", "[]", json.dumps(actions)])
         node = _build_plan(
             llm,
             tier=2,
@@ -334,10 +353,12 @@ class TestVerifyWithLLM:
     def test_sends_results_in_prompt(self):
         llm = StubLLM(response="incident resolved")
         node = _build_verify(llm)
-        result = node(_base_state(
-            diagnosis="OOM",
-            tool_calls=[{"tool_name": "get_pods", "error": None}],
-        ))
+        result = node(
+            _base_state(
+                diagnosis="OOM",
+                tool_calls=[{"tool_name": "get_pods", "error": None}],
+            )
+        )
         assert result["verification"] == "incident resolved"
 
     def test_no_tool_calls(self):
@@ -352,25 +373,29 @@ class TestSummarizeWithLLM:
     def test_returns_summary(self):
         llm = StubLLM(response="Summary: incident resolved")
         node = _build_summarize(llm)
-        result = node(_base_state(
-            diagnosis="OOM",
-            verification="resolved",
-            tool_calls=[],
-            blocked_actions=[],
-        ))
+        result = node(
+            _base_state(
+                diagnosis="OOM",
+                verification="resolved",
+                tool_calls=[],
+                blocked_actions=[],
+            )
+        )
         assert result["summary"] == "Summary: incident resolved"
         assert result["status"] == "completed"
 
     def test_prompt_includes_all_context(self):
         llm = StubLLM()
         node = _build_summarize(llm)
-        node(_base_state(
-            incident_description="pods down",
-            diagnosis="OOM kill",
-            verification="all ok",
-            tool_calls=[{"tool_name": "a"}],
-            blocked_actions=[{"tool_name": "b"}],
-        ))
+        node(
+            _base_state(
+                incident_description="pods down",
+                diagnosis="OOM kill",
+                verification="all ok",
+                tool_calls=[{"tool_name": "a"}],
+                blocked_actions=[{"tool_name": "b"}],
+            )
+        )
         prompt = llm.calls[0]
         assert "pods down" in prompt
         assert "OOM kill" in prompt
@@ -388,36 +413,44 @@ class TestTierGate:
 
     def test_safe_action_permitted_at_tier_2(self):
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
-        state = _base_state(plan=[
-            {"tool_name": "get_pods", "tool_parameters": {"ns": "default"}},
-        ])
+        state = _base_state(
+            plan=[
+                {"tool_name": "get_pods", "tool_parameters": {"ns": "default"}},
+            ]
+        )
         result = gate(state)
         assert len(result["approved_actions"]) == 1
         assert len(result["blocked_actions"]) == 0
 
     def test_caution_action_permitted_at_tier_2(self):
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
-        state = _base_state(plan=[
-            {"tool_name": "scale_deployment", "tool_parameters": {"replicas": 3}},
-        ])
+        state = _base_state(
+            plan=[
+                {"tool_name": "scale_deployment", "tool_parameters": {"replicas": 3}},
+            ]
+        )
         result = gate(state)
         assert len(result["approved_actions"]) == 1
         assert len(result["blocked_actions"]) == 0
 
     def test_destructive_action_blocked_at_tier_2(self):
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
-        state = _base_state(plan=[
-            {"tool_name": "delete_pod", "tool_parameters": {"pod": "api"}},
-        ])
+        state = _base_state(
+            plan=[
+                {"tool_name": "delete_pod", "tool_parameters": {"pod": "api"}},
+            ]
+        )
         result = gate(state)
         assert len(result["approved_actions"]) == 0
         assert len(result["blocked_actions"]) == 1
 
     def test_blocked_action_has_reason(self):
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
-        state = _base_state(plan=[
-            {"tool_name": "delete_pod", "tool_parameters": {}},
-        ])
+        state = _base_state(
+            plan=[
+                {"tool_name": "delete_pod", "tool_parameters": {}},
+            ]
+        )
         result = gate(state)
         blocked = result["blocked_actions"][0]
         assert "block_reason" in blocked
@@ -425,20 +458,24 @@ class TestTierGate:
 
     def test_unknown_tool_blocked(self):
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
-        state = _base_state(plan=[
-            {"tool_name": "totally_unknown", "tool_parameters": {}},
-        ])
+        state = _base_state(
+            plan=[
+                {"tool_name": "totally_unknown", "tool_parameters": {}},
+            ]
+        )
         result = gate(state)
         assert len(result["blocked_actions"]) == 1
         assert result["blocked_actions"][0]["classification"] == "unknown"
 
     def test_mixed_actions_split_correctly(self):
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
-        state = _base_state(plan=[
-            {"tool_name": "get_pods", "tool_parameters": {}},
-            {"tool_name": "delete_pod", "tool_parameters": {}},
-            {"tool_name": "scale_deployment", "tool_parameters": {}},
-        ])
+        state = _base_state(
+            plan=[
+                {"tool_name": "get_pods", "tool_parameters": {}},
+                {"tool_name": "delete_pod", "tool_parameters": {}},
+                {"tool_name": "scale_deployment", "tool_parameters": {}},
+            ]
+        )
         result = gate(state)
         assert len(result["approved_actions"]) == 2
         assert len(result["blocked_actions"]) == 1
@@ -452,24 +489,30 @@ class TestTierGate:
 
     def test_tier_3_blocks_everything(self):
         gate = _build_tier_gate(tier=3, skill_def=_skill_def())
-        state = _base_state(plan=[
-            {"tool_name": "get_pods", "tool_parameters": {}},
-            {"tool_name": "scale_deployment", "tool_parameters": {}},
-            {"tool_name": "delete_pod", "tool_parameters": {}},
-        ])
+        state = _base_state(
+            plan=[
+                {"tool_name": "get_pods", "tool_parameters": {}},
+                {"tool_name": "scale_deployment", "tool_parameters": {}},
+                {"tool_name": "delete_pod", "tool_parameters": {}},
+            ]
+        )
         result = gate(state)
         assert len(result["approved_actions"]) == 0
         assert len(result["blocked_actions"]) == 3
 
     def test_tier_1_without_approval_service_blocks_destructive_action(self):
         gate = _build_tier_gate(tier=1, skill_def=_skill_def())
-        state = _base_state(plan=[
-            {"tool_name": "delete_pod", "tool_parameters": {}},
-        ])
+        state = _base_state(
+            plan=[
+                {"tool_name": "delete_pod", "tool_parameters": {}},
+            ]
+        )
         result = gate(state)
         assert len(result["approved_actions"]) == 0
         assert len(result["blocked_actions"]) == 1
-        assert "approval service" in result["blocked_actions"][0]["block_reason"].lower()
+        assert (
+            "approval service" in result["blocked_actions"][0]["block_reason"].lower()
+        )
 
     async def test_tier_1_approved_action_waits_and_executes(self, tmp_path):
         db_path = tmp_path / "tier1-approved.db"
@@ -479,12 +522,14 @@ class TestTierGate:
         factory = async_sessionmaker(engine, expire_on_commit=False)
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=1)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
             await db.commit()
             await db.refresh(session)
 
         service = ApprovalService(factory, poll_interval_seconds=0.01)
-        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        gate = _build_tier_gate(
+            tier=1, skill_def=_skill_def(), approval_service=service
+        )
         state = _base_state(
             session_id=str(session.id),
             tier=1,
@@ -495,9 +540,13 @@ class TestTierGate:
         await asyncio.sleep(0.05)
 
         async with factory() as db:
-            pending = await ApprovalRequestRepo.list_pending(db, session_id=session.id)
+            pending = await ApprovalRequestRepo.list_pending(
+                db, TEST_ORG_ID, session_id=session.id
+            )
             assert len(pending) == 1
-            await ApprovalRequestRepo.resolve(db, pending[0].id, status="approved")
+            await ApprovalRequestRepo.resolve(
+                db, TEST_ORG_ID, pending[0].id, status="approved"
+            )
             await db.commit()
 
         result = await task
@@ -515,12 +564,14 @@ class TestTierGate:
         factory = async_sessionmaker(engine, expire_on_commit=False)
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=1)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
             await db.commit()
             await db.refresh(session)
 
         service = ApprovalService(factory, poll_interval_seconds=0.01)
-        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        gate = _build_tier_gate(
+            tier=1, skill_def=_skill_def(), approval_service=service
+        )
         state = _base_state(
             session_id=str(session.id),
             tier=1,
@@ -531,8 +582,12 @@ class TestTierGate:
         await asyncio.sleep(0.05)
 
         async with factory() as db:
-            pending = await ApprovalRequestRepo.list_pending(db, session_id=session.id)
-            await ApprovalRequestRepo.resolve(db, pending[0].id, status="rejected")
+            pending = await ApprovalRequestRepo.list_pending(
+                db, TEST_ORG_ID, session_id=session.id
+            )
+            await ApprovalRequestRepo.resolve(
+                db, TEST_ORG_ID, pending[0].id, status="rejected"
+            )
             await db.commit()
 
         result = await task
@@ -550,17 +605,23 @@ class TestTierGate:
         factory = async_sessionmaker(engine, expire_on_commit=False)
 
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=1)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
             await db.commit()
             await db.refresh(session)
 
-        service = ApprovalService(factory, timeout_seconds=0, poll_interval_seconds=0.01)
-        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
-        result = await gate(_base_state(
-            session_id=str(session.id),
-            tier=1,
-            plan=[{"tool_name": "delete_pod", "tool_parameters": {}}],
-        ))
+        service = ApprovalService(
+            factory, timeout_seconds=0, poll_interval_seconds=0.01
+        )
+        gate = _build_tier_gate(
+            tier=1, skill_def=_skill_def(), approval_service=service
+        )
+        result = await gate(
+            _base_state(
+                session_id=str(session.id),
+                tier=1,
+                plan=[{"tool_name": "delete_pod", "tool_parameters": {}}],
+            )
+        )
         assert result["status"] == "timed_out"
         assert len(result["blocked_actions"]) == 1
         assert "timed out" in result["blocked_actions"][0]["block_reason"].lower()
@@ -576,31 +637,44 @@ class TestTierGate:
 class TestFullGraphStub:
     def test_invoke_returns_completed(self):
         graph = build_graph(tier=2, skill_def=_skill_def())
-        result = graph.invoke({
-            "session_id": "e2e-stub-001",
-            "tier": 2,
-            "incident_description": "pods crashing",
-        })
+        result = graph.invoke(
+            {
+                "session_id": "e2e-stub-001",
+                "tier": 2,
+                "incident_description": "pods crashing",
+            }
+        )
         assert result["status"] == "completed"
 
     def test_invoke_has_all_fields(self):
         graph = build_graph(tier=2, skill_def=_skill_def())
-        result = graph.invoke({
-            "session_id": "e2e-stub-002",
-            "tier": 2,
-            "incident_description": "high latency",
-        })
-        for key in ("observations", "diagnosis", "plan", "approved_actions",
-                     "blocked_actions", "verification", "summary"):
+        result = graph.invoke(
+            {
+                "session_id": "e2e-stub-002",
+                "tier": 2,
+                "incident_description": "high latency",
+            }
+        )
+        for key in (
+            "observations",
+            "diagnosis",
+            "plan",
+            "approved_actions",
+            "blocked_actions",
+            "verification",
+            "summary",
+        ):
             assert key in result
 
     def test_invoke_preserves_session_id(self):
         graph = build_graph(tier=2, skill_def=_skill_def())
-        result = graph.invoke({
-            "session_id": "e2e-stub-003",
-            "tier": 2,
-            "incident_description": "test",
-        })
+        result = graph.invoke(
+            {
+                "session_id": "e2e-stub-003",
+                "tier": 2,
+                "incident_description": "test",
+            }
+        )
         assert result["session_id"] == "e2e-stub-003"
 
 
@@ -613,21 +687,33 @@ class TestFullGraphWithLLM:
     def test_invoke_with_llm(self):
         llm = StubLLM(response="[]")  # plan returns [] → no actions
         graph = build_graph(tier=2, skill_def=_skill_def(), llm=llm)
-        result = graph.invoke({
-            "session_id": "e2e-llm-001",
-            "tier": 2,
-            "incident_description": "pods crashing",
-        })
+        result = graph.invoke(
+            {
+                "session_id": "e2e-llm-001",
+                "tier": 2,
+                "incident_description": "pods crashing",
+            }
+        )
         assert result["status"] == "completed"
         # LLM was called for: observe, diagnose, plan, verify, summarize = 5
         assert len(llm.calls) == 5
 
     def test_invoke_with_planned_actions(self):
         """LLM returns a plan with actions → tier gate splits them."""
-        actions = json.dumps([
-            {"tool_name": "get_pods", "tool_parameters": {}, "justification": "check"},
-            {"tool_name": "delete_pod", "tool_parameters": {}, "justification": "cleanup"},
-        ])
+        actions = json.dumps(
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {},
+                    "justification": "check",
+                },
+                {
+                    "tool_name": "delete_pod",
+                    "tool_parameters": {},
+                    "justification": "cleanup",
+                },
+            ]
+        )
         call_count = 0
 
         class PlanningLLM:
@@ -643,11 +729,13 @@ class TestFullGraphWithLLM:
 
         llm = PlanningLLM()
         graph = build_graph(tier=2, skill_def=_skill_def(), llm=llm)
-        result = graph.invoke({
-            "session_id": "e2e-llm-002",
-            "tier": 2,
-            "incident_description": "test",
-        })
+        result = graph.invoke(
+            {
+                "session_id": "e2e-llm-002",
+                "tier": 2,
+                "incident_description": "test",
+            }
+        )
         # get_pods approved, delete_pod blocked at tier 2
         assert len(result["approved_actions"]) == 1
         assert len(result["blocked_actions"]) == 1
@@ -682,9 +770,13 @@ class TestExecuteWithMCP:
         logger = AuditLogger(tmp_path / "audit.jsonl")
 
         node = _build_execute(session, _skill_def(), logger)
-        result = await node(_base_state(
-            approved_actions=[{"tool_name": "get_pods", "tool_parameters": {"ns": "default"}}],
-        ))
+        result = await node(
+            _base_state(
+                approved_actions=[
+                    {"tool_name": "get_pods", "tool_parameters": {"ns": "default"}}
+                ],
+            )
+        )
         assert len(result["tool_calls"]) == 1
         tc = result["tool_calls"][0]
         assert tc["tool_name"] == "get_pods"
@@ -699,12 +791,17 @@ class TestExecuteWithMCP:
         logger = AuditLogger(tmp_path / "audit.jsonl")
 
         node = _build_execute(session, _skill_def(), logger)
-        result = await node(_base_state(
-            approved_actions=[
-                {"tool_name": "get_pods", "tool_parameters": {}},
-                {"tool_name": "scale_deployment", "tool_parameters": {"replicas": 3}},
-            ],
-        ))
+        result = await node(
+            _base_state(
+                approved_actions=[
+                    {"tool_name": "get_pods", "tool_parameters": {}},
+                    {
+                        "tool_name": "scale_deployment",
+                        "tool_parameters": {"replicas": 3},
+                    },
+                ],
+            )
+        )
         assert len(result["tool_calls"]) == 2
         assert session.call_tool.await_count == 2
 
@@ -714,9 +811,11 @@ class TestExecuteWithMCP:
         logger = AuditLogger(tmp_path / "audit.jsonl")
 
         node = _build_execute(session, _skill_def(), logger)
-        result = await node(_base_state(
-            approved_actions=[{"tool_name": "get_pods", "tool_parameters": {}}],
-        ))
+        result = await node(
+            _base_state(
+                approved_actions=[{"tool_name": "get_pods", "tool_parameters": {}}],
+            )
+        )
         assert len(result["tool_calls"]) == 1
         tc = result["tool_calls"][0]
         assert tc["error"] == "connection lost"
@@ -737,9 +836,11 @@ class TestExecuteWithMCP:
         logger = AuditLogger(tmp_path / "audit.jsonl")
 
         node = _build_execute(session, _skill_def(), logger)
-        await node(_base_state(
-            approved_actions=[{"tool_name": "get_pods", "tool_parameters": {}}],
-        ))
+        await node(
+            _base_state(
+                approved_actions=[{"tool_name": "get_pods", "tool_parameters": {}}],
+            )
+        )
         entries = logger.read_all()
         # audited_tool_call logs: start + end = 2 entries per call
         assert len(entries) == 2
@@ -753,14 +854,25 @@ class TestExecuteWithMCP:
 class TestFullGraphWithMCP:
     async def test_e2e_with_mcp_execution(self, tmp_path):
         """Full pipeline: LLM plans → tier gate filters → execute calls MCP."""
-        actions = json.dumps([
-            {"tool_name": "get_pods", "tool_parameters": {"ns": "default"}, "justification": "check"},
-            {"tool_name": "delete_pod", "tool_parameters": {"pod": "x"}, "justification": "cleanup"},
-        ])
+        actions = json.dumps(
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"ns": "default"},
+                    "justification": "check",
+                },
+                {
+                    "tool_name": "delete_pod",
+                    "tool_parameters": {"pod": "x"},
+                    "justification": "cleanup",
+                },
+            ]
+        )
 
         class PlanningLLM:
             def __init__(self):
                 self.calls = []
+
             def invoke(self, prompt: str) -> str:
                 self.calls.append(prompt)
                 if "remediation" in prompt.lower():
@@ -778,11 +890,13 @@ class TestFullGraphWithMCP:
             mcp_session=session,
             audit_logger=logger,
         )
-        result = await graph.ainvoke({
-            "session_id": "e2e-mcp-001",
-            "tier": 2,
-            "incident_description": "pods crashing",
-        })
+        result = await graph.ainvoke(
+            {
+                "session_id": "e2e-mcp-001",
+                "tier": 2,
+                "incident_description": "pods crashing",
+            }
+        )
 
         # get_pods approved and executed, delete_pod blocked
         assert len(result["approved_actions"]) == 1

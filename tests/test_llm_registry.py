@@ -63,7 +63,9 @@ class TestProviderRegistry:
         )
         registry = ProviderRegistry()
 
-        with pytest.raises(ValueError, match="not currently reported by provider 'openai'"):
+        with pytest.raises(
+            ValueError, match="not currently reported by provider 'openai'"
+        ):
             registry.validate_model_config(provider="openai", model_id="gpt-5")
 
     def test_validate_model_config_allows_azure_deployment_name(self, monkeypatch):
@@ -165,9 +167,7 @@ class TestProviderRegistry:
                 allow_unverified=True,
             )
 
-    def test_validate_model_config_anthropic_manual_id_does_not_warn(
-        self, monkeypatch
-    ):
+    def test_validate_model_config_anthropic_manual_id_does_not_warn(self, monkeypatch):
         monkeypatch.setattr(
             "backend.llm.registry.create_provider",
             lambda **kwargs: _FakeProvider(["claude-sonnet-4-20250514"]),

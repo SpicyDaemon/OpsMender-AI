@@ -265,7 +265,10 @@ class TestBlockedToolCall:
         blocked = audit_log.read_all()[1]
         assert blocked.permitted is False
         assert blocked.block_reason is not None
-        assert "destructive" in blocked.block_reason.lower() or "deny" in blocked.block_reason.lower()
+        assert (
+            "destructive" in blocked.block_reason.lower()
+            or "deny" in blocked.block_reason.lower()
+        )
 
     @pytest.mark.asyncio
     async def test_unknown_tool_is_blocked(
@@ -290,9 +293,7 @@ class TestBlockedToolCall:
 
 class TestErrorHandling:
     @pytest.mark.asyncio
-    async def test_mcp_error_is_captured(
-        self, audit_log: AuditLogger
-    ):
+    async def test_mcp_error_is_captured(self, audit_log: AuditLogger):
         session = AsyncMock()
         session.call_tool = AsyncMock(side_effect=RuntimeError("connection lost"))
         result = await audited_tool_call(
@@ -308,9 +309,7 @@ class TestErrorHandling:
         assert result.duration_ms is not None
 
     @pytest.mark.asyncio
-    async def test_mcp_error_still_logs_end_entry(
-        self, audit_log: AuditLogger
-    ):
+    async def test_mcp_error_still_logs_end_entry(self, audit_log: AuditLogger):
         session = AsyncMock()
         session.call_tool = AsyncMock(side_effect=RuntimeError("timeout"))
         await audited_tool_call(

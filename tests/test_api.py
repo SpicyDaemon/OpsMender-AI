@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import json
@@ -145,9 +147,10 @@ async def _create_approval_request(
 ):
     factory = app.state.session_factory
     async with factory() as db:
-        session = await SessionRepo.create(db, tier=tier)
+        session = await SessionRepo.create(db, TEST_ORG_ID, tier=tier)
         request = await ApprovalRequestRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=session.id,
             action={"tool_name": "delete_pod", "tool_parameters": {"pod": "api"}},
             justification="Pod is causing the incident",
@@ -189,7 +192,6 @@ async def _wait_for_session_status(
 
 
 class TestHealth:
-
     async def test_health(self, client: AsyncClient):
         resp = await client.get("/health")
         assert resp.status_code == 200
@@ -202,7 +204,6 @@ class TestHealth:
 
 
 class TestAuth:
-
     async def test_register_first_user_is_admin(self, client: AsyncClient):
         resp = await client.post(
             "/auth/register",
@@ -367,7 +368,6 @@ class TestAuth:
 
 
 class TestIncidents:
-
     async def test_create_incident(self, client: AsyncClient, auth_headers):
         resp = await client.post(
             "/incidents",
@@ -554,7 +554,6 @@ class TestIncidents:
 
 
 class TestSessions:
-
     async def test_create_session(self, client: AsyncClient, auth_headers):
         resp = await client.post(
             "/sessions",
@@ -663,7 +662,9 @@ class TestSessions:
         assert latest.json()["status"] == "active"
 
         async with app.state.session_factory() as db:
-            entries = await AuditEntryRepo.list_by_session(db, uuid.UUID(session_id))
+            entries = await AuditEntryRepo.list_by_session(
+                db, TEST_ORG_ID, uuid.UUID(session_id)
+            )
         assert entries == []
 
     async def test_create_session_with_incident_autoruns_workflow(
@@ -719,7 +720,9 @@ class TestSessions:
         )
 
         async with app.state.session_factory() as db:
-            entries = await AuditEntryRepo.list_by_session(db, uuid.UUID(session_id))
+            entries = await AuditEntryRepo.list_by_session(
+                db, TEST_ORG_ID, uuid.UUID(session_id)
+            )
         entry_types = [entry.entry_type for entry in entries]
         assert "session_start" in entry_types
         assert "session_end" in entry_types
@@ -745,6 +748,7 @@ class TestSessions:
         async with app.state.session_factory() as db:
             await WebhookTriggerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="created",
                 url="https://hooks.example/session-created",
                 event_types=["session.created"],
@@ -789,12 +793,14 @@ class TestSessions:
         async with app.state.session_factory() as db:
             await WebhookTriggerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="completed",
                 url="https://hooks.example/session-complete",
                 event_types=["session.completed"],
             )
             incident = await IncidentRepo.create(
                 db,
+                TEST_ORG_ID,
                 title="Webhook terminal test",
                 description="terminal state hook",
                 severity="high",
@@ -864,12 +870,14 @@ class TestSessions:
         async with app.state.session_factory() as db:
             await WebhookTriggerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="approval-pause",
                 url="https://hooks.example/approval",
                 event_types=["session.awaiting_approval"],
             )
             incident = await IncidentRepo.create(
                 db,
+                TEST_ORG_ID,
                 title="Approval webhook test",
                 description="delete_pod should require approval",
                 severity="critical",
@@ -906,7 +914,6 @@ class TestSessions:
 
 
 class TestAudit:
-
     async def _seed_audit(self, client, auth_headers):
         """Create a session and seed audit entries directly via DB."""
         # Create session via API
@@ -935,7 +942,6 @@ class TestAudit:
 
 
 class TestConfig:
-
     async def test_get_config(self, client: AsyncClient, auth_headers):
         resp = await client.get("/config", headers=auth_headers)
         assert resp.status_code == 200
@@ -955,7 +961,6 @@ class TestConfig:
 
 
 class TestWebhookTriggers:
-
     async def test_create_list_update_delete_and_test_trigger(
         self, client: AsyncClient, app, auth_headers, monkeypatch
     ):
@@ -1120,6 +1125,7 @@ class TestWebhookTriggers:
         async with app.state.session_factory() as db:
             await WebhookTriggerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="slack-created",
                 url="https://hooks.slack.com/services/T/B/X",
                 format="slack",
@@ -1232,7 +1238,6 @@ class TestWebhookTriggers:
 
 
 class TestWorkflowProfiles:
-
     async def test_create_list_update_delete_workflow_profile(
         self, client: AsyncClient, auth_headers
     ):
@@ -1309,6 +1314,7 @@ class TestWorkflowProfiles:
         async with app.state.session_factory() as db:
             profile = await WorkflowProfileRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="default-fast-track",
                 description="default workflow",
                 node_order=["diagnose", "plan", "tier_gate", "execute", "summarize"],
@@ -1323,7 +1329,6 @@ class TestWorkflowProfiles:
 
 
 class TestAgentTeamProfiles:
-
     async def test_create_list_update_delete_agent_team_profile(
         self, client: AsyncClient, auth_headers
     ):
@@ -1397,6 +1402,7 @@ class TestAgentTeamProfiles:
         async with app.state.session_factory() as db:
             profile = await AgentTeamProfileRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="default-triage-team",
                 description="default team",
                 roles=["incident_commander", "investigator", "skeptic"],
@@ -1465,7 +1471,6 @@ class TestAgentTeamProfiles:
 
 
 class TestBotConnectorsAPI:
-
     async def test_create_list_update_delete_bot_connector(
         self, client: AsyncClient, app, auth_headers
     ):
@@ -1490,7 +1495,9 @@ class TestBotConnectorsAPI:
         assert "credentials" not in data
 
         async with app.state.session_factory() as db:
-            stored = await BotConnectorRepo.get_by_id(db, uuid.UUID(connector_id))
+            stored = await BotConnectorRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(connector_id)
+            )
             assert stored is not None
             assert stored.credentials == {"bot_token": "secret-token"}
 
@@ -1626,7 +1633,6 @@ class TestBotConnectorsAPI:
 
 
 class TestTelegramBotWebhook:
-
     async def _create_connector(
         self,
         client: AsyncClient,
@@ -1660,6 +1666,7 @@ class TestTelegramBotWebhook:
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.create(
                 db,
+                TEST_ORG_ID,
                 title="API latency spike",
                 description="p95 latency crossed the SLO threshold.",
                 severity="high",
@@ -1745,12 +1752,14 @@ class TestTelegramBotWebhook:
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.create(
                 db,
+                TEST_ORG_ID,
                 title="Worker crash loop",
                 description="worker deployment is restarting",
                 severity="medium",
             )
             session = await SessionRepo.create(
                 db,
+                TEST_ORG_ID,
                 incident_id=incident.id,
                 tier=2,
                 model_provider="openai",
@@ -1785,9 +1794,10 @@ class TestTelegramBotWebhook:
             capabilities=["approvals"],
         )
         async with app.state.session_factory() as db:
-            session = await SessionRepo.create(db, tier=1)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
             approval = await ApprovalRequestRepo.create(
                 db,
+                TEST_ORG_ID,
                 session_id=session.id,
                 action={"tool_name": "restart_deployment"},
                 justification="restart unhealthy pods",
@@ -1830,6 +1840,7 @@ class TestTelegramBotWebhook:
     ):
         from backend.bots.rate_limit import rate_limiter
         from backend.db.repos import UserRepo
+
         rate_limiter.reset()
 
         connector_id = await self._create_connector(
@@ -1841,10 +1852,13 @@ class TestTelegramBotWebhook:
             admin = await UserRepo.get_by_username(db, "testadmin")
             assert admin is not None
             aim_user_id = str(admin.id)
-            session = await SessionRepo.create(db, tier=1)
-            await SessionRepo.set_status(db, session.id, status="awaiting_approval")
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
+            await SessionRepo.set_status(
+                db, TEST_ORG_ID, session.id, status="awaiting_approval"
+            )
             approval = await ApprovalRequestRepo.create(
                 db,
+                TEST_ORG_ID,
                 session_id=session.id,
                 action={"tool_name": "scale_deployment"},
                 expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
@@ -1870,8 +1884,10 @@ class TestTelegramBotWebhook:
         assert resp.status_code == 200
         assert "approved" in resp.json()["text"]
         async with app.state.session_factory() as db:
-            updated = await ApprovalRequestRepo.get_by_id(db, uuid.UUID(approval_id))
-            session = await SessionRepo.get_by_id(db, session_id)
+            updated = await ApprovalRequestRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(approval_id)
+            )
+            session = await SessionRepo.get_by_id(db, TEST_ORG_ID, session_id)
             assert updated is not None
             assert updated.status == "approved"
             assert session is not None
@@ -1907,9 +1923,7 @@ class TestTelegramBotWebhook:
         async def fake_responder(factory, *, session_id, user_message_id, **kwargs):
             scheduled.append(session_id)
 
-        monkeypatch.setattr(
-            bot_dispatcher, "respond_to_user_message", fake_responder
-        )
+        monkeypatch.setattr(bot_dispatcher, "respond_to_user_message", fake_responder)
 
         from backend.db.repos import UserRepo
 
@@ -1922,7 +1936,7 @@ class TestTelegramBotWebhook:
             admin = await UserRepo.get_by_username(db, "testadmin")
             assert admin is not None
             aim_user_id = str(admin.id)
-            session = await SessionRepo.create(db, tier=2)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
             await db.commit()
             session_id = session.id
 
@@ -1946,14 +1960,19 @@ class TestTelegramBotWebhook:
 
         from backend.db.models import SessionMessage
         from sqlalchemy import select
+
         async with app.state.session_factory() as db:
             messages = (
-                await db.execute(
-                    select(SessionMessage).where(
-                        SessionMessage.session_id == session_id
+                (
+                    await db.execute(
+                        select(SessionMessage).where(
+                            SessionMessage.session_id == session_id
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert len(messages) == 1
             assert messages[0].role == "user"
             assert "restarting api pod now" in messages[0].content
@@ -1963,6 +1982,7 @@ class TestTelegramBotWebhook:
         self, client: AsyncClient, auth_headers
     ):
         from backend.bots.rate_limit import rate_limiter
+
         rate_limiter.reset()
 
         connector_id = await self._create_connector(
@@ -1985,10 +2005,9 @@ class TestTelegramBotWebhook:
         assert resp.status_code == 200
         assert "Copilot Chat is not enabled" in resp.json()["text"]
 
-    async def test_telegram_webhook_rate_limit(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_telegram_webhook_rate_limit(self, client: AsyncClient, auth_headers):
         from backend.bots.rate_limit import rate_limiter
+
         rate_limiter.reset()
 
         connector_id = await self._create_connector(
@@ -2046,12 +2065,16 @@ class TestTelegramBotWebhook:
 
         async with app.state.session_factory() as db:
             entries = (
-                await db.execute(
-                    select(BotActionAudit).where(
-                        BotActionAudit.connector_id == uuid.UUID(connector_id)
+                (
+                    await db.execute(
+                        select(BotActionAudit).where(
+                            BotActionAudit.connector_id == uuid.UUID(connector_id)
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         statuses = {e.status for e in entries}
         commands = {e.command for e in entries}
@@ -2061,20 +2084,23 @@ class TestTelegramBotWebhook:
         assert "/sessions" in commands
         assert "/incidents" in commands
 
-
     async def test_telegram_webhook_rejects_unlinked_user_for_mutating_command(
         self, client: AsyncClient, app, auth_headers
     ):
         from backend.bots.rate_limit import rate_limiter
+
         rate_limiter.reset()
 
         connector_id = await self._create_connector(
-            client, auth_headers, capabilities=["approvals"],
+            client,
+            auth_headers,
+            capabilities=["approvals"],
         )
         async with app.state.session_factory() as db:
-            session = await SessionRepo.create(db, tier=1)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
             approval = await ApprovalRequestRepo.create(
                 db,
+                TEST_ORG_ID,
                 session_id=session.id,
                 action={"tool_name": "scale_deployment"},
                 expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
@@ -2100,17 +2126,24 @@ class TestTelegramBotWebhook:
         async with app.state.session_factory() as db:
             from backend.db.models import BotActionAudit
             from sqlalchemy import select
-            request = await ApprovalRequestRepo.get_by_id(db, uuid.UUID(approval_id))
+
+            request = await ApprovalRequestRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(approval_id)
+            )
             assert request is not None
             assert request.status == "pending"
 
             entries = (
-                await db.execute(
-                    select(BotActionAudit).where(
-                        BotActionAudit.connector_id == uuid.UUID(connector_id)
+                (
+                    await db.execute(
+                        select(BotActionAudit).where(
+                            BotActionAudit.connector_id == uuid.UUID(connector_id)
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert any(
                 e.status == "unauthorized" and "from=999" in (e.detail or "")
                 for e in entries
@@ -2121,6 +2154,7 @@ class TestTelegramBotWebhook:
     ):
         from backend.bots.rate_limit import rate_limiter
         from backend.db.repos import UserRepo
+
         rate_limiter.reset()
 
         # Register a viewer-role user (not the first user).
@@ -2135,14 +2169,17 @@ class TestTelegramBotWebhook:
         )
 
         connector_id = await self._create_connector(
-            client, auth_headers, capabilities=["approvals"],
+            client,
+            auth_headers,
+            capabilities=["approvals"],
         )
         async with app.state.session_factory() as db:
             viewer = await UserRepo.get_by_username(db, "viewer-bot")
             assert viewer is not None
-            session = await SessionRepo.create(db, tier=1)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
             approval = await ApprovalRequestRepo.create(
                 db,
+                TEST_ORG_ID,
                 session_id=session.id,
                 action={"tool_name": "scale_deployment"},
                 expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
@@ -2171,22 +2208,24 @@ class TestTelegramBotWebhook:
         async with app.state.session_factory() as db:
             from backend.db.models import BotActionAudit
             from sqlalchemy import select
+
             entries = (
-                await db.execute(
-                    select(BotActionAudit).where(
-                        BotActionAudit.connector_id == uuid.UUID(connector_id)
+                (
+                    await db.execute(
+                        select(BotActionAudit).where(
+                            BotActionAudit.connector_id == uuid.UUID(connector_id)
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert any(
-                e.status == "role_denied"
-                and "role=viewer" in (e.detail or "")
+                e.status == "role_denied" and "role=viewer" in (e.detail or "")
                 for e in entries
             )
 
-    async def test_bot_user_link_crud(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_bot_user_link_crud(self, client: AsyncClient, app, auth_headers):
         from backend.db.repos import UserRepo
 
         connector_id = await self._create_connector(client, auth_headers)
@@ -2237,9 +2276,12 @@ class TestTelegramBotWebhook:
 
 
 class TestSignalBotWebhook:
-
     async def _create_signal_connector(
-        self, client: AsyncClient, auth_headers, *, capabilities=None,
+        self,
+        client: AsyncClient,
+        auth_headers,
+        *,
+        capabilities=None,
     ) -> str:
         resp = await client.post(
             "/bot-connectors",
@@ -2265,11 +2307,14 @@ class TestSignalBotWebhook:
     ):
         from backend.bots.rate_limit import rate_limiter
         from backend.bots.connectors import signal as signal_mod
+
         rate_limiter.reset()
 
         sent: list[dict] = []
 
-        async def fake_send(*, service_url, bot_number, chat_id, text, timeout_seconds=10.0):
+        async def fake_send(
+            *, service_url, bot_number, chat_id, text, timeout_seconds=10.0
+        ):
             sent.append({"chat_id": chat_id, "text": text})
             return True, None
 
@@ -2278,7 +2323,10 @@ class TestSignalBotWebhook:
         connector_id = await self._create_signal_connector(client, auth_headers)
         async with app.state.session_factory() as db:
             await IncidentRepo.create(
-                db, title="DB outage", description="conns exhausted",
+                db,
+                TEST_ORG_ID,
+                title="DB outage",
+                description="conns exhausted",
                 severity="critical",
             )
             await db.commit()
@@ -2303,10 +2351,7 @@ class TestSignalBotWebhook:
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
-        assert any(
-            s["chat_id"] == "GROUP-1" and "DB outage" in s["text"]
-            for s in sent
-        )
+        assert any(s["chat_id"] == "GROUP-1" and "DB outage" in s["text"] for s in sent)
 
     async def test_signal_webhook_rejects_bad_secret(
         self, client: AsyncClient, auth_headers
@@ -2321,9 +2366,12 @@ class TestSignalBotWebhook:
 
 
 class TestWhatsAppBotWebhook:
-
     async def _create_whatsapp_connector(
-        self, client: AsyncClient, auth_headers, *, capabilities=None,
+        self,
+        client: AsyncClient,
+        auth_headers,
+        *,
+        capabilities=None,
     ) -> str:
         resp = await client.post(
             "/bot-connectors",
@@ -2406,7 +2454,10 @@ class TestWhatsAppBotWebhook:
         connector_id = await self._create_whatsapp_connector(client, auth_headers)
         async with app.state.session_factory() as db:
             await IncidentRepo.create(
-                db, title="Cache fail", description="redis down",
+                db,
+                TEST_ORG_ID,
+                title="Cache fail",
+                description="redis down",
                 severity="high",
             )
             await db.commit()
@@ -2433,8 +2484,7 @@ class TestWhatsAppBotWebhook:
         await asyncio.sleep(0)
 
         assert any(
-            s["recipient"] == "15559998888" and "Cache fail" in s["text"]
-            for s in sent
+            s["recipient"] == "15559998888" and "Cache fail" in s["text"] for s in sent
         )
 
     async def test_whatsapp_webhook_rejects_bad_signature(
@@ -2488,7 +2538,6 @@ class TestWhatsAppBotWebhook:
 
 
 class TestModelConfigAPI:
-
     async def test_list_models(self, client: AsyncClient, auth_headers, monkeypatch):
         monkeypatch.setattr(
             "backend.api.routes.models.ProviderRegistry.discover_models",
@@ -2561,7 +2610,7 @@ class TestModelConfigAPI:
         assert data["is_default"] is True
 
         async with app.state.session_factory() as db:
-            default = await ModelConfigRepo.get_default(db)
+            default = await ModelConfigRepo.get_default(db, TEST_ORG_ID)
             assert default is not None
             assert default.name == "primary-openai"
 
@@ -2647,6 +2696,7 @@ class TestModelConfigAPI:
         async with app.state.session_factory() as db:
             await ModelConfigRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="openai-primary",
                 provider="openai",
                 model_id="gpt-4o",
@@ -2679,6 +2729,7 @@ class TestModelConfigAPI:
         async with app.state.session_factory() as db:
             await ModelConfigRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="default-openai",
                 provider="openai",
                 model_id="gpt-4o",
@@ -2706,6 +2757,7 @@ class TestModelConfigAPI:
         async with app.state.session_factory() as db:
             await ModelConfigRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="unset-primary",
                 provider="ollama",
                 model_id="llama3.2",
@@ -2886,6 +2938,7 @@ class TestModelConfigAPI:
         async with app.state.session_factory() as db:
             cfg = await ModelConfigRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="openai-primary",
                 provider="openai",
                 model_id="gpt-4o",
@@ -2919,6 +2972,7 @@ class TestModelConfigAPI:
         async with app.state.session_factory() as db:
             cfg = await ModelConfigRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="delete-me",
                 provider="ollama",
                 model_id="llama3.2",
@@ -2934,7 +2988,7 @@ class TestModelConfigAPI:
         assert resp.status_code == 204
 
         async with app.state.session_factory() as db:
-            deleted = await ModelConfigRepo.get_by_id(db, config_id)
+            deleted = await ModelConfigRepo.get_by_id(db, TEST_ORG_ID, config_id)
             assert deleted is None
 
     async def test_set_default_saved_model_config_admin(
@@ -2943,6 +2997,7 @@ class TestModelConfigAPI:
         async with app.state.session_factory() as db:
             first = await ModelConfigRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="first",
                 provider="openai",
                 model_id="gpt-4o",
@@ -2950,6 +3005,7 @@ class TestModelConfigAPI:
             )
             second = await ModelConfigRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="second",
                 provider="ollama",
                 model_id="llama3.2",
@@ -2967,17 +3023,17 @@ class TestModelConfigAPI:
         assert resp.json()["is_default"] is True
 
         async with app.state.session_factory() as db:
-            default = await ModelConfigRepo.get_default(db)
+            default = await ModelConfigRepo.get_default(db, TEST_ORG_ID)
             assert default is not None
             assert default.id == second_id
 
 
 class TestMCPServerAPI:
-
     async def test_list_mcp_servers(self, client: AsyncClient, app, auth_headers):
         async with app.state.session_factory() as db:
             await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="k8s",
                 transport="stdio",
                 command="npx",
@@ -3031,6 +3087,7 @@ class TestMCPServerAPI:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="remote",
                 transport="sse",
                 url="http://localhost:8080/sse",
@@ -3064,6 +3121,7 @@ class TestMCPServerAPI:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="delete-me",
                 transport="stdio",
                 command="echo",
@@ -3079,7 +3137,7 @@ class TestMCPServerAPI:
         assert resp.status_code == 204
 
         async with app.state.session_factory() as db:
-            deleted = await MCPServerRepo.get_by_id(db, server_id)
+            deleted = await MCPServerRepo.get_by_id(db, TEST_ORG_ID, server_id)
             assert deleted is None
 
     async def test_test_mcp_server_success(
@@ -3088,6 +3146,7 @@ class TestMCPServerAPI:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="k8s",
                 transport="stdio",
                 command="npx",
@@ -3131,6 +3190,7 @@ class TestMCPServerAPI:
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
                 db,
+                TEST_ORG_ID,
                 name="broken",
                 transport="http",
                 url="https://broken.example.com/mcp",
@@ -3162,7 +3222,6 @@ class TestMCPServerAPI:
 
 
 class TestApprovals:
-
     async def test_list_approvals(self, client: AsyncClient, app, auth_headers):
         _, request = await _create_approval_request(app)
 
@@ -3236,7 +3295,6 @@ class TestApprovals:
 
 
 class TestWebSocket:
-
     async def test_ws_endpoint_exists(self, app):
         """Verify the WebSocket route is registered in the app."""
         ws_routes = [

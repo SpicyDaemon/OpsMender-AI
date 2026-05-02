@@ -6,6 +6,9 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.db.models import Base
@@ -20,9 +23,10 @@ async def _seed_db(db_url: str):
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as db:
-        session = await SessionRepo.create(db, tier=1)
+        session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
         request = await ApprovalRequestRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=session.id,
             action={"tool_name": "delete_pod", "tool_parameters": {"pod": "api"}},
             justification="Testing approval flow",
@@ -40,7 +44,7 @@ async def _get_request_status(db_url: str, request_id):
     engine = create_async_engine(db_url, echo=False)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as db:
-        request = await ApprovalRequestRepo.get_by_id(db, request_id)
+        request = await ApprovalRequestRepo.get_by_id(db, TEST_ORG_ID, request_id)
         status = None if request is None else request.status
     await engine.dispose()
     return status

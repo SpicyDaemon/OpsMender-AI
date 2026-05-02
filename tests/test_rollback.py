@@ -54,7 +54,6 @@ def _call(tool, params, *, permitted=True, error=None):
 
 
 class TestReverseOrder:
-
     async def test_inverses_called_in_reverse_order(self, skill_def):
         caller = AsyncMock(return_value={"ok": True})
         tool_calls = [
@@ -76,7 +75,6 @@ class TestReverseOrder:
 
 
 class TestSkipBehaviour:
-
     async def test_skips_tools_without_declared_inverse(self, skill_def):
         caller = AsyncMock()
         tool_calls = [_call("rollout_restart", {"deploy": "api"})]
@@ -121,7 +119,6 @@ class TestSkipBehaviour:
 
 
 class TestFailureHandling:
-
     async def test_one_failure_does_not_abort_the_rest(self, skill_def):
         call_results = [RuntimeError("first boom"), {"ok": True}]
 
@@ -153,7 +150,6 @@ class TestFailureHandling:
 
 
 class TestAuditIntegration:
-
     async def test_logs_start_and_end_per_successful_step(self, skill_def):
         caller = AsyncMock(return_value={"ok": True})
         logger = MagicMock()
@@ -211,7 +207,6 @@ class TestAuditIntegration:
 
 
 class TestReportMath:
-
     def test_counts(self):
         r = RollbackReport(
             steps=[
@@ -228,7 +223,6 @@ class TestReportMath:
 
 
 class TestReconstructToolCalls:
-
     def test_reconstructs_only_successful_calls(self):
         entries = [
             {

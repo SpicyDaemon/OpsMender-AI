@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -135,17 +137,19 @@ async def _seed_session_with_cordon(app) -> tuple[uuid.UUID, uuid.UUID, uuid.UUI
     factory = app.state.session_factory
     async with factory() as db:
         server = await MCPServerRepo.create(
-            db, name="k8s-test", transport="stdio", command="echo"
+            db, TEST_ORG_ID, name="k8s-test", transport="stdio", command="echo"
         )
         skill = await SkillRepo.create(
             db,
+            TEST_ORG_ID,
             name="test",
             content_md=_SKILL_MD,
             mcp_server_id=server.id,
         )
-        session = await SessionRepo.create(db, tier=0)
+        session = await SessionRepo.create(db, TEST_ORG_ID, tier=0)
         await AuditEntryRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=session.id,
             tier=0,
             entry_type=AuditEntryType.TOOL_CALL_START.value,
@@ -155,6 +159,7 @@ async def _seed_session_with_cordon(app) -> tuple[uuid.UUID, uuid.UUID, uuid.UUI
         )
         await AuditEntryRepo.create(
             db,
+            TEST_ORG_ID,
             session_id=session.id,
             tier=0,
             entry_type=AuditEntryType.TOOL_CALL_END.value,
@@ -166,14 +171,12 @@ async def _seed_session_with_cordon(app) -> tuple[uuid.UUID, uuid.UUID, uuid.UUI
         return session.id, server.id, skill.id
 
 
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
 
 class TestAuth:
-
     async def test_viewer_forbidden(self, client: AsyncClient, viewer_headers, app):
         session_id, _, _ = await _seed_session_with_cordon(app)
         resp = await client.post(
@@ -192,13 +195,12 @@ class TestAuth:
 
 
 class TestDryRun:
-
     async def test_empty_session_returns_zero_plan(
         self, client: AsyncClient, admin_headers, app
     ):
         factory = app.state.session_factory
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=0)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=0)
             await db.commit()
             sid = session.id
         resp = await client.post(
@@ -211,9 +213,7 @@ class TestDryRun:
         assert data["attempted"] == 0
         assert data["steps"] == []
 
-    async def test_resolves_inverse_plan(
-        self, client: AsyncClient, admin_headers, app
-    ):
+    async def test_resolves_inverse_plan(self, client: AsyncClient, admin_headers, app):
         sid, _, _ = await _seed_session_with_cordon(app)
         resp = await client.post(
             f"/sessions/{sid}/rollback",
@@ -230,7 +230,6 @@ class TestDryRun:
 
 
 class TestErrorPaths:
-
     async def test_unknown_session(self, client: AsyncClient, admin_headers):
         resp = await client.post(
             f"/sessions/{uuid.uuid4()}/rollback",
@@ -251,14 +250,13 @@ class TestErrorPaths:
         assert resp.status_code == 400
         assert "mcp_server is required" in resp.json()["detail"]
 
-    async def test_no_skill_definition(
-        self, client: AsyncClient, admin_headers, app
-    ):
+    async def test_no_skill_definition(self, client: AsyncClient, admin_headers, app):
         factory = app.state.session_factory
         async with factory() as db:
-            session = await SessionRepo.create(db, tier=0)
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=0)
             await AuditEntryRepo.create(
                 db,
+                TEST_ORG_ID,
                 session_id=session.id,
                 tier=0,
                 entry_type=AuditEntryType.TOOL_CALL_START.value,
@@ -268,6 +266,7 @@ class TestErrorPaths:
             )
             await AuditEntryRepo.create(
                 db,
+                TEST_ORG_ID,
                 session_id=session.id,
                 tier=0,
                 entry_type=AuditEntryType.TOOL_CALL_END.value,
@@ -293,7 +292,6 @@ class TestErrorPaths:
 
 
 class TestLiveRollback:
-
     async def test_live_invokes_mcp_inverse(
         self, client: AsyncClient, admin_headers, app, monkeypatch
     ):
@@ -320,9 +318,7 @@ class TestLiveRollback:
             "backend.api.routes.sessions.mcp_list_tools", _fake_list_tools
         )
         monkeypatch.setattr("backend.tiers.sandbox.call_tool", _fake_call_tool)
-        monkeypatch.setattr(
-            "backend.mcp.pool.MCPServerPool.connect", _fake_connect
-        )
+        monkeypatch.setattr("backend.mcp.pool.MCPServerPool.connect", _fake_connect)
 
         resp = await client.post(
             f"/sessions/{sid}/rollback",

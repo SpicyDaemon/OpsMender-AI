@@ -6,6 +6,9 @@ import asyncio
 import json
 
 import pytest
+import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cli.aim import main, _parse_args
@@ -17,11 +20,7 @@ from backend.db.repos import ModelConfigRepo
 # Helpers
 # ---------------------------------------------------------------------------
 
-MINIMAL_CFG = (
-    "AIM_TIER=2\n"
-    "AIM_LOG_LEVEL=INFO\n"
-    "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
-)
+MINIMAL_CFG = "AIM_TIER=2\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG=./logs/audit.jsonl\n"
 
 CFG_WITH_SERVER = (
     "AIM_MCP_SERVERS_JSON="
@@ -166,11 +165,7 @@ class TestConfigValidate:
         assert "Validation OK" in out
 
     def test_invalid_tier_fails(self, tmp_path, capsys):
-        bad_cfg = (
-            "AIM_TIER=9\n"
-            "AIM_LOG_LEVEL=INFO\n"
-            "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
-        )
+        bad_cfg = "AIM_TIER=9\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG=./logs/audit.jsonl\n"
         cfg_path = _write_cfg(tmp_path, bad_cfg)
         with pytest.raises(SystemExit) as exc_info:
             main(["--config", cfg_path, "config", "--validate"])
@@ -189,11 +184,16 @@ class TestConfigValidate:
     def test_validate_with_valid_skill_file(self, tmp_path, capsys):
         cfg_path = _write_cfg(tmp_path)
         with pytest.raises(SystemExit) as exc_info:
-            main([
-                "--config", cfg_path,
-                "config", "--validate",
-                "--skill-file", "examples/SKILL.md",
-            ])
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "--validate",
+                    "--skill-file",
+                    "examples/SKILL.md",
+                ]
+            )
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
         assert "Validation OK" in out
@@ -202,11 +202,16 @@ class TestConfigValidate:
     def test_validate_with_missing_skill_file(self, tmp_path, capsys):
         cfg_path = _write_cfg(tmp_path)
         with pytest.raises(SystemExit) as exc_info:
-            main([
-                "--config", cfg_path,
-                "config", "--validate",
-                "--skill-file", "/tmp/nonexistent.md",
-            ])
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "--validate",
+                    "--skill-file",
+                    "/tmp/nonexistent.md",
+                ]
+            )
         assert exc_info.value.code == 1
         out = capsys.readouterr().out
         assert "Skill file not found" in out
@@ -243,7 +248,9 @@ class TestConfigModel:
                 }
             ]
 
-        monkeypatch.setattr("cli.aim.ProviderRegistry.discover_models", _discover_models)
+        monkeypatch.setattr(
+            "cli.aim.ProviderRegistry.discover_models", _discover_models
+        )
 
         with pytest.raises(SystemExit) as exc_info:
             main(
@@ -295,7 +302,7 @@ class TestConfigModel:
                     "http://localhost:11434",
                     "--json",
                 ]
-        )
+            )
         assert exc_info.value.code == 0
         data = json.loads(capsys.readouterr().out)
         assert data["config"]["provider"] == "ollama"
@@ -307,7 +314,7 @@ class TestConfigModel:
             engine = create_async_engine(database_url, echo=False)
             factory = async_sessionmaker(engine, expire_on_commit=False)
             async with factory() as session:
-                default = await ModelConfigRepo.get_default(session)
+                default = await ModelConfigRepo.get_default(session, TEST_ORG_ID)
                 assert default is not None
                 assert default.provider == "ollama"
                 assert default.model_id == "llama3.2"
@@ -350,11 +357,13 @@ class TestConfigModel:
         database_url = f"sqlite+aiosqlite:///{db_path}"
         _create_sqlite_schema(database_url)
         monkeypatch.setenv("AIM_DATABASE_URL", database_url)
-        answers = iter([
-            "openai",
-            "gpt-5-custom",
-            "OPENAI_API_KEY",
-        ])
+        answers = iter(
+            [
+                "openai",
+                "gpt-5-custom",
+                "OPENAI_API_KEY",
+            ]
+        )
         monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
         monkeypatch.setattr(
             "cli.aim.ProviderRegistry.validate_model_config",
@@ -439,7 +448,7 @@ class TestConfigModel:
             engine = create_async_engine(database_url, echo=False)
             factory = async_sessionmaker(engine, expire_on_commit=False)
             async with factory() as session:
-                default = await ModelConfigRepo.get_default(session)
+                default = await ModelConfigRepo.get_default(session, TEST_ORG_ID)
                 assert default is not None
                 assert default.provider == "ollama"
                 assert default.model_id == "llama3.2"
@@ -501,17 +510,14 @@ class TestConfigModel:
         assert exc_info.value.code == 0
         assert captured_kwargs["provider"] == "azure_openai"
         assert (
-            captured_kwargs["base_url"]
-            == "https://example-resource.openai.azure.com/"
+            captured_kwargs["base_url"] == "https://example-resource.openai.azure.com/"
         )
         assert captured_kwargs["api_version"] == "2024-10-21"
         prompt_blob = " ".join(prompts_seen)
         assert "Base URL" in prompt_blob
         assert "API version" in prompt_blob
 
-    def test_model_bootstrap_json_output(
-        self, tmp_path, capsys, monkeypatch
-    ):
+    def test_model_bootstrap_json_output(self, tmp_path, capsys, monkeypatch):
         cfg_path = _write_cfg(tmp_path)
         db_path = tmp_path / "aim.db"
         database_url = f"sqlite+aiosqlite:///{db_path}"

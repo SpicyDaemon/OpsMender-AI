@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -40,7 +42,10 @@ async def db(factory):
 @pytest.fixture
 async def target(db: AsyncSession) -> SLATarget:
     t = await SLATargetRepo.create(
-        db, name="test-target", kind="http",
+        db,
+        TEST_ORG_ID,
+        name="test-target",
+        kind="http",
         config={"url": "https://example.com"},
     )
     await db.commit()
@@ -48,7 +53,6 @@ async def target(db: AsyncSession) -> SLATarget:
 
 
 class TestFloorFunctions:
-
     def test_floor_5m(self):
         dt = datetime(2026, 4, 30, 14, 13, 45, tzinfo=timezone.utc)
         assert _floor_5m(dt) == datetime(2026, 4, 30, 14, 10, 0, tzinfo=timezone.utc)
@@ -67,9 +71,10 @@ class TestFloorFunctions:
 
 
 class TestRollTo5m:
-
     @pytest.mark.asyncio
-    async def test_creates_5m_buckets(self, factory, db: AsyncSession, target: SLATarget):
+    async def test_creates_5m_buckets(
+        self, factory, db: AsyncSession, target: SLATarget
+    ):
         """Raw samples should be grouped into 5m aggregate buckets."""
         downsampler = UptimeDownsampler(factory)
 
@@ -102,9 +107,11 @@ class TestRollTo5m:
 
         # Verify the buckets were created
         async with factory() as check_db:
-            stmt = select(UptimeSample5m).where(
-                UptimeSample5m.target_id == target.id
-            ).order_by(UptimeSample5m.bucket_start)
+            stmt = (
+                select(UptimeSample5m)
+                .where(UptimeSample5m.target_id == target.id)
+                .order_by(UptimeSample5m.bucket_start)
+            )
             rows = (await check_db.execute(stmt)).scalars().all()
 
         assert len(rows) == 2
@@ -137,7 +144,9 @@ class TestRollTo5m:
         assert r2["buckets_5m"] == 0  # idempotent -- already created
 
     @pytest.mark.asyncio
-    async def test_suppressed_excluded_from_pct(self, factory, db: AsyncSession, target: SLATarget):
+    async def test_suppressed_excluded_from_pct(
+        self, factory, db: AsyncSession, target: SLATarget
+    ):
         """Suppressed samples should not affect up_pct calculation."""
         downsampler = UptimeDownsampler(factory)
 
@@ -146,17 +155,24 @@ class TestRollTo5m:
 
         # 3 up, 2 suppressed down = up_pct should be 100% (only 3 non-suppressed, all up)
         for i in range(3):
-            db.add(UptimeSample(
-                target_id=target.id,
-                observed_at=bucket_start + timedelta(seconds=30 * i),
-                up=True, source="poller",
-            ))
+            db.add(
+                UptimeSample(
+                    target_id=target.id,
+                    observed_at=bucket_start + timedelta(seconds=30 * i),
+                    up=True,
+                    source="poller",
+                )
+            )
         for i in range(2):
-            db.add(UptimeSample(
-                target_id=target.id,
-                observed_at=bucket_start + timedelta(seconds=30 * (3 + i)),
-                up=False, source="poller", suppressed=True,
-            ))
+            db.add(
+                UptimeSample(
+                    target_id=target.id,
+                    observed_at=bucket_start + timedelta(seconds=30 * (3 + i)),
+                    up=False,
+                    source="poller",
+                    suppressed=True,
+                )
+            )
         await db.commit()
 
         await downsampler.run_once()
@@ -172,9 +188,10 @@ class TestRollTo5m:
 
 
 class TestRollTo1h:
-
     @pytest.mark.asyncio
-    async def test_creates_1h_buckets(self, factory, db: AsyncSession, target: SLATarget):
+    async def test_creates_1h_buckets(
+        self, factory, db: AsyncSession, target: SLATarget
+    ):
         """5m buckets should be rolled into 1h buckets."""
         downsampler = UptimeDownsampler(factory)
 
@@ -185,30 +202,36 @@ class TestRollTo1h:
 
         # Hour 1: 12 five-minute buckets
         for i in range(12):
-            db.add(UptimeSample5m(
-                target_id=target.id,
-                bucket_start=h1_floor + timedelta(minutes=5 * i),
-                up_pct=0.9 if i < 6 else 1.0,
-                total_samples=5,
-            ))
+            db.add(
+                UptimeSample5m(
+                    target_id=target.id,
+                    bucket_start=h1_floor + timedelta(minutes=5 * i),
+                    up_pct=0.9 if i < 6 else 1.0,
+                    total_samples=5,
+                )
+            )
 
         # Hour 2: 12 five-minute buckets all 100%
         for i in range(12):
-            db.add(UptimeSample5m(
-                target_id=target.id,
-                bucket_start=h2_floor + timedelta(minutes=5 * i),
-                up_pct=1.0,
-                total_samples=5,
-            ))
+            db.add(
+                UptimeSample5m(
+                    target_id=target.id,
+                    bucket_start=h2_floor + timedelta(minutes=5 * i),
+                    up_pct=1.0,
+                    total_samples=5,
+                )
+            )
         await db.commit()
 
         result = await downsampler.run_once()
         assert result["buckets_1h"] == 2
 
         async with factory() as check_db:
-            stmt = select(UptimeSample1h).where(
-                UptimeSample1h.target_id == target.id
-            ).order_by(UptimeSample1h.bucket_start)
+            stmt = (
+                select(UptimeSample1h)
+                .where(UptimeSample1h.target_id == target.id)
+                .order_by(UptimeSample1h.bucket_start)
+            )
             rows = (await check_db.execute(stmt)).scalars().all()
 
         assert len(rows) == 2
@@ -221,26 +244,33 @@ class TestRollTo1h:
 
 
 class TestPruneRaw:
-
     @pytest.mark.asyncio
-    async def test_prunes_old_samples(self, factory, db: AsyncSession, target: SLATarget):
+    async def test_prunes_old_samples(
+        self, factory, db: AsyncSession, target: SLATarget
+    ):
         """Raw samples older than retention_days should be deleted."""
         downsampler = UptimeDownsampler(factory, retention_days=30)
 
         now = datetime.now(timezone.utc)
 
         # Insert old sample (40 days ago)
-        db.add(UptimeSample(
-            target_id=target.id,
-            observed_at=now - timedelta(days=40),
-            up=True, source="poller",
-        ))
+        db.add(
+            UptimeSample(
+                target_id=target.id,
+                observed_at=now - timedelta(days=40),
+                up=True,
+                source="poller",
+            )
+        )
         # Insert recent sample (1 day ago)
-        db.add(UptimeSample(
-            target_id=target.id,
-            observed_at=now - timedelta(days=1),
-            up=True, source="poller",
-        ))
+        db.add(
+            UptimeSample(
+                target_id=target.id,
+                observed_at=now - timedelta(days=1),
+                up=True,
+                source="poller",
+            )
+        )
         await db.commit()
 
         result = await downsampler.run_once()
@@ -248,9 +278,7 @@ class TestPruneRaw:
 
         # Verify only the recent one remains
         async with factory() as check_db:
-            stmt = select(UptimeSample).where(
-                UptimeSample.target_id == target.id
-            )
+            stmt = select(UptimeSample).where(UptimeSample.target_id == target.id)
             remaining = (await check_db.execute(stmt)).scalars().all()
 
         assert len(remaining) == 1
@@ -261,16 +289,21 @@ class TestPruneRaw:
         assert obs > now - timedelta(days=2)
 
     @pytest.mark.asyncio
-    async def test_no_prune_when_recent(self, factory, db: AsyncSession, target: SLATarget):
+    async def test_no_prune_when_recent(
+        self, factory, db: AsyncSession, target: SLATarget
+    ):
         """Recent samples should not be pruned."""
         downsampler = UptimeDownsampler(factory, retention_days=30)
 
         now = datetime.now(timezone.utc)
-        db.add(UptimeSample(
-            target_id=target.id,
-            observed_at=now - timedelta(days=5),
-            up=True, source="poller",
-        ))
+        db.add(
+            UptimeSample(
+                target_id=target.id,
+                observed_at=now - timedelta(days=5),
+                up=True,
+                source="poller",
+            )
+        )
         await db.commit()
 
         result = await downsampler.run_once()
@@ -278,7 +311,6 @@ class TestPruneRaw:
 
 
 class TestRunOnceIntegration:
-
     @pytest.mark.asyncio
     async def test_full_pipeline(self, factory, db: AsyncSession, target: SLATarget):
         """Full run_once should create 5m + 1h buckets and prune old data."""
@@ -289,18 +321,24 @@ class TestRunOnceIntegration:
         base = now - timedelta(hours=2)
         bucket_start = _floor_5m(base)
         for i in range(5):
-            db.add(UptimeSample(
-                target_id=target.id,
-                observed_at=bucket_start + timedelta(seconds=30 * i),
-                up=True, source="poller",
-            ))
+            db.add(
+                UptimeSample(
+                    target_id=target.id,
+                    observed_at=bucket_start + timedelta(seconds=30 * i),
+                    up=True,
+                    source="poller",
+                )
+            )
 
         # Insert an old sample that should be pruned
-        db.add(UptimeSample(
-            target_id=target.id,
-            observed_at=now - timedelta(days=35),
-            up=False, source="poller",
-        ))
+        db.add(
+            UptimeSample(
+                target_id=target.id,
+                observed_at=now - timedelta(days=35),
+                up=False,
+                source="poller",
+            )
+        )
         await db.commit()
 
         result = await downsampler.run_once()

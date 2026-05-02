@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -27,13 +29,12 @@ async def db():
 @pytest.fixture
 async def session_id(db: AsyncSession) -> str:
     """Create a session row and return its ID as a string."""
-    sess = await SessionRepo.create(db, tier=2)
+    sess = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
     await db.flush()
     return str(sess.id)
 
 
 class TestPgAuditLogger:
-
     async def test_log_session_lifecycle(self, db: AsyncSession, session_id: str):
         logger = PgAuditLogger(db)
 
@@ -55,7 +56,11 @@ class TestPgAuditLogger:
             session_id, tier=2, tool_name="get_pods", tool_parameters={"ns": "default"}
         )
         await logger.log_tool_call_end(
-            session_id, tier=2, tool_name="get_pods", result={"count": 5}, duration_ms=150
+            session_id,
+            tier=2,
+            tool_name="get_pods",
+            result={"count": 5},
+            duration_ms=150,
         )
 
         entries = await logger.read_by_session(session_id)
@@ -101,4 +106,5 @@ class TestPgAuditLogger:
 
         entries = await logger.read_by_session(session_id)
         from backend.audit.logger import AuditEntry as AuditEntryDC
+
         assert isinstance(entries[0], AuditEntryDC)

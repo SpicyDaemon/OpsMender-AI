@@ -14,6 +14,8 @@ import io
 import json
 import uuid
 
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -47,6 +49,7 @@ operations:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def db_factory():
@@ -142,8 +145,8 @@ async def viewer_headers(client: AsyncClient, auth_headers) -> dict[str, str]:
 # Parser
 # ---------------------------------------------------------------------------
 
-class TestParserLoads:
 
+class TestParserLoads:
     def test_parses_front_matter(self):
         skill = parse_skill_content(SAMPLE_SKILL)
         assert skill.environment == "sample"
@@ -162,90 +165,103 @@ class TestParserLoads:
 # SkillRepo
 # ---------------------------------------------------------------------------
 
-class TestSkillRepo:
 
+class TestSkillRepo:
     async def test_create_and_get(self, db: AsyncSession):
         skill = await SkillRepo.create(
             db,
+            TEST_ORG_ID,
             name="prod",
             content_md=SAMPLE_SKILL,
             description="Production",
         )
         await db.flush()
 
-        fetched = await SkillRepo.get_by_id(db, skill.id)
+        fetched = await SkillRepo.get_by_id(db, TEST_ORG_ID, skill.id)
         assert fetched is not None
         assert fetched.name == "prod"
         assert fetched.description == "Production"
         assert fetched.content_md.startswith("---")
 
     async def test_get_by_name(self, db: AsyncSession):
-        await SkillRepo.create(db, name="stage", content_md=SAMPLE_SKILL)
+        await SkillRepo.create(db, TEST_ORG_ID, name="stage", content_md=SAMPLE_SKILL)
         await db.flush()
-        assert (await SkillRepo.get_by_name(db, "stage")) is not None
-        assert (await SkillRepo.get_by_name(db, "missing")) is None
+        assert (await SkillRepo.get_by_name(db, TEST_ORG_ID, "stage")) is not None
+        assert (await SkillRepo.get_by_name(db, TEST_ORG_ID, "missing")) is None
 
     async def test_list_for_mcp_server(self, db: AsyncSession):
         server = await MCPServerRepo.create(
-            db, name="k8s-prod", transport="stdio", command="echo"
+            db, TEST_ORG_ID, name="k8s-prod", transport="stdio", command="echo"
         )
         await db.flush()
 
         await SkillRepo.create(
-            db, name="bound-1", content_md=SAMPLE_SKILL, mcp_server_id=server.id
+            db,
+            TEST_ORG_ID,
+            name="bound-1",
+            content_md=SAMPLE_SKILL,
+            mcp_server_id=server.id,
         )
         await SkillRepo.create(
-            db, name="bound-2", content_md=SAMPLE_SKILL, mcp_server_id=server.id
+            db,
+            TEST_ORG_ID,
+            name="bound-2",
+            content_md=SAMPLE_SKILL,
+            mcp_server_id=server.id,
         )
-        await SkillRepo.create(db, name="global", content_md=SAMPLE_SKILL)
+        await SkillRepo.create(db, TEST_ORG_ID, name="global", content_md=SAMPLE_SKILL)
         await db.flush()
 
-        bound = await SkillRepo.list_for_mcp_server(db, server.id)
+        bound = await SkillRepo.list_for_mcp_server(db, TEST_ORG_ID, server.id)
         assert {s.name for s in bound} == {"bound-1", "bound-2"}
 
     async def test_get_for_mcp_server_falls_back_to_global(self, db: AsyncSession):
         server = await MCPServerRepo.create(
-            db, name="k8s-prod", transport="stdio", command="echo"
+            db, TEST_ORG_ID, name="k8s-prod", transport="stdio", command="echo"
         )
         await db.flush()
 
         await SkillRepo.create(
-            db, name="global-only", content_md=SAMPLE_SKILL
+            db, TEST_ORG_ID, name="global-only", content_md=SAMPLE_SKILL
         )
         await db.flush()
 
-        fallback = await SkillRepo.get_for_mcp_server(db, server.id)
+        fallback = await SkillRepo.get_for_mcp_server(db, TEST_ORG_ID, server.id)
         assert fallback is not None
         assert fallback.name == "global-only"
 
     async def test_get_for_mcp_server_prefers_bound(self, db: AsyncSession):
         server = await MCPServerRepo.create(
-            db, name="k8s-prod", transport="stdio", command="echo"
+            db, TEST_ORG_ID, name="k8s-prod", transport="stdio", command="echo"
         )
         await db.flush()
 
-        await SkillRepo.create(db, name="global", content_md=SAMPLE_SKILL)
+        await SkillRepo.create(db, TEST_ORG_ID, name="global", content_md=SAMPLE_SKILL)
         await SkillRepo.create(
             db,
+            TEST_ORG_ID,
             name="bound",
             content_md=SAMPLE_SKILL,
             mcp_server_id=server.id,
         )
         await db.flush()
 
-        match = await SkillRepo.get_for_mcp_server(db, server.id)
+        match = await SkillRepo.get_for_mcp_server(db, TEST_ORG_ID, server.id)
         assert match is not None
         assert match.name == "bound"
 
     async def test_get_for_mcp_server_none_when_empty(self, db: AsyncSession):
-        assert await SkillRepo.get_for_mcp_server(db, None) is None
+        assert await SkillRepo.get_for_mcp_server(db, TEST_ORG_ID, None) is None
 
     async def test_update(self, db: AsyncSession):
-        skill = await SkillRepo.create(db, name="v1", content_md=SAMPLE_SKILL)
+        skill = await SkillRepo.create(
+            db, TEST_ORG_ID, name="v1", content_md=SAMPLE_SKILL
+        )
         await db.flush()
 
         updated = await SkillRepo.update(
             db,
+            TEST_ORG_ID,
             skill.id,
             name="v2",
             content_md=SAMPLE_SKILL + "\n# changed",
@@ -256,20 +272,22 @@ class TestSkillRepo:
         assert updated.description == "new"
 
     async def test_delete(self, db: AsyncSession):
-        skill = await SkillRepo.create(db, name="gone", content_md=SAMPLE_SKILL)
+        skill = await SkillRepo.create(
+            db, TEST_ORG_ID, name="gone", content_md=SAMPLE_SKILL
+        )
         await db.flush()
 
-        assert await SkillRepo.delete(db, skill.id) is True
-        assert await SkillRepo.get_by_id(db, skill.id) is None
-        assert await SkillRepo.delete(db, uuid.uuid4()) is False
+        assert await SkillRepo.delete(db, TEST_ORG_ID, skill.id) is True
+        assert await SkillRepo.get_by_id(db, TEST_ORG_ID, skill.id) is None
+        assert await SkillRepo.delete(db, TEST_ORG_ID, uuid.uuid4()) is False
 
 
 # ---------------------------------------------------------------------------
 # Auto-import
 # ---------------------------------------------------------------------------
 
-class TestAutoImport:
 
+class TestAutoImport:
     async def test_imports_new_files(self, db_factory, tmp_path):
         (tmp_path / "production").mkdir()
         (tmp_path / "production" / "SKILL.md").write_text(SAMPLE_SKILL)
@@ -282,14 +300,16 @@ class TestAutoImport:
         assert result.failed == []
 
         async with db_factory() as db:
-            names = [s.name for s in await SkillRepo.list_all(db)]
+            names = [s.name for s in await SkillRepo.list_all(db, TEST_ORG_ID)]
         assert set(names) == {"production", "sandbox"}
 
     async def test_skips_existing(self, db_factory, tmp_path):
         (tmp_path / "SKILL.md").write_text(SAMPLE_SKILL)
 
         async with db_factory() as db:
-            await SkillRepo.create(db, name="SKILL", content_md="pre-existing")
+            await SkillRepo.create(
+                db, TEST_ORG_ID, name="SKILL", content_md="pre-existing"
+            )
             await db.commit()
 
         result = await auto_import(db_factory, skills_dir=tmp_path)
@@ -324,8 +344,8 @@ class TestAutoImport:
 # REST API
 # ---------------------------------------------------------------------------
 
-class TestSkillsAPI:
 
+class TestSkillsAPI:
     async def test_empty_list(self, client: AsyncClient, auth_headers):
         resp = await client.get("/skills", headers=auth_headers)
         assert resp.status_code == 200
@@ -334,7 +354,11 @@ class TestSkillsAPI:
     async def test_create_and_list(self, client: AsyncClient, auth_headers):
         resp = await client.post(
             "/skills",
-            json={"name": "prod", "content_md": SAMPLE_SKILL, "description": "Production"},
+            json={
+                "name": "prod",
+                "content_md": SAMPLE_SKILL,
+                "description": "Production",
+            },
             headers=auth_headers,
         )
         assert resp.status_code == 201, resp.text
@@ -345,9 +369,7 @@ class TestSkillsAPI:
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
-    async def test_viewer_cannot_create(
-        self, client: AsyncClient, viewer_headers
-    ):
+    async def test_viewer_cannot_create(self, client: AsyncClient, viewer_headers):
         resp = await client.post(
             "/skills",
             json={"name": "nope", "content_md": SAMPLE_SKILL},
@@ -355,11 +377,11 @@ class TestSkillsAPI:
         )
         assert resp.status_code == 403
 
-    async def test_viewer_can_read(
-        self, client: AsyncClient, app, viewer_headers
-    ):
+    async def test_viewer_can_read(self, client: AsyncClient, app, viewer_headers):
         async with app.state.session_factory() as db:
-            await SkillRepo.create(db, name="readable", content_md=SAMPLE_SKILL)
+            await SkillRepo.create(
+                db, TEST_ORG_ID, name="readable", content_md=SAMPLE_SKILL
+            )
             await db.commit()
 
         resp = await client.get("/skills", headers=viewer_headers)
@@ -385,21 +407,25 @@ class TestSkillsAPI:
         second = await client.post("/skills", json=payload, headers=auth_headers)
         assert second.status_code == 409
 
-    async def test_filter_by_mcp_server(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_filter_by_mcp_server(self, client: AsyncClient, app, auth_headers):
         async with app.state.session_factory() as db:
             server = await MCPServerRepo.create(
-                db, name="k8s-prod", transport="stdio", command="echo"
+                db, TEST_ORG_ID, name="k8s-prod", transport="stdio", command="echo"
             )
             await db.commit()
             await db.refresh(server)
             server_id = server.id
 
             await SkillRepo.create(
-                db, name="bound", content_md=SAMPLE_SKILL, mcp_server_id=server_id
+                db,
+                TEST_ORG_ID,
+                name="bound",
+                content_md=SAMPLE_SKILL,
+                mcp_server_id=server_id,
             )
-            await SkillRepo.create(db, name="global", content_md=SAMPLE_SKILL)
+            await SkillRepo.create(
+                db, TEST_ORG_ID, name="global", content_md=SAMPLE_SKILL
+            )
             await db.commit()
 
         resp = await client.get(
@@ -412,7 +438,9 @@ class TestSkillsAPI:
 
     async def test_update_skill(self, client: AsyncClient, app, auth_headers):
         async with app.state.session_factory() as db:
-            skill = await SkillRepo.create(db, name="v1", content_md=SAMPLE_SKILL)
+            skill = await SkillRepo.create(
+                db, TEST_ORG_ID, name="v1", content_md=SAMPLE_SKILL
+            )
             await db.commit()
             await db.refresh(skill)
             skill_id = skill.id
@@ -432,7 +460,9 @@ class TestSkillsAPI:
 
     async def test_delete_skill(self, client: AsyncClient, app, auth_headers):
         async with app.state.session_factory() as db:
-            skill = await SkillRepo.create(db, name="gone", content_md=SAMPLE_SKILL)
+            skill = await SkillRepo.create(
+                db, TEST_ORG_ID, name="gone", content_md=SAMPLE_SKILL
+            )
             await db.commit()
             await db.refresh(skill)
             skill_id = skill.id
@@ -441,15 +471,19 @@ class TestSkillsAPI:
         assert resp.status_code == 204
 
         async with app.state.session_factory() as db:
-            assert await SkillRepo.get_by_id(db, skill_id) is None
+            assert await SkillRepo.get_by_id(db, TEST_ORG_ID, skill_id) is None
 
     async def test_clone_skill(self, client: AsyncClient, app, auth_headers):
         async with app.state.session_factory() as db:
             source = await SkillRepo.create(
-                db, name="src", content_md=SAMPLE_SKILL, description="original"
+                db,
+                TEST_ORG_ID,
+                name="src",
+                content_md=SAMPLE_SKILL,
+                description="original",
             )
             server = await MCPServerRepo.create(
-                db, name="k8s-prod", transport="stdio", command="echo"
+                db, TEST_ORG_ID, name="k8s-prod", transport="stdio", command="echo"
             )
             await db.commit()
             await db.refresh(source)
@@ -468,9 +502,7 @@ class TestSkillsAPI:
         assert body["mcp_server_id"] == str(server_id)
         assert body["content_md"] == SAMPLE_SKILL
 
-    async def test_import_skill_upload(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_import_skill_upload(self, client: AsyncClient, auth_headers):
         files = {"file": ("production.md", SAMPLE_SKILL, "text/markdown")}
         resp = await client.post(
             "/skills/import",
@@ -482,9 +514,7 @@ class TestSkillsAPI:
         assert body["name"] == "production"
         assert body["content_md"] == SAMPLE_SKILL
 
-    async def test_import_empty_file_rejected(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_import_empty_file_rejected(self, client: AsyncClient, auth_headers):
         files = {"file": ("empty.md", "", "text/markdown")}
         resp = await client.post(
             "/skills/import",
@@ -511,16 +541,20 @@ class TestSkillsAPI:
 # Enforcement-from-DB helper
 # ---------------------------------------------------------------------------
 
-class TestEnforcementFromDB:
 
+class TestEnforcementFromDB:
     async def test_loads_bound_skill(self, db: AsyncSession):
         server = await MCPServerRepo.create(
-            db, name="k8s-prod", transport="stdio", command="echo"
+            db, TEST_ORG_ID, name="k8s-prod", transport="stdio", command="echo"
         )
         await db.flush()
 
         await SkillRepo.create(
-            db, name="bound", content_md=SAMPLE_SKILL, mcp_server_id=server.id
+            db,
+            TEST_ORG_ID,
+            name="bound",
+            content_md=SAMPLE_SKILL,
+            mcp_server_id=server.id,
         )
         await db.flush()
 
@@ -531,10 +565,10 @@ class TestEnforcementFromDB:
 
     async def test_falls_back_to_global(self, db: AsyncSession):
         server = await MCPServerRepo.create(
-            db, name="k8s-prod", transport="stdio", command="echo"
+            db, TEST_ORG_ID, name="k8s-prod", transport="stdio", command="echo"
         )
         await db.flush()
-        await SkillRepo.create(db, name="global", content_md=SAMPLE_SKILL)
+        await SkillRepo.create(db, TEST_ORG_ID, name="global", content_md=SAMPLE_SKILL)
         await db.flush()
 
         skill_def = await load_skill_for_mcp_server(db, server.id)

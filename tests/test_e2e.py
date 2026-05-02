@@ -15,6 +15,8 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -62,6 +64,7 @@ def _mock_mcp_result(text: str = "pod deleted"):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def app(tmp_path):
@@ -113,7 +116,9 @@ async def client(app):
         yield c
 
 
-async def _register_login(client: AsyncClient, username: str, role: str = "viewer") -> dict[str, str]:
+async def _register_login(
+    client: AsyncClient, username: str, role: str = "viewer"
+) -> dict[str, str]:
     await client.post(
         "/auth/register",
         json={
@@ -132,6 +137,7 @@ async def _register_login(client: AsyncClient, username: str, role: str = "viewe
 # ---------------------------------------------------------------------------
 # E2E test
 # ---------------------------------------------------------------------------
+
 
 class TestE2EIncidentFlow:
     """API → incident → session → approval → execute → audit (one chain)."""
@@ -176,7 +182,10 @@ class TestE2EIncidentFlow:
             "session_id": str(session_id),
             "plan": [
                 {"tool_name": "get_pods", "tool_parameters": {"namespace": "prod"}},
-                {"tool_name": "delete_pod", "tool_parameters": {"name": "checkout-7xyz"}},
+                {
+                    "tool_name": "delete_pod",
+                    "tool_parameters": {"name": "checkout-7xyz"},
+                },
             ],
             "approved_actions": [],
             "blocked_actions": [],
@@ -234,7 +243,10 @@ class TestE2EIncidentFlow:
                     str(session_id),
                     tier=1,
                     tool_name=tool_name,
-                    result={"content": [{"type": "text", "text": "ok"}], "isError": False},
+                    result={
+                        "content": [{"type": "text", "text": "ok"}],
+                        "isError": False,
+                    },
                     duration_ms=1,
                 )
                 assert enforcement.permitted is True
@@ -263,7 +275,7 @@ class TestE2EIncidentFlow:
         # 10. The operator closes the session via REST (conventional
         #     shutdown — just flips status + summary).
         async with factory() as db:
-            session = await SessionRepo.get_by_id(db, session_id)
+            session = await SessionRepo.get_by_id(db, TEST_ORG_ID, session_id)
             assert session is not None
             session.status = "completed"
             session.summary = "E2E test: destructive action executed after approval"
@@ -273,9 +285,7 @@ class TestE2EIncidentFlow:
         assert get_resp.status_code == 200
         assert get_resp.json()["status"] == "completed"
 
-    async def test_tier_1_rejection_blocks_execution(
-        self, client: AsyncClient, app
-    ):
+    async def test_tier_1_rejection_blocks_execution(self, client: AsyncClient, app):
         """If the operator rejects, the destructive action never hits MCP."""
         _, factory = app
 
@@ -303,21 +313,24 @@ class TestE2EIncidentFlow:
 
         skill_def = load_skill_def(SKILL_MD)
         service = ApprovalService(factory, poll_interval_seconds=0.01)
-        gate = _build_tier_gate(
-            tier=1, skill_def=skill_def, approval_service=service
-        )
+        gate = _build_tier_gate(tier=1, skill_def=skill_def, approval_service=service)
         gate_task = asyncio.create_task(
-            gate({
-                "tier": 1,
-                "session_id": str(session_id),
-                "plan": [
-                    {"tool_name": "delete_pod", "tool_parameters": {"name": "risky"}},
-                ],
-                "approved_actions": [],
-                "blocked_actions": [],
-                "approval_requests": [],
-                "skill_definition": skill_def,
-            })
+            gate(
+                {
+                    "tier": 1,
+                    "session_id": str(session_id),
+                    "plan": [
+                        {
+                            "tool_name": "delete_pod",
+                            "tool_parameters": {"name": "risky"},
+                        },
+                    ],
+                    "approved_actions": [],
+                    "blocked_actions": [],
+                    "approval_requests": [],
+                    "skill_definition": skill_def,
+                }
+            )
         )
 
         approval_id: str | None = None
@@ -325,7 +338,9 @@ class TestE2EIncidentFlow:
             resp = await client.get(
                 "/approvals", params={"status": "pending"}, headers=operator
             )
-            items = [a for a in resp.json()["items"] if a["session_id"] == str(session_id)]
+            items = [
+                a for a in resp.json()["items"] if a["session_id"] == str(session_id)
+            ]
             if items:
                 approval_id = items[0]["id"]
                 break

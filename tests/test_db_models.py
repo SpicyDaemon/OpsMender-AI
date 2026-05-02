@@ -52,7 +52,6 @@ async def db():
 
 
 class TestUserModel:
-
     async def test_create_user(self, db: AsyncSession):
         user = User(
             username="testuser",
@@ -88,7 +87,6 @@ class TestUserModel:
 
 
 class TestIncidentModel:
-
     async def test_create_incident(self, db: AsyncSession):
         inc = Incident(
             title="Test incident",
@@ -121,7 +119,6 @@ class TestIncidentModel:
 
 
 class TestSessionModel:
-
     async def test_create_session(self, db: AsyncSession):
         sess = Session(tier=2, model_provider="anthropic", model_id="claude-sonnet")
         db.add(sess)
@@ -150,7 +147,6 @@ class TestSessionModel:
 
 
 class TestAuditEntryModel:
-
     async def test_create_audit_entry(self, db: AsyncSession):
         sess = Session(tier=2)
         db.add(sess)
@@ -197,7 +193,6 @@ class TestAuditEntryModel:
 
 
 class TestApprovalRequestModel:
-
     async def test_create_approval_request(self, db: AsyncSession):
         sess = Session(tier=1)
         db.add(sess)
@@ -223,7 +218,6 @@ class TestApprovalRequestModel:
 
 
 class TestModelConfigModel:
-
     async def test_create_model_config(self, db: AsyncSession):
         cfg = ModelConfig(
             name="test-model",
@@ -250,7 +244,6 @@ class TestModelConfigModel:
 
 
 class TestMCPServerModel:
-
     async def test_create_mcp_server(self, db: AsyncSession):
         server = MCPServer(
             name="k8s-prod",
@@ -278,7 +271,6 @@ class TestMCPServerModel:
 
 
 class TestBotConnectorModel:
-
     async def test_create_bot_connector(self, db: AsyncSession):
         connector = BotConnector(
             name="telegram-primary",

@@ -18,7 +18,6 @@ from backend.ingest.registry import list_providers
 
 
 class TestAzureMonitorAvailability:
-
     def _make_payload(self, condition: str = "Fired") -> dict:
         return {
             "data": {
@@ -73,7 +72,6 @@ class TestAzureMonitorAvailability:
 
 
 class TestGCPMonitoringAdapter:
-
     def _make_payload(self, state: str = "open") -> dict:
         return {
             "incident": {
@@ -150,7 +148,6 @@ class TestGCPMonitoringAdapter:
 
 
 class TestOCIMonitoringAdapter:
-
     def _make_payload(self, status: str = "FIRING") -> dict:
         return {
             "type": "CHRONOS_NOTIFICATION",
@@ -224,12 +221,14 @@ class TestOCIMonitoringAdapter:
     def test_top_level_data_fallback(self):
         """OCI payloads sometimes have data fields at top level."""
         adapter = OCIMonitoringAdapter()
-        result = adapter.parse({
-            "alarmId": "alarm-1",
-            "alarmName": "Disk-Full",
-            "severity": "WARNING",
-            "status": "FIRING",
-        })
+        result = adapter.parse(
+            {
+                "alarmId": "alarm-1",
+                "alarmName": "Disk-Full",
+                "severity": "WARNING",
+                "status": "FIRING",
+            }
+        )
         assert result.title == "[OCI] Disk-Full — FIRING"
         assert result.severity == "medium"  # WARNING maps to medium
 
@@ -240,7 +239,6 @@ class TestOCIMonitoringAdapter:
 
 
 class TestRegistryInclusion:
-
     def test_gcp_in_registry(self):
         providers = {p["key"] for p in list_providers()}
         assert "gcp_monitoring" in providers

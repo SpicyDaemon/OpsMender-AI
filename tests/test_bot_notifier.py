@@ -1,4 +1,4 @@
-"""Tests for outbound Telegram delivery (session events + co-pilot relay)."""
+﻿"""Tests for outbound Telegram delivery (session events + co-pilot relay)."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ class TestSessionChatEventFanOut:
             sent.append({"token": bot_token, "chat_id": chat_id, "text": text})
             return True, None
 
-        monkeypatch.setattr(notifier_mod, "telegram_send", fake_send)
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
 
         await _make_connector(
             factory,
@@ -89,6 +89,7 @@ class TestSessionChatEventFanOut:
 
         await notifier.deliver_session_chat_event(
             factory,
+            org_id=TEST_ORG_ID,
             event_type="session.created",
             session_id=session_id,
         )
@@ -107,7 +108,7 @@ class TestSessionChatEventFanOut:
             sent.append(kwargs)
             return True, None
 
-        monkeypatch.setattr(notifier_mod, "telegram_send", fake_send)
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
 
         await _make_connector(
             factory,
@@ -122,6 +123,7 @@ class TestSessionChatEventFanOut:
 
         await notifier.deliver_session_chat_event(
             factory,
+            org_id=TEST_ORG_ID,
             event_type="session.completed",
             session_id=session_id,
         )
@@ -135,7 +137,7 @@ class TestSessionChatEventFanOut:
             sent.append(kwargs)
             return True, None
 
-        monkeypatch.setattr(notifier_mod, "telegram_send", fake_send)
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
 
         await _make_connector(
             factory,
@@ -151,6 +153,7 @@ class TestSessionChatEventFanOut:
 
         await notifier.deliver_session_chat_event(
             factory,
+            org_id=TEST_ORG_ID,
             event_type="session.created",
             session_id=session_id,
         )
@@ -163,7 +166,7 @@ class TestSessionChatEventFanOut:
         async def fake_send(**kwargs):
             return False, "http 502: bad gateway"
 
-        monkeypatch.setattr(notifier_mod, "telegram_send", fake_send)
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
 
         connector_id = await _make_connector(
             factory,
@@ -178,6 +181,7 @@ class TestSessionChatEventFanOut:
 
         await notifier.deliver_session_chat_event(
             factory,
+            org_id=TEST_ORG_ID,
             event_type="session.created",
             session_id=session_id,
         )
@@ -212,7 +216,7 @@ class TestCopilotRelayBack:
             sent.append(kwargs)
             return True, None
 
-        monkeypatch.setattr(notifier_mod, "telegram_send", fake_send)
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
 
         connector_id = await _make_connector(
             factory,
@@ -259,6 +263,7 @@ class TestCopilotRelayBack:
 
         await notifier.deliver_copilot_relay(
             factory,
+            org_id=TEST_ORG_ID,
             session_id=session_id,
             reply_text="restart succeeded",
         )
@@ -275,7 +280,7 @@ class TestCopilotRelayBack:
             sent.append(kwargs)
             return True, None
 
-        monkeypatch.setattr(notifier_mod, "telegram_send", fake_send)
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
 
         connector_id = await _make_connector(
             factory,
@@ -300,6 +305,7 @@ class TestCopilotRelayBack:
 
         await notifier.deliver_copilot_relay(
             factory,
+            org_id=TEST_ORG_ID,
             session_id=session_id,
             reply_text="hello",
         )
@@ -313,7 +319,7 @@ class TestCopilotRelayBack:
             sent.append(kwargs)
             return True, None
 
-        monkeypatch.setattr(notifier_mod, "telegram_send", fake_send)
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
 
         async with factory() as db:
             session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
@@ -322,6 +328,7 @@ class TestCopilotRelayBack:
 
         await notifier.deliver_copilot_relay(
             factory,
+            org_id=TEST_ORG_ID,
             session_id=session_id,
             reply_text="hello",
         )

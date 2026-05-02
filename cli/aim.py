@@ -615,6 +615,14 @@ def _bootstrap_model_args(
     return args
 
 
+async def _resolve_cli_org(db) -> uuid.UUID:
+    result = await db.execute(select(Organization).order_by(Organization.created_at).limit(1))
+    org = result.scalar_one_or_none()
+    if org:
+        return org.id
+    return uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+
 async def _persist_model_config(cfg: Config, args: argparse.Namespace):
     registry = ProviderRegistry()
     validation = registry.validate_model_config(
@@ -631,8 +639,10 @@ async def _persist_model_config(cfg: Config, args: argparse.Namespace):
     try:
         async with factory() as db:
             name = args.name or f"{args.provider}:{args.model_id}"
+            org_id = await _resolve_cli_org(db)
             saved = await ModelConfigRepo.upsert(
                 db,
+                org_id,
                 name=name,
                 provider=args.provider,
                 model_id=args.model_id,
@@ -642,9 +652,9 @@ async def _persist_model_config(cfg: Config, args: argparse.Namespace):
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
             )
-            await ModelConfigRepo.set_default(db, saved.id)
+            await ModelConfigRepo.set_default(db, org_id, saved.id)
             await db.commit()
-            refreshed = await ModelConfigRepo.get_by_id(db, saved.id)
+            refreshed = await ModelConfigRepo.get_by_id(db, org_id, saved.id)
             if refreshed is None:
                 raise RuntimeError("Saved model config could not be reloaded.")
             await db.refresh(refreshed)
@@ -665,8 +675,10 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
         async with factory() as db:
             if args.approvals_command == "list":
                 session_id = uuid.UUID(args.session) if args.session else None
+                org_id = await _resolve_cli_org(db)
                 items = await ApprovalRequestRepo.list(
                     db,
+                    org_id,
                     status=args.status,
                     session_id=session_id,
                 )
@@ -684,12 +696,13 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
             decision = (
                 "approved" if args.approvals_command == "approve" else "rejected"
             )
-            request = await ApprovalRequestRepo.get_by_id(db, request_id)
+            org_id = await _resolve_cli_org(db)
+            request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
             if request is None:
                 print(f"Approval request not found: {request_id}", file=sys.stderr)
                 return 1
             if datetime.now(timezone.utc) >= _as_utc(request.expires_at):
-                await ApprovalRequestRepo.resolve(db, request_id, status="expired")
+                await ApprovalRequestRepo.resolve(db, org_id, request_id, status="expired")
                 await SessionRepo.set_status(
                     db,
                     request.session_id,
@@ -705,12 +718,13 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
 
             updated = await ApprovalRequestRepo.resolve(
                 db,
+                org_id,
                 request_id,
                 status=decision,
                 resolved_by=resolved_by,
             )
             if not updated:
-                request = await ApprovalRequestRepo.get_by_id(db, request_id)
+                request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
                 if request is None:
                     print(f"Approval request not found: {request_id}", file=sys.stderr)
                     return 1
@@ -720,7 +734,7 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
                 )
                 return 1
 
-            request = await ApprovalRequestRepo.get_by_id(db, request_id)
+            request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
             if request is None:
                 print(f"Approval request not found: {request_id}", file=sys.stderr)
                 return 1

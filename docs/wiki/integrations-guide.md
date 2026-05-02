@@ -95,7 +95,18 @@ curl -X POST https://<your-aim-url>/bot-connectors/<connector-id>/user-links \
 Linked users still need an AIM role of `admin` or `operator` to run any
 mutating command. Viewers are blocked with a `role_denied` reply.
 Unlinked users see a "not linked" reply that includes their Telegram
-user ID for the admin to copy into the link request.
+user ID for the admin to copy.
+
+Admins can manage these mappings directly in the dashboard under
+**Config** > **Integrations** by clicking the **"Links"** button on the
+Telegram connector. Alternatively, use the API:
+
+```bash
+curl -X POST https://<your-aim-url>/bot-connectors/<connector-id>/user-links \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"platform_user_id": "12345678", "aim_user_id": "<aim-user-uuid>"}'
+```
 
 Set the Telegram webhook URL to:
 
@@ -138,8 +149,35 @@ Replies are delivered asynchronously through the bridge — Signal does
 not support inline webhook responses. Every send is recorded in
 `bot_action_audit` with `command = "notify:..."` or `"copilot_relay"`.
 
-WhatsApp is planned next and will reuse the same persisted connector
-model and dispatcher.
+### WhatsApp (Meta Cloud API)
+
+WhatsApp integration uses the official Meta Cloud API. The same set of
+commands as Telegram is supported (`/incidents`, `/incident`,
+`/sessions`, `/session`, `/approvals`, `/approve`, `/reject`,
+`/chat`, `/help`).
+
+Required connector credentials:
+
+```text
+access_token=<meta-system-user-token>
+phone_number_id=<meta-phone-number-id>
+verify_token=<random-shared-secret-for-meta-challenge>
+app_secret=<meta-app-secret-for-hmac-verification>
+```
+
+Set the inbound webhook URL in the Meta App Dashboard to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/whatsapp/webhook
+```
+
+Ensure you select `messages` under **Webhook fields** in the Meta
+configuration. AIM verifies every inbound request using HMAC-SHA256
+signatures (`X-Hub-Signature-256`) against your `app_secret`.
+
+Identity mapping (RBAC) works the same as Telegram: use the
+**"Links"** button in the dashboard and use the user's phone number
+(e.g., `15555550100`) as the platform user ID.
 
 ## 3. Outbound Webhooks
 

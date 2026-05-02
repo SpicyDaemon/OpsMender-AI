@@ -91,3 +91,22 @@ async def telegram_webhook(
         payload=payload,
         db=db,
     )
+
+
+@router.post(
+    "/{connector_id}/signal/webhook",
+    summary="Handle inbound Signal webhook updates (signal-cli-rest-api)",
+)
+async def signal_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="signal",
+        request=request,
+        payload=payload,
+        db=db,
+    )

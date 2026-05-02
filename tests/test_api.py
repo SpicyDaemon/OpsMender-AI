@@ -2217,6 +2217,90 @@ class TestTelegramBotWebhook:
         assert resp.json()["total"] == 0
 
 
+class TestSignalBotWebhook:
+
+    async def _create_signal_connector(
+        self, client: AsyncClient, auth_headers, *, capabilities=None,
+    ) -> str:
+        resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": f"signal-{uuid.uuid4()}",
+                "platform": "signal",
+                "config": {},
+                "credentials": {
+                    "service_url": "http://signal-bridge:8080",
+                    "bot_number": "+15555550100",
+                    "webhook_secret": "sig-secret",
+                },
+                "allowed_capabilities": capabilities or ["incident_lookup"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    async def test_signal_webhook_incident_lookup_replies_via_outbound(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        from backend.bots.connectors import signal as signal_mod
+        rate_limiter.reset()
+
+        sent: list[dict] = []
+
+        async def fake_send(*, service_url, bot_number, chat_id, text, timeout_seconds=10.0):
+            sent.append({"chat_id": chat_id, "text": text})
+            return True, None
+
+        monkeypatch.setattr(signal_mod, "signal_send", fake_send)
+
+        connector_id = await self._create_signal_connector(client, auth_headers)
+        async with app.state.session_factory() as db:
+            await IncidentRepo.create(
+                db, title="DB outage", description="conns exhausted",
+                severity="critical",
+            )
+            await db.commit()
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/signal/webhook",
+            json={
+                "envelope": {
+                    "source": "+15555550111",
+                    "dataMessage": {
+                        "message": "/incidents",
+                        "groupInfo": {"groupId": "GROUP-1"},
+                    },
+                }
+            },
+            headers={"X-AIM-Webhook-Secret": "sig-secret"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+
+        # Outbound delivery is fire-and-forget; give the loop a chance.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        assert any(
+            s["chat_id"] == "GROUP-1" and "DB outage" in s["text"]
+            for s in sent
+        )
+
+    async def test_signal_webhook_rejects_bad_secret(
+        self, client: AsyncClient, auth_headers
+    ):
+        connector_id = await self._create_signal_connector(client, auth_headers)
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/signal/webhook",
+            json={"envelope": {"source": "+1", "dataMessage": {"message": "/help"}}},
+            headers={"X-AIM-Webhook-Secret": "wrong"},
+        )
+        assert resp.status_code == 403
+
+
 class TestModelConfigAPI:
 
     async def test_list_models(self, client: AsyncClient, auth_headers, monkeypatch):

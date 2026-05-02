@@ -105,7 +105,41 @@ https://<your-aim-url>/bot-connectors/<connector-id>/telegram/webhook
 
 When registering the webhook with Telegram, configure the secret token so Telegram sends `X-Telegram-Bot-Api-Secret-Token: <webhook_secret>` on each update.
 
-Signal and WhatsApp are planned next and will use the same persisted connector model.
+### Signal
+
+Signal uses the open-source `signal-cli-rest-api` bridge
+(<https://github.com/bbernhard/signal-cli-rest-api>) as the gateway.
+The same set of commands as Telegram is supported (`/incidents`,
+`/incident`, `/sessions`, `/session`, `/approvals`, `/approve`,
+`/reject`, `/chat`, `/help`).
+
+Required connector credentials:
+
+```text
+service_url=http://<signal-cli-rest-api-host>:8080
+bot_number=+15555550100         # the registered Signal service number
+webhook_secret=<random-shared-secret>
+```
+
+Set the inbound webhook URL on your relay to:
+
+```text
+POST https://<your-aim-url>/bot-connectors/<connector-id>/signal/webhook
+```
+
+`signal-cli-rest-api` does not sign its own webhooks, so AIM expects an
+intermediary (nginx, Caddy, or a small forwarder) to inject:
+
+```text
+X-AIM-Webhook-Secret: <webhook_secret>
+```
+
+Replies are delivered asynchronously through the bridge — Signal does
+not support inline webhook responses. Every send is recorded in
+`bot_action_audit` with `command = "notify:..."` or `"copilot_relay"`.
+
+WhatsApp is planned next and will reuse the same persisted connector
+model and dispatcher.
 
 ## 3. Outbound Webhooks
 

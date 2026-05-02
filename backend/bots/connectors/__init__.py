@@ -11,13 +11,16 @@ outbound ``send_message`` delivery.
 """
 
 from .base import BotConnectorAdapter, InboundMessage
-from .registry import get_adapter, register_adapter
+from .registry import get_adapter, list_platforms, register_adapter
+from .signal import SignalAdapter
 from .telegram import TelegramAdapter
 
 __all__ = [
     "BotConnectorAdapter",
     "InboundMessage",
+    "SignalAdapter",
     "TelegramAdapter",
     "get_adapter",
+    "list_platforms",
     "register_adapter",
 ]

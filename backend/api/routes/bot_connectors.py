@@ -34,7 +34,7 @@ ALLOWED_CAPABILITIES = {
 
 REQUIRED_CREDENTIAL_KEYS = {
     "telegram": ("bot_token",),
-    "signal": ("service_url",),
+    "signal": ("service_url", "bot_number", "webhook_secret"),
     "whatsapp": ("access_token", "phone_number_id"),
     "custom": (),
 }

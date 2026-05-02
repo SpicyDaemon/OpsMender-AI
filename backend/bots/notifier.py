@@ -26,7 +26,9 @@ from typing import Any, Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from backend.bots.telegram import send_message as telegram_send
+import backend.bots  # noqa: F401  -- registers built-in adapters
+from backend.bots.connectors import get_adapter
+from backend.bots.telegram import send_message as telegram_send  # noqa: F401  -- preserved for tests that monkeypatch this symbol
 from backend.db.models import BotActionAudit, BotConnector
 from backend.db.repos import (
     BotActionAuditRepo,
@@ -99,6 +101,12 @@ async def _deliver_to_telegram(
     command_label: str,
     session_id: uuid.UUID | None,
 ) -> None:
+    """Telegram-specific delivery path.
+
+    Kept as a separate function so existing tests that monkeypatch
+    ``telegram_send`` on this module continue to intercept. Other
+    platforms route through ``_deliver_via_adapter``.
+    """
     bot_token = (connector.credentials or {}).get("bot_token")
     ok, error = await telegram_send(
         bot_token=str(bot_token) if bot_token else "",
@@ -135,6 +143,87 @@ async def _deliver_to_telegram(
         )
 
 
+async def _deliver_via_adapter(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    connector: BotConnector,
+    chat_id: str,
+    text: str,
+    command_label: str,
+    session_id: uuid.UUID | None,
+) -> None:
+    """Generic delivery via the connector adapter registry."""
+    adapter = get_adapter(connector.platform)
+    if adapter is None:
+        log.warning(
+            "no adapter registered for connector platform=%s",
+            connector.platform,
+        )
+        return
+    ok, error = await adapter.send_message(
+        connector, chat_id=chat_id, text=text
+    )
+
+    async with factory() as db:
+        await BotActionAuditRepo.create(
+            db,
+            connector_id=connector.id,
+            platform=connector.platform,
+            chat_id=chat_id,
+            command=command_label,
+            status="ok" if ok else "delivery_failed",
+            detail=None if ok else (error or "")[:1000],
+            session_id=session_id,
+        )
+        if not ok:
+            await BotConnectorRepo.mark_status(
+                db,
+                connector.id,
+                status="error",
+                error=(error or "")[:1000],
+            )
+        await db.commit()
+
+    if not ok:
+        log.warning(
+            "%s outbound failed connector=%s chat=%s: %s",
+            connector.platform,
+            connector.name,
+            chat_id,
+            error,
+        )
+
+
+async def _deliver(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    connector: BotConnector,
+    chat_id: str,
+    text: str,
+    command_label: str,
+    session_id: uuid.UUID | None,
+) -> None:
+    """Pick the right per-platform delivery path."""
+    if connector.platform == "telegram":
+        await _deliver_to_telegram(
+            factory,
+            connector=connector,
+            chat_id=chat_id,
+            text=text,
+            command_label=command_label,
+            session_id=session_id,
+        )
+    else:
+        await _deliver_via_adapter(
+            factory,
+            connector=connector,
+            chat_id=chat_id,
+            text=text,
+            command_label=command_label,
+            session_id=session_id,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Session lifecycle fan-out
 # ---------------------------------------------------------------------------
@@ -155,7 +244,7 @@ async def deliver_session_chat_event(
         if session and session.incident_id:
             incident = await IncidentRepo.get_by_id(db, session.incident_id)
         connectors = list(
-            await BotConnectorRepo.list_all(db, enabled_only=True, platform="telegram")
+            await BotConnectorRepo.list_all(db, enabled_only=True)
         )
 
     if session is None:
@@ -171,8 +260,10 @@ async def deliver_session_chat_event(
     for connector in connectors:
         if not _has_capability(connector, "notifications"):
             continue
+        if get_adapter(connector.platform) is None:
+            continue
         for chat_id in _allowed_chat_ids(connector):
-            await _deliver_to_telegram(
+            await _deliver(
                 factory,
                 connector=connector,
                 chat_id=chat_id,
@@ -241,7 +332,7 @@ async def _resolve_relay_targets(
             connector = await BotConnectorRepo.get_by_id(db, row.connector_id)
             if connector is None or not connector.is_enabled:
                 continue
-            if connector.platform != "telegram":
+            if get_adapter(connector.platform) is None:
                 continue
             if not _has_capability(connector, "copilot_chat"):
                 continue
@@ -259,7 +350,7 @@ async def deliver_copilot_relay(
     targets = await _resolve_relay_targets(factory, session_id=session_id)
     formatted = _format_copilot_reply(reply_text)
     for connector, chat_id in targets:
-        await _deliver_to_telegram(
+        await _deliver(
             factory,
             connector=connector,
             chat_id=chat_id,

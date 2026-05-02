@@ -1,5 +1,5 @@
 /**
- * API client — thin fetch wrapper with JWT injection and 401 handling.
+ * API client â€” thin fetch wrapper with JWT injection and 401 handling.
  * All functions throw on non-2xx responses with the API's detail message.
  */
 
@@ -745,4 +745,71 @@ export function connectSessionStream(
   ws.onclose = () => onClose?.();
 
   return ws;
+}
+
+// ---------------------------------------------------------------------------
+// Organizations (Phase 4)
+// ---------------------------------------------------------------------------
+
+
+import type {
+  OrganizationCreate,
+  OrganizationListResponse,
+  OrganizationResponse,
+  OrganizationUpdate,
+  OrganizationUserListResponse,
+  UserOrganizationLink,
+} from "./types";
+
+
+export async function listOrganizations(): Promise<OrganizationListResponse> {
+  return api.get<OrganizationListResponse>("/organizations");
+}
+
+
+export async function createOrganization(
+  body: OrganizationCreate,
+): Promise<OrganizationResponse> {
+  return api.post<OrganizationResponse>("/organizations", body);
+}
+
+
+export async function getOrganization(id: string): Promise<OrganizationResponse> {
+  return api.get<OrganizationResponse>(`/organizations/${id}`);
+}
+
+
+export async function updateOrganization(
+  id: string,
+  body: OrganizationUpdate,
+): Promise<OrganizationResponse> {
+  return api.put<OrganizationResponse>(`/organizations/${id}`, body);
+}
+
+
+export async function deleteOrganization(id: string): Promise<void> {
+  return api.del<void>(`/organizations/${id}`);
+}
+
+
+export async function listOrganizationUsers(
+  id: string,
+): Promise<OrganizationUserListResponse> {
+  return api.get<OrganizationUserListResponse>(`/organizations/${id}/users`);
+}
+
+
+export async function addUserToOrganization(
+  id: string,
+  body: UserOrganizationLink,
+): Promise<void> {
+  return api.post<void>(`/organizations/${id}/users`, body);
+}
+
+
+export async function removeUserFromOrganization(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  return api.del<void>(`/organizations/${orgId}/users/${userId}`);
 }

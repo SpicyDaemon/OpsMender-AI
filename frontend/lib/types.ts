@@ -817,3 +817,55 @@ export interface BotUserLinkCreate {
   platform_user_id: string;
   aim_user_id: string;
 }
+
+
+// ---------------------------------------------------------------------------
+// Organizations (Phase 4)
+// ---------------------------------------------------------------------------
+
+
+export interface OrganizationResponse {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+}
+
+
+export interface OrganizationListResponse {
+  items: OrganizationResponse[];
+  total: number;
+}
+
+
+export interface OrganizationCreate {
+  name: string;
+  slug?: string;
+}
+
+
+export interface OrganizationUpdate {
+  name?: string;
+  slug?: string;
+}
+
+
+export interface UserOrganizationResponse {
+  user_id: string;
+  username: string;
+  email: string;
+  role: "admin" | "operator" | "viewer";
+  joined_at: string;
+}
+
+
+export interface OrganizationUserListResponse {
+  items: UserOrganizationResponse[];
+  total: number;
+}
+
+
+export interface UserOrganizationLink {
+  user_id: string;
+  role: "admin" | "operator" | "viewer";
+}

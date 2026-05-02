@@ -26,6 +26,7 @@ const NAV = [
   { href: "/dashboard/skills", label: "Skills", icon: FileText },
   { href: "/dashboard/audit", label: "Audit Log", icon: BookOpen },
   { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
+  { href: "/dashboard/organizations", label: "Organizations", icon: CheckSquare, reqRole: "admin" },
   { href: "/dashboard/config", label: "Config", icon: Settings },
 ];
 
@@ -74,6 +75,8 @@ export function Sidebar() {
   const width = collapsed ? "w-16" : "w-60";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
   const tierInfo = tier !== null ? TIER_STYLES[tier] : null;
+
+  const visibleNav = NAV.filter(n => !n.reqRole || (user && user.role === n.reqRole));
 
   return (
     <aside
@@ -124,7 +127,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 space-y-0.5 px-2 py-3 overflow-y-auto">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {visibleNav.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link

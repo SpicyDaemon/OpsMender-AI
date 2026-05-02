@@ -911,6 +911,55 @@ class BotUserLinkListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Organizations (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+class OrganizationCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    slug: Optional[str] = Field(default=None, min_length=1, max_length=100)
+
+
+class OrganizationUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    slug: Optional[str] = Field(None, min_length=1, max_length=100)
+
+
+class OrganizationResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrganizationListResponse(BaseModel):
+    items: list[OrganizationResponse]
+    total: int
+
+
+class UserOrganizationLink(BaseModel):
+    user_id: uuid.UUID
+    role: str = Field(default="viewer", pattern="^(admin|operator|viewer)$")
+
+
+class UserOrganizationResponse(BaseModel):
+    user_id: uuid.UUID
+    username: str
+    email: str
+    role: str
+    joined_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrganizationUserListResponse(BaseModel):
+    items: list[UserOrganizationResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------
 

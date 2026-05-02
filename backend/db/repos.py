@@ -88,6 +88,42 @@ class UserRepo:
         await db.flush()
 
     @staticmethod
+    async def list_by_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[dict[str, Any]]:
+        """List all users in an organization with their local roles."""
+        from sqlalchemy import join
+
+        stmt = (
+            select(
+                User.id.label("user_id"),
+                User.username,
+                User.email,
+                UserOrganization.role,
+                UserOrganization.joined_at,
+            )
+            .select_from(join(User, UserOrganization, User.id == UserOrganization.user_id))
+            .where(UserOrganization.org_id == org_id)
+            .order_by(UserOrganization.joined_at)
+        )
+        result = await db.execute(stmt)
+        return result.mappings().all()
+
+    @staticmethod
+    async def remove_from_organization(
+        db: AsyncSession, user_id: uuid.UUID, org_id: uuid.UUID
+    ) -> bool:
+        """Remove a user's link to an organization."""
+        from sqlalchemy import delete
+
+        stmt = delete(UserOrganization).where(
+            UserOrganization.user_id == user_id, UserOrganization.org_id == org_id
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+    @staticmethod
     async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
         return await db.get(User, user_id)
 
@@ -2767,3 +2803,40 @@ class OrganizationRepo:
     async def list_all(db: AsyncSession) -> Sequence[Organization]:
         result = await db.execute(select(Organization).order_by(Organization.name))
         return result.scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        slug: str | None = None,
+    ) -> Organization | None:
+        values: dict[str, Any] = {}
+        if name is not None:
+            values["name"] = name
+        if slug is not None:
+            values["slug"] = slug
+
+        if not values:
+            return await OrganizationRepo.get_by_id(db, org_id)
+
+        stmt = (
+            update(Organization)
+            .where(Organization.id == org_id)
+            .values(**values)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await OrganizationRepo.get_by_id(db, org_id)
+
+    @staticmethod
+    async def delete(db: AsyncSession, org_id: uuid.UUID) -> bool:
+        org = await OrganizationRepo.get_by_id(db, org_id)
+        if org is None:
+            return False
+        await db.delete(org)
+        await db.flush()
+        return True

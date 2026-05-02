@@ -61,7 +61,22 @@ Optional connector config:
 to disable. Every inbound command is recorded in the `bot_action_audit`
 table along with its outcome (`ok`, `bad_args`, `not_found`,
 `capability_denied`, `chat_not_allowed`, `rate_limited`,
-`unknown_command`).
+`unknown_command`, `delivery_failed`).
+
+#### Outbound delivery
+
+When the connector has the `notifications` capability and at least one
+chat in `allowed_chat_ids`, AIM pushes a Telegram message for each
+session lifecycle event (`session.created`, `session.awaiting_approval`,
+`session.active`, `session.completed`, `session.failed`,
+`session.timed_out`) to every listed chat.
+
+When the connector has the `copilot_chat` capability, every co-pilot
+assistant reply for a session is also relayed back to the Telegram
+chat(s) that originated `/chat <session-id> ...` for that session — this
+closes the round-trip so operators can converse with the co-pilot
+entirely from Telegram. Outbound delivery uses the connector's
+`bot_token` credential and records every send in `bot_action_audit`.
 
 Set the Telegram webhook URL to:
 

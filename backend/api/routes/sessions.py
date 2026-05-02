@@ -48,6 +48,7 @@ from backend.mcp.client import list_tools as mcp_list_tools
 from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import loads as load_skill_def
 from backend.tiers.sandbox import Tier0Sandbox
+from backend.bots.notifier import schedule_session_chat_event
 from backend.webhooks import schedule_session_event
 from backend.workflow.rollback import (
     reconstruct_tool_calls,
@@ -166,6 +167,12 @@ async def create_session(
     await db.refresh(session)
 
     schedule_session_event(
+        request.app.state.session_factory,
+        task_registry=request.app.state.background_tasks,
+        event_type="session.created",
+        session_id=session.id,
+    )
+    schedule_session_chat_event(
         request.app.state.session_factory,
         task_registry=request.app.state.background_tasks,
         event_type="session.created",

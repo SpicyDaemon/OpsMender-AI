@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from backend.api.routes.ws import publish
 from backend.api.schemas import WSMessage
+from backend.bots.notifier import schedule_copilot_relay
 from backend.db.models import SessionMessage
 from backend.db.repos import (
     IncidentRepo,
@@ -208,6 +209,22 @@ async def respond_to_user_message(
                 },
             ),
         )
+
+        # Best-effort relay back to originating Telegram chats — fire and
+        # forget. Delivery results are recorded in bot_action_audit.
+        try:
+            schedule_copilot_relay(
+                factory,
+                task_registry=None,
+                session_id=session_id,
+                reply_text=reply_text,
+            )
+        except Exception as relay_exc:  # noqa: BLE001
+            log.debug(
+                "copilot relay scheduling skipped for session %s: %s",
+                session_id,
+                relay_exc,
+            )
 
     except Exception as exc:  # noqa: BLE001
         log.warning("chat responder failed for session %s: %s", session_id, exc)

@@ -43,6 +43,7 @@ from backend.llm.factory import create_llm
 from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import SkillDefinition, load as load_skill_def, loads as load_skill_def_text
 from backend.tiers.sandbox import build_sandbox_for_session
+from backend.bots.notifier import schedule_session_chat_event
 from backend.webhooks import schedule_session_event
 from backend.workflow.rollback import reconstruct_tool_calls, replay_compensating_inverses
 
@@ -411,11 +412,19 @@ async def run_session_workflow(
             factory,
             timeout_seconds=config.approvals.timeout_seconds,
             publisher=lambda sid, event: publish(sid, WSMessage(**event)),
-            status_notifier=lambda sid, status: schedule_session_event(
-                factory,
-                task_registry=app.state.background_tasks,
-                event_type=f"session.{status}",
-                session_id=sid,
+            status_notifier=lambda sid, status: (
+                schedule_session_event(
+                    factory,
+                    task_registry=app.state.background_tasks,
+                    event_type=f"session.{status}",
+                    session_id=sid,
+                ),
+                schedule_session_chat_event(
+                    factory,
+                    task_registry=app.state.background_tasks,
+                    event_type=f"session.{status}",
+                    session_id=sid,
+                ),
             ),
         )
 
@@ -541,6 +550,12 @@ async def run_session_workflow(
             event_type=f"session.{final_status}",
             session_id=session_id,
         )
+        schedule_session_chat_event(
+            factory,
+            task_registry=app.state.background_tasks,
+            event_type=f"session.{final_status}",
+            session_id=session_id,
+        )
         await _await_maybe(
             audit_logger.log_session_end(str(session_id), int(session.tier))
         )
@@ -565,6 +580,12 @@ async def run_session_workflow(
             summary=f"Workflow failed: {exc}",
         )
         schedule_session_event(
+            factory,
+            task_registry=app.state.background_tasks,
+            event_type="session.failed",
+            session_id=session_id,
+        )
+        schedule_session_chat_event(
             factory,
             task_registry=app.state.background_tasks,
             event_type="session.failed",

@@ -1879,7 +1879,7 @@ class TestTelegramBotWebhook:
     async def test_telegram_webhook_copilot_chat_relay(
         self, client: AsyncClient, app, auth_headers, monkeypatch
     ):
-        from backend.api.routes import bot_webhooks
+        from backend.bots import dispatcher as bot_dispatcher
         from backend.bots.rate_limit import rate_limiter
 
         rate_limiter.reset()
@@ -1889,7 +1889,7 @@ class TestTelegramBotWebhook:
             scheduled.append(session_id)
 
         monkeypatch.setattr(
-            bot_webhooks, "respond_to_user_message", fake_responder
+            bot_dispatcher, "respond_to_user_message", fake_responder
         )
 
         from backend.db.repos import UserRepo

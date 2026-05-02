@@ -2301,6 +2301,173 @@ class TestSignalBotWebhook:
         assert resp.status_code == 403
 
 
+class TestWhatsAppBotWebhook:
+
+    async def _create_whatsapp_connector(
+        self, client: AsyncClient, auth_headers, *, capabilities=None,
+    ) -> str:
+        resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": f"whatsapp-{uuid.uuid4()}",
+                "platform": "whatsapp",
+                "config": {},
+                "credentials": {
+                    "access_token": "WA-TOKEN",
+                    "phone_number_id": "123456789",
+                    "app_secret": "wa-app-secret",
+                    "verify_token": "my-verify-token",
+                },
+                "allowed_capabilities": capabilities or ["incident_lookup"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    @staticmethod
+    def _sign(secret: str, body: bytes) -> str:
+        import hashlib
+        import hmac as _hmac
+
+        digest = _hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        return f"sha256={digest}"
+
+    @staticmethod
+    def _whatsapp_text_payload(sender: str, text: str) -> dict:
+        return {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "WABA-ID",
+                    "changes": [
+                        {
+                            "value": {
+                                "messaging_product": "whatsapp",
+                                "metadata": {
+                                    "phone_number_id": "123456789",
+                                    "display_phone_number": "+15550001111",
+                                },
+                                "messages": [
+                                    {
+                                        "from": sender,
+                                        "id": "wamid.xxx",
+                                        "timestamp": "1700000000",
+                                        "type": "text",
+                                        "text": {"body": text},
+                                    }
+                                ],
+                            },
+                            "field": "messages",
+                        }
+                    ],
+                }
+            ],
+        }
+
+    async def test_whatsapp_webhook_incident_lookup_replies_via_outbound(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        from backend.bots.connectors import whatsapp as whatsapp_mod
+
+        rate_limiter.reset()
+
+        sent: list[dict] = []
+
+        async def fake_send(
+            *, access_token, phone_number_id, recipient, text, timeout_seconds=10.0
+        ):
+            sent.append({"recipient": recipient, "text": text})
+            return True, None
+
+        monkeypatch.setattr(whatsapp_mod, "whatsapp_send", fake_send)
+
+        connector_id = await self._create_whatsapp_connector(client, auth_headers)
+        async with app.state.session_factory() as db:
+            await IncidentRepo.create(
+                db, title="Cache fail", description="redis down",
+                severity="high",
+            )
+            await db.commit()
+
+        import json as _json
+
+        payload = self._whatsapp_text_payload("15559998888", "/incidents")
+        body = _json.dumps(payload).encode()
+        sig = self._sign("wa-app-secret", body)
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/whatsapp/webhook",
+            content=body,
+            headers={
+                "X-Hub-Signature-256": sig,
+                "Content-Type": "application/json",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+
+        # Outbound delivery is fire-and-forget; give the loop a chance.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        assert any(
+            s["recipient"] == "15559998888" and "Cache fail" in s["text"]
+            for s in sent
+        )
+
+    async def test_whatsapp_webhook_rejects_bad_signature(
+        self, client: AsyncClient, auth_headers
+    ):
+        connector_id = await self._create_whatsapp_connector(client, auth_headers)
+
+        import json as _json
+
+        payload = self._whatsapp_text_payload("15559998888", "/help")
+        body = _json.dumps(payload).encode()
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/whatsapp/webhook",
+            content=body,
+            headers={
+                "X-Hub-Signature-256": "sha256=0000000000000000",
+                "Content-Type": "application/json",
+            },
+        )
+        assert resp.status_code == 403
+
+    async def test_whatsapp_verification_challenge(
+        self, client: AsyncClient, auth_headers
+    ):
+        connector_id = await self._create_whatsapp_connector(client, auth_headers)
+        resp = await client.get(
+            f"/bot-connectors/{connector_id}/whatsapp/webhook",
+            params={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "my-verify-token",
+                "hub.challenge": "challenge-12345",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.text == "challenge-12345"
+
+    async def test_whatsapp_verification_wrong_token(
+        self, client: AsyncClient, auth_headers
+    ):
+        connector_id = await self._create_whatsapp_connector(client, auth_headers)
+        resp = await client.get(
+            f"/bot-connectors/{connector_id}/whatsapp/webhook",
+            params={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "wrong-token",
+                "hub.challenge": "challenge-12345",
+            },
+        )
+        assert resp.status_code == 403
+
+
 class TestModelConfigAPI:
 
     async def test_list_models(self, client: AsyncClient, auth_headers, monkeypatch):

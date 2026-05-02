@@ -14,12 +14,14 @@ from .base import BotConnectorAdapter, InboundMessage
 from .registry import get_adapter, list_platforms, register_adapter
 from .signal import SignalAdapter
 from .telegram import TelegramAdapter
+from .whatsapp import WhatsAppAdapter
 
 __all__ = [
     "BotConnectorAdapter",
     "InboundMessage",
     "SignalAdapter",
     "TelegramAdapter",
+    "WhatsAppAdapter",
     "get_adapter",
     "list_platforms",
     "register_adapter",

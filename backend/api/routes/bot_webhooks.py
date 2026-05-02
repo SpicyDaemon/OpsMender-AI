@@ -110,3 +110,65 @@ async def signal_webhook(
         payload=payload,
         db=db,
     )
+
+
+@router.get(
+    "/{connector_id}/whatsapp/webhook",
+    summary="WhatsApp webhook verification challenge (Meta subscribe handshake)",
+)
+async def whatsapp_verify(
+    connector_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Meta sends a GET request with ``hub.mode=subscribe``,
+    ``hub.challenge``, and ``hub.verify_token`` when registering a
+    webhook URL. AIM echoes back the challenge if the verify token
+    matches ``credentials.verify_token`` on the connector.
+    """
+    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    if connector is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bot connector not found",
+        )
+
+    mode = request.query_params.get("hub.mode")
+    challenge = request.query_params.get("hub.challenge")
+    verify_token = request.query_params.get("hub.verify_token")
+
+    if mode != "subscribe" or not challenge:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification request",
+        )
+
+    expected = (connector.credentials or {}).get("verify_token")
+    if not expected or verify_token != expected:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Verification token mismatch",
+        )
+
+    from fastapi.responses import PlainTextResponse
+
+    return PlainTextResponse(content=challenge)
+
+
+@router.post(
+    "/{connector_id}/whatsapp/webhook",
+    summary="Handle inbound WhatsApp Cloud API webhook updates",
+)
+async def whatsapp_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="whatsapp",
+        request=request,
+        payload=payload,
+        db=db,
+    )

@@ -165,6 +165,7 @@ class UptimeDownsampler:
                 up_pct = sum(1 for s in non_suppressed if s.up) / total
 
             row = UptimeSample5m(
+                org_id=group[0].org_id,
                 target_id=target_id,
                 bucket_start=bucket_start,
                 up_pct=round(up_pct, 4),
@@ -222,6 +223,7 @@ class UptimeDownsampler:
                 up_pct = weighted_sum / total_samples
 
             row = UptimeSample1h(
+                org_id=group[0].org_id,
                 target_id=target_id,
                 bucket_start=hour_start,
                 up_pct=round(up_pct, 4),

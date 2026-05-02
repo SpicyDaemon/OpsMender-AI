@@ -10,8 +10,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import uuid
 from sqlalchemy import JSON, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 from backend.db.models import (
     ApprovalRequest,
@@ -58,6 +61,7 @@ class TestUserModel:
             email="test@example.com",
             password_hash="hashed123",
             role="operator",
+            primary_org_id=TEST_ORG_ID,
         )
         db.add(user)
         await db.flush()
@@ -72,6 +76,7 @@ class TestUserModel:
             username="default_user",
             email="default@example.com",
             password_hash="hashed",
+            primary_org_id=TEST_ORG_ID,
         )
         db.add(user)
         await db.flush()
@@ -89,6 +94,7 @@ class TestUserModel:
 class TestIncidentModel:
     async def test_create_incident(self, db: AsyncSession):
         inc = Incident(
+            org_id=TEST_ORG_ID,
             title="Test incident",
             description="Something broke",
             severity="high",
@@ -102,6 +108,7 @@ class TestIncidentModel:
 
     async def test_incident_defaults(self, db: AsyncSession):
         inc = Incident(
+            org_id=TEST_ORG_ID,
             title="Minimal",
             description="desc",
         )
@@ -120,7 +127,7 @@ class TestIncidentModel:
 
 class TestSessionModel:
     async def test_create_session(self, db: AsyncSession):
-        sess = Session(tier=2, model_provider="anthropic", model_id="claude-sonnet")
+        sess = Session(org_id=TEST_ORG_ID, tier=2, model_provider="anthropic", model_id="claude-sonnet")
         db.add(sess)
         await db.flush()
 
@@ -130,11 +137,11 @@ class TestSessionModel:
         assert sess.ended_at is None
 
     async def test_session_with_incident(self, db: AsyncSession):
-        inc = Incident(title="Parent", description="d")
+        inc = Incident(org_id=TEST_ORG_ID, title="Parent", description="d")
         db.add(inc)
         await db.flush()
 
-        sess = Session(tier=3, incident_id=inc.id)
+        sess = Session(org_id=TEST_ORG_ID, tier=3, incident_id=inc.id)
         db.add(sess)
         await db.flush()
 
@@ -148,11 +155,12 @@ class TestSessionModel:
 
 class TestAuditEntryModel:
     async def test_create_audit_entry(self, db: AsyncSession):
-        sess = Session(tier=2)
+        sess = Session(org_id=TEST_ORG_ID, tier=2)
         db.add(sess)
         await db.flush()
 
         entry = AuditEntry(
+            org_id=TEST_ORG_ID,
             session_id=sess.id,
             tier=2,
             entry_type="tool_call_start",
@@ -168,11 +176,12 @@ class TestAuditEntryModel:
         assert entry.permitted is True
 
     async def test_blocked_entry(self, db: AsyncSession):
-        sess = Session(tier=2)
+        sess = Session(org_id=TEST_ORG_ID, tier=2)
         db.add(sess)
         await db.flush()
 
         entry = AuditEntry(
+            org_id=TEST_ORG_ID,
             session_id=sess.id,
             tier=2,
             entry_type="tool_call_blocked",
@@ -194,11 +203,12 @@ class TestAuditEntryModel:
 
 class TestApprovalRequestModel:
     async def test_create_approval_request(self, db: AsyncSession):
-        sess = Session(tier=1)
+        sess = Session(org_id=TEST_ORG_ID, tier=1)
         db.add(sess)
         await db.flush()
 
         req = ApprovalRequest(
+            org_id=TEST_ORG_ID,
             session_id=sess.id,
             action={"tool": "delete_pod", "params": {"pod": "web-1"}},
             justification="Pod is stuck in CrashLoopBackOff",
@@ -220,6 +230,7 @@ class TestApprovalRequestModel:
 class TestModelConfigModel:
     async def test_create_model_config(self, db: AsyncSession):
         cfg = ModelConfig(
+            org_id=TEST_ORG_ID,
             name="test-model",
             provider="anthropic",
             model_id="claude-sonnet-4-20250514",
@@ -246,6 +257,7 @@ class TestModelConfigModel:
 class TestMCPServerModel:
     async def test_create_mcp_server(self, db: AsyncSession):
         server = MCPServer(
+            org_id=TEST_ORG_ID,
             name="k8s-prod",
             transport="stdio",
             command="npx",
@@ -273,6 +285,7 @@ class TestMCPServerModel:
 class TestBotConnectorModel:
     async def test_create_bot_connector(self, db: AsyncSession):
         connector = BotConnector(
+            org_id=TEST_ORG_ID,
             name="telegram-primary",
             platform="telegram",
             config={"default_chat_id": "-100123"},

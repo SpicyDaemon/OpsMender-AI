@@ -232,6 +232,11 @@ async def factory():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     fac = async_sessionmaker(engine, expire_on_commit=False)
+    async with fac() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
     yield fac
     await engine.dispose()
 
@@ -261,6 +266,7 @@ class TestIngestServiceAvailability:
         # Create ingest token
         raw_token = generate_token()
         tok = IngestToken(
+            org_id=TEST_ORG_ID,
             name="test-token",
             token_hash=hash_token(raw_token),
             provider="cloudwatch",
@@ -314,6 +320,7 @@ class TestIngestServiceAvailability:
 
         raw_token = generate_token()
         tok = IngestToken(
+            org_id=TEST_ORG_ID,
             name="test-token-2",
             token_hash=hash_token(raw_token),
             provider="cloudwatch",

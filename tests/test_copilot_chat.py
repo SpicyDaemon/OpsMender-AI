@@ -52,6 +52,13 @@ async def app(tmp_path):
         await conn.run_sync(Base.metadata.create_all)
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     set_session_factory(factory)
 
     tmp_env = tmp_path / ".env"
@@ -107,6 +114,16 @@ async def _register_and_login(
             "role": role,
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, username)
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role=role)
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={"username": username, "password": "secretpass123"},
@@ -429,6 +446,7 @@ class TestResponder:
 
         await respond_to_user_message(
             factory,
+            org_id=TEST_ORG_ID,
             session_id=session_id,
             user_message_id=user_msg_id,
             llm_factory=lambda: stub,
@@ -458,6 +476,7 @@ class TestResponder:
         stub = create_llm(provider="stub", response="unreachable")
         await respond_to_user_message(
             factory,
+            org_id=TEST_ORG_ID,
             session_id=fake_session,
             user_message_id=fake_msg,
             llm_factory=lambda: stub,
@@ -484,6 +503,7 @@ class TestResponder:
         stub = create_llm(provider="stub", response="   ")
         await respond_to_user_message(
             factory,
+            org_id=TEST_ORG_ID,
             session_id=session_id,
             user_message_id=user_msg_id,
             llm_factory=lambda: stub,

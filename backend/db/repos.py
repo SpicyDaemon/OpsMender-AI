@@ -1753,6 +1753,16 @@ class IngestTokenRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def list_all_global(
+        db: AsyncSession, *, active_only: bool = False
+    ) -> Sequence[IngestToken]:
+        stmt = select(IngestToken).order_by(IngestToken.created_at.desc())
+        if active_only:
+            stmt = stmt.where(IngestToken.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
     async def revoke(db: AsyncSession, org_id: uuid.UUID, token_id: uuid.UUID) -> bool:
         """Deactivate a token (soft-delete)."""
         stmt = (
@@ -1881,6 +1891,14 @@ class DetectorRuleRepo:
         ).scalar_one_or_none()
 
     @staticmethod
+    async def get_by_id_global(
+        db: AsyncSession, rule_id: uuid.UUID
+    ) -> DetectorRule | None:
+        return (
+            await db.execute(select(DetectorRule).where(DetectorRule.id == rule_id))
+        ).scalar_one_or_none()
+
+    @staticmethod
     async def get_by_name(
         db: AsyncSession, org_id: uuid.UUID, name: str
     ) -> DetectorRule | None:
@@ -1905,6 +1923,16 @@ class DetectorRuleRepo:
             .where(DetectorRule.org_id == org_id)
             .order_by(DetectorRule.name)
         )
+        if active_only:
+            stmt = stmt.where(DetectorRule.is_active == True)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def list_all_global(
+        db: AsyncSession, *, active_only: bool = False
+    ) -> Sequence[DetectorRule]:
+        stmt = select(DetectorRule).order_by(DetectorRule.name)
         if active_only:
             stmt = stmt.where(DetectorRule.is_active == True)
         result = await db.execute(stmt)

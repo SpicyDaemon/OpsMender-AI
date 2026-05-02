@@ -70,28 +70,34 @@ class MCPServerPool:
     # -- introspection ------------------------------------------------------
 
     async def list_servers(
-        self, *, active_only: bool = True
+        self, org_id: uuid.UUID | None = None, *, active_only: bool = True
     ) -> list[MCPServerConfig]:
         """Return every known MCP server as a runtime config.
 
         DB is the source of truth; the env fallback only kicks in if the
         DB is unreachable or no session factory is configured.
         """
-        if self._session_factory is None:
+        if self._session_factory is None or org_id is None:
             return list(self._env_fallback)
         try:
             async with self._session_factory() as db:
-                rows = await MCPServerRepo.list_all(db, active_only=active_only)
+                rows = await MCPServerRepo.list_all(db, org_id, active_only=active_only)
                 return [_db_to_runtime(row) for row in rows]
         except Exception:
             return list(self._env_fallback)
 
-    async def get_server(self, name: str) -> MCPServerConfig | None:
-        """Return a single server by name, re-reading the DB each call."""
-        if self._session_factory is not None:
+    async def get_server(
+        self, org_id: uuid.UUID | None = None, name: str | None = None
+    ) -> MCPServerConfig | None:
+        # Backward compatibility for old calls: get_server(name)
+        if name is None and isinstance(org_id, str):
+            name = org_id
+            org_id = None
+
+        if self._session_factory is not None and org_id is not None:
             try:
                 async with self._session_factory() as db:
-                    row = await MCPServerRepo.get_by_name(db, name)
+                    row = await MCPServerRepo.get_by_name(db, org_id, name)
                     if row is not None:
                         return _db_to_runtime(row)
             except Exception:
@@ -104,9 +110,11 @@ class MCPServerPool:
     # -- connections --------------------------------------------------------
 
     @asynccontextmanager
-    async def connect(self, name: str) -> AsyncIterator[ClientSession]:
+    async def connect(
+        self, org_id: uuid.UUID | None, name: str
+    ) -> AsyncIterator[ClientSession]:
         """Resolve *name* fresh and open a live MCP session."""
-        server = await self.get_server(name)
+        server = await self.get_server(org_id, name)
         if server is None:
             raise MCPPoolError(f"MCP server not found: {name}")
         async with mcp_connect(server) as session:

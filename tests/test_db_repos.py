@@ -42,6 +42,12 @@ async def db():
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
+
+    async with factory() as session:
         yield session
     await engine.dispose()
 
@@ -54,7 +60,11 @@ async def db():
 class TestUserRepo:
     async def test_create_and_get(self, db: AsyncSession):
         user = await UserRepo.create(
-            db, username="alice", email="alice@test.com", password_hash="h"
+            db,
+            username="alice",
+            email="alice@test.com",
+            password_hash="h",
+            primary_org_id=TEST_ORG_ID,
         )
         await db.flush()
 
@@ -64,7 +74,11 @@ class TestUserRepo:
 
     async def test_get_by_username(self, db: AsyncSession):
         await UserRepo.create(
-            db, username="bob", email="bob@test.com", password_hash="h"
+            db,
+            username="bob",
+            email="bob@test.com",
+            password_hash="h",
+            primary_org_id=TEST_ORG_ID,
         )
         await db.flush()
 
@@ -74,7 +88,11 @@ class TestUserRepo:
 
     async def test_get_by_email(self, db: AsyncSession):
         await UserRepo.create(
-            db, username="carol", email="carol@test.com", password_hash="h"
+            db,
+            username="carol",
+            email="carol@test.com",
+            password_hash="h",
+            primary_org_id=TEST_ORG_ID,
         )
         await db.flush()
 
@@ -86,8 +104,20 @@ class TestUserRepo:
         assert await UserRepo.get_by_id(db, uuid.uuid4()) is None
 
     async def test_list_all(self, db: AsyncSession):
-        await UserRepo.create(db, username="u1", email="u1@t.com", password_hash="h")
-        await UserRepo.create(db, username="u2", email="u2@t.com", password_hash="h")
+        await UserRepo.create(
+            db,
+            username="u1",
+            email="u1@t.com",
+            password_hash="h",
+            primary_org_id=TEST_ORG_ID,
+        )
+        await UserRepo.create(
+            db,
+            username="u2",
+            email="u2@t.com",
+            password_hash="h",
+            primary_org_id=TEST_ORG_ID,
+        )
         await db.flush()
 
         users = await UserRepo.list_all(db)
@@ -426,7 +456,12 @@ class TestApprovalRequestRepo:
     async def test_resolve_approval(self, db: AsyncSession):
         sess = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
         user = await UserRepo.create(
-            db, username="approver", email="a@t.com", password_hash="h", role="operator"
+            db,
+            username="approver",
+            email="a@t.com",
+            password_hash="h",
+            role="operator",
+            primary_org_id=TEST_ORG_ID,
         )
         await db.flush()
 

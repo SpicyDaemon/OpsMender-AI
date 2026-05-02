@@ -17,12 +17,14 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.audit.logger import AuditEntry, AuditLogger
 from backend.approvals import ApprovalService
 from backend.config_loader import Config
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
+from backend.db.models import Organization
 from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
 from backend.mcp.client import MCPClientError, connect, list_tools
@@ -705,6 +707,7 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
                 await ApprovalRequestRepo.resolve(db, org_id, request_id, status="expired")
                 await SessionRepo.set_status(
                     db,
+                    org_id,
                     request.session_id,
                     status="timed_out",
                     ended_at=datetime.now(timezone.utc),
@@ -742,12 +745,13 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
             if request.status == "expired":
                 await SessionRepo.set_status(
                     db,
+                    org_id,
                     request.session_id,
                     status="timed_out",
                     ended_at=datetime.now(timezone.utc),
                 )
             else:
-                await SessionRepo.set_status(db, request.session_id, status="active")
+                await SessionRepo.set_status(db, org_id, request.session_id, status="active")
             await db.commit()
             await db.refresh(request)
 

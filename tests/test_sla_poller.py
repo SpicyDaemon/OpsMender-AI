@@ -25,6 +25,11 @@ async def factory():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     fac = async_sessionmaker(engine, expire_on_commit=False)
+    async with fac() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
     yield fac
     await engine.dispose()
 

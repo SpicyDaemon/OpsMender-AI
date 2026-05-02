@@ -34,8 +34,9 @@ class PgAuditLogger:
         boundary — this logger only flushes.
     """
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, org_id: uuid.UUID) -> None:
         self._db = db
+        self._org_id = org_id
 
     # -- helpers ------------------------------------------------------------
 
@@ -58,6 +59,7 @@ class PgAuditLogger:
     ) -> str:
         entry = await AuditEntryRepo.create(
             self._db,
+            self._org_id,
             session_id=uuid.UUID(session_id),
             tier=tier,
             entry_type=AuditEntryType.TOOL_CALL_START.value,
@@ -77,6 +79,7 @@ class PgAuditLogger:
     ) -> str:
         entry = await AuditEntryRepo.create(
             self._db,
+            self._org_id,
             session_id=uuid.UUID(session_id),
             tier=tier,
             entry_type=AuditEntryType.TOOL_CALL_END.value,
@@ -97,6 +100,7 @@ class PgAuditLogger:
     ) -> str:
         entry = await AuditEntryRepo.create(
             self._db,
+            self._org_id,
             session_id=uuid.UUID(session_id),
             tier=tier,
             entry_type=AuditEntryType.TOOL_CALL_BLOCKED.value,
@@ -110,6 +114,7 @@ class PgAuditLogger:
     async def log_session_start(self, session_id: str, tier: int) -> str:
         entry = await AuditEntryRepo.create(
             self._db,
+            self._org_id,
             session_id=uuid.UUID(session_id),
             tier=tier,
             entry_type=AuditEntryType.SESSION_START.value,
@@ -120,6 +125,7 @@ class PgAuditLogger:
     async def log_session_end(self, session_id: str, tier: int) -> str:
         entry = await AuditEntryRepo.create(
             self._db,
+            self._org_id,
             session_id=uuid.UUID(session_id),
             tier=tier,
             entry_type=AuditEntryType.SESSION_END.value,
@@ -132,7 +138,7 @@ class PgAuditLogger:
     async def read_by_session(self, session_id: str) -> list[AuditEntryDC]:
         """Return all entries for a given session as dataclass instances."""
         rows = await AuditEntryRepo.list_by_session(
-            self._db, uuid.UUID(session_id)
+            self._db, self._org_id, uuid.UUID(session_id)
         )
         return [self._orm_to_dc(row) for row in rows]
 
@@ -152,6 +158,7 @@ class PgAuditLogger:
         sid = uuid.UUID(session_id) if session_id else None
         rows = await AuditEntryRepo.query(
             self._db,
+            self._org_id,
             session_id=sid,
             tool_name=tool_name,
             entry_type=entry_type,

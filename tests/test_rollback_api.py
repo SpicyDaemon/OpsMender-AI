@@ -38,6 +38,11 @@ async def app(tmp_path):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
     set_session_factory(factory)
 
     tmp_env = tmp_path / ".env"
@@ -88,11 +93,22 @@ async def admin_headers(client: AsyncClient) -> dict[str, str]:
             "password": "securepass123",
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, "rbadmin")
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="admin")
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={"username": "rbadmin", "password": "securepass123"},
     )
-    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}", "X-Org-ID": str(TEST_ORG_ID)}
 
 
 @pytest.fixture
@@ -106,11 +122,22 @@ async def viewer_headers(client: AsyncClient, admin_headers) -> dict[str, str]:
             "role": "viewer",
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, "rbviewer")
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="viewer")
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={"username": "rbviewer", "password": "pw12345678"},
     )
-    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}", "X-Org-ID": str(TEST_ORG_ID)}
 
 
 _SKILL_MD = (
@@ -311,7 +338,7 @@ class TestLiveRollback:
             return SimpleNamespace(isError=False, content=[])
 
         @asynccontextmanager
-        async def _fake_connect(_self, _name):
+        async def _fake_connect(_self, _org_id, _name):
             yield SimpleNamespace()
 
         monkeypatch.setattr(

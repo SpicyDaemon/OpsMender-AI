@@ -75,6 +75,13 @@ async def app(tmp_path):
         await conn.run_sync(Base.metadata.create_all)
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     set_session_factory(factory)
 
     tmp_env = tmp_path / ".env"
@@ -128,6 +135,16 @@ async def _register_login(
             "role": role,
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, username)
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role=role)
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     login = await client.post(
         "/auth/login", json={"username": username, "password": "secretpass123"}
     )
@@ -173,7 +190,9 @@ class TestE2EIncidentFlow:
 
         # 4. Drive the tier gate — a destructive action requires approval.
         skill_def = load_skill_def(SKILL_MD)
-        approval_service = ApprovalService(factory, poll_interval_seconds=0.01)
+        approval_service = ApprovalService(
+            factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01
+        )
         gate = _build_tier_gate(
             tier=1, skill_def=skill_def, approval_service=approval_service
         )
@@ -230,7 +249,7 @@ class TestE2EIncidentFlow:
         mock_session.call_tool = AsyncMock(return_value=_mock_mcp_result("ok"))
 
         async with factory() as db:
-            logger = PgAuditLogger(db)
+            logger = PgAuditLogger(db, TEST_ORG_ID)
             for action in result["approved_actions"]:
                 tool_name = action["tool_name"]
                 params = action.get("tool_parameters", {})
@@ -312,7 +331,9 @@ class TestE2EIncidentFlow:
         session_id = uuid.UUID(sess_resp.json()["id"])
 
         skill_def = load_skill_def(SKILL_MD)
-        service = ApprovalService(factory, poll_interval_seconds=0.01)
+        service = ApprovalService(
+            factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01
+        )
         gate = _build_tier_gate(tier=1, skill_def=skill_def, approval_service=service)
         gate_task = asyncio.create_task(
             gate(

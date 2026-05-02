@@ -29,6 +29,11 @@ async def factory():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     fac = async_sessionmaker(engine, expire_on_commit=False)
+    async with fac() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
     yield fac
     await engine.dispose()
 
@@ -85,6 +90,7 @@ class TestRollTo5m:
 
         for i in range(5):
             sample = UptimeSample(
+                org_id=TEST_ORG_ID,
                 target_id=target.id,
                 observed_at=bucket1_start + timedelta(seconds=30 * i),
                 up=(i < 4),  # 4 up, 1 down = 80%
@@ -94,6 +100,7 @@ class TestRollTo5m:
 
         for i in range(5):
             sample = UptimeSample(
+                org_id=TEST_ORG_ID,
                 target_id=target.id,
                 observed_at=bucket2_start + timedelta(seconds=30 * i),
                 up=True,  # all up = 100%
@@ -129,6 +136,7 @@ class TestRollTo5m:
         bucket_start = _floor_5m(datetime.now(timezone.utc) - timedelta(hours=1))
         for i in range(3):
             sample = UptimeSample(
+                org_id=TEST_ORG_ID,
                 target_id=target.id,
                 observed_at=bucket_start + timedelta(seconds=30 * i),
                 up=True,
@@ -157,6 +165,7 @@ class TestRollTo5m:
         for i in range(3):
             db.add(
                 UptimeSample(
+                    org_id=TEST_ORG_ID,
                     target_id=target.id,
                     observed_at=bucket_start + timedelta(seconds=30 * i),
                     up=True,
@@ -166,6 +175,7 @@ class TestRollTo5m:
         for i in range(2):
             db.add(
                 UptimeSample(
+                    org_id=TEST_ORG_ID,
                     target_id=target.id,
                     observed_at=bucket_start + timedelta(seconds=30 * (3 + i)),
                     up=False,
@@ -204,6 +214,7 @@ class TestRollTo1h:
         for i in range(12):
             db.add(
                 UptimeSample5m(
+                    org_id=TEST_ORG_ID,
                     target_id=target.id,
                     bucket_start=h1_floor + timedelta(minutes=5 * i),
                     up_pct=0.9 if i < 6 else 1.0,
@@ -215,6 +226,7 @@ class TestRollTo1h:
         for i in range(12):
             db.add(
                 UptimeSample5m(
+                    org_id=TEST_ORG_ID,
                     target_id=target.id,
                     bucket_start=h2_floor + timedelta(minutes=5 * i),
                     up_pct=1.0,
@@ -256,6 +268,7 @@ class TestPruneRaw:
         # Insert old sample (40 days ago)
         db.add(
             UptimeSample(
+                org_id=TEST_ORG_ID,
                 target_id=target.id,
                 observed_at=now - timedelta(days=40),
                 up=True,
@@ -265,6 +278,7 @@ class TestPruneRaw:
         # Insert recent sample (1 day ago)
         db.add(
             UptimeSample(
+                org_id=TEST_ORG_ID,
                 target_id=target.id,
                 observed_at=now - timedelta(days=1),
                 up=True,
@@ -298,6 +312,7 @@ class TestPruneRaw:
         now = datetime.now(timezone.utc)
         db.add(
             UptimeSample(
+                org_id=TEST_ORG_ID,
                 target_id=target.id,
                 observed_at=now - timedelta(days=5),
                 up=True,
@@ -323,6 +338,7 @@ class TestRunOnceIntegration:
         for i in range(5):
             db.add(
                 UptimeSample(
+                    org_id=TEST_ORG_ID,
                     target_id=target.id,
                     observed_at=bucket_start + timedelta(seconds=30 * i),
                     up=True,
@@ -333,6 +349,7 @@ class TestRunOnceIntegration:
         # Insert an old sample that should be pruned
         db.add(
             UptimeSample(
+                org_id=TEST_ORG_ID,
                 target_id=target.id,
                 observed_at=now - timedelta(days=35),
                 up=False,

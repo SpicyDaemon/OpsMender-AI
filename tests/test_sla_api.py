@@ -36,6 +36,11 @@ async def app_db():
 
     # Create an admin user
     async with factory() as db:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        db.add(org)
+        await db.commit()
+
         admin = User(
             username="admin",
             email="admin@test.com",

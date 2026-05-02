@@ -418,8 +418,8 @@ async def rollback_session(
         )
 
     # -- Live rollback: spawn an MCP session + use the Tier 0 sandbox --
-    logger = PgAuditLogger(db)
-    async with pool.connect(body.mcp_server) as mcp_session:
+    logger = PgAuditLogger(db, org_id)
+    async with pool.connect(org_id, body.mcp_server) as mcp_session:
         tools = await mcp_list_tools(mcp_session)
         sandbox = Tier0Sandbox.from_skill(skill_def, available_tools=tools)
 

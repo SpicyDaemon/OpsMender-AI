@@ -31,6 +31,13 @@ async def app(tmp_path):
         await conn.run_sync(Base.metadata.create_all)
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     set_session_factory(factory)
 
     tmp_env = tmp_path / ".env"
@@ -48,11 +55,11 @@ async def app(tmp_path):
     application.state.session_factory = factory
 
     class _FakePool:
-        async def get_server(self, name: str):
+        async def get_server(self, org_id: uuid.UUID, name: str):
             return object()
 
         @asynccontextmanager
-        async def connect(self, name: str):
+        async def connect(self, org_id: uuid.UUID, name: str):
             class _Session:
                 pass
 
@@ -96,6 +103,16 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
             "password": "securepass123",
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, "detector-admin")
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="admin")
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={"username": "detector-admin", "password": "securepass123"},
@@ -313,11 +330,11 @@ class TestDetectorRunner:
             monkeypatch.setattr("backend.detector.runner.call_tool", _fake_call_tool)
 
             class _Pool:
-                async def get_server(self, name: str):
+                async def get_server(self, org_id: uuid.UUID, name: str):
                     return object()
 
                 @asynccontextmanager
-                async def connect(self, name: str):
+                async def connect(self, org_id: uuid.UUID, name: str):
                     class _Session:
                         pass
 
@@ -423,11 +440,11 @@ class TestDetectorRunner:
             monkeypatch.setattr("backend.detector.runner.call_tool", _fake_call_tool)
 
             class _Pool:
-                async def get_server(self, name: str):
+                async def get_server(self, org_id: uuid.UUID, name: str):
                     return object()
 
                 @asynccontextmanager
-                async def connect(self, name: str):
+                async def connect(self, org_id: uuid.UUID, name: str):
                     class _Session:
                         pass
 
@@ -496,11 +513,11 @@ class TestDetectorRunner:
             monkeypatch.setattr("backend.detector.runner.list_tools", _fake_list_tools)
 
             class _Pool:
-                async def get_server(self, name: str):
+                async def get_server(self, org_id: uuid.UUID, name: str):
                     return object()
 
                 @asynccontextmanager
-                async def connect(self, name: str):
+                async def connect(self, org_id: uuid.UUID, name: str):
                     class _Session:
                         pass
 
@@ -583,11 +600,11 @@ class TestDetectorRunner:
             monkeypatch.setattr("backend.detector.runner.list_tools", _fake_list_tools)
 
             class _Pool:
-                async def get_server(self, name: str):
+                async def get_server(self, org_id: uuid.UUID, name: str):
                     return object()
 
                 @asynccontextmanager
-                async def connect(self, name: str):
+                async def connect(self, org_id: uuid.UUID, name: str):
                     class _Session:
                         pass
 
@@ -625,11 +642,11 @@ class TestDetectorRunner:
 class TestDetectorScheduler:
     async def test_tick_schedules_due_active_rule(self, app, monkeypatch):
         class _Pool:
-            async def get_server(self, name: str):
+            async def get_server(self, org_id: uuid.UUID, name: str):
                 return object()
 
             @asynccontextmanager
-            async def connect(self, name: str):
+            async def connect(self, org_id: uuid.UUID, name: str):
                 class _Session:
                     pass
 
@@ -684,11 +701,11 @@ class TestDetectorScheduler:
 
     async def test_tick_skips_inactive_rule(self, app, monkeypatch):
         class _Pool:
-            async def get_server(self, name: str):
+            async def get_server(self, org_id: uuid.UUID, name: str):
                 return object()
 
             @asynccontextmanager
-            async def connect(self, name: str):
+            async def connect(self, org_id: uuid.UUID, name: str):
                 class _Session:
                     pass
 

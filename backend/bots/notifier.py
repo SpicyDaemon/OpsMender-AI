@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+import sqlalchemy
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -255,7 +256,7 @@ async def _resolve_relay_targets(
 ) -> Iterable[tuple[BotConnector, str]]:
     async with factory() as db:
         stmt = (
-            select(BotActionAudit)
+            sqlalchemy.select(BotActionAudit)
             .where(
                 BotActionAudit.org_id == org_id,
                 BotActionAudit.session_id == session_id,
@@ -276,6 +277,8 @@ async def _resolve_relay_targets(
                 continue
             connector = await BotConnectorRepo.get_by_id(db, org_id, row.connector_id)
             if connector is None or not connector.is_enabled:
+                continue
+            if not _has_capability(connector, "copilot_chat"):
                 continue
             seen.add(key)
             targets.append((connector, row.chat_id))

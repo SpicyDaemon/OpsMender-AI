@@ -222,6 +222,7 @@ async def create_ingest_token(
         if parsed.needs_llm:
             llm_paths = await extract_paths_via_llm(
                 db,
+                org_id,
                 payload=body.sample_payload,
                 config=request.app.state.config,
             )
@@ -282,6 +283,7 @@ async def learn_ingest_token_shape(
 
     paths, cache_hit = await apply_shape_cache(
         db,
+        org_id,
         token=tok,
         payload=body.payload,
         config=request.app.state.config,

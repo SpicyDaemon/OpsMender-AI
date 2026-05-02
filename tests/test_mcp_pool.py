@@ -20,6 +20,11 @@ async def session_factory():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
     yield factory
     await engine.dispose()
 
@@ -29,11 +34,11 @@ class TestMCPServerPoolFreshness:
 
     async def test_list_empty_when_db_empty(self, session_factory):
         pool = MCPServerPool(session_factory)
-        assert await pool.list_servers() == []
+        assert await pool.list_servers(TEST_ORG_ID) == []
 
     async def test_newly_added_server_is_visible_without_reload(self, session_factory):
         pool = MCPServerPool(session_factory)
-        assert await pool.list_servers() == []
+        assert await pool.list_servers(TEST_ORG_ID) == []
 
         # Simulate a POST /mcp-servers — the pool was already constructed
         async with session_factory() as db:
@@ -48,7 +53,7 @@ class TestMCPServerPoolFreshness:
             await db.commit()
 
         # No reload step — same pool instance must now see the new server
-        servers = await pool.list_servers()
+        servers = await pool.list_servers(TEST_ORG_ID)
         assert [s.name for s in servers] == ["k8s-dev"]
         assert servers[0].transport == "stdio"
         assert servers[0].command == "/usr/bin/mcp-k8s"
@@ -62,7 +67,7 @@ class TestMCPServerPoolFreshness:
             await db.commit()
             server_id = server.id
 
-        first = await pool.get_server("k8s")
+        first = await pool.get_server(TEST_ORG_ID, "k8s")
         assert first is not None
         assert first.url == "http://old.example"
 
@@ -77,7 +82,7 @@ class TestMCPServerPoolFreshness:
             )
             await db.commit()
 
-        second = await pool.get_server("k8s")
+        second = await pool.get_server(TEST_ORG_ID, "k8s")
         assert second is not None
         assert second.url == "http://new.example"
 
@@ -102,10 +107,10 @@ class TestMCPServerPoolFreshness:
             )
             await db.commit()
 
-        active = await pool.list_servers(active_only=True)
+        active = await pool.list_servers(TEST_ORG_ID, active_only=True)
         assert [s.name for s in active] == ["on"]
 
-        everything = await pool.list_servers(active_only=False)
+        everything = await pool.list_servers(TEST_ORG_ID, active_only=False)
         assert sorted(s.name for s in everything) == ["off", "on"]
 
 
@@ -126,7 +131,7 @@ class TestMCPServerPoolFallback:
 
         # When DB is reachable the env fallback is ignored entirely —
         # otherwise the two sources would silently merge and drift.
-        names = [s.name for s in await pool.list_servers()]
+        names = [s.name for s in await pool.list_servers(TEST_ORG_ID)]
         assert names == ["db-only"]
 
     async def test_falls_back_to_env_when_no_session_factory(self):
@@ -135,19 +140,19 @@ class TestMCPServerPoolFallback:
         )
         pool = MCPServerPool(None, env_fallback=[env_server])
 
-        servers = await pool.list_servers()
+        servers = await pool.list_servers(TEST_ORG_ID)
         assert [s.name for s in servers] == ["env-only"]
 
-        found = await pool.get_server("env-only")
+        found = await pool.get_server(TEST_ORG_ID, "env-only")
         assert found is not None
         assert found.url == "http://example"
 
     async def test_get_server_missing_returns_none(self, session_factory):
         pool = MCPServerPool(session_factory)
-        assert await pool.get_server("does-not-exist") is None
+        assert await pool.get_server(TEST_ORG_ID, "does-not-exist") is None
 
     async def test_connect_unknown_raises(self, session_factory):
         pool = MCPServerPool(session_factory)
         with pytest.raises(MCPPoolError):
-            async with pool.connect("nope"):
+            async with pool.connect(TEST_ORG_ID, "nope"):
                 pass

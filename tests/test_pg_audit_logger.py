@@ -22,6 +22,12 @@ async def db():
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
+
+    async with factory() as session:
         yield session
     await engine.dispose()
 
@@ -36,7 +42,7 @@ async def session_id(db: AsyncSession) -> str:
 
 class TestPgAuditLogger:
     async def test_log_session_lifecycle(self, db: AsyncSession, session_id: str):
-        logger = PgAuditLogger(db)
+        logger = PgAuditLogger(db, TEST_ORG_ID)
 
         start_id = await logger.log_session_start(session_id, tier=2)
         assert start_id  # non-empty string
@@ -50,7 +56,7 @@ class TestPgAuditLogger:
         assert entries[1].entry_type == AuditEntryType.SESSION_END
 
     async def test_log_tool_call(self, db: AsyncSession, session_id: str):
-        logger = PgAuditLogger(db)
+        logger = PgAuditLogger(db, TEST_ORG_ID)
 
         await logger.log_tool_call_start(
             session_id, tier=2, tool_name="get_pods", tool_parameters={"ns": "default"}
@@ -69,7 +75,7 @@ class TestPgAuditLogger:
         assert entries[1].duration_ms == 150
 
     async def test_log_blocked_call(self, db: AsyncSession, session_id: str):
-        logger = PgAuditLogger(db)
+        logger = PgAuditLogger(db, TEST_ORG_ID)
 
         await logger.log_tool_call_blocked(
             session_id,
@@ -86,7 +92,7 @@ class TestPgAuditLogger:
         assert entries[0].entry_type == AuditEntryType.TOOL_CALL_BLOCKED
 
     async def test_query_filters(self, db: AsyncSession, session_id: str):
-        logger = PgAuditLogger(db)
+        logger = PgAuditLogger(db, TEST_ORG_ID)
 
         await logger.log_tool_call_start(session_id, 2, "get_pods")
         await logger.log_tool_call_blocked(
@@ -101,7 +107,7 @@ class TestPgAuditLogger:
         assert len(by_tool) == 1
 
     async def test_returns_dataclass_instances(self, db: AsyncSession, session_id: str):
-        logger = PgAuditLogger(db)
+        logger = PgAuditLogger(db, TEST_ORG_ID)
         await logger.log_session_start(session_id, tier=2)
 
         entries = await logger.read_by_session(session_id)

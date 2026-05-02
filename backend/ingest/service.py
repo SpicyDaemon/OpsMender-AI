@@ -66,13 +66,7 @@ async def authenticate_token(
     raw_token: str,
 ) -> IngestToken | None:
     """Validate an ingest token.  Returns the token row if valid, else None."""
-    # Since we don't know the org_id yet, we have to list ALL active tokens.
-    # We need a special list_all_global in IngestTokenRepo or just query directly.
-    # Actually, let's just use a select() directly here to avoid chicken-and-egg.
-    from sqlalchemy import select
-    stmt = select(IngestToken).where(IngestToken.is_active == True)
-    result = await db.execute(stmt)
-    tokens = result.scalars().all()
+    tokens = await IngestTokenRepo.list_all_global(db, active_only=True)
     
     for tok in tokens:
         if verify_token(raw_token, tok.token_hash):

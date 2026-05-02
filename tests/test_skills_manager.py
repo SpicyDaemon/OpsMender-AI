@@ -57,6 +57,11 @@ async def db_factory():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
     yield factory
     await engine.dispose()
 
@@ -116,6 +121,16 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
             "password": "securepass123",
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, "skilladmin")
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="admin")
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={"username": "skilladmin", "password": "securepass123"},
@@ -134,6 +149,16 @@ async def viewer_headers(client: AsyncClient, auth_headers) -> dict[str, str]:
             "role": "viewer",
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, "skillviewer")
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="viewer")
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={"username": "skillviewer", "password": "viewerpass123"},
@@ -558,7 +583,7 @@ class TestEnforcementFromDB:
         )
         await db.flush()
 
-        skill_def = await load_skill_for_mcp_server(db, server.id)
+        skill_def = await load_skill_for_mcp_server(db, TEST_ORG_ID, server.id)
         assert skill_def is not None
         assert skill_def.classify("get_pods") == "safe"
         assert skill_def.classify("delete_namespace") == "destructive"
@@ -571,9 +596,9 @@ class TestEnforcementFromDB:
         await SkillRepo.create(db, TEST_ORG_ID, name="global", content_md=SAMPLE_SKILL)
         await db.flush()
 
-        skill_def = await load_skill_for_mcp_server(db, server.id)
+        skill_def = await load_skill_for_mcp_server(db, TEST_ORG_ID, server.id)
         assert skill_def is not None
         assert skill_def.classify("get_pods") == "safe"
 
     async def test_returns_none_when_empty(self, db: AsyncSession):
-        assert await load_skill_for_mcp_server(db, None) is None
+        assert await load_skill_for_mcp_server(db, TEST_ORG_ID, None) is None

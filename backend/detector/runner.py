@@ -274,6 +274,7 @@ async def _upsert_detector_incident(
     external_source = f"detector:{rule.id}"
     existing = await IncidentRepo.get_by_external_fingerprint(
         db,
+        org_id=rule.org_id,
         external_source=external_source,
         external_id=fingerprint,
     )
@@ -281,6 +282,7 @@ async def _upsert_detector_incident(
         return existing
 
     incident = Incident(
+        org_id=rule.org_id,
         title=title,
         description=description,
         severity=severity,
@@ -307,9 +309,10 @@ async def run_detector_rule(
     if budget_guard is not None:
         budget_error = await budget_guard.check_and_record(rule.id)
         if budget_error:
-            await DetectorRuleRepo.mark_run(db, rule.id, last_ran_at=now)
+            await DetectorRuleRepo.mark_run(db, rule.org_id, rule.id, last_ran_at=now)
             await DetectorHistoryRepo.create(
                 db,
+                rule.org_id,
                 rule_id=rule.id,
                 duration_ms=0,
                 issue_detected=False,
@@ -319,12 +322,13 @@ async def run_detector_rule(
 
     model_cfg = None
     if rule.model_config_id is not None:
-        model_cfg = await ModelConfigRepo.get_by_id(db, rule.model_config_id)
+        model_cfg = await ModelConfigRepo.get_by_id(db, rule.org_id, rule.model_config_id)
         if model_cfg is None:
             error = f"Model config not found: {rule.model_config_id}"
-            await DetectorRuleRepo.mark_run(db, rule.id, last_ran_at=now)
+            await DetectorRuleRepo.mark_run(db, rule.org_id, rule.id, last_ran_at=now)
             await DetectorHistoryRepo.create(
                 db,
+                rule.org_id,
                 rule_id=rule.id,
                 duration_ms=0,
                 issue_detected=False,
@@ -332,12 +336,15 @@ async def run_detector_rule(
             )
             return DetectorRunResult(success=False, error=error)
     else:
-        model_cfg = await ModelConfigRepo.get_default(db)
+        model_cfg = await ModelConfigRepo.get_default(db, rule.org_id)
 
     try:
         provider = create_provider(**_resolve_model_kwargs(config, model_cfg))
 
-        async with pool.connect(await _resolve_server_name(pool, rule.mcp_server_id, db)) as session:
+        async with pool.connect(
+            rule.org_id,
+            await _resolve_server_name(pool, rule.org_id, rule.mcp_server_id, db),
+        ) as session:
             tools = await list_tools(session)
             skill_def = _detector_skill_from_tools(tools)
             safe_tools = [tool for tool in tools if skill_def.classify(tool.name) == "safe"]
@@ -347,7 +354,7 @@ async def run_detector_rule(
 
             raw_plan_text = await _complete(
                 PLAN_PROMPT.format(
-                    server_name=await _resolve_server_name(pool, rule.mcp_server_id, db),
+                    server_name=await _resolve_server_name(pool, rule.org_id, rule.mcp_server_id, db),
                     goal=rule.prompt_template,
                     tool_lines=_tool_lines(safe_tools),
                 ),
@@ -406,12 +413,14 @@ async def run_detector_rule(
 
         await DetectorRuleRepo.mark_run(
             db,
+            rule.org_id,
             rule.id,
             last_ran_at=now,
             last_fingerprint=fingerprint or None,
         )
         await DetectorHistoryRepo.create(
             db,
+            rule.org_id,
             rule_id=rule.id,
             duration_ms=int((time.monotonic() - started) * 1000),
             issue_detected=issue_detected,
@@ -425,9 +434,10 @@ async def run_detector_rule(
             raw_verdict=verdict,
         )
     except Exception as exc:  # noqa: BLE001
-        await DetectorRuleRepo.mark_run(db, rule.id, last_ran_at=now)
+        await DetectorRuleRepo.mark_run(db, rule.org_id, rule.id, last_ran_at=now)
         await DetectorHistoryRepo.create(
             db,
+            rule.org_id,
             rule_id=rule.id,
             duration_ms=int((time.monotonic() - started) * 1000),
             issue_detected=False,
@@ -438,15 +448,16 @@ async def run_detector_rule(
 
 async def _resolve_server_name(
     pool: MCPServerPool,
+    org_id: uuid.UUID,
     mcp_server_id: uuid.UUID,
     db: AsyncSession,
 ) -> str:
     from backend.db.repos import MCPServerRepo  # local import avoids cycle
 
-    server = await MCPServerRepo.get_by_id(db, mcp_server_id)
+    server = await MCPServerRepo.get_by_id(db, org_id, mcp_server_id)
     if server is None:
         raise RuntimeError(f"MCP server not found: {mcp_server_id}")
-    resolved = await pool.get_server(server.name)
+    resolved = await pool.get_server(org_id, server.name)
     if resolved is None:
         raise RuntimeError(f"MCP server is not currently available: {server.name}")
     return server.name

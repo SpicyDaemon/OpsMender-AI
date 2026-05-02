@@ -526,7 +526,7 @@ class TestTierGate:
             await db.commit()
             await db.refresh(session)
 
-        service = ApprovalService(factory, poll_interval_seconds=0.01)
+        service = ApprovalService(factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01)
         gate = _build_tier_gate(
             tier=1, skill_def=_skill_def(), approval_service=service
         )
@@ -568,7 +568,7 @@ class TestTierGate:
             await db.commit()
             await db.refresh(session)
 
-        service = ApprovalService(factory, poll_interval_seconds=0.01)
+        service = ApprovalService(factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01)
         gate = _build_tier_gate(
             tier=1, skill_def=_skill_def(), approval_service=service
         )
@@ -610,7 +610,7 @@ class TestTierGate:
             await db.refresh(session)
 
         service = ApprovalService(
-            factory, timeout_seconds=0, poll_interval_seconds=0.01
+            factory, org_id=TEST_ORG_ID, timeout_seconds=0, poll_interval_seconds=0.01
         )
         gate = _build_tier_gate(
             tier=1, skill_def=_skill_def(), approval_service=service

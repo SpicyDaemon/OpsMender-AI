@@ -42,6 +42,13 @@ async def app(tmp_path):
         await conn.run_sync(Base.metadata.create_all)
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        session.add(org)
+        await session.commit()
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     set_session_factory(factory)
 
     tmp_env = tmp_path / ".env"
@@ -96,6 +103,16 @@ async def admin_headers(client: AsyncClient) -> dict[str, str]:
             "password": "securepass123",
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, "ingest_admin")
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="admin")
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={
@@ -119,6 +136,16 @@ async def viewer_headers(client: AsyncClient, admin_headers) -> dict[str, str]:
             "role": "viewer",
         },
     )
+    # Link user to TEST_ORG_ID
+    factory = client._transport.app.state.session_factory
+    async with factory() as db:
+        from backend.db.repos import UserRepo
+        user = await UserRepo.get_by_username(db, "ingest_viewer")
+        if user:
+            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="viewer")
+            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={
@@ -1394,7 +1421,7 @@ class TestUniversalIngestIntegration:
 
         called: list[dict] = []
 
-        async def fake_apply(db, *, token, payload, config):
+        async def fake_apply(db, org_id, *, token, payload, config):
             called.append(payload)
             # Return paths that reach into the weird payload
             paths = {
@@ -1443,7 +1470,7 @@ class TestUniversalIngestIntegration:
 
         call_count = {"llm": 0}
 
-        async def fake_llm(db, *, payload, config):
+        async def fake_llm(db, org_id, *, payload, config):
             call_count["llm"] += 1
             return {
                 "title": "weird.name",
@@ -1484,7 +1511,7 @@ class TestUniversalIngestIntegration:
         """If the LLM returns nothing, we still create an Untitled incident rather than 500."""
         from backend.ingest import service as svc
 
-        async def fake_apply(db, *, token, payload, config):
+        async def fake_apply(db, org_id, *, token, payload, config):
             return None, False
 
         monkeypatch.setattr(svc, "apply_shape_cache", fake_apply)

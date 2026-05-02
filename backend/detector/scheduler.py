@@ -68,7 +68,7 @@ class DetectorScheduler:
 
     async def _tick(self) -> None:
         async with self._session_factory() as db:
-            rules = await DetectorRuleRepo.list_all(db, active_only=True)
+            rules = await DetectorRuleRepo.list_all_global(db, active_only=True)
             now = datetime.now(timezone.utc)
             for rule in rules:
                 if rule.id in self._running_rules:
@@ -85,7 +85,7 @@ class DetectorScheduler:
     async def _run_rule(self, rule_id: uuid.UUID) -> None:
         try:
             async with self._session_factory() as db:
-                rule = await DetectorRuleRepo.get_by_id(db, rule_id)
+                rule = await DetectorRuleRepo.get_by_id_global(db, rule_id)
                 if rule is None or not rule.is_active:
                     await db.rollback()
                     return

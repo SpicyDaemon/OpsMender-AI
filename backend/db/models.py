@@ -60,13 +60,48 @@ class Base(DeclarativeBase):
 
 
 # ---------------------------------------------------------------------------
+# Organizations (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    users: Mapped[list["UserOrganization"]] = relationship(back_populates="organization")
+
+
+class UserOrganization(Base):
+    __tablename__ = "user_organizations"
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="viewer"
+    )  # admin | operator | viewer
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    user: Mapped["User"] = relationship(back_populates="organizations")
+    organization: Mapped[Organization] = relationship(back_populates="users")
+
+
+# ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
 
 
 class User(Base):
     __tablename__ = "users"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     username: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
@@ -75,9 +110,15 @@ class User(Base):
         String(20), nullable=False, default="viewer"
     )  # admin | operator | viewer
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    primary_org_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+    organizations: Mapped[list["UserOrganization"]] = relationship(back_populates="user")
+
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +128,10 @@ class User(Base):
 
 class Incident(Base):
     __tablename__ = "incidents"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -118,6 +163,10 @@ class Incident(Base):
 
 class Session(Base):
     __tablename__ = "sessions"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     incident_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -160,6 +209,10 @@ class Session(Base):
 class AuditEntry(Base):
     __tablename__ = "audit_entries"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     session_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("sessions.id"), nullable=False
@@ -188,6 +241,10 @@ class AuditEntry(Base):
 
 class ApprovalRequest(Base):
     __tablename__ = "approval_requests"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     session_id: Mapped[uuid.UUID] = mapped_column(
@@ -223,6 +280,10 @@ class ApprovalRequest(Base):
 class ModelConfig(Base):
     __tablename__ = "model_configs"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     provider: Mapped[str] = mapped_column(
@@ -248,6 +309,10 @@ class ModelConfig(Base):
 class MCPServer(Base):
     __tablename__ = "mcp_servers"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     transport: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -269,6 +334,10 @@ class MCPServer(Base):
 
 class Skill(Base):
     __tablename__ = "skills"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
@@ -293,6 +362,10 @@ class Skill(Base):
 class SessionMessage(Base):
     __tablename__ = "session_messages"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     session_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
@@ -316,6 +389,10 @@ class SessionMessage(Base):
 class RuntimeConfig(Base):
     __tablename__ = "runtime_config"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -330,6 +407,10 @@ class RuntimeConfig(Base):
 
 class WebhookTrigger(Base):
     __tablename__ = "webhook_triggers"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
@@ -359,6 +440,10 @@ class WebhookTrigger(Base):
 class WorkflowProfile(Base):
     __tablename__ = "workflow_profiles"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -380,6 +465,10 @@ class WorkflowProfile(Base):
 
 class AgentTeamProfile(Base):
     __tablename__ = "agent_team_profiles"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
@@ -415,6 +504,10 @@ class IngestToken(Base):
 
     __tablename__ = "ingest_tokens"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     provider: Mapped[str] = mapped_column(
@@ -440,6 +533,10 @@ class IngestLog(Base):
     """Every inbound webhook payload stored raw for replay/debugging."""
 
     __tablename__ = "ingest_log"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     ingest_token_id: Mapped[uuid.UUID] = mapped_column(
@@ -472,6 +569,10 @@ class DetectorRule(Base):
     """
 
     __tablename__ = "detector_rules"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
@@ -511,6 +612,10 @@ class DetectorHistory(Base):
 
     __tablename__ = "detector_history"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     rule_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
@@ -540,6 +645,10 @@ class SLATarget(Base):
 
     __tablename__ = "sla_targets"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     kind: Mapped[str] = mapped_column(
@@ -568,6 +677,10 @@ class UptimeSample(Base):
 
     __tablename__ = "uptime_samples"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     target_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
@@ -589,6 +702,10 @@ class UptimeSample5m(Base):
 
     __tablename__ = "uptime_samples_5m"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     target_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
@@ -609,6 +726,10 @@ class UptimeSample1h(Base):
     """1-hour downsampled availability probes."""
 
     __tablename__ = "uptime_samples_1h"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     target_id: Mapped[uuid.UUID] = mapped_column(
@@ -635,6 +756,10 @@ class SLO(Base):
     """Service Level Objectives linked to an SLA Target."""
 
     __tablename__ = "slos"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     target_id: Mapped[uuid.UUID] = mapped_column(
@@ -667,6 +792,10 @@ class MaintenanceWindow(Base):
 
     __tablename__ = "maintenance_windows"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -693,6 +822,10 @@ class BotConnector(Base):
     """External chat bot connector configuration."""
 
     __tablename__ = "bot_connectors"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
@@ -723,6 +856,10 @@ class BotUserLink(Base):
 
     __tablename__ = "bot_user_links"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     connector_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
@@ -748,6 +885,10 @@ class BotActionAudit(Base):
     """Audit log entry for an inbound bot connector action."""
 
     __tablename__ = "bot_action_audit"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     connector_id: Mapped[uuid.UUID] = mapped_column(

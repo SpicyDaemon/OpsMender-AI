@@ -724,6 +724,22 @@ export interface SLATargetListResponse {
   total: number;
 }
 
+export interface SLATargetCreate {
+  name: string;
+  kind: SLATargetKind;
+  config?: Record<string, unknown> | null;
+  owner_team?: string | null;
+  is_active?: boolean;
+}
+
+export interface SLATargetUpdate {
+  name?: string;
+  kind?: SLATargetKind;
+  config?: Record<string, unknown> | null;
+  owner_team?: string | null;
+  is_active?: boolean;
+}
+
 export interface SLOResponse {
   id: string;
   target_id: string;
@@ -757,12 +773,18 @@ export interface MaintenanceWindowListResponse {
   total: number;
 }
 
+export interface UptimeSeriesPoint {
+  ts: string;
+  up_pct: number;
+}
+
 export interface SLATargetUptimeResponse {
   uptime_pct: number;
   total_samples: number;
   up_samples: number;
   downtime_seconds: number;
   suppressed_seconds: number;
+  series: UptimeSeriesPoint[];
 }
 
 export interface SLOStatusResponse {

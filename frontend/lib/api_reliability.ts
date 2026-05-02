@@ -23,6 +23,10 @@ export async function createSLATarget(payload: Record<string, unknown>): Promise
   return api.post("/sla-targets", payload);
 }
 
+export async function updateSLATarget(id: string, payload: Record<string, unknown>): Promise<SLATargetResponse> {
+  return api.put(`/sla-targets/${id}`, payload);
+}
+
 export async function deleteSLATarget(id: string): Promise<void> {
   return api.del(`/sla-targets/${id}`);
 }

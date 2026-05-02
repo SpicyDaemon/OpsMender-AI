@@ -6,6 +6,8 @@ import { Activity, Plus, ServerCrash, Shield, Clock, Calendar, Trash2, Pencil } 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { MaintenanceWindowModal } from "@/components/reliability/MaintenanceWindowModal";
+import { SLATargetModal } from "@/components/reliability/SLATargetModal";
+import { SLOModal } from "@/components/reliability/SLOModal";
 import {
   listSLATargets,
   getSLATargetUptime,
@@ -13,6 +15,8 @@ import {
   getSLOStatus,
   listMaintenanceWindows,
   deleteMaintenanceWindow,
+  deleteSLATarget,
+  deleteSLO,
 } from "@/lib/api_reliability";
 import type {
   SLATargetResponse,
@@ -24,6 +28,7 @@ import type {
 
 interface TargetWithMetrics extends SLATargetResponse {
   uptime30d: SLATargetUptimeResponse | null;
+  uptime24h: SLATargetUptimeResponse | null;
   slos: (SLOResponse & { status: SLOStatusResponse | null })[];
   activeMaintenance: MaintenanceWindowResponse | null;
 }
@@ -34,6 +39,11 @@ export default function ReliabilityPage() {
   const [loading, setLoading] = useState(true);
   const [showMWModal, setShowMWModal] = useState(false);
   const [editingMW, setEditingMW] = useState<MaintenanceWindowResponse | null>(null);
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [editingTarget, setEditingTarget] = useState<SLATargetResponse | null>(null);
+  const [showSLOModal, setShowSLOModal] = useState(false);
+  const [editingSLO, setEditingSLO] = useState<SLOResponse | null>(null);
+  const [activeTargetId, setActiveTargetId] = useState<string>("");
 
   const loadData = async () => {
     setLoading(true);
@@ -55,6 +65,7 @@ export default function ReliabilityPage() {
         const targetMetrics: TargetWithMetrics[] = await Promise.all(
           targetsData.items.map(async (target) => {
             const uptime = await getSLATargetUptime(target.id, "30d").catch(() => null);
+            const uptime24h = await getSLATargetUptime(target.id, "24h").catch(() => null);
             
             const targetSlos = slos.filter((s) => s.target_id === target.id);
             const slosWithStatus = await Promise.all(
@@ -71,6 +82,7 @@ export default function ReliabilityPage() {
             return {
               ...target,
               uptime30d: uptime,
+              uptime24h: uptime24h,
               slos: slosWithStatus,
               activeMaintenance: activeMw,
             };
@@ -96,6 +108,26 @@ export default function ReliabilityPage() {
     }
   };
 
+  const handleDeleteTarget = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this SLA Target? All associated SLOs will also be deleted.")) return;
+    try {
+      await deleteSLATarget(id);
+      loadData();
+    } catch (err) {
+      console.error("Failed to delete SLA Target", err);
+    }
+  };
+
+  const handleDeleteSLO = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this SLO?")) return;
+    try {
+      await deleteSLO(id);
+      loadData();
+    } catch (err) {
+      console.error("Failed to delete SLO", err);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -110,7 +142,7 @@ export default function ReliabilityPage() {
           <h1 className="text-sm font-semibold text-fg-primary">Reliability & SLA</h1>
         </div>
         <div className="flex items-center gap-3">
-          <Button disabled>
+          <Button onClick={() => { setEditingTarget(null); setShowTargetModal(true); }}>
             <Plus size={14} /> New Target
           </Button>
         </div>
@@ -158,32 +190,94 @@ export default function ReliabilityPage() {
                           <Clock size={14} />
                         </div>
                       ) : (
-                        <div className={`h-2 w-2 rounded-full ${target.is_active ? "bg-status-success" : "bg-fg-muted"}`} />
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingTarget(target); setShowTargetModal(true); }}
+                            className="text-fg-muted hover:text-fg-primary p-1"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteTarget(target.id); }}
+                            className="text-fg-muted hover:text-status-critical p-1"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                          <div className={`h-2 w-2 rounded-full ${target.is_active ? "bg-status-success" : "bg-fg-muted"}`} />
+                        </div>
                       )}
                     </div>
                     
-                    <div className="mt-4 flex items-end gap-2">
-                      <span className="text-3xl font-light tracking-tight text-fg-primary">
-                        {target.uptime30d ? target.uptime30d.uptime_pct.toFixed(2) : "100.00"}%
-                      </span>
-                      <span className="text-xs text-fg-secondary mb-1">30d uptime</span>
+                    <div className="mt-4 flex items-end justify-between gap-2">
+                      <div className="flex items-end gap-2">
+                        <span className="text-3xl font-light tracking-tight text-fg-primary">
+                          {target.uptime30d ? target.uptime30d.uptime_pct.toFixed(2) : "100.00"}%
+                        </span>
+                        <span className="text-xs text-fg-secondary mb-1">30d uptime</span>
+                      </div>
+                      
+                      {/* 24h Sparkline */}
+                      {target.uptime24h?.series && target.uptime24h.series.length > 0 && (
+                        <div className="h-8 w-24 flex items-end" title="24h uptime trend">
+                          <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 20">
+                            <polyline
+                              fill="none"
+                              stroke={target.uptime24h.uptime_pct >= 99.9 ? "#10b981" : "#f59e0b"}
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              points={target.uptime24h.series
+                                .map((p, i) => {
+                                  const x = (i / (target.uptime24h!.series.length - 1)) * 100;
+                                  const y = 20 - (p.up_pct / 100) * 20;
+                                  return `${x},${y}`;
+                                })
+                                .join(" ")}
+                            />
+                          </svg>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   <div className="mt-6 border-t border-border-subtle pt-4">
-                    <p className="text-xs font-medium text-fg-secondary mb-2 uppercase tracking-wider">
-                      SLO Compliance
-                    </p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-fg-secondary uppercase tracking-wider">
+                        SLO Compliance
+                      </p>
+                      <button 
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveTargetId(target.id); setEditingSLO(null); setShowSLOModal(true); }}
+                        className="text-fg-muted hover:text-fg-primary p-0.5"
+                        title="Add SLO"
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </div>
                     {target.slos.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {target.slos.map((slo) => (
                           <div 
                             key={slo.id} 
-                            className="flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-elevated px-2 py-1 text-xs"
+                            className="group/slo relative flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-elevated px-2 py-1 text-xs"
                             title={`${slo.name} (${slo.objective_pct}%)`}
                           >
                             <span className={`h-1.5 w-1.5 rounded-full ${slo.status?.compliant ? 'bg-status-success' : 'bg-status-critical'}`} />
                             <span className="truncate max-w-[120px]">{slo.name}</span>
+                            
+                            <div className="hidden group-hover/slo:flex absolute right-0 top-0 bottom-0 bg-bg-elevated rounded-full items-center px-1 gap-1 border border-border-subtle shadow-sm">
+                              <button 
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveTargetId(target.id); setEditingSLO(slo); setShowSLOModal(true); }}
+                                className="text-fg-muted hover:text-fg-primary"
+                              >
+                                <Pencil size={10} />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteSLO(slo.id); }}
+                                className="text-fg-muted hover:text-status-critical"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -296,6 +390,21 @@ export default function ReliabilityPage() {
         onSaved={loadData}
         targets={targets}
         initialData={editingMW}
+      />
+
+      <SLATargetModal
+        open={showTargetModal}
+        onClose={() => setShowTargetModal(false)}
+        onSaved={loadData}
+        initialData={editingTarget}
+      />
+
+      <SLOModal
+        open={showSLOModal}
+        onClose={() => setShowSLOModal(false)}
+        onSaved={loadData}
+        targetId={activeTargetId}
+        initialData={editingSLO}
       />
     </div>
   );

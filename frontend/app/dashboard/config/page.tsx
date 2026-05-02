@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/context/auth";
 import {
   Bell,
   CheckCircle2,
@@ -74,10 +75,92 @@ import type {
   BotConnectorUpsert,
   BotUserLinkResponse,
   ConfigResponse,
+  IngestProviderItem,
+  IngestProviderListResponse,
+  IngestTokenCreate,
+  IngestTokenCreatedResponse,
+  IngestTokenLearnShapeResponse,
+  IngestTokenListResponse,
+  IngestTokenResponse,
+  MCPServerResponse,
+  MCPServerTestResponse,
+  MCPServerUpsert,
+  MCPTransport,
+  ModelBootstrapStatusResponse,
+  ModelConfigResponse,
+  ModelConfigUpdate,
+  ProviderModelsResponse,
+  WebhookTriggerEventType,
+  WebhookTriggerFormat,
+  WebhookTriggerResponse,
+  WebhookTriggerTestResponse,
+  WebhookTriggerUpsert,
+  WorkflowNode,
+  WorkflowProfileResponse,
+  WorkflowProfileUpsert,
+  UserResponse,
+  UserListResponse,
+} from "@/lib/types";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+
+function ConfigCard({
+  title,
+  description,
+  children,
+  className = "",
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`rounded-xl border border-border-subtle bg-bg-panel shadow-sm overflow-hidden ${className}`}>
+      <div className="border-b border-border-subtle bg-bg-elevated px-6 py-4">
+        <h3 className="text-sm font-semibold text-fg-primary">{title}</h3>
+        {description && (
           <p className="mt-0.5 text-sm text-fg-secondary">{description}</p>
         )}
       </div>
       <div className="space-y-4 px-6 py-5">{children}</div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-base font-semibold text-fg-primary">{title}</h3>
+        {description && (
+          <p className="text-sm text-fg-secondary">{description}</p>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ConfigPageSkeleton() {
+  return (
+    <div className="animate-pulse space-y-8">
+      <div className="flex h-12 items-center justify-between border-b border-border-subtle bg-bg-panel px-6">
+        <div className="h-4 w-32 rounded bg-bg-elevated" />
+      </div>
+      <div className="px-6">
+        <div className="h-64 rounded-xl bg-bg-panel" />
+      </div>
     </div>
   );
 }
@@ -2036,7 +2119,7 @@ function BotUserLinksModal({
                       <td className="px-4 py-2 text-right">
                         <Button
                           variant="danger"
-                          size="xs"
+                          size="sm"
                           onClick={() => handleDeleteLink(link)}
                         >
                           <Trash2 size={12} />

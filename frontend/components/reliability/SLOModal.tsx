@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { createSLO, updateSLO } from "@/lib/api_reliability";
-import type { SLOResponse } from "@/lib/types";
+import type { SLOResponse, SLATargetResponse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FormError } from "@/components/ui/Input";
+import { Toggle } from "@/components/ui/Toggle";
 import { Modal } from "@/components/ui/Modal";
 
 interface SLOModalProps {
@@ -18,9 +19,11 @@ interface SLOModalProps {
 export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOModalProps) {
   const [form, setForm] = useState({
     name: "",
-    objective_pct: 99.9,
-    window_seconds: 30 * 24 * 60 * 60,
-    burn_alert_threshold: "" as string | number,
+    objective_pct: "99.9",
+    window_hours: "720", // 30 days
+    burn_alert_threshold: "1.0",
+    alerts_enabled: true,
+    is_active: true,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -30,16 +33,20 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
       if (initialData) {
         setForm({
           name: initialData.name,
-          objective_pct: initialData.objective_pct,
-          window_seconds: initialData.window_seconds,
-          burn_alert_threshold: initialData.burn_alert_threshold ?? "",
+          objective_pct: String(initialData.objective_pct),
+          window_hours: String(initialData.window_seconds / 3600),
+          burn_alert_threshold: initialData.burn_alert_threshold ? String(initialData.burn_alert_threshold) : "1.0",
+          alerts_enabled: initialData.burn_alert_threshold !== null,
+          is_active: initialData.is_active,
         });
       } else {
         setForm({
           name: "",
-          objective_pct: 99.9,
-          window_seconds: 30 * 24 * 60 * 60, // 30d
-          burn_alert_threshold: "",
+          objective_pct: "99.9",
+          window_hours: "720",
+          burn_alert_threshold: "1.0",
+          alerts_enabled: true,
+          is_active: true,
         });
       }
       setError("");
@@ -51,6 +58,7 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
       setError("Name is required");
       return;
     }
+
     setSaving(true);
     setError("");
 
@@ -58,10 +66,23 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
       const payload = {
         target_id: targetId,
         name: form.name.trim(),
-        objective_pct: Number(form.objective_pct),
-        window_seconds: Number(form.window_seconds),
-        burn_alert_threshold: form.burn_alert_threshold ? Number(form.burn_alert_threshold) : null,
+        objective_pct: parseFloat(form.objective_pct),
+        window_seconds: parseInt(form.window_hours, 10) * 3600,
+        burn_alert_threshold: form.alerts_enabled ? parseFloat(form.burn_alert_threshold) : null,
+        is_active: form.is_active,
       };
+
+      if (isNaN(payload.objective_pct) || payload.objective_pct < 0 || payload.objective_pct > 100) {
+        setError("Objective must be between 0 and 100%");
+        setSaving(false);
+        return;
+      }
+
+      if (isNaN(payload.window_seconds) || payload.window_seconds < 3600) {
+        setError("Window must be at least 1 hour");
+        setSaving(false);
+        return;
+      }
 
       if (initialData) {
         await updateSLO(initialData.id, payload);
@@ -82,7 +103,7 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
     <Modal
       open={open}
       onClose={onClose}
-      title={initialData ? "Edit SLO" : "Create SLO"}
+      title={initialData ? "Edit SLO" : "Add SLO"}
       maxWidth="max-w-md"
     >
       <div className="space-y-4">
@@ -92,52 +113,72 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
             id="slo-name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="API Availability"
+            placeholder="Availability"
           />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="slo-obj">Objective (%)</Label>
+            <Label htmlFor="slo-objective">Objective (%)</Label>
             <Input
-              id="slo-obj"
+              id="slo-objective"
               type="number"
               step="0.01"
-              max="100"
-              min="0"
               value={form.objective_pct}
-              onChange={(e) => setForm({ ...form, objective_pct: Number(e.target.value) })}
+              onChange={(e) => setForm({ ...form, objective_pct: e.target.value })}
+              placeholder="99.9"
             />
           </div>
           <div>
-            <Label htmlFor="slo-window">Time Window</Label>
-            <Select
+            <Label htmlFor="slo-window">Window (Hours)</Label>
+            <Input
               id="slo-window"
-              value={form.window_seconds}
-              onChange={(e) => setForm({ ...form, window_seconds: Number(e.target.value) })}
-            >
-              <option value={7 * 24 * 60 * 60}>7 Days</option>
-              <option value={30 * 24 * 60 * 60}>30 Days</option>
-              <option value={90 * 24 * 60 * 60}>90 Days</option>
-              <option value={365 * 24 * 60 * 60}>1 Year</option>
-            </Select>
+              type="number"
+              value={form.window_hours}
+              onChange={(e) => setForm({ ...form, window_hours: e.target.value })}
+              placeholder="720"
+            />
+            <p className="mt-1 text-[10px] text-fg-muted">720h = 30 days</p>
           </div>
         </div>
 
-        <div>
-          <Label htmlFor="slo-burn">Burn Rate Alert Threshold (Optional)</Label>
-          <Input
-            id="slo-burn"
-            type="number"
-            step="0.1"
-            min="1"
-            value={form.burn_alert_threshold}
-            onChange={(e) => setForm({ ...form, burn_alert_threshold: e.target.value })}
-            placeholder="e.g. 5 (times normal burn rate)"
+        <div className="p-4 rounded-xl border border-border-subtle bg-bg-elevated space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-xs font-semibold text-fg-primary uppercase tracking-wider">Burn Rate Alerting</h4>
+              <p className="text-[10px] text-fg-secondary">Auto-generate incidents on rapid budget burn.</p>
+            </div>
+            <Toggle
+              checked={form.alerts_enabled}
+              onChange={(checked) => setForm({ ...form, alerts_enabled: checked })}
+            />
+          </div>
+
+          {form.alerts_enabled && (
+            <div className="pt-2 border-t border-border-subtle">
+              <Label htmlFor="slo-threshold">Burn Threshold (x)</Label>
+              <Input
+                id="slo-threshold"
+                type="number"
+                step="0.1"
+                value={form.burn_alert_threshold}
+                onChange={(e) => setForm({ ...form, burn_alert_threshold: e.target.value })}
+                placeholder="1.0"
+              />
+              <p className="mt-1 text-[10px] text-fg-muted">
+                1.0x means alerting if the error budget will be exhausted exactly by the end of the window.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between py-2">
+          <Label htmlFor="slo-active" className="mb-0">SLO Enabled</Label>
+          <Toggle
+            id="slo-active"
+            checked={form.is_active}
+            onChange={(checked) => setForm({ ...form, is_active: checked })}
           />
-          <p className="mt-1 text-xs text-fg-muted">
-            If set, a burn rate above this multiplier will trigger an alert.
-          </p>
         </div>
 
         {error && <FormError message={error} />}
@@ -147,7 +188,7 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
             Cancel
           </Button>
           <Button onClick={handleSubmit} loading={saving}>
-            {initialData ? "Save Changes" : "Create SLO"}
+            {initialData ? "Save Changes" : "Add SLO"}
           </Button>
         </div>
       </div>

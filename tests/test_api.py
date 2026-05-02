@@ -98,7 +98,7 @@ async def client(app):
 
 
 @pytest.fixture
-async def auth_headers(client: AsyncClient) -> dict[str, str]:
+async def auth_headers(client: AsyncClient, app) -> dict[str, str]:
     """Register + login a user and return auth headers."""
     await client.post(
         "/auth/register",
@@ -108,6 +108,14 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
             "password": "securepass123",
         },
     )
+    # Manually assign primary_org_id to satisfy tenant isolation requirements
+    from backend.db.repos import UserRepo
+    async with app.state.session_factory() as db:
+        user = await UserRepo.get_by_username(db, "testadmin")
+        if user:
+            user.primary_org_id = TEST_ORG_ID
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={
@@ -120,7 +128,7 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
 
 
 @pytest.fixture
-async def viewer_headers(client: AsyncClient, auth_headers) -> dict[str, str]:
+async def viewer_headers(client: AsyncClient, app, auth_headers) -> dict[str, str]:
     """Register a viewer user and return auth headers."""
     await client.post(
         "/auth/register",
@@ -131,6 +139,14 @@ async def viewer_headers(client: AsyncClient, auth_headers) -> dict[str, str]:
             "role": "viewer",
         },
     )
+    # Manually assign primary_org_id to satisfy tenant isolation requirements
+    from backend.db.repos import UserRepo
+    async with app.state.session_factory() as db:
+        user = await UserRepo.get_by_username(db, "viewer1")
+        if user:
+            user.primary_org_id = TEST_ORG_ID
+            await db.commit()
+
     resp = await client.post(
         "/auth/login",
         json={

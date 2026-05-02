@@ -1,6 +1,12 @@
-# Administrator Guide
-
 This guide covers the core configuration and integration points for administrators managing the AI Incident Manager (AIM) platform.
+
+## 0. Multi-tenancy
+
+AIM supports multiple isolated organizations on a single deployment. This allows MSPs or large enterprises to host different teams or clients with strict data isolation.
+
+*   **Organizations:** The top-level entity. Every incident, session, and configuration is bound to an organization.
+*   **User-Org Mapping:** Users can be members of multiple organizations. Each user has a `primary_org_id` which determines their default context for API requests.
+*   **Isolation:** Data is strictly isolated at the database repository layer. Background services and chat bots are organization-aware and only interact with data belonging to their resolved tenant.
 
 ## 1. Authentication
 

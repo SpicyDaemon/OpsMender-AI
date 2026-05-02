@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import require_role
+from backend.api.auth import get_current_org, require_role
 from backend.api.deps import get_current_session_factory, get_db
 from backend.api.schemas import (
     WebhookTriggerListResponse,
@@ -88,9 +88,10 @@ def _to_response(trigger: WebhookTrigger) -> WebhookTriggerResponse:
 )
 async def list_webhook_triggers(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    items = await WebhookTriggerRepo.list_all(db)
+    items = await WebhookTriggerRepo.list_all(db, org_id)
     return WebhookTriggerListResponse(
         items=[_to_response(item) for item in items],
         total=len(items),
@@ -106,11 +107,13 @@ async def list_webhook_triggers(
 async def create_webhook_trigger(
     body: WebhookTriggerUpsert,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     try:
         trigger = await WebhookTriggerRepo.create(
             db,
+            org_id,
             name=body.name,
             url=body.url,
             format=body.format,
@@ -139,9 +142,10 @@ async def update_webhook_trigger(
     trigger_id: uuid.UUID,
     body: WebhookTriggerUpsert,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await WebhookTriggerRepo.get_by_id(db, trigger_id)
+    existing = await WebhookTriggerRepo.get_by_id(db, org_id, trigger_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -151,6 +155,7 @@ async def update_webhook_trigger(
     try:
         updated = await WebhookTriggerRepo.update(
             db,
+            org_id,
             trigger_id,
             name=body.name,
             url=body.url,
@@ -184,9 +189,10 @@ async def update_webhook_trigger(
 async def delete_webhook_trigger(
     trigger_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await WebhookTriggerRepo.delete(db, trigger_id)
+    deleted = await WebhookTriggerRepo.delete(db, org_id, trigger_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -204,9 +210,10 @@ async def delete_webhook_trigger(
 async def test_webhook_trigger(
     trigger_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await WebhookTriggerRepo.get_by_id(db, trigger_id)
+    existing = await WebhookTriggerRepo.get_by_id(db, org_id, trigger_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -216,6 +223,7 @@ async def test_webhook_trigger(
     factory = get_current_session_factory()
     success, detail, status_code, event_type = await deliver_test_event(
         factory,
+        org_id=org_id,
         trigger_id=trigger_id,
     )
     return WebhookTriggerTestResponse(

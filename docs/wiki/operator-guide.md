@@ -1,6 +1,7 @@
-# Operator Guide
-
 This guide is intended for Incident Commanders and Operators using AIM to triage, investigate, and resolve live incidents.
+
+> [!NOTE]
+> All incidents, sessions, and audit logs are scoped to your active **Organization**. You will only see data belonging to the organization you are currently logged into.
 
 ## 1. The Triage Flow
 

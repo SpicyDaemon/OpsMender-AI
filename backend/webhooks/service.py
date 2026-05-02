@@ -67,13 +67,13 @@ def _severity_label(incident: dict[str, Any] | None) -> str:
 
 def _build_notification_text(payload: dict[str, Any]) -> str:
     event_label = _event_label(payload["event"])
-    
+
     if "session" not in payload:
         incident = payload.get("incident")
         incident_title = incident["title"] if incident else "No linked incident"
         msg = payload.get("message", incident_title)
         return f"AIM {event_label}: {msg}"
-        
+
     session = payload["session"]
     incident = payload.get("incident")
     incident_title = incident["title"] if incident else "No linked incident"
@@ -88,7 +88,7 @@ def _build_notification_text(payload: dict[str, Any]) -> str:
 
 def _format_slack_payload(payload: dict[str, Any]) -> dict[str, Any]:
     text = _build_notification_text(payload)
-    
+
     if "session" not in payload:
         blocks = [
             {
@@ -100,15 +100,17 @@ def _format_slack_payload(payload: dict[str, Any]) -> dict[str, Any]:
             }
         ]
         if "incident" in payload and payload["incident"]:
-            blocks.append({
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"Incident `{payload['incident']['id']}`",
-                    }
-                ],
-            })
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"Incident `{payload['incident']['id']}`",
+                        }
+                    ],
+                }
+            )
         return {"text": text, "blocks": blocks}
 
     session = payload["session"]
@@ -178,7 +180,7 @@ def _format_teams_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _format_sumo_payload(payload: dict[str, Any]) -> dict[str, Any]:
     incident = payload.get("incident") or {}
-    
+
     if "session" not in payload:
         return {
             "eventType": payload["event"],
@@ -190,7 +192,19 @@ def _format_sumo_payload(payload: dict[str, Any]) -> dict[str, Any]:
             "incidentSeverity": incident.get("severity"),
             "incident": incident or None,
             "trigger": payload.get("trigger"),
-            **{k: v for k, v in payload.items() if k not in ("event", "source", "sent_at", "incident", "trigger", "message")}
+            **{
+                k: v
+                for k, v in payload.items()
+                if k
+                not in (
+                    "event",
+                    "source",
+                    "sent_at",
+                    "incident",
+                    "trigger",
+                    "message",
+                )
+            },
         }
 
     session = payload["session"]
@@ -228,16 +242,17 @@ def _format_payload_for_trigger(trigger, payload: dict[str, Any]) -> dict[str, A
 async def _build_session_payload(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     event_type: str,
     session_id: uuid.UUID,
 ) -> dict[str, Any] | None:
     async with session_factory() as db:
-        session = await SessionRepo.get_by_id(db, session_id)
+        session = await SessionRepo.get_by_id(db, org_id, session_id)
         if session is None:
             return None
         incident = None
         if session.incident_id is not None:
-            incident = await IncidentRepo.get_by_id(db, session.incident_id)
+            incident = await IncidentRepo.get_by_id(db, org_id, session.incident_id)
 
     return {
         "event": event_type,
@@ -282,17 +297,19 @@ def _request_headers(trigger) -> dict[str, str]:
 async def _record_delivery_result(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     trigger_id: uuid.UUID,
     error: str | None,
 ) -> None:
     async with session_factory() as db:
-        await WebhookTriggerRepo.mark_delivery(db, trigger_id, error=error)
+        await WebhookTriggerRepo.mark_delivery(db, org_id, trigger_id, error=error)
         await db.commit()
 
 
 async def _deliver_payload_to_trigger(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     trigger,
     payload: dict[str, Any],
     event_type: str,
@@ -309,6 +326,7 @@ async def _deliver_payload_to_trigger(
         detail = str(exc)
         await _record_delivery_result(
             session_factory,
+            org_id=org_id,
             trigger_id=trigger.id,
             error=detail,
         )
@@ -320,13 +338,16 @@ async def _deliver_payload_to_trigger(
         )
         return False, detail, getattr(getattr(exc, "response", None), "status_code", None)
 
-    await _record_delivery_result(session_factory, trigger_id=trigger.id, error=None)
+    await _record_delivery_result(
+        session_factory, org_id=org_id, trigger_id=trigger.id, error=None
+    )
     return True, f"Delivered to {trigger.url}", response.status_code
 
 
 async def deliver_session_event(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     event_type: str,
     session_id: uuid.UUID,
 ) -> None:
@@ -335,6 +356,7 @@ async def deliver_session_event(
 
     payload = await _build_session_payload(
         session_factory,
+        org_id=org_id,
         event_type=event_type,
         session_id=session_id,
     )
@@ -342,11 +364,14 @@ async def deliver_session_event(
         return
 
     async with session_factory() as db:
-        triggers = list(await WebhookTriggerRepo.list_matching_event(db, event_type))
+        triggers = list(
+            await WebhookTriggerRepo.list_matching_event(db, org_id, event_type)
+        )
 
     for trigger in triggers:
         await _deliver_payload_to_trigger(
             session_factory,
+            org_id=org_id,
             trigger=trigger,
             payload=payload,
             event_type=event_type,
@@ -356,6 +381,7 @@ async def deliver_session_event(
 def schedule_session_event(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     task_registry: set[asyncio.Task] | None,
     event_type: str,
     session_id: uuid.UUID,
@@ -364,6 +390,7 @@ def schedule_session_event(
         task_registry,
         deliver_session_event(
             session_factory,
+            org_id=org_id,
             event_type=event_type,
             session_id=session_id,
         ),
@@ -373,6 +400,7 @@ def schedule_session_event(
 async def deliver_generic_event(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     event_type: str,
     payload_data: dict[str, Any],
 ) -> None:
@@ -387,11 +415,14 @@ async def deliver_generic_event(
     }
 
     async with session_factory() as db:
-        triggers = list(await WebhookTriggerRepo.list_matching_event(db, event_type))
+        triggers = list(
+            await WebhookTriggerRepo.list_matching_event(db, org_id, event_type)
+        )
 
     for trigger in triggers:
         await _deliver_payload_to_trigger(
             session_factory,
+            org_id=org_id,
             trigger=trigger,
             payload=payload,
             event_type=event_type,
@@ -401,6 +432,7 @@ async def deliver_generic_event(
 def schedule_generic_event(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     task_registry: set[asyncio.Task] | None,
     event_type: str,
     payload_data: dict[str, Any],
@@ -409,6 +441,7 @@ def schedule_generic_event(
         task_registry,
         deliver_generic_event(
             session_factory,
+            org_id=org_id,
             event_type=event_type,
             payload_data=payload_data,
         ),
@@ -418,10 +451,11 @@ def schedule_generic_event(
 async def deliver_test_event(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     trigger_id: uuid.UUID,
 ) -> tuple[bool, str, int | None, str]:
     async with session_factory() as db:
-        trigger = await WebhookTriggerRepo.get_by_id(db, trigger_id)
+        trigger = await WebhookTriggerRepo.get_by_id(db, org_id, trigger_id)
     if trigger is None:
         return False, "Webhook trigger not found", None, "webhook.test"
 
@@ -457,6 +491,7 @@ async def deliver_test_event(
     }
     success, detail, status_code = await _deliver_payload_to_trigger(
         session_factory,
+        org_id=org_id,
         trigger=trigger,
         payload=payload,
         event_type="webhook.test",

@@ -41,6 +41,7 @@ async def app_db():
             email="admin@test.com",
             password_hash=hash_password("password123"),
             role="admin",
+            primary_org_id=TEST_ORG_ID,
         )
         db.add(admin)
         await db.commit()

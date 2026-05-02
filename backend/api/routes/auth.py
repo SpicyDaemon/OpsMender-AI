@@ -99,6 +99,8 @@ async def login(
 )
 async def me(user: User = Depends(get_current_user)):
     return user
+
+
 @router.get(
     "/users",
     response_model=UserListResponse,

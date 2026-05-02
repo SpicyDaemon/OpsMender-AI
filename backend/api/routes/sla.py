@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     MaintenanceWindowCreate,
@@ -51,9 +51,10 @@ _targets_prefix = "/sla-targets"
 )
 async def list_sla_targets(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    items = await SLATargetRepo.list_all(db)
+    items = await SLATargetRepo.list_all(db, org_id)
     return SLATargetListResponse(
         items=[SLATargetResponse.model_validate(t) for t in items],
         total=len(items),
@@ -68,9 +69,10 @@ async def list_sla_targets(
 async def get_sla_target(
     target_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    target = await SLATargetRepo.get_by_id(db, target_id)
+    target = await SLATargetRepo.get_by_id(db, org_id, target_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
     return SLATargetResponse.model_validate(target)
@@ -85,11 +87,13 @@ async def get_sla_target(
 async def create_sla_target(
     body: SLATargetCreate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     try:
         target = await SLATargetRepo.create(
             db,
+            org_id,
             name=body.name,
             kind=body.kind,
             config=body.config,
@@ -116,15 +120,17 @@ async def update_sla_target(
     target_id: uuid.UUID,
     body: SLATargetUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await SLATargetRepo.get_by_id(db, target_id)
+    existing = await SLATargetRepo.get_by_id(db, org_id, target_id)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
 
     try:
         updated = await SLATargetRepo.update(
             db,
+            org_id,
             target_id,
             name=body.name,
             kind=body.kind,
@@ -155,9 +161,10 @@ async def update_sla_target(
 async def delete_sla_target(
     target_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await SLATargetRepo.delete(db, target_id)
+    deleted = await SLATargetRepo.delete(db, org_id, target_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
     await db.commit()
@@ -173,9 +180,10 @@ async def probe_sla_target(
     target_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    target = await SLATargetRepo.get_by_id(db, target_id)
+    target = await SLATargetRepo.get_by_id(db, org_id, target_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
 
@@ -191,6 +199,7 @@ async def probe_sla_target(
     # Record the sample
     await UptimeSampleRepo.create(
         db,
+        org_id,
         target_id=target.id,
         up=up,
         latency_ms=latency_ms,
@@ -211,14 +220,18 @@ async def get_sla_target_incidents(
     limit: int = 100,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator", "viewer")),
 ):
-    target = await SLATargetRepo.get_by_id(db, target_id)
+    target = await SLATargetRepo.get_by_id(db, org_id, target_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
 
     from backend.db.repos import IncidentRepo
-    incidents = await IncidentRepo.list_by_target(db, target_id, limit=limit, offset=offset)
+
+    incidents = await IncidentRepo.list_by_target(
+        db, org_id, target_id, limit=limit, offset=offset
+    )
 
     return [
         {
@@ -254,9 +267,10 @@ async def get_target_uptime(
     target_id: uuid.UUID,
     window: str = Query("30d", pattern="^(7d|30d|90d|1y)$"),
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    target = await SLATargetRepo.get_by_id(db, target_id)
+    target = await SLATargetRepo.get_by_id(db, org_id, target_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
 
@@ -264,7 +278,7 @@ async def get_target_uptime(
     since = now - WINDOW_MAP[window]
 
     stats = await UptimeSampleRepo.compute_uptime(
-        db, target_id, since=since, until=now
+        db, org_id, target_id, since=since, until=now
     )
 
     return UptimeResponse(
@@ -291,9 +305,10 @@ _slos_prefix = "/slos"
 )
 async def list_slos(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    items = await SLORepo.list_all(db)
+    items = await SLORepo.list_all(db, org_id)
     return SLOListResponse(
         items=[SLOResponse.model_validate(s) for s in items],
         total=len(items),
@@ -309,10 +324,11 @@ async def list_slos(
 async def create_slo(
     body: SLOCreate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     # Validate target exists
-    target = await SLATargetRepo.get_by_id(db, body.target_id)
+    target = await SLATargetRepo.get_by_id(db, org_id, body.target_id)
     if target is None:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -321,6 +337,7 @@ async def create_slo(
 
     slo = await SLORepo.create(
         db,
+        org_id,
         target_id=body.target_id,
         name=body.name,
         objective_pct=body.objective_pct,
@@ -342,14 +359,16 @@ async def update_slo(
     slo_id: uuid.UUID,
     body: SLOUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await SLORepo.get_by_id(db, slo_id)
+    existing = await SLORepo.get_by_id(db, org_id, slo_id)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLO not found")
 
     updated = await SLORepo.update(
         db,
+        org_id,
         slo_id,
         name=body.name,
         objective_pct=body.objective_pct,
@@ -373,9 +392,10 @@ async def update_slo(
 async def delete_slo(
     slo_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await SLORepo.delete(db, slo_id)
+    deleted = await SLORepo.delete(db, org_id, slo_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLO not found")
     await db.commit()
@@ -390,9 +410,10 @@ async def delete_slo(
 async def get_slo_status(
     slo_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    slo = await SLORepo.get_by_id(db, slo_id)
+    slo = await SLORepo.get_by_id(db, org_id, slo_id)
     if slo is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLO not found")
 
@@ -400,7 +421,7 @@ async def get_slo_status(
     since = now - timedelta(seconds=slo.window_seconds)
 
     stats = await UptimeSampleRepo.compute_uptime(
-        db, slo.target_id, since=since, until=now
+        db, org_id, slo.target_id, since=since, until=now
     )
 
     actual_pct = stats["uptime_pct"]
@@ -453,9 +474,10 @@ _mw_prefix = "/maintenance-windows"
 )
 async def list_maintenance_windows(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    items = await MaintenanceWindowRepo.list_all(db)
+    items = await MaintenanceWindowRepo.list_all(db, org_id)
     return MaintenanceWindowListResponse(
         items=[MaintenanceWindowResponse.model_validate(mw) for mw in items],
         total=len(items),
@@ -471,6 +493,7 @@ async def list_maintenance_windows(
 async def create_maintenance_window(
     body: MaintenanceWindowCreate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     if body.ends_at <= body.starts_at:
@@ -481,6 +504,7 @@ async def create_maintenance_window(
 
     mw = await MaintenanceWindowRepo.create(
         db,
+        org_id,
         name=body.name,
         reason=body.reason,
         starts_at=body.starts_at,
@@ -503,14 +527,16 @@ async def update_maintenance_window(
     mw_id: uuid.UUID,
     body: MaintenanceWindowUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await MaintenanceWindowRepo.get_by_id(db, mw_id)
+    existing = await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
 
     updated = await MaintenanceWindowRepo.update(
         db,
+        org_id,
         mw_id,
         name=body.name,
         reason=body.reason,
@@ -536,9 +562,10 @@ async def update_maintenance_window(
 async def delete_maintenance_window(
     mw_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await MaintenanceWindowRepo.delete(db, mw_id)
+    deleted = await MaintenanceWindowRepo.delete(db, org_id, mw_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
     await db.commit()

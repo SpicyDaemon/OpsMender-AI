@@ -12,14 +12,11 @@ Usage::
 """
 
 from __future__ import annotations
-
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Sequence
-
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.db.models import (
     AgentTeamProfile,
     ApprovalRequest,
@@ -45,11 +42,9 @@ from backend.db.models import (
     UptimeSample,
     SLO,
     MaintenanceWindow,
+    Organization,
+    UserOrganization,
 )
-
-# ---------------------------------------------------------------------------
-# Users
-# ---------------------------------------------------------------------------
 
 
 class UserRepo:
@@ -63,10 +58,7 @@ class UserRepo:
         role: str = "viewer",
     ) -> User:
         user = User(
-            username=username,
-            email=email,
-            password_hash=password_hash,
-            role=role,
+            username=username, email=email, password_hash=password_hash, role=role
         )
         db.add(user)
         await db.flush()
@@ -90,19 +82,11 @@ class UserRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession,
-        *,
-        limit: int = 100,
-        offset: int = 0,
+        db: AsyncSession, *, limit: int = 100, offset: int = 0
     ) -> Sequence[User]:
         stmt = select(User).order_by(User.created_at).limit(limit).offset(offset)
         result = await db.execute(stmt)
         return result.scalars().all()
-
-
-# ---------------------------------------------------------------------------
-# Incidents
-# ---------------------------------------------------------------------------
 
 
 class IncidentRepo:
@@ -116,10 +100,7 @@ class IncidentRepo:
         severity: str | None = None,
     ) -> Incident:
         incident = Incident(
-            org_id=org_id,
-            title=title,
-            description=description,
-            severity=severity,
+            org_id=org_id, title=title, description=description, severity=severity
         )
         db.add(incident)
         await db.flush()
@@ -133,6 +114,8 @@ class IncidentRepo:
             await db.execute(
                 select(Incident)
                 .where(Incident.org_id == org_id)
+                .where(Incident.org_id == org_id)
+                .where(Incident.org_id == org_id)
                 .where(Incident.id == incident_id, Incident.org_id == org_id)
             )
         ).scalar_one_or_none()
@@ -140,6 +123,7 @@ class IncidentRepo:
     @staticmethod
     async def list_all(
         db: AsyncSession,
+        org_id: uuid.UUID,
         *,
         status: str | None = None,
         limit: int = 100,
@@ -147,6 +131,8 @@ class IncidentRepo:
     ) -> Sequence[Incident]:
         stmt = (
             select(Incident)
+            .where(Incident.org_id == org_id)
+            .where(Incident.org_id == org_id)
             .where(Incident.org_id == org_id)
             .order_by(Incident.created_at.desc())
         )
@@ -158,12 +144,12 @@ class IncidentRepo:
 
     @staticmethod
     async def update_status(
-        db: AsyncSession,
-        incident_id: uuid.UUID,
-        status: str,
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID, status: str
     ) -> None:
         stmt = (
             update(Incident)
+            .where(Incident.org_id == org_id)
+            .where(Incident.org_id == org_id)
             .where(Incident.org_id == org_id)
             .where(Incident.id == incident_id)
             .values(status=status, updated_at=datetime.now(timezone.utc))
@@ -172,14 +158,13 @@ class IncidentRepo:
 
     @staticmethod
     async def get_by_external_fingerprint(
-        db: AsyncSession,
-        *,
-        external_source: str,
-        external_id: str,
+        db: AsyncSession, org_id: uuid.UUID, *, external_source: str, external_id: str
     ) -> Incident | None:
         """Look up an incident by its external fingerprint for dedup."""
         stmt = (
             select(Incident)
+            .where(Incident.org_id == org_id)
+            .where(Incident.org_id == org_id)
             .where(Incident.org_id == org_id)
             .where(
                 Incident.external_source == external_source,
@@ -194,6 +179,7 @@ class IncidentRepo:
     @staticmethod
     async def list_by_target(
         db: AsyncSession,
+        org_id: uuid.UUID,
         target_id: uuid.UUID,
         limit: int = 100,
         offset: int = 0,
@@ -202,6 +188,8 @@ class IncidentRepo:
         stmt = (
             select(Incident)
             .where(Incident.org_id == org_id)
+            .where(Incident.org_id == org_id)
+            .where(Incident.org_id == org_id)
             .where(Incident.target_id == target_id)
             .order_by(Incident.created_at.desc())
             .limit(limit)
@@ -209,11 +197,6 @@ class IncidentRepo:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
-
-
-# ---------------------------------------------------------------------------
-# Sessions
-# ---------------------------------------------------------------------------
 
 
 class SessionRepo:
@@ -250,16 +233,20 @@ class SessionRepo:
             await db.execute(
                 select(Session)
                 .where(Session.org_id == org_id)
+                .where(Session.org_id == org_id)
+                .where(Session.org_id == org_id)
                 .where(Session.id == session_id, Session.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
     async def list_by_incident(
-        db: AsyncSession, incident_id: uuid.UUID
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
     ) -> Sequence[Session]:
         stmt = (
             select(Session)
+            .where(Session.org_id == org_id)
+            .where(Session.org_id == org_id)
             .where(Session.org_id == org_id)
             .where(Session.incident_id == incident_id)
             .order_by(Session.started_at.desc())
@@ -270,6 +257,7 @@ class SessionRepo:
     @staticmethod
     async def list_all(
         db: AsyncSession,
+        org_id: uuid.UUID,
         *,
         status: str | None = None,
         limit: int = 100,
@@ -277,6 +265,8 @@ class SessionRepo:
     ) -> Sequence[Session]:
         stmt = (
             select(Session)
+            .where(Session.org_id == org_id)
+            .where(Session.org_id == org_id)
             .where(Session.org_id == org_id)
             .order_by(Session.started_at.desc())
         )
@@ -289,6 +279,7 @@ class SessionRepo:
     @staticmethod
     async def end_session(
         db: AsyncSession,
+        org_id: uuid.UUID,
         session_id: uuid.UUID,
         *,
         status: str = "completed",
@@ -297,18 +288,17 @@ class SessionRepo:
         stmt = (
             update(Session)
             .where(Session.org_id == org_id)
+            .where(Session.org_id == org_id)
+            .where(Session.org_id == org_id)
             .where(Session.id == session_id)
-            .values(
-                status=status,
-                summary=summary,
-                ended_at=datetime.now(timezone.utc),
-            )
+            .values(status=status, summary=summary, ended_at=datetime.now(timezone.utc))
         )
         await db.execute(stmt)
 
     @staticmethod
     async def set_status(
         db: AsyncSession,
+        org_id: uuid.UUID,
         session_id: uuid.UUID,
         *,
         status: str,
@@ -320,19 +310,15 @@ class SessionRepo:
             values["summary"] = summary
         if ended_at is not None:
             values["ended_at"] = ended_at
-
         stmt = (
             update(Session)
+            .where(Session.org_id == org_id)
+            .where(Session.org_id == org_id)
             .where(Session.org_id == org_id)
             .where(Session.id == session_id)
             .values(**values)
         )
         await db.execute(stmt)
-
-
-# ---------------------------------------------------------------------------
-# Audit entries
-# ---------------------------------------------------------------------------
 
 
 class AuditEntryRepo:
@@ -369,11 +355,12 @@ class AuditEntryRepo:
 
     @staticmethod
     async def list_by_session(
-        db: AsyncSession,
-        session_id: uuid.UUID,
+        db: AsyncSession, org_id: uuid.UUID, session_id: uuid.UUID
     ) -> Sequence[AuditEntry]:
         stmt = (
             select(AuditEntry)
+            .where(AuditEntry.org_id == org_id)
+            .where(AuditEntry.org_id == org_id)
             .where(AuditEntry.org_id == org_id)
             .where(AuditEntry.session_id == session_id)
             .order_by(AuditEntry.timestamp)
@@ -384,6 +371,7 @@ class AuditEntryRepo:
     @staticmethod
     async def query(
         db: AsyncSession,
+        org_id: uuid.UUID,
         *,
         session_id: uuid.UUID | None = None,
         tool_name: str | None = None,
@@ -396,6 +384,8 @@ class AuditEntryRepo:
     ) -> Sequence[AuditEntry]:
         stmt = (
             select(AuditEntry)
+            .where(AuditEntry.org_id == org_id)
+            .where(AuditEntry.org_id == org_id)
             .where(AuditEntry.org_id == org_id)
             .order_by(AuditEntry.timestamp.desc())
         )
@@ -414,11 +404,6 @@ class AuditEntryRepo:
         stmt = stmt.limit(limit).offset(offset)
         result = await db.execute(stmt)
         return result.scalars().all()
-
-
-# ---------------------------------------------------------------------------
-# Approval requests
-# ---------------------------------------------------------------------------
 
 
 class ApprovalRequestRepo:
@@ -451,6 +436,8 @@ class ApprovalRequestRepo:
             await db.execute(
                 select(ApprovalRequest)
                 .where(ApprovalRequest.org_id == org_id)
+                .where(ApprovalRequest.org_id == org_id)
+                .where(ApprovalRequest.org_id == org_id)
                 .where(
                     ApprovalRequest.id == request_id, ApprovalRequest.org_id == org_id
                 )
@@ -459,12 +446,12 @@ class ApprovalRequestRepo:
 
     @staticmethod
     async def list_pending(
-        db: AsyncSession,
-        *,
-        session_id: uuid.UUID | None = None,
+        db: AsyncSession, org_id: uuid.UUID, *, session_id: uuid.UUID | None = None
     ) -> Sequence[ApprovalRequest]:
         stmt = (
             select(ApprovalRequest)
+            .where(ApprovalRequest.org_id == org_id)
+            .where(ApprovalRequest.org_id == org_id)
             .where(ApprovalRequest.org_id == org_id)
             .where(ApprovalRequest.status == "pending")
         )
@@ -477,6 +464,7 @@ class ApprovalRequestRepo:
     @staticmethod
     async def list(
         db: AsyncSession,
+        org_id: uuid.UUID,
         *,
         status: str | None = None,
         session_id: uuid.UUID | None = None,
@@ -485,6 +473,8 @@ class ApprovalRequestRepo:
     ) -> Sequence[ApprovalRequest]:
         stmt = (
             select(ApprovalRequest)
+            .where(ApprovalRequest.org_id == org_id)
+            .where(ApprovalRequest.org_id == org_id)
             .where(ApprovalRequest.org_id == org_id)
             .order_by(ApprovalRequest.requested_at.desc())
         )
@@ -499,6 +489,7 @@ class ApprovalRequestRepo:
     @staticmethod
     async def resolve(
         db: AsyncSession,
+        org_id: uuid.UUID,
         request_id: uuid.UUID,
         *,
         status: str,
@@ -507,9 +498,10 @@ class ApprovalRequestRepo:
         stmt = (
             update(ApprovalRequest)
             .where(ApprovalRequest.org_id == org_id)
+            .where(ApprovalRequest.org_id == org_id)
+            .where(ApprovalRequest.org_id == org_id)
             .where(
-                ApprovalRequest.id == request_id,
-                ApprovalRequest.status == "pending",
+                ApprovalRequest.id == request_id, ApprovalRequest.status == "pending"
             )
             .values(
                 status=status,
@@ -519,11 +511,6 @@ class ApprovalRequestRepo:
         )
         result = await db.execute(stmt)
         return bool(result.rowcount)
-
-
-# ---------------------------------------------------------------------------
-# Model configs
-# ---------------------------------------------------------------------------
 
 
 class ModelConfigRepo:
@@ -566,14 +553,20 @@ class ModelConfigRepo:
             await db.execute(
                 select(ModelConfig)
                 .where(ModelConfig.org_id == org_id)
+                .where(ModelConfig.org_id == org_id)
+                .where(ModelConfig.org_id == org_id)
                 .where(ModelConfig.id == config_id, ModelConfig.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> ModelConfig | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> ModelConfig | None:
         stmt = (
             select(ModelConfig)
+            .where(ModelConfig.org_id == org_id)
+            .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.name == name)
         )
@@ -581,9 +574,11 @@ class ModelConfigRepo:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_default(db: AsyncSession) -> ModelConfig | None:
+    async def get_default(db: AsyncSession, org_id: uuid.UUID) -> ModelConfig | None:
         stmt = (
             select(ModelConfig)
+            .where(ModelConfig.org_id == org_id)
+            .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.is_default == True)
         )
@@ -591,9 +586,11 @@ class ModelConfigRepo:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def list_all(db: AsyncSession) -> Sequence[ModelConfig]:
+    async def list_all(db: AsyncSession, org_id: uuid.UUID) -> Sequence[ModelConfig]:
         stmt = (
             select(ModelConfig)
+            .where(ModelConfig.org_id == org_id)
+            .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.org_id == org_id)
             .order_by(ModelConfig.name)
         )
@@ -603,6 +600,7 @@ class ModelConfigRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         config_id: uuid.UUID,
         *,
         name: str,
@@ -616,6 +614,8 @@ class ModelConfigRepo:
     ) -> ModelConfig | None:
         stmt = (
             update(ModelConfig)
+            .where(ModelConfig.org_id == org_id)
+            .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.id == config_id)
             .values(
@@ -633,11 +633,11 @@ class ModelConfigRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await ModelConfigRepo.get_by_id(db, config_id)
+        return await ModelConfigRepo.get_by_id(db, org_id, config_id)
 
     @staticmethod
-    async def delete(db: AsyncSession, config_id: uuid.UUID) -> bool:
-        cfg = await ModelConfigRepo.get_by_id(db, config_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, config_id: uuid.UUID) -> bool:
+        cfg = await ModelConfigRepo.get_by_id(db, org_id, config_id)
         if cfg is None:
             return False
         await db.delete(cfg)
@@ -645,16 +645,20 @@ class ModelConfigRepo:
         return True
 
     @staticmethod
-    async def set_default(db: AsyncSession, config_id: uuid.UUID) -> None:
-        # Clear existing default
+    async def set_default(
+        db: AsyncSession, org_id: uuid.UUID, config_id: uuid.UUID
+    ) -> None:
         await db.execute(
             update(ModelConfig)
             .where(ModelConfig.org_id == org_id)
+            .where(ModelConfig.org_id == org_id)
+            .where(ModelConfig.org_id == org_id)
             .values(is_default=False)
         )
-        # Set new default
         await db.execute(
             update(ModelConfig)
+            .where(ModelConfig.org_id == org_id)
+            .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.id == config_id)
             .values(is_default=True)
@@ -663,6 +667,7 @@ class ModelConfigRepo:
     @staticmethod
     async def upsert(
         db: AsyncSession,
+        org_id: uuid.UUID,
         *,
         name: str,
         provider: str,
@@ -674,10 +679,11 @@ class ModelConfigRepo:
         temperature: float = 0.0,
         is_default: bool = False,
     ) -> ModelConfig:
-        existing = await ModelConfigRepo.get_by_name(db, name)
+        existing = await ModelConfigRepo.get_by_name(db, org_id, name)
         if existing is None:
             return await ModelConfigRepo.create(
                 db,
+                org_id,
                 name=name,
                 provider=provider,
                 model_id=model_id,
@@ -688,9 +694,10 @@ class ModelConfigRepo:
                 temperature=temperature,
                 is_default=is_default,
             )
-
         stmt = (
             update(ModelConfig)
+            .where(ModelConfig.org_id == org_id)
+            .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.id == existing.id)
             .values(
@@ -706,15 +713,10 @@ class ModelConfigRepo:
         )
         await db.execute(stmt)
         await db.flush()
-        refreshed = await ModelConfigRepo.get_by_id(db, existing.id)
+        refreshed = await ModelConfigRepo.get_by_id(db, org_id, existing.id)
         if refreshed is None:
             raise RuntimeError(f"ModelConfig disappeared during upsert: {existing.id}")
         return refreshed
-
-
-# ---------------------------------------------------------------------------
-# MCP servers
-# ---------------------------------------------------------------------------
 
 
 class MCPServerRepo:
@@ -755,14 +757,20 @@ class MCPServerRepo:
             await db.execute(
                 select(MCPServer)
                 .where(MCPServer.org_id == org_id)
+                .where(MCPServer.org_id == org_id)
+                .where(MCPServer.org_id == org_id)
                 .where(MCPServer.id == server_id, MCPServer.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> MCPServer | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> MCPServer | None:
         stmt = (
             select(MCPServer)
+            .where(MCPServer.org_id == org_id)
+            .where(MCPServer.org_id == org_id)
             .where(MCPServer.org_id == org_id)
             .where(MCPServer.name == name)
         )
@@ -771,10 +779,14 @@ class MCPServerRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession, *, active_only: bool = False
+        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[MCPServer]:
         stmt = (
-            select(MCPServer).where(MCPServer.org_id == org_id).order_by(MCPServer.name)
+            select(MCPServer)
+            .where(MCPServer.org_id == org_id)
+            .where(MCPServer.org_id == org_id)
+            .where(MCPServer.org_id == org_id)
+            .order_by(MCPServer.name)
         )
         if active_only:
             stmt = stmt.where(MCPServer.is_active == True)
@@ -784,6 +796,7 @@ class MCPServerRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         server_id: uuid.UUID,
         *,
         name: str,
@@ -797,6 +810,8 @@ class MCPServerRepo:
     ) -> MCPServer | None:
         stmt = (
             update(MCPServer)
+            .where(MCPServer.org_id == org_id)
+            .where(MCPServer.org_id == org_id)
             .where(MCPServer.org_id == org_id)
             .where(MCPServer.id == server_id)
             .values(
@@ -814,21 +829,16 @@ class MCPServerRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await MCPServerRepo.get_by_id(db, server_id)
+        return await MCPServerRepo.get_by_id(db, org_id, server_id)
 
     @staticmethod
-    async def delete(db: AsyncSession, server_id: uuid.UUID) -> bool:
-        server = await MCPServerRepo.get_by_id(db, server_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, server_id: uuid.UUID) -> bool:
+        server = await MCPServerRepo.get_by_id(db, org_id, server_id)
         if server is None:
             return False
         await db.delete(server)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Skills
-# ---------------------------------------------------------------------------
 
 
 class SkillRepo:
@@ -861,28 +871,46 @@ class SkillRepo:
             await db.execute(
                 select(Skill)
                 .where(Skill.org_id == org_id)
+                .where(Skill.org_id == org_id)
+                .where(Skill.org_id == org_id)
                 .where(Skill.id == skill_id, Skill.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> Skill | None:
-        stmt = select(Skill).where(Skill.org_id == org_id).where(Skill.name == name)
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> Skill | None:
+        stmt = (
+            select(Skill)
+            .where(Skill.org_id == org_id)
+            .where(Skill.org_id == org_id)
+            .where(Skill.org_id == org_id)
+            .where(Skill.name == name)
+        )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def list_all(db: AsyncSession) -> Sequence[Skill]:
-        stmt = select(Skill).where(Skill.org_id == org_id).order_by(Skill.name)
+    async def list_all(db: AsyncSession, org_id: uuid.UUID) -> Sequence[Skill]:
+        stmt = (
+            select(Skill)
+            .where(Skill.org_id == org_id)
+            .where(Skill.org_id == org_id)
+            .where(Skill.org_id == org_id)
+            .order_by(Skill.name)
+        )
         result = await db.execute(stmt)
         return result.scalars().all()
 
     @staticmethod
     async def list_for_mcp_server(
-        db: AsyncSession, mcp_server_id: uuid.UUID
+        db: AsyncSession, org_id: uuid.UUID, mcp_server_id: uuid.UUID
     ) -> Sequence[Skill]:
         stmt = (
             select(Skill)
+            .where(Skill.org_id == org_id)
+            .where(Skill.org_id == org_id)
             .where(Skill.org_id == org_id)
             .where(Skill.mcp_server_id == mcp_server_id)
             .order_by(Skill.name)
@@ -892,7 +920,7 @@ class SkillRepo:
 
     @staticmethod
     async def get_for_mcp_server(
-        db: AsyncSession, mcp_server_id: uuid.UUID | None
+        db: AsyncSession, org_id: uuid.UUID, mcp_server_id: uuid.UUID | None
     ) -> Skill | None:
         """Return the most relevant skill for a given MCP server.
 
@@ -903,6 +931,8 @@ class SkillRepo:
             stmt = (
                 select(Skill)
                 .where(Skill.org_id == org_id)
+                .where(Skill.org_id == org_id)
+                .where(Skill.org_id == org_id)
                 .where(Skill.mcp_server_id == mcp_server_id)
                 .order_by(Skill.created_at)
                 .limit(1)
@@ -911,9 +941,10 @@ class SkillRepo:
             found = result.scalar_one_or_none()
             if found is not None:
                 return found
-
         stmt = (
             select(Skill)
+            .where(Skill.org_id == org_id)
+            .where(Skill.org_id == org_id)
             .where(Skill.org_id == org_id)
             .where(Skill.mcp_server_id.is_(None))
             .order_by(Skill.created_at)
@@ -925,6 +956,7 @@ class SkillRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         skill_id: uuid.UUID,
         *,
         name: str,
@@ -934,6 +966,8 @@ class SkillRepo:
     ) -> Skill | None:
         stmt = (
             update(Skill)
+            .where(Skill.org_id == org_id)
+            .where(Skill.org_id == org_id)
             .where(Skill.org_id == org_id)
             .where(Skill.id == skill_id)
             .values(
@@ -948,21 +982,16 @@ class SkillRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await SkillRepo.get_by_id(db, skill_id)
+        return await SkillRepo.get_by_id(db, org_id, skill_id)
 
     @staticmethod
-    async def delete(db: AsyncSession, skill_id: uuid.UUID) -> bool:
-        skill = await SkillRepo.get_by_id(db, skill_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, skill_id: uuid.UUID) -> bool:
+        skill = await SkillRepo.get_by_id(db, org_id, skill_id)
         if skill is None:
             return False
         await db.delete(skill)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Session messages (co-pilot chat)
-# ---------------------------------------------------------------------------
 
 
 class SessionMessageRepo:
@@ -997,6 +1026,8 @@ class SessionMessageRepo:
             await db.execute(
                 select(SessionMessage)
                 .where(SessionMessage.org_id == org_id)
+                .where(SessionMessage.org_id == org_id)
+                .where(SessionMessage.org_id == org_id)
                 .where(SessionMessage.id == message_id, SessionMessage.org_id == org_id)
             )
         ).scalar_one_or_none()
@@ -1004,6 +1035,7 @@ class SessionMessageRepo:
     @staticmethod
     async def list_by_session(
         db: AsyncSession,
+        org_id: uuid.UUID,
         session_id: uuid.UUID,
         *,
         limit: int = 500,
@@ -1011,6 +1043,8 @@ class SessionMessageRepo:
     ) -> Sequence[SessionMessage]:
         stmt = (
             select(SessionMessage)
+            .where(SessionMessage.org_id == org_id)
+            .where(SessionMessage.org_id == org_id)
             .where(SessionMessage.org_id == org_id)
             .where(SessionMessage.session_id == session_id)
             .order_by(SessionMessage.created_at)
@@ -1022,11 +1056,13 @@ class SessionMessageRepo:
 
     @staticmethod
     async def list_pending_user(
-        db: AsyncSession, session_id: uuid.UUID
+        db: AsyncSession, org_id: uuid.UUID, session_id: uuid.UUID
     ) -> Sequence[SessionMessage]:
         """Unread user messages that the workflow has not yet consumed."""
         stmt = (
             select(SessionMessage)
+            .where(SessionMessage.org_id == org_id)
+            .where(SessionMessage.org_id == org_id)
             .where(SessionMessage.org_id == org_id)
             .where(
                 SessionMessage.session_id == session_id,
@@ -1041,6 +1077,7 @@ class SessionMessageRepo:
     @staticmethod
     async def mark_consumed(
         db: AsyncSession,
+        org_id: uuid.UUID,
         session_id: uuid.UUID,
         *,
         node_context: str | None = None,
@@ -1055,6 +1092,8 @@ class SessionMessageRepo:
         stmt = (
             update(SessionMessage)
             .where(SessionMessage.org_id == org_id)
+            .where(SessionMessage.org_id == org_id)
+            .where(SessionMessage.org_id == org_id)
             .where(
                 SessionMessage.session_id == session_id,
                 SessionMessage.role == "user",
@@ -1066,31 +1105,32 @@ class SessionMessageRepo:
         return int(result.rowcount or 0)
 
 
-# ---------------------------------------------------------------------------
-# Runtime config
-# ---------------------------------------------------------------------------
-
-
 class RuntimeConfigRepo:
     @staticmethod
-    async def get(db: AsyncSession, key: str) -> RuntimeConfig | None:
+    async def get(
+        db: AsyncSession, org_id: uuid.UUID, key: str
+    ) -> RuntimeConfig | None:
         return (
             await db.execute(
-                select(RuntimeConfig)
-                .where(RuntimeConfig.org_id == org_id)
-                .where(RuntimeConfig.id == key, RuntimeConfig.org_id == org_id)
+                select(RuntimeConfig).where(
+                    RuntimeConfig.org_id == org_id, RuntimeConfig.key == key
+                )
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_value(db: AsyncSession, key: str) -> str | None:
-        item = await RuntimeConfigRepo.get(db, key)
+    async def get_value(db: AsyncSession, org_id: uuid.UUID, key: str) -> str | None:
+        item = await RuntimeConfigRepo.get(db, org_id, key)
         return None if item is None else item.value
 
     @staticmethod
-    async def get_many(db: AsyncSession, keys: Sequence[str]) -> dict[str, str]:
+    async def get_many(
+        db: AsyncSession, org_id: uuid.UUID, keys: Sequence[str]
+    ) -> dict[str, str]:
         stmt = (
             select(RuntimeConfig)
+            .where(RuntimeConfig.org_id == org_id)
+            .where(RuntimeConfig.org_id == org_id)
             .where(RuntimeConfig.org_id == org_id)
             .where(RuntimeConfig.key.in_(list(keys)))
         )
@@ -1098,9 +1138,11 @@ class RuntimeConfigRepo:
         return {item.key: item.value for item in result.scalars().all()}
 
     @staticmethod
-    async def list_all(db: AsyncSession) -> Sequence[RuntimeConfig]:
+    async def list_all(db: AsyncSession, org_id: uuid.UUID) -> Sequence[RuntimeConfig]:
         stmt = (
             select(RuntimeConfig)
+            .where(RuntimeConfig.org_id == org_id)
+            .where(RuntimeConfig.org_id == org_id)
             .where(RuntimeConfig.org_id == org_id)
             .order_by(RuntimeConfig.key)
         )
@@ -1108,23 +1150,19 @@ class RuntimeConfigRepo:
         return result.scalars().all()
 
     @staticmethod
-    async def set(db: AsyncSession, *, key: str, value: str) -> RuntimeConfig:
-        item = await RuntimeConfigRepo.get(db, key)
+    async def set(
+        db: AsyncSession, org_id: uuid.UUID, *, key: str, value: str
+    ) -> RuntimeConfig:
+        item = await RuntimeConfigRepo.get(db, org_id, key)
         if item is None:
             item = RuntimeConfig(org_id=org_id, key=key, value=value)
             db.add(item)
             await db.flush()
             return item
-
         item.value = value
         item.updated_at = datetime.now(timezone.utc)
         await db.flush()
         return item
-
-
-# ---------------------------------------------------------------------------
-# Webhook triggers (outbound session-state notifications)
-# ---------------------------------------------------------------------------
 
 
 class WebhookTriggerRepo:
@@ -1163,14 +1201,20 @@ class WebhookTriggerRepo:
             await db.execute(
                 select(WebhookTrigger)
                 .where(WebhookTrigger.org_id == org_id)
+                .where(WebhookTrigger.org_id == org_id)
+                .where(WebhookTrigger.org_id == org_id)
                 .where(WebhookTrigger.id == trigger_id, WebhookTrigger.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> WebhookTrigger | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> WebhookTrigger | None:
         stmt = (
             select(WebhookTrigger)
+            .where(WebhookTrigger.org_id == org_id)
+            .where(WebhookTrigger.org_id == org_id)
             .where(WebhookTrigger.org_id == org_id)
             .where(WebhookTrigger.name == name)
         )
@@ -1179,12 +1223,12 @@ class WebhookTriggerRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession,
-        *,
-        active_only: bool = False,
+        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[WebhookTrigger]:
         stmt = (
             select(WebhookTrigger)
+            .where(WebhookTrigger.org_id == org_id)
+            .where(WebhookTrigger.org_id == org_id)
             .where(WebhookTrigger.org_id == org_id)
             .order_by(WebhookTrigger.name)
         )
@@ -1195,10 +1239,9 @@ class WebhookTriggerRepo:
 
     @staticmethod
     async def list_matching_event(
-        db: AsyncSession,
-        event_type: str,
+        db: AsyncSession, org_id: uuid.UUID, event_type: str
     ) -> Sequence[WebhookTrigger]:
-        items = await WebhookTriggerRepo.list_all(db, active_only=True)
+        items = await WebhookTriggerRepo.list_all(db, org_id, active_only=True)
         return [
             item
             for item in items
@@ -1208,6 +1251,7 @@ class WebhookTriggerRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         trigger_id: uuid.UUID,
         *,
         name: str,
@@ -1220,6 +1264,8 @@ class WebhookTriggerRepo:
     ) -> WebhookTrigger | None:
         stmt = (
             update(WebhookTrigger)
+            .where(WebhookTrigger.org_id == org_id)
+            .where(WebhookTrigger.org_id == org_id)
             .where(WebhookTrigger.org_id == org_id)
             .where(WebhookTrigger.id == trigger_id)
             .values(
@@ -1237,17 +1283,20 @@ class WebhookTriggerRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await WebhookTriggerRepo.get_by_id(db, trigger_id)
+        return await WebhookTriggerRepo.get_by_id(db, org_id, trigger_id)
 
     @staticmethod
     async def mark_delivery(
         db: AsyncSession,
+        org_id: uuid.UUID,
         trigger_id: uuid.UUID,
         *,
         error: str | None = None,
     ) -> None:
         stmt = (
             update(WebhookTrigger)
+            .where(WebhookTrigger.org_id == org_id)
+            .where(WebhookTrigger.org_id == org_id)
             .where(WebhookTrigger.org_id == org_id)
             .where(WebhookTrigger.id == trigger_id)
             .values(
@@ -1259,18 +1308,15 @@ class WebhookTriggerRepo:
         await db.execute(stmt)
 
     @staticmethod
-    async def delete(db: AsyncSession, trigger_id: uuid.UUID) -> bool:
-        trigger = await WebhookTriggerRepo.get_by_id(db, trigger_id)
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, trigger_id: uuid.UUID
+    ) -> bool:
+        trigger = await WebhookTriggerRepo.get_by_id(db, org_id, trigger_id)
         if trigger is None:
             return False
         await db.delete(trigger)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Workflow profiles (custom workflow builder — Phase 3)
-# ---------------------------------------------------------------------------
 
 
 class WorkflowProfileRepo:
@@ -1288,6 +1334,8 @@ class WorkflowProfileRepo:
         if is_default:
             await db.execute(
                 update(WorkflowProfile)
+                .where(WorkflowProfile.org_id == org_id)
+                .where(WorkflowProfile.org_id == org_id)
                 .where(WorkflowProfile.org_id == org_id)
                 .values(is_default=False)
             )
@@ -1311,6 +1359,8 @@ class WorkflowProfileRepo:
             await db.execute(
                 select(WorkflowProfile)
                 .where(WorkflowProfile.org_id == org_id)
+                .where(WorkflowProfile.org_id == org_id)
+                .where(WorkflowProfile.org_id == org_id)
                 .where(
                     WorkflowProfile.id == profile_id, WorkflowProfile.org_id == org_id
                 )
@@ -1318,9 +1368,13 @@ class WorkflowProfileRepo:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> WorkflowProfile | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> WorkflowProfile | None:
         stmt = (
             select(WorkflowProfile)
+            .where(WorkflowProfile.org_id == org_id)
+            .where(WorkflowProfile.org_id == org_id)
             .where(WorkflowProfile.org_id == org_id)
             .where(WorkflowProfile.name == name)
         )
@@ -1328,9 +1382,13 @@ class WorkflowProfileRepo:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_default(db: AsyncSession) -> WorkflowProfile | None:
+    async def get_default(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> WorkflowProfile | None:
         stmt = (
             select(WorkflowProfile)
+            .where(WorkflowProfile.org_id == org_id)
+            .where(WorkflowProfile.org_id == org_id)
             .where(WorkflowProfile.org_id == org_id)
             .where(WorkflowProfile.is_default == True)
         )
@@ -1339,17 +1397,14 @@ class WorkflowProfileRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession,
-        *,
-        active_only: bool = False,
+        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[WorkflowProfile]:
         stmt = (
             select(WorkflowProfile)
             .where(WorkflowProfile.org_id == org_id)
-            .order_by(
-                WorkflowProfile.is_default.desc(),
-                WorkflowProfile.name,
-            )
+            .where(WorkflowProfile.org_id == org_id)
+            .where(WorkflowProfile.org_id == org_id)
+            .order_by(WorkflowProfile.is_default.desc(), WorkflowProfile.name)
         )
         if active_only:
             stmt = stmt.where(WorkflowProfile.is_active == True)
@@ -1359,6 +1414,7 @@ class WorkflowProfileRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         profile_id: uuid.UUID,
         *,
         name: str,
@@ -1371,11 +1427,15 @@ class WorkflowProfileRepo:
             await db.execute(
                 update(WorkflowProfile)
                 .where(WorkflowProfile.org_id == org_id)
+                .where(WorkflowProfile.org_id == org_id)
+                .where(WorkflowProfile.org_id == org_id)
                 .where(WorkflowProfile.id != profile_id)
                 .values(is_default=False)
             )
         stmt = (
             update(WorkflowProfile)
+            .where(WorkflowProfile.org_id == org_id)
+            .where(WorkflowProfile.org_id == org_id)
             .where(WorkflowProfile.org_id == org_id)
             .where(WorkflowProfile.id == profile_id)
             .values(
@@ -1391,21 +1451,18 @@ class WorkflowProfileRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await WorkflowProfileRepo.get_by_id(db, profile_id)
+        return await WorkflowProfileRepo.get_by_id(db, org_id, profile_id)
 
     @staticmethod
-    async def delete(db: AsyncSession, profile_id: uuid.UUID) -> bool:
-        profile = await WorkflowProfileRepo.get_by_id(db, profile_id)
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, profile_id: uuid.UUID
+    ) -> bool:
+        profile = await WorkflowProfileRepo.get_by_id(db, org_id, profile_id)
         if profile is None:
             return False
         await db.delete(profile)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Agent team profiles (multi-agent support — Phase 3)
-# ---------------------------------------------------------------------------
 
 
 class AgentTeamProfileRepo:
@@ -1423,6 +1480,8 @@ class AgentTeamProfileRepo:
         if is_default:
             await db.execute(
                 update(AgentTeamProfile)
+                .where(AgentTeamProfile.org_id == org_id)
+                .where(AgentTeamProfile.org_id == org_id)
                 .where(AgentTeamProfile.org_id == org_id)
                 .values(is_default=False)
             )
@@ -1446,6 +1505,8 @@ class AgentTeamProfileRepo:
             await db.execute(
                 select(AgentTeamProfile)
                 .where(AgentTeamProfile.org_id == org_id)
+                .where(AgentTeamProfile.org_id == org_id)
+                .where(AgentTeamProfile.org_id == org_id)
                 .where(
                     AgentTeamProfile.id == profile_id, AgentTeamProfile.org_id == org_id
                 )
@@ -1453,9 +1514,13 @@ class AgentTeamProfileRepo:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> AgentTeamProfile | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> AgentTeamProfile | None:
         stmt = (
             select(AgentTeamProfile)
+            .where(AgentTeamProfile.org_id == org_id)
+            .where(AgentTeamProfile.org_id == org_id)
             .where(AgentTeamProfile.org_id == org_id)
             .where(AgentTeamProfile.name == name)
         )
@@ -1463,9 +1528,13 @@ class AgentTeamProfileRepo:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_default(db: AsyncSession) -> AgentTeamProfile | None:
+    async def get_default(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> AgentTeamProfile | None:
         stmt = (
             select(AgentTeamProfile)
+            .where(AgentTeamProfile.org_id == org_id)
+            .where(AgentTeamProfile.org_id == org_id)
             .where(AgentTeamProfile.org_id == org_id)
             .where(AgentTeamProfile.is_default == True)
         )
@@ -1474,17 +1543,14 @@ class AgentTeamProfileRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession,
-        *,
-        active_only: bool = False,
+        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[AgentTeamProfile]:
         stmt = (
             select(AgentTeamProfile)
             .where(AgentTeamProfile.org_id == org_id)
-            .order_by(
-                AgentTeamProfile.is_default.desc(),
-                AgentTeamProfile.name,
-            )
+            .where(AgentTeamProfile.org_id == org_id)
+            .where(AgentTeamProfile.org_id == org_id)
+            .order_by(AgentTeamProfile.is_default.desc(), AgentTeamProfile.name)
         )
         if active_only:
             stmt = stmt.where(AgentTeamProfile.is_active == True)
@@ -1494,6 +1560,7 @@ class AgentTeamProfileRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         profile_id: uuid.UUID,
         *,
         name: str,
@@ -1506,11 +1573,15 @@ class AgentTeamProfileRepo:
             await db.execute(
                 update(AgentTeamProfile)
                 .where(AgentTeamProfile.org_id == org_id)
+                .where(AgentTeamProfile.org_id == org_id)
+                .where(AgentTeamProfile.org_id == org_id)
                 .where(AgentTeamProfile.id != profile_id)
                 .values(is_default=False)
             )
         stmt = (
             update(AgentTeamProfile)
+            .where(AgentTeamProfile.org_id == org_id)
+            .where(AgentTeamProfile.org_id == org_id)
             .where(AgentTeamProfile.org_id == org_id)
             .where(AgentTeamProfile.id == profile_id)
             .values(
@@ -1526,21 +1597,18 @@ class AgentTeamProfileRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await AgentTeamProfileRepo.get_by_id(db, profile_id)
+        return await AgentTeamProfileRepo.get_by_id(db, org_id, profile_id)
 
     @staticmethod
-    async def delete(db: AsyncSession, profile_id: uuid.UUID) -> bool:
-        profile = await AgentTeamProfileRepo.get_by_id(db, profile_id)
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, profile_id: uuid.UUID
+    ) -> bool:
+        profile = await AgentTeamProfileRepo.get_by_id(db, org_id, profile_id)
         if profile is None:
             return False
         await db.delete(profile)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Ingest tokens (Sprint 14)
-# ---------------------------------------------------------------------------
 
 
 class IngestTokenRepo:
@@ -1567,13 +1635,13 @@ class IngestTokenRepo:
 
     @staticmethod
     async def update_shape_cache(
-        db: AsyncSession,
-        token_id: uuid.UUID,
-        shape_cache: dict,
+        db: AsyncSession, org_id: uuid.UUID, token_id: uuid.UUID, shape_cache: dict
     ) -> bool:
         """Replace the full shape_cache dict for a token."""
         stmt = (
             update(IngestToken)
+            .where(IngestToken.org_id == org_id)
+            .where(IngestToken.org_id == org_id)
             .where(IngestToken.org_id == org_id)
             .where(IngestToken.id == token_id)
             .values(shape_cache=shape_cache)
@@ -1589,14 +1657,20 @@ class IngestTokenRepo:
             await db.execute(
                 select(IngestToken)
                 .where(IngestToken.org_id == org_id)
+                .where(IngestToken.org_id == org_id)
+                .where(IngestToken.org_id == org_id)
                 .where(IngestToken.id == token_id, IngestToken.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> IngestToken | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> IngestToken | None:
         stmt = (
             select(IngestToken)
+            .where(IngestToken.org_id == org_id)
+            .where(IngestToken.org_id == org_id)
             .where(IngestToken.org_id == org_id)
             .where(IngestToken.name == name)
         )
@@ -1605,10 +1679,12 @@ class IngestTokenRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession, *, active_only: bool = False
+        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[IngestToken]:
         stmt = (
             select(IngestToken)
+            .where(IngestToken.org_id == org_id)
+            .where(IngestToken.org_id == org_id)
             .where(IngestToken.org_id == org_id)
             .order_by(IngestToken.created_at.desc())
         )
@@ -1618,10 +1694,12 @@ class IngestTokenRepo:
         return result.scalars().all()
 
     @staticmethod
-    async def revoke(db: AsyncSession, token_id: uuid.UUID) -> bool:
+    async def revoke(db: AsyncSession, org_id: uuid.UUID, token_id: uuid.UUID) -> bool:
         """Deactivate a token (soft-delete)."""
         stmt = (
             update(IngestToken)
+            .where(IngestToken.org_id == org_id)
+            .where(IngestToken.org_id == org_id)
             .where(IngestToken.org_id == org_id)
             .where(IngestToken.id == token_id)
             .values(is_active=False)
@@ -1630,10 +1708,12 @@ class IngestTokenRepo:
         return bool(result.rowcount)
 
     @staticmethod
-    async def touch(db: AsyncSession, token_id: uuid.UUID) -> None:
+    async def touch(db: AsyncSession, org_id: uuid.UUID, token_id: uuid.UUID) -> None:
         """Update last_used_at to now."""
         stmt = (
             update(IngestToken)
+            .where(IngestToken.org_id == org_id)
+            .where(IngestToken.org_id == org_id)
             .where(IngestToken.org_id == org_id)
             .where(IngestToken.id == token_id)
             .values(last_used_at=datetime.now(timezone.utc))
@@ -1641,18 +1721,13 @@ class IngestTokenRepo:
         await db.execute(stmt)
 
     @staticmethod
-    async def delete(db: AsyncSession, token_id: uuid.UUID) -> bool:
-        tok = await IngestTokenRepo.get_by_id(db, token_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, token_id: uuid.UUID) -> bool:
+        tok = await IngestTokenRepo.get_by_id(db, org_id, token_id)
         if tok is None:
             return False
         await db.delete(tok)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Ingest log (Sprint 14)
-# ---------------------------------------------------------------------------
 
 
 class IngestLogRepo:
@@ -1684,6 +1759,7 @@ class IngestLogRepo:
     @staticmethod
     async def list_recent(
         db: AsyncSession,
+        org_id: uuid.UUID,
         *,
         limit: int = 50,
         offset: int = 0,
@@ -1692,6 +1768,8 @@ class IngestLogRepo:
         stmt = (
             select(IngestLog)
             .where(IngestLog.org_id == org_id)
+            .where(IngestLog.org_id == org_id)
+            .where(IngestLog.org_id == org_id)
             .order_by(IngestLog.created_at.desc())
         )
         if token_id is not None:
@@ -1699,11 +1777,6 @@ class IngestLogRepo:
         stmt = stmt.limit(limit).offset(offset)
         result = await db.execute(stmt)
         return result.scalars().all()
-
-
-# ---------------------------------------------------------------------------
-# Detector rules / history (MCP-driven incident detection — Sprint 14)
-# ---------------------------------------------------------------------------
 
 
 class DetectorRuleRepo:
@@ -1742,14 +1815,20 @@ class DetectorRuleRepo:
             await db.execute(
                 select(DetectorRule)
                 .where(DetectorRule.org_id == org_id)
+                .where(DetectorRule.org_id == org_id)
+                .where(DetectorRule.org_id == org_id)
                 .where(DetectorRule.id == rule_id, DetectorRule.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> DetectorRule | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> DetectorRule | None:
         stmt = (
             select(DetectorRule)
+            .where(DetectorRule.org_id == org_id)
+            .where(DetectorRule.org_id == org_id)
             .where(DetectorRule.org_id == org_id)
             .where(DetectorRule.name == name)
         )
@@ -1758,12 +1837,12 @@ class DetectorRuleRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession,
-        *,
-        active_only: bool = False,
+        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[DetectorRule]:
         stmt = (
             select(DetectorRule)
+            .where(DetectorRule.org_id == org_id)
+            .where(DetectorRule.org_id == org_id)
             .where(DetectorRule.org_id == org_id)
             .order_by(DetectorRule.name)
         )
@@ -1775,6 +1854,7 @@ class DetectorRuleRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         rule_id: uuid.UUID,
         *,
         name: str | None = None,
@@ -1786,9 +1866,7 @@ class DetectorRuleRepo:
         severity_default: str | None = None,
         is_active: bool | None = None,
     ) -> DetectorRule | None:
-        values: dict[str, Any] = {
-            "updated_at": datetime.now(timezone.utc),
-        }
+        values: dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
         if name is not None:
             values["name"] = name
         if mcp_server_id is not None:
@@ -1803,9 +1881,10 @@ class DetectorRuleRepo:
             values["severity_default"] = severity_default
         if is_active is not None:
             values["is_active"] = is_active
-
         stmt = (
             update(DetectorRule)
+            .where(DetectorRule.org_id == org_id)
+            .where(DetectorRule.org_id == org_id)
             .where(DetectorRule.org_id == org_id)
             .where(DetectorRule.id == rule_id)
             .values(**values)
@@ -1814,11 +1893,12 @@ class DetectorRuleRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await DetectorRuleRepo.get_by_id(db, rule_id)
+        return await DetectorRuleRepo.get_by_id(db, org_id, rule_id)
 
     @staticmethod
     async def mark_run(
         db: AsyncSession,
+        org_id: uuid.UUID,
         rule_id: uuid.UUID,
         *,
         last_ran_at: datetime | None = None,
@@ -1833,14 +1913,16 @@ class DetectorRuleRepo:
         stmt = (
             update(DetectorRule)
             .where(DetectorRule.org_id == org_id)
+            .where(DetectorRule.org_id == org_id)
+            .where(DetectorRule.org_id == org_id)
             .where(DetectorRule.id == rule_id)
             .values(**values)
         )
         await db.execute(stmt)
 
     @staticmethod
-    async def delete(db: AsyncSession, rule_id: uuid.UUID) -> bool:
-        rule = await DetectorRuleRepo.get_by_id(db, rule_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, rule_id: uuid.UUID) -> bool:
+        rule = await DetectorRuleRepo.get_by_id(db, org_id, rule_id)
         if rule is None:
             return False
         await db.delete(rule)
@@ -1877,6 +1959,7 @@ class DetectorHistoryRepo:
     @staticmethod
     async def list_by_rule(
         db: AsyncSession,
+        org_id: uuid.UUID,
         rule_id: uuid.UUID,
         *,
         limit: int = 100,
@@ -1885,6 +1968,8 @@ class DetectorHistoryRepo:
         stmt = (
             select(DetectorHistory)
             .where(DetectorHistory.org_id == org_id)
+            .where(DetectorHistory.org_id == org_id)
+            .where(DetectorHistory.org_id == org_id)
             .where(DetectorHistory.rule_id == rule_id)
             .order_by(DetectorHistory.ran_at.desc())
             .limit(limit)
@@ -1892,11 +1977,6 @@ class DetectorHistoryRepo:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
-
-
-# ---------------------------------------------------------------------------
-# SLA Targets
-# ---------------------------------------------------------------------------
 
 
 class SLATargetRepo:
@@ -1925,10 +2005,12 @@ class SLATargetRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession, *, active_only: bool = False
+        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[SLATarget]:
         stmt = (
             select(SLATarget)
+            .where(SLATarget.org_id == org_id)
+            .where(SLATarget.org_id == org_id)
             .where(SLATarget.org_id == org_id)
             .order_by(SLATarget.created_at)
         )
@@ -1945,14 +2027,20 @@ class SLATargetRepo:
             await db.execute(
                 select(SLATarget)
                 .where(SLATarget.org_id == org_id)
+                .where(SLATarget.org_id == org_id)
+                .where(SLATarget.org_id == org_id)
                 .where(SLATarget.id == target_id, SLATarget.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> SLATarget | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> SLATarget | None:
         stmt = (
             select(SLATarget)
+            .where(SLATarget.org_id == org_id)
+            .where(SLATarget.org_id == org_id)
             .where(SLATarget.org_id == org_id)
             .where(SLATarget.name == name)
         )
@@ -1962,6 +2050,7 @@ class SLATargetRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         target_id: uuid.UUID,
         *,
         name: str | None = None,
@@ -1972,9 +2061,7 @@ class SLATargetRepo:
         owner_team_provided: bool = False,
         is_active: bool | None = None,
     ) -> SLATarget | None:
-        values: dict[str, Any] = {
-            "updated_at": datetime.now(timezone.utc),
-        }
+        values: dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
         if name is not None:
             values["name"] = name
         if kind is not None:
@@ -1985,9 +2072,10 @@ class SLATargetRepo:
             values["owner_team"] = owner_team
         if is_active is not None:
             values["is_active"] = is_active
-
         stmt = (
             update(SLATarget)
+            .where(SLATarget.org_id == org_id)
+            .where(SLATarget.org_id == org_id)
             .where(SLATarget.org_id == org_id)
             .where(SLATarget.id == target_id)
             .values(**values)
@@ -1996,21 +2084,16 @@ class SLATargetRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await SLATargetRepo.get_by_id(db, target_id)
+        return await SLATargetRepo.get_by_id(db, org_id, target_id)
 
     @staticmethod
-    async def delete(db: AsyncSession, target_id: uuid.UUID) -> bool:
-        target = await SLATargetRepo.get_by_id(db, target_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, target_id: uuid.UUID) -> bool:
+        target = await SLATargetRepo.get_by_id(db, org_id, target_id)
         if target is None:
             return False
         await db.delete(target)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Uptime Samples
-# ---------------------------------------------------------------------------
 
 
 class UptimeSampleRepo:
@@ -2040,6 +2123,7 @@ class UptimeSampleRepo:
     @staticmethod
     async def query_window(
         db: AsyncSession,
+        org_id: uuid.UUID,
         target_id: uuid.UUID,
         *,
         since: datetime,
@@ -2049,6 +2133,8 @@ class UptimeSampleRepo:
         until = until or datetime.now(timezone.utc)
         stmt = (
             select(UptimeSample)
+            .where(UptimeSample.org_id == org_id)
+            .where(UptimeSample.org_id == org_id)
             .where(UptimeSample.org_id == org_id)
             .where(
                 UptimeSample.target_id == target_id,
@@ -2063,6 +2149,7 @@ class UptimeSampleRepo:
     @staticmethod
     async def compute_uptime(
         db: AsyncSession,
+        org_id: uuid.UUID,
         target_id: uuid.UUID,
         *,
         since: datetime,
@@ -2075,9 +2162,8 @@ class UptimeSampleRepo:
         """
         until = until or datetime.now(timezone.utc)
         samples = await UptimeSampleRepo.query_window(
-            db, target_id, since=since, until=until
+            db, org_id, target_id, since=since, until=until
         )
-
         total = len(samples)
         if total == 0:
             return {
@@ -2087,18 +2173,13 @@ class UptimeSampleRepo:
                 "downtime_seconds": 0,
                 "suppressed_seconds": 0,
             }
-
-        # Only count non-suppressed samples for uptime math
         non_suppressed = [s for s in samples if not s.suppressed]
         suppressed_count = total - len(non_suppressed)
-        up_count = sum(1 for s in non_suppressed if s.up)
+        up_count = sum((1 for s in non_suppressed if s.up))
         ns_total = len(non_suppressed)
-
-        uptime_pct = (up_count / ns_total * 100.0) if ns_total > 0 else 100.0
-        # Estimate seconds: assume 60s per sample (1-min polling)
+        uptime_pct = up_count / ns_total * 100.0 if ns_total > 0 else 100.0
         downtime_seconds = (ns_total - up_count) * 60
         suppressed_seconds = suppressed_count * 60
-
         return {
             "uptime_pct": round(uptime_pct, 4),
             "total_samples": total,
@@ -2106,11 +2187,6 @@ class UptimeSampleRepo:
             "downtime_seconds": downtime_seconds,
             "suppressed_seconds": suppressed_seconds,
         }
-
-
-# ---------------------------------------------------------------------------
-# SLOs
-# ---------------------------------------------------------------------------
 
 
 class SLORepo:
@@ -2147,13 +2223,23 @@ class SLORepo:
             await db.execute(
                 select(SLO)
                 .where(SLO.org_id == org_id)
+                .where(SLO.org_id == org_id)
+                .where(SLO.org_id == org_id)
                 .where(SLO.id == slo_id, SLO.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def list_all(db: AsyncSession, *, active_only: bool = False) -> Sequence[SLO]:
-        stmt = select(SLO).where(SLO.org_id == org_id).order_by(SLO.created_at)
+    async def list_all(
+        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
+    ) -> Sequence[SLO]:
+        stmt = (
+            select(SLO)
+            .where(SLO.org_id == org_id)
+            .where(SLO.org_id == org_id)
+            .where(SLO.org_id == org_id)
+            .order_by(SLO.created_at)
+        )
         if active_only:
             stmt = stmt.where(SLO.is_active == True)
         result = await db.execute(stmt)
@@ -2162,12 +2248,15 @@ class SLORepo:
     @staticmethod
     async def list_by_target(
         db: AsyncSession,
+        org_id: uuid.UUID,
         target_id: uuid.UUID,
         *,
         active_only: bool = False,
     ) -> Sequence[SLO]:
         stmt = (
             select(SLO)
+            .where(SLO.org_id == org_id)
+            .where(SLO.org_id == org_id)
             .where(SLO.org_id == org_id)
             .where(SLO.target_id == target_id)
             .order_by(SLO.created_at)
@@ -2180,6 +2269,7 @@ class SLORepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         slo_id: uuid.UUID,
         *,
         name: str | None = None,
@@ -2201,10 +2291,11 @@ class SLORepo:
         if is_active is not None:
             values["is_active"] = is_active
         if not values:
-            return await SLORepo.get_by_id(db, slo_id)
-
+            return await SLORepo.get_by_id(db, org_id, slo_id)
         stmt = (
             update(SLO)
+            .where(SLO.org_id == org_id)
+            .where(SLO.org_id == org_id)
             .where(SLO.org_id == org_id)
             .where(SLO.id == slo_id)
             .values(**values)
@@ -2213,21 +2304,16 @@ class SLORepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await SLORepo.get_by_id(db, slo_id)
+        return await SLORepo.get_by_id(db, org_id, slo_id)
 
     @staticmethod
-    async def delete(db: AsyncSession, slo_id: uuid.UUID) -> bool:
-        slo = await SLORepo.get_by_id(db, slo_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, slo_id: uuid.UUID) -> bool:
+        slo = await SLORepo.get_by_id(db, org_id, slo_id)
         if slo is None:
             return False
         await db.delete(slo)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Maintenance Windows
-# ---------------------------------------------------------------------------
 
 
 class MaintenanceWindowRepo:
@@ -2266,6 +2352,8 @@ class MaintenanceWindowRepo:
             await db.execute(
                 select(MaintenanceWindow)
                 .where(MaintenanceWindow.org_id == org_id)
+                .where(MaintenanceWindow.org_id == org_id)
+                .where(MaintenanceWindow.org_id == org_id)
                 .where(
                     MaintenanceWindow.id == mw_id, MaintenanceWindow.org_id == org_id
                 )
@@ -2273,9 +2361,13 @@ class MaintenanceWindowRepo:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def list_all(db: AsyncSession) -> Sequence[MaintenanceWindow]:
+    async def list_all(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[MaintenanceWindow]:
         stmt = (
             select(MaintenanceWindow)
+            .where(MaintenanceWindow.org_id == org_id)
+            .where(MaintenanceWindow.org_id == org_id)
             .where(MaintenanceWindow.org_id == org_id)
             .order_by(MaintenanceWindow.starts_at.desc())
         )
@@ -2284,7 +2376,7 @@ class MaintenanceWindowRepo:
 
     @staticmethod
     async def list_active_at(
-        db: AsyncSession, dt: datetime
+        db: AsyncSession, org_id: uuid.UUID, dt: datetime
     ) -> Sequence[MaintenanceWindow]:
         """Return all maintenance windows active exactly at `dt`.
         For v1, we simply check starts_at <= dt <= ends_at. RRULE is omitted from this quick check for now.
@@ -2292,10 +2384,9 @@ class MaintenanceWindowRepo:
         stmt = (
             select(MaintenanceWindow)
             .where(MaintenanceWindow.org_id == org_id)
-            .where(
-                MaintenanceWindow.starts_at <= dt,
-                MaintenanceWindow.ends_at >= dt,
-            )
+            .where(MaintenanceWindow.org_id == org_id)
+            .where(MaintenanceWindow.org_id == org_id)
+            .where(MaintenanceWindow.starts_at <= dt, MaintenanceWindow.ends_at >= dt)
         )
         result = await db.execute(stmt)
         return result.scalars().all()
@@ -2303,6 +2394,7 @@ class MaintenanceWindowRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         mw_id: uuid.UUID,
         *,
         name: str | None = None,
@@ -2328,10 +2420,11 @@ class MaintenanceWindowRepo:
         if target_ids is not None:
             values["target_ids"] = target_ids
         if not values:
-            return await MaintenanceWindowRepo.get_by_id(db, mw_id)
-
+            return await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
         stmt = (
             update(MaintenanceWindow)
+            .where(MaintenanceWindow.org_id == org_id)
+            .where(MaintenanceWindow.org_id == org_id)
             .where(MaintenanceWindow.org_id == org_id)
             .where(MaintenanceWindow.id == mw_id)
             .values(**values)
@@ -2340,21 +2433,16 @@ class MaintenanceWindowRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await MaintenanceWindowRepo.get_by_id(db, mw_id)
+        return await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
 
     @staticmethod
-    async def delete(db: AsyncSession, mw_id: uuid.UUID) -> bool:
-        mw = await MaintenanceWindowRepo.get_by_id(db, mw_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, mw_id: uuid.UUID) -> bool:
+        mw = await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
         if mw is None:
             return False
         await db.delete(mw)
         await db.flush()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Bot connectors
-# ---------------------------------------------------------------------------
 
 
 class BotConnectorRepo:
@@ -2393,14 +2481,20 @@ class BotConnectorRepo:
             await db.execute(
                 select(BotConnector)
                 .where(BotConnector.org_id == org_id)
+                .where(BotConnector.org_id == org_id)
+                .where(BotConnector.org_id == org_id)
                 .where(BotConnector.id == connector_id, BotConnector.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_name(db: AsyncSession, name: str) -> BotConnector | None:
+    async def get_by_name(
+        db: AsyncSession, org_id: uuid.UUID, name: str
+    ) -> BotConnector | None:
         stmt = (
             select(BotConnector)
+            .where(BotConnector.org_id == org_id)
+            .where(BotConnector.org_id == org_id)
             .where(BotConnector.org_id == org_id)
             .where(BotConnector.name == name)
         )
@@ -2410,12 +2504,15 @@ class BotConnectorRepo:
     @staticmethod
     async def list_all(
         db: AsyncSession,
+        org_id: uuid.UUID,
         *,
         enabled_only: bool = False,
         platform: str | None = None,
     ) -> Sequence[BotConnector]:
         stmt = (
             select(BotConnector)
+            .where(BotConnector.org_id == org_id)
+            .where(BotConnector.org_id == org_id)
             .where(BotConnector.org_id == org_id)
             .order_by(BotConnector.name)
         )
@@ -2429,6 +2526,7 @@ class BotConnectorRepo:
     @staticmethod
     async def update(
         db: AsyncSession,
+        org_id: uuid.UUID,
         connector_id: uuid.UUID,
         *,
         name: str,
@@ -2441,6 +2539,8 @@ class BotConnectorRepo:
     ) -> BotConnector | None:
         stmt = (
             update(BotConnector)
+            .where(BotConnector.org_id == org_id)
+            .where(BotConnector.org_id == org_id)
             .where(BotConnector.org_id == org_id)
             .where(BotConnector.id == connector_id)
             .values(
@@ -2458,11 +2558,12 @@ class BotConnectorRepo:
         if not result.rowcount:
             return None
         await db.flush()
-        return await BotConnectorRepo.get_by_id(db, connector_id)
+        return await BotConnectorRepo.get_by_id(db, org_id, connector_id)
 
     @staticmethod
     async def mark_status(
         db: AsyncSession,
+        org_id: uuid.UUID,
         connector_id: uuid.UUID,
         *,
         status: str,
@@ -2470,6 +2571,8 @@ class BotConnectorRepo:
     ) -> None:
         stmt = (
             update(BotConnector)
+            .where(BotConnector.org_id == org_id)
+            .where(BotConnector.org_id == org_id)
             .where(BotConnector.org_id == org_id)
             .where(BotConnector.id == connector_id)
             .values(
@@ -2482,8 +2585,10 @@ class BotConnectorRepo:
         await db.execute(stmt)
 
     @staticmethod
-    async def delete(db: AsyncSession, connector_id: uuid.UUID) -> bool:
-        connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, connector_id: uuid.UUID
+    ) -> bool:
+        connector = await BotConnectorRepo.get_by_id(db, org_id, connector_id)
         if connector is None:
             return False
         await db.delete(connector)
@@ -2521,6 +2626,8 @@ class BotUserLinkRepo:
             await db.execute(
                 select(BotUserLink)
                 .where(BotUserLink.org_id == org_id)
+                .where(BotUserLink.org_id == org_id)
+                .where(BotUserLink.org_id == org_id)
                 .where(BotUserLink.id == link_id, BotUserLink.org_id == org_id)
             )
         ).scalar_one_or_none()
@@ -2528,12 +2635,15 @@ class BotUserLinkRepo:
     @staticmethod
     async def get_by_platform_user(
         db: AsyncSession,
+        org_id: uuid.UUID,
         *,
         connector_id: uuid.UUID,
         platform_user_id: str,
     ) -> BotUserLink | None:
         stmt = (
             select(BotUserLink)
+            .where(BotUserLink.org_id == org_id)
+            .where(BotUserLink.org_id == org_id)
             .where(BotUserLink.org_id == org_id)
             .where(
                 BotUserLink.connector_id == connector_id,
@@ -2545,11 +2655,12 @@ class BotUserLinkRepo:
 
     @staticmethod
     async def list_by_connector(
-        db: AsyncSession,
-        connector_id: uuid.UUID,
+        db: AsyncSession, org_id: uuid.UUID, connector_id: uuid.UUID
     ) -> Sequence[BotUserLink]:
         stmt = (
             select(BotUserLink)
+            .where(BotUserLink.org_id == org_id)
+            .where(BotUserLink.org_id == org_id)
             .where(BotUserLink.org_id == org_id)
             .where(BotUserLink.connector_id == connector_id)
             .order_by(BotUserLink.created_at.desc())
@@ -2558,8 +2669,8 @@ class BotUserLinkRepo:
         return result.scalars().all()
 
     @staticmethod
-    async def delete(db: AsyncSession, link_id: uuid.UUID) -> bool:
-        link = await BotUserLinkRepo.get_by_id(db, link_id)
+    async def delete(db: AsyncSession, org_id: uuid.UUID, link_id: uuid.UUID) -> bool:
+        link = await BotUserLinkRepo.get_by_id(db, org_id, link_id)
         if link is None:
             return False
         await db.delete(link)
@@ -2598,6 +2709,7 @@ class BotActionAuditRepo:
     @staticmethod
     async def list_by_connector(
         db: AsyncSession,
+        org_id: uuid.UUID,
         connector_id: uuid.UUID,
         *,
         limit: int = 50,
@@ -2606,10 +2718,29 @@ class BotActionAuditRepo:
         stmt = (
             select(BotActionAudit)
             .where(BotActionAudit.org_id == org_id)
+            .where(BotActionAudit.org_id == org_id)
+            .where(BotActionAudit.org_id == org_id)
             .where(BotActionAudit.connector_id == connector_id)
             .order_by(BotActionAudit.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
         result = await db.execute(stmt)
+        return result.scalars().all()
+
+class OrganizationRepo:
+    @staticmethod
+    async def create(db: AsyncSession, *, name: str, slug: str | None = None) -> Organization:
+        org = Organization(name=name, slug=slug or name.lower().replace(" ", "-"))
+        db.add(org)
+        await db.flush()
+        return org
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, org_id: uuid.UUID) -> Organization | None:
+        return await db.get(Organization, org_id)
+
+    @staticmethod
+    async def list_all(db: AsyncSession) -> Sequence[Organization]:
+        result = await db.execute(select(Organization).order_by(Organization.name))
         return result.scalars().all()

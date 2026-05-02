@@ -39,6 +39,7 @@ class ApprovalService:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         *,
+        org_id: uuid.UUID,
         timeout_seconds: int = 900,
         poll_interval_seconds: float = 1.0,
         publisher: Callable[[uuid.UUID, dict[str, Any]], Awaitable[None]] | None = None,
@@ -47,6 +48,7 @@ class ApprovalService:
         sleep_fn: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._session_factory = session_factory
+        self._org_id = org_id
         self._timeout_seconds = timeout_seconds
         self._poll_interval_seconds = poll_interval_seconds
         self._publisher = publisher
@@ -67,14 +69,15 @@ class ApprovalService:
         async with self._session_factory() as db:
             request = await ApprovalRequestRepo.create(
                 db,
+                self._org_id,
                 session_id=session_id,
                 action=action,
                 justification=justification,
                 expires_at=expires_at,
             )
-            await SessionRepo.set_status(db, session_id, status="awaiting_approval")
+            await SessionRepo.set_status(db, self._org_id, session_id, status="awaiting_approval")
             await db.commit()
-            persisted_request = await ApprovalRequestRepo.get_by_id(db, request.id)
+            persisted_request = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
             if persisted_request is None:
                 raise RuntimeError(f"Approval request not found after create: {request.id}")
             request = persisted_request
@@ -90,14 +93,14 @@ class ApprovalService:
 
         while True:
             async with self._session_factory() as db:
-                request = await ApprovalRequestRepo.get_by_id(db, request.id)
+                request = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
                 if request is None:
                     raise RuntimeError(f"Approval request not found: {request.id}")
 
                 if request.status != "pending":
                     next_status = await self._sync_session_status(db, request)
                     await db.commit()
-                    persisted_request = await ApprovalRequestRepo.get_by_id(db, request.id)
+                    persisted_request = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
                     if persisted_request is None:
                         raise RuntimeError(f"Approval request not found after resolve: {request.id}")
                     request = persisted_request
@@ -115,13 +118,13 @@ class ApprovalService:
                     )
 
                 if self._now_fn() >= _as_utc(request.expires_at):
-                    await ApprovalRequestRepo.resolve(db, request.id, status="expired")
-                    expired = await ApprovalRequestRepo.get_by_id(db, request.id)
+                    await ApprovalRequestRepo.resolve(db, self._org_id, request.id, status="expired")
+                    expired = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
                     if expired is None:
                         raise RuntimeError(f"Approval request not found: {request.id}")
                     next_status = await self._sync_session_status(db, expired)
                     await db.commit()
-                    persisted_expired = await ApprovalRequestRepo.get_by_id(db, expired.id)
+                    persisted_expired = await ApprovalRequestRepo.get_by_id(db, self._org_id, expired.id)
                     if persisted_expired is None:
                         raise RuntimeError(f"Approval request not found after expiry: {expired.id}")
                     expired = persisted_expired
@@ -148,13 +151,14 @@ class ApprovalService:
         if request.status == "expired":
             await SessionRepo.set_status(
                 db,
+                self._org_id,
                 request.session_id,
                 status="timed_out",
                 ended_at=self._now_fn(),
             )
             return "timed_out"
 
-        await SessionRepo.set_status(db, request.session_id, status="active")
+        await SessionRepo.set_status(db, self._org_id, request.session_id, status="active")
         return "active"
 
     def _notify_session_status(self, session_id: uuid.UUID, status: str) -> None:

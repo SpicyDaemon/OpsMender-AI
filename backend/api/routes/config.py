@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import require_role
+from backend.api.auth import get_current_org, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     ConfigResponse,
@@ -63,9 +63,12 @@ def _config_to_response(
     )
 
 
-async def _read_runtime_config(db: AsyncSession) -> dict[str, str]:
+async def _read_runtime_config(
+    db: AsyncSession, org_id: uuid.UUID
+) -> dict[str, str]:
     return await RuntimeConfigRepo.get_many(
         db,
+        org_id,
         [
             "tier",
             "logging_level",
@@ -80,6 +83,7 @@ async def _read_runtime_config(db: AsyncSession) -> dict[str, str]:
 # Routes
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "",
     response_model=ConfigResponse,
@@ -87,6 +91,7 @@ async def _read_runtime_config(db: AsyncSession) -> dict[str, str]:
 )
 async def get_config(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
     try:
@@ -97,15 +102,12 @@ async def get_config(
             detail=str(exc),
         )
 
-    overrides = await _read_runtime_config(db)
+    overrides = await _read_runtime_config(db, org_id)
     tier = int(overrides.get("tier", cfg.tiers.get("default", 2)))
     logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
-    ingest_auto_start_enabled = (
-        overrides.get("ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled))
-        .strip()
-        .lower()
-        in {"1", "true", "yes", "on"}
-    )
+    ingest_auto_start_enabled = overrides.get(
+        "ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled)
+    ).strip().lower() in {"1", "true", "yes", "on"}
     ingest_auto_start_min_severity = overrides.get(
         "ingest_auto_start_min_severity",
         cfg.ingest.auto_start_min_severity,
@@ -134,31 +136,36 @@ async def get_config(
 async def update_config(
     body: ConfigUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     if body.tier is not None:
-        await RuntimeConfigRepo.set(db, key="tier", value=str(body.tier))
+        await RuntimeConfigRepo.set(db, org_id, key="tier", value=str(body.tier))
     if body.logging_level is not None:
         await RuntimeConfigRepo.set(
             db,
+            org_id,
             key="logging_level",
             value=body.logging_level,
         )
     if body.ingest_auto_start_enabled is not None:
         await RuntimeConfigRepo.set(
             db,
+            org_id,
             key="ingest_auto_start_enabled",
             value="true" if body.ingest_auto_start_enabled else "false",
         )
     if body.ingest_auto_start_min_severity is not None:
         await RuntimeConfigRepo.set(
             db,
+            org_id,
             key="ingest_auto_start_min_severity",
             value=body.ingest_auto_start_min_severity,
         )
     if body.ingest_auto_start_source is not None:
         await RuntimeConfigRepo.set(
             db,
+            org_id,
             key="ingest_auto_start_source",
             value=body.ingest_auto_start_source.strip().lower(),
         )
@@ -171,15 +178,12 @@ async def update_config(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
         )
-    overrides = await _read_runtime_config(db)
+    overrides = await _read_runtime_config(db, org_id)
     tier = int(overrides.get("tier", cfg.tiers.get("default", 2)))
     logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
-    ingest_auto_start_enabled = (
-        overrides.get("ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled))
-        .strip()
-        .lower()
-        in {"1", "true", "yes", "on"}
-    )
+    ingest_auto_start_enabled = overrides.get(
+        "ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled)
+    ).strip().lower() in {"1", "true", "yes", "on"}
     ingest_auto_start_min_severity = overrides.get(
         "ingest_auto_start_min_severity",
         cfg.ingest.auto_start_min_severity,
@@ -208,6 +212,7 @@ async def update_config(
 async def update_model_config(
     body: ModelConfigUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     registry = ProviderRegistry()
@@ -229,6 +234,7 @@ async def update_model_config(
     name = body.name or f"{body.provider}:{body.model_id}"
     cfg = await ModelConfigRepo.upsert(
         db,
+        org_id,
         name=name,
         provider=body.provider,
         model_id=body.model_id,
@@ -238,8 +244,8 @@ async def update_model_config(
         max_tokens=body.max_tokens,
         temperature=body.temperature,
     )
-    await ModelConfigRepo.set_default(db, cfg.id)
-    refreshed = await ModelConfigRepo.get_by_id(db, cfg.id)
+    await ModelConfigRepo.set_default(db, org_id, cfg.id)
+    refreshed = await ModelConfigRepo.get_by_id(db, org_id, cfg.id)
     if refreshed is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

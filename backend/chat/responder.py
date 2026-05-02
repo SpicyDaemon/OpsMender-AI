@@ -1,17 +1,4 @@
-"""Async chat responder for the co-pilot channel.
-
-The responder runs in parallel to the LangGraph workflow. Each user
-message fires a background task that:
-
-1. Loads the incident record + session state + full chat history.
-2. Builds a system-prompted transcript.
-3. Calls the session's LLM provider (or the default model config).
-4. Saves the assistant reply and pushes both user + assistant events
-   over the session WebSocket channel.
-
-Failures never raise into the request handler — the responder logs and
-emits an ``error`` WebSocket event so the UI can surface it.
-"""
+"""Async chat responder for the co-pilot channel."""
 
 from __future__ import annotations
 
@@ -41,10 +28,6 @@ log = logging.getLogger(__name__)
 class ChatResponderError(Exception):
     """Raised when the chat responder can't produce a reply."""
 
-
-# ---------------------------------------------------------------------------
-# Prompt construction
-# ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """You are the AI Incident Manager co-pilot, running alongside \
 an automated incident response workflow. Your job is to help the on-call \
@@ -84,7 +67,7 @@ def _build_prompt(
     return "\n".join(lines)
 
 
-def _incident_block(incident) -> str:  # type: ignore[no-untyped-def]
+def _incident_block(incident) -> str:
     if incident is None:
         return "(no incident linked to this session)"
     return (
@@ -95,7 +78,7 @@ def _incident_block(incident) -> str:  # type: ignore[no-untyped-def]
     )
 
 
-def _session_block(session) -> str:  # type: ignore[no-untyped-def]
+def _session_block(session) -> str:
     return (
         f"id: {session.id}\n"
         f"tier: {session.tier}\n"
@@ -104,17 +87,13 @@ def _session_block(session) -> str:  # type: ignore[no-untyped-def]
     )
 
 
-# ---------------------------------------------------------------------------
-# LLM resolution
-# ---------------------------------------------------------------------------
-
-async def _resolve_llm(db, session) -> LLM:  # type: ignore[no-untyped-def]
+async def _resolve_llm(db, org_id: uuid.UUID, session) -> LLM:
     """Pick an LLM for the session: session-pinned model, then default, then stub."""
     provider = session.model_provider
     model_id = session.model_id
 
     if not provider:
-        default_cfg = await ModelConfigRepo.get_default(db)
+        default_cfg = await ModelConfigRepo.get_default(db, org_id)
         if default_cfg is not None:
             return create_llm(
                 provider=default_cfg.provider,
@@ -132,45 +111,34 @@ async def _resolve_llm(db, session) -> LLM:  # type: ignore[no-untyped-def]
     return create_llm(provider=provider, model_id=model_id)
 
 
-# ---------------------------------------------------------------------------
-# Public entry point
-# ---------------------------------------------------------------------------
-
 async def respond_to_user_message(
     factory: async_sessionmaker,
     *,
+    org_id: uuid.UUID,
     session_id: uuid.UUID,
     user_message_id: uuid.UUID,
     llm_factory: Callable[[], LLM] | None = None,
 ) -> None:
-    """Generate an assistant reply to the given user message.
-
-    This coroutine is fire-and-forget — scheduled via ``asyncio.create_task``
-    from the ``POST /sessions/{id}/messages`` handler. The WebSocket push
-    for the user's own message is emitted by the route before the task is
-    scheduled.
-    """
+    """Generate an assistant reply to the given user message."""
     try:
         async with factory() as db:
-            session = await SessionRepo.get_by_id(db, session_id)
+            session = await SessionRepo.get_by_id(db, org_id, session_id)
             if session is None:
                 raise ChatResponderError(f"session {session_id} not found")
 
             incident = None
             if session.incident_id is not None:
-                incident = await IncidentRepo.get_by_id(db, session.incident_id)
+                incident = await IncidentRepo.get_by_id(db, org_id, session.incident_id)
 
             history = list(
-                await SessionMessageRepo.list_by_session(db, session_id)
+                await SessionMessageRepo.list_by_session(db, org_id, session_id)
             )
-            # Exclude the just-posted user message from the history window —
-            # it lands under "USER:" on its own line in the prompt.
             history = [m for m in history if m.id != user_message_id]
-            user_message = await SessionMessageRepo.get_by_id(db, user_message_id)
+            user_message = await SessionMessageRepo.get_by_id(
+                db, org_id, user_message_id
+            )
             if user_message is None:
-                raise ChatResponderError(
-                    f"user message {user_message_id} not found"
-                )
+                raise ChatResponderError(f"user message {user_message_id} not found")
 
             prompt = _build_prompt(
                 incident_block=_incident_block(incident),
@@ -179,15 +147,15 @@ async def respond_to_user_message(
                 user_message=user_message.content,
             )
 
-            llm = (llm_factory() if llm_factory else await _resolve_llm(db, session))
+            llm = llm_factory() if llm_factory else await _resolve_llm(db, org_id, session)
 
-        # Run the (blocking) LLM call off the event loop.
         reply_text = await asyncio.to_thread(llm.invoke, prompt)
         reply_text = (reply_text or "").strip() or "[co-pilot returned no content]"
 
         async with factory() as db:
             assistant_msg = await SessionMessageRepo.create(
                 db,
+                org_id,
                 session_id=session_id,
                 role="assistant",
                 content=reply_text,
@@ -210,11 +178,10 @@ async def respond_to_user_message(
             ),
         )
 
-        # Best-effort relay back to originating Telegram chats — fire and
-        # forget. Delivery results are recorded in bot_action_audit.
         try:
             schedule_copilot_relay(
                 factory,
+                org_id=org_id,
                 task_registry=None,
                 session_id=session_id,
                 reply_text=reply_text,

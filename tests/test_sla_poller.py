@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import uuid
-
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -17,6 +15,8 @@ from backend.config_loader import AppConfig
 from backend.db.models import Base, MaintenanceWindow
 from backend.db.repos import MaintenanceWindowRepo, SLATargetRepo
 from backend.sla.poller import SLAPoller
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
 @pytest.fixture
@@ -114,13 +114,15 @@ class TestSLAPoller:
             poller, "_probe_target", new_callable=AsyncMock
         ) as mock_probe:
             mock_probe.return_value = (True, 42)
-            await poller._probe_and_record(target)
+            await poller._probe_and_record(TEST_ORG_ID, target)
 
         # Check DB for sample
         from sqlalchemy import select
         from backend.db.models import UptimeSample
 
-        stmt = select(UptimeSample).where(UptimeSample.target_id == target.id)
+        stmt = select(UptimeSample).where(
+            UptimeSample.org_id == TEST_ORG_ID, UptimeSample.target_id == target.id
+        )
         res = await db.execute(stmt)
         sample = res.scalar_one()
 
@@ -139,6 +141,7 @@ class TestSLAPoller:
 
         now = datetime.now(timezone.utc)
         mw = MaintenanceWindow(
+            org_id=TEST_ORG_ID,
             name="test-mw",
             starts_at=now - timedelta(minutes=5),
             ends_at=now + timedelta(minutes=5),
@@ -151,12 +154,14 @@ class TestSLAPoller:
             poller, "_probe_target", new_callable=AsyncMock
         ) as mock_probe:
             mock_probe.return_value = (False, 100)
-            await poller._probe_and_record(target)
+            await poller._probe_and_record(TEST_ORG_ID, target)
 
         from sqlalchemy import select
         from backend.db.models import UptimeSample
 
-        stmt = select(UptimeSample).where(UptimeSample.target_id == target.id)
+        stmt = select(UptimeSample).where(
+            UptimeSample.org_id == TEST_ORG_ID, UptimeSample.target_id == target.id
+        )
         res = await db.execute(stmt)
         sample = res.scalar_one()
 

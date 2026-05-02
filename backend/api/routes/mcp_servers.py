@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     MCPServerListResponse,
@@ -55,7 +55,9 @@ def _to_response(server: MCPServer) -> MCPServerResponse:
     )
 
 
-def _resolve_token(body: MCPServerUpsert, existing: MCPServer | None = None) -> str | None:
+def _resolve_token(
+    body: MCPServerUpsert, existing: MCPServer | None = None
+) -> str | None:
     if body.clear_token:
         return None
     if body.token is None:
@@ -72,9 +74,10 @@ def _resolve_token(body: MCPServerUpsert, existing: MCPServer | None = None) -> 
 )
 async def list_mcp_servers(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    items = await MCPServerRepo.list_all(db)
+    items = await MCPServerRepo.list_all(db, org_id)
     return MCPServerListResponse(
         items=[_to_response(item) for item in items],
         total=len(items),
@@ -90,6 +93,7 @@ async def list_mcp_servers(
 async def create_mcp_server(
     body: MCPServerUpsert,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     token = _resolve_token(body)
@@ -97,6 +101,7 @@ async def create_mcp_server(
         _to_runtime_config(body, token=token)
         server = await MCPServerRepo.create(
             db,
+            org_id,
             name=body.name,
             transport=body.transport,
             command=body.command,
@@ -128,9 +133,10 @@ async def update_mcp_server(
     server_id: uuid.UUID,
     body: MCPServerUpsert,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await MCPServerRepo.get_by_id(db, server_id)
+    existing = await MCPServerRepo.get_by_id(db, org_id, server_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -142,6 +148,7 @@ async def update_mcp_server(
         _to_runtime_config(body, token=token)
         updated = await MCPServerRepo.update(
             db,
+            org_id,
             server_id,
             name=body.name,
             transport=body.transport,
@@ -178,9 +185,10 @@ async def update_mcp_server(
 async def delete_mcp_server(
     server_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await MCPServerRepo.delete(db, server_id)
+    deleted = await MCPServerRepo.delete(db, org_id, server_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -198,9 +206,10 @@ async def delete_mcp_server(
 async def test_mcp_server(
     server_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    server = await MCPServerRepo.get_by_id(db, server_id)
+    server = await MCPServerRepo.get_by_id(db, org_id, server_id)
     if server is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

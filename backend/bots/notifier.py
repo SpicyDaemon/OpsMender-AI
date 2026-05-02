@@ -1,19 +1,4 @@
-"""Outbound delivery of AIM events into chat connectors.
-
-Two entry points:
-
-- ``schedule_session_chat_event`` — fan out a session lifecycle event
-  (``session.created``, ``session.awaiting_approval``, etc.) to every
-  enabled chat connector with the ``notifications`` capability and a
-  non-empty ``allowed_chat_ids`` config.
-
-- ``schedule_copilot_relay`` — push a co-pilot assistant reply back into
-  the Telegram chat(s) that originated ``/chat <session-id> ...`` for the
-  given session, identified by querying the ``bot_action_audit`` table.
-
-Both schedule background ``asyncio`` tasks that handle their own errors —
-delivery failures are logged + audited but never raise into the caller.
-"""
+"""Outbound delivery of AIM events into chat connectors."""
 
 from __future__ import annotations
 
@@ -28,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import backend.bots  # noqa: F401  -- registers built-in adapters
 from backend.bots.connectors import get_adapter
-from backend.bots.telegram import send_message as telegram_send  # noqa: F401  -- preserved for tests that monkeypatch this symbol
 from backend.db.models import BotActionAudit, BotConnector
 from backend.db.repos import (
     BotActionAuditRepo,
@@ -87,27 +71,19 @@ def _format_copilot_reply(text: str) -> str:
     return f"*Co-pilot reply:*\n{text}"
 
 
-# ---------------------------------------------------------------------------
-# Delivery internals
-# ---------------------------------------------------------------------------
-
-
 async def _deliver_to_telegram(
     factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     connector: BotConnector,
     chat_id: str,
     text: str,
     command_label: str,
     session_id: uuid.UUID | None,
 ) -> None:
-    """Telegram-specific delivery path.
-
-    Kept as a separate function so existing tests that monkeypatch
-    ``telegram_send`` on this module continue to intercept. Other
-    platforms route through ``_deliver_via_adapter``.
-    """
     bot_token = (connector.credentials or {}).get("bot_token")
+    from backend.bots.telegram import send_message as telegram_send
+
     ok, error = await telegram_send(
         bot_token=str(bot_token) if bot_token else "",
         chat_id=chat_id,
@@ -117,6 +93,7 @@ async def _deliver_to_telegram(
     async with factory() as db:
         await BotActionAuditRepo.create(
             db,
+            org_id,
             connector_id=connector.id,
             platform=connector.platform,
             chat_id=chat_id,
@@ -128,45 +105,33 @@ async def _deliver_to_telegram(
         if not ok:
             await BotConnectorRepo.mark_status(
                 db,
+                org_id,
                 connector.id,
                 status="error",
                 error=(error or "")[:1000],
             )
         await db.commit()
-
-    if not ok:
-        log.warning(
-            "telegram outbound failed connector=%s chat=%s: %s",
-            connector.name,
-            chat_id,
-            error,
-        )
 
 
 async def _deliver_via_adapter(
     factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     connector: BotConnector,
     chat_id: str,
     text: str,
     command_label: str,
     session_id: uuid.UUID | None,
 ) -> None:
-    """Generic delivery via the connector adapter registry."""
     adapter = get_adapter(connector.platform)
     if adapter is None:
-        log.warning(
-            "no adapter registered for connector platform=%s",
-            connector.platform,
-        )
         return
-    ok, error = await adapter.send_message(
-        connector, chat_id=chat_id, text=text
-    )
+    ok, error = await adapter.send_message(connector, chat_id=chat_id, text=text)
 
     async with factory() as db:
         await BotActionAuditRepo.create(
             db,
+            org_id,
             connector_id=connector.id,
             platform=connector.platform,
             chat_id=chat_id,
@@ -178,35 +143,28 @@ async def _deliver_via_adapter(
         if not ok:
             await BotConnectorRepo.mark_status(
                 db,
+                org_id,
                 connector.id,
                 status="error",
                 error=(error or "")[:1000],
             )
         await db.commit()
 
-    if not ok:
-        log.warning(
-            "%s outbound failed connector=%s chat=%s: %s",
-            connector.platform,
-            connector.name,
-            chat_id,
-            error,
-        )
-
 
 async def _deliver(
     factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     connector: BotConnector,
     chat_id: str,
     text: str,
     command_label: str,
     session_id: uuid.UUID | None,
 ) -> None:
-    """Pick the right per-platform delivery path."""
     if connector.platform == "telegram":
         await _deliver_to_telegram(
             factory,
+            org_id=org_id,
             connector=connector,
             chat_id=chat_id,
             text=text,
@@ -216,6 +174,7 @@ async def _deliver(
     else:
         await _deliver_via_adapter(
             factory,
+            org_id=org_id,
             connector=connector,
             chat_id=chat_id,
             text=text,
@@ -224,14 +183,10 @@ async def _deliver(
         )
 
 
-# ---------------------------------------------------------------------------
-# Session lifecycle fan-out
-# ---------------------------------------------------------------------------
-
-
 async def deliver_session_chat_event(
     factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     event_type: str,
     session_id: uuid.UUID,
 ) -> None:
@@ -239,12 +194,12 @@ async def deliver_session_chat_event(
         return
 
     async with factory() as db:
-        session = await SessionRepo.get_by_id(db, session_id)
+        session = await SessionRepo.get_by_id(db, org_id, session_id)
         incident = None
         if session and session.incident_id:
-            incident = await IncidentRepo.get_by_id(db, session.incident_id)
+            incident = await IncidentRepo.get_by_id(db, org_id, session.incident_id)
         connectors = list(
-            await BotConnectorRepo.list_all(db, enabled_only=True)
+            await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
         )
 
     if session is None:
@@ -265,6 +220,7 @@ async def deliver_session_chat_event(
         for chat_id in _allowed_chat_ids(connector):
             await _deliver(
                 factory,
+                org_id=org_id,
                 connector=connector,
                 chat_id=chat_id,
                 text=text,
@@ -276,43 +232,32 @@ async def deliver_session_chat_event(
 def schedule_session_chat_event(
     factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     task_registry: set[asyncio.Task] | None,
     event_type: str,
     session_id: uuid.UUID,
 ) -> asyncio.Task:
-    task = asyncio.create_task(
+    return asyncio.create_task(
         deliver_session_chat_event(
             factory,
+            org_id=org_id,
             event_type=event_type,
             session_id=session_id,
         )
     )
-    if task_registry is not None:
-        task_registry.add(task)
-        task.add_done_callback(task_registry.discard)
-    return task
-
-
-# ---------------------------------------------------------------------------
-# Co-pilot reply relay-back
-# ---------------------------------------------------------------------------
 
 
 async def _resolve_relay_targets(
     factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     session_id: uuid.UUID,
 ) -> Iterable[tuple[BotConnector, str]]:
-    """Find Telegram chats that originated ``/chat`` for this session.
-
-    Returns the most recent originating ``(connector, chat_id)`` pair per
-    distinct chat. We rely on the existing audit log so no extra schema
-    is needed.
-    """
     async with factory() as db:
         stmt = (
             select(BotActionAudit)
             .where(
+                BotActionAudit.org_id == org_id,
                 BotActionAudit.session_id == session_id,
                 BotActionAudit.command == "/chat",
                 BotActionAudit.status == "ok",
@@ -329,12 +274,8 @@ async def _resolve_relay_targets(
             key = (row.connector_id, row.chat_id)
             if key in seen:
                 continue
-            connector = await BotConnectorRepo.get_by_id(db, row.connector_id)
+            connector = await BotConnectorRepo.get_by_id(db, org_id, row.connector_id)
             if connector is None or not connector.is_enabled:
-                continue
-            if get_adapter(connector.platform) is None:
-                continue
-            if not _has_capability(connector, "copilot_chat"):
                 continue
             seen.add(key)
             targets.append((connector, row.chat_id))
@@ -344,14 +285,16 @@ async def _resolve_relay_targets(
 async def deliver_copilot_relay(
     factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     session_id: uuid.UUID,
     reply_text: str,
 ) -> None:
-    targets = await _resolve_relay_targets(factory, session_id=session_id)
+    targets = await _resolve_relay_targets(factory, org_id=org_id, session_id=session_id)
     formatted = _format_copilot_reply(reply_text)
     for connector, chat_id in targets:
         await _deliver(
             factory,
+            org_id=org_id,
             connector=connector,
             chat_id=chat_id,
             text=formatted,
@@ -363,32 +306,16 @@ async def deliver_copilot_relay(
 def schedule_copilot_relay(
     factory: async_sessionmaker[AsyncSession],
     *,
+    org_id: uuid.UUID,
     task_registry: set[asyncio.Task] | None,
     session_id: uuid.UUID,
     reply_text: str,
 ) -> asyncio.Task:
-    task = asyncio.create_task(
+    return asyncio.create_task(
         deliver_copilot_relay(
             factory,
+            org_id=org_id,
             session_id=session_id,
             reply_text=reply_text,
         )
     )
-    if task_registry is not None:
-        task_registry.add(task)
-        task.add_done_callback(task_registry.discard)
-    return task
-
-
-# ---------------------------------------------------------------------------
-# Public surface
-# ---------------------------------------------------------------------------
-
-
-__all__ = [
-    "SESSION_CHAT_EVENTS",
-    "deliver_session_chat_event",
-    "schedule_session_chat_event",
-    "deliver_copilot_relay",
-    "schedule_copilot_relay",
-]

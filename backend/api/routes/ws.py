@@ -65,6 +65,7 @@ async def publish(session_id: uuid.UUID, message: WSMessage) -> None:
 # WebSocket route
 # ---------------------------------------------------------------------------
 
+
 @router.websocket("/sessions/{session_id}/stream")
 async def session_stream(
     websocket: WebSocket,

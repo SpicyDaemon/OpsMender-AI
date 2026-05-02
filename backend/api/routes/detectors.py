@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db, get_mcp_pool
 from backend.api.schemas import (
     DetectorHistoryListResponse,
@@ -46,14 +46,14 @@ async def _validate_refs(
     model_config_id: uuid.UUID | None,
 ) -> None:
     if mcp_server_id is not None:
-        server = await MCPServerRepo.get_by_id(db, mcp_server_id)
+        server = await MCPServerRepo.get_by_id(db, org_id, mcp_server_id)
         if server is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"MCP server {mcp_server_id} not found",
             )
     if model_config_id is not None:
-        cfg = await ModelConfigRepo.get_by_id(db, model_config_id)
+        cfg = await ModelConfigRepo.get_by_id(db, org_id, model_config_id)
         if cfg is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -70,7 +70,7 @@ async def list_detector_rules(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    items = await DetectorRuleRepo.list_all(db)
+    items = await DetectorRuleRepo.list_all(db, org_id)
     return DetectorRuleListResponse(
         items=[_to_rule_response(item) for item in items],
         total=len(items),
@@ -108,6 +108,7 @@ async def get_detector_templates(
 async def create_detector_rule(
     body: DetectorRuleCreate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     await _validate_refs(
@@ -118,6 +119,7 @@ async def create_detector_rule(
     try:
         rule = await DetectorRuleRepo.create(
             db,
+            org_id,
             name=body.name,
             mcp_server_id=body.mcp_server_id,
             prompt_template=body.prompt_template,
@@ -146,9 +148,10 @@ async def update_detector_rule(
     rule_id: uuid.UUID,
     body: DetectorRuleUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await DetectorRuleRepo.get_by_id(db, rule_id)
+    existing = await DetectorRuleRepo.get_by_id(db, org_id, rule_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -174,6 +177,7 @@ async def update_detector_rule(
     try:
         updated = await DetectorRuleRepo.update(
             db,
+            org_id,
             rule_id,
             name=body.name,
             mcp_server_id=next_mcp_server_id,
@@ -208,9 +212,10 @@ async def update_detector_rule(
 async def delete_detector_rule(
     rule_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await DetectorRuleRepo.delete(db, rule_id)
+    deleted = await DetectorRuleRepo.delete(db, org_id, rule_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -229,10 +234,11 @@ async def run_detector(
     rule_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     pool: MCPServerPool = Depends(get_mcp_pool),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    rule = await DetectorRuleRepo.get_by_id(db, rule_id)
+    rule = await DetectorRuleRepo.get_by_id(db, org_id, rule_id)
     if rule is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -262,16 +268,17 @@ async def run_detector(
 async def list_detector_history(
     rule_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    rule = await DetectorRuleRepo.get_by_id(db, rule_id)
+    rule = await DetectorRuleRepo.get_by_id(db, org_id, rule_id)
     if rule is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Detector rule not found",
         )
 
-    items = await DetectorHistoryRepo.list_by_rule(db, rule_id)
+    items = await DetectorHistoryRepo.list_by_rule(db, org_id, rule_id)
     return DetectorHistoryListResponse(
         items=[DetectorHistoryResponse.model_validate(item) for item in items],
         total=len(items),

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import ApprovalListResponse, ApprovalRequestResponse, WSMessage
 from backend.api.routes.ws import publish
@@ -30,7 +30,9 @@ def _as_utc(dt: datetime) -> datetime:
 
 def _to_ws_message(request) -> WSMessage:
     return WSMessage(
-        type="approval_resolved" if request.status != "pending" else "approval_requested",
+        type="approval_resolved"
+        if request.status != "pending"
+        else "approval_requested",
         data={
             "id": str(request.id),
             "session_id": str(request.session_id),
@@ -49,12 +51,13 @@ def _to_ws_message(request) -> WSMessage:
 
 async def _resolve_request(
     db: AsyncSession,
+    org_id: uuid.UUID,
     request_id: uuid.UUID,
     *,
     decision: str,
     resolver: User,
 ):
-    request = await ApprovalRequestRepo.get_by_id(db, request_id)
+    request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
     if request is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -68,15 +71,16 @@ async def _resolve_request(
         )
 
     if _utcnow() >= _as_utc(request.expires_at):
-        await ApprovalRequestRepo.resolve(db, request.id, status="expired")
+        await ApprovalRequestRepo.resolve(db, org_id, request.id, status="expired")
         await SessionRepo.set_status(
             db,
+            org_id,
             request.session_id,
             status="timed_out",
             ended_at=_utcnow(),
         )
         await db.commit()
-        expired = await ApprovalRequestRepo.get_by_id(db, request.id)
+        expired = await ApprovalRequestRepo.get_by_id(db, org_id, request.id)
         if expired is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -90,6 +94,7 @@ async def _resolve_request(
 
     updated = await ApprovalRequestRepo.resolve(
         db,
+        org_id,
         request.id,
         status=decision,
         resolved_by=resolver.id,
@@ -100,10 +105,10 @@ async def _resolve_request(
             detail="Approval request could not be resolved",
         )
 
-    await SessionRepo.set_status(db, request.session_id, status="active")
+    await SessionRepo.set_status(db, org_id, request.session_id, status="active")
     await db.commit()
 
-    resolved = await ApprovalRequestRepo.get_by_id(db, request.id)
+    resolved = await ApprovalRequestRepo.get_by_id(db, org_id, request.id)
     if resolved is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -121,10 +126,12 @@ async def list_approvals(
     limit: int = 100,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
     items = await ApprovalRequestRepo.list(
         db,
+        org_id,
         status=status_filter,
         session_id=session_id,
         limit=limit,
@@ -141,9 +148,10 @@ async def list_approvals(
 async def approve_request(
     request_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    return await _resolve_request(db, request_id, decision="approved", resolver=user)
+    return await _resolve_request(db, org_id, request_id, decision="approved", resolver=user)
 
 
 @router.post(
@@ -154,6 +162,7 @@ async def approve_request(
 async def reject_request(
     request_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    return await _resolve_request(db, request_id, decision="rejected", resolver=user)
+    return await _resolve_request(db, org_id, request_id, decision="rejected", resolver=user)

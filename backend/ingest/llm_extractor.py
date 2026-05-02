@@ -5,15 +5,6 @@ payload, this module asks the configured LLM to identify the JSON paths
 for the incident fields. The resolved paths are cached on the token's
 ``shape_cache`` column keyed by a hash of the payload's top-level shape
 — so the next payload with the same shape skips the LLM call entirely.
-
-Design notes:
-- The LLM is asked for *paths*, not values, so the cache is meaningful
-  across different alerts from the same source.
-- The prompt includes an abbreviated view of the payload (value previews
-  trimmed) so small-context models still work.
-- Extraction is best-effort: if the LLM is unavailable or returns
-  malformed JSON, the extractor returns ``None`` and the heuristic
-  result is used as-is.
 """
 
 from __future__ import annotations
@@ -22,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import uuid
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,11 +64,7 @@ Payload (abbreviated):
 
 
 def compute_shape_hash(payload: Any) -> str:
-    """Hash the *structure* of a payload — keys and types, not values.
-
-    Two payloads from the same alerting tool will share a hash even
-    when values differ, so cached paths can be reused.
-    """
+    """Hash the *structure* of a payload — keys and types, not values."""
     skeleton = _skeleton(payload)
     serialized = json.dumps(skeleton, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:24]
@@ -89,7 +77,6 @@ def _skeleton(value: Any) -> Any:
     if isinstance(value, list):
         if not value:
             return []
-        # Use the first element's skeleton as representative
         return [_skeleton(value[0])]
     if value is None:
         return "null"
@@ -99,9 +86,15 @@ def _skeleton(value: Any) -> Any:
 def _abbreviate(value: Any, *, max_str: int = 200, max_items: int = 5) -> Any:
     """Shrink a payload so long values don't blow the LLM context."""
     if isinstance(value, dict):
-        return {k: _abbreviate(v, max_str=max_str, max_items=max_items) for k, v in value.items()}
+        return {
+            k: _abbreviate(v, max_str=max_str, max_items=max_items)
+            for k, v in value.items()
+        }
     if isinstance(value, list):
-        out = [_abbreviate(v, max_str=max_str, max_items=max_items) for v in value[:max_items]]
+        out = [
+            _abbreviate(v, max_str=max_str, max_items=max_items)
+            for v in value[:max_items]
+        ]
         if len(value) > max_items:
             out.append(f"…(+{len(value) - max_items} more)")
         return out
@@ -158,16 +151,14 @@ def _resolve_model_kwargs(config: AppConfig, model_cfg) -> dict[str, Any]:
 
 async def extract_paths_via_llm(
     db: AsyncSession,
+    org_id: uuid.UUID,
     *,
     payload: dict[str, Any],
     config: AppConfig,
 ) -> dict[str, str] | None:
-    """Ask the default LLM which paths hold the incident fields.
-
-    Returns a ``{field: json_path}`` dict, or None on any failure.
-    """
+    """Ask the default LLM which paths hold the incident fields."""
     try:
-        model_cfg = await ModelConfigRepo.get_default(db)
+        model_cfg = await ModelConfigRepo.get_default(db, org_id)
         provider = create_provider(**_resolve_model_kwargs(config, model_cfg))
     except Exception as exc:
         logger.warning("ingest.llm_extract: provider init failed: %s", exc)
@@ -198,26 +189,23 @@ async def extract_paths_via_llm(
 
 async def apply_shape_cache(
     db: AsyncSession,
+    org_id: uuid.UUID,
     *,
     token: IngestToken,
     payload: dict[str, Any],
     config: AppConfig,
 ) -> tuple[dict[str, str] | None, bool]:
-    """Return field paths for this payload shape, using cache or LLM.
-
-    Returns ``(paths, cache_hit)``. When no cache entry exists, falls
-    back to LLM extraction and persists the result on the token.
-    """
+    """Return field paths for this payload shape, using cache or LLM."""
     shape = compute_shape_hash(payload)
     cached = (token.shape_cache or {}).get(shape)
     if isinstance(cached, dict):
         return cached, True
 
-    paths = await extract_paths_via_llm(db, payload=payload, config=config)
+    paths = await extract_paths_via_llm(db, org_id, payload=payload, config=config)
     if paths:
         next_cache = dict(token.shape_cache or {})
         next_cache[shape] = paths
-        await IngestTokenRepo.update_shape_cache(db, token.id, next_cache)
+        await IngestTokenRepo.update_shape_cache(db, org_id, token.id, next_cache)
         token.shape_cache = next_cache  # refresh in-memory too
     return paths, False
 

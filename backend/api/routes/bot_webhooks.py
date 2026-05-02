@@ -16,11 +16,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Importing the package registers the built-in adapters.
 import backend.bots  # noqa: F401
 from backend.api.deps import get_db
 from backend.bots.connectors import get_adapter
 from backend.bots.dispatcher import dispatch_inbound
+from backend.db.models import BotConnector
 from backend.db.repos import BotConnectorRepo
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-webhooks"])
@@ -34,7 +34,9 @@ async def _process_webhook(
     payload: dict[str, Any],
     db: AsyncSession,
 ) -> dict[str, Any]:
-    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    # Webhooks are public endpoints. We look up the connector by ID globally
+    # first to resolve its organization context.
+    connector = await db.get(BotConnector, connector_id)
     if connector is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -121,12 +123,8 @@ async def whatsapp_verify(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Meta sends a GET request with ``hub.mode=subscribe``,
-    ``hub.challenge``, and ``hub.verify_token`` when registering a
-    webhook URL. AIM echoes back the challenge if the verify token
-    matches ``credentials.verify_token`` on the connector.
-    """
-    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    """Meta sends a GET request with ``hub.mode=subscribe``."""
+    connector = await db.get(BotConnector, connector_id)
     if connector is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

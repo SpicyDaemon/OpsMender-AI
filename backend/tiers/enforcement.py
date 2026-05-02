@@ -1,27 +1,4 @@
-"""Tier enforcement layer for AI Incident Manager.
-
-Determines whether a tool call is permitted at the active tier based on the
-operation's classification from the skill definition.
-
-Tier permission matrix (from REFERENCE.md):
-
-    | Classification | Tier 0 *           | Tier 1        | Tier 2 | Tier 3        |
-    |----------------|--------------------|---------------|--------|---------------|
-    | safe           | permit             | permit        | permit | advise-only   |
-    | caution        | permit if reversible| permit        | permit | deny          |
-    | destructive    | permit if reversible| needs-approval| deny   | deny          |
-    | unknown        | deny               | deny          | deny   | deny          |
-
-``advise-only`` means the action is surfaced as a recommendation but not
-executed by the agent.  For enforcement purposes it is treated as a denial
-of autonomous execution.
-
-(*) Tier 0 has a second hard gate — the operation must resolve to
-``reversible=True`` in the skill definition.  This is the Tier 0 sandbox
-floor: an autonomous run may only execute operations whose effects can be
-undone by the rollback engine (or are read-only).  Non-reversible ops are
-denied even at Tier 0.
-"""
+"""Tier enforcement layer for AI Incident Manager."""
 
 from __future__ import annotations
 
@@ -34,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.skills.parser import SkillDefinition, loads
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class EnforcementResult:
     """Result of a tier enforcement check."""
 
@@ -83,12 +60,6 @@ def check(
 
     This is a hard programmatic check — it cannot be bypassed by agent
     reasoning.
-
-    Tier 0 adds a second gate: the operation must clear the Tier 0
-    safety floor in the skill definition.  That means it must be
-    reversible and, if it is side-effecting, it must declare a
-    compensating inverse. Non-compliant ops are denied at Tier 0 even
-    if the classification matrix would otherwise permit them.
     """
     if tier not in (0, 1, 2, 3):
         raise ValueError(f"Invalid tier: {tier} (must be 0-3)")
@@ -129,22 +100,13 @@ def check_and_explain(
 
 async def load_skill_for_mcp_server(
     db: AsyncSession,
+    org_id: uuid.UUID,
     mcp_server_id: uuid.UUID | None,
 ) -> SkillDefinition | None:
-    """Return the effective ``SkillDefinition`` for an MCP server.
-
-    Lookup order:
-
-    1. A skill bound to ``mcp_server_id`` (the most recently created wins).
-    2. A global skill with ``mcp_server_id IS NULL`` as the fallback.
-
-    Returns ``None`` if neither is present — callers decide whether to
-    treat that as fail-closed (deny all) or fall back to a file-based
-    skill definition.
-    """
+    """Return the effective ``SkillDefinition`` for an MCP server."""
     from backend.db.repos import SkillRepo  # local import avoids cycles
 
-    skill = await SkillRepo.get_for_mcp_server(db, mcp_server_id)
+    skill = await SkillRepo.get_for_mcp_server(db, org_id, mcp_server_id)
     if skill is None:
         return None
     return loads(skill.content_md)

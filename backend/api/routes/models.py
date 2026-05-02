@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     ModelBootstrapStatusResponse,
@@ -36,7 +36,11 @@ def _save_response(config, warnings) -> ModelConfigSaveResponse:
     )
 
 
-@router.get("", response_model=ProviderModelsListResponse, summary="List available provider models")
+@router.get(
+    "",
+    response_model=ProviderModelsListResponse,
+    summary="List available provider models",
+)
 async def list_models(
     provider: str | None = None,
     model_id: str | None = None,
@@ -63,9 +67,10 @@ async def list_models(
 )
 async def list_model_configs(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    items = await ModelConfigRepo.list_all(db)
+    items = await ModelConfigRepo.list_all(db, org_id)
     return ModelConfigListResponse(items=list(items), total=len(items))
 
 
@@ -76,9 +81,10 @@ async def list_model_configs(
 )
 async def get_model_bootstrap_status(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    items = list(await ModelConfigRepo.list_all(db))
+    items = list(await ModelConfigRepo.list_all(db, org_id))
     default_cfg = next((item for item in items if item.is_default), None)
     return ModelBootstrapStatusResponse(
         needs_setup=default_cfg is None,
@@ -101,6 +107,7 @@ async def get_model_bootstrap_status(
 async def create_model_config(
     body: ModelConfigUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     registry = ProviderRegistry()
@@ -115,6 +122,7 @@ async def create_model_config(
         )
         cfg = await ModelConfigRepo.create(
             db,
+            org_id,
             name=body.name or f"{body.provider}:{body.model_id}",
             provider=body.provider,
             model_id=body.model_id,
@@ -146,9 +154,10 @@ async def update_model_config(
     config_id: uuid.UUID,
     body: ModelConfigUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await ModelConfigRepo.get_by_id(db, config_id)
+    existing = await ModelConfigRepo.get_by_id(db, org_id, config_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -167,6 +176,7 @@ async def update_model_config(
         )
         updated = await ModelConfigRepo.update(
             db,
+            org_id,
             config_id,
             name=body.name or existing.name,
             provider=body.provider,
@@ -203,9 +213,10 @@ async def update_model_config(
 async def delete_model_config(
     config_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await ModelConfigRepo.delete(db, config_id)
+    deleted = await ModelConfigRepo.delete(db, org_id, config_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -223,17 +234,18 @@ async def delete_model_config(
 async def set_default_model_config(
     config_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await ModelConfigRepo.get_by_id(db, config_id)
+    existing = await ModelConfigRepo.get_by_id(db, org_id, config_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Model config not found",
         )
-    await ModelConfigRepo.set_default(db, config_id)
+    await ModelConfigRepo.set_default(db, org_id, config_id)
     await db.commit()
-    refreshed = await ModelConfigRepo.get_by_id(db, config_id)
+    refreshed = await ModelConfigRepo.get_by_id(db, org_id, config_id)
     if refreshed is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

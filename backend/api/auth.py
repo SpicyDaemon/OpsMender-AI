@@ -122,6 +122,21 @@ async def get_current_user(
     return user
 
 
+async def get_current_org(
+    user: User = Depends(get_current_user),
+) -> uuid.UUID:
+    """Dependency — returns the active organization ID for the request.
+    
+    If the user has no primary_org_id, raises a 400 Bad Request.
+    """
+    if user.primary_org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User does not have an active organization context."
+        )
+    return user.primary_org_id
+
+
 def require_role(*allowed_roles: str):
     """Return a dependency that enforces role membership.
 

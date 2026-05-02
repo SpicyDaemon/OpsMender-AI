@@ -28,6 +28,7 @@ from backend.api.schemas import WSMessage
 from backend.approvals import ApprovalService
 from backend.audit.logger import AuditEntryType
 from backend.config_loader import AppConfig, MCPServerConfig
+from backend.db.models import Session as SessionModel
 from backend.db.repos import (
     AgentTeamProfileRepo,
     AuditEntryRepo,
@@ -75,10 +76,12 @@ class LiveAuditLogger:
         self,
         factory,
         *,
+        org_id: uuid.UUID,
         session_id: uuid.UUID,
         publisher: Callable[[uuid.UUID, WSMessage], Awaitable[None]] = publish,
     ) -> None:
         self._factory = factory
+        self._org_id = org_id
         self._session_id = session_id
         self._publisher = publisher
 
@@ -92,6 +95,7 @@ class LiveAuditLogger:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
                 db,
+                org_id=self._org_id,
                 session_id=uuid.UUID(session_id),
                 tier=tier,
                 entry_type=AuditEntryType.TOOL_CALL_START.value,
@@ -125,6 +129,7 @@ class LiveAuditLogger:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
                 db,
+                org_id=self._org_id,
                 session_id=uuid.UUID(session_id),
                 tier=tier,
                 entry_type=AuditEntryType.TOOL_CALL_END.value,
@@ -160,6 +165,7 @@ class LiveAuditLogger:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
                 db,
+                org_id=self._org_id,
                 session_id=uuid.UUID(session_id),
                 tier=tier,
                 entry_type=AuditEntryType.TOOL_CALL_BLOCKED.value,
@@ -188,6 +194,7 @@ class LiveAuditLogger:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
                 db,
+                org_id=self._org_id,
                 session_id=uuid.UUID(session_id),
                 tier=tier,
                 entry_type=AuditEntryType.SESSION_START.value,
@@ -200,6 +207,7 @@ class LiveAuditLogger:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
                 db,
+                org_id=self._org_id,
                 session_id=uuid.UUID(session_id),
                 tier=tier,
                 entry_type=AuditEntryType.SESSION_END.value,
@@ -210,7 +218,7 @@ class LiveAuditLogger:
 
     async def read_by_session(self, session_id: str):
         async with self._factory() as db:
-            return await AuditEntryRepo.list_by_session(db, uuid.UUID(session_id))
+            return await AuditEntryRepo.list_by_session(db, self._org_id, uuid.UUID(session_id))
 
 
 async def _await_maybe(value: Any) -> Any:
@@ -222,7 +230,7 @@ async def _await_maybe(value: Any) -> Any:
 async def _resolve_llm(factory, session) -> LLM:  # type: ignore[no-untyped-def]
     async with factory() as db:
         if not session.model_provider:
-            default_cfg = await ModelConfigRepo.get_default(db)
+            default_cfg = await ModelConfigRepo.get_default(db, session.org_id)
             if default_cfg is not None:
                 return create_llm(
                     provider=default_cfg.provider,
@@ -247,23 +255,24 @@ async def _resolve_incident_and_messages(factory, session):  # type: ignore[no-u
     async with factory() as db:
         incident = None
         if session.incident_id is not None:
-            incident = await IncidentRepo.get_by_id(db, session.incident_id)
+            incident = await IncidentRepo.get_by_id(db, session.org_id, session.incident_id)
         pending_messages = list(
-            await SessionMessageRepo.list_pending_user(db, session.id)
+            await SessionMessageRepo.list_pending_user(db, session.org_id, session.id)
         )
         return incident, pending_messages
 
 
-async def _mark_messages_consumed(factory, session_id: uuid.UUID, node_context: str) -> None:
+async def _mark_messages_consumed(factory, org_id: uuid.UUID, session_id: uuid.UUID, node_context: str) -> None:
     async with factory() as db:
         await SessionMessageRepo.mark_consumed(
-            db, session_id, node_context=node_context
+            db, org_id, session_id, node_context=node_context
         )
         await db.commit()
 
 
 async def _resolve_mcp_context(
     factory,
+    org_id: uuid.UUID,
     pool: MCPServerPool,
     config: AppConfig,
 ) -> tuple[MCPServerConfig | None, SkillDefinition]:
@@ -275,9 +284,9 @@ async def _resolve_mcp_context(
         if selected_server is not None:
             from backend.db.repos import MCPServerRepo
 
-            server_row = await MCPServerRepo.get_by_name(db, selected_server.name)
+            server_row = await MCPServerRepo.get_by_name(db, org_id, selected_server.name)
             server_id = None if server_row is None else server_row.id
-        skill_row = await SkillRepo.get_for_mcp_server(db, server_id)
+        skill_row = await SkillRepo.get_for_mcp_server(db, org_id, server_id)
 
     if skill_row is not None:
         return selected_server, load_skill_def_text(skill_row.content_md)
@@ -322,6 +331,7 @@ def _incident_payload(incident) -> dict[str, Any]:  # type: ignore[no-untyped-de
 
 async def _set_session_terminal_state(
     factory,
+    org_id: uuid.UUID,
     session_id: uuid.UUID,
     *,
     status: str,
@@ -330,6 +340,7 @@ async def _set_session_terminal_state(
     async with factory() as db:
         await SessionRepo.set_status(
             db,
+            org_id,
             session_id,
             status=status,
             summary=summary,
@@ -340,12 +351,14 @@ async def _set_session_terminal_state(
 
 async def _session_snapshot(factory, session_id: uuid.UUID):
     async with factory() as db:
-        return await SessionRepo.get_by_id(db, session_id)
+        # Load session globally to resolve its organization context
+        return await db.get(SessionModel, session_id)
 
 
 async def _auto_rollback_tier0(
     *,
     factory,
+    org_id: uuid.UUID,
     pool: MCPServerPool,
     session_id: uuid.UUID,
     session_tier: int,
@@ -400,27 +413,32 @@ async def run_session_workflow(
         session = await _session_snapshot(factory, session_id)
         if session is None:
             raise RuntimeError(f"Session not found: {session_id}")
+        
+        org_id = session.org_id
 
         llm = await _resolve_llm(factory, session)
         incident, pending_messages = await _resolve_incident_and_messages(factory, session)
         if pending_messages:
-            await _mark_messages_consumed(factory, session_id, "workflow_start")
+            await _mark_messages_consumed(factory, org_id, session_id, "workflow_start")
 
-        selected_server, skill_def = await _resolve_mcp_context(factory, pool, config)
-        audit_logger = LiveAuditLogger(factory, session_id=session_id)
+        selected_server, skill_def = await _resolve_mcp_context(factory, org_id, pool, config)
+        audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
         approval_service = ApprovalService(
             factory,
+            org_id=org_id,
             timeout_seconds=config.approvals.timeout_seconds,
             publisher=lambda sid, event: publish(sid, WSMessage(**event)),
             status_notifier=lambda sid, status: (
                 schedule_session_event(
                     factory,
+                    org_id=org_id,
                     task_registry=app.state.background_tasks,
                     event_type=f"session.{status}",
                     session_id=sid,
                 ),
                 schedule_session_chat_event(
                     factory,
+                    org_id=org_id,
                     task_registry=app.state.background_tasks,
                     event_type=f"session.{status}",
                     session_id=sid,
@@ -468,14 +486,14 @@ async def run_session_workflow(
         if session.workflow_profile_id is not None:
             async with factory() as db:
                 workflow_profile = await WorkflowProfileRepo.get_by_id(
-                    db, session.workflow_profile_id
+                    db, org_id, session.workflow_profile_id
                 )
             if workflow_profile is not None:
                 graph_kwargs["node_order"] = list(workflow_profile.node_order or [])
         if getattr(session, "agent_team_profile_id", None) is not None:
             async with factory() as db:
                 agent_team_profile = await AgentTeamProfileRepo.get_by_id(
-                    db, session.agent_team_profile_id
+                    db, org_id, session.agent_team_profile_id
                 )
             if agent_team_profile is not None:
                 graph_kwargs["agent_roles"] = list(agent_team_profile.roles or [])
@@ -528,6 +546,7 @@ async def run_session_workflow(
         if final_status in {"failed", "timed_out"}:
             rollback_summary = await _auto_rollback_tier0(
                 factory=factory,
+                org_id=org_id,
                 pool=pool,
                 session_id=session_id,
                 session_tier=int(session.tier),
@@ -540,18 +559,21 @@ async def run_session_workflow(
 
         await _set_session_terminal_state(
             factory,
+            org_id,
             session_id,
             status=final_status,
             summary=result.get("summary"),
         )
         schedule_session_event(
             factory,
+            org_id=org_id,
             task_registry=app.state.background_tasks,
             event_type=f"session.{final_status}",
             session_id=session_id,
         )
         schedule_session_chat_event(
             factory,
+            org_id=org_id,
             task_registry=app.state.background_tasks,
             event_type=f"session.{final_status}",
             session_id=session_id,
@@ -573,24 +595,35 @@ async def run_session_workflow(
 
     except Exception as exc:  # noqa: BLE001
         log.exception("session workflow failed for %s", session_id)
-        await _set_session_terminal_state(
-            factory,
-            session_id,
-            status="failed",
-            summary=f"Workflow failed: {exc}",
-        )
-        schedule_session_event(
-            factory,
-            task_registry=app.state.background_tasks,
-            event_type="session.failed",
-            session_id=session_id,
-        )
-        schedule_session_chat_event(
-            factory,
-            task_registry=app.state.background_tasks,
-            event_type="session.failed",
-            session_id=session_id,
-        )
+        # Try to resolve org_id from session if we haven't yet
+        try:
+            session = await _session_snapshot(factory, session_id)
+            org_id = session.org_id if session else None
+        except Exception:
+            org_id = None
+            
+        if org_id:
+            await _set_session_terminal_state(
+                factory,
+                org_id,
+                session_id,
+                status="failed",
+                summary=f"Workflow failed: {exc}",
+            )
+            schedule_session_event(
+                factory,
+                org_id=org_id,
+                task_registry=app.state.background_tasks,
+                event_type="session.failed",
+                session_id=session_id,
+            )
+            schedule_session_chat_event(
+                factory,
+                org_id=org_id,
+                task_registry=app.state.background_tasks,
+                event_type="session.failed",
+                session_id=session_id,
+            )
         await publish(
             session_id,
             WSMessage(

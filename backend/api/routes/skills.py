@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi import Form
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     SkillCloneRequest,
@@ -52,7 +60,7 @@ async def _validate_mcp_server(
 ) -> None:
     if mcp_server_id is None:
         return
-    server = await MCPServerRepo.get_by_id(db, mcp_server_id)
+    server = await MCPServerRepo.get_by_id(db, org_id, mcp_server_id)
     if server is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -71,9 +79,9 @@ async def list_skills(
     user: User = Depends(get_current_user),
 ):
     if mcp_server_id is not None:
-        items = await SkillRepo.list_for_mcp_server(db, mcp_server_id)
+        items = await SkillRepo.list_for_mcp_server(db, org_id, mcp_server_id)
     else:
-        items = await SkillRepo.list_all(db)
+        items = await SkillRepo.list_all(db, org_id)
     return SkillListResponse(
         items=[_to_response(item) for item in items],
         total=len(items),
@@ -88,9 +96,10 @@ async def list_skills(
 async def get_skill(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    skill = await SkillRepo.get_by_id(db, skill_id)
+    skill = await SkillRepo.get_by_id(db, org_id, skill_id)
     if skill is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -108,6 +117,7 @@ async def get_skill(
 async def create_skill(
     body: SkillCreate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     await _validate_content(body.content_md)
@@ -115,6 +125,7 @@ async def create_skill(
     try:
         skill = await SkillRepo.create(
             db,
+            org_id,
             name=body.name,
             content_md=body.content_md,
             description=body.description,
@@ -140,9 +151,10 @@ async def update_skill(
     skill_id: uuid.UUID,
     body: SkillUpdate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await SkillRepo.get_by_id(db, skill_id)
+    existing = await SkillRepo.get_by_id(db, org_id, skill_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -154,6 +166,7 @@ async def update_skill(
     try:
         updated = await SkillRepo.update(
             db,
+            org_id,
             skill_id,
             name=body.name,
             content_md=body.content_md,
@@ -184,9 +197,10 @@ async def update_skill(
 async def delete_skill(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await SkillRepo.delete(db, skill_id)
+    deleted = await SkillRepo.delete(db, org_id, skill_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -206,9 +220,10 @@ async def clone_skill(
     skill_id: uuid.UUID,
     body: SkillCloneRequest,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    source = await SkillRepo.get_by_id(db, skill_id)
+    source = await SkillRepo.get_by_id(db, org_id, skill_id)
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -220,6 +235,7 @@ async def clone_skill(
     try:
         clone = await SkillRepo.create(
             db,
+            org_id,
             name=body.name,
             content_md=source.content_md,
             description=description,
@@ -248,6 +264,7 @@ async def import_skill(
     description: str | None = Form(default=None),
     mcp_server_id: uuid.UUID | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     raw_bytes = await file.read()
@@ -275,6 +292,7 @@ async def import_skill(
     try:
         skill = await SkillRepo.create(
             db,
+            org_id,
             name=name,
             content_md=content_md,
             description=description or f"Imported from {file.filename or 'upload'}",

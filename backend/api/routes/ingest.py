@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     IngestLearnPreview,
@@ -68,6 +68,7 @@ def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
 # Webhook endpoint — token-authed, NOT JWT
 # ---------------------------------------------------------------------------
 
+
 @router.post(
     "/incidents/ingest",
     response_model=IngestResponse,
@@ -77,6 +78,7 @@ def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
 async def ingest_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     authorization: str | None = Header(None),
     x_aim_token: str | None = Header(None, alias="X-AIM-Token"),
 ):
@@ -168,6 +170,7 @@ async def ingest_webhook(
 # Ingest token management — JWT-authed, admin only
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "/ingest-tokens",
     response_model=IngestTokenListResponse,
@@ -175,9 +178,10 @@ async def ingest_webhook(
 )
 async def list_ingest_tokens(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    tokens = await IngestTokenRepo.list_all(db)
+    tokens = await IngestTokenRepo.list_all(db, org_id)
     return IngestTokenListResponse(
         items=[_to_token_response(t) for t in tokens],
         total=len(tokens),
@@ -194,10 +198,11 @@ async def create_ingest_token(
     body: IngestTokenCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     # Check name uniqueness
-    existing = await IngestTokenRepo.get_by_name(db, body.name)
+    existing = await IngestTokenRepo.get_by_name(db, org_id, body.name)
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -229,6 +234,7 @@ async def create_ingest_token(
 
     token_obj = await IngestTokenRepo.create(
         db,
+        org_id,
         name=body.name,
         provider=body.provider,
         token_hash=hash_token(raw),
@@ -255,6 +261,7 @@ async def learn_ingest_token_shape(
     body: IngestTokenLearnShapeRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     """Run the heuristic+LLM extractor on a sample payload and save the paths.
@@ -262,7 +269,7 @@ async def learn_ingest_token_shape(
     Returns the resolved paths and a preview of the incident that would
     be created. Safe to call repeatedly — idempotent per payload shape.
     """
-    tok = await IngestTokenRepo.get_by_id(db, token_id)
+    tok = await IngestTokenRepo.get_by_id(db, org_id, token_id)
     if tok is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -291,7 +298,7 @@ async def learn_ingest_token_shape(
             shape = compute_shape_hash(body.payload)
             next_cache = dict(tok.shape_cache or {})
             next_cache[shape] = paths
-            await IngestTokenRepo.update_shape_cache(db, tok.id, next_cache)
+            await IngestTokenRepo.update_shape_cache(db, org_id, tok.id, next_cache)
             tok.shape_cache = next_cache
 
     # Build a preview of what the incident would look like
@@ -318,18 +325,19 @@ async def learn_ingest_token_shape(
 async def revoke_ingest_token(
     token_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    tok = await IngestTokenRepo.get_by_id(db, token_id)
+    tok = await IngestTokenRepo.get_by_id(db, org_id, token_id)
     if tok is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ingest token not found",
         )
 
-    await IngestTokenRepo.revoke(db, token_id)
+    await IngestTokenRepo.revoke(db, org_id, token_id)
     # Re-fetch after update
-    tok = await IngestTokenRepo.get_by_id(db, token_id)
+    tok = await IngestTokenRepo.get_by_id(db, org_id, token_id)
     return _to_token_response(tok)
 
 
@@ -341,9 +349,10 @@ async def revoke_ingest_token(
 async def delete_ingest_token(
     token_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await IngestTokenRepo.delete(db, token_id)
+    deleted = await IngestTokenRepo.delete(db, org_id, token_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -354,6 +363,7 @@ async def delete_ingest_token(
 # ---------------------------------------------------------------------------
 # Provider adapter listing
 # ---------------------------------------------------------------------------
+
 
 @router.get(
     "/ingest-providers",

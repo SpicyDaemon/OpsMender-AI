@@ -1,10 +1,7 @@
 """Platform-agnostic command dispatcher for inbound bot messages.
 
 Owns capability gating, identity / role enforcement, rate limiting,
-audit logging, and command handlers. Adapters (Telegram, Signal,
-WhatsApp) feed normalized ``InboundMessage`` instances in and receive a
-plain reply string to deliver however their platform prefers (inline
-webhook response, outbound API, etc.).
+audit logging, and command handlers.
 """
 
 from __future__ import annotations
@@ -34,20 +31,10 @@ from backend.db.repos import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Public result shape
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class DispatchResult:
     reply_text: str | None
     """Text to deliver to the chat. ``None`` skips delivery (e.g. unknown chat)."""
-
-
-# ---------------------------------------------------------------------------
-# Constants — preserved verbatim from prior bot_webhooks behavior
-# ---------------------------------------------------------------------------
 
 
 _HELP_TEXT = (
@@ -73,11 +60,6 @@ _REQUIRED_CAPABILITY_BY_COMMAND = {
     "/reject": "approvals",
     "/chat": "copilot_chat",
 }
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _has_capability(connector: BotConnector, capability: str) -> bool:
@@ -121,7 +103,7 @@ def _format_incident_list(incidents: list[Incident]) -> str:
     return "\n".join(lines)
 
 
-def _format_session(session) -> str:  # type: ignore[no-untyped-def]
+def _format_session(session) -> str:
     lines = [
         f"*Session `{session.id}`*",
         f"Status: `{session.status}`",
@@ -138,7 +120,7 @@ def _format_session(session) -> str:  # type: ignore[no-untyped-def]
     return "\n".join(lines)
 
 
-def _format_session_list(sessions) -> str:  # type: ignore[no-untyped-def]
+def _format_session_list(sessions) -> str:
     if not sessions:
         return "No sessions found."
     lines = ["Recent sessions:"]
@@ -150,7 +132,7 @@ def _format_session_list(sessions) -> str:  # type: ignore[no-untyped-def]
     return "\n".join(lines)
 
 
-def _format_approval_list(requests) -> str:  # type: ignore[no-untyped-def]
+def _format_approval_list(requests) -> str:
     if not requests:
         return "No pending approvals."
     lines = ["Pending approvals:"]
@@ -168,6 +150,7 @@ def _format_approval_list(requests) -> str:  # type: ignore[no-untyped-def]
 
 async def _audit(
     db: AsyncSession,
+    org_id: uuid.UUID,
     connector: BotConnector,
     *,
     chat_id: str | None,
@@ -178,6 +161,7 @@ async def _audit(
 ) -> None:
     await BotActionAuditRepo.create(
         db,
+        org_id,
         connector_id=connector.id,
         platform=connector.platform,
         chat_id=chat_id,
@@ -191,6 +175,7 @@ async def _audit(
 
 async def _resolve_aim_user(
     db: AsyncSession,
+    org_id: uuid.UUID,
     connector: BotConnector,
     platform_user_id: str | None,
 ) -> User | None:
@@ -198,6 +183,7 @@ async def _resolve_aim_user(
         return None
     link = await BotUserLinkRepo.get_by_platform_user(
         db,
+        org_id,
         connector_id=connector.id,
         platform_user_id=platform_user_id,
     )
@@ -211,28 +197,24 @@ async def _resolve_aim_user(
 
 async def _resolve_approval_from_bot(
     db: AsyncSession,
+    org_id: uuid.UUID,
     request_id: uuid.UUID,
     *,
     decision: str,
 ) -> str:
-    request = await ApprovalRequestRepo.get_by_id(db, request_id)
+    request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
     if request is None:
         return "Approval request not found."
     if request.status != "pending":
         return f"Approval request is already {request.status}."
 
-    updated = await ApprovalRequestRepo.resolve(db, request.id, status=decision)
+    updated = await ApprovalRequestRepo.resolve(db, org_id, request.id, status=decision)
     if not updated:
         return "Approval request could not be resolved."
 
-    await SessionRepo.set_status(db, request.session_id, status="active")
+    await SessionRepo.set_status(db, org_id, request.session_id, status="active")
     await db.commit()
     return f"Approval request `{request.id}` {decision}."
-
-
-# ---------------------------------------------------------------------------
-# Public dispatch entry point
-# ---------------------------------------------------------------------------
 
 
 async def dispatch_inbound(
@@ -241,12 +223,14 @@ async def dispatch_inbound(
     connector: BotConnector,
     message: InboundMessage,
 ) -> DispatchResult:
+    org_id = connector.org_id
     chat_id = message.chat_id
     platform_user_id = message.platform_user_id
 
     if not _chat_allowed(connector, chat_id):
         await _audit(
             db,
+            org_id,
             connector,
             chat_id=chat_id,
             command=None,
@@ -260,8 +244,6 @@ async def dispatch_inbound(
     command = command.split("@", 1)[0].lower()
     arg = raw_arg.strip()
 
-    # Rate-limit early — but let /start and /help through so the bot is
-    # always discoverable.
     if command not in {"/start", "/help", "help"}:
         per_minute = resolve_per_minute(connector.config)
         allowed, _remaining = rate_limiter.check(
@@ -270,6 +252,7 @@ async def dispatch_inbound(
         if not allowed:
             await _audit(
                 db,
+                org_id,
                 connector,
                 chat_id=chat_id,
                 command=command or None,
@@ -280,8 +263,6 @@ async def dispatch_inbound(
                 reply_text=f"Rate limit hit ({per_minute}/min). Please wait a moment.",
             )
 
-    # Identity / role gate runs only when the relevant capability is
-    # enabled — otherwise the capability_denied path stays accurate.
     aim_user: User | None = None
     capability_for_command = _REQUIRED_CAPABILITY_BY_COMMAND.get(command)
     if (
@@ -289,10 +270,11 @@ async def dispatch_inbound(
         and capability_for_command is not None
         and _has_capability(connector, capability_for_command)
     ):
-        aim_user = await _resolve_aim_user(db, connector, platform_user_id)
+        aim_user = await _resolve_aim_user(db, org_id, connector, platform_user_id)
         if aim_user is None:
             await _audit(
                 db,
+                org_id,
                 connector,
                 chat_id=chat_id,
                 command=command,
@@ -310,6 +292,7 @@ async def dispatch_inbound(
         if required_roles and aim_user.role not in required_roles:
             await _audit(
                 db,
+                org_id,
                 connector,
                 chat_id=chat_id,
                 command=command,
@@ -323,80 +306,78 @@ async def dispatch_inbound(
                 ),
             )
 
-    # ---- command handlers ----
-
     if command in {"/start", "/help", "help"}:
-        await _audit(db, connector, chat_id=chat_id, command="/help", status="ok")
+        await _audit(db, org_id, connector, chat_id=chat_id, command="/help", status="ok")
         return DispatchResult(reply_text=_HELP_TEXT)
 
     if command == "/incidents":
         if not _has_capability(connector, "incident_lookup"):
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="capability_denied", detail="incident_lookup",
             )
             return DispatchResult(reply_text=_capability_denied_text("incident_lookup"))
-        incidents = list(await IncidentRepo.list_all(db, limit=5, offset=0))
-        await _audit(db, connector, chat_id=chat_id, command=command, status="ok")
+        incidents = list(await IncidentRepo.list_all(db, org_id, limit=5, offset=0))
+        await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="ok")
         return DispatchResult(reply_text=_format_incident_list(incidents))
 
     if command == "/incident":
         if not _has_capability(connector, "incident_lookup"):
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="capability_denied", detail="incident_lookup",
             )
             return DispatchResult(reply_text=_capability_denied_text("incident_lookup"))
         if not arg:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="bad_args")
             return DispatchResult(reply_text="Usage: /incident <incident-id>")
         try:
             incident_id = uuid.UUID(arg)
         except ValueError:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="bad_args")
             return DispatchResult(reply_text="Incident ID must be a valid UUID.")
-        incident = await IncidentRepo.get_by_id(db, incident_id)
+        incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
         if incident is None:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="not_found")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="not_found")
             return DispatchResult(reply_text="Incident not found.")
-        await _audit(db, connector, chat_id=chat_id, command=command, status="ok")
+        await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="ok")
         return DispatchResult(reply_text=_format_incident(incident))
 
     if command == "/sessions":
         if not _has_capability(connector, "session_status"):
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="capability_denied", detail="session_status",
             )
             return DispatchResult(reply_text=_capability_denied_text("session_status"))
-        sessions = list(await SessionRepo.list_all(db, limit=5, offset=0))
-        await _audit(db, connector, chat_id=chat_id, command=command, status="ok")
+        sessions = list(await SessionRepo.list_all(db, org_id, limit=5, offset=0))
+        await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="ok")
         return DispatchResult(reply_text=_format_session_list(sessions))
 
     if command == "/session":
         if not _has_capability(connector, "session_status"):
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="capability_denied", detail="session_status",
             )
             return DispatchResult(reply_text=_capability_denied_text("session_status"))
         if not arg:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="bad_args")
             return DispatchResult(reply_text="Usage: /session <session-id>")
         try:
             session_id = uuid.UUID(arg)
         except ValueError:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="bad_args")
             return DispatchResult(reply_text="Session ID must be a valid UUID.")
-        session = await SessionRepo.get_by_id(db, session_id)
+        session = await SessionRepo.get_by_id(db, org_id, session_id)
         if session is None:
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="not_found", session_id=session_id,
             )
             return DispatchResult(reply_text="Session not found.")
         await _audit(
-            db, connector, chat_id=chat_id, command=command,
+            db, org_id, connector, chat_id=chat_id, command=command,
             status="ok", session_id=session_id,
         )
         return DispatchResult(reply_text=_format_session(session))
@@ -404,35 +385,35 @@ async def dispatch_inbound(
     if command == "/approvals":
         if not _has_capability(connector, "approvals"):
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="capability_denied", detail="approvals",
             )
             return DispatchResult(reply_text=_capability_denied_text("approvals"))
-        requests = list(await ApprovalRequestRepo.list(db, status="pending", limit=5))
-        await _audit(db, connector, chat_id=chat_id, command=command, status="ok")
+        requests = list(await ApprovalRequestRepo.list(db, org_id, status="pending", limit=5))
+        await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="ok")
         return DispatchResult(reply_text=_format_approval_list(requests))
 
     if command in {"/approve", "/reject"}:
         if not _has_capability(connector, "approvals"):
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="capability_denied", detail="approvals",
             )
             return DispatchResult(reply_text=_capability_denied_text("approvals"))
         if not arg:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="bad_args")
             return DispatchResult(reply_text=f"Usage: {command} <approval-id>")
         try:
             request_id = uuid.UUID(arg)
         except ValueError:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="bad_args")
             return DispatchResult(reply_text="Approval ID must be a valid UUID.")
         decision = "approved" if command == "/approve" else "rejected"
         result_text = await _resolve_approval_from_bot(
-            db, request_id, decision=decision
+            db, org_id, request_id, decision=decision
         )
         await _audit(
-            db, connector, chat_id=chat_id, command=command,
+            db, org_id, connector, chat_id=chat_id, command=command,
             status="ok" if decision in result_text else "noop",
             detail=decision,
         )
@@ -441,7 +422,7 @@ async def dispatch_inbound(
     if command == "/chat":
         if not _has_capability(connector, "copilot_chat"):
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="capability_denied", detail="copilot_chat",
             )
             return DispatchResult(reply_text=_capability_denied_text("copilot_chat"))
@@ -450,24 +431,25 @@ async def dispatch_inbound(
         session_token = session_token.strip()
         message_body = message_body.strip()
         if not session_token or not message_body:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="bad_args")
             return DispatchResult(reply_text="Usage: /chat <session-id> <message>")
         try:
             target_session_id = uuid.UUID(session_token)
         except ValueError:
-            await _audit(db, connector, chat_id=chat_id, command=command, status="bad_args")
+            await _audit(db, org_id, connector, chat_id=chat_id, command=command, status="bad_args")
             return DispatchResult(reply_text="Session ID must be a valid UUID.")
 
-        target_session = await SessionRepo.get_by_id(db, target_session_id)
+        target_session = await SessionRepo.get_by_id(db, org_id, target_session_id)
         if target_session is None:
             await _audit(
-                db, connector, chat_id=chat_id, command=command,
+                db, org_id, connector, chat_id=chat_id, command=command,
                 status="not_found", session_id=target_session_id,
             )
             return DispatchResult(reply_text="Session not found.")
 
         new_msg = await SessionMessageRepo.create(
             db,
+            org_id,
             session_id=target_session_id,
             role="user",
             content=f"[{connector.platform} chat {chat_id}] {message_body}",
@@ -494,16 +476,16 @@ async def dispatch_inbound(
             asyncio.create_task(
                 respond_to_user_message(
                     factory,
+                    org_id=org_id,
                     session_id=target_session_id,
                     user_message_id=new_msg.id,
                 )
             )
         except RuntimeError:
-            # Tests / non-app contexts may not have a registered factory.
             pass
 
         await _audit(
-            db, connector, chat_id=chat_id, command=command,
+            db, org_id, connector, chat_id=chat_id, command=command,
             status="ok", session_id=target_session_id,
         )
         return DispatchResult(
@@ -514,7 +496,7 @@ async def dispatch_inbound(
         )
 
     await _audit(
-        db, connector, chat_id=chat_id, command=command or None,
+        db, org_id, connector, chat_id=chat_id, command=command or None,
         status="unknown_command",
     )
     return DispatchResult(reply_text=_HELP_TEXT)

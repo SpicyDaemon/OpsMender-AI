@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.nodes import validate_agent_roles
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     AgentTeamProfileListResponse,
@@ -36,12 +36,15 @@ def _to_response(profile) -> AgentTeamProfileResponse:
     return AgentTeamProfileResponse.model_validate(profile)
 
 
-@router.get("", response_model=AgentTeamProfileListResponse, summary="List agent team profiles")
+@router.get(
+    "", response_model=AgentTeamProfileListResponse, summary="List agent team profiles"
+)
 async def list_agent_team_profiles(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    items = await AgentTeamProfileRepo.list_all(db)
+    items = await AgentTeamProfileRepo.list_all(db, org_id)
     return AgentTeamProfileListResponse(
         items=[_to_response(item) for item in items],
         total=len(items),
@@ -57,11 +60,13 @@ async def list_agent_team_profiles(
 async def create_agent_team_profile(
     body: AgentTeamProfileUpsert,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     try:
         profile = await AgentTeamProfileRepo.create(
             db,
+            org_id,
             name=body.name,
             description=body.description,
             roles=_validated_roles(body.roles),
@@ -88,9 +93,10 @@ async def update_agent_team_profile(
     profile_id: uuid.UUID,
     body: AgentTeamProfileUpsert,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await AgentTeamProfileRepo.get_by_id(db, profile_id)
+    existing = await AgentTeamProfileRepo.get_by_id(db, org_id, profile_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -100,6 +106,7 @@ async def update_agent_team_profile(
     try:
         updated = await AgentTeamProfileRepo.update(
             db,
+            org_id,
             profile_id,
             name=body.name,
             description=body.description,
@@ -131,9 +138,10 @@ async def update_agent_team_profile(
 async def delete_agent_team_profile(
     profile_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await AgentTeamProfileRepo.delete(db, profile_id)
+    deleted = await AgentTeamProfileRepo.delete(db, org_id, profile_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

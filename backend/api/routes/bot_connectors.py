@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import require_role
+from backend.api.auth import get_current_org, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     BotConnectorListResponse,
@@ -122,10 +122,12 @@ async def list_bot_connectors(
     platform: str | None = Query(default=None),
     enabled_only: bool = False,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     items = await BotConnectorRepo.list_all(
         db,
+        org_id,
         platform=platform,
         enabled_only=enabled_only,
     )
@@ -144,11 +146,13 @@ async def list_bot_connectors(
 async def create_bot_connector(
     body: BotConnectorUpsert,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     try:
         connector = await BotConnectorRepo.create(
             db,
+            org_id,
             name=body.name,
             platform=body.platform,
             config=body.config,
@@ -177,9 +181,10 @@ async def update_bot_connector(
     connector_id: uuid.UUID,
     body: BotConnectorUpsert,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    existing = await BotConnectorRepo.get_by_id(db, connector_id)
+    existing = await BotConnectorRepo.get_by_id(db, org_id, connector_id)
     if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -190,6 +195,7 @@ async def update_bot_connector(
     try:
         updated = await BotConnectorRepo.update(
             db,
+            org_id,
             connector_id,
             name=body.name,
             platform=body.platform,
@@ -227,9 +233,10 @@ async def update_bot_connector(
 async def test_bot_connector(
     connector_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    connector = await BotConnectorRepo.get_by_id(db, org_id, connector_id)
     if connector is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -239,6 +246,7 @@ async def test_bot_connector(
     success, detail, next_status, error = _test_connector_configuration(connector)
     await BotConnectorRepo.mark_status(
         db,
+        org_id,
         connector_id,
         status=next_status,
         error=error,
@@ -259,9 +267,10 @@ async def test_bot_connector(
 async def delete_bot_connector(
     connector_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await BotConnectorRepo.delete(db, connector_id)
+    deleted = await BotConnectorRepo.delete(db, org_id, connector_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -297,15 +306,16 @@ async def _link_to_response(db: AsyncSession, link) -> BotUserLinkResponse:
 async def list_bot_user_links(
     connector_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    connector = await BotConnectorRepo.get_by_id(db, org_id, connector_id)
     if connector is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Bot connector not found",
         )
-    links = await BotUserLinkRepo.list_by_connector(db, connector_id)
+    links = await BotUserLinkRepo.list_by_connector(db, org_id, connector_id)
     items = [await _link_to_response(db, link) for link in links]
     return BotUserLinkListResponse(items=items, total=len(items))
 
@@ -320,9 +330,10 @@ async def create_bot_user_link(
     connector_id: uuid.UUID,
     body: BotUserLinkCreate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    connector = await BotConnectorRepo.get_by_id(db, connector_id)
+    connector = await BotConnectorRepo.get_by_id(db, org_id, connector_id)
     if connector is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -345,6 +356,7 @@ async def create_bot_user_link(
 
     existing = await BotUserLinkRepo.get_by_platform_user(
         db,
+        org_id,
         connector_id=connector_id,
         platform_user_id=platform_user_id,
     )
@@ -356,6 +368,7 @@ async def create_bot_user_link(
 
     link = await BotUserLinkRepo.create(
         db,
+        org_id,
         connector_id=connector_id,
         platform_user_id=platform_user_id,
         aim_user_id=body.aim_user_id,
@@ -375,14 +388,15 @@ async def delete_bot_user_link(
     connector_id: uuid.UUID,
     link_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    link = await BotUserLinkRepo.get_by_id(db, link_id)
+    link = await BotUserLinkRepo.get_by_id(db, org_id, link_id)
     if link is None or link.connector_id != connector_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Link not found",
         )
-    await BotUserLinkRepo.delete(db, link_id)
+    await BotUserLinkRepo.delete(db, org_id, link_id)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

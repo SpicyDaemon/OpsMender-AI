@@ -16,7 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config_loader import AppConfig
 from backend.db.models import Incident, IngestToken
-from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo, SLATargetRepo, SessionRepo, UptimeSampleRepo
+from backend.db.repos import (
+    IncidentRepo,
+    IngestLogRepo,
+    IngestTokenRepo,
+    SLATargetRepo,
+    SessionRepo,
+    UptimeSampleRepo,
+)
 from backend.ingest.autostart import (
     has_active_session_for_incident,
     load_auto_start_policy,
@@ -59,11 +66,18 @@ async def authenticate_token(
     raw_token: str,
 ) -> IngestToken | None:
     """Validate an ingest token.  Returns the token row if valid, else None."""
-    tokens = await IngestTokenRepo.list_all(db, active_only=True)
+    # Since we don't know the org_id yet, we have to list ALL active tokens.
+    # We need a special list_all_global in IngestTokenRepo or just query directly.
+    # Actually, let's just use a select() directly here to avoid chicken-and-egg.
+    from sqlalchemy import select
+    stmt = select(IngestToken).where(IngestToken.is_active == True)
+    result = await db.execute(stmt)
+    tokens = result.scalars().all()
+    
     for tok in tokens:
         if verify_token(raw_token, tok.token_hash):
             # Touch last_used_at
-            await IngestTokenRepo.touch(db, tok.id)
+            await IngestTokenRepo.touch(db, tok.org_id, tok.id)
             return tok
     return None
 
@@ -79,6 +93,7 @@ async def ingest_incident(
 
     Always creates an ``ingest_log`` entry regardless of outcome.
     """
+    org_id = token.org_id
     provider = token.provider
     # For "auto" tokens, seed the adapter with any pre-learned paths for this payload shape.
     seeded_paths: dict[str, str] | None = None
@@ -100,6 +115,7 @@ async def ingest_incident(
             subscribe_url = error_msg.split(":", 1)[1]
             await IngestLogRepo.create(
                 db,
+                org_id,
                 ingest_token_id=token.id,
                 provider=provider,
                 raw_payload=payload,
@@ -115,6 +131,7 @@ async def ingest_incident(
         # Parsing error
         await IngestLogRepo.create(
             db,
+            org_id,
             ingest_token_id=token.id,
             provider=provider,
             raw_payload=payload,
@@ -128,6 +145,7 @@ async def ingest_incident(
     if provider == "auto" and parsed.needs_llm:
         learned_paths, cache_hit = await apply_shape_cache(
             db,
+            org_id,
             token=token,
             payload=payload,
             config=config,
@@ -152,13 +170,14 @@ async def ingest_incident(
     if parsed.external_id and parsed.external_source:
         existing = await IncidentRepo.get_by_external_fingerprint(
             db,
+            org_id,
             external_source=parsed.external_source,
             external_id=parsed.external_id,
         )
         if existing is not None:
             # Update existing incident if status changed
             if parsed.status == "resolved" and existing.status != "resolved":
-                await IncidentRepo.update_status(db, existing.id, "resolved")
+                await IncidentRepo.update_status(db, org_id, existing.id, "resolved")
                 dedup_action = "updated"
             else:
                 dedup_action = "skipped"
@@ -167,6 +186,7 @@ async def ingest_incident(
     if incident is None:
         # Create a new incident
         incident = Incident(
+            org_id=org_id,
             title=parsed.title,
             description=parsed.description,
             severity=parsed.severity,
@@ -181,6 +201,7 @@ async def ingest_incident(
     # ── Audit log entry ────────────────────────────────────────────────
     await IngestLogRepo.create(
         db,
+        org_id,
         ingest_token_id=token.id,
         provider=provider,
         raw_payload=payload,
@@ -199,11 +220,12 @@ async def ingest_incident(
     # ── Write uptime sample if availability signal present ──────────
     if parsed.availability is not None:
         avail = parsed.availability
-        sla_target = await SLATargetRepo.get_by_name(db, avail.target_name)
+        sla_target = await SLATargetRepo.get_by_name(db, org_id, avail.target_name)
         if sla_target is not None:
             incident.target_id = sla_target.id
             await UptimeSampleRepo.create(
                 db,
+                org_id,
                 target_id=sla_target.id,
                 up=avail.up,
                 latency_ms=avail.latency_ms,
@@ -223,11 +245,12 @@ async def ingest_incident(
             )
 
     session_id: uuid.UUID | None = None
-    policy = await load_auto_start_policy(db, config)
+    policy = await load_auto_start_policy(db, org_id, config)
     if should_auto_start_session(incident, dedup_action=dedup_action, policy=policy):
-        if not await has_active_session_for_incident(db, incident.id):
+        if not await has_active_session_for_incident(db, org_id, incident.id):
             session = await SessionRepo.create(
                 db,
+                org_id,
                 tier=policy.session_tier,
                 incident_id=incident.id,
             )

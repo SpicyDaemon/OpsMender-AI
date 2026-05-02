@@ -52,11 +52,13 @@ def _normalize_source(raw: str | None) -> str | None:
 
 async def load_auto_start_policy(
     db: AsyncSession,
+    org_id: uuid.UUID,
     config: AppConfig,
 ) -> IngestAutoStartPolicy:
     """Resolve the effective ingest auto-start policy from env + DB overrides."""
     overrides = await RuntimeConfigRepo.get_many(
         db,
+        org_id,
         [
             "tier",
             "ingest_auto_start_enabled",
@@ -109,8 +111,9 @@ def should_auto_start_session(
 
 async def has_active_session_for_incident(
     db: AsyncSession,
+    org_id: uuid.UUID,
     incident_id: uuid.UUID,
 ) -> bool:
     """Return True when the incident already has a non-terminal session."""
-    sessions = await SessionRepo.list_by_incident(db, incident_id)
+    sessions = await SessionRepo.list_by_incident(db, org_id, incident_id)
     return any(session.status in _ACTIVE_SESSION_STATUSES for session in sessions)

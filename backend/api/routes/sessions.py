@@ -15,7 +15,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user, require_role
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_current_session_factory, get_db, get_mcp_pool
 from backend.api.routes.ws import publish
 from backend.api.session_runner import schedule_session_workflow
@@ -94,11 +94,12 @@ async def create_session(
     body: SessionCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
     # Validate linked incident exists (if provided)
     if body.incident_id is not None:
-        incident = await IncidentRepo.get_by_id(db, body.incident_id)
+        incident = await IncidentRepo.get_by_id(db, org_id, body.incident_id)
         if incident is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -107,7 +108,7 @@ async def create_session(
 
     workflow_profile_id = body.workflow_profile_id
     if workflow_profile_id is not None:
-        profile = await WorkflowProfileRepo.get_by_id(db, workflow_profile_id)
+        profile = await WorkflowProfileRepo.get_by_id(db, org_id, workflow_profile_id)
         if profile is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -119,12 +120,14 @@ async def create_session(
                 detail="Workflow profile is inactive",
             )
     else:
-        default_profile = await WorkflowProfileRepo.get_default(db)
+        default_profile = await WorkflowProfileRepo.get_default(db, org_id)
         workflow_profile_id = None if default_profile is None else default_profile.id
 
     agent_team_profile_id = body.agent_team_profile_id
     if agent_team_profile_id is not None:
-        profile = await AgentTeamProfileRepo.get_by_id(db, agent_team_profile_id)
+        profile = await AgentTeamProfileRepo.get_by_id(
+            db, org_id, agent_team_profile_id
+        )
         if profile is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -136,13 +139,14 @@ async def create_session(
                 detail="Agent team profile is inactive",
             )
     else:
-        default_agent_team = await AgentTeamProfileRepo.get_default(db)
+        default_agent_team = await AgentTeamProfileRepo.get_default(db, org_id)
         agent_team_profile_id = (
             None if default_agent_team is None else default_agent_team.id
         )
 
     session = await SessionRepo.create(
         db,
+        org_id,
         tier=body.tier,
         incident_id=body.incident_id,
         workflow_profile_id=workflow_profile_id,
@@ -156,6 +160,7 @@ async def create_session(
     if briefing:
         msg = await SessionMessageRepo.create(
             db,
+            org_id,
             session_id=session.id,
             role="user",
             content=briefing,
@@ -168,12 +173,14 @@ async def create_session(
 
     schedule_session_event(
         request.app.state.session_factory,
+        org_id=org_id,
         task_registry=request.app.state.background_tasks,
         event_type="session.created",
         session_id=session.id,
     )
     schedule_session_chat_event(
         request.app.state.session_factory,
+        org_id=org_id,
         task_registry=request.app.state.background_tasks,
         event_type="session.created",
         session_id=session.id,
@@ -186,6 +193,7 @@ async def create_session(
         asyncio.create_task(
             respond_to_user_message(
                 factory,
+                org_id=org_id,
                 session_id=session.id,
                 user_message_id=briefing_message_id,
             )
@@ -205,9 +213,10 @@ async def create_session(
 async def get_session(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    session = await SessionRepo.get_by_id(db, session_id)
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -229,16 +238,17 @@ async def get_session(
 async def list_session_messages(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    session = await SessionRepo.get_by_id(db, session_id)
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
         )
 
-    items = await SessionMessageRepo.list_by_session(db, session_id)
+    items = await SessionMessageRepo.list_by_session(db, org_id, session_id)
     return SessionMessageListResponse(
         items=[SessionMessageResponse.model_validate(m) for m in items],
         total=len(items),
@@ -255,9 +265,10 @@ async def create_session_message(
     session_id: uuid.UUID,
     body: SessionMessageCreate,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    session = await SessionRepo.get_by_id(db, session_id)
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -266,12 +277,13 @@ async def create_session_message(
 
     message = await SessionMessageRepo.create(
         db,
+        org_id,
         session_id=session_id,
         role="user",
         content=body.content,
     )
     await db.commit()
-    persisted_message = await SessionMessageRepo.get_by_id(db, message.id)
+    persisted_message = await SessionMessageRepo.get_by_id(db, org_id, message.id)
     if persisted_message is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -301,12 +313,15 @@ async def create_session_message(
     asyncio.create_task(
         respond_to_user_message(
             factory,
+            org_id=org_id,
             session_id=session_id,
             user_message_id=message.id,
         )
     )
 
     return message
+
+
 # ---------------------------------------------------------------------------
 # Rollback (Sprint 17 — Tier 0 sandbox)
 # ---------------------------------------------------------------------------
@@ -321,10 +336,11 @@ async def rollback_session(
     session_id: uuid.UUID,
     body: SessionRollbackRequest,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
     pool: MCPServerPool = Depends(get_mcp_pool),
 ):
-    session = await SessionRepo.get_by_id(db, session_id)
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
@@ -336,7 +352,7 @@ async def rollback_session(
             detail="mcp_server is required unless dry_run is true",
         )
 
-    entries = await AuditEntryRepo.list_by_session(db, session_id)
+    entries = await AuditEntryRepo.list_by_session(db, org_id, session_id)
     tool_calls = reconstruct_tool_calls(entries)
     if not tool_calls:
         return SessionRollbackResponse(
@@ -352,14 +368,14 @@ async def rollback_session(
     # -- Resolve the skill bound to the chosen MCP server --------------
     server_row = None
     if body.mcp_server:
-        server_row = await MCPServerRepo.get_by_name(db, body.mcp_server)
+        server_row = await MCPServerRepo.get_by_name(db, org_id, body.mcp_server)
         if server_row is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"MCP server not found: {body.mcp_server}",
             )
     skill_row = await SkillRepo.get_for_mcp_server(
-        db, server_row.id if server_row else None
+        db, org_id, server_row.id if server_row else None
     )
     if skill_row is None:
         raise HTTPException(

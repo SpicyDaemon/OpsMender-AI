@@ -14,6 +14,11 @@ export interface UserResponse {
   created_at: string;
 }
 
+export interface UserListResponse {
+  items: UserResponse[];
+  total: number;
+}
+
 // ---------------------------------------------------------------------------
 // Incidents
 // ---------------------------------------------------------------------------
@@ -766,4 +771,27 @@ export interface SLOStatusResponse {
   error_budget_remaining_pct: number;
   burn_rate: number;
   compliant: boolean;
+}
+// ---------------------------------------------------------------------------
+// Bot User Links (Sprint 27)
+// ---------------------------------------------------------------------------
+
+export interface BotUserLinkResponse {
+  id: string;
+  connector_id: string;
+  platform_user_id: string;
+  aim_user_id: string;
+  aim_username: string;
+  aim_role: string;
+  created_at: string;
+}
+
+export interface BotUserLinkListResponse {
+  items: BotUserLinkResponse[];
+  total: number;
+}
+
+export interface BotUserLinkCreate {
+  platform_user_id: string;
+  aim_user_id: string;
 }

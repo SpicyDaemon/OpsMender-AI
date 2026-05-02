@@ -16,6 +16,7 @@ import {
   ShieldOff,
   Star,
   Trash2,
+  Users,
   XCircle,
 } from "lucide-react";
 import {
@@ -56,6 +57,10 @@ import {
   updateModelConfigById,
   updateWebhookTrigger,
   updateWorkflowProfile,
+  listBotUserLinks,
+  createBotUserLink,
+  deleteBotUserLink,
+  listUsers,
 } from "@/lib/api";
 import type {
   AgentRole,
@@ -67,50 +72,8 @@ import type {
   BotConnectorStatus,
   BotConnectorTestResponse,
   BotConnectorUpsert,
+  BotUserLinkResponse,
   ConfigResponse,
-  IngestProviderItem,
-  IngestTokenCreate,
-  IngestTokenCreatedResponse,
-  IngestTokenResponse,
-  MCPServerResponse,
-  MCPServerTestResponse,
-  MCPServerUpsert,
-  MCPTransport,
-  ModelConfigResponse,
-  ModelBootstrapStatusResponse,
-  ModelConfigUpdate,
-  ProviderModelsResponse,
-  WebhookTriggerEventType,
-  WebhookTriggerFormat,
-  WebhookTriggerResponse,
-  WebhookTriggerTestResponse,
-  WebhookTriggerUpsert,
-  WorkflowNode,
-  WorkflowProfileResponse,
-  WorkflowProfileUpsert,
-} from "@/lib/types";
-import { useAuth } from "@/context/auth";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, Select, FormError, Textarea } from "@/components/ui/Input";
-import { Modal } from "@/components/ui/Modal";
-import { ConfigPageSkeleton } from "@/components/ui/Skeleton";
-
-
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-      <div className="border-b border-border-subtle px-6 py-4">
-        <h2 className="text-base font-semibold text-fg-primary">{title}</h2>
-        {description && (
           <p className="mt-0.5 text-sm text-fg-secondary">{description}</p>
         )}
       </div>
@@ -1909,6 +1872,192 @@ function BotConnectorModal({
   );
 }
 
+function BotUserLinksModal({
+  open,
+  onClose,
+  connector,
+}: {
+  open: boolean;
+  onClose: () => void;
+  connector: BotConnectorResponse | null;
+}) {
+  const [links, setLinks] = useState<BotUserLinkResponse[]>([]);
+  const [users, setUsers] = useState<UserResponse[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  
+  // Form state for new link
+  const [platformUserId, setPlatformUserId] = useState("");
+  const [aimUserId, setAimUserId] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const loadData = useCallback(async () => {
+    if (!connector) return;
+    setLoading(true);
+    setError("");
+    try {
+      const [linksRes, usersRes] = await Promise.all([
+        listBotUserLinks(connector.id),
+        listUsers(),
+      ]);
+      setLinks(linksRes.items);
+      setUsers(usersRes.items.filter(u => u.is_active));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load links");
+    } finally {
+      setLoading(false);
+    }
+  }, [connector]);
+
+  useEffect(() => {
+    if (open && connector) {
+      loadData();
+      setPlatformUserId("");
+      setAimUserId("");
+    }
+  }, [open, connector, loadData]);
+
+  async function handleAddLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!connector || !platformUserId.trim() || !aimUserId) return;
+    
+    setCreating(true);
+    setError("");
+    try {
+      await createBotUserLink(connector.id, {
+        platform_user_id: platformUserId.trim(),
+        aim_user_id: aimUserId,
+      });
+      setPlatformUserId("");
+      setAimUserId("");
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create link");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDeleteLink(link: BotUserLinkResponse) {
+    if (!connector) return;
+    if (!window.confirm(`Remove link for platform user "${link.platform_user_id}"?`)) return;
+    
+    setError("");
+    try {
+      await deleteBotUserLink(connector.id, link.id);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete link");
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={connector ? `Identity Links: ${connector.name}` : "Bot Identity Links"}
+      maxWidth="max-w-2xl"
+    >
+      <div className="space-y-6">
+        <p className="text-sm text-fg-secondary">
+          Map platform-specific user IDs (Telegram usernames, WhatsApp numbers, Signal IDs)
+          to AIM users to enable permissions and audit trails for bot interactions.
+        </p>
+
+        {error && <FormError message={error} />}
+
+        <form onSubmit={handleAddLink} className="rounded-lg border border-border-subtle bg-bg-elevated p-4">
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-fg-muted">Link New Identity</h4>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="platform-user-id">Platform User ID</Label>
+              <Input
+                id="platform-user-id"
+                value={platformUserId}
+                onChange={(e) => setPlatformUserId(e.target.value)}
+                placeholder={connector?.platform === "whatsapp" ? "1234567890" : "@username"}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="aim-user-id">AIM User</Label>
+              <Select
+                id="aim-user-id"
+                value={aimUserId}
+                onChange={(e) => setAimUserId(e.target.value)}
+                required
+              >
+                <option value="">Select a user...</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.username} ({u.role})
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button type="submit" size="sm" loading={creating} disabled={!platformUserId.trim() || !aimUserId}>
+              <Plus size={14} /> Add Link
+            </Button>
+          </div>
+        </form>
+
+        <div className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Active Mappings ({links.length})</h4>
+          {loading && links.length === 0 ? (
+            <div className="py-8 text-center text-sm text-fg-muted animate-pulse">Loading links...</div>
+          ) : links.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border-subtle py-8 text-center text-sm text-fg-muted">
+              No identity links configured yet.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-border-subtle">
+              <table className="min-w-full divide-y divide-border-subtle text-sm">
+                <thead className="bg-bg-elevated text-left text-xs font-semibold text-fg-secondary">
+                  <tr>
+                    <th className="px-4 py-2">Platform ID</th>
+                    <th className="px-4 py-2">AIM User</th>
+                    <th className="px-4 py-2 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle bg-bg-panel">
+                  {links.map((link) => (
+                    <tr key={link.id}>
+                      <td className="px-4 py-2 font-mono text-xs text-fg-primary">
+                        {link.platform_user_id}
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-fg-primary">{link.aim_username}</span>
+                          <span className="text-[10px] uppercase text-fg-muted">{link.aim_role}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <Button
+                          variant="danger"
+                          size="xs"
+                          onClick={() => handleDeleteLink(link)}
+                        >
+                          <Trash2 size={12} />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 type BotConnectorTestState = {
   status: "idle" | "running" | "success" | "failure";
   result?: BotConnectorTestResponse;
@@ -1960,6 +2109,9 @@ function BotConnectorSection({
   const [notice, setNotice] = useState("");
   const [testStates, setTestStates] = useState<Record<string, BotConnectorTestState>>({});
 
+  const [linksModalOpen, setLinksModalOpen] = useState(false);
+  const [linkingConnector, setLinkingConnector] = useState<BotConnectorResponse | null>(null);
+
   function openCreateModal() {
     setEditing(null);
     setError("");
@@ -1970,6 +2122,11 @@ function BotConnectorSection({
     setEditing(connector);
     setError("");
     setModalOpen(true);
+  }
+
+  function openLinksModal(connector: BotConnectorResponse) {
+    setLinkingConnector(connector);
+    setLinksModalOpen(true);
   }
 
   function closeModal() {
@@ -2160,6 +2317,14 @@ function BotConnectorSection({
                         <Button
                           variant="secondary"
                           size="sm"
+                          onClick={() => openLinksModal(connector)}
+                          title="Manage user identity links"
+                        >
+                          <Users size={13} /> Links
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() => handleTest(connector)}
                           loading={testState.status === "running"}
                           disabled={!canEdit}
@@ -2199,6 +2364,12 @@ function BotConnectorSection({
         saving={saving}
         error={error}
         initialConnector={editing}
+      />
+
+      <BotUserLinksModal
+        open={linksModalOpen}
+        onClose={() => setLinksModalOpen(false)}
+        connector={linkingConnector}
       />
     </Section>
   );

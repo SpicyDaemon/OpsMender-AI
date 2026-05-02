@@ -45,6 +45,11 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserListResponse(BaseModel):
+    items: list[UserResponse]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # Incidents
 # ---------------------------------------------------------------------------

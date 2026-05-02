@@ -91,7 +91,7 @@ export const api = {
 // Auth
 // ---------------------------------------------------------------------------
 
-import type { TokenResponse, UserResponse } from "./types";
+import type { TokenResponse, UserListResponse, UserResponse } from "./types";
 
 export async function login(username: string, password: string): Promise<TokenResponse> {
   return api.post<TokenResponse>("/auth/login", { username, password }, true);
@@ -108,6 +108,17 @@ export async function register(
 
 export async function getMe(): Promise<UserResponse> {
   return api.get<UserResponse>("/auth/me");
+}
+
+export async function listUsers(params?: {
+  limit?: number;
+  offset?: number;
+}): Promise<UserListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return api.get<UserListResponse>(`/auth/users${q ? `?${q}` : ""}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -434,6 +445,36 @@ export async function testBotConnector(
   id: string,
 ): Promise<BotConnectorTestResponse> {
   return api.post<BotConnectorTestResponse>(`/bot-connectors/${id}/test`);
+}
+
+// ---------------------------------------------------------------------------
+// Bot User Links
+// ---------------------------------------------------------------------------
+
+import type {
+  BotUserLinkCreate,
+  BotUserLinkListResponse,
+  BotUserLinkResponse,
+} from "./types";
+
+export async function listBotUserLinks(
+  connectorId: string,
+): Promise<BotUserLinkListResponse> {
+  return api.get<BotUserLinkListResponse>(`/bot-connectors/${connectorId}/user-links`);
+}
+
+export async function createBotUserLink(
+  connectorId: string,
+  body: BotUserLinkCreate,
+): Promise<BotUserLinkResponse> {
+  return api.post<BotUserLinkResponse>(`/bot-connectors/${connectorId}/user-links`, body);
+}
+
+export async function deleteBotUserLink(
+  connectorId: string,
+  linkId: string,
+): Promise<void> {
+  return api.del<void>(`/bot-connectors/${connectorId}/user-links/${linkId}`);
 }
 
 // ---------------------------------------------------------------------------

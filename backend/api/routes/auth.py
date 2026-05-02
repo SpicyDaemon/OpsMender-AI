@@ -7,13 +7,14 @@ GET  /auth/me       — return the current user profile
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import (
     create_access_token,
     get_current_user,
     hash_password,
+    require_role,
     verify_password,
 )
 from backend.api.deps import get_db
@@ -21,6 +22,7 @@ from backend.api.schemas import (
     LoginRequest,
     RegisterRequest,
     TokenResponse,
+    UserListResponse,
     UserResponse,
 )
 from backend.db.models import User
@@ -97,3 +99,16 @@ async def login(
 )
 async def me(user: User = Depends(get_current_user)):
     return user
+@router.get(
+    "/users",
+    response_model=UserListResponse,
+    dependencies=[Depends(require_role("admin", "operator"))],
+    summary="List all users (admin/operator only)",
+)
+async def list_users(
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    users = await UserRepo.list_all(db, limit=limit, offset=offset)
+    return UserListResponse(items=list(users), total=len(users))

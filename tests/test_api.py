@@ -298,6 +298,25 @@ class TestAuth:
         assert "access_token" in data
         assert data["token_type"] == "bearer"
 
+    async def test_list_users(self, client: AsyncClient, auth_headers: dict[str, str]):
+        # auth_headers creates one admin user. Register another.
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "other",
+                "email": "other@test.com",
+                "password": "password123",
+                "role": "viewer",
+            },
+        )
+        resp = await client.get("/auth/users", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+        usernames = {u["username"] for u in data["items"]}
+        assert "other" in usernames
+
     async def test_login_wrong_password(self, client: AsyncClient):
         await client.post(
             "/auth/register",

@@ -90,8 +90,13 @@ class UserRepo:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def list_all(db: AsyncSession) -> Sequence[User]:
-        stmt = select(User).order_by(User.created_at)
+    async def list_all(
+        db: AsyncSession,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[User]:
+        stmt = select(User).order_by(User.created_at).limit(limit).offset(offset)
         result = await db.execute(stmt)
         return result.scalars().all()
 

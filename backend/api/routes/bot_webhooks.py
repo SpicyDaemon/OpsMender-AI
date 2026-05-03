@@ -235,3 +235,41 @@ async def discord_webhook(
         payload=payload,
         db=db,
     )
+
+
+@router.post(
+    "/{connector_id}/mattermost/webhook",
+    summary="Handle inbound Mattermost Outgoing Webhook updates",
+)
+async def mattermost_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="mattermost",
+        request=request,
+        payload=payload,
+        db=db,
+    )
+
+
+@router.post(
+    "/{connector_id}/matrix/webhook",
+    summary="Handle inbound Matrix App Service webhook updates",
+)
+async def matrix_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="matrix",
+        request=request,
+        payload=payload,
+        db=db,
+    )

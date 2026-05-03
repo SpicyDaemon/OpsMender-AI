@@ -15,6 +15,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from backend.bots.connectors.slack import SlackAdapter
 from backend.bots.connectors.discord import DiscordAdapter
+from backend.bots.connectors.mattermost import MattermostAdapter
+from backend.bots.connectors.matrix import MatrixAdapter
 from backend.db.models import BotConnector
 
 
@@ -128,3 +130,78 @@ def test_discord_parse_inbound():
     
     # Test PING skip
     assert adapter.parse_inbound({"type": 1}) is None
+
+
+def test_mattermost_verify_webhook():
+    adapter = MattermostAdapter()
+    token = "mattertoken123"
+    connector = BotConnector(
+        platform="mattermost",
+        is_enabled=True,
+        credentials={"webhook_token": token}
+    )
+    
+    body = f"token={token}&channel_id=C1&text=hi".encode("utf-8")
+    
+    # Should not raise
+    adapter.verify_webhook(connector, headers={}, raw_body=body)
+    
+    # Test failure
+    with pytest.raises(HTTPException) as exc:
+        adapter.verify_webhook(connector, headers={}, raw_body=b"token=wrong")
+    assert exc.value.status_code == 403
+
+
+def test_mattermost_parse_inbound():
+    adapter = MattermostAdapter()
+    payload = {
+        "channel_id": "C123",
+        "user_id": "U456",
+        "text": "/incidents",
+        "user_name": "alice"
+    }
+    msg = adapter.parse_inbound(payload)
+    assert msg.chat_id == "C123"
+    assert msg.platform_user_id == "U456"
+    assert msg.text == "/incidents"
+
+
+def test_matrix_verify_webhook():
+    adapter = MatrixAdapter()
+    secret = "matrixsecret"
+    connector = BotConnector(
+        platform="matrix",
+        is_enabled=True,
+        credentials={"webhook_secret": secret}
+    )
+    
+    headers = {"Authorization": f"Bearer {secret}"}
+    
+    # Should not raise
+    adapter.verify_webhook(connector, headers=headers, raw_body=b"{}")
+    
+    # Test failure
+    with pytest.raises(HTTPException) as exc:
+        adapter.verify_webhook(connector, headers={"Authorization": "Bearer wrong"}, raw_body=b"{}")
+    assert exc.value.status_code == 403
+
+
+def test_matrix_parse_inbound():
+    adapter = MatrixAdapter()
+    payload = {
+        "events": [
+            {
+                "type": "m.room.message",
+                "room_id": "!room:matrix.org",
+                "sender": "@user:matrix.org",
+                "content": {
+                    "msgtype": "m.text",
+                    "body": "/approvals"
+                }
+            }
+        ]
+    }
+    msg = adapter.parse_inbound(payload)
+    assert msg.chat_id == "!room:matrix.org"
+    assert msg.platform_user_id == "@user:matrix.org"
+    assert msg.text == "/approvals"

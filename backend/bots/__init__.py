@@ -1,5 +1,7 @@
 from backend.bots.connectors import (
     DiscordAdapter,
+    MatrixAdapter,
+    MattermostAdapter,
     SignalAdapter,
     SlackAdapter,
     TelegramAdapter,
@@ -12,3 +14,5 @@ register_adapter(SignalAdapter())
 register_adapter(WhatsAppAdapter())
 register_adapter(SlackAdapter())
 register_adapter(DiscordAdapter())
+register_adapter(MattermostAdapter())
+register_adapter(MatrixAdapter())

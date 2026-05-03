@@ -13,6 +13,8 @@ outbound ``send_message`` delivery.
 from .base import BotConnectorAdapter, InboundMessage
 from .registry import get_adapter, list_platforms, register_adapter
 from .discord import DiscordAdapter
+from .matrix import MatrixAdapter
+from .mattermost import MattermostAdapter
 from .signal import SignalAdapter
 from .slack import SlackAdapter
 from .telegram import TelegramAdapter
@@ -22,6 +24,8 @@ __all__ = [
     "BotConnectorAdapter",
     "InboundMessage",
     "DiscordAdapter",
+    "MatrixAdapter",
+    "MattermostAdapter",
     "SignalAdapter",
     "SlackAdapter",
     "TelegramAdapter",

@@ -408,6 +408,47 @@ AIM verifies the Mailgun signature if the API key is provided.
 
 Identity mapping (RBAC): Use the sender's email address (e.g., `operator@company.com`) as the platform user ID.
 
+### Home Assistant
+
+Home Assistant integration allows AIM to push actionable notifications to your HASS dashboard and receive commands from HASS automations.
+
+Required connector credentials:
+
+```text
+service_url=https://...     # Your HASS instance URL
+access_token=...            # Long-Lived Access Token from HASS profile
+webhook_secret=...          # Optional secret for inbound verification
+```
+
+Set the webhook URL in your HASS automation or REST command to:
+
+```text
+POST https://<your-aim-url>/bot-connectors/<connector-id>/homeassistant/webhook
+```
+
+Inbound payloads should include `action` or `message`.
+
+Identity mapping (RBAC): Use the HASS User ID or the entity ID triggering the webhook as the platform user ID.
+
+### BlueBubbles (iMessage)
+
+BlueBubbles integration allows iMessage-based incident management.
+
+Required connector credentials:
+
+```text
+server_url=https://...     # Your BlueBubbles Server URL
+password=...               # BlueBubbles API Password
+```
+
+Set the Webhook URL in the BlueBubbles Server settings to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/bluebubbles/webhook
+```
+
+Identity mapping (RBAC): Use the sender's phone number or Apple ID (e.g., `+15550123`) as the platform user ID.
+
 ## 3. Outbound Webhooks
 
 AIM can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.

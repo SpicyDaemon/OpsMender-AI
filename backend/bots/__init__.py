@@ -1,8 +1,10 @@
 from backend.bots.connectors import (
+    BlueBubblesAdapter,
     DingTalkAdapter,
     DiscordAdapter,
     EmailAdapter,
     FeishuAdapter,
+    HomeAssistantAdapter,
     MatrixAdapter,
     MattermostAdapter,
     SignalAdapter,
@@ -28,3 +30,5 @@ register_adapter(WeComAdapter())
 register_adapter(WeixinAdapter())
 register_adapter(TwilioAdapter())
 register_adapter(EmailAdapter())
+register_adapter(HomeAssistantAdapter())
+register_adapter(BlueBubblesAdapter())

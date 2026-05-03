@@ -12,10 +12,12 @@ outbound ``send_message`` delivery.
 
 from .base import BotConnectorAdapter, InboundMessage
 from .registry import get_adapter, list_platforms, register_adapter
+from .bluebubbles import BlueBubblesAdapter
 from .dingtalk import DingTalkAdapter
 from .discord import DiscordAdapter
 from .email import EmailAdapter
 from .feishu import FeishuAdapter
+from .homeassistant import HomeAssistantAdapter
 from .matrix import MatrixAdapter
 from .mattermost import MattermostAdapter
 from .signal import SignalAdapter
@@ -29,10 +31,12 @@ from .whatsapp import WhatsAppAdapter
 __all__ = [
     "BotConnectorAdapter",
     "InboundMessage",
+    "BlueBubblesAdapter",
     "DingTalkAdapter",
     "DiscordAdapter",
     "EmailAdapter",
     "FeishuAdapter",
+    "HomeAssistantAdapter",
     "MatrixAdapter",
     "MattermostAdapter",
     "SignalAdapter",

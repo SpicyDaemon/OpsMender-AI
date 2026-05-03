@@ -451,3 +451,41 @@ async def email_webhook(
         payload=payload,
         db=db,
     )
+
+
+@router.post(
+    "/{connector_id}/homeassistant/webhook",
+    summary="Handle inbound Home Assistant updates",
+)
+async def homeassistant_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="homeassistant",
+        request=request,
+        payload=payload,
+        db=db,
+    )
+
+
+@router.post(
+    "/{connector_id}/bluebubbles/webhook",
+    summary="Handle inbound BlueBubbles (iMessage) updates",
+)
+async def bluebubbles_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="bluebubbles",
+        request=request,
+        payload=payload,
+        db=db,
+    )

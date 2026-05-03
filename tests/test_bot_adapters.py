@@ -24,6 +24,8 @@ from backend.bots.connectors.wecom import WeComAdapter
 from backend.bots.connectors.weixin import WeixinAdapter
 from backend.bots.connectors.twilio import TwilioAdapter
 from backend.bots.connectors.email import EmailAdapter
+from backend.bots.connectors.homeassistant import HomeAssistantAdapter
+from backend.bots.connectors.bluebubbles import BlueBubblesAdapter
 from backend.db.models import BotConnector
 
 
@@ -428,3 +430,50 @@ def test_email_parse_inbound():
     assert msg.chat_id == "op@example.com"
     assert "Subject: Fire!" in msg.text
     assert "/incident 123" in msg.text
+
+
+def test_homeassistant_verify_webhook():
+    adapter = HomeAssistantAdapter()
+    secret = "hasssecret"
+    connector = BotConnector(
+        platform="homeassistant",
+        is_enabled=True,
+        credentials={"webhook_secret": secret}
+    )
+    
+    headers = {"X-Hass-Secret": secret}
+    
+    # Should not raise
+    adapter.verify_webhook(connector, headers=headers, raw_body=b"{}")
+    
+    # Test failure
+    with pytest.raises(HTTPException) as exc:
+        adapter.verify_webhook(connector, headers={"X-Hass-Secret": "wrong"}, raw_body=b"{}")
+    assert exc.value.status_code == 403
+
+
+def test_homeassistant_parse_inbound():
+    adapter = HomeAssistantAdapter()
+    payload = {
+        "source": "sensor.alarm",
+        "action": "/incidents",
+        "user_id": "hass_admin"
+    }
+    msg = adapter.parse_inbound(payload)
+    assert msg.chat_id == "sensor.alarm"
+    assert msg.platform_user_id == "hass_admin"
+    assert msg.text == "/incidents"
+
+
+def test_bluebubbles_parse_inbound():
+    adapter = BlueBubblesAdapter()
+    payload = {
+        "type": "new-message",
+        "data": {
+            "text": "/approvals",
+            "handle": {"address": "+1555000"}
+        }
+    }
+    msg = adapter.parse_inbound(payload)
+    assert msg.chat_id == "+1555000"
+    assert msg.text == "/approvals"

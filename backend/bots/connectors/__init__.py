@@ -12,14 +12,18 @@ outbound ``send_message`` delivery.
 
 from .base import BotConnectorAdapter, InboundMessage
 from .registry import get_adapter, list_platforms, register_adapter
+from .discord import DiscordAdapter
 from .signal import SignalAdapter
+from .slack import SlackAdapter
 from .telegram import TelegramAdapter
 from .whatsapp import WhatsAppAdapter
 
 __all__ = [
     "BotConnectorAdapter",
     "InboundMessage",
+    "DiscordAdapter",
     "SignalAdapter",
+    "SlackAdapter",
     "TelegramAdapter",
     "WhatsAppAdapter",
     "get_adapter",

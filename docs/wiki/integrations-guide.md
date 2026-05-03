@@ -179,6 +179,48 @@ Identity mapping (RBAC) works the same as Telegram: use the
 **"Links"** button in the dashboard and use the user's phone number
 (e.g., `15555550100`) as the platform user ID.
 
+### Slack (Events API)
+
+Slack integration uses the Slack Events API. Unlike outbound webhooks, the Slack Bot Connector supports interactive commands (`/incidents`, `/incident`, `/approvals`, etc.).
+
+Required connector credentials:
+
+```text
+bot_token=xoxb-...          # Bot User OAuth Token
+signing_secret=...          # App Credentials > Signing Secret
+```
+
+Set the **Request URL** in the Slack App Dashboard (under **Event Subscriptions**) to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/slack/webhook
+```
+
+Ensure you subscribe to the `message.channels` bot event. AIM verifies every inbound request using HMAC-SHA256 signatures (`X-Slack-Signature`) against your `signing_secret`.
+
+Identity mapping (RBAC): Use the Slack User ID (e.g., `U0123456789`) as the platform user ID.
+
+### Discord (Interactions)
+
+Discord integration uses the Interactions API (webhooks) for low-latency command handling and the Bot API for outbound notifications.
+
+Required connector credentials:
+
+```text
+bot_token=...               # Bot Token from Portal
+public_key=...              # Application Public Key (hex string)
+```
+
+Set the **Interactions Endpoint URL** in the Discord Developer Portal to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/discord/webhook
+```
+
+AIM verifies every inbound interaction using Ed25519 signatures (`X-Signature-Ed25519`) against your `public_key`.
+
+Identity mapping (RBAC): Use the Discord User ID (e.g., `123456789012345678`) as the platform user ID.
+
 ## 3. Outbound Webhooks
 
 AIM can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.

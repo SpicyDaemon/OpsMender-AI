@@ -170,3 +170,68 @@ async def whatsapp_webhook(
         payload=payload,
         db=db,
     )
+
+
+@router.post(
+    "/{connector_id}/slack/webhook",
+    summary="Handle inbound Slack Events API webhook updates",
+)
+async def slack_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    # Handle Slack URL verification challenge immediately
+    if payload.get("type") == "url_verification":
+        connector = await db.get(BotConnector, connector_id)
+        if connector is None:
+            raise HTTPException(status_code=404, detail="Connector not found")
+        
+        # Verify even for challenges to ensure security
+        adapter = get_adapter("slack")
+        if adapter:
+            raw_body = await request.body()
+            adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
+            
+        return {"challenge": payload.get("challenge")}
+
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="slack",
+        request=request,
+        payload=payload,
+        db=db,
+    )
+
+
+@router.post(
+    "/{connector_id}/discord/webhook",
+    summary="Handle inbound Discord Interactions webhook updates",
+)
+async def discord_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    # Handle Discord PING challenge immediately
+    if payload.get("type") == 1:
+        connector = await db.get(BotConnector, connector_id)
+        if connector is None:
+            raise HTTPException(status_code=404, detail="Connector not found")
+        
+        adapter = get_adapter("discord")
+        if adapter:
+            raw_body = await request.body()
+            adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
+            
+        return {"type": 1}
+
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="discord",
+        request=request,
+        payload=payload,
+        db=db,
+    )

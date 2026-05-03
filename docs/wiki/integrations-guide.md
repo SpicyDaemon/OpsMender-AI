@@ -265,6 +265,59 @@ AIM expects an `Authorization: Bearer <webhook_secret>` header on inbound reques
 
 Identity mapping (RBAC): Use the Matrix User ID (e.g., `@user:matrix.org`) as the platform user ID.
 
+### Feishu / Lark (Events)
+
+Feishu integration uses the Events API v2. It supports automatic URL verification and tenant access token management.
+
+Required connector credentials:
+
+```text
+app_id=cli_...              # App ID from Developer Console
+app_secret=...              # App Secret
+verification_token=...      # Event Subscriptions > Verification Token
+```
+
+Set the **Request URL** in the Feishu Developer Console (under **Event Subscriptions**) to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/feishu/webhook
+```
+
+Ensure you subscribe to the `im.message.receive_v1` event.
+
+Identity mapping (RBAC): Use the Feishu Open ID (e.g., `ou_...`) as the platform user ID.
+
+### DingTalk (Robot)
+
+DingTalk integration uses Outgoing Robots for commands and the Robot Webhook API for notifications.
+
+Required connector credentials:
+
+```text
+app_key=...                 # App Key (for API delivery)
+app_secret=...              # App Secret (for signature verification)
+```
+
+Optional connector config:
+
+```json
+{
+  "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=..."
+}
+```
+
+If `webhook_url` is provided in the config, AIM will use it for all outbound delivery. Otherwise, it will use the App Key/Secret to fetch a token and use the standard Robot API.
+
+Set the **POST URL** in the DingTalk Robot settings to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/dingtalk/webhook
+```
+
+Ensure you enable **Signature** verification in the robot settings using your `app_secret`.
+
+Identity mapping (RBAC): Use the DingTalk Sender ID (e.g., `$...$`) as the platform user ID.
+
 ## 3. Outbound Webhooks
 
 AIM can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.

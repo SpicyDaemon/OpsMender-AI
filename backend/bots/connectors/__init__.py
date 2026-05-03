@@ -12,7 +12,9 @@ outbound ``send_message`` delivery.
 
 from .base import BotConnectorAdapter, InboundMessage
 from .registry import get_adapter, list_platforms, register_adapter
+from .dingtalk import DingTalkAdapter
 from .discord import DiscordAdapter
+from .feishu import FeishuAdapter
 from .matrix import MatrixAdapter
 from .mattermost import MattermostAdapter
 from .signal import SignalAdapter
@@ -23,7 +25,9 @@ from .whatsapp import WhatsAppAdapter
 __all__ = [
     "BotConnectorAdapter",
     "InboundMessage",
+    "DingTalkAdapter",
     "DiscordAdapter",
+    "FeishuAdapter",
     "MatrixAdapter",
     "MattermostAdapter",
     "SignalAdapter",

@@ -1,5 +1,7 @@
 from backend.bots.connectors import (
+    DingTalkAdapter,
     DiscordAdapter,
+    FeishuAdapter,
     MatrixAdapter,
     MattermostAdapter,
     SignalAdapter,
@@ -16,3 +18,5 @@ register_adapter(SlackAdapter())
 register_adapter(DiscordAdapter())
 register_adapter(MattermostAdapter())
 register_adapter(MatrixAdapter())
+register_adapter(FeishuAdapter())
+register_adapter(DingTalkAdapter())

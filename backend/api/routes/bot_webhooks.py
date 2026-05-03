@@ -273,3 +273,54 @@ async def matrix_webhook(
         payload=payload,
         db=db,
     )
+
+
+@router.post(
+    "/{connector_id}/feishu/webhook",
+    summary="Handle inbound Feishu / Lark event updates",
+)
+async def feishu_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    # Handle Feishu URL verification challenge immediately
+    if payload.get("type") == "url_verification":
+        connector = await db.get(BotConnector, connector_id)
+        if connector is None:
+            raise HTTPException(status_code=404, detail="Connector not found")
+        
+        adapter = get_adapter("feishu")
+        if adapter:
+            raw_body = await request.body()
+            adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
+            
+        return {"challenge": payload.get("challenge")}
+
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="feishu",
+        request=request,
+        payload=payload,
+        db=db,
+    )
+
+
+@router.post(
+    "/{connector_id}/dingtalk/webhook",
+    summary="Handle inbound DingTalk robot updates",
+)
+async def dingtalk_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="dingtalk",
+        request=request,
+        payload=payload,
+        db=db,
+    )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hmac
 import hashlib
 import json
@@ -17,6 +18,8 @@ from backend.bots.connectors.slack import SlackAdapter
 from backend.bots.connectors.discord import DiscordAdapter
 from backend.bots.connectors.mattermost import MattermostAdapter
 from backend.bots.connectors.matrix import MatrixAdapter
+from backend.bots.connectors.feishu import FeishuAdapter
+from backend.bots.connectors.dingtalk import DingTalkAdapter
 from backend.db.models import BotConnector
 
 
@@ -205,3 +208,87 @@ def test_matrix_parse_inbound():
     assert msg.chat_id == "!room:matrix.org"
     assert msg.platform_user_id == "@user:matrix.org"
     assert msg.text == "/approvals"
+
+
+def test_feishu_verify_webhook():
+    adapter = FeishuAdapter()
+    token = "feishutoken"
+    connector = BotConnector(
+        platform="feishu",
+        is_enabled=True,
+        credentials={"verification_token": token}
+    )
+    
+    body = json.dumps({"token": token, "type": "url_verification"}).encode("utf-8")
+    
+    # Should not raise
+    adapter.verify_webhook(connector, headers={}, raw_body=body)
+    
+    # Test failure
+    with pytest.raises(HTTPException) as exc:
+        adapter.verify_webhook(connector, headers={}, raw_body=json.dumps({"token": "wrong"}).encode("utf-8"))
+    assert exc.value.status_code == 403
+
+
+def test_feishu_parse_inbound():
+    adapter = FeishuAdapter()
+    payload = {
+        "header": {"event_type": "im.message.receive_v1"},
+        "event": {
+            "message": {
+                "chat_id": "oc_123",
+                "message_type": "text",
+                "content": json.dumps({"text": "/session abc"})
+            },
+            "sender": {
+                "sender_id": {"open_id": "ou_456"}
+            }
+        }
+    }
+    msg = adapter.parse_inbound(payload)
+    assert msg.chat_id == "oc_123"
+    assert msg.platform_user_id == "ou_456"
+    assert msg.text == "/session abc"
+
+
+def test_dingtalk_verify_webhook():
+    adapter = DingTalkAdapter()
+    secret = "dingsecret"
+    connector = BotConnector(
+        platform="dingtalk",
+        is_enabled=True,
+        credentials={"app_secret": secret}
+    )
+    
+    timestamp = str(int(time.time() * 1000))
+    string_to_sign = f"{timestamp}\n{secret}"
+    hmac_code = hmac.new(
+        secret.encode("utf-8"),
+        string_to_sign.encode("utf-8"),
+        digestmod=hashlib.sha256
+    ).digest()
+    sign = base64.b64encode(hmac_code).decode("utf-8")
+    
+    headers = {"timestamp": timestamp, "sign": sign}
+    
+    # Should not raise
+    adapter.verify_webhook(connector, headers=headers, raw_body=b"{}")
+    
+    # Test failure
+    with pytest.raises(HTTPException) as exc:
+        adapter.verify_webhook(connector, headers={"timestamp": timestamp, "sign": "wrong"}, raw_body=b"{}")
+    assert exc.value.status_code == 403
+
+
+def test_dingtalk_parse_inbound():
+    adapter = DingTalkAdapter()
+    payload = {
+        "msgtype": "text",
+        "conversationId": "conv123",
+        "senderId": "user789",
+        "text": {"content": " /incident def "}
+    }
+    msg = adapter.parse_inbound(payload)
+    assert msg.chat_id == "conv123"
+    assert msg.platform_user_id == "user789"
+    assert msg.text == "/incident def"

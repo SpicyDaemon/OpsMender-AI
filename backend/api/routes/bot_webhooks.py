@@ -324,3 +324,130 @@ async def dingtalk_webhook(
         payload=payload,
         db=db,
     )
+
+
+@router.get("/{connector_id}/wecom/webhook")
+async def wecom_handshake(
+    connector_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    connector = await db.get(BotConnector, connector_id)
+    if connector is None:
+        raise HTTPException(status_code=404, detail="Connector not found")
+    
+    adapter = get_adapter("wecom")
+    if not adapter:
+        raise HTTPException(status_code=400, detail="Adapter not found")
+    
+    from backend.bots.connectors.wecom import WeComAdapter
+    if isinstance(adapter, WeComAdapter):
+        return adapter.handle_handshake(connector, request.query_params)
+    return ""
+
+
+@router.post("/{connector_id}/wecom/webhook")
+async def wecom_webhook(
+    connector_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    connector = await db.get(BotConnector, connector_id)
+    if connector is None:
+        raise HTTPException(status_code=404, detail="Connector not found")
+    
+    adapter = get_adapter("wecom")
+    from backend.bots.connectors.wecom import WeComAdapter
+    if not isinstance(adapter, WeComAdapter):
+        raise HTTPException(status_code=400, detail="Invalid adapter")
+
+    raw_body = await request.body()
+    # WeCom sends XML with an 'Encrypt' field
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(raw_body)
+    encrypt = root.findtext("Encrypt")
+    
+    credentials = connector.credentials or {}
+    aes_key = credentials.get("encoding_aes_key")
+    decrypted_xml = adapter._decrypt(str(aes_key), str(encrypt))
+    
+    # Process the decrypted XML
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="wecom",
+        request=request,
+        payload={"_xml_content": decrypted_xml},
+        db=db,
+    )
+
+
+@router.get("/{connector_id}/weixin/webhook")
+async def weixin_handshake(
+    connector_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    connector = await db.get(BotConnector, connector_id)
+    if connector is None:
+        raise HTTPException(status_code=404, detail="Connector not found")
+    
+    adapter = get_adapter("weixin")
+    from backend.bots.connectors.weixin import WeixinAdapter
+    if isinstance(adapter, WeixinAdapter):
+        return adapter.handle_handshake(connector, request.query_params)
+    return ""
+
+
+@router.post("/{connector_id}/weixin/webhook")
+async def weixin_webhook(
+    connector_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    raw_body = await request.body()
+    # Weixin sends raw XML in the body
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="weixin",
+        request=request,
+        payload={"_xml_content": raw_body.decode("utf-8")},
+        db=db,
+    )
+
+
+@router.post(
+    "/{connector_id}/twilio/webhook",
+    summary="Handle inbound Twilio SMS updates",
+)
+async def twilio_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="twilio",
+        request=request,
+        payload=payload,
+        db=db,
+    )
+
+
+@router.post(
+    "/{connector_id}/email/webhook",
+    summary="Handle inbound Email updates (Mailgun format)",
+)
+async def email_webhook(
+    connector_id: uuid.UUID,
+    payload: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _process_webhook(
+        connector_id=connector_id,
+        platform="email",
+        request=request,
+        payload=payload,
+        db=db,
+    )

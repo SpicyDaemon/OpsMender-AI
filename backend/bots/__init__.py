@@ -1,12 +1,16 @@
 from backend.bots.connectors import (
     DingTalkAdapter,
     DiscordAdapter,
+    EmailAdapter,
     FeishuAdapter,
     MatrixAdapter,
     MattermostAdapter,
     SignalAdapter,
     SlackAdapter,
     TelegramAdapter,
+    TwilioAdapter,
+    WeComAdapter,
+    WeixinAdapter,
     WhatsAppAdapter,
     register_adapter,
 )
@@ -20,3 +24,7 @@ register_adapter(MattermostAdapter())
 register_adapter(MatrixAdapter())
 register_adapter(FeishuAdapter())
 register_adapter(DingTalkAdapter())
+register_adapter(WeComAdapter())
+register_adapter(WeixinAdapter())
+register_adapter(TwilioAdapter())
+register_adapter(EmailAdapter())

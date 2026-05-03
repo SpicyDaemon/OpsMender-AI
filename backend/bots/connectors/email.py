@@ -1,0 +1,123 @@
+"""Email (Mailgun/SMTP) connector adapter."""
+
+from __future__ import annotations
+
+import hmac
+import hashlib
+from typing import Any, Mapping
+
+from fastapi import HTTPException, status
+import httpx
+
+from backend.db.models import BotConnector
+from .base import BotConnectorAdapter, InboundMessage
+
+
+class EmailAdapter:
+    """Adapter for Email (via Mailgun Webhooks and API)."""
+
+    platform = "email"
+
+    def verify_webhook(
+        self,
+        connector: BotConnector,
+        *,
+        headers: Mapping[str, str],
+        raw_body: bytes,
+    ) -> None:
+        if connector.platform != self.platform:
+            raise HTTPException(status_code=400, detail="Not an Email connector")
+            
+        credentials = connector.credentials or {}
+        api_key = credentials.get("mailgun_api_key")
+        if not api_key:
+            # If no API key, we might skip verification or use a different method
+            return
+
+        # Mailgun signature verification: https://documentation.mailgun.com/en/latest/user_manual.html#webhooks
+        # Mailgun sends: timestamp, token, signature in the JSON body or form
+        try:
+            payload = httpx.Response(status_code=200, content=raw_body).json()
+            signature_data = payload.get("signature") or {}
+            timestamp = signature_data.get("timestamp")
+            token = signature_data.get("token")
+            signature = signature_data.get("signature")
+        except Exception:
+            # Might be form-encoded
+            from urllib.parse import parse_qs
+            params = parse_qs(raw_body.decode("utf-8"))
+            timestamp = params.get("timestamp", [None])[0]
+            token = params.get("token", [None])[0]
+            signature = params.get("signature", [None])[0]
+
+        if not all([timestamp, token, signature]):
+            return # Skip verification if not Mailgun style
+
+        hmac_digest = hmac.new(
+            api_key.encode("utf-8"),
+            (str(timestamp) + str(token)).encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(str(signature), hmac_digest):
+            raise HTTPException(status_code=403, detail="Invalid Mailgun signature")
+
+    def parse_inbound(
+        self,
+        payload: dict[str, Any],
+    ) -> InboundMessage | None:
+        # Mailgun 'Routes' send a POST with: sender, subject, stripped-text, etc.
+        sender = payload.get("sender") or payload.get("from")
+        text = payload.get("stripped-text") or payload.get("body-plain")
+        subject = payload.get("subject", "")
+        
+        if not sender or not text:
+            return None
+            
+        # Reconstruct message: Subject + Body
+        full_text = f"Subject: {subject}\n\n{text}" if subject else text
+            
+        return InboundMessage(
+            chat_id=str(sender),
+            platform_user_id=str(sender),
+            text=full_text.strip(),
+        )
+
+    def inline_reply(
+        self,
+        chat_id: str,
+        text: str,
+    ) -> dict[str, Any] | None:
+        return None
+
+    async def send_message(
+        self,
+        connector: BotConnector,
+        *,
+        chat_id: str,
+        text: str,
+    ) -> tuple[bool, str | None]:
+        credentials = connector.credentials or {}
+        api_key = credentials.get("mailgun_api_key")
+        domain = credentials.get("mailgun_domain")
+        from_email = credentials.get("from_email") or f"bot@{domain}"
+        
+        if not api_key or not domain:
+            return False, "Mailgun credentials (api_key, domain) not configured"
+            
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"https://api.mailgun.net/v3/{domain}/messages",
+                auth=("api", api_key),
+                data={
+                    "from": from_email,
+                    "to": chat_id,
+                    "subject": "AIM Incident Update",
+                    "text": text,
+                },
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                return False, f"Mailgun API error: HTTP {resp.status_code} - {resp.text}"
+                
+            return True, None

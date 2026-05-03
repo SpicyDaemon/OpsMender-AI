@@ -14,12 +14,16 @@ from .base import BotConnectorAdapter, InboundMessage
 from .registry import get_adapter, list_platforms, register_adapter
 from .dingtalk import DingTalkAdapter
 from .discord import DiscordAdapter
+from .email import EmailAdapter
 from .feishu import FeishuAdapter
 from .matrix import MatrixAdapter
 from .mattermost import MattermostAdapter
 from .signal import SignalAdapter
 from .slack import SlackAdapter
 from .telegram import TelegramAdapter
+from .twilio import TwilioAdapter
+from .wecom import WeComAdapter
+from .weixin import WeixinAdapter
 from .whatsapp import WhatsAppAdapter
 
 __all__ = [
@@ -27,12 +31,16 @@ __all__ = [
     "InboundMessage",
     "DingTalkAdapter",
     "DiscordAdapter",
+    "EmailAdapter",
     "FeishuAdapter",
     "MatrixAdapter",
     "MattermostAdapter",
     "SignalAdapter",
     "SlackAdapter",
     "TelegramAdapter",
+    "TwilioAdapter",
+    "WeComAdapter",
+    "WeixinAdapter",
     "WhatsAppAdapter",
     "get_adapter",
     "list_platforms",

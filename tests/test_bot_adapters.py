@@ -20,6 +20,10 @@ from backend.bots.connectors.mattermost import MattermostAdapter
 from backend.bots.connectors.matrix import MatrixAdapter
 from backend.bots.connectors.feishu import FeishuAdapter
 from backend.bots.connectors.dingtalk import DingTalkAdapter
+from backend.bots.connectors.wecom import WeComAdapter
+from backend.bots.connectors.weixin import WeixinAdapter
+from backend.bots.connectors.twilio import TwilioAdapter
+from backend.bots.connectors.email import EmailAdapter
 from backend.db.models import BotConnector
 
 
@@ -292,3 +296,135 @@ def test_dingtalk_parse_inbound():
     assert msg.chat_id == "conv123"
     assert msg.platform_user_id == "user789"
     assert msg.text == "/incident def"
+
+
+def test_wecom_signature():
+    adapter = WeComAdapter()
+    token = "wecomtoken"
+    timestamp = "123456"
+    nonce = "abcd"
+    msg_encrypt = "some_encrypted_data"
+    
+    # Signature is sha1(sorted([token, timestamp, nonce, msg_encrypt]))
+    v = sorted([token, timestamp, nonce, msg_encrypt])
+    expected_sig = hashlib.sha1("".join(v).encode("utf-8")).hexdigest()
+    
+    sig = adapter._get_signature(token, timestamp, nonce, msg_encrypt)
+    assert sig == expected_sig
+
+
+def test_wecom_parse_inbound():
+    adapter = WeComAdapter()
+    xml_content = """<xml>
+        <ToUserName><![CDATA[toUser]]></ToUserName>
+        <FromUserName><![CDATA[fromUser]]></FromUserName>
+        <CreateTime>1348831860</CreateTime>
+        <MsgType><![CDATA[text]]></MsgType>
+        <Content><![CDATA[ /help ]]></Content>
+        <MsgId>1234567890123456</MsgId>
+        <AgentID>1</AgentID>
+    </xml>"""
+    
+    msg = adapter.parse_inbound({"_xml_content": xml_content})
+    assert msg.chat_id == "fromUser"
+    assert msg.platform_user_id == "fromUser"
+    assert msg.text == "/help"
+
+
+def test_weixin_signature():
+    adapter = WeixinAdapter()
+    token = "weixintoken"
+    timestamp = "123456"
+    nonce = "abcd"
+    
+    # Signature is sha1(sorted([token, timestamp, nonce]))
+    v = sorted([token, timestamp, nonce])
+    expected_sig = hashlib.sha1("".join(v).encode("utf-8")).hexdigest()
+    
+    sig = adapter._get_signature(token, timestamp, nonce)
+    assert sig == expected_sig
+
+
+def test_twilio_verify_webhook():
+    adapter = TwilioAdapter()
+    token = "twiliotoken"
+    url = "https://aim.example.com/twilio"
+    connector = BotConnector(
+        platform="twilio",
+        is_enabled=True,
+        credentials={"auth_token": token},
+        config={"webhook_url": url}
+    )
+    
+    # Twilio signature: b64(hmac-sha1(url + sorted_params))
+    basestring = url + "BodyhelloFrom+1555"
+    mac = hmac.new(token.encode("utf-8"), basestring.encode("utf-8"), hashlib.sha1)
+    signature = base64.b64encode(mac.digest()).decode("utf-8")
+    
+    headers = {"X-Twilio-Signature": signature}
+    body = b"Body=hello&From=%2B1555"
+    
+    # Should not raise
+    adapter.verify_webhook(connector, headers=headers, raw_body=body)
+    
+    # Test failure
+    with pytest.raises(HTTPException) as exc:
+        adapter.verify_webhook(connector, headers={"X-Twilio-Signature": "wrong"}, raw_body=body)
+    assert exc.value.status_code == 403
+
+
+def test_twilio_parse_inbound():
+    adapter = TwilioAdapter()
+    payload = {"From": "+1555", "Body": "/incidents"}
+    msg = adapter.parse_inbound(payload)
+    assert msg.chat_id == "+1555"
+    assert msg.text == "/incidents"
+
+
+def test_email_verify_webhook():
+    adapter = EmailAdapter()
+    key = "mailgunkey"
+    connector = BotConnector(
+        platform="email",
+        is_enabled=True,
+        credentials={"mailgun_api_key": key}
+    )
+    
+    timestamp = "123456"
+    token = "mailguntoken"
+    hmac_digest = hmac.new(
+        key.encode("utf-8"),
+        (timestamp + token).encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    
+    payload = {
+        "signature": {
+            "timestamp": timestamp,
+            "token": token,
+            "signature": hmac_digest
+        }
+    }
+    body = json.dumps(payload).encode("utf-8")
+    
+    # Should not raise
+    adapter.verify_webhook(connector, headers={}, raw_body=body)
+    
+    # Test failure
+    payload["signature"]["signature"] = "wrong"
+    with pytest.raises(HTTPException) as exc:
+        adapter.verify_webhook(connector, headers={}, raw_body=json.dumps(payload).encode("utf-8"))
+    assert exc.value.status_code == 403
+
+
+def test_email_parse_inbound():
+    adapter = EmailAdapter()
+    payload = {
+        "sender": "op@example.com",
+        "subject": "Fire!",
+        "stripped-text": "/incident 123"
+    }
+    msg = adapter.parse_inbound(payload)
+    assert msg.chat_id == "op@example.com"
+    assert "Subject: Fire!" in msg.text
+    assert "/incident 123" in msg.text

@@ -318,6 +318,96 @@ Ensure you enable **Signature** verification in the robot settings using your `a
 
 Identity mapping (RBAC): Use the DingTalk Sender ID (e.g., `$...$`) as the platform user ID.
 
+### WeCom (WeChat Work)
+
+WeCom integration supports enterprise-grade secure messaging with AES-256-CBC encryption.
+
+Required connector credentials:
+
+```text
+corpid=ww...                # Enterprise ID
+corpsecret=...              # Agent Secret
+agentid=...                 # Application Agent ID
+token=...                   # Token for signature verification
+encoding_aes_key=...        # AES Key for message decryption
+```
+
+Set the **URL** in the WeCom Management Console (under **Customer Service** or **Apps**) to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/wecom/webhook
+```
+
+AIM automatically handles the decryption and signature verification of the XML payloads.
+
+Identity mapping (RBAC): Use the WeCom UserID (e.g., `Siddharth`) as the platform user ID.
+
+### Weixin (WeChat Official Account)
+
+Weixin integration supports standard Official Account message processing.
+
+Required connector credentials:
+
+```text
+appid=wx...                 # Official Account AppID
+appsecret=...               # AppSecret
+token=...                   # Token for signature verification
+```
+
+Set the **URL** in the WeChat Official Platform settings to:
+
+```text
+https://<your-aim-url>/bot-connectors/<connector-id>/weixin/webhook
+```
+
+Identity mapping (RBAC): Use the Weixin OpenID (e.g., `o...`) as the platform user ID.
+
+### SMS (Twilio)
+
+SMS integration supports incident updates and simple command replies via Twilio.
+
+Required connector credentials:
+
+```text
+account_sid=AC...           # Twilio Account SID
+auth_token=...              # Twilio Auth Token
+phone_number=+1...          # Your Twilio Phone Number
+```
+
+Required connector config:
+
+```json
+{
+  "webhook_url": "https://<your-aim-url>/bot-connectors/<connector-id>/twilio/webhook"
+}
+```
+
+Set the **A MESSAGE COMES IN** webhook in the Twilio Phone Number settings to the `webhook_url` above. AIM verifies every inbound SMS using Twilio's signature validation.
+
+Identity mapping (RBAC): Use the sender's phone number (e.g., `+15550100`) as the platform user ID.
+
+### Email (Mailgun)
+
+Email integration supports incident reporting and replies via Mailgun.
+
+Required connector credentials:
+
+```text
+mailgun_api_key=key-...     # Mailgun API Key
+mailgun_domain=mg...        # Mailgun Domain
+from_email=aim@yourdomain.com # Sender address
+```
+
+Set up a **Route** in Mailgun to forward emails to:
+
+```text
+POST https://<your-aim-url>/bot-connectors/<connector-id>/email/webhook
+```
+
+AIM verifies the Mailgun signature if the API key is provided.
+
+Identity mapping (RBAC): Use the sender's email address (e.g., `operator@company.com`) as the platform user ID.
+
 ## 3. Outbound Webhooks
 
 AIM can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.

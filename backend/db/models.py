@@ -35,6 +35,7 @@ from sqlalchemy import (
     String,
     Text,
     TypeDecorator,
+    UniqueConstraint,
     Uuid,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -286,7 +287,7 @@ class ModelConfig(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # anthropic | openai | azure_openai | ollama
@@ -300,6 +301,8 @@ class ModelConfig(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_model_config_name"),)
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +318,7 @@ class MCPServer(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     transport: Mapped[str] = mapped_column(String(20), nullable=False)
     command: Mapped[str | None] = mapped_column(String(500), nullable=True)
     args: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
@@ -326,6 +329,8 @@ class MCPServer(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_mcp_server_name"),)
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +346,7 @@ class Skill(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("mcp_servers.id", ondelete="SET NULL"), nullable=True
@@ -353,6 +358,8 @@ class Skill(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_skill_name"),)
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +421,7 @@ class WebhookTrigger(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
     url: Mapped[str] = mapped_column(String(1000), nullable=False)
     format: Mapped[str] = mapped_column(String(20), default="generic", nullable=False)
     event_types: Mapped[list[str]] = mapped_column(JSON, nullable=False)
@@ -432,6 +439,8 @@ class WebhookTrigger(Base):
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_webhook_trigger_name"),)
+
 
 # ---------------------------------------------------------------------------
 # Workflow profiles (custom workflow builder — Phase 3)
@@ -446,7 +455,7 @@ class WorkflowProfile(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     node_order: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -457,6 +466,8 @@ class WorkflowProfile(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_workflow_profile_name"),)
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +483,7 @@ class AgentTeamProfile(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     roles: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -483,6 +494,8 @@ class AgentTeamProfile(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_agent_team_profile_name"),)
 
 
 # ---------------------------------------------------------------------------
@@ -510,7 +523,7 @@ class IngestToken(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # auto | cloudwatch | azure_monitor | gcp_monitoring | oci_monitoring | legacy_alert_vendor | legacy_alert_relay | generic
@@ -523,6 +536,8 @@ class IngestToken(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_ingest_token_name"),)
 
 
 # ---------------------------------------------------------------------------
@@ -576,7 +591,7 @@ class DetectorRule(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
     mcp_server_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False
     )
@@ -601,6 +616,8 @@ class DetectorRule(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_detector_rule_name"),)
 
 
 # ---------------------------------------------------------------------------
@@ -651,7 +668,7 @@ class SLATarget(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
     kind: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # http | tcp | external
@@ -666,6 +683,8 @@ class SLATarget(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_sla_target_name"),)
 
 
 # ---------------------------------------------------------------------------

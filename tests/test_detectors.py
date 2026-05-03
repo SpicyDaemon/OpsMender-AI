@@ -103,15 +103,7 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
             "password": "securepass123",
         },
     )
-    # Link user to TEST_ORG_ID
-    factory = client._transport.app.state.session_factory
-    async with factory() as db:
-        from backend.db.repos import UserRepo
-        user = await UserRepo.get_by_username(db, "detector-admin")
-        if user:
-            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="admin")
-            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
-            await db.commit()
+    # Linked automatically by /auth/register
 
     resp = await client.post(
         "/auth/login",

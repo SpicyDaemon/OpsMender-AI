@@ -121,15 +121,8 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
             "password": "securepass123",
         },
     )
-    # Link user to TEST_ORG_ID
-    factory = client._transport.app.state.session_factory
-    async with factory() as db:
-        from backend.db.repos import UserRepo
-        user = await UserRepo.get_by_username(db, "skilladmin")
-        if user:
-            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="admin")
-            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
-            await db.commit()
+    # The user is automatically linked to TEST_ORG_ID by /auth/register in the test environment
+    # because it's the first organization created in the seeded DB.
 
     resp = await client.post(
         "/auth/login",
@@ -149,15 +142,7 @@ async def viewer_headers(client: AsyncClient, auth_headers) -> dict[str, str]:
             "role": "viewer",
         },
     )
-    # Link user to TEST_ORG_ID
-    factory = client._transport.app.state.session_factory
-    async with factory() as db:
-        from backend.db.repos import UserRepo
-        user = await UserRepo.get_by_username(db, "skillviewer")
-        if user:
-            await UserRepo.add_to_organization(db, user.id, TEST_ORG_ID, role="viewer")
-            await UserRepo.set_primary_org(db, user.id, TEST_ORG_ID)
-            await db.commit()
+    # The user is automatically linked to TEST_ORG_ID by /auth/register
 
     resp = await client.post(
         "/auth/login",

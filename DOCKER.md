@@ -69,3 +69,23 @@ cp .env.example .env
 ```
 
 Then update `docker-compose.yml` to use `.env` instead of `.env.example`.
+
+---
+
+## Production-like Deployment (Single Container)
+
+For a deployment that mirrors production (Frontend + Backend + Database), use the configurations in the `docker/` directory.
+
+```bash
+# Start the full stack (App + Postgres)
+docker compose -f docker/docker-compose.yml up -d
+
+# Run migrations (if not automatic)
+docker compose -f docker/docker-compose.yml exec app python -m alembic upgrade head
+```
+
+This setup:
+1. Builds a single-container image for the App (Next.js static export served by FastAPI).
+2. Sets up a persistent PostgreSQL database.
+3. Automatically applies database migrations on startup.
+4. Uses environment variables from the root `.env` file.

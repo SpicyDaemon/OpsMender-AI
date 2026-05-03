@@ -54,7 +54,13 @@ RUN uv add \
     pyyaml \
     typer \
     rich \
-    python-dotenv
+    python-dotenv \
+    sqlalchemy[asyncio] \
+    alembic \
+    asyncpg \
+    passlib[bcrypt] \
+    python-jose[cryptography] \
+    python-multipart
 
 # Install dev dependencies
 RUN uv add --dev \

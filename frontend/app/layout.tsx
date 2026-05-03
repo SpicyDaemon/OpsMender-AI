@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/auth";
+import { BrandingProvider } from "@/context/branding";
 import { ToastProvider } from "@/components/ui/Toast";
 
 const inter = Inter({
@@ -55,7 +56,9 @@ export default function RootLayout({
     >
       <body className="h-full">
         <AuthProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <BrandingProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </BrandingProvider>
         </AuthProvider>
       </body>
     </html>

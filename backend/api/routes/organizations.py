@@ -52,7 +52,7 @@ async def create_organization(
         pass
 
     try:
-        org = await OrganizationRepo.create(db, name=req.name, slug=req.slug)
+        org = await OrganizationRepo.create(db, name=req.name, slug=req.slug, branding=req.branding)
         await db.commit()
         return org
     except Exception as e:
@@ -81,7 +81,7 @@ async def update_organization(
     org_id: uuid.UUID, req: OrganizationUpdate, db: AsyncSession = Depends(get_db)
 ):
     """Update organization details."""
-    org = await OrganizationRepo.update(db, org_id, name=req.name, slug=req.slug)
+    org = await OrganizationRepo.update(db, org_id, name=req.name, slug=req.slug, branding=req.branding)
     if org is None:
         raise HTTPException(status_code=404, detail="Organization not found")
     await db.commit()

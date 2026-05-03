@@ -2817,8 +2817,8 @@ class BotActionAuditRepo:
 
 class OrganizationRepo:
     @staticmethod
-    async def create(db: AsyncSession, *, name: str, slug: str | None = None) -> Organization:
-        org = Organization(name=name, slug=slug or name.lower().replace(" ", "-"))
+    async def create(db: AsyncSession, *, name: str, slug: str | None = None, branding: dict | None = None) -> Organization:
+        org = Organization(name=name, slug=slug or name.lower().replace(" ", "-"), branding=branding)
         db.add(org)
         await db.flush()
         return org
@@ -2839,12 +2839,15 @@ class OrganizationRepo:
         *,
         name: str | None = None,
         slug: str | None = None,
+        branding: dict | None = None,
     ) -> Organization | None:
         values: dict[str, Any] = {}
         if name is not None:
             values["name"] = name
         if slug is not None:
             values["slug"] = slug
+        if branding is not None:
+            values["branding"] = branding
 
         if not values:
             return await OrganizationRepo.get_by_id(db, org_id)

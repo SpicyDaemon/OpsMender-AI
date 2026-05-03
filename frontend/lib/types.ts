@@ -11,6 +11,7 @@ export interface UserResponse {
   email: string;
   role: "admin" | "operator" | "viewer";
   is_active: boolean;
+  primary_org_id: string | null;
   created_at: string;
 }
 
@@ -322,7 +323,24 @@ export interface MCPServerTestResponse {
 // Bot Connectors
 // ---------------------------------------------------------------------------
 
-export type BotConnectorPlatform = "telegram" | "signal" | "whatsapp" | "custom";
+export type BotConnectorPlatform =
+  | "telegram"
+  | "signal"
+  | "whatsapp"
+  | "slack"
+  | "discord"
+  | "teams"
+  | "mattermost"
+  | "matrix"
+  | "feishu"
+  | "dingtalk"
+  | "wecom"
+  | "weixin"
+  | "twilio"
+  | "email"
+  | "homeassistant"
+  | "bluebubbles"
+  | "custom";
 
 export type BotConnectorCapability =
   | "incident_lookup"
@@ -824,10 +842,20 @@ export interface BotUserLinkCreate {
 // ---------------------------------------------------------------------------
 
 
+export interface BrandingConfig {
+  company_name?: string;
+  logo_url?: string;
+  primary_color?: string; // Hex code
+  secondary_color?: string; // Hex code
+  favicon_url?: string;
+}
+
+
 export interface OrganizationResponse {
   id: string;
   name: string;
   slug: string;
+  branding: BrandingConfig | null;
   created_at: string;
 }
 
@@ -841,12 +869,14 @@ export interface OrganizationListResponse {
 export interface OrganizationCreate {
   name: string;
   slug?: string;
+  branding?: BrandingConfig;
 }
 
 
 export interface OrganizationUpdate {
   name?: string;
   slug?: string;
+  branding?: BrandingConfig;
 }
 
 

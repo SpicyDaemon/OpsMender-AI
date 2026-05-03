@@ -25,6 +25,19 @@ export function clearToken(): void {
   localStorage.removeItem("aim_token");
 }
 
+export function getOrgId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("aim_org_id");
+}
+
+export function setOrgId(orgId: string): void {
+  localStorage.setItem("aim_org_id", orgId);
+}
+
+export function clearOrgId(): void {
+  localStorage.removeItem("aim_org_id");
+}
+
 // ---------------------------------------------------------------------------
 // Core fetch wrapper
 // ---------------------------------------------------------------------------
@@ -42,6 +55,11 @@ async function request<T>(
   const token = getToken();
   if (token && !skipAuth) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const orgId = getOrgId();
+  if (orgId) {
+    headers["X-Org-ID"] = orgId;
   }
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });

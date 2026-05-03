@@ -8,7 +8,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { clearToken, getMe, getToken, login as apiLogin, setToken } from "@/lib/api";
+import { clearToken, getMe, getToken, login as apiLogin, setToken, setOrgId, clearOrgId } from "@/lib/api";
 import type { UserResponse } from "@/lib/types";
 
 interface AuthContextValue {
@@ -33,7 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     getMe()
-      .then(setUser)
+      .then((u) => {
+        setUser(u);
+        if (u.primary_org_id) setOrgId(u.primary_org_id);
+      })
       .catch(() => clearToken())
       .finally(() => setLoading(false));
   }, []);
@@ -43,10 +46,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(resp.access_token);
     const me = await getMe();
     setUser(me);
+    if (me.primary_org_id) setOrgId(me.primary_org_id);
   }, []);
 
   const logout = useCallback(() => {
     clearToken();
+    clearOrgId();
     setUser(null);
     window.location.href = "/login";
   }, []);

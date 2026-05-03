@@ -40,6 +40,7 @@ class UserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    primary_org_id: Optional[uuid.UUID] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -849,7 +850,7 @@ class UptimeResponse(BaseModel):
 
 class BotConnectorUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
-    platform: str = Field(pattern="^(telegram|signal|whatsapp|custom)$")
+    platform: str = Field(pattern="^(telegram|signal|whatsapp|slack|discord|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|homeassistant|bluebubbles|custom)$")
     config: Optional[dict] = None
     credentials: Optional[dict] = None
     clear_credentials: bool = False
@@ -918,17 +919,20 @@ class BotUserLinkListResponse(BaseModel):
 class OrganizationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     slug: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    branding: Optional[dict] = None
 
 
 class OrganizationUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     slug: Optional[str] = Field(None, min_length=1, max_length=100)
+    branding: Optional[dict] = None
 
 
 class OrganizationResponse(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
+    branding: Optional[dict]
     created_at: datetime
 
     model_config = {"from_attributes": True}

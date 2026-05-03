@@ -53,6 +53,13 @@ async def app(tmp_path):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     set_session_factory(factory)
 
+    # Multi-tenancy: Ensure the default test organization exists
+    async with factory() as db:
+        from backend.db.models import Organization
+        org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
+        db.add(org)
+        await db.commit()
+
     tmp_env = tmp_path / ".env"
     tmp_env.write_text(
         "AIM_TIER=2\n"

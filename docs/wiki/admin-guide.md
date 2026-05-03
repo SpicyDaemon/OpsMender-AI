@@ -7,6 +7,7 @@ AIM supports multiple isolated organizations on a single deployment. This allows
 *   **Organizations:** The top-level entity. Every incident, session, and configuration is bound to an organization.
 *   **User-Org Mapping:** Users can be members of multiple organizations. Each user has a `primary_org_id` which determines their default context for API requests.
 *   **Isolation:** Data is strictly isolated at the database repository layer. Background services and chat bots are organization-aware and only interact with data belonging to their resolved tenant.
+*   **Custom Branding:** Each organization can define its own primary/secondary colors, company name, and logo/favicon. These are applied dynamically when a user logs in.
 
 ## 1. Authentication
 
@@ -46,10 +47,10 @@ AIM uses the Model Context Protocol (MCP) to interact with your infrastructure. 
 External chat bot connectors are managed in **Config** > **Integrations**.
 
 1. Click **Add Connector**.
-2. Choose the platform (`telegram`, `signal`, `whatsapp`, or `custom`).
-3. Add non-secret connector settings as JSON. For Telegram, use `allowed_chat_ids` to restrict which chats can issue commands.
-4. Add credentials as `key=value` lines. Telegram currently uses `bot_token` for readiness checks and `webhook_secret` for inbound webhook verification.
-5. Select allowed capabilities. Telegram currently supports `incident_lookup`, `session_status`, and `approvals` commands.
+2. Choose the platform (e.g., `telegram`, `slack`, `discord`, `teams`, `mattermost`, `matrix`, `whatsapp`, `signal`, `lark`, `dingtalk`, `wecom`, `twilio`, `email`).
+3. Add platform-specific connector settings as JSON.
+4. Add credentials as `key=value` lines (e.g., `bot_token=...`).
+5. Select allowed capabilities (e.g., `incident_lookup`, `session_status`, `approvals`, `notifications`).
 6. Click **Test** to validate the saved configuration.
 
 Telegram webhook URL:

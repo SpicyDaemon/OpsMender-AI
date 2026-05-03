@@ -28,10 +28,8 @@ AIM is composed of a FastAPI backend, a Next.js frontend, and a PostgreSQL datab
 
 1. Open your browser and navigate to `http://localhost:3000`.
 2. You will be redirected to the login page.
-3. For local development, AIM includes a default admin account. Use the following credentials:
-   - **Username:** `admin`
-   - **Password:** `admin`
-4. Upon successful login, you will land on the **Incidents Dashboard**, which will initially be empty.
+3. For first-run setup, click **Register** to create your admin account. The first registered user is automatically assigned the `admin` role and linked to a default "Main" organization.
+4. Upon successful login, you will land on the **Incidents Dashboard**, which will initially be empty and scoped to your organization.
 
 ## 3. Creating Your First Incident
 

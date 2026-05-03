@@ -1809,7 +1809,20 @@ function BotConnectorModal({
               <option value="telegram">Telegram</option>
               <option value="signal">Signal</option>
               <option value="whatsapp">WhatsApp</option>
-              <option value="custom">Custom</option>
+              <option value="slack">Slack</option>
+              <option value="discord">Discord</option>
+              <option value="teams">Microsoft Teams</option>
+              <option value="mattermost">Mattermost</option>
+              <option value="matrix">Matrix</option>
+              <option value="feishu">Lark / Feishu</option>
+              <option value="dingtalk">DingTalk</option>
+              <option value="wecom">WeCom</option>
+              <option value="weixin">WeChat (Official Account)</option>
+              <option value="twilio">Twilio (SMS/WhatsApp)</option>
+              <option value="email">Email (SMTP/IMAP)</option>
+              <option value="homeassistant">Home Assistant</option>
+              <option value="bluebubbles">BlueBubbles (iMessage)</option>
+              <option value="custom">Custom Adapter</option>
             </Select>
           </div>
         </div>

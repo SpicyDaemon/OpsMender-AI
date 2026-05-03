@@ -57,13 +57,29 @@ async def register(
     existing_users = await UserRepo.list_all(db)
     role = "admin" if len(existing_users) == 0 else body.role
 
+    # Multi-tenancy: Ensure at least one organization exists
+    from backend.db.repos import OrganizationRepo
+    orgs = await OrganizationRepo.list_all(db)
+    if not orgs:
+        # Create default organization if none exists
+        org = await OrganizationRepo.create(db, name="Main", slug="main")
+    else:
+        org = orgs[0]
+
     user = await UserRepo.create(
         db,
         username=body.username,
         email=body.email,
         password_hash=hash_password(body.password),
         role=role,
+        primary_org_id=org.id,
     )
+    
+    # Link user to the organization
+    await UserRepo.add_to_organization(db, user_id=user.id, org_id=org.id, role=role)
+    
+    await db.commit()
+    await db.refresh(user)
     return user
 
 

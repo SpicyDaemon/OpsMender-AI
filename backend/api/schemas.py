@@ -963,6 +963,24 @@ class OrganizationUserListResponse(BaseModel):
     total: int
 
 
+class MyOrganizationResponse(BaseModel):
+    """An organization the current user belongs to."""
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    branding: Optional[dict] = None
+    role: str
+    is_primary: bool
+
+    model_config = {"from_attributes": True}
+
+
+class MyOrganizationListResponse(BaseModel):
+    items: list[MyOrganizationResponse]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------

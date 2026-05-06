@@ -771,6 +771,7 @@ export function connectSessionStream(
 
 
 import type {
+  MyOrganizationListResponse,
   OrganizationCreate,
   OrganizationListResponse,
   OrganizationResponse,
@@ -830,4 +831,16 @@ export async function removeUserFromOrganization(
   userId: string,
 ): Promise<void> {
   return api.del<void>(`/organizations/${orgId}/users/${userId}`);
+}
+
+
+export async function listMyOrganizations(): Promise<MyOrganizationListResponse> {
+  return api.get<MyOrganizationListResponse>("/auth/me/organizations");
+}
+
+
+export async function setMyPrimaryOrganization(
+  orgId: string,
+): Promise<UserResponse> {
+  return api.put<UserResponse>(`/auth/me/primary-org/${orgId}`);
 }

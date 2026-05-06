@@ -110,6 +110,46 @@ class UserRepo:
         return result.mappings().all()
 
     @staticmethod
+    async def list_organizations(
+        db: AsyncSession, user_id: uuid.UUID
+    ) -> Sequence[dict[str, Any]]:
+        """List all organizations a user belongs to with their per-org role."""
+        from sqlalchemy import join
+
+        stmt = (
+            select(
+                Organization.id,
+                Organization.name,
+                Organization.slug,
+                Organization.branding,
+                UserOrganization.role,
+                UserOrganization.joined_at,
+            )
+            .select_from(
+                join(
+                    UserOrganization,
+                    Organization,
+                    UserOrganization.org_id == Organization.id,
+                )
+            )
+            .where(UserOrganization.user_id == user_id)
+            .order_by(UserOrganization.joined_at)
+        )
+        result = await db.execute(stmt)
+        return result.mappings().all()
+
+    @staticmethod
+    async def is_member(
+        db: AsyncSession, user_id: uuid.UUID, org_id: uuid.UUID
+    ) -> bool:
+        stmt = select(UserOrganization).where(
+            UserOrganization.user_id == user_id,
+            UserOrganization.org_id == org_id,
+        )
+        result = await db.execute(stmt)
+        return result.first() is not None
+
+    @staticmethod
     async def remove_from_organization(
         db: AsyncSession, user_id: uuid.UUID, org_id: uuid.UUID
     ) -> bool:

@@ -899,3 +899,19 @@ export interface UserOrganizationLink {
   user_id: string;
   role: "admin" | "operator" | "viewer";
 }
+
+
+export interface MyOrganizationResponse {
+  id: string;
+  name: string;
+  slug: string;
+  branding?: BrandingConfig | null;
+  role: "admin" | "operator" | "viewer";
+  is_primary: boolean;
+}
+
+
+export interface MyOrganizationListResponse {
+  items: MyOrganizationResponse[];
+  total: number;
+}

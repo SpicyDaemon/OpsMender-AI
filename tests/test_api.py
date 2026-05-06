@@ -385,6 +385,76 @@ class TestAuth:
         assert resp.status_code == 401
 
 
+class TestMyOrganizations:
+    async def test_list_my_organizations(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        resp = await client.get("/auth/me/organizations", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+        # The fixture's TEST_ORG_ID should be flagged primary
+        primary = [o for o in data["items"] if o["is_primary"]]
+        assert len(primary) == 1
+        assert primary[0]["id"] == str(TEST_ORG_ID)
+
+    async def test_set_primary_org_member(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        # Create a second org and link the user
+        from backend.db.repos import OrganizationRepo, UserRepo
+        async with app.state.session_factory() as db:
+            org2 = await OrganizationRepo.create(db, name="Second", slug="second-org")
+            user = await UserRepo.get_by_username(db, "testadmin")
+            await UserRepo.add_to_organization(
+                db, user_id=user.id, org_id=org2.id, role="admin"
+            )
+            await db.commit()
+            org2_id = str(org2.id)
+
+        resp = await client.put(
+            f"/auth/me/primary-org/{org2_id}", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["primary_org_id"] == org2_id
+
+    async def test_set_primary_org_non_member_forbidden(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.db.repos import OrganizationRepo
+        async with app.state.session_factory() as db:
+            org3 = await OrganizationRepo.create(db, name="Third", slug="third-org")
+            await db.commit()
+            org3_id = str(org3.id)
+
+        resp = await client.put(
+            f"/auth/me/primary-org/{org3_id}", headers=auth_headers
+        )
+        assert resp.status_code == 403
+
+    async def test_x_org_id_header_member(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        # User is a member of TEST_ORG_ID; explicitly setting it via header
+        # should succeed for org-scoped endpoints.
+        headers = {**auth_headers, "X-Org-ID": str(TEST_ORG_ID)}
+        resp = await client.get("/incidents", headers=headers)
+        assert resp.status_code == 200
+
+    async def test_x_org_id_header_non_member_forbidden(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.db.repos import OrganizationRepo
+        async with app.state.session_factory() as db:
+            other = await OrganizationRepo.create(db, name="Other", slug="other-org")
+            await db.commit()
+            other_id = str(other.id)
+
+        headers = {**auth_headers, "X-Org-ID": other_id}
+        resp = await client.get("/incidents", headers=headers)
+        assert resp.status_code == 403
+
+
 # ===========================================================================
 # Incidents
 # ===========================================================================

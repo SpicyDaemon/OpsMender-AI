@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt as _bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,11 +124,34 @@ async def get_current_user(
 
 async def get_current_org(
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    x_org_id: str | None = Header(default=None, alias="X-Org-ID"),
 ) -> uuid.UUID:
     """Dependency — returns the active organization ID for the request.
-    
-    If the user has no primary_org_id, raises a 400 Bad Request.
+
+    Resolution order:
+    1. ``X-Org-ID`` request header — used when the client wants to act
+       within a specific org context for this request. Must be a UUID
+       referencing an org the user is a member of, otherwise 403.
+    2. ``user.primary_org_id`` — the user's persisted default.
+
+    Raises 400 if neither yields a valid org.
     """
+    if x_org_id:
+        try:
+            requested = uuid.UUID(x_org_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid X-Org-ID header.",
+            )
+        if not await UserRepo.is_member(db, user.id, requested):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not a member of the requested organization.",
+            )
+        return requested
+
     if user.primary_org_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

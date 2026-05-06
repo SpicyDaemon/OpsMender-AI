@@ -3,9 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Bell, ChevronDown, Keyboard, LogOut, Search } from "lucide-react";
+import { Bell, Building2, Check, ChevronDown, Keyboard, LogOut, Search } from "lucide-react";
 import { useAuth } from "@/context/auth";
-import { listApprovals } from "@/lib/api";
+import {
+  getOrgId,
+  listApprovals,
+  listMyOrganizations,
+  setMyPrimaryOrganization,
+  setOrgId,
+} from "@/lib/api";
+import type { MyOrganizationResponse } from "@/lib/types";
 
 type SearchKind = "incident" | "session";
 
@@ -25,6 +32,11 @@ export function TopBar() {
   const [pending, setPending] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [orgs, setOrgs] = useState<MyOrganizationResponse[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  const [orgMenuOpen, setOrgMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const orgMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -44,12 +56,56 @@ export function TopBar() {
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+      if (orgMenuRef.current && !orgMenuRef.current.contains(e.target as Node)) {
+        setOrgMenuOpen(false);
+      }
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    listMyOrganizations()
+      .then((res) => {
+        if (cancelled) return;
+        setOrgs(res.items);
+        const stored = getOrgId();
+        const primary = res.items.find((o) => o.is_primary);
+        const current =
+          (stored && res.items.find((o) => o.id === stored)?.id) ||
+          primary?.id ||
+          res.items[0]?.id ||
+          null;
+        setActiveOrgId(current);
+        if (current && current !== stored) setOrgId(current);
+      })
+      .catch(() => {
+        if (!cancelled) setOrgs([]);
+      });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  async function handleSwitchOrg(org: MyOrganizationResponse) {
+    if (org.id === activeOrgId || switching) return;
+    setSwitching(true);
+    try {
+      setOrgId(org.id);
+      await setMyPrimaryOrganization(org.id);
+      setActiveOrgId(org.id);
+      setOrgMenuOpen(false);
+      // Reload so every page-level fetch reruns under the new org context.
+      window.location.reload();
+    } catch {
+      setSwitching(false);
+    }
+  }
+
+  const activeOrg = orgs.find((o) => o.id === activeOrgId) ?? null;
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -93,6 +149,51 @@ export function TopBar() {
       </form>
 
       <div className="flex items-center gap-1.5">
+        {user && orgs.length > 0 && (
+          <div ref={orgMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setOrgMenuOpen((o) => !o)}
+              title="Switch organization"
+              className="flex h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary hover:border-border-strong hover:bg-bg-hover hover:text-fg-primary transition-colors"
+            >
+              <Building2 size={14} className="shrink-0 text-fg-muted" />
+              <span className="hidden md:inline max-w-[140px] truncate font-medium text-fg-primary">
+                {activeOrg?.name ?? "Select org"}
+              </span>
+              <ChevronDown size={14} className="text-fg-muted" />
+            </button>
+            {orgMenuOpen && (
+              <div className="absolute right-0 top-full z-20 mt-2 w-64 overflow-hidden rounded-md border border-border-subtle bg-bg-panel shadow-lg">
+                <div className="border-b border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                  Organizations
+                </div>
+                <ul className="max-h-72 overflow-y-auto py-1">
+                  {orgs.map((org) => {
+                    const isActive = org.id === activeOrgId;
+                    return (
+                      <li key={org.id}>
+                        <button
+                          onClick={() => handleSwitchOrg(org)}
+                          disabled={switching}
+                          className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-bg-hover transition-colors disabled:opacity-50"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium text-fg-primary">{org.name}</p>
+                            <p className="truncate font-mono text-[11px] text-fg-muted">
+                              {org.slug} · {org.role}
+                            </p>
+                          </div>
+                          {isActive && <Check size={14} className="mt-1 shrink-0 text-status-low" />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         <button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent("aim:open-shortcuts"))}

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config_loader import AppConfig
 from backend.api.deps import get_db
 from backend.db.models import User
-from backend.db.repos import UserRepo
+from backend.db.repos import OrganizationDomainRepo, UserRepo
 
 def _auth_config():
     return AppConfig.load().auth
@@ -126,17 +126,36 @@ async def get_current_org(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     x_org_id: str | None = Header(default=None, alias="X-Org-ID"),
+    host: str | None = Header(default=None, alias="Host"),
+    x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ) -> uuid.UUID:
     """Dependency — returns the active organization ID for the request.
 
     Resolution order:
-    1. ``X-Org-ID`` request header — used when the client wants to act
-       within a specific org context for this request. Must be a UUID
-       referencing an org the user is a member of, otherwise 403.
-    2. ``user.primary_org_id`` — the user's persisted default.
+    1. **Host header** — if the request hostname is registered in
+       ``organization_domains``, that org is *pinned* for the request.
+       The authenticated user must be a member or the request is 403.
+       Pinned hosts ignore ``X-Org-ID`` so a tenant subdomain cannot
+       be subverted by a header from a malicious client.
+    2. ``X-Org-ID`` request header — opt-in switching when the deployment
+       is single-host; must reference an org the user belongs to.
+    3. ``user.primary_org_id`` — the user's persisted default.
 
-    Raises 400 if neither yields a valid org.
+    Raises 400 if none yield a valid org.
     """
+    # 1. Host pin (X-Forwarded-Host beats Host so reverse-proxy deployments work).
+    raw_host = x_forwarded_host or host
+    if raw_host:
+        match = await OrganizationDomainRepo.find_by_host(db, raw_host)
+        if match is not None:
+            if not await UserRepo.is_member(db, user.id, match.org_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User is not a member of the organization for this host.",
+                )
+            return match.org_id
+
+    # 2. X-Org-ID header.
     if x_org_id:
         try:
             requested = uuid.UUID(x_org_id)
@@ -152,6 +171,7 @@ async def get_current_org(
             )
         return requested
 
+    # 3. Primary org fallback.
     if user.primary_org_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

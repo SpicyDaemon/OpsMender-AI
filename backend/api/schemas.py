@@ -981,6 +981,40 @@ class MyOrganizationListResponse(BaseModel):
     total: int
 
 
+class OrganizationDomainCreate(BaseModel):
+    domain: str = Field(..., min_length=1, max_length=255)
+    is_primary: bool = False
+    verified: bool = True
+
+
+class OrganizationDomainResponse(BaseModel):
+    id: uuid.UUID
+    org_id: uuid.UUID
+    domain: str
+    is_primary: bool
+    verified: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrganizationDomainListResponse(BaseModel):
+    items: list[OrganizationDomainResponse]
+    total: int
+
+
+class TenantContextResponse(BaseModel):
+    """Returned by /tenant/resolve so the frontend can show whether the
+    current Host pins a tenant."""
+
+    pinned: bool
+    org_id: Optional[uuid.UUID] = None
+    org_name: Optional[str] = None
+    org_slug: Optional[str] = None
+    branding: Optional[dict] = None
+    host: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------

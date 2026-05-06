@@ -773,10 +773,14 @@ export function connectSessionStream(
 import type {
   MyOrganizationListResponse,
   OrganizationCreate,
+  OrganizationDomainCreate,
+  OrganizationDomainListResponse,
+  OrganizationDomainResponse,
   OrganizationListResponse,
   OrganizationResponse,
   OrganizationUpdate,
   OrganizationUserListResponse,
+  TenantContextResponse,
   UserOrganizationLink,
 } from "./types";
 
@@ -843,4 +847,48 @@ export async function setMyPrimaryOrganization(
   orgId: string,
 ): Promise<UserResponse> {
   return api.put<UserResponse>(`/auth/me/primary-org/${orgId}`);
+}
+
+
+export async function listOrganizationDomains(
+  orgId: string,
+): Promise<OrganizationDomainListResponse> {
+  return api.get<OrganizationDomainListResponse>(
+    `/organizations/${orgId}/domains`,
+  );
+}
+
+
+export async function createOrganizationDomain(
+  orgId: string,
+  body: OrganizationDomainCreate,
+): Promise<OrganizationDomainResponse> {
+  return api.post<OrganizationDomainResponse>(
+    `/organizations/${orgId}/domains`,
+    body,
+  );
+}
+
+
+export async function deleteOrganizationDomain(
+  orgId: string,
+  domainId: string,
+): Promise<void> {
+  return api.del<void>(`/organizations/${orgId}/domains/${domainId}`);
+}
+
+
+export async function setPrimaryOrganizationDomain(
+  orgId: string,
+  domainId: string,
+): Promise<OrganizationDomainResponse> {
+  return api.post<OrganizationDomainResponse>(
+    `/organizations/${orgId}/domains/${domainId}/set-primary`,
+  );
+}
+
+
+export async function resolveTenant(): Promise<TenantContextResponse> {
+  // Public — no auth required.
+  return request<TenantContextResponse>("/tenant/resolve", {}, true);
 }

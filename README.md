@@ -19,6 +19,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Bring your own model** — Anthropic, OpenAI, Azure OpenAI, or local Ollama.
 - **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
 - **Outbound triggers** — fire session-lifecycle notifications to Slack, Teams, Sumo Logic, or any generic webhook endpoint.
+- **Multi-tenant** — strict per-org isolation across every entity. Optional host-based routing pins each tenant to its own URL (`acme.aim.example.com`, `globex.aim.example.com`) with custom branding.
 
 ## Quick Start
 
@@ -257,6 +258,13 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `GET` | `/organizations` | admin | List organizations (multi-tenancy) |
 | `POST` | `/organizations` | admin | Create organization |
 | `PUT` | `/organizations/{id}` | admin | Update organization (name, slug, branding) |
+| `GET` | `/organizations/{id}/domains` | admin | List host-based routing domains for an org |
+| `POST` | `/organizations/{id}/domains` | admin | Register a domain for host-based routing |
+| `POST` | `/organizations/{id}/domains/{domain_id}/set-primary` | admin | Mark domain as primary |
+| `DELETE` | `/organizations/{id}/domains/{domain_id}` | admin | Remove a domain |
+| `GET` | `/auth/me/organizations` | any | List orgs the current user belongs to |
+| `PUT` | `/auth/me/primary-org/{id}` | any | Set the user's persisted primary org |
+| `GET` | `/tenant/resolve` | public | Report whether the request host pins a tenant |
 | `POST` | `/bot-connectors/{id}/telegram/webhook` | Telegram secret header | Handle inbound Telegram bot commands |
 | `GET` | `/skills` | any | List saved skills (optional `?mcp_server_id=` filter) |
 | `GET` | `/skills/{id}` | any | Get a saved skill |

@@ -43,6 +43,7 @@ from backend.db.models import (
     SLO,
     MaintenanceWindow,
     Organization,
+    OrganizationDomain,
     UserOrganization,
 )
 
@@ -2911,3 +2912,102 @@ class OrganizationRepo:
         await db.delete(org)
         await db.flush()
         return True
+
+
+class OrganizationDomainRepo:
+    @staticmethod
+    def normalize(domain: str) -> str:
+        """Strip scheme/port and lowercase. Hostnames are case-insensitive."""
+        d = domain.strip().lower()
+        # Drop scheme if a full URL was pasted in.
+        if "://" in d:
+            d = d.split("://", 1)[1]
+        # Drop path.
+        d = d.split("/", 1)[0]
+        # Drop port (Host header may include it; lookups must match the bare host).
+        if ":" in d:
+            d = d.split(":", 1)[0]
+        return d
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        org_id: uuid.UUID,
+        domain: str,
+        is_primary: bool = False,
+        verified: bool = True,
+    ) -> OrganizationDomain:
+        row = OrganizationDomain(
+            org_id=org_id,
+            domain=OrganizationDomainRepo.normalize(domain),
+            is_primary=is_primary,
+            verified=verified,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def list_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[OrganizationDomain]:
+        stmt = (
+            select(OrganizationDomain)
+            .where(OrganizationDomain.org_id == org_id)
+            .order_by(OrganizationDomain.is_primary.desc(), OrganizationDomain.created_at)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, domain_id: uuid.UUID
+    ) -> OrganizationDomain | None:
+        return await db.get(OrganizationDomain, domain_id)
+
+    @staticmethod
+    async def find_by_host(
+        db: AsyncSession, host: str
+    ) -> OrganizationDomain | None:
+        normalized = OrganizationDomainRepo.normalize(host)
+        if not normalized:
+            return None
+        stmt = select(OrganizationDomain).where(
+            OrganizationDomain.domain == normalized,
+            OrganizationDomain.verified.is_(True),
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def delete(db: AsyncSession, domain_id: uuid.UUID) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(OrganizationDomain).where(OrganizationDomain.id == domain_id)
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+    @staticmethod
+    async def set_primary(
+        db: AsyncSession, *, org_id: uuid.UUID, domain_id: uuid.UUID
+    ) -> OrganizationDomain | None:
+        # Clear existing primary, then set the chosen one.
+        await db.execute(
+            update(OrganizationDomain)
+            .where(OrganizationDomain.org_id == org_id)
+            .values(is_primary=False)
+        )
+        result = await db.execute(
+            update(OrganizationDomain)
+            .where(
+                OrganizationDomain.id == domain_id,
+                OrganizationDomain.org_id == org_id,
+            )
+            .values(is_primary=True)
+        )
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await OrganizationDomainRepo.get_by_id(db, domain_id)

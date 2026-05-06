@@ -9,10 +9,11 @@ import {
   getOrgId,
   listApprovals,
   listMyOrganizations,
+  resolveTenant,
   setMyPrimaryOrganization,
   setOrgId,
 } from "@/lib/api";
-import type { MyOrganizationResponse } from "@/lib/types";
+import type { MyOrganizationResponse, TenantContextResponse } from "@/lib/types";
 
 type SearchKind = "incident" | "session";
 
@@ -37,6 +38,7 @@ export function TopBar() {
   const [orgMenuOpen, setOrgMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const orgMenuRef = useRef<HTMLDivElement | null>(null);
+  const [tenant, setTenant] = useState<TenantContextResponse | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -65,6 +67,14 @@ export function TopBar() {
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveTenant()
+      .then((t) => { if (!cancelled) setTenant(t); })
+      .catch(() => { if (!cancelled) setTenant(null); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -149,7 +159,21 @@ export function TopBar() {
       </form>
 
       <div className="flex items-center gap-1.5">
-        {user && orgs.length > 0 && (
+        {user && tenant?.pinned && (
+          <div
+            title={`Tenant pinned by host: ${tenant.host}`}
+            className="flex h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary"
+          >
+            <Building2 size={14} className="shrink-0 text-fg-muted" />
+            <span className="hidden md:inline max-w-[180px] truncate font-medium text-fg-primary">
+              {tenant.org_name}
+            </span>
+            <span className="hidden lg:inline rounded-pill border border-border-subtle bg-bg-panel px-1.5 py-px font-mono text-[10px] uppercase tracking-wide text-fg-muted">
+              host-pinned
+            </span>
+          </div>
+        )}
+        {user && !tenant?.pinned && orgs.length > 0 && (
           <div ref={orgMenuRef} className="relative">
             <button
               type="button"

@@ -5,9 +5,33 @@ This guide covers the core configuration and integration points for administrato
 AIM supports multiple isolated organizations on a single deployment. This allows MSPs or large enterprises to host different teams or clients with strict data isolation.
 
 *   **Organizations:** The top-level entity. Every incident, session, and configuration is bound to an organization.
-*   **User-Org Mapping:** Users can be members of multiple organizations. Each user has a `primary_org_id` which determines their default context for API requests.
+*   **User-Org Mapping:** Users can be members of multiple organizations. Each user has a `primary_org_id` which determines their default context for API requests. The dashboard topbar shows an org switcher when a user belongs to more than one org.
 *   **Isolation:** Data is strictly isolated at the database repository layer. Background services and chat bots are organization-aware and only interact with data belonging to their resolved tenant.
 *   **Custom Branding:** Each organization can define its own primary/secondary colors, company name, and logo/favicon. These are applied dynamically when a user logs in.
+
+### 0.1 Tenant resolution order
+
+For every authenticated request, AIM resolves the active organization by checking these in order:
+
+1. **Host header** — if the request hostname is registered for an org under **Organizations → Domains**, that org is *pinned* for the request. The user must be a member or the request is rejected with 403. `X-Forwarded-Host` takes precedence over `Host`, so reverse proxies work correctly.
+2. **`X-Org-ID` header** — set automatically by the dashboard when a user picks an org from the topbar switcher. Ignored when the host pins a tenant.
+3. **`primary_org_id`** — the persisted default on the user record.
+
+### 0.2 Domain Isolation (host-based routing)
+
+To give each tenant its own URL (`acme.aim.example.com`, `globex.aim.example.com`):
+
+1. Configure DNS — typically a wildcard `A`/`CNAME` for `*.aim.example.com` pointing at the AIM deployment, or per-tenant CNAMEs.
+2. Make sure your TLS certificate covers the wildcard (Let's Encrypt + DNS-01 challenge or a wildcard cert from your CA).
+3. As a global admin, open **Organizations**, click **Domains** on the org you want to pin, and add the hostname. Toggle **Primary** for the canonical URL used in branded links.
+4. Verify by visiting `https://<your-host>/tenant/resolve` — `pinned: true` confirms the host is registered.
+
+When a request arrives on a registered domain:
+- Non-members of that org are denied with 403, even if their JWT is valid for a different tenant.
+- The topbar org switcher is hidden and a `host-pinned` badge is shown instead — there is no ambiguity to resolve.
+- Branding is applied based on the host even on the unauthenticated `/login` and `/register` pages (via the public `GET /tenant/resolve` endpoint).
+
+If you run AIM on a single hostname, you can skip Domain Isolation entirely — the X-Org-ID + primary_org_id flow keeps working as before.
 
 ## 1. Authentication
 

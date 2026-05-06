@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Building2,
+  Globe,
   Pencil,
   Plus,
+  Star,
   Trash2,
   Users,
   X,
@@ -12,14 +14,19 @@ import {
 import {
   addUserToOrganization,
   createOrganization,
+  createOrganizationDomain,
   deleteOrganization,
+  deleteOrganizationDomain,
+  listOrganizationDomains,
   listOrganizations,
   listOrganizationUsers,
   removeUserFromOrganization,
+  setPrimaryOrganizationDomain,
   updateOrganization,
   listUsers,
 } from "@/lib/api";
 import type {
+  OrganizationDomainResponse,
   OrganizationResponse,
   UserOrganizationResponse,
   UserResponse,
@@ -305,6 +312,184 @@ function UsersModal({
   );
 }
 
+function DomainsModal({
+  open,
+  org,
+  onClose,
+}: {
+  open: boolean;
+  org: OrganizationResponse | null;
+  onClose: () => void;
+}) {
+  const [domains, setDomains] = useState<OrganizationDomainResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [newDomain, setNewDomain] = useState("");
+  const [newPrimary, setNewPrimary] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!org) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await listOrganizationDomains(org.id);
+      setDomains(res.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load domains");
+    } finally {
+      setLoading(false);
+    }
+  }, [org]);
+
+  useEffect(() => {
+    if (open) {
+      load();
+      setNewDomain("");
+      setNewPrimary(false);
+      setError("");
+    }
+  }, [open, load]);
+
+  if (!open || !org) return null;
+
+  async function handleAdd() {
+    if (!newDomain.trim()) return;
+    setAdding(true);
+    setError("");
+    try {
+      await createOrganizationDomain(org!.id, {
+        domain: newDomain.trim(),
+        is_primary: newPrimary,
+      });
+      setNewDomain("");
+      setNewPrimary(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add domain");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleSetPrimary(d: OrganizationDomainResponse) {
+    try {
+      await setPrimaryOrganizationDomain(org!.id, d.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to set primary");
+    }
+  }
+
+  async function handleDelete(d: OrganizationDomainResponse) {
+    if (!confirm(`Remove domain "${d.domain}"? Requests on this host will stop being routed to this org.`)) return;
+    try {
+      await deleteOrganizationDomain(org!.id, d.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete domain");
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Domains: ${org.name}`}
+      maxWidth="max-w-2xl"
+    >
+      <div className="space-y-6">
+        <p className="text-xs text-fg-secondary">
+          Each domain pins this organization to a hostname. Requests served on a registered host
+          are forced into this tenant; users not in this org will be denied. Make sure DNS resolves
+          the host to this AIM deployment.
+        </p>
+
+        <FormError message={error} />
+
+        <div className="flex items-end gap-3 rounded-lg border border-border-subtle bg-bg-muted p-4">
+          <div className="flex-1">
+            <Label htmlFor="new-domain">Add domain</Label>
+            <Input
+              id="new-domain"
+              value={newDomain}
+              onChange={(e) => setNewDomain(e.target.value)}
+              placeholder="acme.aim.example.com"
+            />
+          </div>
+          <label className="flex items-center gap-2 pb-2 text-xs text-fg-secondary">
+            <input
+              type="checkbox"
+              checked={newPrimary}
+              onChange={(e) => setNewPrimary(e.target.checked)}
+            />
+            Primary
+          </label>
+          <Button onClick={handleAdd} disabled={!newDomain.trim()} loading={adding}>
+            Add
+          </Button>
+        </div>
+
+        <div>
+          <h3 className="mb-3 text-sm font-semibold text-fg-primary">
+            Registered Domains ({domains.length})
+          </h3>
+          {loading ? (
+            <div className="animate-pulse space-y-2">
+              <div className="h-10 rounded-md bg-bg-muted" />
+              <div className="h-10 rounded-md bg-bg-muted" />
+            </div>
+          ) : domains.length === 0 ? (
+            <p className="text-sm text-fg-secondary">No domains registered.</p>
+          ) : (
+            <div className="divide-y divide-border-subtle rounded-md border border-border-subtle">
+              {domains.map((d) => (
+                <div key={d.id} className="flex items-center justify-between p-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-sm text-fg-primary">{d.domain}</p>
+                    <p className="text-xs text-fg-muted">
+                      {d.verified ? "Verified" : "Unverified"} · added{" "}
+                      {fmtDate(d.created_at)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {d.is_primary ? (
+                      <span className="flex items-center gap-1 rounded-pill bg-status-low-bg px-2 py-0.5 text-xs font-medium text-status-low">
+                        <Star size={12} /> Primary
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleSetPrimary(d)}
+                        className="text-xs text-fg-secondary hover:text-fg-primary transition-colors"
+                        title="Set as primary"
+                      >
+                        Make primary
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(d)}
+                      className="text-fg-muted hover:text-status-error transition-colors"
+                      title="Remove domain"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end pt-4 border-t border-border-subtle">
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function OrganizationsPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "admin";
@@ -318,6 +503,9 @@ export default function OrganizationsPage() {
 
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [managingUsersOrg, setManagingUsersOrg] = useState<OrganizationResponse | null>(null);
+
+  const [showDomainsModal, setShowDomainsModal] = useState(false);
+  const [managingDomainsOrg, setManagingDomainsOrg] = useState<OrganizationResponse | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -432,6 +620,16 @@ export default function OrganizationsPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => {
+                    setManagingDomainsOrg(org);
+                    setShowDomainsModal(true);
+                  }}
+                >
+                  <Globe size={14} /> Domains
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
                     setEditingOrg(org);
                     setShowOrgModal(true);
                   }}
@@ -462,6 +660,12 @@ export default function OrganizationsPage() {
         open={showUsersModal}
         org={managingUsersOrg}
         onClose={() => setShowUsersModal(false)}
+      />
+
+      <DomainsModal
+        open={showDomainsModal}
+        org={managingDomainsOrg}
+        onClose={() => setShowDomainsModal(false)}
       />
     </div>
   );

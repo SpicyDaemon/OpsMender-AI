@@ -455,6 +455,195 @@ class TestMyOrganizations:
         assert resp.status_code == 403
 
 
+class TestDomainIsolation:
+    async def test_resolve_unknown_host(self, client: AsyncClient):
+        resp = await client.get(
+            "/tenant/resolve", headers={"Host": "unknown.example.com"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["pinned"] is False
+        assert data["host"] == "unknown.example.com"
+
+    async def test_admin_can_create_domain(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        resp = await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "Acme.AIM.Example.com", "is_primary": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["domain"] == "acme.aim.example.com"
+        assert data["is_primary"] is True
+
+    async def test_create_domain_validates_hostname(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "not-a-host"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_create_domain_conflict(
+        self, client: AsyncClient, auth_headers
+    ):
+        await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "dup.example.com"},
+            headers=auth_headers,
+        )
+        resp = await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "dup.example.com"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+
+    async def test_resolve_pinned_host(self, client: AsyncClient, auth_headers):
+        await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "acme.example.com"},
+            headers=auth_headers,
+        )
+        resp = await client.get(
+            "/tenant/resolve", headers={"Host": "acme.example.com:8080"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["pinned"] is True
+        assert data["org_id"] == str(TEST_ORG_ID)
+
+    async def test_host_pin_resolves_org_for_authed_member(
+        self, client: AsyncClient, auth_headers
+    ):
+        await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "acme2.example.com"},
+            headers=auth_headers,
+        )
+        # The user is a member of TEST_ORG_ID — pinned host succeeds.
+        headers = {**auth_headers, "Host": "acme2.example.com"}
+        resp = await client.get("/incidents", headers=headers)
+        assert resp.status_code == 200
+
+    async def test_host_pin_blocks_non_member(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        # Create a second org and pin a host to it; admin user is NOT a member.
+        from backend.db.repos import OrganizationRepo, UserRepo
+
+        async with app.state.session_factory() as db:
+            other = await OrganizationRepo.create(db, name="Other", slug="other2")
+            await db.commit()
+            other_id = other.id
+            # Remove admin from the other org explicitly is not needed;
+            # registration only links them to the test org.
+
+        # Pin the host to the other org via direct DB write.
+        from backend.db.repos import OrganizationDomainRepo
+
+        async with app.state.session_factory() as db:
+            await OrganizationDomainRepo.create(
+                db, org_id=other_id, domain="other.example.com"
+            )
+            await db.commit()
+
+        headers = {**auth_headers, "Host": "other.example.com"}
+        resp = await client.get("/incidents", headers=headers)
+        assert resp.status_code == 403
+
+    async def test_host_pin_overrides_x_org_id(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        # Create a second org the user IS a member of.
+        from backend.db.repos import OrganizationRepo, UserRepo
+
+        async with app.state.session_factory() as db:
+            org2 = await OrganizationRepo.create(db, name="Org2", slug="org-2")
+            user = await UserRepo.get_by_username(db, "testadmin")
+            await UserRepo.add_to_organization(
+                db, user_id=user.id, org_id=org2.id, role="admin"
+            )
+            await db.commit()
+            org2_id = org2.id
+
+        # Pin a host to TEST_ORG_ID. Send X-Org-ID for org2 — host wins, so
+        # the request acts on TEST_ORG_ID.
+        await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "primary.example.com"},
+            headers=auth_headers,
+        )
+
+        # Create an incident under TEST_ORG_ID via the host-pinned route.
+        resp = await client.post(
+            "/incidents",
+            json={"title": "host-pinned", "description": "x"},
+            headers={
+                **auth_headers,
+                "Host": "primary.example.com",
+                "X-Org-ID": str(org2_id),
+            },
+        )
+        assert resp.status_code == 201
+
+        # Listing without X-Org-ID, org2 should NOT see this incident.
+        resp = await client.get(
+            "/incidents", headers={**auth_headers, "X-Org-ID": str(org2_id)}
+        )
+        assert resp.status_code == 200
+        titles = [i["title"] for i in resp.json()["items"]]
+        assert "host-pinned" not in titles
+
+    async def test_set_primary_domain(self, client: AsyncClient, auth_headers):
+        r1 = await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "first.example.com"},
+            headers=auth_headers,
+        )
+        r2 = await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "second.example.com"},
+            headers=auth_headers,
+        )
+        d2_id = r2.json()["id"]
+        resp = await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains/{d2_id}/set-primary",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["is_primary"] is True
+
+        listing = await client.get(
+            f"/organizations/{TEST_ORG_ID}/domains", headers=auth_headers
+        )
+        primaries = [d for d in listing.json()["items"] if d["is_primary"]]
+        assert len(primaries) == 1
+        assert primaries[0]["id"] == d2_id
+
+    async def test_delete_domain(self, client: AsyncClient, auth_headers):
+        r = await client.post(
+            f"/organizations/{TEST_ORG_ID}/domains",
+            json={"domain": "doomed.example.com"},
+            headers=auth_headers,
+        )
+        d_id = r.json()["id"]
+        resp = await client.delete(
+            f"/organizations/{TEST_ORG_ID}/domains/{d_id}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 204
+        # Resolve no longer pins the host.
+        resp = await client.get(
+            "/tenant/resolve", headers={"Host": "doomed.example.com"}
+        )
+        assert resp.json()["pinned"] is False
+
+
 # ===========================================================================
 # Incidents
 # ===========================================================================

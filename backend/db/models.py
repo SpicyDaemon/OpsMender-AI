@@ -76,6 +76,33 @@ class Organization(Base):
     )
 
     users: Mapped[list["UserOrganization"]] = relationship(back_populates="organization")
+    domains: Mapped[list["OrganizationDomain"]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
+
+
+class OrganizationDomain(Base):
+    """Host-based tenant routing — maps a hostname to an organization.
+
+    Multiple domains may point at one org (e.g. ``acme.aim.example.com`` plus a
+    custom CNAME ``incidents.acme.com``). One row per org is flagged primary
+    so the UI can render canonical links.
+    """
+
+    __tablename__ = "organization_domains"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    domain: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    verified: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    organization: Mapped[Organization] = relationship(back_populates="domains")
 
 
 class UserOrganization(Base):

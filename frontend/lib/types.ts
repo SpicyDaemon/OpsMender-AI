@@ -915,3 +915,36 @@ export interface MyOrganizationListResponse {
   items: MyOrganizationResponse[];
   total: number;
 }
+
+
+export interface OrganizationDomainResponse {
+  id: string;
+  org_id: string;
+  domain: string;
+  is_primary: boolean;
+  verified: boolean;
+  created_at: string;
+}
+
+
+export interface OrganizationDomainListResponse {
+  items: OrganizationDomainResponse[];
+  total: number;
+}
+
+
+export interface OrganizationDomainCreate {
+  domain: string;
+  is_primary?: boolean;
+  verified?: boolean;
+}
+
+
+export interface TenantContextResponse {
+  pinned: boolean;
+  org_id?: string | null;
+  org_name?: string | null;
+  org_slug?: string | null;
+  branding?: BrandingConfig | null;
+  host?: string | null;
+}

@@ -947,4 +947,38 @@ export interface TenantContextResponse {
   org_slug?: string | null;
   branding?: BrandingConfig | null;
   host?: string | null;
+  sso_enabled?: boolean;
+  sso_login_path?: string | null;
+}
+
+
+export interface OrgSSOConfigResponse {
+  id: string;
+  org_id: string;
+  provider: "oidc";
+  is_active: boolean;
+  discovery_url: string;
+  client_id: string;
+  has_client_secret: boolean;
+  scopes: string;
+  email_claim: string;
+  name_claim: string;
+  default_role: "admin" | "operator" | "viewer";
+  allowed_email_domains: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+
+export interface OrgSSOConfigCreate {
+  provider?: "oidc";
+  discovery_url: string;
+  client_id: string;
+  client_secret?: string | null;
+  is_active?: boolean;
+  scopes?: string;
+  email_claim?: string;
+  name_claim?: string;
+  default_role?: "admin" | "operator" | "viewer";
+  allowed_email_domains?: string | null;
 }

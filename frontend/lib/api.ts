@@ -780,6 +780,8 @@ import type {
   OrganizationResponse,
   OrganizationUpdate,
   OrganizationUserListResponse,
+  OrgSSOConfigCreate,
+  OrgSSOConfigResponse,
   TenantContextResponse,
   UserOrganizationLink,
 } from "./types";
@@ -891,4 +893,24 @@ export async function setPrimaryOrganizationDomain(
 export async function resolveTenant(): Promise<TenantContextResponse> {
   // Public — no auth required.
   return request<TenantContextResponse>("/tenant/resolve", {}, true);
+}
+
+
+export async function getOrgSSOConfig(
+  orgId: string,
+): Promise<OrgSSOConfigResponse> {
+  return api.get<OrgSSOConfigResponse>(`/organizations/${orgId}/sso`);
+}
+
+
+export async function upsertOrgSSOConfig(
+  orgId: string,
+  body: OrgSSOConfigCreate,
+): Promise<OrgSSOConfigResponse> {
+  return api.put<OrgSSOConfigResponse>(`/organizations/${orgId}/sso`, body);
+}
+
+
+export async function deleteOrgSSOConfig(orgId: string): Promise<void> {
+  return api.del<void>(`/organizations/${orgId}/sso`);
 }

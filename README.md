@@ -20,6 +20,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
 - **Outbound triggers** — fire session-lifecycle notifications to Slack, Teams, Sumo Logic, or any generic webhook endpoint.
 - **Multi-tenant** — strict per-org isolation across every entity. Optional host-based routing pins each tenant to its own URL (`acme.aim.example.com`, `globex.aim.example.com`) with custom branding.
+- **Per-tenant SSO** — each org can wire its own OIDC identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak). Users are JIT-provisioned on first login; client secrets are encrypted at rest. Local login stays available as a break-glass path.
 
 ## Quick Start
 
@@ -264,7 +265,12 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `DELETE` | `/organizations/{id}/domains/{domain_id}` | admin | Remove a domain |
 | `GET` | `/auth/me/organizations` | any | List orgs the current user belongs to |
 | `PUT` | `/auth/me/primary-org/{id}` | any | Set the user's persisted primary org |
-| `GET` | `/tenant/resolve` | public | Report whether the request host pins a tenant |
+| `GET` | `/tenant/resolve` | public | Report whether the request host pins a tenant (also reports SSO status) |
+| `GET` | `/organizations/{id}/sso` | admin | Read per-org SSO/OIDC config (never returns the secret) |
+| `PUT` | `/organizations/{id}/sso` | admin | Create/update SSO config — supply `client_secret` only on create or rotate |
+| `DELETE` | `/organizations/{id}/sso` | admin | Disable SSO for the org |
+| `GET` | `/auth/sso/{slug}/login` | public | Initiate the OIDC login flow (302 redirect to the IdP) |
+| `GET` | `/auth/sso/{slug}/callback` | public | OIDC callback — JIT-provisions user, hands AIM JWT back via URL fragment |
 | `POST` | `/bot-connectors/{id}/telegram/webhook` | Telegram secret header | Handle inbound Telegram bot commands |
 | `GET` | `/skills` | any | List saved skills (optional `?mcp_server_id=` filter) |
 | `GET` | `/skills/{id}` | any | Get a saved skill |

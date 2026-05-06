@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Building2,
   Globe,
+  KeyRound,
   Pencil,
   Plus,
   Star,
@@ -17,17 +18,21 @@ import {
   createOrganizationDomain,
   deleteOrganization,
   deleteOrganizationDomain,
+  deleteOrgSSOConfig,
+  getOrgSSOConfig,
   listOrganizationDomains,
   listOrganizations,
   listOrganizationUsers,
   removeUserFromOrganization,
   setPrimaryOrganizationDomain,
   updateOrganization,
+  upsertOrgSSOConfig,
   listUsers,
 } from "@/lib/api";
 import type {
   OrganizationDomainResponse,
   OrganizationResponse,
+  OrgSSOConfigResponse,
   UserOrganizationResponse,
   UserResponse,
 } from "@/lib/types";
@@ -490,6 +495,251 @@ function DomainsModal({
   );
 }
 
+function SSOModal({
+  open,
+  org,
+  onClose,
+}: {
+  open: boolean;
+  org: OrganizationResponse | null;
+  onClose: () => void;
+}) {
+  const [existing, setExisting] = useState<OrgSSOConfigResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [discoveryUrl, setDiscoveryUrl] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [scopes, setScopes] = useState("openid email profile");
+  const [emailClaim, setEmailClaim] = useState("email");
+  const [nameClaim, setNameClaim] = useState("name");
+  const [defaultRole, setDefaultRole] = useState<"admin" | "operator" | "viewer">("viewer");
+  const [allowedDomains, setAllowedDomains] = useState("");
+  const [isActive, setIsActive] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!org) return;
+    setLoading(true);
+    setError("");
+    try {
+      const cfg = await getOrgSSOConfig(org.id);
+      setExisting(cfg);
+      setDiscoveryUrl(cfg.discovery_url);
+      setClientId(cfg.client_id);
+      setClientSecret("");
+      setScopes(cfg.scopes);
+      setEmailClaim(cfg.email_claim);
+      setNameClaim(cfg.name_claim);
+      setDefaultRole(cfg.default_role);
+      setAllowedDomains(cfg.allowed_email_domains ?? "");
+      setIsActive(cfg.is_active);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/not\s+found|404/i.test(msg)) {
+        setExisting(null);
+        setDiscoveryUrl("");
+        setClientId("");
+        setClientSecret("");
+        setScopes("openid email profile");
+        setEmailClaim("email");
+        setNameClaim("name");
+        setDefaultRole("viewer");
+        setAllowedDomains("");
+        setIsActive(true);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [org]);
+
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
+
+  if (!open || !org) return null;
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    try {
+      await upsertOrgSSOConfig(org!.id, {
+        provider: "oidc",
+        discovery_url: discoveryUrl.trim(),
+        client_id: clientId.trim(),
+        client_secret: clientSecret ? clientSecret : null,
+        scopes: scopes.trim() || "openid email profile",
+        email_claim: emailClaim.trim() || "email",
+        name_claim: nameClaim.trim() || "name",
+        default_role: defaultRole,
+        allowed_email_domains: allowedDomains.trim() || null,
+        is_active: isActive,
+      });
+      await load();
+      setClientSecret("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Disable SSO for this organization?")) return;
+    setSaving(true);
+    try {
+      await deleteOrgSSOConfig(org!.id);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`SSO: ${org.name}`}
+      maxWidth="max-w-2xl"
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-fg-secondary">
+          Configure an OIDC identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak).
+          AIM redirects users to the IdP and JIT-provisions accounts on first login. The login URL
+          for this org is{" "}
+          <code className="font-mono text-fg-primary">/auth/sso/{org.slug}/login</code>.
+        </p>
+
+        <FormError message={error} />
+
+        {loading ? (
+          <div className="animate-pulse space-y-2">
+            <div className="h-10 rounded-md bg-bg-muted" />
+            <div className="h-10 rounded-md bg-bg-muted" />
+          </div>
+        ) : (
+          <>
+            <div>
+              <Label htmlFor="sso-discovery">OIDC Discovery URL</Label>
+              <Input
+                id="sso-discovery"
+                value={discoveryUrl}
+                onChange={(e) => setDiscoveryUrl(e.target.value)}
+                placeholder="https://idp.example.com/.well-known/openid-configuration"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="sso-client-id">Client ID</Label>
+                <Input
+                  id="sso-client-id"
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="aim-app"
+                />
+              </div>
+              <div>
+                <Label htmlFor="sso-secret">
+                  Client Secret {existing ? "(leave blank to keep)" : ""}
+                </Label>
+                <Input
+                  id="sso-secret"
+                  type="password"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder={existing?.has_client_secret ? "••••••••" : "supersecret"}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="sso-scopes">Scopes</Label>
+              <Input
+                id="sso-scopes"
+                value={scopes}
+                onChange={(e) => setScopes(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="sso-email-claim">Email claim</Label>
+                <Input
+                  id="sso-email-claim"
+                  value={emailClaim}
+                  onChange={(e) => setEmailClaim(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="sso-name-claim">Name claim</Label>
+                <Input
+                  id="sso-name-claim"
+                  value={nameClaim}
+                  onChange={(e) => setNameClaim(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="sso-default-role">Default role for new users</Label>
+                <Select
+                  id="sso-default-role"
+                  value={defaultRole}
+                  onChange={(e) => setDefaultRole(e.target.value as any)}
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="operator">Operator</option>
+                  <option value="admin">Admin</option>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="sso-allowed-domains">
+                  Allowed email domains (optional, comma-separated)
+                </Label>
+                <Input
+                  id="sso-allowed-domains"
+                  value={allowedDomains}
+                  onChange={(e) => setAllowedDomains(e.target.value)}
+                  placeholder="acme.com,acme.co.uk"
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-fg-secondary">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+              />
+              Enabled — show "Sign in with SSO" on the login page
+            </label>
+          </>
+        )}
+
+        <div className="flex justify-between gap-2 border-t border-border-subtle pt-4">
+          <div>
+            {existing && (
+              <Button variant="danger" onClick={handleDelete} disabled={saving}>
+                Disable SSO
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} loading={saving}>
+              {existing ? "Save Changes" : "Enable SSO"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function OrganizationsPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "admin";
@@ -506,6 +756,9 @@ export default function OrganizationsPage() {
 
   const [showDomainsModal, setShowDomainsModal] = useState(false);
   const [managingDomainsOrg, setManagingDomainsOrg] = useState<OrganizationResponse | null>(null);
+
+  const [showSSOModal, setShowSSOModal] = useState(false);
+  const [managingSSOOrg, setManagingSSOOrg] = useState<OrganizationResponse | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -630,6 +883,16 @@ export default function OrganizationsPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => {
+                    setManagingSSOOrg(org);
+                    setShowSSOModal(true);
+                  }}
+                >
+                  <KeyRound size={14} /> SSO
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
                     setEditingOrg(org);
                     setShowOrgModal(true);
                   }}
@@ -666,6 +929,12 @@ export default function OrganizationsPage() {
         open={showDomainsModal}
         org={managingDomainsOrg}
         onClose={() => setShowDomainsModal(false)}
+      />
+
+      <SSOModal
+        open={showSSOModal}
+        org={managingSSOOrg}
+        onClose={() => setShowSSOModal(false)}
       />
     </div>
   );

@@ -20,11 +20,19 @@ from backend.api.schemas import (
     OrganizationResponse,
     OrganizationUpdate,
     OrganizationUserListResponse,
+    OrgSSOConfigCreate,
+    OrgSSOConfigResponse,
     TenantContextResponse,
     UserOrganizationLink,
 )
+from backend.auth.secrets import encrypt_secret
 from backend.db.models import User
-from backend.db.repos import OrganizationDomainRepo, OrganizationRepo, UserRepo
+from backend.db.repos import (
+    OrganizationDomainRepo,
+    OrganizationRepo,
+    OrgSSOConfigRepo,
+    UserRepo,
+)
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -57,6 +65,8 @@ async def resolve_tenant(
     if org is None:
         return TenantContextResponse(pinned=False, host=normalized)
 
+    sso = await OrgSSOConfigRepo.get_for_org(db, org.id)
+    sso_enabled = sso is not None and sso.is_active
     return TenantContextResponse(
         pinned=True,
         org_id=org.id,
@@ -64,6 +74,8 @@ async def resolve_tenant(
         org_slug=org.slug,
         branding=org.branding,
         host=normalized,
+        sso_enabled=sso_enabled,
+        sso_login_path=f"/auth/sso/{org.slug}/login" if sso_enabled else None,
     )
 
 # All routes in this module require the global 'admin' role.
@@ -302,5 +314,100 @@ async def remove_user_from_organization(
     if user and user.primary_org_id == org_id:
         # Set to None or pick another one? For now, None.
         await UserRepo.set_primary_org(db, user_id, None) # type: ignore
-        
+
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Per-org SSO configuration (admin only)
+# ---------------------------------------------------------------------------
+
+
+def _sso_to_response(row) -> dict:
+    """Build a response dict that never leaks the encrypted secret."""
+    return {
+        "id": row.id,
+        "org_id": row.org_id,
+        "provider": row.provider,
+        "is_active": row.is_active,
+        "discovery_url": row.discovery_url,
+        "client_id": row.client_id,
+        "has_client_secret": bool(row.client_secret_encrypted),
+        "scopes": row.scopes,
+        "email_claim": row.email_claim,
+        "name_claim": row.name_claim,
+        "default_role": row.default_role,
+        "allowed_email_domains": row.allowed_email_domains,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+@router.get(
+    "/{org_id}/sso",
+    response_model=OrgSSOConfigResponse,
+    dependencies=[admin_dependency],
+)
+async def get_organization_sso(org_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    row = await OrgSSOConfigRepo.get_for_org(db, org_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No SSO config for this organization")
+    return _sso_to_response(row)
+
+
+@router.put(
+    "/{org_id}/sso",
+    response_model=OrgSSOConfigResponse,
+    dependencies=[admin_dependency],
+)
+async def upsert_organization_sso(
+    org_id: uuid.UUID,
+    req: OrgSSOConfigCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    org = await OrganizationRepo.get_by_id(db, org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    existing = await OrgSSOConfigRepo.get_for_org(db, org_id)
+    # On update, allow callers to omit the secret to keep the existing one.
+    if req.client_secret:
+        encrypted = encrypt_secret(req.client_secret)
+    elif existing is not None:
+        encrypted = ""  # signals "keep existing" to the repo
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="client_secret is required when creating a new SSO config.",
+        )
+
+    row = await OrgSSOConfigRepo.upsert(
+        db,
+        org_id=org_id,
+        provider=req.provider,
+        discovery_url=req.discovery_url,
+        client_id=req.client_id,
+        client_secret_encrypted=encrypted,
+        is_active=req.is_active,
+        scopes=req.scopes,
+        email_claim=req.email_claim,
+        name_claim=req.name_claim,
+        default_role=req.default_role,
+        allowed_email_domains=req.allowed_email_domains,
+    )
+    await db.commit()
+    return _sso_to_response(row)
+
+
+@router.delete(
+    "/{org_id}/sso",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[admin_dependency],
+)
+async def delete_organization_sso(
+    org_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+):
+    deleted = await OrgSSOConfigRepo.delete(db, org_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No SSO config for this organization")
     await db.commit()

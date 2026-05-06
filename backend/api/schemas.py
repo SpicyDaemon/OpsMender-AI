@@ -1013,6 +1013,45 @@ class TenantContextResponse(BaseModel):
     org_slug: Optional[str] = None
     branding: Optional[dict] = None
     host: Optional[str] = None
+    sso_enabled: bool = False
+    sso_login_path: Optional[str] = None  # e.g. /auth/sso/{slug}/login
+
+
+class OrgSSOConfigCreate(BaseModel):
+    provider: str = Field(default="oidc", pattern="^(oidc)$")
+    discovery_url: str = Field(..., min_length=1)
+    client_id: str = Field(..., min_length=1)
+    client_secret: Optional[str] = Field(
+        default=None,
+        description="Plaintext on input. Omit on update to keep the existing secret.",
+    )
+    is_active: bool = True
+    scopes: str = "openid email profile"
+    email_claim: str = "email"
+    name_claim: str = "name"
+    default_role: str = Field(default="viewer", pattern="^(admin|operator|viewer)$")
+    allowed_email_domains: Optional[str] = None  # comma-separated
+
+
+class OrgSSOConfigResponse(BaseModel):
+    """SSO config response — never returns the encrypted client secret."""
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    provider: str
+    is_active: bool
+    discovery_url: str
+    client_id: str
+    has_client_secret: bool
+    scopes: str
+    email_claim: str
+    name_claim: str
+    default_role: str
+    allowed_email_domains: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # ---------------------------------------------------------------------------

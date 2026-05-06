@@ -35,9 +35,34 @@ If you run AIM on a single hostname, you can skip Domain Isolation entirely — 
 
 ## 1. Authentication
 
-AIM currently relies on local database authentication or a reverse proxy. 
-By default, the initial setup comes with a local `admin` user.
-If you deploy AIM in production, it is recommended to secure the frontend behind an Identity Aware Proxy (IAP) or SSO provider (e.g., Okta, Google Workspace).
+AIM supports two auth paths:
+
+- **Local username/password.** First user registered automatically becomes the global `admin`. Use this for the initial bootstrap and as a break-glass account.
+- **Per-tenant SSO (OIDC).** Each org can wire its own identity provider — Okta, Azure AD, Google Workspace, Auth0, or Keycloak. AIM redirects users to the IdP and JIT-provisions accounts on first login.
+
+### 1.1 Configuring SSO for an org (OIDC)
+
+Open **Organizations** as a global admin, click **SSO** on the target org, then fill in:
+
+- **Discovery URL** — the IdP's `.well-known/openid-configuration`. Examples:
+    - Okta: `https://{your-domain}.okta.com/.well-known/openid-configuration`
+    - Azure AD: `https://login.microsoftonline.com/{tenant-id}/v2.0/.well-known/openid-configuration`
+    - Google: `https://accounts.google.com/.well-known/openid-configuration`
+    - Keycloak: `https://{host}/realms/{realm}/.well-known/openid-configuration`
+- **Client ID / Client Secret** — register AIM as an application in your IdP; the redirect URI to whitelist there is `https://{your-tenant-host}/auth/sso/{org-slug}/callback`.
+- **Scopes** — defaults to `openid email profile`. Add extras (e.g. `groups`) if your IdP requires them.
+- **Email / Name claim** — change only if your IdP uses non-standard claim names.
+- **Default role** — role assigned to *new* users JIT-provisioned through SSO. Existing users keep their current role.
+- **Allowed email domains** — optional comma-separated allowlist. Mismatched domains are rejected with 403, even if the IdP authenticated them. Use this when one IdP serves multiple orgs.
+- **Enabled** — uncheck to temporarily disable without losing the config.
+
+When SSO is enabled, the login page on a host-pinned domain shows a "Sign in with {Org name}" button above the local form. Local login still works (and remains the only option on hosts that aren't pinned).
+
+The client secret is encrypted at rest with Fernet (AES-128-CBC + HMAC-SHA256). The encryption key derives from `AIM_SECRET_KEY` (preferred) or falls back to `AIM_JWT_SECRET`. Set a dedicated `AIM_SECRET_KEY` in production so rotating the JWT secret doesn't invalidate every stored SSO secret.
+
+### 1.2 SAML
+
+SAML 2.0 is on the roadmap but not in v1 — the storage column accommodates it (`provider = 'saml'`) but only `oidc` is wired today. If you need SAML for a specific deployment, file an issue.
 
 ## 2. Runtime Configuration
 

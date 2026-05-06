@@ -105,6 +105,43 @@ class OrganizationDomain(Base):
     organization: Mapped[Organization] = relationship(back_populates="domains")
 
 
+class OrgSSOConfig(Base):
+    """Per-organization SSO / OIDC configuration.
+
+    One row per org (UNIQUE org_id). Drives the ``/auth/sso/{slug}/login``
+    flow: AIM redirects the user to the IdP described here, validates the
+    returned id_token, and JIT-provisions the user into the org.
+    """
+
+    __tablename__ = "org_sso_configs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)  # 'oidc' (saml deferred)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    discovery_url: Mapped[str] = mapped_column(Text, nullable=False)
+    client_id: Mapped[str] = mapped_column(Text, nullable=False)
+    client_secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    scopes: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="openid email profile"
+    )
+    email_claim: Mapped[str] = mapped_column(String(64), nullable=False, default="email")
+    name_claim: Mapped[str] = mapped_column(String(64), nullable=False, default="name")
+    default_role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")
+    allowed_email_domains: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
 class UserOrganization(Base):
     __tablename__ = "user_organizations"
     user_id: Mapped[uuid.UUID] = mapped_column(

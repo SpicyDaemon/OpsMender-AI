@@ -44,6 +44,7 @@ from backend.db.models import (
     MaintenanceWindow,
     Organization,
     OrganizationDomain,
+    OrgSSOConfig,
     UserOrganization,
 )
 
@@ -2869,6 +2870,12 @@ class OrganizationRepo:
         return await db.get(Organization, org_id)
 
     @staticmethod
+    async def get_by_slug(db: AsyncSession, slug: str) -> Organization | None:
+        stmt = select(Organization).where(Organization.slug == slug)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def list_all(db: AsyncSession) -> Sequence[Organization]:
         result = await db.execute(select(Organization).order_by(Organization.name))
         return result.scalars().all()
@@ -3011,3 +3018,72 @@ class OrganizationDomainRepo:
             return None
         await db.flush()
         return await OrganizationDomainRepo.get_by_id(db, domain_id)
+
+
+class OrgSSOConfigRepo:
+    @staticmethod
+    async def get_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> OrgSSOConfig | None:
+        stmt = select(OrgSSOConfig).where(OrgSSOConfig.org_id == org_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        *,
+        org_id: uuid.UUID,
+        provider: str,
+        discovery_url: str,
+        client_id: str,
+        client_secret_encrypted: str,
+        is_active: bool = True,
+        scopes: str = "openid email profile",
+        email_claim: str = "email",
+        name_claim: str = "name",
+        default_role: str = "viewer",
+        allowed_email_domains: str | None = None,
+    ) -> OrgSSOConfig:
+        existing = await OrgSSOConfigRepo.get_for_org(db, org_id)
+        if existing is None:
+            row = OrgSSOConfig(
+                org_id=org_id,
+                provider=provider,
+                discovery_url=discovery_url,
+                client_id=client_id,
+                client_secret_encrypted=client_secret_encrypted,
+                is_active=is_active,
+                scopes=scopes,
+                email_claim=email_claim,
+                name_claim=name_claim,
+                default_role=default_role,
+                allowed_email_domains=allowed_email_domains,
+            )
+            db.add(row)
+            await db.flush()
+            return row
+
+        existing.provider = provider
+        existing.discovery_url = discovery_url
+        existing.client_id = client_id
+        # Only overwrite the encrypted secret when caller actually passed a new one.
+        if client_secret_encrypted:
+            existing.client_secret_encrypted = client_secret_encrypted
+        existing.is_active = is_active
+        existing.scopes = scopes
+        existing.email_claim = email_claim
+        existing.name_claim = name_claim
+        existing.default_role = default_role
+        existing.allowed_email_domains = allowed_email_domains
+        await db.flush()
+        return existing
+
+    @staticmethod
+    async def delete(db: AsyncSession, org_id: uuid.UUID) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(OrgSSOConfig).where(OrgSSOConfig.org_id == org_id)
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0

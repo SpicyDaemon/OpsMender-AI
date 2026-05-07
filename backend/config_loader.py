@@ -210,6 +210,27 @@ class AuthConfig:
 
 
 @dataclasses.dataclass
+class SAMLConfig:
+    """Global SAML SP settings (Sprint 30).
+
+    Per-tenant IdP details live in the ``org_saml_configs`` table. This
+    dataclass only carries the SP-side keypair + optional entityId override
+    that's shared across all tenants.
+
+    SAML is treated as **disabled** unless both ``sp_cert`` and ``sp_key`` are
+    populated; the routes will return 400 and the login UI hides the button.
+    """
+
+    sp_cert: str | None = None
+    sp_key: str | None = None
+    sp_entity_id: str | None = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.sp_cert) and bool(self.sp_key)
+
+
+@dataclasses.dataclass
 class CorsConfig:
     """CORS settings."""
 
@@ -274,6 +295,7 @@ class AppConfig:
     app: AppSettings
     db: DatabaseConfig
     auth: AuthConfig
+    saml: SAMLConfig
     cors: CorsConfig
     providers: ProviderConfig
     env_file: str
@@ -371,6 +393,11 @@ class AppConfig:
                 jwt_algorithm=_env_str(env, "AIM_JWT_ALGORITHM", "HS256")
                 or "HS256",
                 jwt_expire_minutes=_env_int(env, "AIM_JWT_EXPIRE_MINUTES", 60),
+            ),
+            saml=SAMLConfig(
+                sp_cert=_env_str(env, "AIM_SAML_SP_CERT"),
+                sp_key=_env_str(env, "AIM_SAML_SP_KEY"),
+                sp_entity_id=_env_str(env, "AIM_SAML_SP_ENTITY_ID"),
             ),
             cors=CorsConfig(origins=_env_csv(env, "AIM_CORS_ORIGINS", "*")),
             providers=ProviderConfig(

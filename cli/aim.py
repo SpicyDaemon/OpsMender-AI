@@ -15,7 +15,7 @@ import sys
 import contextlib
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -367,6 +367,28 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="json_output",
         help="Output the resolved request as JSON",
+    )
+
+    # -- saml ---------------------------------------------------------------
+    saml_parser = sub.add_parser(
+        "saml",
+        help="SAML SP utilities (Sprint 30)",
+    )
+    saml_sub = saml_parser.add_subparsers(dest="saml_command")
+    saml_keys = saml_sub.add_parser(
+        "gen-sp-keys",
+        help="Generate a self-signed SP signing keypair (PEM, stdout)",
+    )
+    saml_keys.add_argument(
+        "--cn",
+        default="aim-sp",
+        help="Subject Common Name on the cert (default: aim-sp)",
+    )
+    saml_keys.add_argument(
+        "--days",
+        type=int,
+        default=3650,
+        help="Cert validity in days (default: 3650 = 10y)",
     )
 
     return parser
@@ -1318,6 +1340,58 @@ def _run_serve(args: argparse.Namespace) -> int:
 # -- main --------------------------------------------------------------------
 
 
+def _run_saml_gen_sp_keys(args: argparse.Namespace) -> int:
+    """Emit a self-signed SP keypair (PEM cert + key) to stdout.
+
+    Designed for ``aim saml gen-sp-keys``. The output is meant to be copied into
+    ``AIM_SAML_SP_CERT`` / ``AIM_SAML_SP_KEY`` in the operator's secret store —
+    we never persist it to disk on the user's behalf to avoid silent leakage.
+    """
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+    except ImportError:
+        print(
+            "cryptography is not installed. Install with: uv sync",
+            file=sys.stderr,
+        )
+        return 1
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name(
+        [x509.NameAttribute(NameOID.COMMON_NAME, args.cn)]
+    )
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(days=args.days))
+        .sign(key, hashes.SHA256())
+    )
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+    key_pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+
+    print("# === SAML SP CERT (copy into AIM_SAML_SP_CERT) ===")
+    print(cert_pem)
+    print("# === SAML SP KEY  (copy into AIM_SAML_SP_KEY) ===")
+    print(key_pem)
+    print(
+        "# Reminder: store these in your secret manager and inject as env "
+        "vars. AIM does not persist the keypair on disk."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     # When running as a PyInstaller bundle, point env vars at the extracted
     # resources (frontend/out, examples/SKILL.md). Must run BEFORE Config.load.
@@ -1361,6 +1435,13 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "approvals":
         rc = asyncio.run(_run_approvals(cfg, args))
         sys.exit(rc)
+
+    if args.command == "saml":
+        if args.saml_command == "gen-sp-keys":
+            sys.exit(_run_saml_gen_sp_keys(args))
+        # No subcommand — print saml help.
+        _build_parser().parse_args(["saml", "--help"])
+        sys.exit(0)
 
     # No subcommand — print help
     _build_parser().print_help()

@@ -39,6 +39,17 @@ FROM python:3.12-slim AS backend-builder
 
 WORKDIR /app
 
+# Build deps for xmlsec / lxml (required by python3-saml). Build-time only —
+# the runtime stage installs the runtime libxmlsec1 / libxml2 packages.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        build-essential \
+        pkg-config \
+        libxml2-dev \
+        libxmlsec1-dev \
+        libxmlsec1-openssl \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=ghcr.io/astral-sh/uv:0.6 /uv /uvx /usr/local/bin/
 
 COPY pyproject.toml uv.lock ./
@@ -51,9 +62,15 @@ FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
-# System deps: curl for healthcheck, tini as PID 1 for clean shutdown.
+# System deps: curl for healthcheck, tini as PID 1 for clean shutdown,
+# libxml2 / libxmlsec1 for python3-saml (Sprint 30).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl tini \
+ && apt-get install -y --no-install-recommends \
+        curl \
+        tini \
+        libxml2 \
+        libxmlsec1 \
+        libxmlsec1-openssl \
  && rm -rf /var/lib/apt/lists/*
 
 # Node.js — copied from the node-runtime stage so npx-based MCP servers

@@ -20,6 +20,8 @@ from backend.api.schemas import (
     OrganizationResponse,
     OrganizationUpdate,
     OrganizationUserListResponse,
+    OrgSAMLConfigCreate,
+    OrgSAMLConfigResponse,
     OrgSSOConfigCreate,
     OrgSSOConfigResponse,
     TenantContextResponse,
@@ -30,6 +32,7 @@ from backend.db.models import User
 from backend.db.repos import (
     OrganizationDomainRepo,
     OrganizationRepo,
+    OrgSAMLConfigRepo,
     OrgSSOConfigRepo,
     UserRepo,
 )
@@ -67,6 +70,8 @@ async def resolve_tenant(
 
     sso = await OrgSSOConfigRepo.get_for_org(db, org.id)
     sso_enabled = sso is not None and sso.is_active
+    saml = await OrgSAMLConfigRepo.get_for_org(db, org.id)
+    saml_enabled = saml is not None and saml.is_active
     return TenantContextResponse(
         pinned=True,
         org_id=org.id,
@@ -76,6 +81,8 @@ async def resolve_tenant(
         host=normalized,
         sso_enabled=sso_enabled,
         sso_login_path=f"/auth/sso/{org.slug}/login" if sso_enabled else None,
+        saml_enabled=saml_enabled,
+        saml_login_path=f"/auth/saml/{org.slug}/login" if saml_enabled else None,
     )
 
 # All routes in this module require the global 'admin' role.
@@ -410,4 +417,99 @@ async def delete_organization_sso(
     deleted = await OrgSSOConfigRepo.delete(db, org_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="No SSO config for this organization")
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Per-org SAML configuration (admin only) — Sprint 30
+# ---------------------------------------------------------------------------
+
+
+def _saml_to_response(row) -> dict:
+    """Build a SAML response dict. The IdP metadata XML is intentionally not
+    returned in full — only a flag indicating it exists — to keep the admin
+    UI compact (the XML is often hundreds of lines)."""
+    return {
+        "id": row.id,
+        "org_id": row.org_id,
+        "is_active": row.is_active,
+        "idp_metadata_url": row.idp_metadata_url,
+        "has_idp_metadata_xml": bool(row.idp_metadata_xml),
+        "email_attribute": row.email_attribute,
+        "name_attribute": row.name_attribute,
+        "default_role": row.default_role,
+        "allowed_email_domains": row.allowed_email_domains,
+        "want_assertions_signed": row.want_assertions_signed,
+        "want_response_signed": row.want_response_signed,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+@router.get(
+    "/{org_id}/saml",
+    response_model=OrgSAMLConfigResponse,
+    dependencies=[admin_dependency],
+)
+async def get_organization_saml(org_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    row = await OrgSAMLConfigRepo.get_for_org(db, org_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail="No SAML config for this organization"
+        )
+    return _saml_to_response(row)
+
+
+@router.put(
+    "/{org_id}/saml",
+    response_model=OrgSAMLConfigResponse,
+    dependencies=[admin_dependency],
+)
+async def upsert_organization_saml(
+    org_id: uuid.UUID,
+    req: OrgSAMLConfigCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    org = await OrganizationRepo.get_by_id(db, org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    if bool(req.idp_metadata_url) == bool(req.idp_metadata_xml):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Provide exactly one of idp_metadata_url or idp_metadata_xml."
+            ),
+        )
+
+    row = await OrgSAMLConfigRepo.upsert(
+        db,
+        org_id=org_id,
+        idp_metadata_url=req.idp_metadata_url,
+        idp_metadata_xml=req.idp_metadata_xml,
+        is_active=req.is_active,
+        email_attribute=req.email_attribute,
+        name_attribute=req.name_attribute,
+        default_role=req.default_role,
+        allowed_email_domains=req.allowed_email_domains,
+        want_assertions_signed=req.want_assertions_signed,
+        want_response_signed=req.want_response_signed,
+    )
+    await db.commit()
+    return _saml_to_response(row)
+
+
+@router.delete(
+    "/{org_id}/saml",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[admin_dependency],
+)
+async def delete_organization_saml(
+    org_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+):
+    deleted = await OrgSAMLConfigRepo.delete(db, org_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404, detail="No SAML config for this organization"
+        )
     await db.commit()

@@ -116,6 +116,15 @@ export function TopBar() {
   }
 
   const activeOrg = orgs.find((o) => o.id === activeOrgId) ?? null;
+  // Per-org role for the *currently displayed* tenant. When the host pins a
+  // tenant, we look up the user's role in that org from the listMyOrganizations
+  // response — `tenant.org_id` is set, so we match by that.
+  const activeOrgRole = tenant?.pinned
+    ? orgs.find((o) => o.id === tenant.org_id)?.role ?? null
+    : activeOrg?.role ?? null;
+  const orgRoleClass = activeOrgRole
+    ? ROLE_STYLES[activeOrgRole] ?? ROLE_STYLES.viewer
+    : "";
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -161,14 +170,25 @@ export function TopBar() {
       <div className="flex items-center gap-1.5">
         {user && tenant?.pinned && (
           <div
-            title={`Active organization: ${tenant.org_name} (pinned by host ${tenant.host})`}
-            aria-label={`Active organization: ${tenant.org_name}, pinned by host`}
+            title={
+              activeOrgRole
+                ? `Active organization: ${tenant.org_name} — your role: ${activeOrgRole} (pinned by host ${tenant.host})`
+                : `Active organization: ${tenant.org_name} (pinned by host ${tenant.host})`
+            }
+            aria-label={`Active organization: ${tenant.org_name}, pinned by host${activeOrgRole ? `, role ${activeOrgRole}` : ""}`}
             className="flex h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary"
           >
             <Building2 size={14} className="shrink-0 text-fg-muted" />
             <span className="max-w-[140px] sm:max-w-[180px] truncate font-medium text-fg-primary">
               {tenant.org_name}
             </span>
+            {activeOrgRole && (
+              <span
+                className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
+              >
+                {activeOrgRole}
+              </span>
+            )}
             <span className="hidden lg:inline rounded-pill border border-border-subtle bg-bg-panel px-1.5 py-px font-mono text-[10px] uppercase tracking-wide text-fg-muted">
               host-pinned
             </span>
@@ -179,14 +199,31 @@ export function TopBar() {
             <button
               type="button"
               onClick={() => setOrgMenuOpen((o) => !o)}
-              title={activeOrg ? `Active organization: ${activeOrg.name} — click to switch` : "Switch organization"}
-              aria-label={activeOrg ? `Active organization: ${activeOrg.name}` : "Select organization"}
+              title={
+                activeOrg
+                  ? activeOrgRole
+                    ? `Active organization: ${activeOrg.name} — your role: ${activeOrgRole} (click to switch)`
+                    : `Active organization: ${activeOrg.name} — click to switch`
+                  : "Switch organization"
+              }
+              aria-label={
+                activeOrg
+                  ? `Active organization: ${activeOrg.name}${activeOrgRole ? `, role ${activeOrgRole}` : ""}`
+                  : "Select organization"
+              }
               className="flex h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary hover:border-border-strong hover:bg-bg-hover hover:text-fg-primary transition-colors"
             >
               <Building2 size={14} className="shrink-0 text-fg-muted" />
               <span className="max-w-[120px] sm:max-w-[160px] truncate font-medium text-fg-primary">
                 {activeOrg?.name ?? "Select org"}
               </span>
+              {activeOrgRole && (
+                <span
+                  className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
+                >
+                  {activeOrgRole}
+                </span>
+              )}
               <ChevronDown size={14} className="text-fg-muted" />
             </button>
             {orgMenuOpen && (
@@ -270,9 +307,18 @@ export function TopBar() {
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
                           Active org{tenant?.pinned ? " · host-pinned" : ""}
                         </p>
-                        <p className="truncate font-medium text-fg-primary">
-                          {tenant?.pinned ? tenant.org_name : activeOrg?.name}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate font-medium text-fg-primary">
+                            {tenant?.pinned ? tenant.org_name : activeOrg?.name}
+                          </p>
+                          {activeOrgRole && (
+                            <span
+                              className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
+                            >
+                              {activeOrgRole}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}

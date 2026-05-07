@@ -1015,6 +1015,8 @@ class TenantContextResponse(BaseModel):
     host: Optional[str] = None
     sso_enabled: bool = False
     sso_login_path: Optional[str] = None  # e.g. /auth/sso/{slug}/login
+    saml_enabled: bool = False
+    saml_login_path: Optional[str] = None  # e.g. /auth/saml/{slug}/login
 
 
 class OrgSSOConfigCreate(BaseModel):
@@ -1048,6 +1050,48 @@ class OrgSSOConfigResponse(BaseModel):
     name_claim: str
     default_role: str
     allowed_email_domains: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrgSAMLConfigCreate(BaseModel):
+    """Create / update payload for per-tenant SAML SSO (Sprint 30).
+
+    Provide exactly one of ``idp_metadata_url`` (preferred — auto-fetched and
+    cached) or ``idp_metadata_xml`` (raw XML pasted into the form).
+    """
+
+    is_active: bool = True
+    idp_metadata_url: Optional[str] = None
+    idp_metadata_xml: Optional[str] = None
+    email_attribute: str = (
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+    )
+    name_attribute: str = (
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
+    )
+    default_role: str = Field(default="viewer", pattern="^(admin|operator|viewer)$")
+    allowed_email_domains: Optional[str] = None  # comma-separated
+    want_assertions_signed: bool = True
+    want_response_signed: bool = True
+
+
+class OrgSAMLConfigResponse(BaseModel):
+    """Per-tenant SAML config response."""
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    is_active: bool
+    idp_metadata_url: Optional[str]
+    has_idp_metadata_xml: bool
+    email_attribute: str
+    name_attribute: str
+    default_role: str
+    allowed_email_domains: Optional[str]
+    want_assertions_signed: bool
+    want_response_signed: bool
     created_at: datetime
     updated_at: datetime
 

@@ -142,6 +142,61 @@ class OrgSSOConfig(Base):
     )
 
 
+class OrgSAMLConfig(Base):
+    """Per-organization SAML 2.0 SSO configuration (Sprint 30).
+
+    Sibling to :class:`OrgSSOConfig` — the columns don't meaningfully overlap
+    so each protocol gets its own table to keep NOT NULL constraints honest.
+
+    The IdP is described by either a metadata URL (preferred, auto-fetched +
+    cached for 10 minutes) or by raw XML pasted by the admin. Exactly one of
+    those two columns is set at any given time (enforced at the API layer).
+
+    SP-side keypair lives in env (``AIM_SAML_SP_CERT`` / ``AIM_SAML_SP_KEY``)
+    and is shared across all tenants — see :class:`SAMLConfig` in
+    ``backend/config_loader.py``.
+    """
+
+    __tablename__ = "org_saml_configs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    idp_metadata_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idp_metadata_xml: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_attribute: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        default="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+    )
+    name_attribute: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        default="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+    )
+    default_role: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="viewer"
+    )
+    allowed_email_domains: Mapped[str | None] = mapped_column(Text, nullable=True)
+    want_assertions_signed: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    want_response_signed: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
 class UserOrganization(Base):
     __tablename__ = "user_organizations"
     user_id: Mapped[uuid.UUID] = mapped_column(

@@ -44,6 +44,7 @@ from backend.db.models import (
     MaintenanceWindow,
     Organization,
     OrganizationDomain,
+    OrgSAMLConfig,
     OrgSSOConfig,
     UserOrganization,
 )
@@ -3084,6 +3085,81 @@ class OrgSSOConfigRepo:
         from sqlalchemy import delete as sql_delete
 
         stmt = sql_delete(OrgSSOConfig).where(OrgSSOConfig.org_id == org_id)
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+
+class OrgSAMLConfigRepo:
+    """Per-org SAML 2.0 SP configuration (Sprint 30)."""
+
+    @staticmethod
+    async def get_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> OrgSAMLConfig | None:
+        stmt = select(OrgSAMLConfig).where(OrgSAMLConfig.org_id == org_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        *,
+        org_id: uuid.UUID,
+        idp_metadata_url: str | None = None,
+        idp_metadata_xml: str | None = None,
+        is_active: bool = True,
+        email_attribute: str = (
+            "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+        ),
+        name_attribute: str = (
+            "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
+        ),
+        default_role: str = "viewer",
+        allowed_email_domains: str | None = None,
+        want_assertions_signed: bool = True,
+        want_response_signed: bool = True,
+    ) -> OrgSAMLConfig:
+        if bool(idp_metadata_url) == bool(idp_metadata_xml):
+            raise ValueError(
+                "Provide exactly one of idp_metadata_url or idp_metadata_xml"
+            )
+
+        existing = await OrgSAMLConfigRepo.get_for_org(db, org_id)
+        if existing is None:
+            row = OrgSAMLConfig(
+                org_id=org_id,
+                idp_metadata_url=idp_metadata_url,
+                idp_metadata_xml=idp_metadata_xml,
+                is_active=is_active,
+                email_attribute=email_attribute,
+                name_attribute=name_attribute,
+                default_role=default_role,
+                allowed_email_domains=allowed_email_domains,
+                want_assertions_signed=want_assertions_signed,
+                want_response_signed=want_response_signed,
+            )
+            db.add(row)
+            await db.flush()
+            return row
+
+        existing.idp_metadata_url = idp_metadata_url
+        existing.idp_metadata_xml = idp_metadata_xml
+        existing.is_active = is_active
+        existing.email_attribute = email_attribute
+        existing.name_attribute = name_attribute
+        existing.default_role = default_role
+        existing.allowed_email_domains = allowed_email_domains
+        existing.want_assertions_signed = want_assertions_signed
+        existing.want_response_signed = want_response_signed
+        await db.flush()
+        return existing
+
+    @staticmethod
+    async def delete(db: AsyncSession, org_id: uuid.UUID) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(OrgSAMLConfig).where(OrgSAMLConfig.org_id == org_id)
         result = await db.execute(stmt)
         await db.flush()
         return result.rowcount > 0

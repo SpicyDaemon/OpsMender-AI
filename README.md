@@ -22,6 +22,73 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Multi-tenant** — strict per-org isolation across every entity. Optional host-based routing pins each tenant to its own URL (`acme.aim.example.com`, `globex.aim.example.com`) with custom branding.
 - **Per-tenant SSO** — each org can wire its own **OIDC** identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak) **or SAML 2.0** IdP (older Okta, ADFS, classic Azure AD enterprise apps). Users are JIT-provisioned on first login; OIDC client secrets are encrypted at rest, SAML uses a global SP keypair from env. Local login stays available as a break-glass path.
 
+## How AIM thinks (concepts in 60 seconds)
+
+A picture first, then the parts:
+
+```
+        external systems                           AIM internals
+  ─────────────────────────────             ────────────────────────────
+                              ┌─── Ingest ─→  Incident created
+  CloudWatch / LegacyAlertVendor /    │
+  Datadog / Slack / etc.      │             ┌─ Workflow profile picks
+                              │             │  the LangGraph node order
+                              │             │  (observe → diagnose → …)
+                              │             │
+                              │   Session ──┤
+                              │   started   │
+                              │             └─ Agent team profile picks
+                              │                which specialist roles
+                              │                (SRE / DBA / SecOps) get
+                              │                consulted in reasoning nodes
+                              │
+                              ↓
+            Webhook ←── session-state events
+            triggers       (created / awaiting_approval /
+                            completed / failed / timed_out)
+                              ↓
+            Slack / Teams / Sumo / generic JSON
+```
+
+Four concepts confuse new operators most often, so here's what each one actually does:
+
+### Ingest — *getting incidents in*
+
+External monitoring tools POST a webhook to `/incidents/ingest`; AIM creates an incident from the payload. The **universal adapter** accepts any shape and asks the LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Specific adapters exist for CloudWatch SNS, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, and a Generic JSON adapter.
+
+> **You can ignore Ingest entirely if you don't use external monitoring.** Incidents can also be created manually from the dashboard or by AIM's own MCP-driven detectors.
+
+### Workflows — *the order of the autonomous response steps*
+
+When a session runs, AIM walks a LangGraph: `observe → diagnose → plan → tier_gate → execute → verify → summarize`. A **Workflow profile** lets you save a *different* node order — same nodes, just rearranged or trimmed. The tier gate must always sit immediately before `execute` (programmatic safety floor; cannot be moved or removed).
+
+> **Most operators never touch this.** It's there for the rare team that wants, e.g., an extra `verify` pass after `summarize`. The default workflow is fine for 95% of use cases.
+
+### Agent teams — *which specialist personas reason about the problem*
+
+Inside the reasoning nodes (`diagnose`, `plan`), instead of one generic LLM pass, you can configure multiple specialist roles to each take a pass — "SRE", "Database engineer", "Security engineer" — followed by a synthesis pass that merges their views. Saved as **Agent team profiles**.
+
+> **Most operators never touch this either.** Default is one generic persona. Useful for orgs that want, e.g., a security-leaning bias on every plan, or a DBA perspective baked into every diagnosis.
+
+### Webhook triggers — *getting events out*
+
+Whenever a session changes state (`created`, `awaiting_approval`, `active`, `completed`, `failed`, `timed_out`), AIM POSTs a payload to whatever URLs you've configured. Format presets exist for **Slack** incoming webhooks, **Teams** workflow webhooks, **Sumo Logic**, or **generic JSON**.
+
+> **This is what you set up if you want AIM to ping your chat / SIEM / pager.** Most teams configure one Slack webhook and stop there. Distinct from Bot connectors below — webhook triggers are fire-and-forget event notifications, bot connectors are two-way command/chat surfaces.
+
+### Where each concept lives in the dashboard
+
+The Config page groups settings by how often you'll touch them:
+
+| Group | Frequency | What's in it |
+|-------|-----------|--------------|
+| **Day-1 setup** (must do once) | Always | Models, MCP servers, Skills |
+| **Inbound** (alerts → AIM) | Most operators | Ingest tokens, Detectors |
+| **Outbound** (AIM → people/systems) | Most operators | Webhook triggers, Bot connectors |
+| **Advanced** (defaults work for 95%) | Rarely | Workflows, Agent teams |
+
+If you're new to AIM, work top-down: get one model + one MCP server + one skill definition working (Day-1), then wire your monitoring to Ingest, then add a Slack webhook trigger so your team sees what AIM is doing. Workflows and Agent teams can wait until you have a concrete reason to touch them.
+
 ## Quick Start
 
 Requires [uv](https://docs.astral.sh/uv/) (Python package manager) and Python 3.11+.

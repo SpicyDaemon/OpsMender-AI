@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-tenant SAML 2.0 SSO** (Sprint 30). New `org_saml_configs` table next to `org_sso_configs`. Admin CRUD under `/organizations/{id}/saml`. SP-initiated flow under `/auth/saml/{slug}/login` + `/acs` + `/metadata`. IdP described by metadata URL (auto-fetched + cached) or raw XML paste. Global SP keypair via `AIM_SAML_SP_CERT` / `AIM_SAML_SP_KEY` (use `aim saml gen-sp-keys` to generate). JIT user provisioning, `allowed_email_domains` allowlist, signed-AuthnRequest. SLO and encrypted assertions are out of scope for this drop. Docker image installs `libxmlsec1` / `libxml2` runtime libs; PyInstaller binary fails-loud if those libs are missing on the host.
+- **Helm chart** for Kubernetes deployments at `deploy/helm/aim/`. App Deployment/Service/Ingress, optional bundled Bitnami Postgres subchart or external DB, persistent `/app/logs` PVC, ConfigMap + Secret env wiring, liveness/readiness probes, optional HPA.
+- TopBar: active org name now visible at all breakpoints with a `host-pinned` qualifier in the user menu when Domain Isolation is in effect.
+
 ## [1.0.0] — 2026-04-22
 
 First public release. MIT-licensed. Complete feature set from Sprints 1–23.

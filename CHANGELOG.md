@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-tenant SAML 2.0 SSO** (Sprint 30). New `org_saml_configs` table next to `org_sso_configs`. Admin CRUD under `/organizations/{id}/saml`. SP-initiated flow under `/auth/saml/{slug}/login` + `/acs` + `/metadata`. IdP described by metadata URL (auto-fetched + cached) or raw XML paste. Global SP keypair via `AIM_SAML_SP_CERT` / `AIM_SAML_SP_KEY` (use `aim saml gen-sp-keys` to generate). JIT user provisioning, `allowed_email_domains` allowlist, signed-AuthnRequest. SLO and encrypted assertions are out of scope for this drop. Docker image installs `libxmlsec1` / `libxml2` runtime libs; PyInstaller binary fails-loud if those libs are missing on the host.
 - **Helm chart** for Kubernetes deployments at `deploy/helm/aim/`. App Deployment/Service/Ingress, optional bundled Bitnami Postgres subchart or external DB, persistent `/app/logs` PVC, ConfigMap + Secret env wiring, liveness/readiness probes, optional HPA.
 - TopBar: active org name now visible at all breakpoints with a `host-pinned` qualifier in the user menu when Domain Isolation is in effect.
+- TopBar: per-org role (admin / operator / viewer) now shown as a colour-coded pill next to the active org name in the org switcher, host-pinned badge, and user dropdown panel. Source is the per-org role from `listMyOrganizations`, since role can differ per tenant.
+
+### Fixed
+- Dev seed (`scripts/dev_server.py`) now idempotently creates the default "Main" organization, sets `users.primary_org_id`, and inserts the `user_organizations` link row for the seeded admin. Older local DBs that pre-date multi-tenancy get backfilled on every startup.
+- Static SPA catch-all in `backend/api/static.py` now accepts both `GET` and `HEAD`. Previously HEAD requests from health checkers, link previewers, and prefetchers got a default 405 from FastAPI.
+- Static SPA catch-all now rewrites Next.js 16 RSC prefetch URLs (`/<route>/__next.<a>.<b>.<c>.txt`) to their nested on-disk form (`/<route>/__next.<a>/<b>/<c>.txt`). Without this, client-side route prefetches 404'd on the FastAPI-served production image.
 
 ## [1.0.0] — 2026-04-22
 

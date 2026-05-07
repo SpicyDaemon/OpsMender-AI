@@ -44,7 +44,14 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
     index_file = root / "index.html"
     not_found_file = root / "404.html"
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    # GET + HEAD: HEAD requests come from health checkers, link previewers,
+    # and prefetchers. FastAPI doesn't auto-derive HEAD from GET, so register
+    # both explicitly.
+    @app.api_route(
+        "/{full_path:path}",
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+    )
     async def _serve_frontend(full_path: str, request: Request):  # noqa: ARG001
         safe_path = full_path.lstrip("/")
         # Reject traversal attempts up-front.

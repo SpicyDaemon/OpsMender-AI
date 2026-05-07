@@ -161,11 +161,12 @@ export function TopBar() {
       <div className="flex items-center gap-1.5">
         {user && tenant?.pinned && (
           <div
-            title={`Tenant pinned by host: ${tenant.host}`}
+            title={`Active organization: ${tenant.org_name} (pinned by host ${tenant.host})`}
+            aria-label={`Active organization: ${tenant.org_name}, pinned by host`}
             className="flex h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary"
           >
             <Building2 size={14} className="shrink-0 text-fg-muted" />
-            <span className="hidden md:inline max-w-[180px] truncate font-medium text-fg-primary">
+            <span className="max-w-[140px] sm:max-w-[180px] truncate font-medium text-fg-primary">
               {tenant.org_name}
             </span>
             <span className="hidden lg:inline rounded-pill border border-border-subtle bg-bg-panel px-1.5 py-px font-mono text-[10px] uppercase tracking-wide text-fg-muted">
@@ -178,11 +179,12 @@ export function TopBar() {
             <button
               type="button"
               onClick={() => setOrgMenuOpen((o) => !o)}
-              title="Switch organization"
+              title={activeOrg ? `Active organization: ${activeOrg.name} — click to switch` : "Switch organization"}
+              aria-label={activeOrg ? `Active organization: ${activeOrg.name}` : "Select organization"}
               className="flex h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary hover:border-border-strong hover:bg-bg-hover hover:text-fg-primary transition-colors"
             >
               <Building2 size={14} className="shrink-0 text-fg-muted" />
-              <span className="hidden md:inline max-w-[140px] truncate font-medium text-fg-primary">
+              <span className="max-w-[120px] sm:max-w-[160px] truncate font-medium text-fg-primary">
                 {activeOrg?.name ?? "Select org"}
               </span>
               <ChevronDown size={14} className="text-fg-muted" />
@@ -261,6 +263,19 @@ export function TopBar() {
                   >
                     {user.role}
                   </span>
+                  {(tenant?.pinned ? tenant.org_name : activeOrg?.name) && (
+                    <div className="mt-2 flex items-start gap-1.5 text-xs text-fg-secondary">
+                      <Building2 size={12} className="mt-0.5 shrink-0 text-fg-muted" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                          Active org{tenant?.pinned ? " · host-pinned" : ""}
+                        </p>
+                        <p className="truncate font-medium text-fg-primary">
+                          {tenant?.pinned ? tenant.org_name : activeOrg?.name}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => { setMenuOpen(false); logout(); }}

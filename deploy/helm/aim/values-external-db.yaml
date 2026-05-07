@@ -1,0 +1,19 @@
+## Example: deploy AIM against an externally managed Postgres
+## Usage:
+##   helm install aim ./deploy/helm/aim -f values-external-db.yaml \
+##     --set externalDatabase.url='postgresql+asyncpg://user:pass@db.example.com:5432/aim' \
+##     --set secrets.AIM_JWT_SECRET=$(openssl rand -hex 32)
+
+postgresql:
+  enabled: false
+
+externalDatabase:
+  # Inline (use --set on the command line, do not commit credentials)
+  url: ""
+  # Or reference an existing Secret:
+  # existingSecret: aim-db
+  # existingSecretKey: AIM_DATABASE_URL
+
+persistence:
+  enabled: true
+  size: 5Gi

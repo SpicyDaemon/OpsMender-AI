@@ -1,0 +1,21 @@
+apiVersion: v2
+name: aim
+description: AI Incident Manager — AI-powered incident response with tiered access controls
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/SpicyDaemon/OpsMender-AI
+sources:
+  - https://github.com/SpicyDaemon/OpsMender-AI
+maintainers:
+  - name: AIM maintainers
+keywords:
+  - incident-response
+  - ai
+  - mcp
+  - langgraph
+dependencies:
+  - name: postgresql
+    version: ">=16.0.0 <17.0.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

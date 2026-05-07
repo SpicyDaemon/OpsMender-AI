@@ -1,0 +1,27 @@
+AI Incident Manager has been installed.
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+1. Reach the dashboard:
+{{- if .Values.ingress.enabled }}
+   Configured ingress hosts:
+   {{- range .Values.ingress.hosts }}
+   - http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+   {{- end }}
+{{- else if eq .Values.service.type "LoadBalancer" }}
+   export SVC_IP=$(kubectl get svc {{ include "aim.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+   echo "http://$SVC_IP:{{ .Values.service.port }}"
+{{- else }}
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "aim.fullname" . }} 8000:{{ .Values.service.port }}
+   open http://localhost:8000
+{{- end }}
+
+2. Default admin login: created on first boot. Check pod logs for the seeded credentials.
+
+3. Required follow-up:
+   - Rotate AIM_JWT_SECRET (generate with `openssl rand -hex 32`).
+   - Set provider API keys in .Values.secrets (or wire .Values.existingSecret.name).
+{{- if not .Values.postgresql.enabled }}
+   - External database is in use; ensure AIM_DATABASE_URL resolves before pods start.
+{{- end }}

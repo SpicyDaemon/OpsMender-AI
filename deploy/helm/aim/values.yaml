@@ -1,0 +1,170 @@
+## AI Incident Manager — Helm values
+##
+## See deploy/helm/aim/README.md for usage.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/shipitpirate/ai-incident-manager
+  tag: ""               # Defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: aim.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+## Liveness/readiness probes hit the FastAPI /health endpoint.
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+## Persistent volume for the JSONL audit log fallback (./logs).
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 5Gi
+  ## Existing PVC name. If set, the chart will not create a new PVC.
+  existingClaim: ""
+
+## ──────────────────────────────────────────────────────────────────────
+## Database
+## ──────────────────────────────────────────────────────────────────────
+## When postgresql.enabled=true, the Bitnami Postgres subchart is deployed
+## and the app's AIM_DATABASE_URL is wired automatically.
+##
+## When postgresql.enabled=false, set externalDatabase.url to a full
+## SQLAlchemy async URL (postgresql+asyncpg://user:pass@host:5432/db) or
+## provide externalDatabase.existingSecret + existingSecretKey.
+postgresql:
+  enabled: true
+  auth:
+    username: aim
+    password: aim
+    database: aim
+    ## Recommended for production: use existingSecret instead of inline auth.
+    existingSecret: ""
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+externalDatabase:
+  ## Full async SQLAlchemy URL. Only used when postgresql.enabled=false.
+  url: ""
+  ## Or pull the URL from an existing Secret.
+  existingSecret: ""
+  existingSecretKey: "AIM_DATABASE_URL"
+
+## ──────────────────────────────────────────────────────────────────────
+## Application config (maps 1:1 to .env variables; see .env.example)
+## ──────────────────────────────────────────────────────────────────────
+## Anything in `config` is rendered into a ConfigMap as plain env vars.
+## Anything in `secrets` is rendered into a Secret. To reuse an existing
+## Secret instead, set existingSecret.name (keys must match env var names).
+config:
+  AIM_TIER: "2"
+  AIM_LOG_LEVEL: "INFO"
+  AIM_APPROVAL_TIMEOUT_SECONDS: "900"
+  AIM_TIER0_MAX_SESSION_SECONDS: "600"
+  AIM_TIER0_MAX_NODE_SECONDS: "120"
+  AIM_MODEL_PROVIDER: "anthropic"
+  AIM_MODEL_ID: "claude-sonnet-4-20250514"
+  AIM_CORS_ORIGINS: "*"
+  AIM_JWT_ALGORITHM: "HS256"
+  AIM_JWT_EXPIRE_MINUTES: "60"
+  AIM_AUDIT_LOG: "/app/logs/audit.jsonl"
+  AIM_FRONTEND_STATIC_DIR: "/app/frontend/out"
+  AIM_DETECTOR_ENABLED: "false"
+  AIM_INGEST_RATE_LIMIT: "60"
+  AIM_INGEST_RATE_WINDOW: "60"
+
+## Sensitive values. Generate AIM_JWT_SECRET with:
+##   openssl rand -hex 32
+## Required: AIM_JWT_SECRET. Optional provider keys depending on AIM_MODEL_PROVIDER.
+secrets:
+  AIM_JWT_SECRET: "change-me-in-production"
+  ANTHROPIC_API_KEY: ""
+  OPENAI_API_KEY: ""
+  AZURE_OPENAI_API_KEY: ""
+
+## Reuse an existing secret instead of rendering one from `secrets`.
+existingSecret:
+  name: ""
+
+## Extra arbitrary env vars passed straight through to the container.
+extraEnv: []
+# - name: SOMETHING
+#   value: "x"
+# - name: FROM_SECRET
+#   valueFrom:
+#     secretKeyRef:
+#       name: my-secret
+#       key: token
+
+## Free-form env vars sourced from existing ConfigMaps/Secrets.
+envFrom: []
+# - secretRef:
+#     name: aim-extra-secrets
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80

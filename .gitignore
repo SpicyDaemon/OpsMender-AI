@@ -36,3 +36,7 @@ logs/
 # local DB Files
 *.db
 *.db/
+
+# Helm chart dependencies (downloaded by `helm dependency update`)
+deploy/helm/aim/charts/
+deploy/helm/aim/Chart.lock

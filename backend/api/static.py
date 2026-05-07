@@ -65,6 +65,24 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
             candidates.append(root / safe_path)
             candidates.append(root / f"{safe_path}.html")
             candidates.append(root / safe_path / "index.html")
+            # Next.js 16 RSC prefetch payload rewrite. Requests like
+            #   /dashboard/organizations/__next.dashboard.organizations.__PAGE__.txt
+            # actually map to the nested file
+            #   /dashboard/organizations/__next.dashboard/organizations/__PAGE__.txt
+            # i.e. the first dot after `__next` is part of the directory name
+            # `__next.<first>`; all subsequent dots in the basename are
+            # directory separators. Add the rewritten path as a fallback
+            # candidate so these prefetch requests stop 404'ing.
+            candidate_path = pathlib.Path(safe_path)
+            base = candidate_path.name
+            if base.startswith("__next.") and base.endswith(".txt"):
+                stem = base[: -len(".txt")]
+                parts = stem.split(".")
+                if len(parts) >= 3:
+                    rewritten_basename = (
+                        f"{parts[0]}.{parts[1]}/" + "/".join(parts[2:]) + ".txt"
+                    )
+                    candidates.append(root / candidate_path.parent / rewritten_basename)
 
         for candidate in candidates:
             try:

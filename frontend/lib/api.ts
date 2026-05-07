@@ -780,6 +780,8 @@ import type {
   OrganizationResponse,
   OrganizationUpdate,
   OrganizationUserListResponse,
+  OrgSAMLConfigCreate,
+  OrgSAMLConfigResponse,
   OrgSSOConfigCreate,
   OrgSSOConfigResponse,
   TenantContextResponse,
@@ -913,4 +915,24 @@ export async function upsertOrgSSOConfig(
 
 export async function deleteOrgSSOConfig(orgId: string): Promise<void> {
   return api.del<void>(`/organizations/${orgId}/sso`);
+}
+
+
+export async function getOrgSAMLConfig(
+  orgId: string,
+): Promise<OrgSAMLConfigResponse> {
+  return api.get<OrgSAMLConfigResponse>(`/organizations/${orgId}/saml`);
+}
+
+
+export async function upsertOrgSAMLConfig(
+  orgId: string,
+  body: OrgSAMLConfigCreate,
+): Promise<OrgSAMLConfigResponse> {
+  return api.put<OrgSAMLConfigResponse>(`/organizations/${orgId}/saml`, body);
+}
+
+
+export async function deleteOrgSAMLConfig(orgId: string): Promise<void> {
+  return api.del<void>(`/organizations/${orgId}/saml`);
 }

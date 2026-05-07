@@ -949,6 +949,8 @@ export interface TenantContextResponse {
   host?: string | null;
   sso_enabled?: boolean;
   sso_login_path?: string | null;
+  saml_enabled?: boolean;
+  saml_login_path?: string | null;
 }
 
 
@@ -981,4 +983,34 @@ export interface OrgSSOConfigCreate {
   name_claim?: string;
   default_role?: "admin" | "operator" | "viewer";
   allowed_email_domains?: string | null;
+}
+
+
+export interface OrgSAMLConfigResponse {
+  id: string;
+  org_id: string;
+  is_active: boolean;
+  idp_metadata_url: string | null;
+  has_idp_metadata_xml: boolean;
+  email_attribute: string;
+  name_attribute: string;
+  default_role: "admin" | "operator" | "viewer";
+  allowed_email_domains: string | null;
+  want_assertions_signed: boolean;
+  want_response_signed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+
+export interface OrgSAMLConfigCreate {
+  is_active?: boolean;
+  idp_metadata_url?: string | null;
+  idp_metadata_xml?: string | null;
+  email_attribute?: string;
+  name_attribute?: string;
+  default_role?: "admin" | "operator" | "viewer";
+  allowed_email_domains?: string | null;
+  want_assertions_signed?: boolean;
+  want_response_signed?: boolean;
 }

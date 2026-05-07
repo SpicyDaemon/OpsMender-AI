@@ -77,14 +77,25 @@ export default function LoginPage() {
         </>
       )}
     >
-      {tenant?.sso_enabled && tenant.sso_login_path && (
+      {((tenant?.sso_enabled && tenant.sso_login_path) ||
+        (tenant?.saml_enabled && tenant.saml_login_path)) && (
         <div className="mb-6 space-y-3">
-          <a
-            href={tenant.sso_login_path}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
-          >
-            Sign in with {tenant.org_name ?? "SSO"}
-          </a>
+          {tenant?.sso_enabled && tenant.sso_login_path && (
+            <a
+              href={tenant.sso_login_path}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
+            >
+              Sign in with {tenant.org_name ?? "SSO"}
+            </a>
+          )}
+          {tenant?.saml_enabled && tenant.saml_login_path && (
+            <a
+              href={tenant.saml_login_path}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
+            >
+              Sign in with SAML
+            </a>
+          )}
           <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-fg-muted">
             <span className="h-px flex-1 bg-border-subtle" />
             or use a local account

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Building2,
+  FileKey,
   Globe,
   KeyRound,
   Pencil,
@@ -18,7 +19,9 @@ import {
   createOrganizationDomain,
   deleteOrganization,
   deleteOrganizationDomain,
+  deleteOrgSAMLConfig,
   deleteOrgSSOConfig,
+  getOrgSAMLConfig,
   getOrgSSOConfig,
   listOrganizationDomains,
   listOrganizations,
@@ -26,12 +29,14 @@ import {
   removeUserFromOrganization,
   setPrimaryOrganizationDomain,
   updateOrganization,
+  upsertOrgSAMLConfig,
   upsertOrgSSOConfig,
   listUsers,
 } from "@/lib/api";
 import type {
   OrganizationDomainResponse,
   OrganizationResponse,
+  OrgSAMLConfigResponse,
   OrgSSOConfigResponse,
   UserOrganizationResponse,
   UserResponse,
@@ -740,6 +745,307 @@ function SSOModal({
   );
 }
 
+function SAMLModal({
+  open,
+  org,
+  onClose,
+}: {
+  open: boolean;
+  org: OrganizationResponse | null;
+  onClose: () => void;
+}) {
+  const [existing, setExisting] = useState<OrgSAMLConfigResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Source toggle: paste a metadata URL (preferred) or paste raw XML.
+  const [source, setSource] = useState<"url" | "xml">("url");
+  const [metadataUrl, setMetadataUrl] = useState("");
+  const [metadataXml, setMetadataXml] = useState("");
+  const [emailAttr, setEmailAttr] = useState(
+    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+  );
+  const [nameAttr, setNameAttr] = useState(
+    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+  );
+  const [defaultRole, setDefaultRole] = useState<"admin" | "operator" | "viewer">("viewer");
+  const [allowedDomains, setAllowedDomains] = useState("");
+  const [wantAssertionsSigned, setWantAssertionsSigned] = useState(true);
+  const [wantResponseSigned, setWantResponseSigned] = useState(true);
+  const [isActive, setIsActive] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!org) return;
+    setLoading(true);
+    setError("");
+    try {
+      const cfg = await getOrgSAMLConfig(org.id);
+      setExisting(cfg);
+      if (cfg.idp_metadata_url) {
+        setSource("url");
+        setMetadataUrl(cfg.idp_metadata_url);
+        setMetadataXml("");
+      } else {
+        setSource("xml");
+        setMetadataUrl("");
+        // The backend never returns the raw XML, only a flag — leave the
+        // textarea empty so admins consciously paste a fresh value if they
+        // want to overwrite.
+        setMetadataXml("");
+      }
+      setEmailAttr(cfg.email_attribute);
+      setNameAttr(cfg.name_attribute);
+      setDefaultRole(cfg.default_role);
+      setAllowedDomains(cfg.allowed_email_domains ?? "");
+      setWantAssertionsSigned(cfg.want_assertions_signed);
+      setWantResponseSigned(cfg.want_response_signed);
+      setIsActive(cfg.is_active);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/not\s+found|404/i.test(msg)) {
+        setExisting(null);
+        setSource("url");
+        setMetadataUrl("");
+        setMetadataXml("");
+        setEmailAttr("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress");
+        setNameAttr("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name");
+        setDefaultRole("viewer");
+        setAllowedDomains("");
+        setWantAssertionsSigned(true);
+        setWantResponseSigned(true);
+        setIsActive(true);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [org]);
+
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
+
+  if (!open || !org) return null;
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    try {
+      const url = metadataUrl.trim();
+      const xml = metadataXml.trim();
+      if (source === "url") {
+        if (!url) {
+          setError("Provide an IdP metadata URL.");
+          setSaving(false);
+          return;
+        }
+      } else {
+        // For XML mode: when editing an existing config, allow leaving the
+        // textarea blank to keep the stored value (the response never echoes
+        // it back). For new configs, require a paste.
+        if (!xml && !existing?.has_idp_metadata_xml) {
+          setError("Paste the IdP metadata XML.");
+          setSaving(false);
+          return;
+        }
+      }
+      await upsertOrgSAMLConfig(org!.id, {
+        is_active: isActive,
+        idp_metadata_url: source === "url" ? url : null,
+        idp_metadata_xml: source === "xml" && xml ? xml : null,
+        email_attribute: emailAttr.trim(),
+        name_attribute: nameAttr.trim(),
+        default_role: defaultRole,
+        allowed_email_domains: allowedDomains.trim() || null,
+        want_assertions_signed: wantAssertionsSigned,
+        want_response_signed: wantResponseSigned,
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Disable SAML for this organization?")) return;
+    setSaving(true);
+    try {
+      await deleteOrgSAMLConfig(org!.id);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`SAML: ${org.name}`}
+      maxWidth="max-w-2xl"
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-fg-secondary">
+          Configure a SAML 2.0 identity provider (older Okta tenants, ADFS,
+          classic Azure AD enterprise apps). AIM redirects users to the IdP
+          and JIT-provisions accounts on first login. The login URL for this
+          org is{" "}
+          <code className="font-mono text-fg-primary">/auth/saml/{org.slug}/login</code>
+          . The IdP-facing SP metadata URL is{" "}
+          <code className="font-mono text-fg-primary">/auth/saml/{org.slug}/metadata</code>
+          .
+        </p>
+
+        <FormError message={error} />
+
+        {loading ? (
+          <div className="animate-pulse space-y-2">
+            <div className="h-10 rounded-md bg-bg-muted" />
+            <div className="h-10 rounded-md bg-bg-muted" />
+          </div>
+        ) : (
+          <>
+            <div>
+              <Label htmlFor="saml-source">IdP metadata source</Label>
+              <Select
+                id="saml-source"
+                value={source}
+                onChange={(e) => setSource(e.target.value as "url" | "xml")}
+              >
+                <option value="url">Metadata URL (preferred)</option>
+                <option value="xml">Paste raw XML</option>
+              </Select>
+            </div>
+            {source === "url" ? (
+              <div>
+                <Label htmlFor="saml-md-url">IdP metadata URL</Label>
+                <Input
+                  id="saml-md-url"
+                  value={metadataUrl}
+                  onChange={(e) => setMetadataUrl(e.target.value)}
+                  placeholder="https://idp.example.com/app/metadata"
+                />
+              </div>
+            ) : (
+              <div>
+                <Label htmlFor="saml-md-xml">
+                  IdP metadata XML
+                  {existing?.has_idp_metadata_xml
+                    ? " (leave blank to keep stored XML)"
+                    : ""}
+                </Label>
+                <textarea
+                  id="saml-md-xml"
+                  value={metadataXml}
+                  onChange={(e) => setMetadataXml(e.target.value)}
+                  rows={8}
+                  className="w-full rounded-md border border-border-strong bg-bg-base px-3 py-2 font-mono text-xs text-fg-primary"
+                  placeholder="<EntityDescriptor …>"
+                />
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="saml-email-attr">Email attribute</Label>
+                <Input
+                  id="saml-email-attr"
+                  value={emailAttr}
+                  onChange={(e) => setEmailAttr(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="saml-name-attr">Name attribute</Label>
+                <Input
+                  id="saml-name-attr"
+                  value={nameAttr}
+                  onChange={(e) => setNameAttr(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="saml-default-role">
+                  Default role for new users
+                </Label>
+                <Select
+                  id="saml-default-role"
+                  value={defaultRole}
+                  onChange={(e) => setDefaultRole(e.target.value as any)}
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="operator">Operator</option>
+                  <option value="admin">Admin</option>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="saml-allowed-domains">
+                  Allowed email domains (optional, comma-separated)
+                </Label>
+                <Input
+                  id="saml-allowed-domains"
+                  value={allowedDomains}
+                  onChange={(e) => setAllowedDomains(e.target.value)}
+                  placeholder="acme.com,acme.co.uk"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-fg-secondary">
+                <input
+                  type="checkbox"
+                  checked={wantAssertionsSigned}
+                  onChange={(e) => setWantAssertionsSigned(e.target.checked)}
+                />
+                Require signed assertions
+              </label>
+              <label className="flex items-center gap-2 text-sm text-fg-secondary">
+                <input
+                  type="checkbox"
+                  checked={wantResponseSigned}
+                  onChange={(e) => setWantResponseSigned(e.target.checked)}
+                />
+                Require signed responses
+              </label>
+              <label className="flex items-center gap-2 text-sm text-fg-secondary">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                />
+                Enabled — show "Sign in with SAML" on the login page
+              </label>
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-between gap-2 border-t border-border-subtle pt-4">
+          <div>
+            {existing && (
+              <Button variant="danger" onClick={handleDelete} disabled={saving}>
+                Disable SAML
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} loading={saving}>
+              {existing ? "Save Changes" : "Enable SAML"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function OrganizationsPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "admin";
@@ -759,6 +1065,9 @@ export default function OrganizationsPage() {
 
   const [showSSOModal, setShowSSOModal] = useState(false);
   const [managingSSOOrg, setManagingSSOOrg] = useState<OrganizationResponse | null>(null);
+
+  const [showSAMLModal, setShowSAMLModal] = useState(false);
+  const [managingSAMLOrg, setManagingSAMLOrg] = useState<OrganizationResponse | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -893,6 +1202,16 @@ export default function OrganizationsPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => {
+                    setManagingSAMLOrg(org);
+                    setShowSAMLModal(true);
+                  }}
+                >
+                  <FileKey size={14} /> SAML
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
                     setEditingOrg(org);
                     setShowOrgModal(true);
                   }}
@@ -935,6 +1254,12 @@ export default function OrganizationsPage() {
         open={showSSOModal}
         org={managingSSOOrg}
         onClose={() => setShowSSOModal(false)}
+      />
+
+      <SAMLModal
+        open={showSAMLModal}
+        org={managingSAMLOrg}
+        onClose={() => setShowSAMLModal(false)}
       />
     </div>
   );

@@ -10,13 +10,53 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class EmailAdapter:
     """Adapter for Email (via Mailgun Webhooks and API)."""
 
     platform = "email"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="mailgun_api_key",
+                label="Mailgun API key",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Used both to verify inbound webhook signatures and to send outbound email.",
+                doc_url="https://documentation.mailgun.com/en/latest/api-intro.html#authentication",
+            ),
+            FieldSpec(
+                name="mailgun_domain",
+                label="Mailgun sending domain",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="Domain configured in Mailgun (e.g. mg.example.com).",
+                placeholder="mg.example.com",
+            ),
+            FieldSpec(
+                name="from_email",
+                label="From address",
+                kind="text",
+                group="credentials",
+                required=False,
+                helper="Optional. Defaults to bot@<mailgun_domain>.",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default recipient",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Recipient email used for outbound notifications.",
+                placeholder="oncall@example.com",
+            ),
+        ]
 
     def verify_webhook(
         self,

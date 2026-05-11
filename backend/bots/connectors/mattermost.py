@@ -9,13 +9,53 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class MattermostAdapter:
     """Adapter for Mattermost Outgoing Webhooks."""
 
     platform = "mattermost"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="webhook_token",
+                label="Outgoing webhook token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Token shown when you create the Outgoing Webhook in Mattermost integrations.",
+                doc_url="https://developers.mattermost.com/integrate/webhooks/outgoing/",
+            ),
+            FieldSpec(
+                name="service_url",
+                label="Mattermost server URL",
+                kind="url",
+                group="credentials",
+                required=True,
+                helper="Base URL of your Mattermost server.",
+                placeholder="https://mattermost.example.com",
+            ),
+            FieldSpec(
+                name="bot_token",
+                label="Bot personal access token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Personal access token of the bot account. Required for outbound posts.",
+                doc_url="https://developers.mattermost.com/integrate/reference/personal-access-token/",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default channel ID",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Channel ID used for outbound notifications.",
+            ),
+        ]
 
     def verify_webhook(
         self,

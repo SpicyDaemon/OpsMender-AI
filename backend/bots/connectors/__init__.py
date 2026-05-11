@@ -10,7 +10,7 @@ verification, payload parsing, inline-reply shaping (if supported), and
 outbound ``send_message`` delivery.
 """
 
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 from .registry import get_adapter, list_platforms, register_adapter
 from .bluebubbles import BlueBubblesAdapter
 from .dingtalk import DingTalkAdapter
@@ -30,6 +30,7 @@ from .whatsapp import WhatsAppAdapter
 
 __all__ = [
     "BotConnectorAdapter",
+    "FieldSpec",
     "InboundMessage",
     "BlueBubblesAdapter",
     "DingTalkAdapter",

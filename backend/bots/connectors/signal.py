@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from backend.bots.signal_client import send_message as signal_send
 from backend.db.models import BotConnector
 
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class SignalAdapter:
@@ -38,6 +38,46 @@ class SignalAdapter:
     """
 
     platform = "signal"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="service_url",
+                label="signal-cli-rest-api URL",
+                kind="url",
+                group="credentials",
+                required=True,
+                helper="Base URL of your signal-cli-rest-api server (e.g. http://signal-cli:8080).",
+                doc_url="https://github.com/bbernhard/signal-cli-rest-api",
+                placeholder="http://signal-cli:8080",
+            ),
+            FieldSpec(
+                name="bot_number",
+                label="Bot phone number",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="The registered Signal phone number in E.164 format.",
+                placeholder="+15551234567",
+            ),
+            FieldSpec(
+                name="webhook_secret",
+                label="Webhook shared secret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Random string. Your reverse proxy must inject it as the X-AIM-Webhook-Secret header on inbound calls.",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default recipient",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Recipient phone (+15551234567) or Signal group ID for outbound notifications.",
+            ),
+        ]
 
     def verify_webhook(
         self,

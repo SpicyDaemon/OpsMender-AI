@@ -11,13 +11,45 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class DiscordAdapter:
     """Adapter for Discord Interactions (webhooks)."""
 
     platform = "discord"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="public_key",
+                label="Application public key",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Hex string from your Discord application → General Information → Public Key.",
+                doc_url="https://discord.com/developers/docs/interactions/receiving-and-responding#security-and-authorization",
+            ),
+            FieldSpec(
+                name="bot_token",
+                label="Bot token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="From your application's Bot tab. Required for outbound message delivery.",
+                doc_url="https://discord.com/developers/docs/topics/oauth2#bots",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default channel ID",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Snowflake channel ID used for outbound notifications.",
+                placeholder="123456789012345678",
+            ),
+        ]
 
     def verify_webhook(
         self,

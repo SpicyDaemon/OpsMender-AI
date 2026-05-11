@@ -891,6 +891,34 @@ class BotConnectorTestResponse(BaseModel):
     status: str
 
 
+class BotConnectorFieldOption(BaseModel):
+    value: str
+    label: str
+
+
+class BotConnectorFieldSchema(BaseModel):
+    name: str
+    label: str
+    kind: str
+    group: str
+    required: bool
+    default: Optional[Any] = None
+    helper: Optional[str] = None
+    doc_url: Optional[str] = None
+    placeholder: Optional[str] = None
+    options: list[BotConnectorFieldOption] = Field(default_factory=list)
+
+
+class BotConnectorPlatformSchema(BaseModel):
+    platform: str
+    fields: list[BotConnectorFieldSchema]
+
+
+class BotConnectorPlatformListResponse(BaseModel):
+    items: list[BotConnectorPlatformSchema]
+    total: int
+
+
 class BotUserLinkCreate(BaseModel):
     platform_user_id: str
     aim_user_id: uuid.UUID

@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import get_current_org, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    BotConnectorFieldOption,
+    BotConnectorFieldSchema,
     BotConnectorListResponse,
+    BotConnectorPlatformListResponse,
+    BotConnectorPlatformSchema,
     BotConnectorResponse,
     BotConnectorTestResponse,
     BotConnectorUpsert,
@@ -19,6 +23,8 @@ from backend.api.schemas import (
     BotUserLinkListResponse,
     BotUserLinkResponse,
 )
+import backend.bots  # noqa: F401 — triggers adapter registry side-effect
+from backend.bots.connectors import FieldSpec, get_adapter, list_platforms
 from backend.db.models import BotConnector, User
 from backend.db.repos import BotConnectorRepo, BotUserLinkRepo, UserRepo
 
@@ -111,6 +117,67 @@ def _test_connector_configuration(
         "healthy",
         None,
     )
+
+
+def _field_spec_to_schema(spec: FieldSpec) -> BotConnectorFieldSchema:
+    return BotConnectorFieldSchema(
+        name=spec.name,
+        label=spec.label,
+        kind=spec.kind,
+        group=spec.group,
+        required=spec.required,
+        default=spec.default,
+        helper=spec.helper,
+        doc_url=spec.doc_url,
+        placeholder=spec.placeholder,
+        options=[BotConnectorFieldOption(value=v, label=l) for v, l in spec.options],
+    )
+
+
+def _platform_schema(platform: str) -> BotConnectorPlatformSchema | None:
+    adapter = get_adapter(platform)
+    if adapter is None:
+        return None
+    schema_fn = getattr(adapter, "form_schema", None)
+    fields = schema_fn() if callable(schema_fn) else []
+    return BotConnectorPlatformSchema(
+        platform=platform,
+        fields=[_field_spec_to_schema(f) for f in fields],
+    )
+
+
+@router.get(
+    "/platforms",
+    response_model=BotConnectorPlatformListResponse,
+    summary="List supported chat platforms with their form schemas",
+)
+async def list_bot_platform_schemas(
+    user: User = Depends(require_role("admin")),
+):
+    items: list[BotConnectorPlatformSchema] = []
+    for platform in list_platforms():
+        schema = _platform_schema(platform)
+        if schema is not None:
+            items.append(schema)
+    return BotConnectorPlatformListResponse(items=items, total=len(items))
+
+
+@router.get(
+    "/platforms/{platform}/schema",
+    response_model=BotConnectorPlatformSchema,
+    summary="Get the form schema for a single chat platform",
+)
+async def get_bot_platform_schema(
+    platform: str,
+    user: User = Depends(require_role("admin")),
+):
+    schema = _platform_schema(platform)
+    if schema is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown platform: {platform}",
+        )
+    return schema
 
 
 @router.get(

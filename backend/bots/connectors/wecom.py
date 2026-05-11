@@ -17,13 +17,67 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class WeComAdapter:
     """Adapter for WeCom (WeChat Work) webhooks."""
 
     platform = "wecom"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="token",
+                label="Callback token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Token set in your WeCom self-built app → Receive Messages config.",
+                doc_url="https://developer.work.weixin.qq.com/document/path/90930",
+            ),
+            FieldSpec(
+                name="encoding_aes_key",
+                label="EncodingAESKey",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="43-character AES key from the same config page. Used to decrypt callback bodies.",
+            ),
+            FieldSpec(
+                name="corpid",
+                label="Corp ID",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="Enterprise ID (CorpID) from WeCom admin console.",
+            ),
+            FieldSpec(
+                name="corpsecret",
+                label="Corp secret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Secret for the self-built app. Used to obtain access tokens for outbound messages.",
+            ),
+            FieldSpec(
+                name="agentid",
+                label="Agent ID",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="Numeric AgentID of the self-built app.",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default recipient (touser)",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. UserID or @all for outbound notifications.",
+            ),
+        ]
 
     def _get_signature(self, token: str, timestamp: str, nonce: str, msg_encrypt: str) -> str:
         v = sorted([token, timestamp, nonce, msg_encrypt])

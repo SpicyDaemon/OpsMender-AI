@@ -9,13 +9,51 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class FeishuAdapter:
     """Adapter for Feishu / Lark Events."""
 
     platform = "feishu"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="verification_token",
+                label="Verification token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="From Lark/Feishu developer console → Event Subscriptions → Verification Token.",
+                doc_url="https://open.larksuite.com/document/server-docs/event-subscription-guide/event-subscription-configure-/configure-callback-url-event-subscription",
+            ),
+            FieldSpec(
+                name="app_id",
+                label="App ID",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="Application ID from the Lark/Feishu developer console.",
+            ),
+            FieldSpec(
+                name="app_secret",
+                label="App secret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Application secret used to obtain tenant access tokens for outbound calls.",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default chat ID",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. open_chat_id used for outbound notifications.",
+            ),
+        ]
 
     def verify_webhook(
         self,

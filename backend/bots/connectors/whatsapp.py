@@ -45,13 +45,61 @@ from fastapi import HTTPException, status
 from backend.bots.whatsapp_client import send_message as whatsapp_send
 from backend.db.models import BotConnector
 
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class WhatsAppAdapter:
     """Adapter for WhatsApp Business Cloud API webhooks."""
 
     platform = "whatsapp"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="app_secret",
+                label="App secret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="From Meta for Developers → App settings → Basic. Used to verify the X-Hub-Signature-256 webhook header.",
+                doc_url="https://developers.facebook.com/docs/graph-api/webhooks/getting-started",
+            ),
+            FieldSpec(
+                name="verify_token",
+                label="Webhook verify token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Arbitrary string you set when configuring the WhatsApp webhook; Meta echoes it back on the GET challenge.",
+            ),
+            FieldSpec(
+                name="access_token",
+                label="System user access token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Long-lived token from your WhatsApp Business app. Required for sending outbound messages.",
+                doc_url="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started",
+            ),
+            FieldSpec(
+                name="phone_number_id",
+                label="Phone number ID",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="Numeric ID of the WhatsApp business phone number (not the phone number itself).",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default recipient phone",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Recipient phone in E.164 (e.g. 15551234567) for outbound notifications.",
+                placeholder="15551234567",
+            ),
+        ]
 
     def verify_webhook(
         self,

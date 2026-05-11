@@ -17,13 +17,51 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class WeixinAdapter:
     """Adapter for Weixin (WeChat Official Account) webhooks."""
 
     platform = "weixin"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="token",
+                label="Callback token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Set in the WeChat Official Account admin → Basic Configuration → Server Config.",
+                doc_url="https://developers.weixin.qq.com/doc/offiaccount/Basic_Information/Access_Overview.html",
+            ),
+            FieldSpec(
+                name="appid",
+                label="AppID",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="Public account AppID.",
+            ),
+            FieldSpec(
+                name="appsecret",
+                label="AppSecret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Public account AppSecret. Used to obtain access tokens for outbound replies.",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default recipient OpenID",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. OpenID of the recipient for outbound customer-service messages.",
+            ),
+        ]
 
     def _get_signature(self, token: str, timestamp: str, nonce: str) -> str:
         v = sorted([token, timestamp, nonce])

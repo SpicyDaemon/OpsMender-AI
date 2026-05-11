@@ -10,13 +10,46 @@ from fastapi import HTTPException, status
 from backend.bots.telegram import send_message as telegram_send
 from backend.db.models import BotConnector
 
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class TelegramAdapter:
     """Adapter for Telegram Bot API webhooks."""
 
     platform = "telegram"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="bot_token",
+                label="Bot token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Issued by @BotFather when you create the bot.",
+                doc_url="https://core.telegram.org/bots#botfather",
+                placeholder="123456:ABC-...",
+            ),
+            FieldSpec(
+                name="webhook_secret",
+                label="Webhook secret token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Random string you set when calling setWebhook; Telegram echoes it back in X-Telegram-Bot-Api-Secret-Token.",
+                doc_url="https://core.telegram.org/bots/api#setwebhook",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default chat ID",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Chat ID used for outbound notifications when no explicit recipient is given.",
+                placeholder="-1001234567890",
+            ),
+        ]
 
     def verify_webhook(
         self,

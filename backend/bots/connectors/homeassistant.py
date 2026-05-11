@@ -9,13 +9,53 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class HomeAssistantAdapter:
     """Adapter for Home Assistant (HASS) Actionable Notifications."""
 
     platform = "homeassistant"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="webhook_secret",
+                label="Webhook shared secret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Random string. Your HASS automation must send it as the X-AIM-Webhook-Secret header.",
+            ),
+            FieldSpec(
+                name="service_url",
+                label="Home Assistant URL",
+                kind="url",
+                group="credentials",
+                required=True,
+                helper="Base URL of your Home Assistant instance.",
+                placeholder="https://homeassistant.local:8123",
+            ),
+            FieldSpec(
+                name="access_token",
+                label="Long-lived access token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="From your HASS user profile → Long-Lived Access Tokens.",
+                doc_url="https://www.home-assistant.io/docs/authentication/#your-account-profile",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default notify service",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. notify.<service> target used for outbound notifications.",
+                placeholder="notify.mobile_app_pixel",
+            ),
+        ]
 
     def verify_webhook(
         self,

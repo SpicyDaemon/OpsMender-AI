@@ -105,7 +105,7 @@ uv run aim --version
 uv run aim run --dry-run --incident "High CPU on api-server-01"   # no LLM/MCP needed
 ```
 
-See [Running Locally](#running-locally) to start the full API + dashboard.
+See [Running the dev server](#running-the-dev-server) to start the full API + dashboard locally.
 
 > **How `aim` works:** `uv sync` installs the project as a Python package, which registers `aim` as a CLI entry point (defined in `pyproject.toml` → `[project.scripts]`). Run it via `uv run aim` or by activating the venv directly (`. .venv/bin/activate && aim`).
 
@@ -190,42 +190,74 @@ If you change anything in the API layer, the workflow, the approval service, the
 | `aim approvals approve ID` | Approve a pending Tier 1 request |
 | `aim approvals reject ID` | Reject a pending Tier 1 request |
 
-## Running Locally
+## Running the dev server
 
-AIM runs on a **single port (8000)** — backend API + static frontend export served by one Python process. There is no separate frontend port.
+AIM runs on a **single port (8000)** — backend API + static frontend served by one Python process. The dev launcher (`scripts/dev_server.py`) sidesteps Alembic by using `Base.metadata.create_all`, which works on SQLite. It loads `.env`, creates the schema, seeds `admin` / `admin123`, and starts Uvicorn serving both the API and the embedded static frontend.
 
-### Dev server with SQLite (recommended for local testing)
+### Prerequisites
 
-No Postgres required. The dev launcher sidesteps Alembic by using `Base.metadata.create_all`, which works on SQLite. It loads `.env`, creates the schema, seeds `admin` / `admin123`, and starts Uvicorn on port 8000 serving both the API and the embedded static frontend.
+- [uv](https://docs.astral.sh/uv/) (Python package manager) and Python 3.11+
+- Node.js 20+ and npm (for the frontend build)
+- No Postgres required — the dev server falls back to local SQLite when Postgres isn't reachable
+
+### One-time setup
 
 ```bash
-# 1. Point AIM at a local SQLite file in .env
-#    (either edit AIM_DATABASE_URL, or comment it out and the app defaults to sqlite+aiosqlite:///./aim-local.db)
-AIM_DATABASE_URL=sqlite+aiosqlite:///./aim-local.db
+# 1. Install Python deps and register the `aim` CLI command
+uv sync --dev
 
-# 2. Build the static frontend (only when the frontend changes)
+# 2. Create your .env from the template
+cp .env.example .env
+#    Then open .env and either:
+#    - leave AIM_DATABASE_URL commented out (SQLite fallback at ./aim-local.db), or
+#    - set AIM_DATABASE_URL=sqlite+aiosqlite:///./aim-local.db explicitly.
+#    Provider keys (Anthropic / OpenAI / Azure / Ollama) can be added later
+#    via the dashboard or directly in .env.
+
+# 3. Build the static frontend (creates frontend/out/ that FastAPI serves)
 cd frontend && npm install && npm run build && cd ..
+```
 
-# 3. Start the app
+Files created by the steps above:
+- `.env` — your local copy of `.env.example`
+- `aim-local.db` — SQLite database, created automatically on first dev-server start
+- `frontend/out/` — static Next.js export served by the FastAPI catch-all route
+
+### Start the server
+
+```bash
 uv run python scripts/dev_server.py
 ```
 
 Open **http://localhost:8000** and log in with `admin` / `admin123`.
 If no default model config exists yet, go to **Config → Models** and bootstrap one from the dashboard before running live sessions.
 
-**Hot-reload workflow** — for faster frontend iteration you can skip the `npm run build` step and run the Next.js dev server on port 3000 instead, pointing it at the backend on 8000:
+### Hot-reload workflow (frontend iteration)
+
+For fast frontend changes, skip the static build and run the Next.js dev server on port 3000 alongside the backend on 8000:
 
 ```bash
 # terminal 1 — backend only
 uv run python scripts/dev_server.py
 
-# terminal 2 — frontend dev server
+# terminal 2 — frontend dev server (hot reload)
 cd frontend && npm run dev
 ```
 
-Then open **http://localhost:3000**.
+Then open **http://localhost:3000**. The frontend proxies API calls back to `:8000`.
 
-### Production mode (`aim serve` with Postgres)
+### Common issues
+
+- **`GET / → 404 Not Found`** in the dev-server log: `frontend/out/` doesn't exist. Run `cd frontend && npm install && npm run build` first, then restart the dev server.
+- **`Connect call failed ('127.0.0.1', 5432)`** at startup: your `.env` still has `AIM_DATABASE_URL=postgresql+asyncpg://…` but no Postgres is running. Comment that line out (or set it to a SQLite URL) so the SQLite fallback engages.
+- **Code changes not picked up:** `dev_server.py` runs Uvicorn with `reload=False`. Stop it (`Ctrl+C`) and restart after edits to backend code.
+- **Port 8000 in use:** `lsof -i :8000` to find the PID, then `kill <PID>`.
+
+---
+
+## Running in production
+
+### `aim serve` with Postgres
 
 `aim serve` runs Alembic migrations, which use Postgres-specific types, so it requires Postgres.
 

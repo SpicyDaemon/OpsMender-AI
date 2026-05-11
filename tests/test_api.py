@@ -1913,6 +1913,69 @@ class TestBotConnectorsAPI:
         resp = await client.get("/bot-connectors", headers=viewer_headers)
         assert resp.status_code == 403
 
+    async def test_list_platform_schemas(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get("/bot-connectors/platforms", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 15
+        platforms = {item["platform"] for item in data["items"]}
+        for expected in [
+            "telegram",
+            "slack",
+            "discord",
+            "whatsapp",
+            "signal",
+            "mattermost",
+            "matrix",
+            "feishu",
+            "dingtalk",
+            "wecom",
+            "weixin",
+            "twilio",
+            "email",
+            "homeassistant",
+            "bluebubbles",
+        ]:
+            assert expected in platforms
+        for item in data["items"]:
+            assert isinstance(item["fields"], list)
+            assert len(item["fields"]) > 0
+
+    async def test_get_single_platform_schema(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get(
+            "/bot-connectors/platforms/telegram/schema", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["platform"] == "telegram"
+        names = {f["name"]: f for f in data["fields"]}
+        assert names["bot_token"]["kind"] == "secret"
+        assert names["bot_token"]["group"] == "credentials"
+        assert names["bot_token"]["required"] is True
+        assert names["webhook_secret"]["required"] is True
+        assert names["default_chat_id"]["group"] == "config"
+
+    async def test_unknown_platform_schema_returns_404(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get(
+            "/bot-connectors/platforms/no-such-platform/schema",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_platform_schema_viewer_forbidden(
+        self, client: AsyncClient, viewer_headers
+    ):
+        resp = await client.get(
+            "/bot-connectors/platforms", headers=viewer_headers
+        )
+        assert resp.status_code == 403
+
 
 class TestTelegramBotWebhook:
     async def _create_connector(

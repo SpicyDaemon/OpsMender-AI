@@ -12,13 +12,46 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class SlackAdapter:
     """Adapter for Slack Events API webhooks."""
 
     platform = "slack"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="signing_secret",
+                label="Signing secret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="From Slack app settings → Basic Information → App Credentials.",
+                doc_url="https://api.slack.com/authentication/verifying-requests-from-slack",
+            ),
+            FieldSpec(
+                name="bot_token",
+                label="Bot user OAuth token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Starts with xoxb-. From OAuth & Permissions after installing the app to your workspace.",
+                doc_url="https://api.slack.com/authentication/token-types#bot",
+                placeholder="xoxb-...",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default channel ID",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Slack channel ID (e.g. C01ABCD2EF3) used for outbound notifications.",
+                placeholder="C01ABCD2EF3",
+            ),
+        ]
 
     def verify_webhook(
         self,

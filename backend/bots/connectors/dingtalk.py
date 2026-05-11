@@ -13,13 +13,52 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class DingTalkAdapter:
     """Adapter for DingTalk Outgoing Bots."""
 
     platform = "dingtalk"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="app_key",
+                label="App key",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="From DingTalk Open Platform → your app's credentials.",
+                doc_url="https://open.dingtalk.com/document/orgapp/develop-enterprise-internal-applications",
+            ),
+            FieldSpec(
+                name="app_secret",
+                label="App secret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Used to sign inbound webhooks and to obtain access tokens.",
+            ),
+            FieldSpec(
+                name="webhook_url",
+                label="Outbound webhook URL",
+                kind="url",
+                group="config",
+                required=True,
+                helper="The session_webhook URL from a DingTalk bot or the custom-robot webhook URL.",
+                placeholder="https://oapi.dingtalk.com/robot/send?access_token=...",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default chat ID",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. conversationId used for outbound notifications.",
+            ),
+        ]
 
     def verify_webhook(
         self,

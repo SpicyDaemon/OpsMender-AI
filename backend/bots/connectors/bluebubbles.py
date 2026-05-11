@@ -9,13 +9,44 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class BlueBubblesAdapter:
     """Adapter for BlueBubbles (iMessage relay)."""
 
     platform = "bluebubbles"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="server_url",
+                label="BlueBubbles server URL",
+                kind="url",
+                group="credentials",
+                required=True,
+                helper="Base URL of your BlueBubbles server running on a Mac.",
+                doc_url="https://bluebubbles.app/server/",
+                placeholder="http://192.168.1.10:1234",
+            ),
+            FieldSpec(
+                name="password",
+                label="Server password",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Password configured in your BlueBubbles server settings.",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default recipient",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. iMessage handle (phone or email) for outbound notifications.",
+            ),
+        ]
 
     def verify_webhook(
         self,

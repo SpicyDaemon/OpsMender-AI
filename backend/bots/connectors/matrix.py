@@ -9,13 +9,53 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class MatrixAdapter:
     """Adapter for Matrix App Service / Webhook integrations."""
 
     platform = "matrix"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="webhook_secret",
+                label="Webhook shared secret",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Random string injected by your relay as the X-AIM-Webhook-Secret header.",
+            ),
+            FieldSpec(
+                name="homeserver_url",
+                label="Homeserver URL",
+                kind="url",
+                group="credentials",
+                required=True,
+                helper="Base URL of your Matrix homeserver.",
+                placeholder="https://matrix.example.com",
+            ),
+            FieldSpec(
+                name="access_token",
+                label="Bot access token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Access token for the bot's Matrix account. Used to send outbound messages.",
+                doc_url="https://spec.matrix.org/latest/client-server-api/#client-authentication",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default room ID",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Matrix room ID for outbound notifications.",
+                placeholder="!abc123:matrix.example.com",
+            ),
+        ]
 
     def verify_webhook(
         self,

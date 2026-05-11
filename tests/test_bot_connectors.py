@@ -496,3 +496,74 @@ class TestWhatsAppAdapter:
         assert captured["phone_number_id"] == "123456789"
         assert captured["recipient"] == "15559998888"
         assert captured["text"] == "hello"
+
+
+class TestFormSchema:
+    """Every registered adapter exposes a non-trivial form_schema()."""
+
+    PLATFORMS = [
+        "telegram",
+        "signal",
+        "whatsapp",
+        "slack",
+        "discord",
+        "mattermost",
+        "matrix",
+        "feishu",
+        "dingtalk",
+        "wecom",
+        "weixin",
+        "twilio",
+        "email",
+        "homeassistant",
+        "bluebubbles",
+    ]
+
+    def test_all_adapters_registered(self):
+        import backend.bots  # noqa: F401
+
+        from backend.bots.connectors import list_platforms
+
+        registered = set(list_platforms())
+        for platform in self.PLATFORMS:
+            assert platform in registered, f"{platform} not in registry"
+
+    def test_every_adapter_has_non_empty_schema(self):
+        import backend.bots  # noqa: F401
+
+        from backend.bots.connectors import FieldSpec, get_adapter
+
+        for platform in self.PLATFORMS:
+            adapter = get_adapter(platform)
+            assert adapter is not None, platform
+            schema = adapter.form_schema()
+            assert isinstance(schema, list) and len(schema) > 0, platform
+            for field in schema:
+                assert isinstance(field, FieldSpec)
+                assert field.name
+                assert field.label
+                assert field.kind in {"text", "secret", "select", "textarea", "url"}
+                assert field.group in {"config", "credentials"}
+
+    def test_telegram_schema_includes_required_credentials(self):
+        import backend.bots  # noqa: F401
+
+        from backend.bots.connectors import get_adapter
+
+        adapter = get_adapter("telegram")
+        names = {f.name: f for f in adapter.form_schema()}
+        assert names["bot_token"].group == "credentials"
+        assert names["bot_token"].kind == "secret"
+        assert names["bot_token"].required is True
+        assert names["webhook_secret"].required is True
+        assert names["default_chat_id"].group == "config"
+        assert names["default_chat_id"].required is False
+
+    def test_whatsapp_schema_has_phone_number_id_and_verify_token(self):
+        import backend.bots  # noqa: F401
+
+        from backend.bots.connectors import get_adapter
+
+        adapter = get_adapter("whatsapp")
+        names = {f.name for f in adapter.form_schema()}
+        assert {"app_secret", "verify_token", "access_token", "phone_number_id"} <= names

@@ -11,13 +11,63 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, InboundMessage
+from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class TwilioAdapter:
     """Adapter for Twilio SMS."""
 
     platform = "twilio"
+
+    @classmethod
+    def form_schema(cls) -> list[FieldSpec]:
+        return [
+            FieldSpec(
+                name="account_sid",
+                label="Account SID",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="From Twilio Console. Starts with AC...",
+                doc_url="https://www.twilio.com/docs/iam/api-keys",
+            ),
+            FieldSpec(
+                name="auth_token",
+                label="Auth token",
+                kind="secret",
+                group="credentials",
+                required=True,
+                helper="Used to validate the X-Twilio-Signature header on inbound webhooks.",
+                doc_url="https://www.twilio.com/docs/usage/webhooks/webhooks-security",
+            ),
+            FieldSpec(
+                name="phone_number",
+                label="Twilio phone number",
+                kind="text",
+                group="credentials",
+                required=True,
+                helper="The Twilio number that will send and receive SMS.",
+                placeholder="+15551234567",
+            ),
+            FieldSpec(
+                name="webhook_url",
+                label="Inbound webhook URL",
+                kind="url",
+                group="config",
+                required=True,
+                helper="The exact URL Twilio is configured to call. Used to recompute the request signature.",
+                placeholder="https://aim.example.com/bot-webhooks/<id>",
+            ),
+            FieldSpec(
+                name="default_chat_id",
+                label="Default recipient phone",
+                kind="text",
+                group="config",
+                required=False,
+                helper="Optional. Recipient phone in E.164 for outbound SMS notifications.",
+                placeholder="+15559876543",
+            ),
+        ]
 
     def verify_webhook(
         self,

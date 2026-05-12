@@ -394,6 +394,43 @@ export interface BotConnectorTestResponse {
   status: BotConnectorStatus;
 }
 
+export type BotConnectorFieldKind =
+  | "text"
+  | "secret"
+  | "select"
+  | "textarea"
+  | "url";
+
+export type BotConnectorFieldGroup = "config" | "credentials";
+
+export interface BotConnectorFieldOption {
+  value: string;
+  label: string;
+}
+
+export interface BotConnectorFieldSchema {
+  name: string;
+  label: string;
+  kind: BotConnectorFieldKind;
+  group: BotConnectorFieldGroup;
+  required: boolean;
+  default: unknown | null;
+  helper: string | null;
+  doc_url: string | null;
+  placeholder: string | null;
+  options: BotConnectorFieldOption[];
+}
+
+export interface BotConnectorPlatformSchema {
+  platform: string;
+  fields: BotConnectorFieldSchema[];
+}
+
+export interface BotConnectorPlatformListResponse {
+  items: BotConnectorPlatformSchema[];
+  total: number;
+}
+
 // ---------------------------------------------------------------------------
 // Webhook Triggers
 // ---------------------------------------------------------------------------

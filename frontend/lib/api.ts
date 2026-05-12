@@ -424,6 +424,8 @@ export async function testMCPServer(
 
 import type {
   BotConnectorListResponse,
+  BotConnectorPlatformListResponse,
+  BotConnectorPlatformSchema,
   BotConnectorResponse,
   BotConnectorTestResponse,
   BotConnectorUpsert,
@@ -463,6 +465,20 @@ export async function testBotConnector(
   id: string,
 ): Promise<BotConnectorTestResponse> {
   return api.post<BotConnectorTestResponse>(`/bot-connectors/${id}/test`);
+}
+
+export async function listBotPlatformSchemas(): Promise<BotConnectorPlatformListResponse> {
+  return api.get<BotConnectorPlatformListResponse>(
+    "/bot-connectors/platforms",
+  );
+}
+
+export async function getBotPlatformSchema(
+  platform: string,
+): Promise<BotConnectorPlatformSchema> {
+  return api.get<BotConnectorPlatformSchema>(
+    `/bot-connectors/platforms/${platform}/schema`,
+  );
 }
 
 // ---------------------------------------------------------------------------

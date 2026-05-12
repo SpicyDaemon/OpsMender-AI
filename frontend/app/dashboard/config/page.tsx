@@ -8,6 +8,9 @@ import {
   Bell,
   CheckCircle2,
   ClipboardCopy,
+  ExternalLink,
+  Eye,
+  EyeOff,
   Key,
   Pencil,
   Plug,
@@ -39,6 +42,7 @@ import {
   getModelBootstrapStatus,
   listAgentTeamProfiles,
   listBotConnectors,
+  listBotPlatformSchemas,
   listIngestProviders,
   listIngestTokens,
   listMCPServers,
@@ -68,7 +72,9 @@ import type {
   AgentTeamProfileResponse,
   AgentTeamProfileUpsert,
   BotConnectorCapability,
+  BotConnectorFieldSchema,
   BotConnectorPlatform,
+  BotConnectorPlatformSchema,
   BotConnectorResponse,
   BotConnectorStatus,
   BotConnectorTestResponse,
@@ -1631,6 +1637,11 @@ type CredentialMode = "keep" | "replace" | "clear";
 type BotConnectorFormState = {
   name: string;
   platform: BotConnectorPlatform;
+  configValues: Record<string, string>;
+  credentialValues: Record<string, string>;
+  // Advanced JSON fallback for platforms whose schema we don't have
+  // (e.g. "custom", "teams"). When `schema` is null, the form falls
+  // back to the legacy two-textarea UI and these strings are used.
   configText: string;
   credentialsText: string;
   credentialMode: CredentialMode;
@@ -1644,12 +1655,31 @@ function formatJson(value: Record<string, unknown> | null): string {
   return JSON.stringify(value, null, 2);
 }
 
+function valuesFromConfig(
+  schema: BotConnectorPlatformSchema | null,
+  config: Record<string, unknown> | null,
+  group: "config" | "credentials",
+): Record<string, string> {
+  if (!schema || !config) return {};
+  const out: Record<string, string> = {};
+  for (const field of schema.fields) {
+    if (field.group !== group) continue;
+    const raw = config[field.name];
+    if (raw === undefined || raw === null) continue;
+    out[field.name] = typeof raw === "string" ? raw : String(raw);
+  }
+  return out;
+}
+
 function createBotConnectorFormState(
-  current?: BotConnectorResponse | null,
+  current: BotConnectorResponse | null | undefined,
+  schema: BotConnectorPlatformSchema | null,
 ): BotConnectorFormState {
   return {
     name: current?.name ?? "",
     platform: current?.platform ?? "telegram",
+    configValues: valuesFromConfig(schema, current?.config ?? null, "config"),
+    credentialValues: {},
     configText: formatJson(current?.config ?? null),
     credentialsText: "",
     credentialMode: current?.has_credentials ? "keep" : "replace",
@@ -1700,19 +1730,58 @@ function parseKeyValueSecrets(
 
 function buildBotConnectorPayload(
   form: BotConnectorFormState,
+  schema: BotConnectorPlatformSchema | null,
 ): { payload?: BotConnectorUpsert; error?: string } {
   if (!form.name.trim()) return { error: "Name is required." };
   if (form.allowed_capabilities.length === 0) {
     return { error: "Select at least one allowed capability." };
   }
 
-  const config = parseJsonObject(form.configText, "Config");
-  if (config.error) return { error: config.error };
+  let configObj: Record<string, unknown> | null = null;
+  let credentialsObj: Record<string, string> | null = null;
+
+  if (schema) {
+    // Schema-driven build.
+    const configEntries: Record<string, unknown> = {};
+    const credentialEntries: Record<string, string> = {};
+    for (const field of schema.fields) {
+      if (field.group === "config") {
+        const value = (form.configValues[field.name] ?? "").trim();
+        if (field.required && !value) {
+          return { error: `${field.label} is required.` };
+        }
+        if (value) configEntries[field.name] = value;
+      } else {
+        // credentials field — only used when credentialMode === "replace"
+        if (form.credentialMode === "replace") {
+          const value = form.credentialValues[field.name] ?? "";
+          if (field.required && !value) {
+            return { error: `${field.label} is required.` };
+          }
+          if (value) credentialEntries[field.name] = value;
+        }
+      }
+    }
+    if (Object.keys(configEntries).length > 0) configObj = configEntries;
+    if (form.credentialMode === "replace") {
+      credentialsObj = credentialEntries;
+    }
+  } else {
+    // Free-form JSON fallback for platforms without a schema (custom, teams).
+    const cfg = parseJsonObject(form.configText, "Config");
+    if (cfg.error) return { error: cfg.error };
+    configObj = cfg.value ?? null;
+    if (form.credentialMode === "replace") {
+      const creds = parseKeyValueSecrets(form.credentialsText);
+      if (creds.error) return { error: creds.error };
+      credentialsObj = creds.value ?? null;
+    }
+  }
 
   const payload: BotConnectorUpsert = {
     name: form.name.trim(),
     platform: form.platform,
-    config: config.value ?? null,
+    config: configObj,
     allowed_capabilities: form.allowed_capabilities,
     status: form.status,
     is_enabled: form.is_enabled,
@@ -1720,13 +1789,250 @@ function buildBotConnectorPayload(
 
   if (form.credentialMode === "clear") {
     payload.clear_credentials = true;
-  } else if (form.credentialMode === "replace") {
-    const credentials = parseKeyValueSecrets(form.credentialsText);
-    if (credentials.error) return { error: credentials.error };
-    if (credentials.value) payload.credentials = credentials.value;
+  } else if (form.credentialMode === "replace" && credentialsObj) {
+    payload.credentials = credentialsObj;
   }
 
   return { payload };
+}
+
+function isFormFillable(
+  form: BotConnectorFormState,
+  schema: BotConnectorPlatformSchema | null,
+): boolean {
+  if (!form.name.trim()) return false;
+  if (form.allowed_capabilities.length === 0) return false;
+  if (!schema) return true; // free-form fallback handles its own validation
+  for (const field of schema.fields) {
+    if (!field.required) continue;
+    if (field.group === "config") {
+      if (!(form.configValues[field.name] ?? "").trim()) return false;
+    } else if (form.credentialMode === "replace") {
+      if (!(form.credentialValues[field.name] ?? "")) return false;
+    }
+  }
+  return true;
+}
+
+const PLATFORM_LABELS: Record<BotConnectorPlatform, string> = {
+  telegram: "Telegram",
+  signal: "Signal",
+  whatsapp: "WhatsApp",
+  slack: "Slack",
+  discord: "Discord",
+  teams: "Microsoft Teams",
+  mattermost: "Mattermost",
+  matrix: "Matrix",
+  feishu: "Lark / Feishu",
+  dingtalk: "DingTalk",
+  wecom: "WeCom",
+  weixin: "WeChat (Official Account)",
+  twilio: "Twilio (SMS/WhatsApp)",
+  email: "Email (SMTP/IMAP)",
+  homeassistant: "Home Assistant",
+  bluebubbles: "BlueBubbles (iMessage)",
+  custom: "Custom Adapter",
+};
+
+function DynamicFieldInput({
+  field,
+  value,
+  onChange,
+  showSecret,
+  onToggleSecret,
+}: {
+  field: BotConnectorFieldSchema;
+  value: string;
+  onChange: (next: string) => void;
+  showSecret: boolean;
+  onToggleSecret: () => void;
+}) {
+  const inputId = `bot-field-${field.group}-${field.name}`;
+  const isSecret = field.kind === "secret";
+  const inputType = isSecret && !showSecret ? "password" : "text";
+  const common = {
+    id: inputId,
+    value,
+    placeholder: field.placeholder ?? undefined,
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      onChange(e.target.value),
+  };
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <Label htmlFor={inputId}>
+          {field.label}
+          {field.required && <span className="ml-0.5 text-status-critical">*</span>}
+        </Label>
+        {field.doc_url && (
+          <a
+            href={field.doc_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-fg-secondary underline-offset-2 hover:text-fg-primary hover:underline"
+          >
+            Where do I get this? <ExternalLink size={11} />
+          </a>
+        )}
+      </div>
+      {field.kind === "textarea" ? (
+        <Textarea {...common} rows={3} className="font-mono text-xs" />
+      ) : field.kind === "select" ? (
+        <Select {...common}>
+          {!field.required && <option value="">(unset)</option>}
+          {field.options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+      ) : isSecret ? (
+        <div className="relative">
+          <Input {...common} type={inputType} autoComplete="off" />
+          <button
+            type="button"
+            onClick={onToggleSecret}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-fg-secondary hover:text-fg-primary"
+            aria-label={showSecret ? "Hide value" : "Show value"}
+          >
+            {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+      ) : (
+        <Input {...common} type={field.kind === "url" ? "url" : "text"} />
+      )}
+      {field.helper && (
+        <p className="mt-1 text-xs text-fg-secondary">{field.helper}</p>
+      )}
+    </div>
+  );
+}
+
+function DynamicConnectorForm({
+  schema,
+  form,
+  setForm,
+  initialConnector,
+}: {
+  schema: BotConnectorPlatformSchema;
+  form: BotConnectorFormState;
+  setForm: React.Dispatch<React.SetStateAction<BotConnectorFormState>>;
+  initialConnector: BotConnectorResponse | null;
+}) {
+  const [shownSecrets, setShownSecrets] = useState<Record<string, boolean>>({});
+
+  const configFields = schema.fields.filter((f) => f.group === "config");
+  const credentialFields = schema.fields.filter((f) => f.group === "credentials");
+  const hasExistingCredentials = Boolean(initialConnector?.has_credentials);
+
+  function setConfigValue(name: string, value: string) {
+    setForm((current) => ({
+      ...current,
+      configValues: { ...current.configValues, [name]: value },
+    }));
+  }
+  function setCredentialValue(name: string, value: string) {
+    setForm((current) => ({
+      ...current,
+      credentialValues: { ...current.credentialValues, [name]: value },
+    }));
+  }
+  function toggleSecret(name: string) {
+    setShownSecrets((s) => ({ ...s, [name]: !s[name] }));
+  }
+  function setCredentialMode(mode: CredentialMode) {
+    setForm((current) => ({ ...current, credentialMode: mode }));
+  }
+
+  return (
+    <div className="space-y-5">
+      {configFields.length > 0 && (
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+            Configuration
+          </legend>
+          {configFields.map((field) => (
+            <DynamicFieldInput
+              key={field.name}
+              field={field}
+              value={form.configValues[field.name] ?? ""}
+              onChange={(v) => setConfigValue(field.name, v)}
+              showSecret={Boolean(shownSecrets[field.name])}
+              onToggleSecret={() => toggleSecret(field.name)}
+            />
+          ))}
+        </fieldset>
+      )}
+
+      {credentialFields.length > 0 && (
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+            Credentials
+          </legend>
+          {hasExistingCredentials && form.credentialMode === "keep" ? (
+            <div className="flex items-center gap-3 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-secondary">
+              <span className="font-mono tracking-widest">********</span>
+              <span className="text-xs text-fg-muted">
+                saved keys: {initialConnector?.credential_keys.join(", ")}
+              </span>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCredentialMode("replace")}
+                >
+                  Replace
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setCredentialMode("clear")}
+                >
+                  Remove
+                </Button>
+              </div>
+            </div>
+          ) : form.credentialMode === "clear" ? (
+            <div className="flex items-center justify-between rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-sm text-status-critical">
+              <span>Credentials will be removed on save.</span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setCredentialMode("keep")}
+              >
+                Undo
+              </Button>
+            </div>
+          ) : (
+            <>
+              {credentialFields.map((field) => (
+                <DynamicFieldInput
+                  key={field.name}
+                  field={field}
+                  value={form.credentialValues[field.name] ?? ""}
+                  onChange={(v) => setCredentialValue(field.name, v)}
+                  showSecret={Boolean(shownSecrets[field.name])}
+                  onToggleSecret={() => toggleSecret(field.name)}
+                />
+              ))}
+              {hasExistingCredentials && (
+                <button
+                  type="button"
+                  className="text-xs text-fg-secondary underline-offset-2 hover:text-fg-primary hover:underline"
+                  onClick={() => setCredentialMode("keep")}
+                >
+                  Keep existing credentials instead
+                </button>
+              )}
+            </>
+          )}
+        </fieldset>
+      )}
+    </div>
+  );
 }
 
 function BotConnectorModal({
@@ -1736,6 +2042,7 @@ function BotConnectorModal({
   saving,
   error,
   initialConnector,
+  schemas,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1743,22 +2050,53 @@ function BotConnectorModal({
   saving: boolean;
   error: string;
   initialConnector: BotConnectorResponse | null;
+  schemas: Record<string, BotConnectorPlatformSchema>;
 }) {
+  const initialSchema = initialConnector
+    ? schemas[initialConnector.platform] ?? null
+    : schemas["telegram"] ?? null;
+
   const [form, setForm] = useState<BotConnectorFormState>(() =>
-    createBotConnectorFormState(initialConnector),
+    createBotConnectorFormState(initialConnector, initialSchema),
   );
+  const [testState, setTestState] = useState<{
+    status: "idle" | "running" | "success" | "failure";
+    result?: BotConnectorTestResponse;
+  }>({ status: "idle" });
 
   useEffect(() => {
     if (!open) return;
+    const schema = initialConnector
+      ? schemas[initialConnector.platform] ?? null
+      : schemas["telegram"] ?? null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm(createBotConnectorFormState(initialConnector));
-  }, [open, initialConnector]);
+    setForm(createBotConnectorFormState(initialConnector, schema));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTestState({ status: "idle" });
+  }, [open, initialConnector, schemas]);
+
+  const schema = schemas[form.platform] ?? null;
 
   function setField<K extends keyof BotConnectorFormState>(
     key: K,
     value: BotConnectorFormState[K],
   ) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function handlePlatformChange(next: BotConnectorPlatform) {
+    setForm((current) => {
+      const nextSchema = schemas[next] ?? null;
+      const sameAsInitial = initialConnector && initialConnector.platform === next;
+      return {
+        ...current,
+        platform: next,
+        configValues: sameAsInitial
+          ? valuesFromConfig(nextSchema, initialConnector?.config ?? null, "config")
+          : {},
+        credentialValues: {},
+      };
+    });
   }
 
   function toggleCapability(capability: BotConnectorCapability) {
@@ -1778,7 +2116,28 @@ function BotConnectorModal({
     await onSubmit(form);
   }
 
-  const hasExistingCredentials = Boolean(initialConnector?.has_credentials);
+  async function handleTestConnection() {
+    if (!initialConnector) return;
+    setTestState({ status: "running" });
+    try {
+      const result = await testBotConnector(initialConnector.id);
+      setTestState({
+        status: result.success ? "success" : "failure",
+        result,
+      });
+    } catch (err) {
+      setTestState({
+        status: "failure",
+        result: {
+          success: false,
+          detail: err instanceof Error ? err.message : "Request failed",
+          status: "error",
+        },
+      });
+    }
+  }
+
+  const fillable = isFormFillable(form, schema);
 
   return (
     <Modal
@@ -1804,102 +2163,93 @@ function BotConnectorModal({
             <Select
               id="bot-platform"
               value={form.platform}
-              onChange={(e) => setField("platform", e.target.value as BotConnectorPlatform)}
+              onChange={(e) => handlePlatformChange(e.target.value as BotConnectorPlatform)}
             >
-              <option value="telegram">Telegram</option>
-              <option value="signal">Signal</option>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="slack">Slack</option>
-              <option value="discord">Discord</option>
-              <option value="teams">Microsoft Teams</option>
-              <option value="mattermost">Mattermost</option>
-              <option value="matrix">Matrix</option>
-              <option value="feishu">Lark / Feishu</option>
-              <option value="dingtalk">DingTalk</option>
-              <option value="wecom">WeCom</option>
-              <option value="weixin">WeChat (Official Account)</option>
-              <option value="twilio">Twilio (SMS/WhatsApp)</option>
-              <option value="email">Email (SMTP/IMAP)</option>
-              <option value="homeassistant">Home Assistant</option>
-              <option value="bluebubbles">BlueBubbles (iMessage)</option>
-              <option value="custom">Custom Adapter</option>
+              {(Object.keys(PLATFORM_LABELS) as BotConnectorPlatform[]).map((p) => (
+                <option key={p} value={p}>
+                  {PLATFORM_LABELS[p]}
+                </option>
+              ))}
             </Select>
           </div>
         </div>
 
-        <div>
-          <Label htmlFor="bot-config">Config JSON</Label>
-          <Textarea
-            id="bot-config"
-            rows={5}
-            value={form.configText}
-            onChange={(e) => setField("configText", e.target.value)}
-            placeholder={'{\n  "default_chat_id": "-100123"\n}'}
-            className="font-mono text-xs"
+        {schema ? (
+          <DynamicConnectorForm
+            schema={schema}
+            form={form}
+            setForm={setForm}
+            initialConnector={initialConnector}
           />
-        </div>
-
-        <div>
-          <Label htmlFor="bot-credentials">Credentials (key=value, one per line)</Label>
-          {hasExistingCredentials && form.credentialMode === "keep" ? (
-            <div className="flex items-center gap-3 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-secondary">
-              <span className="font-mono tracking-widest">********</span>
-              <span className="text-xs text-fg-muted">
-                saved keys: {initialConnector?.credential_keys.join(", ")}
-              </span>
-              <div className="ml-auto flex gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setField("credentialMode", "replace")}
-                >
-                  Replace
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => setField("credentialMode", "clear")}
-                >
-                  Remove
-                </Button>
-              </div>
+        ) : (
+          <>
+            <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-xs text-fg-secondary">
+              No typed schema is registered for this platform. Use the raw JSON
+              fields below to provide configuration and credentials.
             </div>
-          ) : form.credentialMode === "clear" ? (
-            <div className="flex items-center justify-between rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-sm text-status-critical">
-              <span>Credentials will be removed on save.</span>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setField("credentialMode", "keep")}
-              >
-                Undo
-              </Button>
-            </div>
-          ) : (
-            <>
+            <div>
+              <Label htmlFor="bot-config">Config JSON</Label>
               <Textarea
-                id="bot-credentials"
-                rows={4}
-                value={form.credentialsText}
-                onChange={(e) => setField("credentialsText", e.target.value)}
-                placeholder="bot_token=..."
+                id="bot-config"
+                rows={5}
+                value={form.configText}
+                onChange={(e) => setField("configText", e.target.value)}
+                placeholder={'{\n  "default_chat_id": "-100123"\n}'}
                 className="font-mono text-xs"
               />
-              {hasExistingCredentials && (
-                <button
-                  type="button"
-                  className="mt-1 text-xs text-fg-secondary underline-offset-2 hover:text-fg-primary hover:underline"
-                  onClick={() => setField("credentialMode", "keep")}
-                >
-                  Keep existing credentials
-                </button>
+            </div>
+            <div>
+              <Label htmlFor="bot-credentials">Credentials (key=value, one per line)</Label>
+              {Boolean(initialConnector?.has_credentials) && form.credentialMode === "keep" ? (
+                <div className="flex items-center gap-3 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-secondary">
+                  <span className="font-mono tracking-widest">********</span>
+                  <span className="text-xs text-fg-muted">
+                    saved keys: {initialConnector?.credential_keys.join(", ")}
+                  </span>
+                  <div className="ml-auto flex gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setField("credentialMode", "replace")}
+                    >
+                      Replace
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setField("credentialMode", "clear")}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ) : form.credentialMode === "clear" ? (
+                <div className="flex items-center justify-between rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-sm text-status-critical">
+                  <span>Credentials will be removed on save.</span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setField("credentialMode", "keep")}
+                  >
+                    Undo
+                  </Button>
+                </div>
+              ) : (
+                <Textarea
+                  id="bot-credentials"
+                  rows={4}
+                  value={form.credentialsText}
+                  onChange={(e) => setField("credentialsText", e.target.value)}
+                  placeholder="bot_token=..."
+                  className="font-mono text-xs"
+                />
               )}
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
 
         <div>
           <Label>Allowed Capabilities</Label>
@@ -1949,17 +2299,46 @@ function BotConnectorModal({
           </div>
         </div>
 
+        {testState.status !== "idle" && testState.result && (
+          <div
+            className={
+              testState.status === "success"
+                ? "rounded-md border border-status-low-border bg-status-low-bg px-3 py-2 text-sm text-status-low"
+                : "rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-sm text-status-critical"
+            }
+          >
+            <div className="flex items-center gap-2">
+              {testState.status === "success" ? (
+                <CheckCircle2 size={14} />
+              ) : (
+                <XCircle size={14} />
+              )}
+              <span className="font-medium">
+                {testState.status === "success" ? "Test passed" : "Test failed"}
+              </span>
+              <Badge>{testState.result.status.replace(/_/g, " ")}</Badge>
+            </div>
+            <p className="mt-1 text-xs">{testState.result.detail}</p>
+          </div>
+        )}
+
         {error && <FormError message={error} />}
 
         <div className="flex justify-end gap-3">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            loading={saving}
-            disabled={!form.name.trim() || form.allowed_capabilities.length === 0}
-          >
+          {initialConnector && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleTestConnection}
+              loading={testState.status === "running"}
+            >
+              <Plug size={13} /> Test connection
+            </Button>
+          )}
+          <Button type="submit" loading={saving} disabled={!fillable}>
             <Save size={13} /> {initialConnector ? "Save Changes" : "Create Connector"}
           </Button>
         </div>
@@ -2208,6 +2587,25 @@ function BotConnectorSection({
   const [linksModalOpen, setLinksModalOpen] = useState(false);
   const [linkingConnector, setLinkingConnector] = useState<BotConnectorResponse | null>(null);
 
+  const [schemas, setSchemas] = useState<Record<string, BotConnectorPlatformSchema>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    listBotPlatformSchemas()
+      .then((resp) => {
+        if (cancelled) return;
+        const map: Record<string, BotConnectorPlatformSchema> = {};
+        for (const item of resp.items) map[item.platform] = item;
+        setSchemas(map);
+      })
+      .catch(() => {
+        // Schema endpoint is optional; the form falls back to raw JSON.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function openCreateModal() {
     setEditing(null);
     setError("");
@@ -2233,7 +2631,8 @@ function BotConnectorSection({
   }
 
   async function handleSubmit(form: BotConnectorFormState) {
-    const { payload, error: buildError } = buildBotConnectorPayload(form);
+    const schema = schemas[form.platform] ?? null;
+    const { payload, error: buildError } = buildBotConnectorPayload(form, schema);
     if (buildError || !payload) {
       setError(buildError ?? "Invalid form values.");
       return;
@@ -2460,6 +2859,7 @@ function BotConnectorSection({
         saving={saving}
         error={error}
         initialConnector={editing}
+        schemas={schemas}
       />
 
       <BotUserLinksModal

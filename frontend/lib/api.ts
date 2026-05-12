@@ -481,6 +481,15 @@ export async function getBotPlatformSchema(
   );
 }
 
+export async function startBotOAuth(
+  platform: string,
+  connectorId: string,
+): Promise<{ authorize_url: string }> {
+  return api.get<{ authorize_url: string }>(
+    `/bot-connectors/oauth/${platform}/start?connector_id=${encodeURIComponent(connectorId)}`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Bot User Links
 // ---------------------------------------------------------------------------

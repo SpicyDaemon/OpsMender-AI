@@ -231,6 +231,30 @@ class SAMLConfig:
 
 
 @dataclasses.dataclass
+class BotOAuthConfig:
+    """Shared OAuth client credentials for bot-connector "Connect to …"
+    flows (Sprint 31 Step 5–6).
+
+    Like the SAML SP keypair, these are global secrets supplied at deploy
+    time and never persisted in the DB. A platform is treated as
+    **OAuth-enabled** only when both ``client_id`` and ``client_secret``
+    are populated; otherwise the UI falls back to manual paste.
+    """
+
+    slack_client_id: str | None = None
+    slack_client_secret: str | None = None
+    discord_client_id: str | None = None
+    discord_client_secret: str | None = None
+
+    def is_enabled(self, platform: str) -> bool:
+        if platform == "slack":
+            return bool(self.slack_client_id) and bool(self.slack_client_secret)
+        if platform == "discord":
+            return bool(self.discord_client_id) and bool(self.discord_client_secret)
+        return False
+
+
+@dataclasses.dataclass
 class CorsConfig:
     """CORS settings."""
 
@@ -296,6 +320,7 @@ class AppConfig:
     db: DatabaseConfig
     auth: AuthConfig
     saml: SAMLConfig
+    bot_oauth: BotOAuthConfig
     cors: CorsConfig
     providers: ProviderConfig
     env_file: str
@@ -398,6 +423,12 @@ class AppConfig:
                 sp_cert=_env_str(env, "AIM_SAML_SP_CERT"),
                 sp_key=_env_str(env, "AIM_SAML_SP_KEY"),
                 sp_entity_id=_env_str(env, "AIM_SAML_SP_ENTITY_ID"),
+            ),
+            bot_oauth=BotOAuthConfig(
+                slack_client_id=_env_str(env, "AIM_SLACK_OAUTH_CLIENT_ID"),
+                slack_client_secret=_env_str(env, "AIM_SLACK_OAUTH_CLIENT_SECRET"),
+                discord_client_id=_env_str(env, "AIM_DISCORD_OAUTH_CLIENT_ID"),
+                discord_client_secret=_env_str(env, "AIM_DISCORD_OAUTH_CLIENT_SECRET"),
             ),
             cors=CorsConfig(origins=_env_csv(env, "AIM_CORS_ORIGINS", "*")),
             providers=ProviderConfig(

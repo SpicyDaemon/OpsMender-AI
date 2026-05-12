@@ -164,6 +164,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     )
     from backend.api.routes.sla import router as sla_router
     from backend.api.routes.bot_connectors import router as bot_connectors_router
+    from backend.api.routes.bot_oauth import router as bot_oauth_router
     from backend.api.routes.bot_webhooks import router as bot_webhooks_router
     from backend.api.routes.organizations import (
         router as organizations_router,
@@ -188,6 +189,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(workflow_profiles_router)
     app.include_router(agent_team_profiles_router)
     app.include_router(sla_router)
+    app.include_router(bot_oauth_router)
     app.include_router(bot_connectors_router)
     app.include_router(bot_webhooks_router)
     app.include_router(organizations_router)

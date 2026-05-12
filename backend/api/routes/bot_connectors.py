@@ -140,9 +140,12 @@ def _platform_schema(platform: str) -> BotConnectorPlatformSchema | None:
         return None
     schema_fn = getattr(adapter, "form_schema", None)
     fields = schema_fn() if callable(schema_fn) else []
+    from backend.auth.bot_oauth import is_platform_enabled as _oauth_enabled
+
     return BotConnectorPlatformSchema(
         platform=platform,
         fields=[_field_spec_to_schema(f) for f in fields],
+        oauth_enabled=_oauth_enabled(platform),
     )
 
 

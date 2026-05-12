@@ -355,6 +355,10 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `PUT` | `/bot-connectors/{id}` | admin | Update external chat bot connector |
 | `DELETE` | `/bot-connectors/{id}` | admin | Delete external chat bot connector |
 | `POST` | `/bot-connectors/{id}/test` | admin | Validate connector configuration |
+| `GET` | `/bot-connectors/platforms` | admin | List supported platforms with their typed form schemas + `oauth_enabled` flag |
+| `GET` | `/bot-connectors/platforms/{platform}/schema` | admin | Get one platform's form schema |
+| `GET` | `/bot-connectors/oauth/{platform}/start` | admin | Begin Slack/Discord OAuth install — returns `{authorize_url}` |
+| `GET` | `/bot-connectors/oauth/{platform}/callback` | signed state | OAuth callback — exchanges code, writes bot token to connector credentials |
 | `GET` | `/organizations` | admin | List organizations (multi-tenancy) |
 | `POST` | `/organizations` | admin | Create organization |
 | `PUT` | `/organizations/{id}` | admin | Update organization (name, slug, branding) |

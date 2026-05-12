@@ -52,6 +52,7 @@ import {
   listWorkflowProfiles,
   revokeIngestToken,
   setDefaultModelConfig,
+  startBotOAuth,
   testMCPServer,
   testBotConnector,
   testWebhookTrigger,
@@ -2137,7 +2138,32 @@ function BotConnectorModal({
     }
   }
 
+  const [oauthStarting, setOauthStarting] = useState(false);
+
+  async function handleConnectOAuth() {
+    if (!initialConnector) return;
+    setOauthStarting(true);
+    try {
+      const { authorize_url } = await startBotOAuth(
+        initialConnector.platform,
+        initialConnector.id,
+      );
+      window.location.assign(authorize_url);
+    } catch (err) {
+      setTestState({
+        status: "failure",
+        result: {
+          success: false,
+          detail: err instanceof Error ? err.message : "Unable to start OAuth.",
+          status: "error",
+        },
+      });
+      setOauthStarting(false);
+    }
+  }
+
   const fillable = isFormFillable(form, schema);
+  const oauthEnabled = Boolean(initialConnector && schema?.oauth_enabled);
 
   return (
     <Modal
@@ -2324,10 +2350,35 @@ function BotConnectorModal({
 
         {error && <FormError message={error} />}
 
-        <div className="flex justify-end gap-3">
+        {oauthEnabled && (
+          <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-3 text-sm text-fg-secondary">
+            <p className="font-medium text-fg-primary">
+              Install via OAuth instead of pasting tokens
+            </p>
+            <p className="mt-1 text-xs">
+              Authorize {PLATFORM_LABELS[form.platform]} to populate the bot
+              token automatically. You may still need to paste the webhook
+              verification secret manually after the install completes.
+            </p>
+          </div>
+        )}
+
+        {error && <FormError message={error} />}
+
+        <div className="flex flex-wrap justify-end gap-3">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
+          {oauthEnabled && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleConnectOAuth}
+              loading={oauthStarting}
+            >
+              <ExternalLink size={13} /> Connect to {PLATFORM_LABELS[form.platform]}
+            </Button>
+          )}
           {initialConnector && (
             <Button
               type="button"
@@ -2604,6 +2655,29 @@ function BotConnectorSection({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Surface OAuth-callback result. The backend redirects to
+  // /dashboard/config?bot_oauth=ok|error&detail=…
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get("bot_oauth");
+    if (!outcome) return;
+    const detail = params.get("detail") ?? "";
+    if (outcome === "ok") {
+      setNotice(detail || "OAuth install complete.");
+    } else {
+      setError(detail || "OAuth install failed.");
+    }
+    // Strip the query so a refresh doesn't re-show the banner.
+    params.delete("bot_oauth");
+    params.delete("detail");
+    params.delete("platform");
+    params.delete("connector_id");
+    const qs = params.toString();
+    const url = window.location.pathname + (qs ? `?${qs}` : "");
+    window.history.replaceState({}, "", url);
   }, []);
 
   function openCreateModal() {

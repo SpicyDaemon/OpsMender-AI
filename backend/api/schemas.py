@@ -912,6 +912,7 @@ class BotConnectorFieldSchema(BaseModel):
 class BotConnectorPlatformSchema(BaseModel):
     platform: str
     fields: list[BotConnectorFieldSchema]
+    oauth_enabled: bool = False
 
 
 class BotConnectorPlatformListResponse(BaseModel):

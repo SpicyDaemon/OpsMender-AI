@@ -424,6 +424,7 @@ export interface BotConnectorFieldSchema {
 export interface BotConnectorPlatformSchema {
   platform: string;
   fields: BotConnectorFieldSchema[];
+  oauth_enabled: boolean;
 }
 
 export interface BotConnectorPlatformListResponse {

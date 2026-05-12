@@ -172,7 +172,7 @@ function ConfigPageSkeleton() {
   );
 }
 
-type ConfigTabId =
+type ConfigSectionId =
   | "runtime"
   | "models"
   | "mcp"
@@ -184,62 +184,60 @@ type ConfigTabId =
   | "workflows"
   | "agent-teams";
 
-const CONFIG_TABS: Array<{
-  id: ConfigTabId;
+type ConfigGroupId = "day1" | "inbound" | "outbound" | "advanced";
+
+const CONFIG_GROUPS: Array<{
+  id: ConfigGroupId;
   label: string;
-  blurb: string;
+  caption: string;
+  sections: ConfigSectionId[];
+  defaultOpen: boolean;
 }> = [
   {
-    id: "runtime",
-    label: "Runtime",
-    blurb: "Tier limits and audit-level defaults.",
+    id: "day1",
+    label: "Day-1 setup",
+    caption:
+      "Pick a model, wire up your MCP servers, decide what counts as a destructive operation.",
+    sections: ["runtime", "models", "mcp", "skills"],
+    defaultOpen: true,
   },
   {
-    id: "models",
-    label: "Models",
-    blurb: "Saved provider/model profiles for new sessions.",
+    id: "inbound",
+    label: "Inbound",
+    caption: "How alerts get into AIM — ingest tokens and detector rules.",
+    sections: ["ingest", "detectors"],
+    defaultOpen: true,
   },
   {
-    id: "mcp",
-    label: "MCP",
-    blurb: "Live server connections and connectivity checks.",
+    id: "outbound",
+    label: "Outbound",
+    caption:
+      "How AIM reaches people and other systems — webhook triggers and chat bot connectors.",
+    sections: ["webhooks", "integrations"],
+    defaultOpen: true,
   },
   {
-    id: "skills",
-    label: "Skills",
-    blurb: "Manage markdown skills on the dedicated page.",
-  },
-  {
-    id: "detectors",
-    label: "Detectors",
-    blurb: "Rule health and detector execution history.",
-  },
-  {
-    id: "ingest",
-    label: "Ingest",
-    blurb: "Webhook tokens and ingest auto-start rules.",
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    blurb: "External chat bot connector setup.",
-  },
-  {
-    id: "webhooks",
-    label: "Webhooks",
-    blurb: "Outbound notifications for session lifecycle events.",
-  },
-  {
-    id: "workflows",
-    label: "Workflows",
-    blurb: "Saved node-order profiles for sessions.",
-  },
-  {
-    id: "agent-teams",
-    label: "Agent Teams",
-    blurb: "Specialist reasoning profiles for multi-agent runs.",
+    id: "advanced",
+    label: "Advanced",
+    caption:
+      "Defaults work for 95% of operators. Customise workflow node order or per-agent reasoning here.",
+    sections: ["workflows", "agent-teams"],
+    defaultOpen: false,
   },
 ];
+
+const SECTION_LABELS: Record<ConfigSectionId, string> = {
+  runtime: "Runtime defaults",
+  models: "Models",
+  mcp: "MCP servers",
+  skills: "Skills",
+  detectors: "Detectors",
+  ingest: "Ingest tokens",
+  integrations: "Bot connectors",
+  webhooks: "Webhook triggers",
+  workflows: "Workflows",
+  "agent-teams": "Agent teams",
+};
 
 function ConfigPageLinkCard({
   title,
@@ -4887,7 +4885,24 @@ export default function ConfigPage() {
   const [agentTeamProfiles, setAgentTeamProfiles] = useState<AgentTeamProfileResponse[]>([]);
   const [workflowProfiles, setWorkflowProfiles] = useState<WorkflowProfileResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<ConfigTabId>("runtime");
+  const [openGroups, setOpenGroups] = useState<Record<ConfigGroupId, boolean>>(
+    () =>
+      CONFIG_GROUPS.reduce(
+        (acc, g) => {
+          acc[g.id] = g.defaultOpen;
+          return acc;
+        },
+        {} as Record<ConfigGroupId, boolean>,
+      ),
+  );
+
+  function toggleGroup(id: ConfigGroupId) {
+    setOpenGroups((current) => ({ ...current, [id]: !current[id] }));
+  }
+
+  function setGroupOpen(id: ConfigGroupId, open: boolean) {
+    setOpenGroups((current) => ({ ...current, [id]: open }));
+  }
 
   const loadPageData = useCallback(async () => {
     const [
@@ -4936,14 +4951,18 @@ export default function ConfigPage() {
 
   if (loading || !config || !modelBootstrap) return <ConfigPageSkeleton />;
 
-  const tabMeta: Record<ConfigTabId, { stat: string; detail: string }> = {
+  // Pin a non-null const so the renderSection closure below stays narrowed.
+  const cfg = config;
+  const mb = modelBootstrap;
+
+  const sectionMeta: Record<ConfigSectionId, { stat: string; detail: string }> = {
     runtime: {
-      stat: `Tier ${config.tier}`,
-      detail: `Log level ${config.logging_level}`,
+      stat: `Tier ${cfg.tier}`,
+      detail: `Log level ${cfg.logging_level}`,
     },
     models: {
       stat: `${modelConfigs.length} profile${modelConfigs.length === 1 ? "" : "s"}`,
-      detail: modelBootstrap.has_default
+      detail: mb.has_default
         ? `${providers.filter((provider) => provider.available).length} provider${providers.filter((provider) => provider.available).length === 1 ? "" : "s"} available`
         : "Default model still needs bootstrap",
     },
@@ -4961,8 +4980,8 @@ export default function ConfigPage() {
     },
     ingest: {
       stat: `${ingestTokens.length} token${ingestTokens.length === 1 ? "" : "s"}`,
-      detail: config.ingest_auto_start_enabled
-        ? `Auto-start from ${config.ingest_auto_start_min_severity}+`
+      detail: cfg.ingest_auto_start_enabled
+        ? `Auto-start from ${cfg.ingest_auto_start_min_severity}+`
         : "Auto-start disabled",
     },
     integrations: {
@@ -4983,133 +5002,225 @@ export default function ConfigPage() {
     },
   };
 
+  function renderSection(id: ConfigSectionId) {
+    switch (id) {
+      case "runtime":
+        return (
+          <TierSection config={cfg} onSaved={loadPageData} canEdit={canEdit} />
+        );
+      case "models":
+        return (
+          <ModelSection
+            bootstrap={mb}
+            providers={providers}
+            configs={modelConfigs}
+            onReload={loadPageData}
+            canEdit={canEdit}
+          />
+        );
+      case "mcp":
+        return (
+          <MCPSection
+            servers={mcpServers}
+            onReload={loadPageData}
+            canEdit={canEdit}
+          />
+        );
+      case "skills":
+        return (
+          <ConfigPageLinkCard
+            title="Skills"
+            description="Skill management already has a richer dedicated workspace with import, clone, edit, and delete flows."
+            href="/dashboard/skills"
+            cta="Open Skills"
+          />
+        );
+      case "detectors":
+        return (
+          <ConfigPageLinkCard
+            title="Detectors"
+            description="Detector rules and run history already live on their own page, where status and execution details fit better than inside a long admin form."
+            href="/dashboard/detectors"
+            cta="Open Detectors"
+          />
+        );
+      case "ingest":
+        return (
+          <div className="space-y-6">
+            <IngestAutoStartSection
+              config={cfg}
+              onSaved={loadPageData}
+              canEdit={canEdit}
+            />
+            <IngestTokenSection
+              tokens={ingestTokens}
+              ingestProviders={ingestProviderList}
+              onReload={loadPageData}
+              canEdit={canEdit}
+            />
+          </div>
+        );
+      case "webhooks":
+        return (
+          <WebhookTriggerSection
+            triggers={webhookTriggers}
+            onReload={loadPageData}
+            canEdit={canEdit}
+          />
+        );
+      case "integrations":
+        return (
+          <BotConnectorSection
+            connectors={botConnectors}
+            onReload={loadPageData}
+            canEdit={canEdit}
+          />
+        );
+      case "workflows":
+        return (
+          <WorkflowProfileSection
+            profiles={workflowProfiles}
+            onReload={loadPageData}
+            canEdit={canEdit}
+          />
+        );
+      case "agent-teams":
+        return (
+          <AgentTeamProfileSection
+            profiles={agentTeamProfiles}
+            onReload={loadPageData}
+            canEdit={canEdit}
+          />
+        );
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-fg-primary">Config</h1>
         <p className="mt-1 text-sm text-fg-secondary">
-          Manage runtime defaults, ingest automation, saved model profiles, agent teams, workflow profiles, MCP server connections, chat bot connectors, outbound webhook triggers, and external ingest tokens.
+          Grouped by how often you need to touch them: Day-1 setup, Inbound,
+          Outbound, and Advanced. Use{" "}
+          <code className="text-fg-primary">?section=&lt;id&gt;</code> to
+          deep-link to a specific panel.
         </p>
       </div>
 
-      <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-        <div className="border-b border-border-subtle px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-[0.2em] text-fg-muted">
-            Settings Surfaces
-          </p>
-        </div>
-        <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-3">
-          {CONFIG_TABS.map((tab) => {
-            const selected = activeTab === tab.id;
-            const meta = tabMeta[tab.id];
-            return (
+      <ConfigGroupDeepLink
+        groupsKnown={CONFIG_GROUPS}
+        setGroupOpen={setGroupOpen}
+      />
+
+      <div className="space-y-4">
+        {CONFIG_GROUPS.map((group) => {
+          const isOpen = openGroups[group.id];
+          const isAdvanced = group.id === "advanced";
+          return (
+            <section
+              key={group.id}
+              id={`group-${group.id}`}
+              className={`rounded-xl border shadow-sm ${
+                isAdvanced
+                  ? "border-border-subtle bg-bg-elevated/60"
+                  : "border-border-subtle bg-bg-panel"
+              }`}
+            >
               <button
-                key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`rounded-lg border px-4 py-3 text-left transition-colors ${
-                  selected
-                    ? "border-accent bg-accent-bg"
-                    : "border-border-subtle bg-bg-elevated hover:bg-bg-hover"
-                }`}
+                onClick={() => toggleGroup(group.id)}
+                className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left"
+                aria-expanded={isOpen}
+                aria-controls={`group-${group.id}-body`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-fg-primary">{tab.label}</p>
-                    <p className="mt-1 text-xs text-fg-secondary">{tab.blurb}</p>
-                  </div>
-                  <Badge variant={selected ? "info" : "default"}>{meta.stat}</Badge>
+                <div>
+                  <h2
+                    className={`text-sm font-semibold uppercase tracking-wide ${
+                      isAdvanced ? "text-fg-secondary" : "text-fg-primary"
+                    }`}
+                  >
+                    {group.label}
+                  </h2>
+                  <p className="mt-0.5 text-xs text-fg-secondary">
+                    {group.caption}
+                  </p>
                 </div>
-                <p className="mt-3 text-xs text-fg-muted">{meta.detail}</p>
+                <span
+                  className="text-fg-secondary"
+                  aria-hidden="true"
+                >
+                  {isOpen ? "▾" : "▸"}
+                </span>
               </button>
-            );
-          })}
-        </div>
+              {isOpen && (
+                <div
+                  id={`group-${group.id}-body`}
+                  className="space-y-6 border-t border-border-subtle px-5 py-5"
+                >
+                  {group.sections.map((sectionId) => (
+                    <div
+                      key={sectionId}
+                      id={sectionId}
+                      className="scroll-mt-6"
+                    >
+                      <div className="mb-2 flex items-baseline justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-fg-primary">
+                          {SECTION_LABELS[sectionId]}
+                        </h3>
+                        <Badge>{sectionMeta[sectionId].stat}</Badge>
+                      </div>
+                      <p className="mb-3 text-xs text-fg-muted">
+                        {sectionMeta[sectionId].detail}
+                      </p>
+                      {renderSection(sectionId)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
       </div>
-
-      {activeTab === "runtime" && (
-        <TierSection config={config} onSaved={loadPageData} canEdit={canEdit} />
-      )}
-
-      {activeTab === "models" && (
-              <ModelSection
-                bootstrap={modelBootstrap}
-                providers={providers}
-                configs={modelConfigs}
-                onReload={loadPageData}
-          canEdit={canEdit}
-        />
-      )}
-
-      {activeTab === "mcp" && (
-        <MCPSection
-          servers={mcpServers}
-          onReload={loadPageData}
-          canEdit={canEdit}
-        />
-      )}
-
-      {activeTab === "skills" && (
-        <ConfigPageLinkCard
-          title="Skills"
-          description="Skill management already has a richer dedicated workspace with import, clone, edit, and delete flows."
-          href="/dashboard/skills"
-          cta="Open Skills"
-        />
-      )}
-
-      {activeTab === "detectors" && (
-        <ConfigPageLinkCard
-          title="Detectors"
-          description="Detector rules and run history already live on their own page, where status and execution details fit better than inside a long admin form."
-          href="/dashboard/detectors"
-          cta="Open Detectors"
-        />
-      )}
-
-      {activeTab === "ingest" && (
-        <div className="space-y-6">
-          <IngestAutoStartSection config={config} onSaved={loadPageData} canEdit={canEdit} />
-          <IngestTokenSection
-            tokens={ingestTokens}
-            ingestProviders={ingestProviderList}
-            onReload={loadPageData}
-            canEdit={canEdit}
-          />
-        </div>
-      )}
-
-      {activeTab === "webhooks" && (
-        <WebhookTriggerSection
-          triggers={webhookTriggers}
-          onReload={loadPageData}
-          canEdit={canEdit}
-        />
-      )}
-
-      {activeTab === "integrations" && (
-        <BotConnectorSection
-          connectors={botConnectors}
-          onReload={loadPageData}
-          canEdit={canEdit}
-        />
-      )}
-
-      {activeTab === "workflows" && (
-        <WorkflowProfileSection
-          profiles={workflowProfiles}
-          onReload={loadPageData}
-          canEdit={canEdit}
-        />
-      )}
-
-      {activeTab === "agent-teams" && (
-        <AgentTeamProfileSection
-          profiles={agentTeamProfiles}
-          onReload={loadPageData}
-          canEdit={canEdit}
-        />
-      )}
     </div>
   );
+}
+
+/**
+ * Reads ?section=<id> from the URL on mount, expands the matching group,
+ * and scrolls to the section anchor. Stripped from the URL afterwards so a
+ * page refresh doesn't keep re-scrolling.
+ */
+function ConfigGroupDeepLink({
+  groupsKnown,
+  setGroupOpen,
+}: {
+  groupsKnown: typeof CONFIG_GROUPS;
+  setGroupOpen: (id: ConfigGroupId, open: boolean) => void;
+}) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const section = params.get("section") as ConfigSectionId | null;
+    if (!section) return;
+
+    const group = groupsKnown.find((g) =>
+      (g.sections as string[]).includes(section),
+    );
+    if (!group) return;
+
+    setGroupOpen(group.id, true);
+
+    // Scroll after the next paint so the section is mounted.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(section);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    params.delete("section");
+    const qs = params.toString();
+    const url = window.location.pathname + (qs ? `?${qs}` : "");
+    window.history.replaceState({}, "", url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }

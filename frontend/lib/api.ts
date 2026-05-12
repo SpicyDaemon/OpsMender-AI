@@ -1,5 +1,5 @@
 /**
- * API client â€” thin fetch wrapper with JWT injection and 401 handling.
+ * API client — thin fetch wrapper with JWT injection and 401 handling.
  * All functions throw on non-2xx responses with the API's detail message.
  */
 

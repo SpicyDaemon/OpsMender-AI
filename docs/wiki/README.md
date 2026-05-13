@@ -1,5 +1,7 @@
 # Opsmender AI (Opsmender) Documentation
 
+Project website: **[opsmenderai.com](https://opsmenderai.com)**
+
 Welcome to the Opsmender AI (Opsmender) Wiki! This documentation is designed to help operators, administrators, and incident commanders deploy, configure, and use Opsmender effectively.
 
 If you are a developer looking for internal architecture documentation, API details, or codebase references, please see [`REFERENCE.md`](../REFERENCE.md) in the main repository.

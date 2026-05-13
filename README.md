@@ -1,5 +1,6 @@
 # Opsmender AI
 
+[![Website](https://img.shields.io/badge/website-opsmenderai.com-blue)](https://opsmenderai.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Release](https://img.shields.io/github/v/release/SpicyDaemon/OpsMender-AI?include_prereleases&sort=semver)](https://github.com/SpicyDaemon/OpsMender-AI/releases)
@@ -10,7 +11,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 
 *Keywords: AI incident manager, AI incident management, AI incident response, AI SRE, AI on-call, agentic incident response, LangGraph incident response, MCP runbook automation.*
 
-📚 **[Read the Documentation Wiki](docs/wiki/README.md)** | 🛠 **[Developer Architecture & API Reference](docs/REFERENCE.md)**
+🌐 **[opsmenderai.com](https://opsmenderai.com)** | 📚 **[Read the Documentation Wiki](docs/wiki/README.md)** | 🛠 **[Developer Architecture & API Reference](docs/REFERENCE.md)**
 
 ## Why Opsmender
 

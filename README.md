@@ -242,6 +242,9 @@ If no default model config exists yet, go to **Config → Models** and bootstrap
 For fast frontend changes, skip the static build and run the Next.js dev server on port 3000 alongside the backend on 8000:
 
 ```bash
+# one-time: tell the Next.js dev server where the API lives
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
+
 # terminal 1 — backend only
 uv run python scripts/dev_server.py
 
@@ -249,11 +252,15 @@ uv run python scripts/dev_server.py
 cd frontend && npm run dev
 ```
 
-Then open **http://localhost:3000**. The frontend proxies API calls back to `:8000`.
+Then open **http://localhost:3000**. The frontend calls the API on `:8000` using the env var above.
+
+> **Why the `.env.local` step matters:** `frontend/lib/api.ts` defaults `BASE_URL` to same-origin so the production single-process build (`opsmender serve` on `:8000`) works out of the box. In dev with two separate processes, the frontend on `:3000` would otherwise call itself for `/auth/login` and 404. The env var routes calls to the backend. `frontend/.env.local` is gitignored, so each clone needs its own.
 
 ### Common issues
 
 - **`GET / → 404 Not Found`** in the dev-server log: `frontend/out/` doesn't exist. Run `cd frontend && npm install && npm run build` first, then restart the dev server.
+- **Login or any API call returns 404 from `http://localhost:3000`** (hot-reload setup): `frontend/.env.local` is missing or doesn't set `NEXT_PUBLIC_API_URL`. The frontend is calling itself instead of the backend. Create the file (see *Hot-reload workflow* above) and restart `npm run dev` — Next.js only loads env files at startup.
+- **CSS / `@theme` token changes don't appear after hot-reload (Tailwind v4 + Turbopack):** stop `npm run dev`, `rm -rf frontend/.next`, then restart. Turbopack occasionally caches the generated utility classes from a stale `@theme` block.
 - **`Connect call failed ('127.0.0.1', 5432)`** at startup: your `.env` still has `OPSMENDER_DATABASE_URL=postgresql+asyncpg://…` but no Postgres is running. Comment that line out (or set it to a SQLite URL) so the SQLite fallback engages.
 - **Code changes not picked up:** `dev_server.py` runs Uvicorn with `reload=False`. Stop it (`Ctrl+C`) and restart after edits to backend code.
 - **Port 8000 in use:** `lsof -i :8000` to find the PID, then `kill <PID>`.

@@ -5,7 +5,7 @@ rest of the code oblivious we:
 
 1. Resolve ``resource_path("frontend/out")`` to the bundled copy when frozen,
    otherwise to the repo-relative path.
-2. ``bootstrap_bundled_env()`` sets ``AIM_FRONTEND_STATIC_DIR`` (and similar
+2. ``bootstrap_bundled_env()`` sets ``OPSMENDER_FRONTEND_STATIC_DIR`` (and similar
    path-like env vars) to the bundled locations when frozen, before the
    config loader runs. Nothing else in the codebase has to know about
    PyInstaller.
@@ -43,7 +43,7 @@ def bootstrap_bundled_env() -> None:
     """Point env vars at bundled resources when running as a frozen binary.
 
     Only sets a variable if the caller hasn't already provided one — user
-    overrides (``--env-file``, explicit ``export AIM_...=...``) always win.
+    overrides (``--env-file``, explicit ``export OPSMENDER_...=...``) always win.
     """
     if not is_frozen():
         return
@@ -51,8 +51,8 @@ def bootstrap_bundled_env() -> None:
     root = resource_root()
 
     defaults = {
-        "AIM_FRONTEND_STATIC_DIR": str(root / "frontend" / "out"),
-        "AIM_SKILL_DEFINITION": str(root / "examples" / "SKILL.md"),
+        "OPSMENDER_FRONTEND_STATIC_DIR": str(root / "frontend" / "out"),
+        "OPSMENDER_SKILL_DEFINITION": str(root / "examples" / "SKILL.md"),
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)

@@ -1,4 +1,4 @@
-"""FastAPI dependency providers for AIM.
+"""FastAPI dependency providers for Opsmender.
 
 Centralises all injectable dependencies:
 

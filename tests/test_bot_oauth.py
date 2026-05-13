@@ -1,6 +1,6 @@
 """Tests for Slack / Discord OAuth flow on bot connectors (Sprint 31 Steps 5–6).
 
-We test the surface AIM owns:
+We test the surface Opsmender owns:
 - AppConfig env wiring + per-platform is_enabled gate.
 - State JWT sign/verify (TTL, tampering).
 - Authorize URL builder shape.
@@ -65,12 +65,12 @@ class TestBotOAuthConfig:
     def test_load_from_env(self, monkeypatch, tmp_path):
         tmp_env = tmp_path / ".env"
         tmp_env.write_text(
-            "AIM_JWT_SECRET=test\n"
-            "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
-            "AIM_SLACK_OAUTH_CLIENT_ID=slack-id\n"
-            "AIM_SLACK_OAUTH_CLIENT_SECRET=slack-secret\n"
-            "AIM_DISCORD_OAUTH_CLIENT_ID=discord-id\n"
-            "AIM_DISCORD_OAUTH_CLIENT_SECRET=discord-secret\n"
+            "OPSMENDER_JWT_SECRET=test\n"
+            "OPSMENDER_DATABASE_URL=sqlite+aiosqlite://\n"
+            "OPSMENDER_SLACK_OAUTH_CLIENT_ID=slack-id\n"
+            "OPSMENDER_SLACK_OAUTH_CLIENT_SECRET=slack-secret\n"
+            "OPSMENDER_DISCORD_OAUTH_CLIENT_ID=discord-id\n"
+            "OPSMENDER_DISCORD_OAUTH_CLIENT_SECRET=discord-secret\n"
         )
         set_env_path(tmp_env)
         try:
@@ -94,8 +94,8 @@ class TestStateJWT:
     def _env(self, tmp_path):
         tmp_env = tmp_path / ".env"
         tmp_env.write_text(
-            "AIM_JWT_SECRET=state-secret\n"
-            "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
+            "OPSMENDER_JWT_SECRET=state-secret\n"
+            "OPSMENDER_DATABASE_URL=sqlite+aiosqlite://\n"
         )
         set_env_path(tmp_env)
         yield
@@ -113,7 +113,7 @@ class TestStateJWT:
         assert claims["plat"] == "slack"
         assert claims["org"] == "org-1"
         assert claims["uid"] == "user-1"
-        assert claims["aud"] == "aim-bot-oauth"
+        assert claims["aud"] == "opsmender-bot-oauth"
 
     def test_tampered_token_rejected(self):
         token = sign_state(
@@ -160,20 +160,20 @@ class TestAuthorizeUrl:
         url = build_authorize_url(
             platform="slack",
             state="state-abc",
-            redirect_uri="https://aim.example.com/cb",
+            redirect_uri="https://opsmender.example.com/cb",
             cfg=self.SLACK_CFG,
         )
         assert url.startswith("https://slack.com/oauth/v2/authorize?")
         assert "client_id=slack-id" in url
         assert "state=state-abc" in url
         assert "scope=" in url
-        assert "redirect_uri=https%3A%2F%2Faim.example.com%2Fcb" in url
+        assert "redirect_uri=https%3A%2F%2Fopsmender.example.com%2Fcb" in url
 
     def test_discord_authorize_url(self):
         url = build_authorize_url(
             platform="discord",
             state="state-xyz",
-            redirect_uri="https://aim.example.com/cb",
+            redirect_uri="https://opsmender.example.com/cb",
             cfg=self.DISCORD_CFG,
         )
         assert url.startswith("https://discord.com/api/oauth2/authorize?")
@@ -234,7 +234,7 @@ class TestCodeExchange:
             result = await exchange_code(
                 platform="slack",
                 code="auth-code",
-                redirect_uri="https://aim.example.com/cb",
+                redirect_uri="https://opsmender.example.com/cb",
                 client=client,
                 cfg=self.SLACK_CFG,
             )
@@ -253,7 +253,7 @@ class TestCodeExchange:
                 await exchange_code(
                     platform="slack",
                     code="bad",
-                    redirect_uri="https://aim.example.com/cb",
+                    redirect_uri="https://opsmender.example.com/cb",
                     client=client,
                     cfg=self.SLACK_CFG,
                 )
@@ -264,7 +264,7 @@ class TestCodeExchange:
                 lambda req: _mock_httpx_response(
                     payload={
                         "access_token": "discord-token",
-                        "guild": {"name": "AIM Guild"},
+                        "guild": {"name": "Opsmender Guild"},
                     }
                 )
             )
@@ -272,12 +272,12 @@ class TestCodeExchange:
             result = await exchange_code(
                 platform="discord",
                 code="auth-code",
-                redirect_uri="https://aim.example.com/cb",
+                redirect_uri="https://opsmender.example.com/cb",
                 client=client,
                 cfg=self.DISCORD_CFG,
             )
         assert result.credentials == {"bot_token": "discord-token"}
-        assert "AIM Guild" in result.detail
+        assert "Opsmender Guild" in result.detail
 
 
 # ---------------------------------------------------------------------------
@@ -301,12 +301,12 @@ async def app(tmp_path):
 
     tmp_env = tmp_path / ".env"
     tmp_env.write_text(
-        "AIM_TIER=2\n"
-        "AIM_LOG_LEVEL=INFO\n"
-        "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
-        "AIM_JWT_SECRET=test-secret\n"
-        "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
-        f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
+        "OPSMENDER_TIER=2\n"
+        "OPSMENDER_LOG_LEVEL=INFO\n"
+        "OPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
+        "OPSMENDER_JWT_SECRET=test-secret\n"
+        "OPSMENDER_DATABASE_URL=sqlite+aiosqlite://\n"
+        f"OPSMENDER_MCP_SERVERS_JSON={json.dumps([])}\n"
     )
     set_env_path(tmp_env)
 
@@ -392,19 +392,19 @@ class TestStartRoute:
     async def test_oauth_disabled_returns_503(
         self, client, auth_headers, slack_connector_id
     ):
-        # No AIM_SLACK_OAUTH_CLIENT_ID in the test env → 503.
+        # No OPSMENDER_SLACK_OAUTH_CLIENT_ID in the test env → 503.
         resp = await client.get(
             f"/bot-connectors/oauth/slack/start?connector_id={slack_connector_id}",
             headers=auth_headers,
         )
         assert resp.status_code == 503
-        assert "AIM_SLACK_OAUTH_CLIENT_ID" in resp.text
+        assert "OPSMENDER_SLACK_OAUTH_CLIENT_ID" in resp.text
 
     async def test_start_returns_authorize_url(
         self, client, auth_headers, slack_connector_id, monkeypatch
     ):
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_ID", "slack-test-id")
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_SECRET", "slack-test-secret")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_ID", "slack-test-id")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_SECRET", "slack-test-secret")
         resp = await client.get(
             f"/bot-connectors/oauth/slack/start?connector_id={slack_connector_id}",
             headers=auth_headers,
@@ -420,8 +420,8 @@ class TestStartRoute:
     async def test_connector_platform_mismatch_returns_400(
         self, client, app, auth_headers, monkeypatch
     ):
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_ID", "x")
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_SECRET", "y")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_ID", "x")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_SECRET", "y")
         async with app.state.session_factory() as db:
             telegram = BotConnector(
                 org_id=TEST_ORG_ID,
@@ -454,8 +454,8 @@ class TestCallbackRoute:
     async def test_callback_writes_credentials_and_redirects(
         self, client, app, slack_connector_id, monkeypatch
     ):
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_ID", "x")
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_SECRET", "y")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_ID", "x")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_SECRET", "y")
 
         state = sign_state(
             connector_id=str(slack_connector_id),
@@ -495,8 +495,8 @@ class TestCallbackRoute:
     async def test_callback_bad_state_redirects_with_error(
         self, client, slack_connector_id, monkeypatch
     ):
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_ID", "x")
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_SECRET", "y")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_ID", "x")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_SECRET", "y")
         resp = await client.get(
             "/bot-connectors/oauth/slack/callback?code=abc&state=not-a-real-jwt",
             follow_redirects=False,
@@ -506,8 +506,8 @@ class TestCallbackRoute:
         assert "bot_oauth=error" in loc
 
     async def test_callback_provider_error_redirects(self, client, monkeypatch):
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_ID", "x")
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_SECRET", "y")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_ID", "x")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_SECRET", "y")
         resp = await client.get(
             "/bot-connectors/oauth/slack/callback?error=access_denied",
             follow_redirects=False,
@@ -534,8 +534,8 @@ class TestSchemaExposesOAuth:
         assert resp.status_code == 200
         assert resp.json()["oauth_enabled"] is False
 
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_ID", "x")
-        monkeypatch.setenv("AIM_SLACK_OAUTH_CLIENT_SECRET", "y")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_ID", "x")
+        monkeypatch.setenv("OPSMENDER_SLACK_OAUTH_CLIENT_SECRET", "y")
         resp = await client.get(
             "/bot-connectors/platforms/slack/schema", headers=auth_headers
         )

@@ -7,7 +7,7 @@
 docker compose build
 
 # Start and enter the container
-docker compose run --rm aim-dev
+docker compose run --rm opsmender-dev
 ```
 
 On startup the container will automatically print your session context (PROMPT_CONTEXT + CURRENT_STATE + TASKS) and drop you into a bash shell.
@@ -18,7 +18,7 @@ On startup the container will automatically print your session context (PROMPT_C
 
 ```bash
 # Start dev environment
-docker compose run --rm aim-dev
+docker compose run --rm opsmender-dev
 
 # Inside the container — run tests
 uv run pytest

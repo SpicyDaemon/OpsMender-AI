@@ -20,7 +20,7 @@ Design decision (see docs/REFERENCE.md → "Tier 0 sandbox"):
 The sandbox is tier-gate-native and composes with the existing skill +
 tier enforcement in ``backend.tiers.enforcement.check``.  It adds no
 infra-level containment (cgroups, containers) — that would require host
-privileges AIM can't assume across Docker / binary / local installs.
+privileges Opsmender can't assume across Docker / binary / local installs.
 
 Usage::
 
@@ -142,7 +142,7 @@ async def build_sandbox_for_session(
 ) -> Tier0Sandbox:
     """Convenience helper — list tools on an open session and build a sandbox.
 
-    Kept as a module-level free function so callers (CLI ``aim run``,
+    Kept as a module-level free function so callers (CLI ``opsmender run``,
     API session runner) don't have to import ``list_tools`` separately.
     """
     from backend.mcp.client import list_tools

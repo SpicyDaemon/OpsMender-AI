@@ -6,7 +6,7 @@ Runs a single detector rule against one MCP server by:
 3. Asking the configured LLM to pick a short observation plan
 4. Executing the safe observation tools
 5. Asking the LLM for a structured incident verdict
-6. Deduplicating or creating an AIM incident if an issue was detected
+6. Deduplicating or creating an Opsmender incident if an issue was detected
 7. Recording run history in ``detector_history``
 """
 

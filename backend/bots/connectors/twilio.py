@@ -56,7 +56,7 @@ class TwilioAdapter:
                 group="config",
                 required=True,
                 helper="The exact URL Twilio is configured to call. Used to recompute the request signature.",
-                placeholder="https://aim.example.com/bot-webhooks/<id>",
+                placeholder="https://opsmender.example.com/bot-webhooks/<id>",
             ),
             FieldSpec(
                 name="default_chat_id",

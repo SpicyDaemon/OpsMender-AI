@@ -6,7 +6,7 @@ application.  Configuration is driven by a database URL string
 
 Usage::
 
-    engine = get_engine("postgresql+asyncpg://user:pass@localhost/aim")
+    engine = get_engine("postgresql+asyncpg://user:pass@localhost/opsmender")
     async with get_session(engine) as session:
         ...
 """
@@ -48,7 +48,7 @@ def resolve_database_url(config: DatabaseConfig) -> str:
     """Resolve the effective DB URL with local fallbacks.
 
     Order:
-    1. Explicit ``AIM_DATABASE_URL``
+    1. Explicit ``OPSMENDER_DATABASE_URL``
     2. Local Postgres if reachable
     3. Local SQLite file
     """

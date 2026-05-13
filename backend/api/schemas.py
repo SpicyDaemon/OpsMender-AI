@@ -1,4 +1,4 @@
-"""Pydantic request/response schemas for the AIM API.
+"""Pydantic request/response schemas for the Opsmender API.
 
 All schemas live in one file to avoid circular imports and make it easy
 to see the full API surface at a glance.
@@ -922,16 +922,16 @@ class BotConnectorPlatformListResponse(BaseModel):
 
 class BotUserLinkCreate(BaseModel):
     platform_user_id: str
-    aim_user_id: uuid.UUID
+    opsmender_user_id: uuid.UUID
 
 
 class BotUserLinkResponse(BaseModel):
     id: uuid.UUID
     connector_id: uuid.UUID
     platform_user_id: str
-    aim_user_id: uuid.UUID
-    aim_username: str
-    aim_role: str
+    opsmender_user_id: uuid.UUID
+    opsmender_username: str
+    opsmender_role: str
     created_at: datetime
 
 

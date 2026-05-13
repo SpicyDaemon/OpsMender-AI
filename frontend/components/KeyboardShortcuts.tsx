@@ -87,8 +87,8 @@ export function KeyboardShortcuts() {
 
   useEffect(() => {
     const open = () => setHelpOpen(true);
-    window.addEventListener("aim:open-shortcuts", open);
-    return () => window.removeEventListener("aim:open-shortcuts", open);
+    window.addEventListener("opsmender:open-shortcuts", open);
+    return () => window.removeEventListener("opsmender:open-shortcuts", open);
   }, []);
 
   return (

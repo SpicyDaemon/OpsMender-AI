@@ -1,4 +1,4 @@
-"""Audited tool-call executor for AI Incident Manager.
+"""Audited tool-call executor for Opsmender AI.
 
 Wraps every MCP tool call with the required pre/post audit log entries
 and tier enforcement check.  This is the single entry-point that the

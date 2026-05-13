@@ -13,7 +13,7 @@ __pycache__
 
 logs
 *.log
-aim-local.db
+opsmender-local.db
 *.sqlite
 *.sqlite3
 

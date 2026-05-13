@@ -7,7 +7,7 @@ Two routes:
   and a nonce so we don't need server-side state.
 * ``GET /auth/sso/{slug}/callback`` — exchanges the code, verifies the
   id_token, JIT-provisions the user, and redirects to the dashboard with
-  the AIM JWT in the URL fragment.
+  the Opsmender JWT in the URL fragment.
 
 Logout is handled the existing way (frontend clears the token); IdP-side
 single-logout (SLO) is intentionally out of scope for v1.
@@ -188,12 +188,12 @@ async def sso_callback(
 
     await db.commit()
 
-    aim_token = create_access_token(user.id, user.role)
+    opsmender_token = create_access_token(user.id, user.role)
 
     # Hand the token back to the SPA via a fragment so it never hits server logs.
     fwd_proto = request.headers.get("x-forwarded-proto")
     fwd_host = request.headers.get("x-forwarded-host")
     scheme = fwd_proto or request.url.scheme
     host = fwd_host or request.headers.get("host") or request.url.netloc
-    target = f"{scheme}://{host}/login#sso_token={quote(aim_token)}"
+    target = f"{scheme}://{host}/login#sso_token={quote(opsmender_token)}"
     return RedirectResponse(target, status_code=302)

@@ -50,13 +50,13 @@ async def client(tmp_path):
 
     tmp_env = tmp_path / ".env"
     tmp_env.write_text(
-        "AIM_TIER=2\n"
-        "AIM_LOG_LEVEL=INFO\n"
-        "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
-        "AIM_JWT_SECRET=test-secret\n"
-        f"AIM_DATABASE_URL={database_url}\n"
-        f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
-        f"AIM_FRONTEND_STATIC_DIR={FRONTEND_OUT}\n"
+        "OPSMENDER_TIER=2\n"
+        "OPSMENDER_LOG_LEVEL=INFO\n"
+        "OPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
+        "OPSMENDER_JWT_SECRET=test-secret\n"
+        f"OPSMENDER_DATABASE_URL={database_url}\n"
+        f"OPSMENDER_MCP_SERVERS_JSON={json.dumps([])}\n"
+        f"OPSMENDER_FRONTEND_STATIC_DIR={FRONTEND_OUT}\n"
     )
     set_env_path(tmp_env)
 

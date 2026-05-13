@@ -1,4 +1,4 @@
-"""Alembic environment — async-aware, reads URL from AIM_DATABASE_URL."""
+"""Alembic environment — async-aware, reads URL from OPSMENDER_DATABASE_URL."""
 
 from __future__ import annotations
 

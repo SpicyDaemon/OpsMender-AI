@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 def generate_token() -> str:
     """Generate a secure random ingest token (returned once on creation)."""
-    return f"aim_ingest_{secrets.token_urlsafe(32)}"
+    return f"opsmender_ingest_{secrets.token_urlsafe(32)}"
 
 
 def hash_token(raw: str) -> str:

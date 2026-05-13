@@ -1,4 +1,4 @@
-# AI Incident Manager — Dev Environment
+# Opsmender AI — Dev Environment
 # Full Python dev environment with uv, LangGraph, and MCP SDK
 # Designed for Docker Desktop on Windows
 
@@ -82,8 +82,8 @@ CMD ["bash", "-c", "\
     echo '============================================================' && \
     echo '  Checking model provider...' && \
     echo '============================================================' && \
-    PROVIDER=$(grep '^AIM_MODEL_PROVIDER' .env 2>/dev/null | cut -d= -f2 | tr -d ' ') && \
-    MODEL=$(grep '^AIM_MODEL_ID' .env 2>/dev/null | cut -d= -f2 | tr -d ' ') && \
+    PROVIDER=$(grep '^OPSMENDER_MODEL_PROVIDER' .env 2>/dev/null | cut -d= -f2 | tr -d ' ') && \
+    MODEL=$(grep '^OPSMENDER_MODEL_ID' .env 2>/dev/null | cut -d= -f2 | tr -d ' ') && \
     OLLAMA_URL=$(grep '^OLLAMA_BASE_URL' .env 2>/dev/null | cut -d= -f2 | tr -d ' ') && \
     echo \"  Provider : ${PROVIDER:-not set}\" && \
     echo \"  Model    : ${MODEL:-not set}\" && \

@@ -1,6 +1,6 @@
 """SAML 2.0 SP helper used by the per-tenant SAML SSO flow (Sprint 30).
 
-Wraps ``python3-saml`` (OneLogin) to keep the surface AIM uses small:
+Wraps ``python3-saml`` (OneLogin) to keep the surface Opsmender uses small:
 
 * :func:`build_settings` — assemble the dict ``OneLogin_Saml2_Auth`` expects
   from the per-tenant DB row + the global SP keypair from env.
@@ -45,7 +45,7 @@ class SAMLError(Exception):
 class SPKeypair:
     """The SP-side signing keypair shared across all tenants.
 
-    Loaded once from env vars (``AIM_SAML_SP_CERT`` / ``AIM_SAML_SP_KEY``)
+    Loaded once from env vars (``OPSMENDER_SAML_SP_CERT`` / ``OPSMENDER_SAML_SP_KEY``)
     and threaded through to every per-tenant ``build_settings`` call.
     """
 
@@ -173,12 +173,12 @@ def build_settings(
     """Compose the settings dict and instantiate ``OneLogin_Saml2_Settings``.
 
     ``idp`` is the dict returned by :func:`fetch_idp_metadata`.
-    ``base_url`` is the public-facing SP URL (e.g. ``https://aim.acme.com``).
+    ``base_url`` is the public-facing SP URL (e.g. ``https://opsmender.acme.com``).
     """
     if not sp_keypair.configured:
         raise SAMLError(
-            "SAML SP keypair is not configured. Set AIM_SAML_SP_CERT and "
-            "AIM_SAML_SP_KEY (use `aim saml gen-sp-keys` to generate them)."
+            "SAML SP keypair is not configured. Set OPSMENDER_SAML_SP_CERT and "
+            "OPSMENDER_SAML_SP_KEY (use `opsmender saml gen-sp-keys` to generate them)."
         )
 
     settings_dict: dict[str, Any] = {
@@ -272,7 +272,7 @@ def render_sp_metadata(settings: OneLogin_Saml2_Settings) -> str:
 
 
 def split_base_url(public_url: str) -> tuple[str, bool, str, int, str]:
-    """Decompose a public AIM URL into the parts ``OneLogin_Saml2_Auth`` needs.
+    """Decompose a public Opsmender URL into the parts ``OneLogin_Saml2_Auth`` needs.
 
     Returns ``(base_url_without_path, https, host, port, request_uri)``.
     """

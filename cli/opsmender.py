@@ -1,4 +1,4 @@
-"""Entry point for the ``aim`` command.
+"""Entry point for the ``opsmender`` command.
 
 Supports subcommands and global options.
 """
@@ -37,7 +37,7 @@ from backend.workflow.rollback import (
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="aim", description="AI Incident Manager CLI")
+    parser = argparse.ArgumentParser(prog="opsmender", description="Opsmender AI CLI")
     parser.add_argument(
         "--config",
         default=None,
@@ -381,8 +381,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     saml_keys.add_argument(
         "--cn",
-        default="aim-sp",
-        help="Subject Common Name on the cert (default: aim-sp)",
+        default="opsmender-sp",
+        help="Subject Common Name on the cert (default: opsmender-sp)",
     )
     saml_keys.add_argument(
         "--days",
@@ -442,7 +442,7 @@ async def _run_check(cfg: Config) -> int:
         if not servers:
             print(
                 "No MCP servers configured. Add one from the dashboard "
-                "(/dashboard/config) or seed AIM_MCP_SERVERS_JSON in your .env "
+                "(/dashboard/config) or seed OPSMENDER_MCP_SERVERS_JSON in your .env "
                 "as a fallback."
             )
             return 0
@@ -689,7 +689,7 @@ async def _persist_model_config(cfg: Config, args: argparse.Namespace):
 
 async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
     if not args.approvals_command:
-        print("Usage: aim approvals {list,approve,reject} ...", file=sys.stderr)
+        print("Usage: opsmender approvals {list,approve,reject} ...", file=sys.stderr)
         return 1
 
     engine = get_engine(_database_url(cfg))
@@ -788,7 +788,7 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
     except (OSError, SQLAlchemyError) as exc:
         print(
             "Approval command failed: database unavailable. "
-            "Set AIM_DATABASE_URL or use the local DB fallback for approval commands. "
+            "Set OPSMENDER_DATABASE_URL or use the local DB fallback for approval commands. "
             f"Details: {exc}",
             file=sys.stderr,
         )
@@ -889,7 +889,7 @@ def _validate_config(cfg: Config, args: argparse.Namespace) -> int:
 
 async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
     if not args.model_command:
-        print("Usage: aim config model {list,set,bootstrap} ...", file=sys.stderr)
+        print("Usage: opsmender config model {list,set,bootstrap} ...", file=sys.stderr)
         return 1
 
     registry = ProviderRegistry()
@@ -926,7 +926,7 @@ async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
     except (OSError, SQLAlchemyError, RuntimeError) as exc:
         print(
             "Model config command failed: database unavailable. "
-            "Set AIM_DATABASE_URL or use the local DB fallback for model config commands. "
+            "Set OPSMENDER_DATABASE_URL or use the local DB fallback for model config commands. "
             f"Details: {exc}",
             file=sys.stderr,
         )
@@ -1343,8 +1343,8 @@ def _run_serve(args: argparse.Namespace) -> int:
 def _run_saml_gen_sp_keys(args: argparse.Namespace) -> int:
     """Emit a self-signed SP keypair (PEM cert + key) to stdout.
 
-    Designed for ``aim saml gen-sp-keys``. The output is meant to be copied into
-    ``AIM_SAML_SP_CERT`` / ``AIM_SAML_SP_KEY`` in the operator's secret store —
+    Designed for ``opsmender saml gen-sp-keys``. The output is meant to be copied into
+    ``OPSMENDER_SAML_SP_CERT`` / ``OPSMENDER_SAML_SP_KEY`` in the operator's secret store —
     we never persist it to disk on the user's behalf to avoid silent leakage.
     """
     try:
@@ -1381,13 +1381,13 @@ def _run_saml_gen_sp_keys(args: argparse.Namespace) -> int:
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
 
-    print("# === SAML SP CERT (copy into AIM_SAML_SP_CERT) ===")
+    print("# === SAML SP CERT (copy into OPSMENDER_SAML_SP_CERT) ===")
     print(cert_pem)
-    print("# === SAML SP KEY  (copy into AIM_SAML_SP_KEY) ===")
+    print("# === SAML SP KEY  (copy into OPSMENDER_SAML_SP_KEY) ===")
     print(key_pem)
     print(
         "# Reminder: store these in your secret manager and inject as env "
-        "vars. AIM does not persist the keypair on disk."
+        "vars. Opsmender does not persist the keypair on disk."
     )
     return 0
 

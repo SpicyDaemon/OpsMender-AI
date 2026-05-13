@@ -51,7 +51,7 @@ Rules:
 "records.0.alert.name").
 - title should be a short human-readable label for the alert.
 - external_id should uniquely identify this alerting condition within its source \
-so AIM can deduplicate repeated notifications — prefer stable IDs over timestamps.
+so Opsmender can deduplicate repeated notifications — prefer stable IDs over timestamps.
 - severity should be a path to a field whose value maps to critical/high/medium/low \
 (priority numbers, sev labels, etc. are fine).
 - status should be a path to a field whose value indicates whether the alert is \

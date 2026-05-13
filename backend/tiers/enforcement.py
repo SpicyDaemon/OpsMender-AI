@@ -1,4 +1,4 @@
-"""Tier enforcement layer for AI Incident Manager."""
+"""Tier enforcement layer for Opsmender AI."""
 
 from __future__ import annotations
 

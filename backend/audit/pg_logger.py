@@ -1,4 +1,4 @@
-"""PostgreSQL-backed audit logger for AI Incident Manager.
+"""PostgreSQL-backed audit logger for Opsmender AI.
 
 Implements the same convenience methods as the JSONL ``AuditLogger`` but
 persists entries to the ``audit_entries`` table via the async repository

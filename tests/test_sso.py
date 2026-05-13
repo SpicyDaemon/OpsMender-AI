@@ -38,12 +38,12 @@ async def app(tmp_path):
 
     tmp_env = tmp_path / ".env"
     tmp_env.write_text(
-        "AIM_TIER=2\n"
-        "AIM_LOG_LEVEL=INFO\n"
-        "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
-        "AIM_JWT_SECRET=test-secret\n"
-        "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
-        f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
+        "OPSMENDER_TIER=2\n"
+        "OPSMENDER_LOG_LEVEL=INFO\n"
+        "OPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
+        "OPSMENDER_JWT_SECRET=test-secret\n"
+        "OPSMENDER_DATABASE_URL=sqlite+aiosqlite://\n"
+        f"OPSMENDER_MCP_SERVERS_JSON={json.dumps([])}\n"
     )
     set_env_path(tmp_env)
 
@@ -130,7 +130,7 @@ class TestSSOCRUD:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "client_secret": "supersecret",
                 "default_role": "operator",
                 "allowed_email_domains": "acme.com",
@@ -149,7 +149,7 @@ class TestSSOCRUD:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
             },
             headers=auth_headers,
         )
@@ -161,7 +161,7 @@ class TestSSOCRUD:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "client_secret": "original-secret",
             },
             headers=auth_headers,
@@ -178,7 +178,7 @@ class TestSSOCRUD:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "default_role": "admin",
             },
             headers=auth_headers,
@@ -196,7 +196,7 @@ class TestSSOCRUD:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "client_secret": "x",
             },
             headers=auth_headers,
@@ -222,7 +222,7 @@ class TestSSOCRUD:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "client_secret": "x",
             },
             headers=auth_headers,
@@ -262,7 +262,7 @@ class TestSSOLoginFlow:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "client_secret": "supersecret",
             },
             headers=auth_headers,
@@ -276,7 +276,7 @@ class TestSSOLoginFlow:
         loc = resp.headers["location"]
         assert loc.startswith("https://idp.example.com/oauth2/authorize?")
         qs = parse_qs(urlparse(loc).query)
-        assert qs["client_id"] == ["aim-app"]
+        assert qs["client_id"] == ["opsmender-app"]
         assert "state" in qs
         assert "nonce" in qs
 
@@ -288,7 +288,7 @@ class TestSSOLoginFlow:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "client_secret": "x",
                 "default_role": "operator",
             },
@@ -302,7 +302,7 @@ class TestSSOLoginFlow:
                 "email": "alice@acme.com",
                 "name": "Alice Anderson",
                 "iss": "https://idp.example.com",
-                "aud": "aim-app",
+                "aud": "opsmender-app",
                 "nonce": nonce,
             }
 
@@ -338,7 +338,7 @@ class TestSSOLoginFlow:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "client_secret": "x",
                 "allowed_email_domains": "acme.com",
             },
@@ -371,7 +371,7 @@ class TestSSOLoginFlow:
             json={
                 "provider": "oidc",
                 "discovery_url": "https://idp.example.com/.well-known/openid-configuration",
-                "client_id": "aim-app",
+                "client_id": "opsmender-app",
                 "client_secret": "x",
             },
             headers=auth_headers,
@@ -392,7 +392,7 @@ class TestSSOLoginFlow:
 
 class TestSecretsHelper:
     async def test_roundtrip(self, monkeypatch):
-        monkeypatch.setenv("AIM_JWT_SECRET", "test-secret")
+        monkeypatch.setenv("OPSMENDER_JWT_SECRET", "test-secret")
         from backend.auth.secrets import encrypt_secret, decrypt_secret
 
         ct = encrypt_secret("hello-world")
@@ -400,10 +400,10 @@ class TestSecretsHelper:
         assert decrypt_secret(ct) == "hello-world"
 
     async def test_decrypt_with_wrong_key_raises(self, monkeypatch):
-        monkeypatch.setenv("AIM_JWT_SECRET", "test-secret")
+        monkeypatch.setenv("OPSMENDER_JWT_SECRET", "test-secret")
         from backend.auth.secrets import encrypt_secret, decrypt_secret
 
         ct = encrypt_secret("payload")
-        monkeypatch.setenv("AIM_SECRET_KEY", "different-key")
+        monkeypatch.setenv("OPSMENDER_SECRET_KEY", "different-key")
         with pytest.raises(ValueError):
             decrypt_secret(ct)

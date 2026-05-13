@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "aim.fullname" . }}
+  name: {{ include "opsmender.fullname" . }}
   labels:
-    {{- include "aim.labels" . | nindent 4 }}
+    {{- include "opsmender.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -27,7 +27,7 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "aim.fullname" $ }}
+                name: {{ include "opsmender.fullname" $ }}
                 port:
                   number: {{ $.Values.service.port }}
           {{- end }}

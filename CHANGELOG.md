@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Bot Connector UX overhaul** (Sprint 31). The Bot Connectors modal now renders a typed, per-platform form instead of two raw JSON boxes. Every adapter publishes a `FieldSpec` schema (label, kind, required, helper text, doc URL) through `GET /bot-connectors/platforms[/{platform}/schema]`. Secret fields use password masks with show/hide toggles; required fields gate the Save button; an inline "Test connection" button calls the existing `POST /bot-connectors/{id}/test` and surfaces pass/fail in the modal. All 15 registered adapters carry typed schemas. Platforms without a schema fall back to the legacy JSON UI.
-- **Slack / Discord OAuth install** (Sprint 31 Step 5–6). When `AIM_SLACK_OAUTH_CLIENT_ID` / `AIM_SLACK_OAUTH_CLIENT_SECRET` (or Discord equivalents) are set in env, the modal shows a "Connect to Slack/Discord" button that walks the operator through the provider's consent screen and writes the bot token back automatically. New routes: `GET /bot-connectors/oauth/{platform}/start` (returns `{authorize_url}`) and `GET /bot-connectors/oauth/{platform}/callback`. State is a signed JWT (5-min TTL) carrying `connector_id` so callbacks can't be cross-pollinated. OAuth populates the bot token only — signing secrets remain a manual paste because providers don't return them through OAuth.
-- **Per-tenant SAML 2.0 SSO** (Sprint 30). New `org_saml_configs` table next to `org_sso_configs`. Admin CRUD under `/organizations/{id}/saml`. SP-initiated flow under `/auth/saml/{slug}/login` + `/acs` + `/metadata`. IdP described by metadata URL (auto-fetched + cached) or raw XML paste. Global SP keypair via `AIM_SAML_SP_CERT` / `AIM_SAML_SP_KEY` (use `aim saml gen-sp-keys` to generate). JIT user provisioning, `allowed_email_domains` allowlist, signed-AuthnRequest. SLO and encrypted assertions are out of scope for this drop. Docker image installs `libxmlsec1` / `libxml2` runtime libs; PyInstaller binary fails-loud if those libs are missing on the host.
-- **Helm chart** for Kubernetes deployments at `deploy/helm/aim/`. App Deployment/Service/Ingress, optional bundled Bitnami Postgres subchart or external DB, persistent `/app/logs` PVC, ConfigMap + Secret env wiring, liveness/readiness probes, optional HPA.
+- **Slack / Discord OAuth install** (Sprint 31 Step 5–6). When `OPSMENDER_SLACK_OAUTH_CLIENT_ID` / `OPSMENDER_SLACK_OAUTH_CLIENT_SECRET` (or Discord equivalents) are set in env, the modal shows a "Connect to Slack/Discord" button that walks the operator through the provider's consent screen and writes the bot token back automatically. New routes: `GET /bot-connectors/oauth/{platform}/start` (returns `{authorize_url}`) and `GET /bot-connectors/oauth/{platform}/callback`. State is a signed JWT (5-min TTL) carrying `connector_id` so callbacks can't be cross-pollinated. OAuth populates the bot token only — signing secrets remain a manual paste because providers don't return them through OAuth.
+- **Per-tenant SAML 2.0 SSO** (Sprint 30). New `org_saml_configs` table next to `org_sso_configs`. Admin CRUD under `/organizations/{id}/saml`. SP-initiated flow under `/auth/saml/{slug}/login` + `/acs` + `/metadata`. IdP described by metadata URL (auto-fetched + cached) or raw XML paste. Global SP keypair via `OPSMENDER_SAML_SP_CERT` / `OPSMENDER_SAML_SP_KEY` (use `opsmender saml gen-sp-keys` to generate). JIT user provisioning, `allowed_email_domains` allowlist, signed-AuthnRequest. SLO and encrypted assertions are out of scope for this drop. Docker image installs `libxmlsec1` / `libxml2` runtime libs; PyInstaller binary fails-loud if those libs are missing on the host.
+- **Helm chart** for Kubernetes deployments at `deploy/helm/opsmender/`. App Deployment/Service/Ingress, optional bundled Bitnami Postgres subchart or external DB, persistent `/app/logs` PVC, ConfigMap + Secret env wiring, liveness/readiness probes, optional HPA.
 - TopBar: active org name now visible at all breakpoints with a `host-pinned` qualifier in the user menu when Domain Isolation is in effect.
 - TopBar: per-org role (admin / operator / viewer) now shown as a colour-coded pill next to the active org name in the org switcher, host-pinned badge, and user dropdown panel. Source is the per-org role from `listMyOrganizations`, since role can differ per tenant.
 
@@ -31,7 +31,7 @@ First public release. MIT-licensed. Complete feature set from Sprints 1–23.
 - MCP-first infrastructure integration — three transports (`stdio`, `sse`, `http`) with optional bearer-token auth.
 - Skill definition system — org-owned `SKILL.md` classifies each operation as `safe`, `caution`, or `destructive`. Cannot be overridden by the agent.
 - LangGraph incident-response workflow: `observe → diagnose → plan → tier_gate → execute → verify → summarize`.
-- `aim` CLI — `run`, `check`, `config`, `audit`, `approvals`, `serve`.
+- `opsmender` CLI — `run`, `check`, `config`, `audit`, `approvals`, `serve`.
 - JSONL audit logger capturing every node transition and every tool call.
 
 #### API + persistence (Phase 2)
@@ -41,7 +41,7 @@ First public release. MIT-licensed. Complete feature set from Sprints 1–23.
 - BYOM provider abstraction — Anthropic, OpenAI, Azure OpenAI, Ollama (local).
 - Next.js 16 dashboard — incidents, live session view, audit log, approvals, config, co-pilot chat.
 - Co-pilot chat — real-time parallel LLM channel that doesn't block the workflow.
-- Single-container deployment — `aim serve` runs the FastAPI API plus the embedded static frontend. Docker image bundles Node.js so MCP servers shipping as `npx` packages work out of the box.
+- Single-container deployment — `opsmender serve` runs the FastAPI API plus the embedded static frontend. Docker image bundles Node.js so MCP servers shipping as `npx` packages work out of the box.
 - PyInstaller binary build (`scripts/build_binary.sh`).
 
 #### Ingestion + detection (Sprints 14–15)
@@ -67,7 +67,7 @@ First public release. MIT-licensed. Complete feature set from Sprints 1–23.
 
 #### Model onboarding + bootstrap (Sprint 24)
 - First-run model setup no longer depends on pre-seeded `.env` values.
-- Dashboard and `aim config model bootstrap` CLI path for entering provider, model ID, API-key env-var reference, temperature, max tokens, base URL, and API version.
+- Dashboard and `opsmender config model bootstrap` CLI path for entering provider, model ID, API-key env-var reference, temperature, max tokens, base URL, and API version.
 - Manual model IDs accepted when discovery is stale or unavailable — warnings returned, not hard failures.
 - `GET /models/bootstrap` API exposes first-run state for the dashboard.
 
@@ -86,7 +86,7 @@ First public release. MIT-licensed. Complete feature set from Sprints 1–23.
 
 - Docker Compose for the full stack (`docker/docker-compose.yml`).
 - Single multi-stage production Dockerfile (`docker/Dockerfile`) with health checks and a logs volume mount.
-- Node.js LTS bundled inside the Docker image for `npx`-based MCP servers. `AIM_NODE_PATH` override supported for binary installs.
+- Node.js LTS bundled inside the Docker image for `npx`-based MCP servers. `OPSMENDER_NODE_PATH` override supported for binary installs.
 
 [Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/SpicyDaemon/OpsMender-AI/releases/tag/v1.0.0

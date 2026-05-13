@@ -29,7 +29,7 @@ def upgrade() -> None:
         ),
         sa.Column("platform_user_id", sa.String(length=120), nullable=False),
         sa.Column(
-            "aim_user_id",
+            "opsmender_user_id",
             sa.Uuid(),
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
@@ -54,12 +54,12 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
-        "ix_bot_user_links_aim_user_id",
+        "ix_bot_user_links_opsmender_user_id",
         "bot_user_links",
-        ["aim_user_id"],
+        ["opsmender_user_id"],
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_bot_user_links_aim_user_id", table_name="bot_user_links")
+    op.drop_index("ix_bot_user_links_opsmender_user_id", table_name="bot_user_links")
     op.drop_table("bot_user_links")

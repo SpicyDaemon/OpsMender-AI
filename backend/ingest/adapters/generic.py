@@ -2,7 +2,7 @@
 
 For tools not covered by the built-in adapters (Grafana, Datadog,
 Prometheus Alertmanager, custom scripts), this adapter maps arbitrary
-JSON fields to AIM incident fields using a simple dot-path config.
+JSON fields to Opsmender incident fields using a simple dot-path config.
 
 Field mapping is configured per-token via the ``field_mapping``
 parameter, with sensible defaults that work for common webhook formats.

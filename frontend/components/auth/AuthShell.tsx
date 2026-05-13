@@ -26,17 +26,17 @@ export function AuthShell({
           <Link href="/" className="flex items-center gap-3">
             <Image
               src="/logo.png"
-              alt="AIM"
+              alt="Opsmender"
               width={44}
               height={44}
               className="rounded-lg"
             />
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-fg-muted">
-                AIM Console
+                Opsmender Console
               </p>
               <h1 className="text-xl font-semibold tracking-tight text-fg-primary">
-                AI Incident Manager
+                Opsmender AI
               </h1>
             </div>
           </Link>

@@ -14,28 +14,28 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("aim_token");
+  return localStorage.getItem("opsmender_token");
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem("aim_token", token);
+  localStorage.setItem("opsmender_token", token);
 }
 
 export function clearToken(): void {
-  localStorage.removeItem("aim_token");
+  localStorage.removeItem("opsmender_token");
 }
 
 export function getOrgId(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("aim_org_id");
+  return localStorage.getItem("opsmender_org_id");
 }
 
 export function setOrgId(orgId: string): void {
-  localStorage.setItem("aim_org_id", orgId);
+  localStorage.setItem("opsmender_org_id", orgId);
 }
 
 export function clearOrgId(): void {
-  localStorage.removeItem("aim_org_id");
+  localStorage.removeItem("opsmender_org_id");
 }
 
 // ---------------------------------------------------------------------------

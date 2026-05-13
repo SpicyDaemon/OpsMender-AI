@@ -1,4 +1,4 @@
-"""Integration tests for the full AIM pipeline.
+"""Integration tests for the full Opsmender pipeline.
 
 Two categories:
 
@@ -253,7 +253,7 @@ class TestSimulatedEndToEnd:
         assert len(result["tool_calls"]) == 0
 
     def test_cli_dry_run_end_to_end(self, tmp_path, capsys):
-        """aim run --dry-run exercises full CLI → graph → output path.
+        """opsmender run --dry-run exercises full CLI → graph → output path.
 
         This test is synchronous because ``main()`` calls ``asyncio.run()``
         internally, which cannot nest inside pytest-asyncio's event loop.
@@ -264,7 +264,7 @@ class TestSimulatedEndToEnd:
         audit_file = tmp_path / "audit.jsonl"
 
         cfg_file.write_text(
-            f"AIM_TIER=2\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG={audit_file}\n"
+            f"OPSMENDER_TIER=2\nOPSMENDER_LOG_LEVEL=INFO\nOPSMENDER_AUDIT_LOG={audit_file}\n"
         )
 
         import subprocess, sys
@@ -273,7 +273,7 @@ class TestSimulatedEndToEnd:
             [
                 sys.executable,
                 "-m",
-                "cli.aim",
+                "cli.opsmender",
                 "--config",
                 str(cfg_file),
                 "run",

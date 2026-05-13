@@ -6,13 +6,13 @@ services:
     env_file:
       - ../.env
     environment:
-      POSTGRES_USER: aim
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aim}
-      POSTGRES_DB: aim
+      POSTGRES_USER: opsmender
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opsmender}
+      POSTGRES_DB: opsmender
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aim"]
+      test: ["CMD-SHELL", "pg_isready -U opsmender"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -35,7 +35,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      AIM_DATABASE_URL: postgresql+asyncpg://aim:${POSTGRES_PASSWORD:-aim}@db:5432/aim
+      OPSMENDER_DATABASE_URL: postgresql+asyncpg://opsmender:${POSTGRES_PASSWORD:-opsmender}@db:5432/opsmender
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     ports:
       - "8000:8000"

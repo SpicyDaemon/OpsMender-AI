@@ -236,7 +236,7 @@ async def create_organization_domain(
     if not normalized or "." not in normalized:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Domain must be a valid hostname (e.g. acme.aim.example.com).",
+            detail="Domain must be a valid hostname (e.g. acme.opsmender.example.com).",
         )
 
     existing = await OrganizationDomainRepo.find_by_host(db, normalized)

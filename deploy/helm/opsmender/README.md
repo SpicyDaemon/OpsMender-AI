@@ -1,6 +1,6 @@
-# AIM Helm Chart
+# Opsmender Helm Chart
 
-Deploys the AI Incident Manager (AIM) onto Kubernetes: app Deployment + Service, optional Ingress, persistent logs PVC, configurable Postgres (bundled Bitnami subchart) or external DB, and env/secret wiring for AIM config plus provider keys.
+Deploys the Opsmender AI (Opsmender) onto Kubernetes: app Deployment + Service, optional Ingress, persistent logs PVC, configurable Postgres (bundled Bitnami subchart) or external DB, and env/secret wiring for Opsmender config plus provider keys.
 
 ## Prerequisites
 
@@ -12,25 +12,25 @@ Deploys the AI Incident Manager (AIM) onto Kubernetes: app Deployment + Service,
 ## Quick start (bundled Postgres)
 
 ```bash
-helm dependency update ./deploy/helm/aim
+helm dependency update ./deploy/helm/opsmender
 
-helm install aim ./deploy/helm/aim \
-  --namespace aim --create-namespace \
-  --set secrets.AIM_JWT_SECRET=$(openssl rand -hex 32) \
+helm install opsmender ./deploy/helm/opsmender \
+  --namespace opsmender --create-namespace \
+  --set secrets.OPSMENDER_JWT_SECRET=$(openssl rand -hex 32) \
   --set secrets.ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 ```
 
 Port-forward and open:
 
 ```bash
-kubectl -n aim port-forward svc/aim 8000:8000
+kubectl -n opsmender port-forward svc/opsmender 8000:8000
 open http://localhost:8000
 ```
 
 ## Upgrade
 
 ```bash
-helm upgrade aim ./deploy/helm/aim -n aim -f my-values.yaml
+helm upgrade opsmender ./deploy/helm/opsmender -n opsmender -f my-values.yaml
 ```
 
 ## External database
@@ -38,20 +38,20 @@ helm upgrade aim ./deploy/helm/aim -n aim -f my-values.yaml
 Disable the bundled Postgres and point at your own:
 
 ```bash
-helm install aim ./deploy/helm/aim -n aim --create-namespace \
-  -f ./deploy/helm/aim/values-external-db.yaml \
-  --set externalDatabase.url='postgresql+asyncpg://user:pass@db.example.com:5432/aim' \
-  --set secrets.AIM_JWT_SECRET=$(openssl rand -hex 32)
+helm install opsmender ./deploy/helm/opsmender -n opsmender --create-namespace \
+  -f ./deploy/helm/opsmender/values-external-db.yaml \
+  --set externalDatabase.url='postgresql+asyncpg://user:pass@db.example.com:5432/opsmender' \
+  --set secrets.OPSMENDER_JWT_SECRET=$(openssl rand -hex 32)
 ```
 
-Or reference an existing Secret containing `AIM_DATABASE_URL`:
+Or reference an existing Secret containing `OPSMENDER_DATABASE_URL`:
 
 ```yaml
 postgresql:
   enabled: false
 externalDatabase:
-  existingSecret: aim-db
-  existingSecretKey: AIM_DATABASE_URL
+  existingSecret: opsmender-db
+  existingSecretKey: OPSMENDER_DATABASE_URL
 ```
 
 ## Ingress + TLS
@@ -63,13 +63,13 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: aim.example.com
+    - host: opsmender.example.com
       paths:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: aim-tls
-      hosts: [aim.example.com]
+    - secretName: opsmender-tls
+      hosts: [opsmender.example.com]
 ```
 
 ## Configuration
@@ -86,7 +86,7 @@ ingress:
 | `persistence.size` | Logs PVC size | `5Gi` |
 | `postgresql.enabled` | Deploy Bitnami Postgres subchart | `true` |
 | `externalDatabase.url` | Async SQLAlchemy URL when subchart disabled | `""` |
-| `externalDatabase.existingSecret` | Secret holding `AIM_DATABASE_URL` | `""` |
+| `externalDatabase.existingSecret` | Secret holding `OPSMENDER_DATABASE_URL` | `""` |
 | `config.*` | Plain env vars (rendered into ConfigMap) | see `values.yaml` |
 | `secrets.*` | Sensitive env vars (rendered into Secret) | see `values.yaml` |
 | `existingSecret.name` | Use an existing Secret instead of `secrets.*` | `""` |
@@ -96,28 +96,28 @@ ingress:
 | `resources` | Container resource requests/limits | 250m/512Mi → 1/1Gi |
 | `autoscaling.enabled` | Enable HPA on CPU | `false` |
 
-`config.*` keys map 1:1 to AIM environment variables (see [.env.example](../../../.env.example)). Anything not in `config.*` or `secrets.*` can be added through `extraEnv` / `envFrom`.
+`config.*` keys map 1:1 to Opsmender environment variables (see [.env.example](../../../.env.example)). Anything not in `config.*` or `secrets.*` can be added through `extraEnv` / `envFrom`.
 
 ## Required secrets
 
 | Key | Notes |
 |-----|-------|
-| `AIM_JWT_SECRET` | **Always required.** `openssl rand -hex 32`. |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `AZURE_OPENAI_API_KEY` | Required only for the chosen `AIM_MODEL_PROVIDER`. |
+| `OPSMENDER_JWT_SECRET` | **Always required.** `openssl rand -hex 32`. |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `AZURE_OPENAI_API_KEY` | Required only for the chosen `OPSMENDER_MODEL_PROVIDER`. |
 
 To use a pre-existing Secret instead of rendering one, set `existingSecret.name=my-secret`. Its keys must match the env var names above.
 
 ## Lint / template / dry-run
 
 ```bash
-helm lint ./deploy/helm/aim
-helm template aim ./deploy/helm/aim --debug
-helm install aim ./deploy/helm/aim --dry-run --debug
+helm lint ./deploy/helm/opsmender
+helm template opsmender ./deploy/helm/opsmender --debug
+helm install opsmender ./deploy/helm/opsmender --dry-run --debug
 ```
 
 ## Uninstall
 
 ```bash
-helm uninstall aim -n aim
-kubectl delete pvc -n aim -l app.kubernetes.io/instance=aim   # bundled Postgres + logs
+helm uninstall opsmender -n opsmender
+kubectl delete pvc -n opsmender -l app.kubernetes.io/instance=opsmender   # bundled Postgres + logs
 ```

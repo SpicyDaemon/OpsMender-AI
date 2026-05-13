@@ -1,4 +1,4 @@
-"""MCP client wrapper for AI Incident Manager.
+"""MCP client wrapper for Opsmender AI.
 
 Provides a unified interface for connecting to MCP servers over stdio, SSE,
 or streamable HTTP transport, listing available tools, and calling tools.
@@ -35,9 +35,9 @@ def _resolve_node_command(command: str) -> str:
 
     Resolution order:
 
-    1. **``AIM_NODE_PATH``** — if set, look for the command inside that
+    1. **``OPSMENDER_NODE_PATH``** — if set, look for the command inside that
        directory first.  This lets operators point at a custom Node install
-       (e.g. a bundled portable runtime placed next to the ``aim`` binary).
+       (e.g. a bundled portable runtime placed next to the ``opsmender`` binary).
     2. **System ``$PATH``** — standard lookup via :func:`shutil.which`.
     3. **Fail-loud** — raise :class:`MCPClientError` with a human-readable
        install hint so the user isn't left staring at a cryptic *"file not
@@ -49,11 +49,11 @@ def _resolve_node_command(command: str) -> str:
         return command
 
     # 1. Honour the explicit override.
-    node_dir = os.environ.get("AIM_NODE_PATH")
+    node_dir = os.environ.get("OPSMENDER_NODE_PATH")
     if node_dir:
         candidate = os.path.join(node_dir, command)
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            logger.debug("Resolved %s via AIM_NODE_PATH → %s", command, candidate)
+            logger.debug("Resolved %s via OPSMENDER_NODE_PATH → %s", command, candidate)
             return candidate
 
     # 2. Fall back to $PATH.
@@ -70,7 +70,7 @@ def _resolve_node_command(command: str) -> str:
         "  • Docker image: Node is bundled automatically.\n"
         "  • Local / binary install: install Node.js LTS from "
         "https://nodejs.org and ensure 'npx' is on your PATH.\n"
-        "  • Or set AIM_NODE_PATH=/path/to/node/bin in your .env to point "
+        "  • Or set OPSMENDER_NODE_PATH=/path/to/node/bin in your .env to point "
         "at a custom install.\n"
     )
 

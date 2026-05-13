@@ -1,9 +1,9 @@
-"""SQLAlchemy ORM models for AI Incident Manager.
+"""SQLAlchemy ORM models for Opsmender AI.
 
 Maps the data model from REFERENCE.md to Postgres tables:
 - ``users``              — auth users with roles
 - ``incidents``          — top-level incident records
-- ``sessions``           — incident response sessions (one per ``aim run``)
+- ``sessions``           — incident response sessions (one per ``opsmender run``)
 - ``audit_entries``      — every agent action (replaces JSONL backend)
 - ``approval_requests``  — Tier 1 human-approval queue
 - ``model_configs``      — BYOM provider configurations
@@ -84,7 +84,7 @@ class Organization(Base):
 class OrganizationDomain(Base):
     """Host-based tenant routing — maps a hostname to an organization.
 
-    Multiple domains may point at one org (e.g. ``acme.aim.example.com`` plus a
+    Multiple domains may point at one org (e.g. ``acme.opsmender.example.com`` plus a
     custom CNAME ``incidents.acme.com``). One row per org is flagged primary
     so the UI can render canonical links.
     """
@@ -109,7 +109,7 @@ class OrgSSOConfig(Base):
     """Per-organization SSO / OIDC configuration.
 
     One row per org (UNIQUE org_id). Drives the ``/auth/sso/{slug}/login``
-    flow: AIM redirects the user to the IdP described here, validates the
+    flow: Opsmender redirects the user to the IdP described here, validates the
     returned id_token, and JIT-provisions the user into the org.
     """
 
@@ -152,7 +152,7 @@ class OrgSAMLConfig(Base):
     cached for 10 minutes) or by raw XML pasted by the admin. Exactly one of
     those two columns is set at any given time (enforced at the API layer).
 
-    SP-side keypair lives in env (``AIM_SAML_SP_CERT`` / ``AIM_SAML_SP_KEY``)
+    SP-side keypair lives in env (``OPSMENDER_SAML_SP_CERT`` / ``OPSMENDER_SAML_SP_KEY``)
     and is shared across all tenants — see :class:`SAMLConfig` in
     ``backend/config_loader.py``.
     """
@@ -991,7 +991,7 @@ class BotConnector(Base):
 
 
 class BotUserLink(Base):
-    """Map an external chat platform user to an AIM user account."""
+    """Map an external chat platform user to an Opsmender user account."""
 
     __tablename__ = "bot_user_links"
 
@@ -1006,7 +1006,7 @@ class BotUserLink(Base):
         nullable=False,
     )
     platform_user_id: Mapped[str] = mapped_column(String(120), nullable=False)
-    aim_user_id: Mapped[uuid.UUID] = mapped_column(
+    opsmender_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,

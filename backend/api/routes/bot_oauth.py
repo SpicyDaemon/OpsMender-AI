@@ -10,7 +10,7 @@ Sprint 31 Steps 5–6. Two admin-only routes per supported platform:
   token into the connector's ``credentials`` JSON, and redirects back
   to ``/dashboard/config``.
 
-Client credentials (``AIM_SLACK_OAUTH_CLIENT_ID`` etc) live in env, not
+Client credentials (``OPSMENDER_SLACK_OAUTH_CLIENT_ID`` etc) live in env, not
 in the DB. When unset, the routes return 503 and the UI falls back to
 manual paste.
 """
@@ -67,8 +67,8 @@ def _ensure_enabled(platform: str) -> None:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
                 f"{platform.title()} OAuth client credentials are not configured. "
-                f"Set AIM_{platform.upper()}_OAUTH_CLIENT_ID and "
-                f"AIM_{platform.upper()}_OAUTH_CLIENT_SECRET in the environment."
+                f"Set OPSMENDER_{platform.upper()}_OAUTH_CLIENT_ID and "
+                f"OPSMENDER_{platform.upper()}_OAUTH_CLIENT_SECRET in the environment."
             ),
         )
 

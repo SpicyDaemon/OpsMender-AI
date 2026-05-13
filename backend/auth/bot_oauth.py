@@ -1,8 +1,8 @@
 """Slack / Discord OAuth helpers for bot-connector "Connect to …" flows.
 
 Sprint 31 Steps 5–6. Shape mirrors the SAML SP keypair model: client
-credentials live in env (``AIM_SLACK_OAUTH_CLIENT_ID`` /
-``AIM_SLACK_OAUTH_CLIENT_SECRET`` / Discord equivalents), never in the
+credentials live in env (``OPSMENDER_SLACK_OAUTH_CLIENT_ID`` /
+``OPSMENDER_SLACK_OAUTH_CLIENT_SECRET`` / Discord equivalents), never in the
 DB. The OAuth start route signs a short-lived JWT carrying the
 connector_id so callbacks can't be cross-pollinated between connectors;
 the callback verifies the JWT, exchanges the auth code with the
@@ -43,7 +43,7 @@ from backend.config_loader import AppConfig, BotOAuthConfig
 
 
 STATE_TTL_SECONDS = 300  # 5 minutes
-STATE_AUDIENCE = "aim-bot-oauth"
+STATE_AUDIENCE = "opsmender-bot-oauth"
 
 SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize"
 SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access"
@@ -105,7 +105,7 @@ def sign_state(
     cfg = _auth_config()
     now = int(time.time())
     payload = {
-        "iss": "aim",
+        "iss": "opsmender",
         "aud": STATE_AUDIENCE,
         "sub": connector_id,
         "plat": platform,

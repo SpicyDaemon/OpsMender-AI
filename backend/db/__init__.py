@@ -1,1 +1,1 @@
-# backend/db — Database layer for AI Incident Manager (Phase 2).
+# backend/db — Database layer for Opsmender AI (Phase 2).

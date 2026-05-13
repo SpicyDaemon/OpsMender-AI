@@ -1,4 +1,4 @@
-# AI Incident Manager — single container (frontend + backend)
+# Opsmender AI — single container (frontend + backend)
 #
 # Four stages:
 #   1. frontend-builder  — Node 22, produces /app/frontend/out (static export)
@@ -97,7 +97,7 @@ COPY --from=frontend-builder /app/frontend/out /app/frontend/out
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    AIM_FRONTEND_STATIC_DIR=/app/frontend/out
+    OPSMENDER_FRONTEND_STATIC_DIR=/app/frontend/out
 
 EXPOSE 8000
 

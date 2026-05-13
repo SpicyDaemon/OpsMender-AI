@@ -3,7 +3,7 @@
 Strategy:
 - The python3-saml signature/audience/replay validation is exercised against
   the IdP's actual response. Building one in-test would mean reproducing the
-  whole signing pipeline. Instead we test the surface AIM owns:
+  whole signing pipeline. Instead we test the surface Opsmender owns:
   CRUD, XOR validation, tenant-resolve flag, route guards (503 when the SP
   keypair is missing, 400 when no active SAML config), and the helper's
   IdP metadata caching + mode dispatch.
@@ -64,12 +64,12 @@ async def app(tmp_path):
 
     tmp_env = tmp_path / ".env"
     tmp_env.write_text(
-        "AIM_TIER=2\n"
-        "AIM_LOG_LEVEL=INFO\n"
-        "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
-        "AIM_JWT_SECRET=test-secret\n"
-        "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
-        f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
+        "OPSMENDER_TIER=2\n"
+        "OPSMENDER_LOG_LEVEL=INFO\n"
+        "OPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
+        "OPSMENDER_JWT_SECRET=test-secret\n"
+        "OPSMENDER_DATABASE_URL=sqlite+aiosqlite://\n"
+        f"OPSMENDER_MCP_SERVERS_JSON={json.dumps([])}\n"
     )
     set_env_path(tmp_env)
 
@@ -225,7 +225,7 @@ class TestTenantResolveExposesSAML:
             await OrganizationDomainRepo.create(
                 db,
                 org_id=TEST_ORG_ID,
-                domain="aim.acme.com",
+                domain="opsmender.acme.com",
                 is_primary=True,
             )
             await OrgSAMLConfigRepo.upsert(
@@ -235,7 +235,7 @@ class TestTenantResolveExposesSAML:
             )
             await db.commit()
 
-        resp = await client.get("/tenant/resolve", headers={"Host": "aim.acme.com"})
+        resp = await client.get("/tenant/resolve", headers={"Host": "opsmender.acme.com"})
         assert resp.status_code == 200
         body = resp.json()
         assert body["pinned"] is True
@@ -260,22 +260,22 @@ class TestSAMLRouteGuards:
             )
             await db.commit()
 
-        # No AIM_SAML_SP_CERT / KEY in the test env → 503.
+        # No OPSMENDER_SAML_SP_CERT / KEY in the test env → 503.
         resp = await client.get("/auth/saml/saml-org/login")
         assert resp.status_code == 503
-        assert "AIM_SAML_SP_CERT" in resp.text
+        assert "OPSMENDER_SAML_SP_CERT" in resp.text
 
     async def test_login_400_when_no_active_config(self, client, app, monkeypatch):
         # SP keypair present but no SAML row for the org.
-        monkeypatch.setenv("AIM_SAML_SP_CERT", "stub")
-        monkeypatch.setenv("AIM_SAML_SP_KEY", "stub")
+        monkeypatch.setenv("OPSMENDER_SAML_SP_CERT", "stub")
+        monkeypatch.setenv("OPSMENDER_SAML_SP_KEY", "stub")
         resp = await client.get("/auth/saml/saml-org/login")
         # Without an OrgSAMLConfig row, _resolve_active_saml returns 400.
         assert resp.status_code == 400
 
     async def test_login_404_for_unknown_org(self, client, monkeypatch):
-        monkeypatch.setenv("AIM_SAML_SP_CERT", "stub")
-        monkeypatch.setenv("AIM_SAML_SP_KEY", "stub")
+        monkeypatch.setenv("OPSMENDER_SAML_SP_CERT", "stub")
+        monkeypatch.setenv("OPSMENDER_SAML_SP_KEY", "stub")
         resp = await client.get("/auth/saml/no-such-slug/login")
         assert resp.status_code == 404
 
@@ -386,11 +386,11 @@ class TestSAMLHelper:
         from backend.auth.saml import split_base_url
 
         base, https, host, port, path = split_base_url(
-            "https://aim.acme.com/auth/saml/acme/login"
+            "https://opsmender.acme.com/auth/saml/acme/login"
         )
-        assert base == "https://aim.acme.com"
+        assert base == "https://opsmender.acme.com"
         assert https is True
-        assert host == "aim.acme.com"
+        assert host == "opsmender.acme.com"
         assert port == 443
         assert path == "/auth/saml/acme/login"
 

@@ -1,4 +1,4 @@
-"""Tests for the ``aim approvals`` CLI commands."""
+"""Tests for the ``opsmender approvals`` CLI commands."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.db.models import Base
 from backend.db.repos import ApprovalRequestRepo, SessionRepo
-from cli.aim import _parse_args, main
+from cli.opsmender import _parse_args, main
 
 
 async def _seed_db(db_url: str):
@@ -67,10 +67,10 @@ class TestApprovalsArgParsing:
 class TestApprovalsCLI:
     def test_list_approvals(self, tmp_path, monkeypatch, capsys):
         cfg = tmp_path / ".env"
-        cfg.write_text("AIM_TIER=2\n")
+        cfg.write_text("OPSMENDER_TIER=2\n")
         db_url = f"sqlite+aiosqlite:///{tmp_path / 'approvals.db'}"
         request_id = asyncio.run(_seed_db(db_url))
-        monkeypatch.setenv("AIM_DATABASE_URL", db_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", db_url)
 
         with pytest.raises(SystemExit) as exc_info:
             main(["--config", str(cfg), "approvals", "list"])
@@ -81,10 +81,10 @@ class TestApprovalsCLI:
 
     def test_approve_request(self, tmp_path, monkeypatch):
         cfg = tmp_path / ".env"
-        cfg.write_text("AIM_TIER=2\n")
+        cfg.write_text("OPSMENDER_TIER=2\n")
         db_url = f"sqlite+aiosqlite:///{tmp_path / 'approvals.db'}"
         request_id = asyncio.run(_seed_db(db_url))
-        monkeypatch.setenv("AIM_DATABASE_URL", db_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", db_url)
 
         with pytest.raises(SystemExit) as exc_info:
             main(["--config", str(cfg), "approvals", "approve", str(request_id)])

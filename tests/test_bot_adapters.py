@@ -350,7 +350,7 @@ def test_weixin_signature():
 def test_twilio_verify_webhook():
     adapter = TwilioAdapter()
     token = "twiliotoken"
-    url = "https://aim.example.com/twilio"
+    url = "https://opsmender.example.com/twilio"
     connector = BotConnector(
         platform="twilio",
         is_enabled=True,

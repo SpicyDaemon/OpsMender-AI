@@ -1,4 +1,4 @@
-"""Environment-based configuration loader for AI Incident Manager."""
+"""Environment-based configuration loader for Opsmender AI."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from typing import Any
 from dotenv import dotenv_values
 
 DEFAULT_ENV_FILE = ".env"
-DEFAULT_LOCAL_POSTGRES_URL = "postgresql+asyncpg://aim:aim@localhost:5432/aim"
-DEFAULT_LOCAL_SQLITE_URL = "sqlite+aiosqlite:///./aim-local.db"
+DEFAULT_LOCAL_POSTGRES_URL = "postgresql+asyncpg://opsmender:opsmender@localhost:5432/opsmender"
+DEFAULT_LOCAL_SQLITE_URL = "sqlite+aiosqlite:///./opsmender-local.db"
 
 _ENV_PATH_OVERRIDE: pathlib.Path | None = None
 
@@ -182,7 +182,7 @@ class Tier0Config:
 class AppSettings:
     """General app runtime settings."""
 
-    name: str = "AI Incident Manager"
+    name: str = "Opsmender AI"
     version: str = "0.2.0"
     tier: int = 2
     log_level: str = "INFO"
@@ -277,18 +277,18 @@ class ProviderConfig:
 
 
 def _parse_mcp_servers(env: dict[str, str]) -> list[MCPServerConfig]:
-    raw = _env_str(env, "AIM_MCP_SERVERS_JSON", "[]") or "[]"
+    raw = _env_str(env, "OPSMENDER_MCP_SERVERS_JSON", "[]") or "[]"
     try:
         items = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise ValueError("AIM_MCP_SERVERS_JSON must contain valid JSON") from exc
+        raise ValueError("OPSMENDER_MCP_SERVERS_JSON must contain valid JSON") from exc
     if not isinstance(items, list):
-        raise ValueError("AIM_MCP_SERVERS_JSON must decode to a list")
+        raise ValueError("OPSMENDER_MCP_SERVERS_JSON must decode to a list")
 
     servers: list[MCPServerConfig] = []
     for entry in items:
         if not isinstance(entry, dict):
-            raise ValueError("Each AIM_MCP_SERVERS_JSON entry must be an object")
+            raise ValueError("Each OPSMENDER_MCP_SERVERS_JSON entry must be an object")
         servers.append(
             MCPServerConfig(
                 name=str(entry.get("name", "unnamed")),
@@ -330,56 +330,56 @@ class AppConfig:
         env_path, env = _read_env(path)
 
         app = AppSettings(
-            tier=_env_int(env, "AIM_TIER", 2),
-            log_level=_env_str(env, "AIM_LOG_LEVEL", "INFO") or "INFO",
+            tier=_env_int(env, "OPSMENDER_TIER", 2),
+            log_level=_env_str(env, "OPSMENDER_LOG_LEVEL", "INFO") or "INFO",
             skill_definition_path=_env_str(
                 env,
-                "AIM_SKILL_DEFINITION",
+                "OPSMENDER_SKILL_DEFINITION",
                 "./examples/SKILL.md",
             )
             or "./examples/SKILL.md",
-            audit_output=_env_str(env, "AIM_AUDIT_LOG", "./logs/audit.jsonl")
+            audit_output=_env_str(env, "OPSMENDER_AUDIT_LOG", "./logs/audit.jsonl")
             or "./logs/audit.jsonl",
             frontend_static_dir=_env_str(
                 env,
-                "AIM_FRONTEND_STATIC_DIR",
+                "OPSMENDER_FRONTEND_STATIC_DIR",
                 "./frontend/out",
             )
             or "./frontend/out",
         )
         audit = AuditConfig(output=app.audit_output)
         approvals = ApprovalConfig(
-            timeout_seconds=_env_int(env, "AIM_APPROVAL_TIMEOUT_SECONDS", 900)
+            timeout_seconds=_env_int(env, "OPSMENDER_APPROVAL_TIMEOUT_SECONDS", 900)
         )
 
         ingest = IngestConfig(
-            rate_limit=_env_int(env, "AIM_INGEST_RATE_LIMIT", 60),
-            rate_window=_env_int(env, "AIM_INGEST_RATE_WINDOW", 60),
+            rate_limit=_env_int(env, "OPSMENDER_INGEST_RATE_LIMIT", 60),
+            rate_window=_env_int(env, "OPSMENDER_INGEST_RATE_WINDOW", 60),
             auto_start_enabled=_env_bool(
-                env, "AIM_INGEST_AUTO_START_ENABLED", False
+                env, "OPSMENDER_INGEST_AUTO_START_ENABLED", False
             ),
             auto_start_min_severity=_env_severity(
-                env, "AIM_INGEST_AUTO_START_MIN_SEVERITY", "critical"
+                env, "OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY", "critical"
             ),
             auto_start_source=(
-                (_env_str(env, "AIM_INGEST_AUTO_START_SOURCE", "") or "").strip().lower()
+                (_env_str(env, "OPSMENDER_INGEST_AUTO_START_SOURCE", "") or "").strip().lower()
                 or None
             ),
         )
         detector = DetectorConfig(
-            enabled=_env_bool(env, "AIM_DETECTOR_ENABLED", False),
-            max_runs_per_hour=_env_int(env, "AIM_DETECTOR_MAX_RUNS_PER_HOUR", 12),
-            budget=_env_int(env, "AIM_DETECTOR_BUDGET", 500),
+            enabled=_env_bool(env, "OPSMENDER_DETECTOR_ENABLED", False),
+            max_runs_per_hour=_env_int(env, "OPSMENDER_DETECTOR_MAX_RUNS_PER_HOUR", 12),
+            budget=_env_int(env, "OPSMENDER_DETECTOR_BUDGET", 500),
         )
         sla = SLAConfig(
-            poller_enabled=_env_bool(env, "AIM_SLA_POLLER_ENABLED", False),
-            poll_interval_default=_env_int(env, "AIM_SLA_POLL_INTERVAL_DEFAULT", 60),
+            poller_enabled=_env_bool(env, "OPSMENDER_SLA_POLLER_ENABLED", False),
+            poll_interval_default=_env_int(env, "OPSMENDER_SLA_POLL_INTERVAL_DEFAULT", 60),
         )
         tier0 = Tier0Config(
             max_session_seconds=_env_int(
-                env, "AIM_TIER0_MAX_SESSION_SECONDS", 600
+                env, "OPSMENDER_TIER0_MAX_SESSION_SECONDS", 600
             ),
-            max_node_seconds=_env_int(env, "AIM_TIER0_MAX_NODE_SECONDS", 120),
+            max_node_seconds=_env_int(env, "OPSMENDER_TIER0_MAX_NODE_SECONDS", 120),
         )
 
         return cls(
@@ -394,16 +394,16 @@ class AppConfig:
             tier0=tier0,
             app=app,
             db=DatabaseConfig(
-                url=_env_str(env, "AIM_DATABASE_URL"),
+                url=_env_str(env, "OPSMENDER_DATABASE_URL"),
                 local_postgres_url=_env_str(
                     env,
-                    "AIM_LOCAL_POSTGRES_URL",
+                    "OPSMENDER_LOCAL_POSTGRES_URL",
                     DEFAULT_LOCAL_POSTGRES_URL,
                 )
                 or DEFAULT_LOCAL_POSTGRES_URL,
                 sqlite_url=_env_str(
                     env,
-                    "AIM_SQLITE_FALLBACK_URL",
+                    "OPSMENDER_SQLITE_FALLBACK_URL",
                     DEFAULT_LOCAL_SQLITE_URL,
                 )
                 or DEFAULT_LOCAL_SQLITE_URL,
@@ -411,30 +411,30 @@ class AppConfig:
             auth=AuthConfig(
                 jwt_secret=_env_str(
                     env,
-                    "AIM_JWT_SECRET",
+                    "OPSMENDER_JWT_SECRET",
                     "dev-secret-change-in-production",
                 )
                 or "dev-secret-change-in-production",
-                jwt_algorithm=_env_str(env, "AIM_JWT_ALGORITHM", "HS256")
+                jwt_algorithm=_env_str(env, "OPSMENDER_JWT_ALGORITHM", "HS256")
                 or "HS256",
-                jwt_expire_minutes=_env_int(env, "AIM_JWT_EXPIRE_MINUTES", 60),
+                jwt_expire_minutes=_env_int(env, "OPSMENDER_JWT_EXPIRE_MINUTES", 60),
             ),
             saml=SAMLConfig(
-                sp_cert=_env_str(env, "AIM_SAML_SP_CERT"),
-                sp_key=_env_str(env, "AIM_SAML_SP_KEY"),
-                sp_entity_id=_env_str(env, "AIM_SAML_SP_ENTITY_ID"),
+                sp_cert=_env_str(env, "OPSMENDER_SAML_SP_CERT"),
+                sp_key=_env_str(env, "OPSMENDER_SAML_SP_KEY"),
+                sp_entity_id=_env_str(env, "OPSMENDER_SAML_SP_ENTITY_ID"),
             ),
             bot_oauth=BotOAuthConfig(
-                slack_client_id=_env_str(env, "AIM_SLACK_OAUTH_CLIENT_ID"),
-                slack_client_secret=_env_str(env, "AIM_SLACK_OAUTH_CLIENT_SECRET"),
-                discord_client_id=_env_str(env, "AIM_DISCORD_OAUTH_CLIENT_ID"),
-                discord_client_secret=_env_str(env, "AIM_DISCORD_OAUTH_CLIENT_SECRET"),
+                slack_client_id=_env_str(env, "OPSMENDER_SLACK_OAUTH_CLIENT_ID"),
+                slack_client_secret=_env_str(env, "OPSMENDER_SLACK_OAUTH_CLIENT_SECRET"),
+                discord_client_id=_env_str(env, "OPSMENDER_DISCORD_OAUTH_CLIENT_ID"),
+                discord_client_secret=_env_str(env, "OPSMENDER_DISCORD_OAUTH_CLIENT_SECRET"),
             ),
-            cors=CorsConfig(origins=_env_csv(env, "AIM_CORS_ORIGINS", "*")),
+            cors=CorsConfig(origins=_env_csv(env, "OPSMENDER_CORS_ORIGINS", "*")),
             providers=ProviderConfig(
-                active_provider=_env_str(env, "AIM_MODEL_PROVIDER", "ollama")
+                active_provider=_env_str(env, "OPSMENDER_MODEL_PROVIDER", "ollama")
                 or "ollama",
-                active_model_id=_env_str(env, "AIM_MODEL_ID", "llama3.2")
+                active_model_id=_env_str(env, "OPSMENDER_MODEL_ID", "llama3.2")
                 or "llama3.2",
                 ollama_base_url=_env_str(env, "OLLAMA_BASE_URL", "http://localhost:11434")
                 or "http://localhost:11434",

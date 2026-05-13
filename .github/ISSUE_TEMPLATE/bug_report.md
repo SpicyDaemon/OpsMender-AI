@@ -30,7 +30,7 @@ assignees: []
 
 ## Environment
 
-- AIM version: <!-- `aim --version`, Docker tag, or commit SHA -->
+- Opsmender version: <!-- `opsmender --version`, Docker tag, or commit SHA -->
 - Install method: <!-- docker / pyinstaller binary / `uv sync` from source -->
 - OS: <!-- e.g. macOS 14.4, Ubuntu 22.04, Windows 11 -->
 - Python version (source installs only): <!-- `python --version` -->
@@ -46,8 +46,8 @@ API keys, tokens, DB passwords, webhook URLs containing secrets.
 -->
 
 ```
-AIM_TIER=...
-AIM_DATABASE_URL=postgres://***:***@host/db
+OPSMENDER_TIER=...
+OPSMENDER_DATABASE_URL=postgres://***:***@host/db
 ```
 
 ## Anything else?

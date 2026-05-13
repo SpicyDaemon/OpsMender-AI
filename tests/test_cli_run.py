@@ -1,4 +1,4 @@
-"""Tests for the ``aim run`` CLI command."""
+"""Tests for the ``opsmender run`` CLI command."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import pathlib
 
 import pytest
 
-from cli.aim import main, _parse_args
+from cli.opsmender import main, _parse_args
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ class TestRunDryRun:
         cfg_file = tmp_path / ".env"
         audit_file = tmp_path / "audit.jsonl"
         cfg_file.write_text(
-            f"AIM_TIER=2\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG={audit_file}\n"
+            f"OPSMENDER_TIER=2\nOPSMENDER_LOG_LEVEL=INFO\nOPSMENDER_AUDIT_LOG={audit_file}\n"
         )
         with pytest.raises(SystemExit) as exc_info:
             main(

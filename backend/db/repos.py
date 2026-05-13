@@ -2734,14 +2734,14 @@ class BotUserLinkRepo:
         *,
         connector_id: uuid.UUID,
         platform_user_id: str,
-        aim_user_id: uuid.UUID,
+        opsmender_user_id: uuid.UUID,
         created_by: uuid.UUID | None = None,
     ) -> BotUserLink:
         link = BotUserLink(
             org_id=org_id,
             connector_id=connector_id,
             platform_user_id=platform_user_id,
-            aim_user_id=aim_user_id,
+            opsmender_user_id=opsmender_user_id,
             created_by=created_by,
         )
         db.add(link)

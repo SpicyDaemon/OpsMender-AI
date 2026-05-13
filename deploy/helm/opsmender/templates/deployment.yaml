@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "aim.fullname" . }}
+  name: {{ include "opsmender.fullname" . }}
   labels:
-    {{- include "aim.labels" . | nindent 4 }}
+    {{- include "opsmender.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "aim.selectorLabels" . | nindent 6 }}
+      {{- include "opsmender.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -22,12 +22,12 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "aim.selectorLabels" . | nindent 8 }}
+        {{- include "opsmender.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ include "aim.serviceAccountName" . }}
+      serviceAccountName: {{ include "opsmender.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -35,7 +35,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: aim
+        - name: opsmender
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
@@ -46,29 +46,29 @@ spec:
               protocol: TCP
           env:
             {{- if .Values.postgresql.enabled }}
-            - name: AIM_DATABASE_URL
-              value: {{ include "aim.postgresql.url" . | quote }}
+            - name: OPSMENDER_DATABASE_URL
+              value: {{ include "opsmender.postgresql.url" . | quote }}
             {{- else if .Values.externalDatabase.existingSecret }}
-            - name: AIM_DATABASE_URL
+            - name: OPSMENDER_DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.externalDatabase.existingSecret }}
                   key: {{ .Values.externalDatabase.existingSecretKey }}
             {{- else if .Values.externalDatabase.url }}
-            - name: AIM_DATABASE_URL
+            - name: OPSMENDER_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "aim.secretName" . }}
-                  key: AIM_DATABASE_URL
+                  name: {{ include "opsmender.secretName" . }}
+                  key: OPSMENDER_DATABASE_URL
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           envFrom:
             - configMapRef:
-                name: {{ include "aim.configMapName" . }}
+                name: {{ include "opsmender.configMapName" . }}
             - secretRef:
-                name: {{ include "aim.secretName" . }}
+                name: {{ include "opsmender.secretName" . }}
             {{- with .Values.envFrom }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -103,7 +103,7 @@ spec:
       volumes:
         - name: logs
           persistentVolumeClaim:
-            claimName: {{ include "aim.pvcName" . }}
+            claimName: {{ include "opsmender.pvcName" . }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

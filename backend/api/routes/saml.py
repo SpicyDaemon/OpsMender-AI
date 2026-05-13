@@ -61,8 +61,8 @@ def _sp_keypair_or_503() -> SPKeypair:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                "SAML SP keypair is not configured. Set AIM_SAML_SP_CERT and "
-                "AIM_SAML_SP_KEY in the environment."
+                "SAML SP keypair is not configured. Set OPSMENDER_SAML_SP_CERT and "
+                "OPSMENDER_SAML_SP_KEY in the environment."
             ),
         )
     return SPKeypair(
@@ -262,6 +262,6 @@ async def saml_acs(slug: str, request: Request, db: AsyncSession = Depends(get_d
 
     await db.commit()
 
-    aim_token = create_access_token(user.id, user.role)
-    target = f"{_public_base_url(request)}/login#sso_token={quote(aim_token)}"
+    opsmender_token = create_access_token(user.id, user.role)
+    target = f"{_public_base_url(request)}/login#sso_token={quote(opsmender_token)}"
     return RedirectResponse(target, status_code=302)

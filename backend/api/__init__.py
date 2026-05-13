@@ -1,1 +1,1 @@
-# backend/api — FastAPI REST + WebSocket layer for AI Incident Manager (Phase 2).
+# backend/api — FastAPI REST + WebSocket layer for Opsmender AI (Phase 2).

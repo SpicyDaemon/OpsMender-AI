@@ -84,7 +84,7 @@ class TestCallTool:
 
 class TestCheckCommand:
     def test_check_no_servers(self, capsys):
-        from cli.aim import main
+        from cli.opsmender import main
 
         with pytest.raises(SystemExit) as exc_info:
             main(["check"])
@@ -94,7 +94,7 @@ class TestCheckCommand:
         assert "No MCP servers configured" in out
 
     def test_check_bad_config_exits(self):
-        from cli.aim import main
+        from cli.opsmender import main
 
         with pytest.raises(SystemExit) as exc_info:
             main(["--config", "/tmp/nonexistent.env", "check"])
@@ -119,30 +119,30 @@ class TestResolveNodeCommand:
         assert _resolve_node_command("python3") == "python3"
         assert _resolve_node_command("kubectl") == "kubectl"
 
-    def test_aim_node_path_resolves(self, tmp_path):
-        """AIM_NODE_PATH overrides PATH when set and contains the command."""
+    def test_opsmender_node_path_resolves(self, tmp_path):
+        """OPSMENDER_NODE_PATH overrides PATH when set and contains the command."""
         # Create a fake npx binary in a temp dir.
         fake_npx = tmp_path / "npx"
         fake_npx.write_text("#!/bin/sh\necho fake npx\n")
         fake_npx.chmod(fake_npx.stat().st_mode | stat.S_IEXEC)
 
-        env = {**os.environ, "AIM_NODE_PATH": str(tmp_path)}
+        env = {**os.environ, "OPSMENDER_NODE_PATH": str(tmp_path)}
         with patch.dict(os.environ, env, clear=True):
             result = _resolve_node_command("npx")
             assert result == str(fake_npx)
 
-    def test_aim_node_path_missing_command_falls_to_path(self, tmp_path):
-        """If AIM_NODE_PATH is set but doesn't contain the command, fall back to PATH."""
-        # Empty AIM_NODE_PATH dir — no npx there.
-        env = {**os.environ, "AIM_NODE_PATH": str(tmp_path)}
+    def test_opsmender_node_path_missing_command_falls_to_path(self, tmp_path):
+        """If OPSMENDER_NODE_PATH is set but doesn't contain the command, fall back to PATH."""
+        # Empty OPSMENDER_NODE_PATH dir — no npx there.
+        env = {**os.environ, "OPSMENDER_NODE_PATH": str(tmp_path)}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value="/usr/local/bin/npx"):
                 result = _resolve_node_command("npx")
                 assert result == "/usr/local/bin/npx"
 
     def test_path_fallback_works(self):
-        """Without AIM_NODE_PATH, falls back to shutil.which (PATH lookup)."""
-        env = {k: v for k, v in os.environ.items() if k != "AIM_NODE_PATH"}
+        """Without OPSMENDER_NODE_PATH, falls back to shutil.which (PATH lookup)."""
+        env = {k: v for k, v in os.environ.items() if k != "OPSMENDER_NODE_PATH"}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value="/usr/bin/npx"):
                 result = _resolve_node_command("npx")
@@ -150,7 +150,7 @@ class TestResolveNodeCommand:
 
     def test_fail_loud_when_not_found(self):
         """Raises MCPClientError with install hint when Node is not found."""
-        env = {k: v for k, v in os.environ.items() if k != "AIM_NODE_PATH"}
+        env = {k: v for k, v in os.environ.items() if k != "OPSMENDER_NODE_PATH"}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value=None):
                 with pytest.raises(
@@ -159,8 +159,8 @@ class TestResolveNodeCommand:
                     _resolve_node_command("npx")
 
     def test_fail_loud_message_contains_install_hints(self):
-        """Error message includes Docker, local, and AIM_NODE_PATH hints."""
-        env = {k: v for k, v in os.environ.items() if k != "AIM_NODE_PATH"}
+        """Error message includes Docker, local, and OPSMENDER_NODE_PATH hints."""
+        env = {k: v for k, v in os.environ.items() if k != "OPSMENDER_NODE_PATH"}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value=None):
                 with pytest.raises(MCPClientError) as exc_info:
@@ -168,7 +168,7 @@ class TestResolveNodeCommand:
                 msg = str(exc_info.value)
                 assert "Docker image" in msg
                 assert "nodejs.org" in msg
-                assert "AIM_NODE_PATH" in msg
+                assert "OPSMENDER_NODE_PATH" in msg
 
     def test_all_node_commands_resolved(self, tmp_path):
         """node, npx, and npm are all resolved through the helper."""
@@ -177,7 +177,7 @@ class TestResolveNodeCommand:
             fake_bin.write_text(f"#!/bin/sh\necho fake {cmd}\n")
             fake_bin.chmod(fake_bin.stat().st_mode | stat.S_IEXEC)
 
-        env = {**os.environ, "AIM_NODE_PATH": str(tmp_path)}
+        env = {**os.environ, "OPSMENDER_NODE_PATH": str(tmp_path)}
         with patch.dict(os.environ, env, clear=True):
             for cmd in ("node", "npx", "npm"):
                 result = _resolve_node_command(cmd)
@@ -200,7 +200,7 @@ class TestStdioNodeResolution:
             args=["-y", "@anthropic/mcp-server-k8s"],
         )
 
-        env = {**os.environ, "AIM_NODE_PATH": str(tmp_path)}
+        env = {**os.environ, "OPSMENDER_NODE_PATH": str(tmp_path)}
         with patch.dict(os.environ, env, clear=True):
             with patch("backend.mcp.client.stdio_client") as mock_stdio:
                 # Set up the mock to avoid actually connecting.

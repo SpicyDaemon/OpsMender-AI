@@ -858,9 +858,9 @@ export interface BotUserLinkResponse {
   id: string;
   connector_id: string;
   platform_user_id: string;
-  aim_user_id: string;
-  aim_username: string;
-  aim_role: string;
+  opsmender_user_id: string;
+  opsmender_username: string;
+  opsmender_role: string;
   created_at: string;
 }
 
@@ -871,7 +871,7 @@ export interface BotUserLinkListResponse {
 
 export interface BotUserLinkCreate {
   platform_user_id: string;
-  aim_user_id: string;
+  opsmender_user_id: string;
 }
 
 

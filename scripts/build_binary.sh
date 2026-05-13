@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Build the `aim` single-file binary.
+# Build the `opsmender` single-file binary.
 #
 # Steps:
 #   1. Build the Next.js static export (frontend/out/).
 #   2. Install the pyinstaller build group.
-#   3. Run pyinstaller with aim.spec.
+#   3. Run pyinstaller with opsmender.spec.
 #
-# Result: ./dist/aim (~50–100 MB depending on platform).
-# Run with: ./dist/aim serve
+# Result: ./dist/opsmender (~50–100 MB depending on platform).
+# Run with: ./dist/opsmender serve
 
 set -euo pipefail
 
@@ -26,8 +26,8 @@ uv sync --group build
 
 echo "==> Running PyInstaller"
 rm -rf build dist
-uv run pyinstaller aim.spec
+uv run pyinstaller opsmender.spec
 
 echo ""
-echo "==> Binary built at: dist/aim"
-echo "==> Test it with: ./dist/aim --version"
+echo "==> Binary built at: dist/opsmender"
+echo "==> Test it with: ./dist/opsmender --version"

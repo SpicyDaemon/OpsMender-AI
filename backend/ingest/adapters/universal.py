@@ -138,7 +138,7 @@ _LATENCY_KEYS = (
     "probe_duration_seconds",
 )
 
-# Alert-system severity synonyms mapped to AIM's 4-level scale
+# Alert-system severity synonyms mapped to Opsmender's 4-level scale
 _SEVERITY_MAP: dict[str, str] = {
     # critical
     "critical": "critical",

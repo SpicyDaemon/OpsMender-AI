@@ -1,10 +1,10 @@
-"""Tests for cli.aim."""
+"""Tests for cli.opsmender."""
 
 import json
 
 import pytest
 
-from cli.aim import main
+from cli.opsmender import main
 
 
 class TestCLI:
@@ -21,7 +21,7 @@ class TestCLI:
         """Running with no args prints help text."""
         main([])
         out = capsys.readouterr().out
-        assert "aim" in out
+        assert "opsmender" in out
 
     def test_bad_config_path_exits(self):
         with pytest.raises(SystemExit) as exc_info:
@@ -31,7 +31,7 @@ class TestCLI:
     def test_custom_config(self, tmp_path, capsys):
         cfg = tmp_path / "custom.env"
         cfg.write_text(
-            "AIM_MCP_SERVERS_JSON="
+            "OPSMENDER_MCP_SERVERS_JSON="
             + json.dumps(
                 [
                     {
@@ -42,9 +42,9 @@ class TestCLI:
                 ]
             )
             + "\n"
-            + "AIM_TIER=3\n"
-            + "AIM_LOG_LEVEL=WARNING\n"
+            + "OPSMENDER_TIER=3\n"
+            + "OPSMENDER_LOG_LEVEL=WARNING\n"
         )
         main(["--config", str(cfg)])
         out = capsys.readouterr().out
-        assert "aim" in out
+        assert "opsmender" in out

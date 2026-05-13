@@ -1,4 +1,4 @@
-"""Append-only JSONL audit logger for AI Incident Manager.
+"""Append-only JSONL audit logger for Opsmender AI.
 
 Records every agent action during an incident response session regardless
 of tier.  Each entry is a single JSON object written as one line in the

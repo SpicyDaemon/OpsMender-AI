@@ -38,5 +38,5 @@ logs/
 *.db/
 
 # Helm chart dependencies (downloaded by `helm dependency update`)
-deploy/helm/aim/charts/
-deploy/helm/aim/Chart.lock
+deploy/helm/opsmender/charts/
+deploy/helm/opsmender/Chart.lock

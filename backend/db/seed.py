@@ -2,7 +2,7 @@
 
 Usage::
 
-    AIM_DATABASE_URL=postgresql+asyncpg://aim:aim@localhost/aim \
+    OPSMENDER_DATABASE_URL=postgresql+asyncpg://opsmender:opsmender@localhost/opsmender \
         uv run python -m backend.db.seed
 
 Requires: running Postgres with migrations applied.
@@ -40,7 +40,7 @@ async def seed(database_url: str) -> None:
         admin = await UserRepo.create(
             db,
             username="admin",
-            email="admin@aim.local",
+            email="admin@opsmender.local",
             password_hash=hash_password("admin123"),
             role="admin",
             primary_org_id=org_id,
@@ -50,7 +50,7 @@ async def seed(database_url: str) -> None:
         operator = await UserRepo.create(
             db,
             username="operator",
-            email="operator@aim.local",
+            email="operator@opsmender.local",
             password_hash=hash_password("operator123"),
             role="operator",
             primary_org_id=org_id,
@@ -60,7 +60,7 @@ async def seed(database_url: str) -> None:
         viewer = await UserRepo.create(
             db,
             username="viewer",
-            email="viewer@aim.local",
+            email="viewer@opsmender.local",
             password_hash=hash_password("viewer123"),
             role="viewer",
             primary_org_id=org_id,

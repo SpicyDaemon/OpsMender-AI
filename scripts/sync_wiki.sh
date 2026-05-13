@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# AIM Wiki Sync Script
+# Opsmender Wiki Sync Script
 # 
 # This script is intended to synchronize the docs/wiki directory from the main repo
 # into the separate GitHub Wiki repository.

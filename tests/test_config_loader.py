@@ -21,7 +21,7 @@ def valid_env(tmp_path):
     """Write a valid .env file with MCP servers and return its path."""
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "AIM_MCP_SERVERS_JSON="
+        "OPSMENDER_MCP_SERVERS_JSON="
         + json.dumps(
             [
                 {
@@ -38,12 +38,12 @@ def valid_env(tmp_path):
             ]
         )
         + "\n"
-        + "AIM_TIER=2\n"
-        + "AIM_LOG_LEVEL=DEBUG\n"
-        + "AIM_APPROVAL_TIMEOUT_SECONDS=120\n"
-        + "AIM_INGEST_AUTO_START_ENABLED=true\n"
-        + "AIM_INGEST_AUTO_START_MIN_SEVERITY=high\n"
-        + "AIM_INGEST_AUTO_START_SOURCE=legacy_alert_vendor\n"
+        + "OPSMENDER_TIER=2\n"
+        + "OPSMENDER_LOG_LEVEL=DEBUG\n"
+        + "OPSMENDER_APPROVAL_TIMEOUT_SECONDS=120\n"
+        + "OPSMENDER_INGEST_AUTO_START_ENABLED=true\n"
+        + "OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=high\n"
+        + "OPSMENDER_INGEST_AUTO_START_SOURCE=legacy_alert_vendor\n"
     )
     return env_file
 
@@ -85,21 +85,21 @@ class TestConfigLoad:
 
     def test_invalid_mcp_servers_json_raises(self, tmp_path):
         env_file = tmp_path / ".env"
-        env_file.write_text("AIM_MCP_SERVERS_JSON=not-json\n")
-        with pytest.raises(ValueError, match="AIM_MCP_SERVERS_JSON"):
+        env_file.write_text("OPSMENDER_MCP_SERVERS_JSON=not-json\n")
+        with pytest.raises(ValueError, match="OPSMENDER_MCP_SERVERS_JSON"):
             Config.load(env_file)
 
     def test_process_env_overrides_env_file(self, tmp_path, monkeypatch):
         env_file = tmp_path / ".env"
-        env_file.write_text("AIM_TIER=2\n")
-        monkeypatch.setenv("AIM_TIER", "3")
+        env_file.write_text("OPSMENDER_TIER=2\n")
+        monkeypatch.setenv("OPSMENDER_TIER", "3")
         cfg = Config.load(env_file)
         assert cfg.tiers["default"] == 3
 
     def test_invalid_ingest_auto_start_severity_raises(self, tmp_path):
         env_file = tmp_path / ".env"
-        env_file.write_text("AIM_INGEST_AUTO_START_MIN_SEVERITY=urgent\n")
-        with pytest.raises(ValueError, match="AIM_INGEST_AUTO_START_MIN_SEVERITY"):
+        env_file.write_text("OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=urgent\n")
+        with pytest.raises(ValueError, match="OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY"):
             Config.load(env_file)
 
 

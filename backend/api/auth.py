@@ -1,4 +1,4 @@
-"""JWT authentication and password hashing for AIM.
+"""JWT authentication and password hashing for Opsmender.
 
 Provides:
 - Password hashing via ``bcrypt`` directly (passlib has compatibility
@@ -7,9 +7,9 @@ Provides:
 - FastAPI dependencies: ``get_current_user``, ``require_role``
 
 Configuration is driven by environment variables:
-- ``AIM_JWT_SECRET``  — signing key (required in production)
-- ``AIM_JWT_ALGORITHM`` — default ``HS256``
-- ``AIM_JWT_EXPIRE_MINUTES`` — default ``60``
+- ``OPSMENDER_JWT_SECRET``  — signing key (required in production)
+- ``OPSMENDER_JWT_ALGORITHM`` — default ``HS256``
+- ``OPSMENDER_JWT_EXPIRE_MINUTES`` — default ``60``
 """
 
 from __future__ import annotations

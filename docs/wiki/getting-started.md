@@ -1,10 +1,10 @@
-# Getting Started with AIM
+# Getting Started with Opsmender
 
-Welcome to the AI Incident Manager (AIM). This guide will walk you through spinning up AIM locally, logging in for the first time, ingesting your first incident, and starting your first AI-assisted session.
+Welcome to the Opsmender AI (Opsmender). This guide will walk you through spinning up Opsmender locally, logging in for the first time, ingesting your first incident, and starting your first AI-assisted session.
 
 ## 1. Installation & Running Locally
 
-AIM is composed of a FastAPI backend, a Next.js frontend, and a PostgreSQL database. The easiest way to run the entire stack locally is via Docker Compose.
+Opsmender is composed of a FastAPI backend, a Next.js frontend, and a PostgreSQL database. The easiest way to run the entire stack locally is via Docker Compose.
 
 **Prerequisites:**
 - Docker and Docker Compose installed
@@ -44,7 +44,7 @@ Incidents can be ingested automatically via webhooks (e.g., LegacyAlertVendor, D
 
 ## 4. Running Your First Session
 
-AIM's primary superpower is its AI-assisted incident response sessions.
+Opsmender's primary superpower is its AI-assisted incident response sessions.
 
 1. Click on the incident you just created to open its details panel.
 2. Click **Start Session**. This spins up an autonomous AI agent dedicated to triaging, investigating, and resolving this specific incident.
@@ -54,6 +54,6 @@ AIM's primary superpower is its AI-assisted incident response sessions.
    - *"Do we have any active maintenance windows?"*
 5. The AI will use its connected MCP (Model Context Protocol) tools to query metrics, logs, and perform actions.
 
-Congratulations! You've successfully deployed AIM and started your first AI-assisted incident response session.
+Congratulations! You've successfully deployed Opsmender and started your first AI-assisted incident response session.
 
 Next, check out the [Administrator Guide](admin-guide.md) to configure LLM providers and set up integrations.

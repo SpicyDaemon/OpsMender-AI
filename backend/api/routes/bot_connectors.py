@@ -351,19 +351,19 @@ async def delete_bot_connector(
 
 
 # ---------------------------------------------------------------------------
-# Bot user links — map external chat-platform identities to AIM users
+# Bot user links — map external chat-platform identities to Opsmender users
 # ---------------------------------------------------------------------------
 
 
 async def _link_to_response(db: AsyncSession, link) -> BotUserLinkResponse:
-    aim_user = await UserRepo.get_by_id(db, link.aim_user_id)
+    opsmender_user = await UserRepo.get_by_id(db, link.opsmender_user_id)
     return BotUserLinkResponse(
         id=link.id,
         connector_id=link.connector_id,
         platform_user_id=link.platform_user_id,
-        aim_user_id=link.aim_user_id,
-        aim_username=aim_user.username if aim_user else "(deleted)",
-        aim_role=aim_user.role if aim_user else "viewer",
+        opsmender_user_id=link.opsmender_user_id,
+        opsmender_username=opsmender_user.username if opsmender_user else "(deleted)",
+        opsmender_role=opsmender_user.role if opsmender_user else "viewer",
         created_at=link.created_at,
     )
 
@@ -394,7 +394,7 @@ async def list_bot_user_links(
     "/{connector_id}/user-links",
     response_model=BotUserLinkResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Map a chat-platform user to an AIM user",
+    summary="Map a chat-platform user to an Opsmender user",
 )
 async def create_bot_user_link(
     connector_id: uuid.UUID,
@@ -410,11 +410,11 @@ async def create_bot_user_link(
             detail="Bot connector not found",
         )
 
-    aim_user = await UserRepo.get_by_id(db, body.aim_user_id)
-    if aim_user is None:
+    opsmender_user = await UserRepo.get_by_id(db, body.opsmender_user_id)
+    if opsmender_user is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="AIM user not found",
+            detail="Opsmender user not found",
         )
 
     platform_user_id = body.platform_user_id.strip()
@@ -441,7 +441,7 @@ async def create_bot_user_link(
         org_id,
         connector_id=connector_id,
         platform_user_id=platform_user_id,
-        aim_user_id=body.aim_user_id,
+        opsmender_user_id=body.opsmender_user_id,
         created_by=user.id,
     )
     await db.commit()

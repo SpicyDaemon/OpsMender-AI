@@ -8,9 +8,9 @@ and CI-friendly.
 
 To verify the actual built image, run:
 
-    docker build -f docker/Dockerfile -t aim-test .
-    docker run --rm aim-test node --version
-    docker run --rm aim-test npx --version
+    docker build -f docker/Dockerfile -t opsmender-test .
+    docker run --rm opsmender-test node --version
+    docker run --rm opsmender-test npx --version
 """
 
 import pathlib

@@ -1,1 +1,1 @@
-# backend/audit — Audit logging for AI Incident Manager.
+# backend/audit — Audit logging for Opsmender AI.

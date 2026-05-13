@@ -1,13 +1,17 @@
 [project]
-name = "ai-incident-manager"
+name = "opsmender"
 version = "1.0.0"
-description = "AI-powered incident response framework with tiered access controls, MCP-first integrations, and human-in-the-loop approvals."
+description = "Opsmender AI — open-source AI incident manager / AI SRE / AI on-call. Tier-gated, MCP-first, human-in-the-loop AI incident response for production infrastructure."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "SpicyDaemon"}]
-keywords = ["incident-response", "sre", "devops", "mcp", "langgraph", "llm", "agents", "ai-ops"]
+keywords = [
+    "ai-incident-manager", "ai-incident-response", "ai-sre", "ai-oncall",
+    "incident-management", "incident-response", "sre", "devops",
+    "mcp", "langgraph", "llm", "agents", "ai-ops", "runbook-automation",
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
@@ -46,7 +50,7 @@ dependencies = [
 ]
 
 [project.scripts]
-aim = "cli.aim:main"
+opsmender = "cli.opsmender:main"
 
 [project.urls]
 Homepage = "https://github.com/SpicyDaemon/OpsMender-AI"

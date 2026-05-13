@@ -86,12 +86,12 @@ async def app(tmp_path):
 
     tmp_env = tmp_path / ".env"
     tmp_env.write_text(
-        "AIM_TIER=1\n"
-        "AIM_LOG_LEVEL=INFO\n"
-        "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
-        "AIM_JWT_SECRET=test-secret\n"
-        f"AIM_DATABASE_URL={database_url}\n"
-        f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
+        "OPSMENDER_TIER=1\n"
+        "OPSMENDER_LOG_LEVEL=INFO\n"
+        "OPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
+        "OPSMENDER_JWT_SECRET=test-secret\n"
+        f"OPSMENDER_DATABASE_URL={database_url}\n"
+        f"OPSMENDER_MCP_SERVERS_JSON={json.dumps([])}\n"
     )
     set_env_path(tmp_env)
 

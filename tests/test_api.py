@@ -62,12 +62,12 @@ async def app(tmp_path):
 
     tmp_env = tmp_path / ".env"
     tmp_env.write_text(
-        "AIM_TIER=2\n"
-        "AIM_LOG_LEVEL=INFO\n"
-        "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
-        "AIM_JWT_SECRET=test-secret\n"
-        "AIM_DATABASE_URL=sqlite+aiosqlite://\n"
-        f"AIM_MCP_SERVERS_JSON={json.dumps([])}\n"
+        "OPSMENDER_TIER=2\n"
+        "OPSMENDER_LOG_LEVEL=INFO\n"
+        "OPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
+        "OPSMENDER_JWT_SECRET=test-secret\n"
+        "OPSMENDER_DATABASE_URL=sqlite+aiosqlite://\n"
+        f"OPSMENDER_MCP_SERVERS_JSON={json.dumps([])}\n"
     )
     set_env_path(tmp_env)
 
@@ -470,12 +470,12 @@ class TestDomainIsolation:
     ):
         resp = await client.post(
             f"/organizations/{TEST_ORG_ID}/domains",
-            json={"domain": "Acme.AIM.Example.com", "is_primary": True},
+            json={"domain": "Acme.Opsmender.Example.com", "is_primary": True},
             headers=auth_headers,
         )
         assert resp.status_code == 201
         data = resp.json()
-        assert data["domain"] == "acme.aim.example.com"
+        assert data["domain"] == "acme.opsmender.example.com"
         assert data["is_primary"] is True
 
     async def test_create_domain_validates_hostname(
@@ -1034,7 +1034,7 @@ class TestSessions:
                 name="created",
                 url="https://hooks.example/session-created",
                 event_types=["session.created"],
-                headers={"X-AIM-Test": "1"},
+                headers={"X-Opsmender-Test": "1"},
                 token="abc123",
             )
             await db.commit()
@@ -1051,7 +1051,7 @@ class TestSessions:
         assert payload["event"] == "session.created"
         assert payload["session"]["id"] == session_id
         assert headers["Authorization"] == "Bearer abc123"
-        assert headers["X-AIM-Test"] == "1"
+        assert headers["X-Opsmender-Test"] == "1"
 
     async def test_session_terminal_webhook_trigger_fires(
         self, client: AsyncClient, app, auth_headers, monkeypatch
@@ -1312,7 +1312,7 @@ class TestWebhookTriggers:
         await asyncio.sleep(0.05)
         assert deliveries
         _, payload, headers = deliveries[-1]
-        assert payload["text"].startswith("AIM Webhook.Test:")
+        assert payload["text"].startswith("Opsmender Webhook.Test:")
         assert payload["blocks"]
         assert headers["Authorization"] == "Bearer secret-token"
         assert headers["X-Team"] == "platform"
@@ -1424,7 +1424,7 @@ class TestWebhookTriggers:
         payload = deliveries[0]
         assert "text" in payload
         assert "blocks" in payload
-        assert payload["text"].startswith("AIM Created:")
+        assert payload["text"].startswith("Opsmender Created:")
 
     async def test_test_trigger_teams_format_uses_text_payload(
         self, client: AsyncClient, app, auth_headers, monkeypatch
@@ -1512,8 +1512,8 @@ class TestWebhookTriggers:
         assert deliveries
         payload = deliveries[-1]
         assert payload["eventType"] == "webhook.test"
-        assert payload["source"] == "aim"
-        assert payload["message"].startswith("AIM Webhook.Test:")
+        assert payload["source"] == "opsmender"
+        assert payload["message"].startswith("Opsmender Webhook.Test:")
         assert payload["incidentTitle"] == "Webhook test incident"
         assert payload["sessionStatus"] == "completed"
         assert payload["session"]["id"] == "test-session"
@@ -2066,7 +2066,7 @@ class TestTelegramBotWebhook:
         )
 
         assert resp.status_code == 200
-        assert resp.json()["text"] == "This chat is not allowed to use AIM."
+        assert resp.json()["text"] == "This chat is not allowed to use Opsmender."
 
     async def test_telegram_webhook_respects_incident_lookup_capability(
         self, client: AsyncClient, auth_headers
@@ -2168,13 +2168,13 @@ class TestTelegramBotWebhook:
         auth_headers,
         connector_id: str,
         platform_user_id: str,
-        aim_user_id: str,
+        opsmender_user_id: str,
     ) -> None:
         resp = await client.post(
             f"/bot-connectors/{connector_id}/user-links",
             json={
                 "platform_user_id": platform_user_id,
-                "aim_user_id": aim_user_id,
+                "opsmender_user_id": opsmender_user_id,
             },
             headers=auth_headers,
         )
@@ -2196,7 +2196,7 @@ class TestTelegramBotWebhook:
         async with app.state.session_factory() as db:
             admin = await UserRepo.get_by_username(db, "testadmin")
             assert admin is not None
-            aim_user_id = str(admin.id)
+            opsmender_user_id = str(admin.id)
             session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
             await SessionRepo.set_status(
                 db, TEST_ORG_ID, session.id, status="awaiting_approval"
@@ -2212,7 +2212,7 @@ class TestTelegramBotWebhook:
             approval_id = str(approval.id)
             session_id = session.id
 
-        await self._link_user(client, auth_headers, connector_id, "111", aim_user_id)
+        await self._link_user(client, auth_headers, connector_id, "111", opsmender_user_id)
 
         resp = await client.post(
             f"/bot-connectors/{connector_id}/telegram/webhook",
@@ -2280,12 +2280,12 @@ class TestTelegramBotWebhook:
         async with app.state.session_factory() as db:
             admin = await UserRepo.get_by_username(db, "testadmin")
             assert admin is not None
-            aim_user_id = str(admin.id)
+            opsmender_user_id = str(admin.id)
             session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
             await db.commit()
             session_id = session.id
 
-        await self._link_user(client, auth_headers, connector_id, "111", aim_user_id)
+        await self._link_user(client, auth_headers, connector_id, "111", opsmender_user_id)
 
         resp = await client.post(
             f"/bot-connectors/{connector_id}/telegram/webhook",
@@ -2576,24 +2576,24 @@ class TestTelegramBotWebhook:
         connector_id = await self._create_connector(client, auth_headers)
         async with app.state.session_factory() as db:
             admin = await UserRepo.get_by_username(db, "testadmin")
-            aim_user_id = str(admin.id)
+            opsmender_user_id = str(admin.id)
 
         # Create
         resp = await client.post(
             f"/bot-connectors/{connector_id}/user-links",
-            json={"platform_user_id": "555", "aim_user_id": aim_user_id},
+            json={"platform_user_id": "555", "opsmender_user_id": opsmender_user_id},
             headers=auth_headers,
         )
         assert resp.status_code == 201
         link = resp.json()
         assert link["platform_user_id"] == "555"
-        assert link["aim_username"] == "testadmin"
-        assert link["aim_role"] == "admin"
+        assert link["opsmender_username"] == "testadmin"
+        assert link["opsmender_role"] == "admin"
 
         # Conflict on duplicate
         resp = await client.post(
             f"/bot-connectors/{connector_id}/user-links",
-            json={"platform_user_id": "555", "aim_user_id": aim_user_id},
+            json={"platform_user_id": "555", "opsmender_user_id": opsmender_user_id},
             headers=auth_headers,
         )
         assert resp.status_code == 409
@@ -2687,7 +2687,7 @@ class TestSignalBotWebhook:
                     },
                 }
             },
-            headers={"X-AIM-Webhook-Secret": "sig-secret"},
+            headers={"X-Opsmender-Webhook-Secret": "sig-secret"},
         )
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
@@ -2705,7 +2705,7 @@ class TestSignalBotWebhook:
         resp = await client.post(
             f"/bot-connectors/{connector_id}/signal/webhook",
             json={"envelope": {"source": "+1", "dataMessage": {"message": "/help"}}},
-            headers={"X-AIM-Webhook-Secret": "wrong"},
+            headers={"X-Opsmender-Webhook-Secret": "wrong"},
         )
         assert resp.status_code == 403
 

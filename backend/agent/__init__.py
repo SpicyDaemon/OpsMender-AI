@@ -1,1 +1,1 @@
-# backend/agent — LangGraph workflow for AI Incident Manager.
+# backend/agent — LangGraph workflow for Opsmender AI.

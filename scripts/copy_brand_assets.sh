@@ -6,7 +6,7 @@
 #   bash scripts/copy_brand_assets.sh <favicon_png> <og_image_png>
 #
 # Example:
-#   bash scripts/copy_brand_assets.sh /tmp/aim_favicon.png /tmp/aim_og_image.png
+#   bash scripts/copy_brand_assets.sh /tmp/opsmender_favicon.png /tmp/opsmender_og_image.png
 
 set -euo pipefail
 

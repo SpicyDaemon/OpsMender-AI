@@ -38,7 +38,7 @@ class DispatchResult:
 
 
 _HELP_TEXT = (
-    "AIM connector commands:\n"
+    "Opsmender connector commands:\n"
     "/incidents - list recent incidents\n"
     "/incident <id> - show one incident\n"
     "/sessions - list recent sessions\n"
@@ -173,7 +173,7 @@ async def _audit(
     await db.commit()
 
 
-async def _resolve_aim_user(
+async def _resolve_opsmender_user(
     db: AsyncSession,
     org_id: uuid.UUID,
     connector: BotConnector,
@@ -189,10 +189,10 @@ async def _resolve_aim_user(
     )
     if link is None:
         return None
-    aim_user = await UserRepo.get_by_id(db, link.aim_user_id)
-    if aim_user is None or not aim_user.is_active:
+    opsmender_user = await UserRepo.get_by_id(db, link.opsmender_user_id)
+    if opsmender_user is None or not opsmender_user.is_active:
         return None
-    return aim_user
+    return opsmender_user
 
 
 async def _resolve_approval_from_bot(
@@ -237,7 +237,7 @@ async def dispatch_inbound(
             status="chat_not_allowed",
             detail=f"from={platform_user_id}" if platform_user_id else None,
         )
-        return DispatchResult(reply_text="This chat is not allowed to use AIM.")
+        return DispatchResult(reply_text="This chat is not allowed to use Opsmender.")
 
     text = message.text
     command, _, raw_arg = text.partition(" ")
@@ -263,15 +263,15 @@ async def dispatch_inbound(
                 reply_text=f"Rate limit hit ({per_minute}/min). Please wait a moment.",
             )
 
-    aim_user: User | None = None
+    opsmender_user: User | None = None
     capability_for_command = _REQUIRED_CAPABILITY_BY_COMMAND.get(command)
     if (
         command in _MUTATING_COMMANDS
         and capability_for_command is not None
         and _has_capability(connector, capability_for_command)
     ):
-        aim_user = await _resolve_aim_user(db, org_id, connector, platform_user_id)
-        if aim_user is None:
+        opsmender_user = await _resolve_opsmender_user(db, org_id, connector, platform_user_id)
+        if opsmender_user is None:
             await _audit(
                 db,
                 org_id,
@@ -283,13 +283,13 @@ async def dispatch_inbound(
             )
             return DispatchResult(
                 reply_text=(
-                    "This user is not linked to an AIM account. "
+                    "This user is not linked to an Opsmender account. "
                     f"Ask an admin to link platform user `{platform_user_id}` "
                     "via `POST /bot-connectors/<id>/user-links`."
                 ),
             )
         required_roles = _REQUIRED_ROLES_BY_COMMAND.get(command, set())
-        if required_roles and aim_user.role not in required_roles:
+        if required_roles and opsmender_user.role not in required_roles:
             await _audit(
                 db,
                 org_id,
@@ -297,11 +297,11 @@ async def dispatch_inbound(
                 chat_id=chat_id,
                 command=command,
                 status="role_denied",
-                detail=f"from={platform_user_id} role={aim_user.role}",
+                detail=f"from={platform_user_id} role={opsmender_user.role}",
             )
             return DispatchResult(
                 reply_text=(
-                    f"Your AIM role `{aim_user.role}` cannot run `{command}`. "
+                    f"Your Opsmender role `{opsmender_user.role}` cannot run `{command}`. "
                     f"Required: {', '.join(sorted(required_roles))}."
                 ),
             )
@@ -491,7 +491,7 @@ async def dispatch_inbound(
         return DispatchResult(
             reply_text=(
                 f"Message relayed to session `{target_session_id}`. "
-                "The co-pilot reply will appear in the AIM dashboard."
+                "The co-pilot reply will appear in the Opsmender dashboard."
             ),
         )
 

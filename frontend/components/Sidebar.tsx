@@ -30,7 +30,7 @@ const NAV = [
   { href: "/dashboard/config", label: "Config", icon: Settings },
 ];
 
-const COLLAPSE_KEY = "aim:sidebar-collapsed";
+const COLLAPSE_KEY = "opsmender:sidebar-collapsed";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-status-info-bg text-status-info border-status-info-border",
@@ -86,15 +86,15 @@ export function Sidebar() {
       <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-4 h-16">
         <Image
           src="/logo.png"
-          alt="AIM"
+          alt="Opsmender"
           width={32}
           height={32}
           className="shrink-0 rounded-md"
         />
         {!collapsed && (
           <div className="min-w-0 leading-tight">
-            <p className="text-sm font-semibold text-fg-primary tracking-tight">AIM</p>
-            <p className="text-[11px] text-fg-muted truncate">AI Incident Manager</p>
+            <p className="text-sm font-semibold text-fg-primary tracking-tight">Opsmender</p>
+            <p className="text-[11px] text-fg-muted truncate">Opsmender AI</p>
           </div>
         )}
       </div>

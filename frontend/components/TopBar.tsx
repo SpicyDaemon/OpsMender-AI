@@ -259,7 +259,7 @@ export function TopBar() {
         )}
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent("aim:open-shortcuts"))}
+          onClick={() => window.dispatchEvent(new CustomEvent("opsmender:open-shortcuts"))}
           title="Keyboard shortcuts (?)"
           className="hidden sm:flex h-9 w-9 items-center justify-center rounded-md text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
         >

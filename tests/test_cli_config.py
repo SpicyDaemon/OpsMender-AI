@@ -1,4 +1,4 @@
-"""Tests for the ``aim config`` CLI command."""
+"""Tests for the ``opsmender config`` CLI command."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import uuid
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from cli.aim import main, _parse_args
+from cli.opsmender import main, _parse_args
 from backend.db.models import Base
 from backend.db.repos import ModelConfigRepo
 
@@ -20,10 +20,10 @@ from backend.db.repos import ModelConfigRepo
 # Helpers
 # ---------------------------------------------------------------------------
 
-MINIMAL_CFG = "AIM_TIER=2\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG=./logs/audit.jsonl\n"
+MINIMAL_CFG = "OPSMENDER_TIER=2\nOPSMENDER_LOG_LEVEL=INFO\nOPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
 
 CFG_WITH_SERVER = (
-    "AIM_MCP_SERVERS_JSON="
+    "OPSMENDER_MCP_SERVERS_JSON="
     + json.dumps(
         [
             {
@@ -35,9 +35,9 @@ CFG_WITH_SERVER = (
         ]
     )
     + "\n"
-    + "AIM_TIER=2\n"
-    + "AIM_LOG_LEVEL=DEBUG\n"
-    + "AIM_AUDIT_LOG=./logs/audit.jsonl\n"
+    + "OPSMENDER_TIER=2\n"
+    + "OPSMENDER_LOG_LEVEL=DEBUG\n"
+    + "OPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
 )
 
 
@@ -165,7 +165,7 @@ class TestConfigValidate:
         assert "Validation OK" in out
 
     def test_invalid_tier_fails(self, tmp_path, capsys):
-        bad_cfg = "AIM_TIER=9\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG=./logs/audit.jsonl\n"
+        bad_cfg = "OPSMENDER_TIER=9\nOPSMENDER_LOG_LEVEL=INFO\nOPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
         cfg_path = _write_cfg(tmp_path, bad_cfg)
         with pytest.raises(SystemExit) as exc_info:
             main(["--config", cfg_path, "config", "--validate"])
@@ -174,7 +174,7 @@ class TestConfigValidate:
         assert "tiers.default must be 0-3" in out
 
     def test_missing_tier_uses_default(self, tmp_path, capsys):
-        cfg_path = _write_cfg(tmp_path, "AIM_LOG_LEVEL=INFO\n")
+        cfg_path = _write_cfg(tmp_path, "OPSMENDER_LOG_LEVEL=INFO\n")
         with pytest.raises(SystemExit) as exc_info:
             main(["--config", cfg_path, "config", "--validate"])
         assert exc_info.value.code == 0
@@ -249,7 +249,7 @@ class TestConfigModel:
             ]
 
         monkeypatch.setattr(
-            "cli.aim.ProviderRegistry.discover_models", _discover_models
+            "cli.opsmender.ProviderRegistry.discover_models", _discover_models
         )
 
         with pytest.raises(SystemExit) as exc_info:
@@ -273,12 +273,12 @@ class TestConfigModel:
 
     def test_model_set_persists_default_config(self, tmp_path, capsys, monkeypatch):
         cfg_path = _write_cfg(tmp_path)
-        db_path = tmp_path / "aim.db"
+        db_path = tmp_path / "opsmender.db"
         database_url = f"sqlite+aiosqlite:///{db_path}"
         _create_sqlite_schema(database_url)
-        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", database_url)
         monkeypatch.setattr(
-            "cli.aim.ProviderRegistry.validate_model_config",
+            "cli.opsmender.ProviderRegistry.validate_model_config",
             lambda self, **kwargs: type(
                 "_Validation",
                 (),
@@ -328,7 +328,7 @@ class TestConfigModel:
     ):
         cfg_path = _write_cfg(tmp_path)
         monkeypatch.setattr(
-            "cli.aim.ProviderRegistry.validate_model_config",
+            "cli.opsmender.ProviderRegistry.validate_model_config",
             lambda self, **kwargs: (_ for _ in ()).throw(ValueError("bad model")),
         )
 
@@ -353,10 +353,10 @@ class TestConfigModel:
         self, tmp_path, capsys, monkeypatch
     ):
         cfg_path = _write_cfg(tmp_path)
-        db_path = tmp_path / "aim.db"
+        db_path = tmp_path / "opsmender.db"
         database_url = f"sqlite+aiosqlite:///{db_path}"
         _create_sqlite_schema(database_url)
-        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", database_url)
         answers = iter(
             [
                 "openai",
@@ -366,7 +366,7 @@ class TestConfigModel:
         )
         monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
         monkeypatch.setattr(
-            "cli.aim.ProviderRegistry.validate_model_config",
+            "cli.opsmender.ProviderRegistry.validate_model_config",
             lambda self, **kwargs: type(
                 "_Validation",
                 (),
@@ -397,10 +397,10 @@ class TestConfigModel:
         self, tmp_path, capsys, monkeypatch
     ):
         cfg_path = _write_cfg(tmp_path)
-        db_path = tmp_path / "aim.db"
+        db_path = tmp_path / "opsmender.db"
         database_url = f"sqlite+aiosqlite:///{db_path}"
         _create_sqlite_schema(database_url)
-        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", database_url)
         captured_kwargs: dict[str, object] = {}
 
         def _validate(self, **kwargs):
@@ -408,7 +408,7 @@ class TestConfigModel:
             return type("_Validation", (), {"warnings": []})()
 
         monkeypatch.setattr(
-            "cli.aim.ProviderRegistry.validate_model_config",
+            "cli.opsmender.ProviderRegistry.validate_model_config",
             _validate,
         )
 
@@ -462,10 +462,10 @@ class TestConfigModel:
         self, tmp_path, capsys, monkeypatch
     ):
         cfg_path = _write_cfg(tmp_path)
-        db_path = tmp_path / "aim.db"
+        db_path = tmp_path / "opsmender.db"
         database_url = f"sqlite+aiosqlite:///{db_path}"
         _create_sqlite_schema(database_url)
-        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", database_url)
         captured_kwargs: dict[str, object] = {}
 
         def _validate(self, **kwargs):
@@ -473,7 +473,7 @@ class TestConfigModel:
             return type("_Validation", (), {"warnings": []})()
 
         monkeypatch.setattr(
-            "cli.aim.ProviderRegistry.validate_model_config",
+            "cli.opsmender.ProviderRegistry.validate_model_config",
             _validate,
         )
         prompts_seen: list[str] = []
@@ -519,12 +519,12 @@ class TestConfigModel:
 
     def test_model_bootstrap_json_output(self, tmp_path, capsys, monkeypatch):
         cfg_path = _write_cfg(tmp_path)
-        db_path = tmp_path / "aim.db"
+        db_path = tmp_path / "opsmender.db"
         database_url = f"sqlite+aiosqlite:///{db_path}"
         _create_sqlite_schema(database_url)
-        monkeypatch.setenv("AIM_DATABASE_URL", database_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", database_url)
         monkeypatch.setattr(
-            "cli.aim.ProviderRegistry.validate_model_config",
+            "cli.opsmender.ProviderRegistry.validate_model_config",
             lambda self, **kwargs: type(
                 "_Validation",
                 (),

@@ -2,7 +2,7 @@
 
 ## Our goal
 
-AI Incident Manager is an open project and we want it to stay a productive, friendly place to collaborate. This document describes the behavior we expect from everyone who participates — issues, pull requests, discussions, reviews, and any other project space.
+Opsmender AI is an open project and we want it to stay a productive, friendly place to collaborate. This document describes the behavior we expect from everyone who participates — issues, pull requests, discussions, reviews, and any other project space.
 
 ## Expected behavior
 

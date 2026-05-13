@@ -1,9 +1,9 @@
 services:
-  aim-dev:
+  opsmender-dev:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: aim-dev
+    container_name: opsmender-dev
     volumes:
       # Mount local project into container so edits sync both ways
       - .:/app
@@ -22,13 +22,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: aim
-      POSTGRES_PASSWORD: aim
-      POSTGRES_DB: aim
+      POSTGRES_USER: opsmender
+      POSTGRES_PASSWORD: opsmender
+      POSTGRES_DB: opsmender
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aim"]
+      test: ["CMD-SHELL", "pg_isready -U opsmender"]
       interval: 5s
       timeout: 5s
       retries: 10

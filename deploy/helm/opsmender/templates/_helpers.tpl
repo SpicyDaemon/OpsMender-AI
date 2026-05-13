@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "aim.name" -}}
+{{- define "opsmender.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/*
 Create a fully qualified app name.
 */}}
-{{- define "aim.fullname" -}}
+{{- define "opsmender.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -21,27 +21,27 @@ Create a fully qualified app name.
 {{- end -}}
 {{- end -}}
 
-{{- define "aim.chart" -}}
+{{- define "opsmender.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "aim.labels" -}}
-helm.sh/chart: {{ include "aim.chart" . }}
-{{ include "aim.selectorLabels" . }}
+{{- define "opsmender.labels" -}}
+helm.sh/chart: {{ include "opsmender.chart" . }}
+{{ include "opsmender.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
-{{- define "aim.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "aim.name" . }}
+{{- define "opsmender.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "opsmender.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
-{{- define "aim.serviceAccountName" -}}
+{{- define "opsmender.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
-{{- default (include "aim.fullname" .) .Values.serviceAccount.name -}}
+{{- default (include "opsmender.fullname" .) .Values.serviceAccount.name -}}
 {{- else -}}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
@@ -50,45 +50,45 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{/*
 Name of the rendered (or referenced) app secret.
 */}}
-{{- define "aim.secretName" -}}
+{{- define "opsmender.secretName" -}}
 {{- if .Values.existingSecret.name -}}
 {{- .Values.existingSecret.name -}}
 {{- else -}}
-{{- printf "%s-secrets" (include "aim.fullname" .) -}}
+{{- printf "%s-secrets" (include "opsmender.fullname" .) -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
 Name of the rendered config map.
 */}}
-{{- define "aim.configMapName" -}}
-{{- printf "%s-config" (include "aim.fullname" .) -}}
+{{- define "opsmender.configMapName" -}}
+{{- printf "%s-config" (include "opsmender.fullname" .) -}}
 {{- end -}}
 
 {{/*
 Name of the PVC for /app/logs.
 */}}
-{{- define "aim.pvcName" -}}
+{{- define "opsmender.pvcName" -}}
 {{- if .Values.persistence.existingClaim -}}
 {{- .Values.persistence.existingClaim -}}
 {{- else -}}
-{{- printf "%s-logs" (include "aim.fullname" .) -}}
+{{- printf "%s-logs" (include "opsmender.fullname" .) -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
 Postgres host (Bitnami subchart releases as <release>-postgresql).
 */}}
-{{- define "aim.postgresql.host" -}}
+{{- define "opsmender.postgresql.host" -}}
 {{- printf "%s-postgresql" .Release.Name -}}
 {{- end -}}
 
 {{/*
 Built-in Postgres URL when the subchart is enabled.
 */}}
-{{- define "aim.postgresql.url" -}}
+{{- define "opsmender.postgresql.url" -}}
 {{- $u := .Values.postgresql.auth.username -}}
 {{- $p := .Values.postgresql.auth.password -}}
 {{- $d := .Values.postgresql.auth.database -}}
-{{- printf "postgresql+asyncpg://%s:%s@%s:5432/%s" $u $p (include "aim.postgresql.host" .) $d -}}
+{{- printf "postgresql+asyncpg://%s:%s@%s:5432/%s" $u $p (include "opsmender.postgresql.host" .) $d -}}
 {{- end -}}

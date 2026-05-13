@@ -2,7 +2,7 @@
 
 Every provider adapter must subclass ``IngestAdapter`` and implement
 ``parse()``.  The return is a normalized ``ParsedIncident`` that the
-ingest service uses to create or update an incident in AIM.
+ingest service uses to create or update an incident in Opsmender.
 """
 
 from __future__ import annotations

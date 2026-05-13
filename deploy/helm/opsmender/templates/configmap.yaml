@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "aim.configMapName" . }}
+  name: {{ include "opsmender.configMapName" . }}
   labels:
-    {{- include "aim.labels" . | nindent 4 }}
+    {{- include "opsmender.labels" . | nindent 4 }}
 data:
   {{- range $k, $v := .Values.config }}
   {{ $k }}: {{ $v | quote }}

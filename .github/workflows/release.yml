@@ -102,15 +102,15 @@ jobs:
         run: bash scripts/build_binary.sh
 
       - name: Smoke test binary
-        run: ./dist/aim --version
+        run: ./dist/opsmender --version
 
       - name: Package binary
         id: package
         run: |
           cd dist
           ARCH="$(uname -m)"
-          ARCHIVE="aim-${{ steps.ref.outputs.ref }}-darwin-${ARCH}.tar.gz"
-          tar -czf "$ARCHIVE" aim
+          ARCHIVE="opsmender-${{ steps.ref.outputs.ref }}-darwin-${ARCH}.tar.gz"
+          tar -czf "$ARCHIVE" opsmender
           shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
           echo "archive=dist/${ARCHIVE}" >> "$GITHUB_OUTPUT"
           echo "checksum=dist/${ARCHIVE}.sha256" >> "$GITHUB_OUTPUT"
@@ -118,7 +118,7 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aim-darwin
+          name: opsmender-darwin
           path: |
             ${{ steps.package.outputs.archive }}
             ${{ steps.package.outputs.checksum }}
@@ -156,7 +156,7 @@ jobs:
       - name: Download macOS binary
         uses: actions/download-artifact@v4
         with:
-          name: aim-darwin
+          name: opsmender-darwin
           path: artifacts/
 
       - name: Extract release notes

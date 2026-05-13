@@ -121,9 +121,9 @@ class TestBackwardCompatibility:
         )
         monkeypatch.setitem(sys.modules, "anthropic", fake_module)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        monkeypatch.setenv("AIM_ANTHROPIC_KEY", "test-key")
+        monkeypatch.setenv("OPSMENDER_ANTHROPIC_KEY", "test-key")
 
-        provider = AnthropicProvider(api_key_env_var="AIM_ANTHROPIC_KEY")
+        provider = AnthropicProvider(api_key_env_var="OPSMENDER_ANTHROPIC_KEY")
 
         assert provider._client.kwargs["api_key"] == "test-key"
 

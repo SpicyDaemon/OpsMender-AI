@@ -1,4 +1,4 @@
-"""FastAPI application factory for AI Incident Manager.
+"""FastAPI application factory for Opsmender AI.
 
 Usage::
 
@@ -32,7 +32,7 @@ async def _lifespan(app: FastAPI):
     """Startup / shutdown lifecycle.
 
     On startup:
-    - Create async engine from ``AIM_DATABASE_URL``
+    - Create async engine from ``OPSMENDER_DATABASE_URL``
     - Bind session factory so ``get_db`` works
 
     On shutdown:

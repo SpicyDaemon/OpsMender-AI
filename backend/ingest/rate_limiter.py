@@ -5,10 +5,10 @@ Each token is allowed ``max_requests`` within a rolling ``window_seconds``
 window.  Thread-safe via ``asyncio.Lock``.
 
 Configure via:
-- ``AIM_INGEST_RATE_LIMIT``  — max requests per window (default 60)
-- ``AIM_INGEST_RATE_WINDOW`` — window duration in seconds (default 60)
+- ``OPSMENDER_INGEST_RATE_LIMIT``  — max requests per window (default 60)
+- ``OPSMENDER_INGEST_RATE_WINDOW`` — window duration in seconds (default 60)
 
-Setting ``AIM_INGEST_RATE_LIMIT=0`` disables rate limiting entirely.
+Setting ``OPSMENDER_INGEST_RATE_LIMIT=0`` disables rate limiting entirely.
 """
 
 from __future__ import annotations

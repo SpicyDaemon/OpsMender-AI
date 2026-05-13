@@ -13,13 +13,13 @@ export default function GlobalError({
   unstable_retry: () => void;
 }) {
   useEffect(() => {
-    console.error("[AIM] Unhandled application error:", error);
+    console.error("[Opsmender] Unhandled application error:", error);
   }, [error]);
 
   return (
     <html lang="en" className="h-full">
       <body className="h-full">
-        <title>Something went wrong · AIM</title>
+        <title>Something went wrong · Opsmender</title>
         <div className="flex min-h-screen items-center justify-center bg-bg-base px-6">
           <div className="w-full max-w-md rounded-lg border border-border-subtle bg-bg-elevated p-8 text-center shadow-2xl">
             <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-md border border-status-critical-border bg-status-critical-bg text-status-critical">

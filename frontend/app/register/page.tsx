@@ -44,7 +44,7 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      title="Create an AIM account"
+      title="Create an Opsmender account"
       description="Set up access for operators, reviewers, or admins and jump straight into the dashboard."
       footer={(
         <>

@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "aim.pvcName" . }}
+  name: {{ include "opsmender.pvcName" . }}
   labels:
-    {{- include "aim.labels" . | nindent 4 }}
+    {{- include "opsmender.labels" . | nindent 4 }}
 spec:
   accessModes:
     - {{ .Values.persistence.accessMode | quote }}

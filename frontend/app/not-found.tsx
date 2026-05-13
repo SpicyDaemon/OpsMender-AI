@@ -3,8 +3,8 @@ import { AlertTriangle } from "lucide-react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Not found · AIM",
-  description: "The page you're looking for doesn't exist in AI Incident Manager.",
+  title: "Not found · Opsmender",
+  description: "The page you're looking for doesn't exist in Opsmender AI.",
 };
 
 export default function NotFound() {

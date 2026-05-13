@@ -1,4 +1,4 @@
-"""Tests for the ``aim audit`` CLI subcommand."""
+"""Tests for the ``opsmender audit`` CLI subcommand."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pathlib
 import pytest
 
 from backend.audit.logger import AuditLogger
-from cli.aim import main
+from cli.opsmender import main
 
 
 # ---------------------------------------------------------------------------
@@ -19,7 +19,7 @@ from cli.aim import main
 def _write_config(tmp_path: pathlib.Path, audit_path: pathlib.Path) -> pathlib.Path:
     """Write a minimal .env file that points to *audit_path*."""
     cfg = tmp_path / ".env"
-    cfg.write_text(f"AIM_TIER=2\nAIM_LOG_LEVEL=INFO\nAIM_AUDIT_LOG={audit_path}\n")
+    cfg.write_text(f"OPSMENDER_TIER=2\nOPSMENDER_LOG_LEVEL=INFO\nOPSMENDER_AUDIT_LOG={audit_path}\n")
     return cfg
 
 

@@ -46,7 +46,7 @@ class DetectorScheduler:
     async def start(self) -> None:
         if self._task is not None:
             return
-        self._task = asyncio.create_task(self._loop(), name="aim-detector-scheduler")
+        self._task = asyncio.create_task(self._loop(), name="opsmender-detector-scheduler")
 
     async def stop(self) -> None:
         if self._task is None:

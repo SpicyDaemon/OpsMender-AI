@@ -46,7 +46,7 @@ async def auto_import(
 ) -> ImportResult:
     """Import every ``*.md`` under *skills_dir* not already in the DB.
 
-    For multi-tenant AIM, we import these into the first organization found (Main).
+    For multi-tenant Opsmender, we import these into the first organization found (Main).
     """
     root = pathlib.Path(skills_dir)
     result = ImportResult(imported=[], skipped=[], failed=[])

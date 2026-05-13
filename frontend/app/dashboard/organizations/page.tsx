@@ -412,7 +412,7 @@ function DomainsModal({
         <p className="text-xs text-fg-secondary">
           Each domain pins this organization to a hostname. Requests served on a registered host
           are forced into this tenant; users not in this org will be denied. Make sure DNS resolves
-          the host to this AIM deployment.
+          the host to this Opsmender deployment.
         </p>
 
         <FormError message={error} />
@@ -424,7 +424,7 @@ function DomainsModal({
               id="new-domain"
               value={newDomain}
               onChange={(e) => setNewDomain(e.target.value)}
-              placeholder="acme.aim.example.com"
+              placeholder="acme.opsmender.example.com"
             />
           </div>
           <label className="flex items-center gap-2 pb-2 text-xs text-fg-secondary">
@@ -615,7 +615,7 @@ function SSOModal({
       <div className="space-y-4">
         <p className="text-xs text-fg-secondary">
           Configure an OIDC identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak).
-          AIM redirects users to the IdP and JIT-provisions accounts on first login. The login URL
+          Opsmender redirects users to the IdP and JIT-provisions accounts on first login. The login URL
           for this org is{" "}
           <code className="font-mono text-fg-primary">/auth/sso/{org.slug}/login</code>.
         </p>
@@ -645,7 +645,7 @@ function SSOModal({
                   id="sso-client-id"
                   value={clientId}
                   onChange={(e) => setClientId(e.target.value)}
-                  placeholder="aim-app"
+                  placeholder="opsmender-app"
                 />
               </div>
               <div>
@@ -893,7 +893,7 @@ function SAMLModal({
       <div className="space-y-4">
         <p className="text-xs text-fg-secondary">
           Configure a SAML 2.0 identity provider (older Okta tenants, ADFS,
-          classic Azure AD enterprise apps). AIM redirects users to the IdP
+          classic Azure AD enterprise apps). Opsmender redirects users to the IdP
           and JIT-provisions accounts on first login. The login URL for this
           org is{" "}
           <code className="font-mono text-fg-primary">/auth/saml/{org.slug}/login</code>

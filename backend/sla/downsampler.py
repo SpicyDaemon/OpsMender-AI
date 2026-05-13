@@ -70,7 +70,7 @@ class UptimeDownsampler:
     async def start(self) -> None:
         if self._task is not None:
             return
-        self._task = asyncio.create_task(self._loop(), name="aim-uptime-downsampler")
+        self._task = asyncio.create_task(self._loop(), name="opsmender-uptime-downsampler")
         logger.info("Uptime downsampler started (interval=%ds, retention=%dd)",
                      self._run_interval_seconds, self._retention_days)
 

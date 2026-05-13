@@ -58,7 +58,7 @@ class SLAPoller:
             return
         if self._task is not None:
             return
-        self._task = asyncio.create_task(self._loop(), name="aim-sla-poller")
+        self._task = asyncio.create_task(self._loop(), name="opsmender-sla-poller")
         logger.info("SLA poller started")
 
     async def stop(self) -> None:

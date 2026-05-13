@@ -85,8 +85,8 @@ export function Sidebar() {
       {/* Brand */}
       <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-4 h-16">
         <Image
-          src="/logo.png"
-          alt="Opsmender"
+          src="/opsmender-v2.png"
+          alt="OpsMender"
           width={32}
           height={32}
           className="shrink-0 rounded-md"

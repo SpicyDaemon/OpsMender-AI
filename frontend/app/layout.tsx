@@ -25,8 +25,8 @@ export const metadata: Metadata = {
   description:
     "Open-source AI-powered incident response framework with tiered access controls. Connect AI agents to infrastructure via MCP servers.",
   icons: {
-    icon: { url: "/logo.png", type: "image/png", sizes: "512x512" },
-    apple: { url: "/logo.png", sizes: "180x180" },
+    icon: { url: "/opsmender-v2.png", type: "image/png", sizes: "512x512" },
+    apple: { url: "/opsmender-v2.png", sizes: "180x180" },
   },
   openGraph: {
     title: "Opsmender — Opsmender AI",

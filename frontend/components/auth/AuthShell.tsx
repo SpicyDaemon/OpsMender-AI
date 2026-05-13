@@ -25,8 +25,8 @@ export function AuthShell({
         <div className="mb-4 rounded-lg border border-border-subtle bg-bg-elevated/90 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur">
           <Link href="/" className="flex items-center gap-3">
             <Image
-              src="/logo.png"
-              alt="Opsmender"
+              src="/opsmender-v2.png"
+              alt="OpsMender"
               width={44}
               height={44}
               className="rounded-lg"

@@ -25,22 +25,22 @@ export const metadata: Metadata = {
   description:
     "Open-source AI-powered incident response framework with tiered access controls. Connect AI agents to infrastructure via MCP servers.",
   icons: {
-    icon: { url: "/opsmender-v2.png", type: "image/png", sizes: "512x512" },
-    apple: { url: "/opsmender-v2.png", sizes: "180x180" },
+    icon: { url: "/Opsmender-Dark.png", type: "image/png", sizes: "605x588" },
+    apple: { url: "/Opsmender-Dark.png", sizes: "180x180" },
   },
   openGraph: {
     title: "Opsmender — Opsmender AI",
     description:
       "Open-source AI-powered incident response framework with tiered access controls.",
     type: "website",
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Opsmender — Opsmender AI" }],
+    images: [{ url: "/Opsmender-Dark.png", width: 605, height: 588, alt: "Opsmender — Opsmender AI" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Opsmender — Opsmender AI",
     description:
       "Open-source AI-powered incident response framework with tiered access controls.",
-    images: ["/og-image.png"],
+    images: ["/Opsmender-Dark.png"],
   },
 };
 

@@ -25,19 +25,24 @@ export function AuthShell({
         <div className="mb-4 rounded-lg border border-border-subtle bg-bg-elevated/90 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur">
           <Link href="/" className="flex items-center gap-3">
             <Image
-              src="/opsmender-v2.png"
+              src="/opsmender_icon_dark_transparent.png"
               alt="OpsMender"
               width={44}
               height={44}
-              className="rounded-lg"
+              className="shrink-0"
             />
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-fg-muted">
-                Opsmender Console
+              <Image
+                src="/opsmender_wordmark_dark_transparent_clean.png"
+                alt="OpsMender"
+                width={577}
+                height={117}
+                className="h-7 w-auto"
+                priority
+              />
+              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-fg-muted">
+                Operator Console
               </p>
-              <h1 className="text-xl font-semibold tracking-tight text-fg-primary">
-                Opsmender AI
-              </h1>
             </div>
           </Link>
         </div>

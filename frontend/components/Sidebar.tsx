@@ -83,19 +83,23 @@ export function Sidebar() {
       className={`${width} flex h-full shrink-0 flex-col border-r border-border-subtle bg-bg-elevated transition-[width] duration-200`}
     >
       {/* Brand */}
-      <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-4 h-16">
+      <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-4 h-16">
         <Image
-          src="/opsmender-v2.png"
+          src="/opsmender_icon_dark_transparent.png"
           alt="OpsMender"
           width={32}
           height={32}
-          className="shrink-0 rounded-md"
+          className="shrink-0"
         />
         {!collapsed && (
-          <div className="min-w-0 leading-tight">
-            <p className="text-sm font-semibold text-fg-primary tracking-tight">Opsmender</p>
-            <p className="text-[11px] text-fg-muted truncate">Opsmender AI</p>
-          </div>
+          <Image
+            src="/opsmender_wordmark_dark_transparent_clean.png"
+            alt="OpsMender"
+            width={577}
+            height={117}
+            className="h-6 w-auto"
+            priority
+          />
         )}
       </div>
 

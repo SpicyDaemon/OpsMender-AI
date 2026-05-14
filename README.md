@@ -57,11 +57,11 @@ A picture first, then the parts:
 
 Four concepts confuse new operators most often, so here's what each one actually does:
 
-### Ingest — *getting incidents in*
+### Ingest — *getting alerts in (this is the primary path)*
 
-External monitoring tools POST a webhook to `/incidents/ingest`; OpsMender creates an incident from the payload. The **universal adapter** accepts any shape and asks the LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Specific adapters exist for CloudWatch SNS, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, and a Generic JSON adapter.
+OpsMender's core job is to take alerts your existing monitoring already fires and respond to them intelligently. Your monitoring tools (Prometheus Alertmanager, Datadog, CloudWatch, Azure Monitor, Sumo Logic, Grafana, LegacyAlertVendor automations, anything that can POST JSON) send to `/incidents/ingest`; OpsMender creates an incident from the payload and runs the tier-gated AI response workflow. The **universal adapter** accepts any shape and asks the LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Typed adapters exist for CloudWatch SNS, Azure Monitor, GCP Monitoring, OCI, LegacyAlertVendor, LegacyAlertRelay, and a Generic JSON adapter for stricter parsing.
 
-> **You can ignore Ingest entirely if you don't use external monitoring.** Incidents can also be created manually from the dashboard or by OpsMender's own MCP-driven detectors.
+> **This is what 90% of operators set up first.** Bring your existing alerts; OpsMender responds. Incidents can also be created manually from the dashboard for the cases where monitoring missed something and an operator wants to attach a session + audit trail to an ad-hoc investigation.
 
 ### Workflows — *the order of the autonomous response steps*
 
@@ -88,11 +88,13 @@ The Config page groups settings by how often you'll touch them:
 | Group | Frequency | What's in it |
 |-------|-----------|--------------|
 | **Day-1 setup** (must do once) | Always | Models, MCP servers, Skills |
-| **Inbound** (alerts → OpsMender) | Most operators | Ingest tokens, Detectors |
+| **Inbound** (alerts → OpsMender) | Most operators | Ingest tokens (primary), Detectors (legacy — see note below) |
 | **Outbound** (OpsMender → people/systems) | Most operators | Webhook triggers, Bot connectors |
 | **Advanced** (defaults work for 95%) | Rarely | Workflows, Agent teams |
 
 If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (Day-1), then wire your monitoring to Ingest, then add a Slack webhook trigger so your team sees what OpsMender is doing. Workflows and Agent teams can wait until you have a concrete reason to touch them.
+
+> **About Detectors:** Detectors are a legacy feature — LLM-driven polling loops that produce incidents indistinguishable from real inbound alerts. They are being deprecated in favor of an **Auditor** surface (Sprint 32, planned) that scans an environment, produces a *findings report* (separate data model from incidents), and offers per-finding one-click AI remediation. Existing detector rules will keep running until the auditor lands and provides a migration path. New deployments should rely on inbound alerts via Ingest.
 
 ## Quick Start
 
@@ -627,6 +629,41 @@ When enabled, OpsMender auto-creates a single session only for newly created inc
 | LegacyAlertVendor | `legacy_alert_vendor` | v2 webhooks — `incident.triggered`, `.acknowledged`, `.resolved` |
 | LegacyAlertRelay | `legacy_alert_relay` | Webhook integration payloads — `Create`, `Acknowledge`, `Close`, and update-style alert actions |
 | Generic JSON | `generic` | Configurable dot-path field mapping — works with tools needing strict, deterministic parsing |
+
+### Prometheus + Alertmanager
+
+Alertmanager has a generic [`webhook_configs`](https://prometheus.io/docs/alerting/latest/configuration/#webhook_config) receiver that works out of the box with the universal `auto` adapter — no code change, no typed adapter required.
+
+1. Create an ingest token in OpsMender:
+   ```bash
+   curl -s http://localhost:8000/ingest-tokens \
+     -H "Authorization: Bearer $TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"alertmanager-prod","provider":"auto"}'
+   # Save the returned `token` value — it's shown only once.
+   ```
+
+2. Add a receiver to `alertmanager.yml`:
+   ```yaml
+   route:
+     receiver: opsmender
+     group_by: ["alertname"]
+     group_interval: 30s
+
+   receivers:
+     - name: opsmender
+       webhook_configs:
+         - url: "https://opsmender.example.com/incidents/ingest"
+           http_config:
+             authorization:
+               type: Bearer
+               credentials: "opsmender_ingest_..."   # the token from step 1
+           send_resolved: true
+   ```
+
+3. Reload Alertmanager (`kill -HUP` or `curl -X POST .../-/reload`). The next firing alert will create an OpsMender incident; `send_resolved: true` lets OpsMender close the incident automatically when the underlying alert resolves.
+
+The Alertmanager payload shape is well-known to the LLM, so the first webhook will train the per-token shape cache and subsequent payloads parse for free without an LLM call. The same pattern works for any monitoring tool that can POST JSON — Datadog (webhook actions), CloudWatch (SNS HTTPS subscription with `cloudwatch` adapter), Azure Monitor (action group webhook), Sumo Logic (webhook payload), Grafana (contact point: webhook), LegacyAlertVendor (webhook automations forwarding to OpsMender).
 
 ### Quick Test (curl)
 

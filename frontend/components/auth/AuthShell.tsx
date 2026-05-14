@@ -31,19 +31,14 @@ export function AuthShell({
               height={44}
               className="shrink-0"
             />
-            <div className="min-w-0">
-              <Image
-                src="/opsmender_wordmark_dark_transparent_clean.png"
-                alt="OpsMender"
-                width={577}
-                height={117}
-                className="h-7 w-auto"
-                priority
-              />
-              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-fg-muted">
-                Operator Console
-              </p>
-            </div>
+            <Image
+              src="/opsmender_wordmark_dark_transparent_clean.png"
+              alt="OpsMender"
+              width={577}
+              height={117}
+              className="h-7 w-auto"
+              priority
+            />
           </Link>
         </div>
 

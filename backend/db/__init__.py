@@ -1,1 +1,1 @@
-# backend/db — Database layer for Opsmender AI (Phase 2).
+# backend/db — Database layer for OpsMender AI (Phase 2).

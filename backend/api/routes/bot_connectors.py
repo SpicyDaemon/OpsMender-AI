@@ -351,7 +351,7 @@ async def delete_bot_connector(
 
 
 # ---------------------------------------------------------------------------
-# Bot user links — map external chat-platform identities to Opsmender users
+# Bot user links — map external chat-platform identities to OpsMender users
 # ---------------------------------------------------------------------------
 
 
@@ -394,7 +394,7 @@ async def list_bot_user_links(
     "/{connector_id}/user-links",
     response_model=BotUserLinkResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Map a chat-platform user to an Opsmender user",
+    summary="Map a chat-platform user to an OpsMender user",
 )
 async def create_bot_user_link(
     connector_id: uuid.UUID,
@@ -414,7 +414,7 @@ async def create_bot_user_link(
     if opsmender_user is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Opsmender user not found",
+            detail="OpsMender user not found",
         )
 
     platform_user_id = body.platform_user_id.strip()

@@ -77,7 +77,7 @@ operations:
 # Kubernetes Production — Skill Definition
 
 This file defines operation classifications for a Kubernetes production
-environment. The Opsmender AI agent uses these classifications along
+environment. The OpsMender AI agent uses these classifications along
 with the active tier to decide what it can do autonomously.
 
 ## Classification Guide

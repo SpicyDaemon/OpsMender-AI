@@ -315,7 +315,7 @@ class TestIngestAuth:
         resp = await client.post(
             "/incidents/ingest",
             json={"title": "test"},
-            headers={"X-Opsmender-Token": "bad-token"},
+            headers={"X-OpsMender-Token": "bad-token"},
         )
         assert resp.status_code == 401
         assert "Invalid or revoked" in resp.json()["detail"]
@@ -330,7 +330,7 @@ class TestIngestAuth:
         resp = await client.post(
             "/incidents/ingest",
             json={"title": "test"},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 401
 
@@ -349,7 +349,7 @@ class TestIngestAuth:
         resp = await client.post(
             "/incidents/ingest",
             json={"title": "Hello", "description": "World"},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -371,7 +371,7 @@ class TestIngestGeneric:
                 "severity": "high",
                 "id": "alert-12345",
             },
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -393,7 +393,7 @@ class TestIngestGeneric:
         resp1 = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp1.json()["dedup_action"] == "created"
         inc_id = resp1.json()["incident_id"]
@@ -402,7 +402,7 @@ class TestIngestGeneric:
         resp2 = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp2.json()["dedup_action"] == "skipped"
         assert resp2.json()["incident_id"] == inc_id
@@ -421,7 +421,7 @@ class TestIngestGeneric:
                 "severity": "critical",
                 "id": "svc-down-001",
             },
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
 
         # Resolve it
@@ -434,7 +434,7 @@ class TestIngestGeneric:
                 "id": "svc-down-001",
                 "status": "resolved",
             },
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         data = resp.json()
         assert data["dedup_action"] == "updated"
@@ -471,7 +471,7 @@ class TestIngestGeneric:
                 "severity": "critical",
                 "id": "autostart-001",
             },
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
         incident_id = uuid.UUID(resp.json()["incident_id"])
@@ -506,7 +506,7 @@ class TestIngestGeneric:
                 "severity": "high",
                 "id": "autostart-002",
             },
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
         incident_id = uuid.UUID(resp.json()["incident_id"])
@@ -540,12 +540,12 @@ class TestIngestGeneric:
         first = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         second = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert first.status_code == 200
         assert second.status_code == 200
@@ -583,7 +583,7 @@ class TestIngestCloudWatch:
         resp = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -607,7 +607,7 @@ class TestIngestCloudWatch:
         await client.post(
             "/incidents/ingest",
             json={"Type": "Notification", "Message": json.dumps(alarm_msg)},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
 
         # OK state
@@ -616,7 +616,7 @@ class TestIngestCloudWatch:
         resp = await client.post(
             "/incidents/ingest",
             json={"Type": "Notification", "Message": json.dumps(alarm_msg)},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.json()["dedup_action"] == "updated"
 
@@ -634,7 +634,7 @@ class TestIngestCloudWatch:
         resp = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -670,7 +670,7 @@ class TestIngestAzureMonitor:
         resp = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -696,7 +696,7 @@ class TestIngestAzureMonitor:
         await client.post(
             "/incidents/ingest",
             json={"data": {"essentials": essentials}},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
 
         # Resolved
@@ -704,7 +704,7 @@ class TestIngestAzureMonitor:
         resp = await client.post(
             "/incidents/ingest",
             json={"data": {"essentials": essentials}},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.json()["dedup_action"] == "updated"
 
@@ -737,7 +737,7 @@ class TestIngestLegacyAlertVendor:
         resp = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -765,7 +765,7 @@ class TestIngestLegacyAlertVendor:
         await client.post(
             "/incidents/ingest",
             json=base,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
 
         # Resolve
@@ -773,7 +773,7 @@ class TestIngestLegacyAlertVendor:
         resp = await client.post(
             "/incidents/ingest",
             json=base,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.json()["dedup_action"] == "updated"
 
@@ -805,12 +805,12 @@ class TestIngestLegacyAlertRelay:
                 "tags": ["latency", "prod"],
                 "details": {"region": "us-east-1", "service": "api"},
             },
-            "integrationName": "Opsmender webhook",
+            "integrationName": "OpsMender webhook",
         }
         resp = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         data = resp.json()
         assert data["success"] is True
@@ -834,13 +834,13 @@ class TestIngestLegacyAlertRelay:
         await client.post(
             "/incidents/ingest",
             json={"action": "Create", "alert": base_alert},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
 
         resp = await client.post(
             "/incidents/ingest",
             json={"action": "Close", "alert": base_alert},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.json()["dedup_action"] == "updated"
 
@@ -856,7 +856,7 @@ class TestIngestAuditLog:
         await client.post(
             "/incidents/ingest",
             json={"title": "Test", "description": "Logged"},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
 
         async with app.state.session_factory() as db:
@@ -876,7 +876,7 @@ class TestIngestAuditLog:
         resp = await client.post(
             "/incidents/ingest",
             json={"bad": "payload"},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 422
 
@@ -892,7 +892,7 @@ class TestIngestAuditLog:
         await client.post(
             "/incidents/ingest",
             json={"title": "Touch test", "description": "d"},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
 
         async with app.state.session_factory() as db:
@@ -1132,7 +1132,7 @@ class TestRateLimitIntegration:
             resp = await client.post(
                 "/incidents/ingest",
                 json={"title": "RL test", "description": "d"},
-                headers={"X-Opsmender-Token": raw},
+                headers={"X-OpsMender-Token": raw},
             )
             assert resp.status_code == 200
 
@@ -1140,7 +1140,7 @@ class TestRateLimitIntegration:
         resp = await client.post(
             "/incidents/ingest",
             json={"title": "RL test", "description": "d"},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 429
         body = resp.json()
@@ -1233,7 +1233,7 @@ class TestUniversalAdapterUnit:
         assert result.needs_llm is False
 
     def test_severity_mapping(self):
-        """Sev labels and numeric priorities should map to Opsmender's 4 levels."""
+        """Sev labels and numeric priorities should map to OpsMender's 4 levels."""
         from backend.ingest.adapters.universal import UniversalAdapter
 
         assert (
@@ -1332,7 +1332,7 @@ class TestUniversalIngestIntegration:
                 "severity": "high",
                 "id": "universal-001",
             },
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -1361,7 +1361,7 @@ class TestUniversalIngestIntegration:
                     "status": "firing",
                 }
             },
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -1386,12 +1386,12 @@ class TestUniversalIngestIntegration:
         first = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         second = await client.post(
             "/incidents/ingest",
             json=payload,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert first.json()["dedup_action"] == "created"
         assert second.json()["dedup_action"] == "skipped"
@@ -1430,7 +1430,7 @@ class TestUniversalIngestIntegration:
                     "uid": "weird-42",
                 }
             },
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -1471,12 +1471,12 @@ class TestUniversalIngestIntegration:
         resp1 = await client.post(
             "/incidents/ingest",
             json=payload_one,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         resp2 = await client.post(
             "/incidents/ingest",
             json=payload_two,
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp1.status_code == 200
         assert resp2.status_code == 200
@@ -1505,7 +1505,7 @@ class TestUniversalIngestIntegration:
         resp = await client.post(
             "/incidents/ingest",
             json={"foo": {"bar": "baz"}},
-            headers={"X-Opsmender-Token": raw},
+            headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
         body = resp.json()

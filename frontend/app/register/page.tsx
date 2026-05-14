@@ -44,7 +44,7 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      title="Create an Opsmender account"
+      title="Create an OpsMender account"
       description="Set up access for operators, reviewers, or admins and jump straight into the dashboard."
       footer={(
         <>

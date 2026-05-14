@@ -1,8 +1,8 @@
-This guide covers the core configuration and integration points for administrators managing the Opsmender AI (Opsmender) platform.
+This guide covers the core configuration and integration points for administrators managing the OpsMender AI (OpsMender) platform.
 
 ## 0. Multi-tenancy
 
-Opsmender supports multiple isolated organizations on a single deployment. This allows MSPs or large enterprises to host different teams or clients with strict data isolation.
+OpsMender supports multiple isolated organizations on a single deployment. This allows MSPs or large enterprises to host different teams or clients with strict data isolation.
 
 *   **Organizations:** The top-level entity. Every incident, session, and configuration is bound to an organization.
 *   **User-Org Mapping:** Users can be members of multiple organizations. Each user has a `primary_org_id` which determines their default context for API requests. The dashboard topbar shows an org switcher when a user belongs to more than one org.
@@ -11,7 +11,7 @@ Opsmender supports multiple isolated organizations on a single deployment. This 
 
 ### 0.1 Tenant resolution order
 
-For every authenticated request, Opsmender resolves the active organization by checking these in order:
+For every authenticated request, OpsMender resolves the active organization by checking these in order:
 
 1. **Host header** — if the request hostname is registered for an org under **Organizations → Domains**, that org is *pinned* for the request. The user must be a member or the request is rejected with 403. `X-Forwarded-Host` takes precedence over `Host`, so reverse proxies work correctly.
 2. **`X-Org-ID` header** — set automatically by the dashboard when a user picks an org from the topbar switcher. Ignored when the host pins a tenant.
@@ -21,7 +21,7 @@ For every authenticated request, Opsmender resolves the active organization by c
 
 To give each tenant its own URL (`acme.opsmender.example.com`, `globex.opsmender.example.com`):
 
-1. Configure DNS — typically a wildcard `A`/`CNAME` for `*.opsmender.example.com` pointing at the Opsmender deployment, or per-tenant CNAMEs.
+1. Configure DNS — typically a wildcard `A`/`CNAME` for `*.opsmender.example.com` pointing at the OpsMender deployment, or per-tenant CNAMEs.
 2. Make sure your TLS certificate covers the wildcard (Let's Encrypt + DNS-01 challenge or a wildcard cert from your CA).
 3. As a global admin, open **Organizations**, click **Domains** on the org you want to pin, and add the hostname. Toggle **Primary** for the canonical URL used in branded links.
 4. Verify by visiting `https://<your-host>/tenant/resolve` — `pinned: true` confirms the host is registered.
@@ -31,14 +31,14 @@ When a request arrives on a registered domain:
 - The topbar org switcher is hidden and a `host-pinned` badge is shown instead — there is no ambiguity to resolve.
 - Branding is applied based on the host even on the unauthenticated `/login` and `/register` pages (via the public `GET /tenant/resolve` endpoint).
 
-If you run Opsmender on a single hostname, you can skip Domain Isolation entirely — the X-Org-ID + primary_org_id flow keeps working as before.
+If you run OpsMender on a single hostname, you can skip Domain Isolation entirely — the X-Org-ID + primary_org_id flow keeps working as before.
 
 ## 1. Authentication
 
-Opsmender supports two auth paths:
+OpsMender supports two auth paths:
 
 - **Local username/password.** First user registered automatically becomes the global `admin`. Use this for the initial bootstrap and as a break-glass account.
-- **Per-tenant SSO (OIDC).** Each org can wire its own identity provider — Okta, Azure AD, Google Workspace, Auth0, or Keycloak. Opsmender redirects users to the IdP and JIT-provisions accounts on first login.
+- **Per-tenant SSO (OIDC).** Each org can wire its own identity provider — Okta, Azure AD, Google Workspace, Auth0, or Keycloak. OpsMender redirects users to the IdP and JIT-provisions accounts on first login.
 
 ### 1.1 Configuring SSO for an org (OIDC)
 
@@ -49,7 +49,7 @@ Open **Organizations** as a global admin, click **SSO** on the target org, then 
     - Azure AD: `https://login.microsoftonline.com/{tenant-id}/v2.0/.well-known/openid-configuration`
     - Google: `https://accounts.google.com/.well-known/openid-configuration`
     - Keycloak: `https://{host}/realms/{realm}/.well-known/openid-configuration`
-- **Client ID / Client Secret** — register Opsmender as an application in your IdP; the redirect URI to whitelist there is `https://{your-tenant-host}/auth/sso/{org-slug}/callback`.
+- **Client ID / Client Secret** — register OpsMender as an application in your IdP; the redirect URI to whitelist there is `https://{your-tenant-host}/auth/sso/{org-slug}/callback`.
 - **Scopes** — defaults to `openid email profile`. Add extras (e.g. `groups`) if your IdP requires them.
 - **Email / Name claim** — change only if your IdP uses non-standard claim names.
 - **Default role** — role assigned to *new* users JIT-provisioned through SSO. Existing users keep their current role.
@@ -67,16 +67,16 @@ SAML 2.0 is on the roadmap but not in v1 — the storage column accommodates it 
 ## 2. Runtime Configuration
 
 You can manage runtime configurations via the **Config** tab in the dashboard.
-These settings apply globally to the Opsmender instance.
+These settings apply globally to the OpsMender instance.
 
 Key configurations include:
 - **Default Tier:** The default safety tier for new sessions (e.g., Tier 2).
-- **Auto-Start Policies:** Conditions under which Opsmender will automatically start an AI session upon incident ingestion.
+- **Auto-Start Policies:** Conditions under which OpsMender will automatically start an AI session upon incident ingestion.
 - **SLA Poller Defaults:** The default interval for checking SLA target uptime.
 
 ## 3. Model Configuration
 
-Opsmender supports multiple LLM providers. Navigate to **Config** > **Models** to configure them.
+OpsMender supports multiple LLM providers. Navigate to **Config** > **Models** to configure them.
 
 1. Select your preferred provider (e.g., OpenAI, Anthropic, GCP Vertex).
 2. Input the necessary API Keys or Service Account JSONs.
@@ -84,12 +84,12 @@ Opsmender supports multiple LLM providers. Navigate to **Config** > **Models** t
 
 ## 4. MCP Servers and Skills
 
-Opsmender uses the Model Context Protocol (MCP) to interact with your infrastructure. MCP servers and Skills are managed separately: MCP servers define the connection, while Skills define the allowed operations for that connection.
+OpsMender uses the Model Context Protocol (MCP) to interact with your infrastructure. MCP servers and Skills are managed separately: MCP servers define the connection, while Skills define the allowed operations for that connection.
 
 1. Go to **Config** > **MCP** to add or test an MCP server.
 2. Provide the command or transport details for the MCP server (stdio, SSE, or HTTP).
 3. Go to **Skills** to import, edit, clone, or bind `SKILL.md` content to an MCP server.
-4. Use tiers and Skill classifications together to control what Opsmender can execute.
+4. Use tiers and Skill classifications together to control what OpsMender can execute.
 
 ## 5. Chat Bot Connectors
 
@@ -141,4 +141,4 @@ To ingest incidents automatically from external tools (e.g., LegacyAlertVendor, 
 2. Click **Generate Token**.
 3. Select the provider (e.g., `legacy_alert_vendor`, `datadog`, or `auto` for universal LLM-based parsing).
 4. Copy the generated token securely. It will not be shown again.
-5. Configure your external tool to send a webhook POST request to `https://<your-opsmender-url>/incidents/ingest` with the header `X-Opsmender-Token: <your-token>`.
+5. Configure your external tool to send a webhook POST request to `https://<your-opsmender-url>/incidents/ingest` with the header `X-OpsMender-Token: <your-token>`.

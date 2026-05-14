@@ -53,7 +53,7 @@ def upgrade() -> None:
         ),
         sa.Column("allowed_email_domains", sa.Text(), nullable=True),
         # Whether the IdP signs AuthnResponses / individual assertions. Most
-        # IdPs sign the response; a few sign only the assertion. Opsmender requires
+        # IdPs sign the response; a few sign only the assertion. OpsMender requires
         # at least one.
         sa.Column(
             "want_assertions_signed",

@@ -79,13 +79,13 @@ async def ingest_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: str | None = Header(None),
-    x_opsmender_token: str | None = Header(None, alias="X-Opsmender-Token"),
+    x_opsmender_token: str | None = Header(None, alias="X-OpsMender-Token"),
 ):
     """Accept a JSON payload from an external alerting system.
 
     Authentication via either:
     - ``Authorization: Bearer <ingest-token>``
-    - ``X-Opsmender-Token: <ingest-token>``
+    - ``X-OpsMender-Token: <ingest-token>``
     """
     # Extract raw token
     raw_token: str | None = None
@@ -97,7 +97,7 @@ async def ingest_webhook(
     if not raw_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing ingest token — provide X-Opsmender-Token header or Authorization: Bearer <token>",
+            detail="Missing ingest token — provide X-OpsMender-Token header or Authorization: Bearer <token>",
         )
 
     # Validate token

@@ -30,7 +30,7 @@ assignees: []
 
 ## Environment
 
-- Opsmender version: <!-- `opsmender --version`, Docker tag, or commit SHA -->
+- OpsMender version: <!-- `opsmender --version`, Docker tag, or commit SHA -->
 - Install method: <!-- docker / pyinstaller binary / `uv sync` from source -->
 - OS: <!-- e.g. macOS 14.4, Ubuntu 22.04, Windows 11 -->
 - Python version (source installs only): <!-- `python --version` -->

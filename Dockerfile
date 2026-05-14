@@ -1,4 +1,4 @@
-# Opsmender AI — Dev Environment
+# OpsMender AI — Dev Environment
 # Full Python dev environment with uv, LangGraph, and MCP SDK
 # Designed for Docker Desktop on Windows
 

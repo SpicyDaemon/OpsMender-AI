@@ -37,7 +37,7 @@ from backend.workflow.rollback import (
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="opsmender", description="Opsmender AI CLI")
+    parser = argparse.ArgumentParser(prog="opsmender", description="OpsMender AI CLI")
     parser.add_argument(
         "--config",
         default=None,
@@ -1387,7 +1387,7 @@ def _run_saml_gen_sp_keys(args: argparse.Namespace) -> int:
     print(key_pem)
     print(
         "# Reminder: store these in your secret manager and inject as env "
-        "vars. Opsmender does not persist the keypair on disk."
+        "vars. OpsMender does not persist the keypair on disk."
     )
     return 0
 
@@ -1401,7 +1401,7 @@ def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
 
     if args.version:
-        print(importlib.metadata.version("ai-incident-manager"))
+        print(importlib.metadata.version("opsmender"))
         sys.exit(0)
 
     # `serve` doesn't need the Config object loaded eagerly — the FastAPI app

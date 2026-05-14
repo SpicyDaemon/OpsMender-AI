@@ -3,7 +3,7 @@
 Strategy:
 - The python3-saml signature/audience/replay validation is exercised against
   the IdP's actual response. Building one in-test would mean reproducing the
-  whole signing pipeline. Instead we test the surface Opsmender owns:
+  whole signing pipeline. Instead we test the surface OpsMender owns:
   CRUD, XOR validation, tenant-resolve flag, route guards (503 when the SP
   keypair is missing, 400 when no active SAML config), and the helper's
   IdP metadata caching + mode dispatch.

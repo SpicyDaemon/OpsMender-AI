@@ -1,4 +1,4 @@
-"""Skill definition parser for Opsmender AI.
+"""Skill definition parser for OpsMender AI.
 
 Reads a SKILL.md (or SKILL.yaml) file and builds an in-memory lookup of
 operation classifications.  The file uses YAML front-matter between ``---``

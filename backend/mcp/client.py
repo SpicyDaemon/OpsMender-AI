@@ -1,4 +1,4 @@
-"""MCP client wrapper for Opsmender AI.
+"""MCP client wrapper for OpsMender AI.
 
 Provides a unified interface for connecting to MCP servers over stdio, SSE,
 or streamable HTTP transport, listing available tools, and calling tools.

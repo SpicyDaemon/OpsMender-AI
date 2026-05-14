@@ -1,4 +1,4 @@
-"""Pydantic request/response schemas for the Opsmender API.
+"""Pydantic request/response schemas for the OpsMender API.
 
 All schemas live in one file to avoid circular imports and make it easy
 to see the full API surface at a glance.

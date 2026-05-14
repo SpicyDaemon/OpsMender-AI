@@ -4,7 +4,7 @@ Implements the authorization-code flow against any IdP that ships an
 OpenID Connect discovery document (Okta, Azure AD, Google, Auth0,
 Keycloak, etc.). Discovery results are cached in-process for 10 minutes.
 
-This intentionally avoids ``authlib`` so that Opsmender keeps its dependency
+This intentionally avoids ``authlib`` so that OpsMender keeps its dependency
 surface small. The flow:
 
 1. ``build_authorize_url(config, state, redirect_uri)`` — returns the URL

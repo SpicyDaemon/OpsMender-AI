@@ -6,7 +6,7 @@ Handles two SNS message types:
 - ``Notification`` — parses the embedded CloudWatch alarm JSON.
 
 Signature verification is left to the caller / infrastructure layer
-(e.g. an ALB or API Gateway validates SNS signatures before Opsmender).
+(e.g. an ALB or API Gateway validates SNS signatures before OpsMender).
 """
 
 from __future__ import annotations

@@ -61,7 +61,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
       // Note: This only works for the current tab title, 
       // Next.js Metadata might override it on page transitions.
       // But it's a good fallback for the initial load.
-      document.title = `${config.company_name} | Opsmender`;
+      document.title = `${config.company_name} | OpsMender`;
     }
 
     // Update Favicon

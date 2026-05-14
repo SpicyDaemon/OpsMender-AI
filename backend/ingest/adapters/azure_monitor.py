@@ -1,6 +1,6 @@
 """Azure Monitor common alert schema v2 adapter.
 
-Parses the common alert schema and maps severity + status to Opsmender fields.
+Parses the common alert schema and maps severity + status to OpsMender fields.
 Reference: https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-common-schema
 """
 

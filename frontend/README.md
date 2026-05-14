@@ -1,8 +1,8 @@
-# Opsmender Frontend
+# OpsMender Frontend
 
-This is the Next.js dashboard for the Opsmender AI.
+This is the Next.js dashboard for the OpsMender AI.
 
-**Important Note:** As of Sprint 13, Opsmender is a unified single-container application. We do not run the frontend and backend on separate ports in production or dev. The Python backend (FastAPI) automatically serves the statically exported Next.js frontend.
+**Important Note:** As of Sprint 13, OpsMender is a unified single-container application. We do not run the frontend and backend on separate ports in production or dev. The Python backend (FastAPI) automatically serves the statically exported Next.js frontend.
 
 ## Getting Started
 

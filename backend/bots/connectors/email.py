@@ -152,7 +152,7 @@ class EmailAdapter:
                 data={
                     "from": from_email,
                     "to": chat_id,
-                    "subject": "Opsmender Incident Update",
+                    "subject": "OpsMender Incident Update",
                     "text": text,
                 },
                 timeout=10.0,

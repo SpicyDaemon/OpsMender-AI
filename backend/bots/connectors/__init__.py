@@ -1,6 +1,6 @@
 """Per-platform connector adapters.
 
-Each chat platform (Telegram, Signal, WhatsApp, ...) is plugged into Opsmender
+Each chat platform (Telegram, Signal, WhatsApp, ...) is plugged into OpsMender
 through a ``BotConnectorAdapter`` implementation registered against its
 ``platform`` key. The shared dispatcher in
 ``backend.bots.dispatcher`` handles capability gating, identity / role

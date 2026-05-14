@@ -1,4 +1,4 @@
-This guide is intended for Incident Commanders and Operators using Opsmender to triage, investigate, and resolve live incidents.
+This guide is intended for Incident Commanders and Operators using OpsMender to triage, investigate, and resolve live incidents.
 
 > [!NOTE]
 > All incidents, sessions, and audit logs are scoped to your active **Organization**. You will only see data belonging to the organization you are currently logged into.
@@ -21,7 +21,7 @@ The Session Chat is your primary interface with the AI agent.
 
 ## 3. Approvals
 
-Opsmender enforces safety through "Tiers". If an AI session is operating in a tier that requires human approval for state-mutating actions (e.g., executing a database write or restarting a pod), the AI will pause.
+OpsMender enforces safety through "Tiers". If an AI session is operating in a tier that requires human approval for state-mutating actions (e.g., executing a database write or restarting a pod), the AI will pause.
 
 1. Navigate to the **Approvals** dashboard or look for the prompt in the Session Chat.
 2. Review the exact command or tool the AI intends to run.
@@ -41,4 +41,4 @@ If the AI takes an action that worsens the incident, or if you need to revert a 
 
 1. Locate the specific action in the Session Chat or Audit Log.
 2. Depending on the MCP tool capabilities, you can ask the AI directly to "Rollback your last change."
-3. Opsmender includes explicit rollback integrations for specific infrastructure changes (e.g., Kubernetes deployments, feature flags) if the corresponding MCP server supports it.
+3. OpsMender includes explicit rollback integrations for specific infrastructure changes (e.g., Kubernetes deployments, feature flags) if the corresponding MCP server supports it.

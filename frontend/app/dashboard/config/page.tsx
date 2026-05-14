@@ -204,7 +204,7 @@ const CONFIG_GROUPS: Array<{
   {
     id: "inbound",
     label: "Inbound",
-    caption: "How alerts get into Opsmender — ingest tokens and detector rules.",
+    caption: "How alerts get into OpsMender — ingest tokens and detector rules.",
     sections: ["ingest", "detectors"],
     defaultOpen: true,
   },
@@ -212,7 +212,7 @@ const CONFIG_GROUPS: Array<{
     id: "outbound",
     label: "Outbound",
     caption:
-      "How Opsmender reaches people and other systems — webhook triggers and chat bot connectors.",
+      "How OpsMender reaches people and other systems — webhook triggers and chat bot connectors.",
     sections: ["webhooks", "integrations"],
     defaultOpen: true,
   },
@@ -430,7 +430,7 @@ function IngestAutoStartSection({
             Enable automatic session creation for ingested incidents
           </p>
           <p className="mt-1 text-sm text-fg-secondary">
-            When enabled, Opsmender creates one session for a newly created incident if its severity
+            When enabled, OpsMender creates one session for a newly created incident if its severity
             meets the threshold and its source matches the configured provider key.
           </p>
         </div>
@@ -724,7 +724,7 @@ function ModelConfigModal({
         )}
 
         <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
-          Secrets are stored as environment-variable references only. Enter the variable name Opsmender should read at runtime, not the raw provider secret.
+          Secrets are stored as environment-variable references only. Enter the variable name OpsMender should read at runtime, not the raw provider secret.
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -891,7 +891,7 @@ function ModelSection({
                 Default model setup is still incomplete.
               </p>
               <p className="mt-1 text-sm text-fg-secondary">
-                Opsmender falls back to offline stub responses until one saved model config is marked as default. Bootstrap your first model here; secrets stay in `.env` or your deployment environment and only the env-var name is stored.
+                OpsMender falls back to offline stub responses until one saved model config is marked as default. Bootstrap your first model here; secrets stay in `.env` or your deployment environment and only the env-var name is stored.
               </p>
             </div>
             <Button onClick={openCreateModal} disabled={!canEdit}>
@@ -2412,7 +2412,7 @@ function BotUserLinksModal({
   
   // Form state for new link
   const [platformUserId, setPlatformUserId] = useState("");
-  const [opsmenderUserId, setOpsmenderUserId] = useState("");
+  const [opsMenderUserId, setOpsMenderUserId] = useState("");
   const [creating, setCreating] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -2437,23 +2437,23 @@ function BotUserLinksModal({
     if (open && connector) {
       loadData();
       setPlatformUserId("");
-      setOpsmenderUserId("");
+      setOpsMenderUserId("");
     }
   }, [open, connector, loadData]);
 
   async function handleAddLink(e: React.FormEvent) {
     e.preventDefault();
-    if (!connector || !platformUserId.trim() || !opsmenderUserId) return;
+    if (!connector || !platformUserId.trim() || !opsMenderUserId) return;
     
     setCreating(true);
     setError("");
     try {
       await createBotUserLink(connector.id, {
         platform_user_id: platformUserId.trim(),
-        opsmender_user_id: opsmenderUserId,
+        opsmender_user_id: opsMenderUserId,
       });
       setPlatformUserId("");
-      setOpsmenderUserId("");
+      setOpsMenderUserId("");
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create link");
@@ -2485,7 +2485,7 @@ function BotUserLinksModal({
       <div className="space-y-6">
         <p className="text-sm text-fg-secondary">
           Map platform-specific user IDs (Telegram usernames, WhatsApp numbers, Signal IDs)
-          to Opsmender users to enable permissions and audit trails for bot interactions.
+          to OpsMender users to enable permissions and audit trails for bot interactions.
         </p>
 
         {error && <FormError message={error} />}
@@ -2504,11 +2504,11 @@ function BotUserLinksModal({
               />
             </div>
             <div>
-              <Label htmlFor="opsmender-user-id">Opsmender User</Label>
+              <Label htmlFor="opsmender-user-id">OpsMender User</Label>
               <Select
                 id="opsmender-user-id"
-                value={opsmenderUserId}
-                onChange={(e) => setOpsmenderUserId(e.target.value)}
+                value={opsMenderUserId}
+                onChange={(e) => setOpsMenderUserId(e.target.value)}
                 required
               >
                 <option value="">Select a user...</option>
@@ -2521,7 +2521,7 @@ function BotUserLinksModal({
             </div>
           </div>
           <div className="mt-4 flex justify-end">
-            <Button type="submit" size="sm" loading={creating} disabled={!platformUserId.trim() || !opsmenderUserId}>
+            <Button type="submit" size="sm" loading={creating} disabled={!platformUserId.trim() || !opsMenderUserId}>
               <Plus size={14} /> Add Link
             </Button>
           </div>
@@ -2541,7 +2541,7 @@ function BotUserLinksModal({
                 <thead className="bg-bg-elevated text-left text-xs font-semibold text-fg-secondary">
                   <tr>
                     <th className="px-4 py-2">Platform ID</th>
-                    <th className="px-4 py-2">Opsmender User</th>
+                    <th className="px-4 py-2">OpsMender User</th>
                     <th className="px-4 py-2 text-right">Action</th>
                   </tr>
                 </thead>
@@ -3277,7 +3277,7 @@ function IngestTokenSection({
             <div>
               <Label>Usage</Label>
               <code className="block rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 font-mono text-xs text-fg-secondary">
-                curl -H &quot;X-Opsmender-Token: {createdToken.token.slice(0, 20)}...&quot; \<br />
+                curl -H &quot;X-OpsMender-Token: {createdToken.token.slice(0, 20)}...&quot; \<br />
                 &nbsp;&nbsp;-H &quot;Content-Type: application/json&quot; \<br />
                 &nbsp;&nbsp;-d &apos;{`{"title":"...","description":"..."}`}&apos; \<br />
                 &nbsp;&nbsp;{typeof window !== "undefined" ? window.location.origin : "http://localhost:8000"}/incidents/ingest
@@ -3508,7 +3508,7 @@ function AgentTeamProfileModal({
           <Label>Specialist Roles</Label>
           <p className="mt-1 text-xs text-fg-muted">
             Selected roles each produce their own reasoning pass for observe,
-            diagnose, plan, verify, and summarize. Opsmender then synthesizes them
+            diagnose, plan, verify, and summarize. OpsMender then synthesizes them
             into one final answer while keeping `tier_gate` and `execute`
             single-path and deterministic.
           </p>
@@ -3666,7 +3666,7 @@ function AgentTeamProfileSection({
   return (
     <Section
       title="Agent Teams"
-      description="Saved agent teams run multiple specialist reasoning passes inside the same Opsmender workflow, while execution still flows through the normal tier gate and execute path."
+      description="Saved agent teams run multiple specialist reasoning passes inside the same OpsMender workflow, while execution still flows through the normal tier gate and execute path."
     >
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -3689,7 +3689,7 @@ function AgentTeamProfileSection({
 
       {profiles.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No agent teams yet. Sessions will use Opsmender&apos;s default single-agent reasoning.
+          No agent teams yet. Sessions will use OpsMender&apos;s default single-agent reasoning.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border-subtle">
@@ -3887,7 +3887,7 @@ function WorkflowProfileModal({
         <div>
           <Label>Node Order</Label>
           <p className="mt-1 text-xs text-fg-muted">
-            Reorder the fixed Opsmender nodes. Safety rules are enforced server-side:
+            Reorder the fixed OpsMender nodes. Safety rules are enforced server-side:
             `execute` requires `tier_gate` immediately before it.
           </p>
           <div className="mt-3 space-y-2">
@@ -4054,7 +4054,7 @@ function WorkflowProfileSection({
   return (
     <Section
       title="Workflow Profiles"
-      description="Saved workflow profiles let operators choose which built-in Opsmender nodes run, and in what order, while preserving the tier-gate safety rules."
+      description="Saved workflow profiles let operators choose which built-in OpsMender nodes run, and in what order, while preserving the tier-gate safety rules."
     >
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -4077,7 +4077,7 @@ function WorkflowProfileSection({
 
       {profiles.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No workflow profiles yet. Sessions will use Opsmender&apos;s built-in default flow.
+          No workflow profiles yet. Sessions will use OpsMender&apos;s built-in default flow.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border-subtle">
@@ -4446,7 +4446,7 @@ function WebhookTriggerModal({
             {form.format === "sumo" &&
               "Sends a log-friendly JSON event optimized for Sumo HTTP sources or webhook-style JSON ingestion endpoints."}
             {form.format === "generic" &&
-              "Sends Opsmender's full normalized session-event JSON payload."}
+              "Sends OpsMender's full normalized session-event JSON payload."}
           </p>
         </div>
 
@@ -4735,7 +4735,7 @@ function WebhookTriggerSection({
 
       {triggers.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No outbound webhook triggers yet. Add one to deliver Opsmender session events to downstream systems.
+          No outbound webhook triggers yet. Add one to deliver OpsMender session events to downstream systems.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border-subtle">

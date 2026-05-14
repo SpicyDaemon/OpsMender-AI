@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Opsmender Wiki Sync Script
+# OpsMender Wiki Sync Script
 # 
 # This script is intended to synchronize the docs/wiki directory from the main repo
 # into the separate GitHub Wiki repository.

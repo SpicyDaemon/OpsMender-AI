@@ -1,6 +1,6 @@
 # Detectors Guide
 
-Detectors in Opsmender are proactive, LLM-driven rules that continuously monitor your incoming metrics, logs, or signals to identify potential incidents before they cause widespread outages. 
+Detectors in OpsMender are proactive, LLM-driven rules that continuously monitor your incoming metrics, logs, or signals to identify potential incidents before they cause widespread outages. 
 
 Unlike traditional static thresholds (e.g., `CPU > 90%`), Detectors use AI to evaluate the *context* and *semantics* of the data.
 
@@ -24,14 +24,14 @@ The prompt is the core of your detector. It instructs the LLM on what to look fo
 
 ## 3. Interpreting History
 
-Every time a detector runs, Opsmender logs the result in the detector's **Run History**.
+Every time a detector runs, OpsMender logs the result in the detector's **Run History**.
 - **Pass:** The AI evaluated the data and found no issues.
 - **Triggered:** The AI detected an anomaly matching your prompt and ingested a new Incident into the system.
 - You can inspect the historical runs to see the exact payload the AI received and its reasoning.
 
 ## 4. False-Positive Handling
 
-LLM-based detection can occasionally trigger false positives. Opsmender provides tools to fine-tune your detectors:
+LLM-based detection can occasionally trigger false positives. OpsMender provides tools to fine-tune your detectors:
 
 1. **Review the Reasoning:** Look at the Run History for the false positive. Read the AI's explanation for *why* it triggered.
 2. **Refine the Prompt:** Add explicit exclusion clauses to your prompt.

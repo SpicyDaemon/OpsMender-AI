@@ -1,6 +1,6 @@
-# Opsmender Helm Chart
+# OpsMender Helm Chart
 
-Deploys the Opsmender AI (Opsmender) onto Kubernetes: app Deployment + Service, optional Ingress, persistent logs PVC, configurable Postgres (bundled Bitnami subchart) or external DB, and env/secret wiring for Opsmender config plus provider keys.
+Deploys the OpsMender AI (OpsMender) onto Kubernetes: app Deployment + Service, optional Ingress, persistent logs PVC, configurable Postgres (bundled Bitnami subchart) or external DB, and env/secret wiring for OpsMender config plus provider keys.
 
 ## Prerequisites
 
@@ -96,7 +96,7 @@ ingress:
 | `resources` | Container resource requests/limits | 250m/512Mi → 1/1Gi |
 | `autoscaling.enabled` | Enable HPA on CPU | `false` |
 
-`config.*` keys map 1:1 to Opsmender environment variables (see [.env.example](../../../.env.example)). Anything not in `config.*` or `secrets.*` can be added through `extraEnv` / `envFrom`.
+`config.*` keys map 1:1 to OpsMender environment variables (see [.env.example](../../../.env.example)). Anything not in `config.*` or `secrets.*` can be added through `extraEnv` / `envFrom`.
 
 ## Required secrets
 

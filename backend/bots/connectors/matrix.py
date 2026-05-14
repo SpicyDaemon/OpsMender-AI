@@ -26,7 +26,7 @@ class MatrixAdapter:
                 kind="secret",
                 group="credentials",
                 required=True,
-                helper="Random string injected by your relay as the X-Opsmender-Webhook-Secret header.",
+                helper="Random string injected by your relay as the X-OpsMender-Webhook-Secret header.",
             ),
             FieldSpec(
                 name="homeserver_url",

@@ -37,7 +37,7 @@ if os.path.isdir("skills"):
 # Alembic loads the migration env.py dynamically; PyInstaller can't follow
 # those imports statically, so we collect the tree.
 def _skip_mcp_cli(name: str) -> bool:
-    # mcp.cli pulls in typer which we don't ship; nothing in Opsmender uses it.
+    # mcp.cli pulls in typer which we don't ship; nothing in OpsMender uses it.
     return not name.startswith("mcp.cli")
 
 

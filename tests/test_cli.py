@@ -15,7 +15,7 @@ class TestCLI:
             main(["--version"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out.strip()
-        assert out == importlib.metadata.version("ai-incident-manager")
+        assert out == importlib.metadata.version("opsmender")
 
     def test_default_no_subcommand_prints_help(self, capsys):
         """Running with no args prints help text."""

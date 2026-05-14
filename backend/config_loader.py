@@ -1,4 +1,4 @@
-"""Environment-based configuration loader for Opsmender AI."""
+"""Environment-based configuration loader for OpsMender AI."""
 
 from __future__ import annotations
 
@@ -182,7 +182,7 @@ class Tier0Config:
 class AppSettings:
     """General app runtime settings."""
 
-    name: str = "Opsmender AI"
+    name: str = "OpsMender AI"
     version: str = "0.2.0"
     tier: int = 2
     log_level: str = "INFO"

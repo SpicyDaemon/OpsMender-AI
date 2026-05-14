@@ -1,11 +1,11 @@
-# Opsmender AI
+# OpsMender AI
 
 [![Website](https://img.shields.io/badge/website-opsmenderai.com-blue)](https://opsmenderai.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Release](https://img.shields.io/github/v/release/SpicyDaemon/OpsMender-AI?include_prereleases&sort=semver)](https://github.com/SpicyDaemon/OpsMender-AI/releases)
 
-> **Opsmender AI** — open-source **AI incident manager** / **AI SRE** / **AI on-call** for production infrastructure. Tier-gated, MCP-first, human-in-the-loop AI incident response and incident management.
+> **OpsMender AI** — open-source **AI incident manager** / **AI SRE** / **AI on-call** for production infrastructure. Tier-gated, MCP-first, human-in-the-loop AI incident response and incident management.
 
 An AI-powered incident response framework with tiered access controls. Connects AI agents to infrastructure via MCP servers and enforces a tier-based permission system that organizations define themselves.
 
@@ -13,7 +13,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 
 🌐 **[opsmenderai.com](https://opsmenderai.com)** | 📚 **[Read the Documentation Wiki](docs/wiki/README.md)** | 🛠 **[Developer Architecture & API Reference](docs/REFERENCE.md)**
 
-## Why Opsmender
+## Why OpsMender
 
 - **MCP-first** — every infrastructure action goes through an MCP server the operator provides. No native integrations locked to one cloud or tool.
 - **Tiered autonomy** — four tiers from advice-only (Tier 3) to fully autonomous (Tier 0). Tier 0 has a sandbox, hard time limits, and automatic rollback.
@@ -27,12 +27,12 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Multi-tenant** — strict per-org isolation across every entity. Optional host-based routing pins each tenant to its own URL (`acme.opsmender.example.com`, `globex.opsmender.example.com`) with custom branding.
 - **Per-tenant SSO** — each org can wire its own **OIDC** identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak) **or SAML 2.0** IdP (older Okta, ADFS, classic Azure AD enterprise apps). Users are JIT-provisioned on first login; OIDC client secrets are encrypted at rest, SAML uses a global SP keypair from env. Local login stays available as a break-glass path.
 
-## How Opsmender thinks (concepts in 60 seconds)
+## How OpsMender thinks (concepts in 60 seconds)
 
 A picture first, then the parts:
 
 ```
-        external systems                           Opsmender internals
+        external systems                           OpsMender internals
   ─────────────────────────────             ────────────────────────────
                               ┌─── Ingest ─→  Incident created
   CloudWatch / LegacyAlertVendor /    │
@@ -59,13 +59,13 @@ Four concepts confuse new operators most often, so here's what each one actually
 
 ### Ingest — *getting incidents in*
 
-External monitoring tools POST a webhook to `/incidents/ingest`; Opsmender creates an incident from the payload. The **universal adapter** accepts any shape and asks the LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Specific adapters exist for CloudWatch SNS, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, and a Generic JSON adapter.
+External monitoring tools POST a webhook to `/incidents/ingest`; OpsMender creates an incident from the payload. The **universal adapter** accepts any shape and asks the LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Specific adapters exist for CloudWatch SNS, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, and a Generic JSON adapter.
 
-> **You can ignore Ingest entirely if you don't use external monitoring.** Incidents can also be created manually from the dashboard or by Opsmender's own MCP-driven detectors.
+> **You can ignore Ingest entirely if you don't use external monitoring.** Incidents can also be created manually from the dashboard or by OpsMender's own MCP-driven detectors.
 
 ### Workflows — *the order of the autonomous response steps*
 
-When a session runs, Opsmender walks a LangGraph: `observe → diagnose → plan → tier_gate → execute → verify → summarize`. A **Workflow profile** lets you save a *different* node order — same nodes, just rearranged or trimmed. The tier gate must always sit immediately before `execute` (programmatic safety floor; cannot be moved or removed).
+When a session runs, OpsMender walks a LangGraph: `observe → diagnose → plan → tier_gate → execute → verify → summarize`. A **Workflow profile** lets you save a *different* node order — same nodes, just rearranged or trimmed. The tier gate must always sit immediately before `execute` (programmatic safety floor; cannot be moved or removed).
 
 > **Most operators never touch this.** It's there for the rare team that wants, e.g., an extra `verify` pass after `summarize`. The default workflow is fine for 95% of use cases.
 
@@ -77,9 +77,9 @@ Inside the reasoning nodes (`diagnose`, `plan`), instead of one generic LLM pass
 
 ### Webhook triggers — *getting events out*
 
-Whenever a session changes state (`created`, `awaiting_approval`, `active`, `completed`, `failed`, `timed_out`), Opsmender POSTs a payload to whatever URLs you've configured. Format presets exist for **Slack** incoming webhooks, **Teams** workflow webhooks, **Sumo Logic**, or **generic JSON**.
+Whenever a session changes state (`created`, `awaiting_approval`, `active`, `completed`, `failed`, `timed_out`), OpsMender POSTs a payload to whatever URLs you've configured. Format presets exist for **Slack** incoming webhooks, **Teams** workflow webhooks, **Sumo Logic**, or **generic JSON**.
 
-> **This is what you set up if you want Opsmender to ping your chat / SIEM / pager.** Most teams configure one Slack webhook and stop there. Distinct from Bot connectors below — webhook triggers are fire-and-forget event notifications, bot connectors are two-way command/chat surfaces.
+> **This is what you set up if you want OpsMender to ping your chat / SIEM / pager.** Most teams configure one Slack webhook and stop there. Distinct from Bot connectors below — webhook triggers are fire-and-forget event notifications, bot connectors are two-way command/chat surfaces.
 
 ### Where each concept lives in the dashboard
 
@@ -88,11 +88,11 @@ The Config page groups settings by how often you'll touch them:
 | Group | Frequency | What's in it |
 |-------|-----------|--------------|
 | **Day-1 setup** (must do once) | Always | Models, MCP servers, Skills |
-| **Inbound** (alerts → Opsmender) | Most operators | Ingest tokens, Detectors |
-| **Outbound** (Opsmender → people/systems) | Most operators | Webhook triggers, Bot connectors |
+| **Inbound** (alerts → OpsMender) | Most operators | Ingest tokens, Detectors |
+| **Outbound** (OpsMender → people/systems) | Most operators | Webhook triggers, Bot connectors |
 | **Advanced** (defaults work for 95%) | Rarely | Workflows, Agent teams |
 
-If you're new to Opsmender, work top-down: get one model + one MCP server + one skill definition working (Day-1), then wire your monitoring to Ingest, then add a Slack webhook trigger so your team sees what Opsmender is doing. Workflows and Agent teams can wait until you have a concrete reason to touch them.
+If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (Day-1), then wire your monitoring to Ingest, then add a Slack webhook trigger so your team sees what OpsMender is doing. Workflows and Agent teams can wait until you have a concrete reason to touch them.
 
 ## Quick Start
 
@@ -116,14 +116,14 @@ See [Running the dev server](#running-the-dev-server) to start the full API + da
 
 ### Runtime Inputs
 
-In practice, an Opsmender deployment is driven by four operator-owned inputs:
+In practice, an OpsMender deployment is driven by four operator-owned inputs:
 
 - `.env` for deployment defaults such as tier, audit path, DB/JWT settings, provider defaults, and local fallbacks
 - `runtime_config` DB overrides for UI-editable runtime settings such as tier and log level
 - `model_configs`, `mcp_servers`, and `skills` DB tables for saved model profiles, MCP connection definitions, and operator-owned skill definitions — all managed through the API/UI
 - `skills/` directory for your environment-specific `SKILL.md` files that define what counts as safe, caution, or destructive. Files placed here are auto-imported into the `skills` DB table on backend startup (existing rows are skipped by name, so UI edits are preserved across restarts). `examples/SKILL.md` is a reference template only and is never auto-imported.
 
-This is intentional: Opsmender does not hardcode what "destructive" means for your infrastructure. The operator defines that through skills.
+This is intentional: OpsMender does not hardcode what "destructive" means for your infrastructure. The operator defines that through skills.
 
 ## Running Tests
 
@@ -136,7 +136,7 @@ uv run pytest tests/test_workflow.py  # workflow tests
 
 ### End-to-End Verification
 
-`tests/test_e2e.py` is the canonical "does Opsmender still work?" check — it drives the full single-container chain that operators actually use, with no external services touched:
+`tests/test_e2e.py` is the canonical "does OpsMender still work?" check — it drives the full single-container chain that operators actually use, with no external services touched:
 
 ```
 register/login → POST /incidents → POST /sessions → tier gate creates approval
@@ -197,7 +197,7 @@ If you change anything in the API layer, the workflow, the approval service, the
 
 ## Running the dev server
 
-Opsmender runs on a **single port (8000)** — backend API + static frontend served by one Python process. The dev launcher (`scripts/dev_server.py`) sidesteps Alembic by using `Base.metadata.create_all`, which works on SQLite. It loads `.env`, creates the schema, seeds `admin` / `admin123`, and starts Uvicorn serving both the API and the embedded static frontend.
+OpsMender runs on a **single port (8000)** — backend API + static frontend served by one Python process. The dev launcher (`scripts/dev_server.py`) sidesteps Alembic by using `Base.metadata.create_all`, which works on SQLite. It loads `.env`, creates the schema, seeds `admin` / `admin123`, and starts Uvicorn serving both the API and the embedded static frontend.
 
 ### Prerequisites
 
@@ -279,7 +279,7 @@ docker run -d --name opsmender-pg \
   -e POSTGRES_USER=opsmender -e POSTGRES_PASSWORD=opsmender -e POSTGRES_DB=opsmender \
   -p 5432:5432 postgres:16
 
-# 2. Point Opsmender at it in .env
+# 2. Point OpsMender at it in .env
 OPSMENDER_DATABASE_URL=postgresql+asyncpg://opsmender:opsmender@localhost:5432/opsmender
 
 # 3. Build the static frontend (only when the frontend changes)
@@ -385,12 +385,12 @@ Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (se
 | `PUT` | `/organizations/{id}/sso` | admin | Create/update OIDC config — supply `client_secret` only on create or rotate |
 | `DELETE` | `/organizations/{id}/sso` | admin | Disable OIDC for the org |
 | `GET` | `/auth/sso/{slug}/login` | public | Initiate the OIDC login flow (302 redirect to the IdP) |
-| `GET` | `/auth/sso/{slug}/callback` | public | OIDC callback — JIT-provisions user, hands Opsmender JWT back via URL fragment |
+| `GET` | `/auth/sso/{slug}/callback` | public | OIDC callback — JIT-provisions user, hands OpsMender JWT back via URL fragment |
 | `GET` | `/organizations/{id}/saml` | admin | Read per-org SAML config (never returns the raw IdP XML) |
 | `PUT` | `/organizations/{id}/saml` | admin | Create/update SAML config — exactly one of `idp_metadata_url` or `idp_metadata_xml` required |
 | `DELETE` | `/organizations/{id}/saml` | admin | Disable SAML for the org |
 | `GET` | `/auth/saml/{slug}/login` | public | Initiate the SAML login flow (302 redirect to the IdP) |
-| `POST` | `/auth/saml/{slug}/acs` | public | SAML Assertion Consumer Service — validates response, JIT-provisions user, hands Opsmender JWT back via URL fragment |
+| `POST` | `/auth/saml/{slug}/acs` | public | SAML Assertion Consumer Service — validates response, JIT-provisions user, hands OpsMender JWT back via URL fragment |
 | `GET` | `/auth/saml/{slug}/metadata` | public | Return SP metadata XML for IdP admins to upload |
 | `POST` | `/bot-connectors/{id}/telegram/webhook` | Telegram secret header | Handle inbound Telegram bot commands |
 | `GET` | `/skills` | any | List saved skills (optional `?mcp_server_id=` filter) |
@@ -443,7 +443,7 @@ Saved model profiles and MCP server definitions are also persisted in the databa
 
 MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-reads the DB on every lookup — servers added via `POST /mcp-servers` or the dashboard are visible to already-running sessions with no reload. `OPSMENDER_MCP_SERVERS_JSON` stays supported as a read-only fallback for bootstrapping before any DB entries exist.
 
-External chat bot connectors are managed in **Config -> Integrations** or through the `/bot-connectors` API. Credentials are write-only: API responses expose `credential_keys` and `has_credentials`, never raw token values. Opsmender supports 15 platforms: Telegram, Signal, WhatsApp, Slack, Discord, MS Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Twilio, Email, Home Assistant, and BlueBubbles.
+External chat bot connectors are managed in **Config -> Integrations** or through the `/bot-connectors` API. Credentials are write-only: API responses expose `credential_keys` and `has_credentials`, never raw token values. OpsMender supports 15 platforms: Telegram, Signal, WhatsApp, Slack, Discord, MS Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Twilio, Email, Home Assistant, and BlueBubbles.
 
 Example `.env` keys:
 
@@ -493,7 +493,7 @@ opsmender config model set --provider azure_openai --model-id my-deployment \
 opsmender config model set --provider ollama --model-id llama3.2 --base-url http://localhost:11434
 ```
 
-For first-run setup, Opsmender also ships a bootstrap path that prompts for missing fields:
+For first-run setup, OpsMender also ships a bootstrap path that prompts for missing fields:
 
 ```bash
 opsmender config model bootstrap
@@ -504,14 +504,14 @@ Notes:
 
 - `opsmender config model list` is discovery-only and does not write to the database.
 - `opsmender config model set` and `opsmender config model bootstrap` store the config in `model_configs` and mark it as default.
-- Provider-discovered model lists are suggestions, not a hard requirement. Opsmender allows explicit manual model IDs and returns warnings when discovery is stale, unavailable, or incomplete.
+- Provider-discovered model lists are suggestions, not a hard requirement. OpsMender allows explicit manual model IDs and returns warnings when discovery is stale, unavailable, or incomplete.
 - Secrets are stored as **environment-variable references only**. The database stores values like `OPENAI_API_KEY`, not the raw provider secret itself.
 - The dashboard supports the same first-run bootstrap flow from **Config → Models**, including provider, model ID, env-var reference, base URL, API version, max tokens, and temperature.
-- If you want to run a local Hugging Face model with Opsmender, the clean path is to serve it through a local runtime such as Ollama or another OpenAI-compatible endpoint rather than loading raw checkpoints directly inside Opsmender.
+- If you want to run a local Hugging Face model with OpsMender, the clean path is to serve it through a local runtime such as Ollama or another OpenAI-compatible endpoint rather than loading raw checkpoints directly inside OpsMender.
 
 ## Workflow
 
-Opsmender uses a LangGraph-powered incident response workflow:
+OpsMender uses a LangGraph-powered incident response workflow:
 
 ```
 observe → diagnose → plan → tier_gate → execute → verify → summarize
@@ -531,7 +531,7 @@ The `tier_gate` is a hard programmatic check — it cannot be bypassed by agent 
 
 ## Skill Definitions
 
-Organizations define what's safe, cautious, or destructive in a `SKILL.md` file. This is one of the core design constraints of Opsmender: the framework enforces the skill definition you provide rather than deciding destructiveness itself.
+Organizations define what's safe, cautious, or destructive in a `SKILL.md` file. This is one of the core design constraints of OpsMender: the framework enforces the skill definition you provide rather than deciding destructiveness itself.
 
 That means users can bring their own skills to match their environment. For example, deleting a pod in production might be classified as `destructive`, while the same action in a sandbox environment might be treated differently.
 
@@ -549,7 +549,7 @@ operations:
 
 The tier enforcement layer uses these classifications to permit or block tool calls at runtime. Unknown operations are denied at all tiers (fail-closed).
 
-This is how Opsmender supports operator-defined destructive actions: your `SKILL.md` files define the policy boundary for your environment, and Opsmender enforces that boundary programmatically.
+This is how OpsMender supports operator-defined destructive actions: your `SKILL.md` files define the policy boundary for your environment, and OpsMender enforces that boundary programmatically.
 
 ### Skill Manager (UI + DB)
 
@@ -577,23 +577,23 @@ Sprint 9 added a persisted approval flow for destructive Tier 1 actions:
 2. A destructive action at Tier 1 creates an `approval_request`.
 3. The session moves to `awaiting_approval`.
 4. A human approves or rejects via API or `opsmender approvals`.
-5. If approved, Opsmender executes the action.
+5. If approved, OpsMender executes the action.
 6. If rejected or expired, the action is blocked.
 
 Default approval timeout is 15 minutes (`OPSMENDER_APPROVAL_TIMEOUT_SECONDS=900`).
 
 ## External Incident Ingestion
 
-Sprints 14 + 15 added a webhook-based ingestion system that lets external monitoring/alerting tools create incidents in Opsmender automatically.
+Sprints 14 + 15 added a webhook-based ingestion system that lets external monitoring/alerting tools create incidents in OpsMender automatically.
 
 Sprint 15's **universal (`auto`) adapter** is now the default: a single endpoint accepts any JSON webhook — Slack, Datadog, Teams, Sumo Logic, Grafana, Prometheus Alertmanager, custom scripts — without requiring a per-platform adapter. Heuristics match common field names and envelopes first; unrecognized shapes fall back to an LLM that returns the field **paths** (cached per-token by a shape hash so the same payload shape pays the LLM cost only once).
 
 ### How It Works
 
 1. An admin creates an **ingest token** via `POST /ingest-tokens`, specifying which provider adapter to use (default: `auto`).
-2. The raw token (starts with `opsmender_ingest_...`) is returned **once** — save it. Opsmender stores only the SHA-256 hash.
-3. External systems send JSON payloads to `POST /incidents/ingest` with the token in an `X-Opsmender-Token` header (or `Authorization: Bearer`).
-4. Opsmender routes the payload through the chosen adapter (`auto` for universal, or a strict shape-specific adapter), which normalizes it into an incident.
+2. The raw token (starts with `opsmender_ingest_...`) is returned **once** — save it. OpsMender stores only the SHA-256 hash.
+3. External systems send JSON payloads to `POST /incidents/ingest` with the token in an `X-OpsMender-Token` header (or `Authorization: Bearer`).
+4. OpsMender routes the payload through the chosen adapter (`auto` for universal, or a strict shape-specific adapter), which normalizes it into an incident.
 5. For `auto` tokens: heuristic parse → LLM fallback on unrecognized shapes → per-token shape cache so the same payload shape skips the LLM next time. Admins can pre-train via `sample_payload` at creation, or `POST /ingest-tokens/{id}/learn-shape` later.
 6. Dedup by `(external_source, external_id)` — repeated alerts update or skip instead of creating duplicates. `auto` tokens scope `external_source = "auto:<token-name>"` so cross-token ID collisions don't merge.
 7. Every inbound payload is logged raw in the `ingest_log` table for replay/debugging.
@@ -613,7 +613,7 @@ OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=critical
 OPSMENDER_INGEST_AUTO_START_SOURCE=
 ```
 
-When enabled, Opsmender auto-creates a single session only for newly created incidents whose `external_source` matches the configured source filter (or any source if blank) and whose severity is at or above the configured threshold. The new session inherits the current runtime tier, and duplicate ingests do not spawn extra active sessions.
+When enabled, OpsMender auto-creates a single session only for newly created incidents whose `external_source` matches the configured source filter (or any source if blank) and whose severity is at or above the configured threshold. The new session inherits the current runtime tier, and duplicate ingests do not spawn extra active sessions.
 
 ### Supported Provider Adapters
 
@@ -644,14 +644,14 @@ INGEST=$(curl -s http://localhost:8000/ingest-tokens \
 
 # 3. Send an incident
 curl -s http://localhost:8000/incidents/ingest \
-  -H "X-Opsmender-Token: $INGEST" \
+  -H "X-OpsMender-Token: $INGEST" \
   -H 'Content-Type: application/json' \
   -d '{"title":"Disk Full","description":"98% on /data","severity":"high","id":"alert-001"}'
 # → {"success":true,"dedup_action":"created",...}
 
 # 4. Same payload again → dedup kicks in
 curl -s http://localhost:8000/incidents/ingest \
-  -H "X-Opsmender-Token: $INGEST" \
+  -H "X-OpsMender-Token: $INGEST" \
   -H 'Content-Type: application/json' \
   -d '{"title":"Disk Full","description":"98% on /data","severity":"high","id":"alert-001"}'
 # → {"success":true,"dedup_action":"skipped",...}
@@ -661,16 +661,16 @@ For full curl recipes covering all five providers (CloudWatch SNS, Azure Monitor
 
 ## Outbound Notifications
 
-Opsmender also supports outbound collaboration notifications for session lifecycle events. This is separate from inbound alert ingestion:
+OpsMender also supports outbound collaboration notifications for session lifecycle events. This is separate from inbound alert ingestion:
 
-- **Inbound**: external tools create incidents in Opsmender through `POST /incidents/ingest`
-- **Outbound**: Opsmender notifies downstream systems when a session is created, awaits approval, becomes active, completes, fails, or times out
+- **Inbound**: external tools create incidents in OpsMender through `POST /incidents/ingest`
+- **Outbound**: OpsMender notifies downstream systems when a session is created, awaits approval, becomes active, completes, fails, or times out
 
 Outbound notifications are managed through saved **webhook triggers** in `/dashboard/config` or via the `/webhook-triggers` API. Each trigger subscribes to one or more session events and uses one of three payload formats:
 
 | Format | Purpose | Payload |
 |--------|---------|---------|
-| `generic` | Any automation endpoint | Opsmender normalized JSON event |
+| `generic` | Any automation endpoint | OpsMender normalized JSON event |
 | `slack` | Slack incoming webhook | `text` + Block Kit `blocks` |
 | `teams` | Microsoft Teams Workflows webhook | plain `text` body |
 | `sumo` | Sumo Logic HTTP source / JSON ingestion endpoint | log-friendly JSON event with flattened top-level fields plus nested session/incident objects |
@@ -696,7 +696,7 @@ The generic webhook system remains the underlying transport. Slack and Teams are
 
 ## Custom Workflow Builder
 
-Opsmender now supports a saved **workflow profile** builder on top of the fixed LangGraph node set:
+OpsMender now supports a saved **workflow profile** builder on top of the fixed LangGraph node set:
 
 - `observe`
 - `diagnose`
@@ -722,17 +722,17 @@ Workflow profiles are managed from `/dashboard/config` and via the `/workflow-pr
 
 ## Multi-Agent Teams
 
-Opsmender also supports saved **agent team profiles** for multi-agent reasoning inside
+OpsMender also supports saved **agent team profiles** for multi-agent reasoning inside
 the existing workflow. This is intentionally constrained:
 
-- specialist roles are fixed to Opsmender's built-in set:
+- specialist roles are fixed to OpsMender's built-in set:
   - `incident_commander`
   - `investigator`
   - `skeptic`
   - `remediator`
 - selected roles each produce their own reasoning pass for `observe`,
   `diagnose`, `plan`, `verify`, and `summarize`
-- Opsmender then synthesizes those role outputs into a single final answer
+- OpsMender then synthesizes those role outputs into a single final answer
 - `tier_gate` and `execute` remain single-path and programmatic
 
 Sessions can use:

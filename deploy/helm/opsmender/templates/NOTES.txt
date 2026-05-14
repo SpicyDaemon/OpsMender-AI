@@ -1,4 +1,4 @@
-Opsmender AI has been installed.
+OpsMender AI has been installed.
 
 Release: {{ .Release.Name }}
 Namespace: {{ .Release.Namespace }}

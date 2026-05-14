@@ -1,4 +1,4 @@
-"""FastAPI application factory for Opsmender AI.
+"""FastAPI application factory for OpsMender AI.
 
 Usage::
 

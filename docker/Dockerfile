@@ -1,4 +1,4 @@
-# Opsmender AI — single container (frontend + backend)
+# OpsMender AI — single container (frontend + backend)
 #
 # Four stages:
 #   1. frontend-builder  — Node 22, produces /app/frontend/out (static export)

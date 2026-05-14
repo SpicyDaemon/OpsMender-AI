@@ -17,8 +17,8 @@ class SignalAdapter:
     """Adapter for inbound webhooks from a signal-cli-rest-api relay.
 
     The reference ``signal-cli-rest-api`` server does not sign its
-    outbound webhooks. Opsmender expects a reverse proxy / relay in front of
-    the bridge that injects an ``X-Opsmender-Webhook-Secret`` header matching
+    outbound webhooks. OpsMender expects a reverse proxy / relay in front of
+    the bridge that injects an ``X-OpsMender-Webhook-Secret`` header matching
     ``credentials.webhook_secret``. Operators who run signal-cli-rest-api
     behind nginx, Caddy, or a small forwarding service can add one
     ``proxy_set_header`` line to satisfy this.
@@ -67,7 +67,7 @@ class SignalAdapter:
                 kind="secret",
                 group="credentials",
                 required=True,
-                helper="Random string. Your reverse proxy must inject it as the X-Opsmender-Webhook-Secret header on inbound calls.",
+                helper="Random string. Your reverse proxy must inject it as the X-OpsMender-Webhook-Secret header on inbound calls.",
             ),
             FieldSpec(
                 name="default_chat_id",
@@ -106,7 +106,7 @@ class SignalAdapter:
             )
 
         provided = headers.get("x-opsmender-webhook-secret") or headers.get(
-            "X-Opsmender-Webhook-Secret"
+            "X-OpsMender-Webhook-Secret"
         )
         if not provided or not secrets.compare_digest(str(expected), provided):
             raise HTTPException(

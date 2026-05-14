@@ -1,4 +1,4 @@
-"""Integration tests for the full Opsmender pipeline.
+"""Integration tests for the full OpsMender pipeline.
 
 Two categories:
 

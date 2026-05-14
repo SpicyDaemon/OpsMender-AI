@@ -1,4 +1,4 @@
-"""One-shot rename: AIM/aim → Opsmender/opsmender across the repo.
+"""One-shot rename: AIM/aim → OpsMender/opsmender across the repo.
 
 Applies word-boundary regex substitutions to every text file under the repo
 (skipping vendored / build / cache dirs). Run once, then delete this script.
@@ -26,9 +26,9 @@ SKIP_EXTS = {
 
 # Order matters: longer / more-specific patterns first.
 SUBS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"AI Incident Manager"), "Opsmender AI"),
+    (re.compile(r"AI Incident Manager"), "OpsMender AI"),
     (re.compile(r"\bAIM_"), "OPSMENDER_"),
-    (re.compile(r"\bAIM\b"), "Opsmender"),
+    (re.compile(r"\bAIM\b"), "OpsMender"),
     (re.compile(r"\baim_"), "opsmender_"),
     (re.compile(r"\baim-"), "opsmender-"),
     (re.compile(r"\baim:"), "opsmender:"),

@@ -412,7 +412,7 @@ function DomainsModal({
         <p className="text-xs text-fg-secondary">
           Each domain pins this organization to a hostname. Requests served on a registered host
           are forced into this tenant; users not in this org will be denied. Make sure DNS resolves
-          the host to this Opsmender deployment.
+          the host to this OpsMender deployment.
         </p>
 
         <FormError message={error} />
@@ -615,7 +615,7 @@ function SSOModal({
       <div className="space-y-4">
         <p className="text-xs text-fg-secondary">
           Configure an OIDC identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak).
-          Opsmender redirects users to the IdP and JIT-provisions accounts on first login. The login URL
+          OpsMender redirects users to the IdP and JIT-provisions accounts on first login. The login URL
           for this org is{" "}
           <code className="font-mono text-fg-primary">/auth/sso/{org.slug}/login</code>.
         </p>
@@ -893,7 +893,7 @@ function SAMLModal({
       <div className="space-y-4">
         <p className="text-xs text-fg-secondary">
           Configure a SAML 2.0 identity provider (older Okta tenants, ADFS,
-          classic Azure AD enterprise apps). Opsmender redirects users to the IdP
+          classic Azure AD enterprise apps). OpsMender redirects users to the IdP
           and JIT-provisions accounts on first login. The login URL for this
           org is{" "}
           <code className="font-mono text-fg-primary">/auth/saml/{org.slug}/login</code>

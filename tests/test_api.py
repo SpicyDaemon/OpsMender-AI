@@ -470,7 +470,7 @@ class TestDomainIsolation:
     ):
         resp = await client.post(
             f"/organizations/{TEST_ORG_ID}/domains",
-            json={"domain": "Acme.Opsmender.Example.com", "is_primary": True},
+            json={"domain": "Acme.OpsMender.Example.com", "is_primary": True},
             headers=auth_headers,
         )
         assert resp.status_code == 201
@@ -1034,7 +1034,7 @@ class TestSessions:
                 name="created",
                 url="https://hooks.example/session-created",
                 event_types=["session.created"],
-                headers={"X-Opsmender-Test": "1"},
+                headers={"X-OpsMender-Test": "1"},
                 token="abc123",
             )
             await db.commit()
@@ -1051,7 +1051,7 @@ class TestSessions:
         assert payload["event"] == "session.created"
         assert payload["session"]["id"] == session_id
         assert headers["Authorization"] == "Bearer abc123"
-        assert headers["X-Opsmender-Test"] == "1"
+        assert headers["X-OpsMender-Test"] == "1"
 
     async def test_session_terminal_webhook_trigger_fires(
         self, client: AsyncClient, app, auth_headers, monkeypatch
@@ -1312,7 +1312,7 @@ class TestWebhookTriggers:
         await asyncio.sleep(0.05)
         assert deliveries
         _, payload, headers = deliveries[-1]
-        assert payload["text"].startswith("Opsmender Webhook.Test:")
+        assert payload["text"].startswith("OpsMender Webhook.Test:")
         assert payload["blocks"]
         assert headers["Authorization"] == "Bearer secret-token"
         assert headers["X-Team"] == "platform"
@@ -1424,7 +1424,7 @@ class TestWebhookTriggers:
         payload = deliveries[0]
         assert "text" in payload
         assert "blocks" in payload
-        assert payload["text"].startswith("Opsmender Created:")
+        assert payload["text"].startswith("OpsMender Created:")
 
     async def test_test_trigger_teams_format_uses_text_payload(
         self, client: AsyncClient, app, auth_headers, monkeypatch
@@ -1513,7 +1513,7 @@ class TestWebhookTriggers:
         payload = deliveries[-1]
         assert payload["eventType"] == "webhook.test"
         assert payload["source"] == "opsmender"
-        assert payload["message"].startswith("Opsmender Webhook.Test:")
+        assert payload["message"].startswith("OpsMender Webhook.Test:")
         assert payload["incidentTitle"] == "Webhook test incident"
         assert payload["sessionStatus"] == "completed"
         assert payload["session"]["id"] == "test-session"
@@ -2066,7 +2066,7 @@ class TestTelegramBotWebhook:
         )
 
         assert resp.status_code == 200
-        assert resp.json()["text"] == "This chat is not allowed to use Opsmender."
+        assert resp.json()["text"] == "This chat is not allowed to use OpsMender."
 
     async def test_telegram_webhook_respects_incident_lookup_capability(
         self, client: AsyncClient, auth_headers
@@ -2687,7 +2687,7 @@ class TestSignalBotWebhook:
                     },
                 }
             },
-            headers={"X-Opsmender-Webhook-Secret": "sig-secret"},
+            headers={"X-OpsMender-Webhook-Secret": "sig-secret"},
         )
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
@@ -2705,7 +2705,7 @@ class TestSignalBotWebhook:
         resp = await client.post(
             f"/bot-connectors/{connector_id}/signal/webhook",
             json={"envelope": {"source": "+1", "dataMessage": {"message": "/help"}}},
-            headers={"X-Opsmender-Webhook-Secret": "wrong"},
+            headers={"X-OpsMender-Webhook-Secret": "wrong"},
         )
         assert resp.status_code == 403
 

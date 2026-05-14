@@ -1,4 +1,4 @@
-"""JWT authentication and password hashing for Opsmender.
+"""JWT authentication and password hashing for OpsMender.
 
 Provides:
 - Password hashing via ``bcrypt`` directly (passlib has compatibility

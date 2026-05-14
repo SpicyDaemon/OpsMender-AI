@@ -194,7 +194,7 @@ class TestSignalAdapter:
         connector = _make_signal_connector()
         adapter.verify_webhook(
             connector,
-            headers={"X-Opsmender-Webhook-Secret": "sig-secret"},
+            headers={"X-OpsMender-Webhook-Secret": "sig-secret"},
             raw_body=b"",
         )
 

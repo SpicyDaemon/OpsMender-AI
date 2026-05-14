@@ -1,4 +1,4 @@
-"""Outbound delivery of Opsmender events into chat connectors."""
+"""Outbound delivery of OpsMender events into chat connectors."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def _format_session_event(
     incident,
 ) -> str:
     label = event_type.replace("session.", "").replace("_", " ").title()
-    lines = [f"*Opsmender Session {label}*", f"Session: `{session_id}`"]
+    lines = [f"*OpsMender Session {label}*", f"Session: `{session_id}`"]
     if session is not None:
         lines.append(f"Tier: `{session.tier}`")
         lines.append(f"Status: `{session.status}`")

@@ -2,7 +2,7 @@
 
 Targets the open-source ``signal-cli-rest-api`` bridge
 (https://github.com/bbernhard/signal-cli-rest-api), which exposes a
-simple HTTP wrapper around ``signal-cli`` that Opsmender operators can run as
+simple HTTP wrapper around ``signal-cli`` that OpsMender operators can run as
 a sidecar container. The bridge accepts:
 
     POST {service_url}/v2/send

@@ -1,4 +1,4 @@
-## Example: deploy Opsmender against an externally managed Postgres
+## Example: deploy OpsMender against an externally managed Postgres
 ## Usage:
 ##   helm install opsmender ./deploy/helm/opsmender -f values-external-db.yaml \
 ##     --set externalDatabase.url='postgresql+asyncpg://user:pass@db.example.com:5432/opsmender' \

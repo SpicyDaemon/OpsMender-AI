@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for Opsmender AI.
+"""SQLAlchemy ORM models for OpsMender AI.
 
 Maps the data model from REFERENCE.md to Postgres tables:
 - ``users``              — auth users with roles
@@ -109,7 +109,7 @@ class OrgSSOConfig(Base):
     """Per-organization SSO / OIDC configuration.
 
     One row per org (UNIQUE org_id). Drives the ``/auth/sso/{slug}/login``
-    flow: Opsmender redirects the user to the IdP described here, validates the
+    flow: OpsMender redirects the user to the IdP described here, validates the
     returned id_token, and JIT-provisions the user into the org.
     """
 
@@ -991,7 +991,7 @@ class BotConnector(Base):
 
 
 class BotUserLink(Base):
-    """Map an external chat platform user to an Opsmender user account."""
+    """Map an external chat platform user to an OpsMender user account."""
 
     __tablename__ = "bot_user_links"
 

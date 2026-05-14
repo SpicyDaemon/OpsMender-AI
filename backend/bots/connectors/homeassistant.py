@@ -26,7 +26,7 @@ class HomeAssistantAdapter:
                 kind="secret",
                 group="credentials",
                 required=True,
-                helper="Random string. Your HASS automation must send it as the X-Opsmender-Webhook-Secret header.",
+                helper="Random string. Your HASS automation must send it as the X-OpsMender-Webhook-Secret header.",
             ),
             FieldSpec(
                 name="service_url",
@@ -125,7 +125,7 @@ class HomeAssistantAdapter:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "title": "Opsmender Incident Update",
+                    "title": "OpsMender Incident Update",
                     "message": text,
                 },
                 timeout=10.0,

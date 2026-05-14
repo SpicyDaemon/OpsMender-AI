@@ -65,7 +65,7 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      title="Sign in to Opsmender"
+      title="Sign in to OpsMender"
       description="Open the operator console and pick up the next incident with full session context."
       eyebrow=""
       footer={(

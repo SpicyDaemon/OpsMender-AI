@@ -1,12 +1,12 @@
 # Integrations Guide
 
-Opsmender is built to sit at the center of your incident response ecosystem. It ingests alerts from your existing monitoring tools and broadcasts updates to your collaboration platforms.
+OpsMender is built to sit at the center of your incident response ecosystem. It ingests alerts from your existing monitoring tools and broadcasts updates to your collaboration platforms.
 
 ## 1. Incident Ingest Adapters
 
-Opsmender provides a unified `/incidents/ingest` webhook endpoint. To secure and route incoming alerts, you generate **Ingest Tokens**.
+OpsMender provides a unified `/incidents/ingest` webhook endpoint. To secure and route incoming alerts, you generate **Ingest Tokens**.
 
-Opsmender natively supports several popular monitoring tools:
+OpsMender natively supports several popular monitoring tools:
 - **LegacyAlertVendor:** Parses LegacyAlertVendor webhooks to extract incident details and severity.
 - **Datadog:** Parses Datadog monitor alerts.
 - **AWS CloudWatch (SNS):** Parses CloudWatch ALARM and OK states sent via SNS.
@@ -16,13 +16,13 @@ Opsmender natively supports several popular monitoring tools:
 - **LegacyAlertRelay:** Parses LegacyAlertRelay alert webhooks.
 
 **Universal (Auto) Adapter:**
-If your tool is not listed above, Opsmender provides an `auto` provider option. The Universal Adapter uses an LLM to dynamically inspect the incoming JSON payload, learn its structure, and extract the title, description, and severity automatically. It caches the structural mapping for performance on subsequent alerts.
+If your tool is not listed above, OpsMender provides an `auto` provider option. The Universal Adapter uses an LLM to dynamically inspect the incoming JSON payload, learn its structure, and extract the title, description, and severity automatically. It caches the structural mapping for performance on subsequent alerts.
 
 ## 2. Chat Bot Connectors
 
-Opsmender can expose selected incident workflows through external chat platforms. Connector setup lives in **Config** > **Integrations** and is also available through the `/bot-connectors` API.
+OpsMender can expose selected incident workflows through external chat platforms. Connector setup lives in **Config** > **Integrations** and is also available through the `/bot-connectors` API.
 
-Credentials are write-only: Opsmender shows whether credentials exist and which keys are stored, but it never returns raw credential values.
+Credentials are write-only: OpsMender shows whether credentials exist and which keys are stored, but it never returns raw credential values.
 
 ### Telegram
 
@@ -37,7 +37,7 @@ Telegram currently supports incident lookup, session status, and approval comman
 - `/reject <approval-id>` rejects a pending request.
 - `/chat <session-id> <message>` relays a message into the target session's
   co-pilot chat (requires the `copilot_chat` capability). The assistant
-  reply appears asynchronously in the Opsmender dashboard; outbound delivery of
+  reply appears asynchronously in the OpsMender dashboard; outbound delivery of
   the reply back into Telegram is a planned follow-up.
 - `/help` lists supported commands.
 
@@ -66,7 +66,7 @@ table along with its outcome (`ok`, `bad_args`, `not_found`,
 #### Outbound delivery
 
 When the connector has the `notifications` capability and at least one
-chat in `allowed_chat_ids`, Opsmender pushes a Telegram message for each
+chat in `allowed_chat_ids`, OpsMender pushes a Telegram message for each
 session lifecycle event (`session.created`, `session.awaiting_approval`,
 `session.active`, `session.completed`, `session.failed`,
 `session.timed_out`) to every listed chat.
@@ -83,7 +83,7 @@ entirely from Telegram. Outbound delivery uses the connector's
 Read-only commands work for any chat user with access to the connector's
 allowed chats. Mutating commands (`/approve`, `/reject`, `/chat`)
 additionally require the Telegram user ID (`message.from.id`) to be
-linked to an Opsmender user. Admins create the mapping via:
+linked to an OpsMender user. Admins create the mapping via:
 
 ```bash
 curl -X POST https://<your-opsmender-url>/bot-connectors/<connector-id>/user-links \
@@ -92,7 +92,7 @@ curl -X POST https://<your-opsmender-url>/bot-connectors/<connector-id>/user-lin
   -d '{"platform_user_id": "12345678", "opsmender_user_id": "<opsmender-user-uuid>"}'
 ```
 
-Linked users still need an Opsmender role of `admin` or `operator` to run any
+Linked users still need an OpsMender role of `admin` or `operator` to run any
 mutating command. Viewers are blocked with a `role_denied` reply.
 Unlinked users see a "not linked" reply that includes their Telegram
 user ID for the admin to copy.
@@ -138,11 +138,11 @@ Set the inbound webhook URL on your relay to:
 POST https://<your-opsmender-url>/bot-connectors/<connector-id>/signal/webhook
 ```
 
-`signal-cli-rest-api` does not sign its own webhooks, so Opsmender expects an
+`signal-cli-rest-api` does not sign its own webhooks, so OpsMender expects an
 intermediary (nginx, Caddy, or a small forwarder) to inject:
 
 ```text
-X-Opsmender-Webhook-Secret: <webhook_secret>
+X-OpsMender-Webhook-Secret: <webhook_secret>
 ```
 
 Replies are delivered asynchronously through the bridge — Signal does
@@ -172,7 +172,7 @@ https://<your-opsmender-url>/bot-connectors/<connector-id>/whatsapp/webhook
 ```
 
 Ensure you select `messages` under **Webhook fields** in the Meta
-configuration. Opsmender verifies every inbound request using HMAC-SHA256
+configuration. OpsMender verifies every inbound request using HMAC-SHA256
 signatures (`X-Hub-Signature-256`) against your `app_secret`.
 
 Identity mapping (RBAC) works the same as Telegram: use the
@@ -196,7 +196,7 @@ Set the **Request URL** in the Slack App Dashboard (under **Event Subscriptions*
 https://<your-opsmender-url>/bot-connectors/<connector-id>/slack/webhook
 ```
 
-Ensure you subscribe to the `message.channels` bot event. Opsmender verifies every inbound request using HMAC-SHA256 signatures (`X-Slack-Signature`) against your `signing_secret`.
+Ensure you subscribe to the `message.channels` bot event. OpsMender verifies every inbound request using HMAC-SHA256 signatures (`X-Slack-Signature`) against your `signing_secret`.
 
 Identity mapping (RBAC): Use the Slack User ID (e.g., `U0123456789`) as the platform user ID.
 
@@ -217,7 +217,7 @@ Set the **Interactions Endpoint URL** in the Discord Developer Portal to:
 https://<your-opsmender-url>/bot-connectors/<connector-id>/discord/webhook
 ```
 
-Opsmender verifies every inbound interaction using Ed25519 signatures (`X-Signature-Ed25519`) against your `public_key`.
+OpsMender verifies every inbound interaction using Ed25519 signatures (`X-Signature-Ed25519`) against your `public_key`.
 
 Identity mapping (RBAC): Use the Discord User ID (e.g., `123456789012345678`) as the platform user ID.
 
@@ -261,7 +261,7 @@ Set the inbound webhook URL on your Matrix relay/app-service to:
 POST https://<your-opsmender-url>/bot-connectors/<connector-id>/matrix/webhook
 ```
 
-Opsmender expects an `Authorization: Bearer <webhook_secret>` header on inbound requests.
+OpsMender expects an `Authorization: Bearer <webhook_secret>` header on inbound requests.
 
 Identity mapping (RBAC): Use the Matrix User ID (e.g., `@user:matrix.org`) as the platform user ID.
 
@@ -306,7 +306,7 @@ Optional connector config:
 }
 ```
 
-If `webhook_url` is provided in the config, Opsmender will use it for all outbound delivery. Otherwise, it will use the App Key/Secret to fetch a token and use the standard Robot API.
+If `webhook_url` is provided in the config, OpsMender will use it for all outbound delivery. Otherwise, it will use the App Key/Secret to fetch a token and use the standard Robot API.
 
 Set the **POST URL** in the DingTalk Robot settings to:
 
@@ -338,7 +338,7 @@ Set the **URL** in the WeCom Management Console (under **Customer Service** or *
 https://<your-opsmender-url>/bot-connectors/<connector-id>/wecom/webhook
 ```
 
-Opsmender automatically handles the decryption and signature verification of the XML payloads.
+OpsMender automatically handles the decryption and signature verification of the XML payloads.
 
 Identity mapping (RBAC): Use the WeCom UserID (e.g., `Siddharth`) as the platform user ID.
 
@@ -382,7 +382,7 @@ Required connector config:
 }
 ```
 
-Set the **A MESSAGE COMES IN** webhook in the Twilio Phone Number settings to the `webhook_url` above. Opsmender verifies every inbound SMS using Twilio's signature validation.
+Set the **A MESSAGE COMES IN** webhook in the Twilio Phone Number settings to the `webhook_url` above. OpsMender verifies every inbound SMS using Twilio's signature validation.
 
 Identity mapping (RBAC): Use the sender's phone number (e.g., `+15550100`) as the platform user ID.
 
@@ -404,13 +404,13 @@ Set up a **Route** in Mailgun to forward emails to:
 POST https://<your-opsmender-url>/bot-connectors/<connector-id>/email/webhook
 ```
 
-Opsmender verifies the Mailgun signature if the API key is provided.
+OpsMender verifies the Mailgun signature if the API key is provided.
 
 Identity mapping (RBAC): Use the sender's email address (e.g., `operator@company.com`) as the platform user ID.
 
 ### Home Assistant
 
-Home Assistant integration allows Opsmender to push actionable notifications to your HASS dashboard and receive commands from HASS automations.
+Home Assistant integration allows OpsMender to push actionable notifications to your HASS dashboard and receive commands from HASS automations.
 
 Required connector credentials:
 
@@ -451,10 +451,10 @@ Identity mapping (RBAC): Use the sender's phone number or Apple ID (e.g., `+1555
 
 ## 3. Outbound Webhooks
 
-Opsmender can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.
+OpsMender can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.
 
 1. Navigate to **Config** > **Webhooks**.
-2. Opsmender supports formatted payloads for:
+2. OpsMender supports formatted payloads for:
    - **Slack:** Sends beautifully formatted block-kit messages with incident details and links.
    - **Microsoft Teams:** Sends adaptive cards.
    - **Sumo Logic:** Sends structured JSON for ingestion into log analytics.
@@ -462,8 +462,8 @@ Opsmender can push real-time updates about incident sessions, AI actions, and SL
 
 ## 4. Docker Deployment Basics
 
-If you are deploying Opsmender in a production environment, use the provided Dockerfiles.
+If you are deploying OpsMender in a production environment, use the provided Dockerfiles.
 
 - The repository includes a `docker-compose.yml` that orchestrates the backend (`fastapi`), frontend (`nextjs`), and the PostgreSQL database.
 - **Environment Variables:** Ensure you map `DATABASE_URL` and your encryption keys (`OPSMENDER_SECRET_KEY`) securely.
-- **Networking:** The MCP servers can be run as sidecar containers or standalone services, provided the Opsmender backend container has network access to them.
+- **Networking:** The MCP servers can be run as sidecar containers or standalone services, provided the OpsMender backend container has network access to them.

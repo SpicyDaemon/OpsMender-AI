@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "license": "MIT",
-  "description": "Opsmender AI dashboard (Next.js static export)",
+  "description": "OpsMender AI dashboard (Next.js static export)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/SpicyDaemon/OpsMender-AI.git"

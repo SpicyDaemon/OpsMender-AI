@@ -1,6 +1,6 @@
 """Tests for Slack / Discord OAuth flow on bot connectors (Sprint 31 Steps 5–6).
 
-We test the surface Opsmender owns:
+We test the surface OpsMender owns:
 - AppConfig env wiring + per-platform is_enabled gate.
 - State JWT sign/verify (TTL, tampering).
 - Authorize URL builder shape.
@@ -264,7 +264,7 @@ class TestCodeExchange:
                 lambda req: _mock_httpx_response(
                     payload={
                         "access_token": "discord-token",
-                        "guild": {"name": "Opsmender Guild"},
+                        "guild": {"name": "OpsMender Guild"},
                     }
                 )
             )
@@ -277,7 +277,7 @@ class TestCodeExchange:
                 cfg=self.DISCORD_CFG,
             )
         assert result.credentials == {"bot_token": "discord-token"}
-        assert "Opsmender Guild" in result.detail
+        assert "OpsMender Guild" in result.detail
 
 
 # ---------------------------------------------------------------------------

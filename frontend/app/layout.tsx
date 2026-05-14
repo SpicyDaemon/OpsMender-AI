@@ -19,28 +19,28 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Opsmender — Opsmender AI",
-    template: "%s | Opsmender",
+    default: "OpsMender — OpsMender AI",
+    template: "%s | OpsMender",
   },
   description:
     "Open-source AI-powered incident response framework with tiered access controls. Connect AI agents to infrastructure via MCP servers.",
   icons: {
-    icon: { url: "/Opsmender-Dark.png", type: "image/png", sizes: "605x588" },
-    apple: { url: "/Opsmender-Dark.png", sizes: "180x180" },
+    icon: { url: "/OpsMender-Dark.png", type: "image/png", sizes: "605x588" },
+    apple: { url: "/OpsMender-Dark.png", sizes: "180x180" },
   },
   openGraph: {
-    title: "Opsmender — Opsmender AI",
+    title: "OpsMender — OpsMender AI",
     description:
       "Open-source AI-powered incident response framework with tiered access controls.",
     type: "website",
-    images: [{ url: "/Opsmender-Dark.png", width: 605, height: 588, alt: "Opsmender — Opsmender AI" }],
+    images: [{ url: "/OpsMender-Dark.png", width: 605, height: 588, alt: "OpsMender — OpsMender AI" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Opsmender — Opsmender AI",
+    title: "OpsMender — OpsMender AI",
     description:
       "Open-source AI-powered incident response framework with tiered access controls.",
-    images: ["/Opsmender-Dark.png"],
+    images: ["/OpsMender-Dark.png"],
   },
 };
 

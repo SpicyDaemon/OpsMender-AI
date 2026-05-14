@@ -1,6 +1,6 @@
 """SAML 2.0 SP helper used by the per-tenant SAML SSO flow (Sprint 30).
 
-Wraps ``python3-saml`` (OneLogin) to keep the surface Opsmender uses small:
+Wraps ``python3-saml`` (OneLogin) to keep the surface OpsMender uses small:
 
 * :func:`build_settings` — assemble the dict ``OneLogin_Saml2_Auth`` expects
   from the per-tenant DB row + the global SP keypair from env.
@@ -272,7 +272,7 @@ def render_sp_metadata(settings: OneLogin_Saml2_Settings) -> str:
 
 
 def split_base_url(public_url: str) -> tuple[str, bool, str, int, str]:
-    """Decompose a public Opsmender URL into the parts ``OneLogin_Saml2_Auth`` needs.
+    """Decompose a public OpsMender URL into the parts ``OneLogin_Saml2_Auth`` needs.
 
     Returns ``(base_url_without_path, https, host, port, request_uri)``.
     """

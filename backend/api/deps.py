@@ -1,4 +1,4 @@
-"""FastAPI dependency providers for Opsmender.
+"""FastAPI dependency providers for OpsMender.
 
 Centralises all injectable dependencies:
 

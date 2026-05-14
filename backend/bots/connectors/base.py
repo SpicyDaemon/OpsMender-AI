@@ -41,7 +41,7 @@ class InboundMessage:
     """Normalized inbound chat message.
 
     ``chat_id`` and ``platform_user_id`` are opaque strings whose meaning
-    is platform-specific; Opsmender uses them only as map keys for allowlists,
+    is platform-specific; OpsMender uses them only as map keys for allowlists,
     rate-limit buckets, and ``bot_user_links`` lookup.
     """
 

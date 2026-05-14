@@ -7,7 +7,7 @@ Two routes:
   and a nonce so we don't need server-side state.
 * ``GET /auth/sso/{slug}/callback`` — exchanges the code, verifies the
   id_token, JIT-provisions the user, and redirects to the dashboard with
-  the Opsmender JWT in the URL fragment.
+  the OpsMender JWT in the URL fragment.
 
 Logout is handled the existing way (frontend clears the token); IdP-side
 single-logout (SLO) is intentionally out of scope for v1.

@@ -38,7 +38,7 @@ class DispatchResult:
 
 
 _HELP_TEXT = (
-    "Opsmender connector commands:\n"
+    "OpsMender connector commands:\n"
     "/incidents - list recent incidents\n"
     "/incident <id> - show one incident\n"
     "/sessions - list recent sessions\n"
@@ -237,7 +237,7 @@ async def dispatch_inbound(
             status="chat_not_allowed",
             detail=f"from={platform_user_id}" if platform_user_id else None,
         )
-        return DispatchResult(reply_text="This chat is not allowed to use Opsmender.")
+        return DispatchResult(reply_text="This chat is not allowed to use OpsMender.")
 
     text = message.text
     command, _, raw_arg = text.partition(" ")
@@ -283,7 +283,7 @@ async def dispatch_inbound(
             )
             return DispatchResult(
                 reply_text=(
-                    "This user is not linked to an Opsmender account. "
+                    "This user is not linked to an OpsMender account. "
                     f"Ask an admin to link platform user `{platform_user_id}` "
                     "via `POST /bot-connectors/<id>/user-links`."
                 ),
@@ -301,7 +301,7 @@ async def dispatch_inbound(
             )
             return DispatchResult(
                 reply_text=(
-                    f"Your Opsmender role `{opsmender_user.role}` cannot run `{command}`. "
+                    f"Your OpsMender role `{opsmender_user.role}` cannot run `{command}`. "
                     f"Required: {', '.join(sorted(required_roles))}."
                 ),
             )
@@ -491,7 +491,7 @@ async def dispatch_inbound(
         return DispatchResult(
             reply_text=(
                 f"Message relayed to session `{target_session_id}`. "
-                "The co-pilot reply will appear in the Opsmender dashboard."
+                "The co-pilot reply will appear in the OpsMender dashboard."
             ),
         )
 

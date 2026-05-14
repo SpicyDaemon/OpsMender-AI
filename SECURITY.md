@@ -13,13 +13,13 @@ Only the latest `1.x` minor release receives security patches. Older versions wi
 
 Please do **not** file security issues as public GitHub issues.
 
-Report vulnerabilities privately by emailing **noreply@opsmender.local** with the subject line `Opsmender SECURITY: <short description>`.
+Report vulnerabilities privately by emailing **noreply@opsmender.local** with the subject line `OpsMender SECURITY: <short description>`.
 
 Include:
 
 - A description of the issue and the impact you believe it has
 - Steps to reproduce (minimal PoC preferred)
-- The version / commit of Opsmender you tested against
+- The version / commit of OpsMender you tested against
 - Any suggested remediation if you have one
 
 ## What to expect
@@ -50,7 +50,7 @@ Out of scope:
 
 ## Hardening expectations
 
-Opsmender is meant to be deployed inside an organization's trusted network. The threat model assumes:
+OpsMender is meant to be deployed inside an organization's trusted network. The threat model assumes:
 
 - Administrators are trusted.
 - Operators and viewers are authenticated and authorized via the built-in JWT + role model.

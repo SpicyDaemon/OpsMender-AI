@@ -20,7 +20,7 @@ Design decision (see docs/REFERENCE.md → "Tier 0 sandbox"):
 The sandbox is tier-gate-native and composes with the existing skill +
 tier enforcement in ``backend.tiers.enforcement.check``.  It adds no
 infra-level containment (cgroups, containers) — that would require host
-privileges Opsmender can't assume across Docker / binary / local installs.
+privileges OpsMender can't assume across Docker / binary / local installs.
 
 Usage::
 

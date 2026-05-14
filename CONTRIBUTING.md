@@ -1,6 +1,6 @@
-# Contributing to Opsmender AI
+# Contributing to OpsMender AI
 
-Thanks for your interest in Opsmender. This guide covers the local setup, the test loop, and how we review pull requests.
+Thanks for your interest in OpsMender. This guide covers the local setup, the test loop, and how we review pull requests.
 
 ## Code of Conduct
 
@@ -8,7 +8,7 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Local setup
 
-Opsmender has a Python backend (FastAPI + LangGraph) and a Next.js static export for the dashboard.
+OpsMender has a Python backend (FastAPI + LangGraph) and a Next.js static export for the dashboard.
 
 ### Prerequisites
 
@@ -99,7 +99,7 @@ Use the PR template. Reviewers will focus on:
 
 ## Architecture guardrails
 
-Opsmender has a few deliberate invariants — please read [docs/REFERENCE.md](docs/REFERENCE.md) before proposing changes in these areas:
+OpsMender has a few deliberate invariants — please read [docs/REFERENCE.md](docs/REFERENCE.md) before proposing changes in these areas:
 
 - **Tier gate is programmatic.** It cannot be bypassed by agent reasoning.
 - **MCP-first.** No provider-specific integrations for infrastructure access.

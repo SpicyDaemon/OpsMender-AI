@@ -1,1 +1,1 @@
-# backend/api — FastAPI REST + WebSocket layer for Opsmender AI (Phase 2).
+# backend/api — FastAPI REST + WebSocket layer for OpsMender AI (Phase 2).

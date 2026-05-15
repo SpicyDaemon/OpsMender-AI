@@ -22,12 +22,15 @@ from backend.db.models import Base, Organization
 from backend.db.repos import (
     IncidentAssignmentRepo,
     IncidentRepo,
+    MaintenanceWindowRepo,
     OrganizationRepo,
     PriorityRuleRepo,
     RosterOverrideRepo,
     RosterRepo,
     ServiceRepo,
     TeamRepo,
+    UserNotificationPrefRepo,
+    UserRepo,
 )
 from backend.paging.on_call import (
     OnCallContext,
@@ -42,7 +45,6 @@ from backend.paging.priority import (
     rule_matches,
 )
 
-
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
@@ -56,9 +58,7 @@ async def app(tmp_path):
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
-        session.add(
-            Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
-        )
+        session.add(Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org"))
         await session.commit()
     set_session_factory(factory)
 
@@ -139,8 +139,7 @@ class TestOnCallAt:
     def _ctx(self, users, **kwargs):
         return OnCallContext(
             members=[
-                OnCallMember(user_id=u, position_index=i)
-                for i, u in enumerate(users)
+                OnCallMember(user_id=u, position_index=i) for i, u in enumerate(users)
             ],
             anchor_date=kwargs.get("anchor_date", date(2026, 5, 4)),
             pattern=kwargs.get("pattern", "weekly"),
@@ -152,58 +151,34 @@ class TestOnCallAt:
     def test_weekly_rotation(self):
         u1, u2, u3 = (uuid.uuid4() for _ in range(3))
         ctx = self._ctx([u1, u2, u3])
-        assert on_call_at(
-            ctx, datetime(2026, 5, 5, 12, tzinfo=timezone.utc)
-        ) == u1
-        assert on_call_at(
-            ctx, datetime(2026, 5, 12, 12, tzinfo=timezone.utc)
-        ) == u2
-        assert on_call_at(
-            ctx, datetime(2026, 5, 19, 12, tzinfo=timezone.utc)
-        ) == u3
+        assert on_call_at(ctx, datetime(2026, 5, 5, 12, tzinfo=timezone.utc)) == u1
+        assert on_call_at(ctx, datetime(2026, 5, 12, 12, tzinfo=timezone.utc)) == u2
+        assert on_call_at(ctx, datetime(2026, 5, 19, 12, tzinfo=timezone.utc)) == u3
         # Wraps after three weeks.
-        assert on_call_at(
-            ctx, datetime(2026, 5, 26, 12, tzinfo=timezone.utc)
-        ) == u1
+        assert on_call_at(ctx, datetime(2026, 5, 26, 12, tzinfo=timezone.utc)) == u1
 
     def test_daily_rotation(self):
         u1, u2 = uuid.uuid4(), uuid.uuid4()
         ctx = self._ctx([u1, u2], pattern="daily", pattern_length=1)
-        assert on_call_at(
-            ctx, datetime(2026, 5, 4, 12, tzinfo=timezone.utc)
-        ) == u1
-        assert on_call_at(
-            ctx, datetime(2026, 5, 5, 12, tzinfo=timezone.utc)
-        ) == u2
+        assert on_call_at(ctx, datetime(2026, 5, 4, 12, tzinfo=timezone.utc)) == u1
+        assert on_call_at(ctx, datetime(2026, 5, 5, 12, tzinfo=timezone.utc)) == u2
 
     def test_custom_n_days_rotation(self):
         u1, u2, u3 = (uuid.uuid4() for _ in range(3))
-        ctx = self._ctx(
-            [u1, u2, u3], pattern="custom_n_days", pattern_length=3
-        )
+        ctx = self._ctx([u1, u2, u3], pattern="custom_n_days", pattern_length=3)
         # Day 0–2 → u1, day 3–5 → u2, day 6–8 → u3
-        assert on_call_at(
-            ctx, datetime(2026, 5, 5, 12, tzinfo=timezone.utc)
-        ) == u1
-        assert on_call_at(
-            ctx, datetime(2026, 5, 7, 12, tzinfo=timezone.utc)
-        ) == u2
-        assert on_call_at(
-            ctx, datetime(2026, 5, 10, 12, tzinfo=timezone.utc)
-        ) == u3
+        assert on_call_at(ctx, datetime(2026, 5, 5, 12, tzinfo=timezone.utc)) == u1
+        assert on_call_at(ctx, datetime(2026, 5, 7, 12, tzinfo=timezone.utc)) == u2
+        assert on_call_at(ctx, datetime(2026, 5, 10, 12, tzinfo=timezone.utc)) == u3
 
     def test_handoff_boundary(self):
         u1, u2 = uuid.uuid4(), uuid.uuid4()
         ctx = self._ctx([u1, u2], pattern="daily", pattern_length=1)
         # 08:00 on day 1 is still the previous shift (anchor day = u1, day1 = u2 normally
         # but 08:00 < 09:00 handoff so we stay on u1).
-        assert on_call_at(
-            ctx, datetime(2026, 5, 5, 8, 0, tzinfo=timezone.utc)
-        ) == u1
+        assert on_call_at(ctx, datetime(2026, 5, 5, 8, 0, tzinfo=timezone.utc)) == u1
         # 10:00 same day flips.
-        assert on_call_at(
-            ctx, datetime(2026, 5, 5, 10, 0, tzinfo=timezone.utc)
-        ) == u2
+        assert on_call_at(ctx, datetime(2026, 5, 5, 10, 0, tzinfo=timezone.utc)) == u2
 
     def test_override_wins(self):
         u1, u2, u3 = (uuid.uuid4() for _ in range(3))
@@ -223,16 +198,11 @@ class TestOnCallAt:
             handoff_time=ctx.handoff_time,
             time_zone=ctx.time_zone,
         )
-        assert on_call_at(
-            ov_ctx, datetime(2026, 5, 5, 10, tzinfo=timezone.utc)
-        ) == u3
+        assert on_call_at(ov_ctx, datetime(2026, 5, 5, 10, tzinfo=timezone.utc)) == u3
 
     def test_empty_roster_returns_none(self):
         ctx = OnCallContext(members=[], anchor_date=date(2026, 5, 4))
-        assert (
-            on_call_at(ctx, datetime(2026, 5, 5, 10, tzinfo=timezone.utc))
-            is None
-        )
+        assert on_call_at(ctx, datetime(2026, 5, 5, 10, tzinfo=timezone.utc)) is None
 
     def test_timezone_handling(self):
         u1, u2 = uuid.uuid4(), uuid.uuid4()
@@ -255,14 +225,10 @@ class TestOnCallAt:
 class TestPriority:
     def test_rule_matches_list_or(self):
         assert rule_matches({"severity": ["critical", "high"]}, {"severity": "high"})
-        assert not rule_matches(
-            {"severity": ["critical"]}, {"severity": "warning"}
-        )
+        assert not rule_matches({"severity": ["critical"]}, {"severity": "warning"})
 
     def test_rule_matches_case_insensitive(self):
-        assert rule_matches(
-            {"severity": ["Critical"]}, {"severity": "critical"}
-        )
+        assert rule_matches({"severity": ["Critical"]}, {"severity": "critical"})
 
     def test_rule_missing_key_does_not_match(self):
         assert not rule_matches({"missing": ["x"]}, {"other": "x"})
@@ -452,9 +418,7 @@ class TestRepos:
                 db, TEST_ORG_ID, roster.id, ordered_user_ids=[u2.id, u1.id]
             )
             await db.commit()
-            members = await RosterRepo.list_members(
-                db, TEST_ORG_ID, roster.id
-            )
+            members = await RosterRepo.list_members(db, TEST_ORG_ID, roster.id)
             assert [m.user_id for m in members] == [u2.id, u1.id]
 
     async def test_priority_rule_llm_log(self, app):
@@ -476,10 +440,95 @@ class TestRepos:
             )
             await db.commit()
 
+    async def test_org_notification_dedup_setting(self, app):
+        async with app.state.session_factory() as db:
+            org = await OrganizationRepo.update(
+                db, TEST_ORG_ID, notification_dedup_window_minutes=15
+            )
+            await db.commit()
+
+            assert org is not None
+            assert org.notification_dedup_window_minutes == 15
+
+    async def test_maintenance_window_scopes(self, app):
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(db, TEST_ORG_ID, name="Ops", slug="ops")
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="API",
+                slug="api",
+            )
+            now = datetime(2026, 5, 15, 12, 0, tzinfo=timezone.utc)
+            await MaintenanceWindowRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="All hands",
+                description="Global deploy freeze",
+                starts_at=now - timedelta(minutes=5),
+                ends_at=now + timedelta(minutes=5),
+                scope_type="global",
+            )
+            scoped = await MaintenanceWindowRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="API deploy",
+                starts_at=now - timedelta(minutes=5),
+                ends_at=now + timedelta(minutes=5),
+                scope_type="service",
+                scope_id=service.id,
+            )
+            await db.commit()
+
+            active = await MaintenanceWindowRepo.list_active_at(
+                db,
+                TEST_ORG_ID,
+                now,
+                scope_type="service",
+                scope_id=service.id,
+            )
+            assert {window.name for window in active} == {"All hands", "API deploy"}
+            assert scoped.target_ids == []
+
+    async def test_user_notification_pref_upsert(self, app):
+        async with app.state.session_factory() as db:
+            user = await UserRepo.create(
+                db,
+                username="notify@test",
+                email="notify@test.com",
+                password_hash="x",
+                role="viewer",
+                primary_org_id=TEST_ORG_ID,
+            )
+            pref = await UserNotificationPrefRepo.upsert(
+                db,
+                TEST_ORG_ID,
+                user.id,
+                channels={"email": "notify@test.com"},
+                routing={"P0": ["email"], "P1": ["email"]},
+                quiet_hours={"weekday_start": "22:00", "min_priority_to_break": "P0"},
+                quiet_hours_provided=True,
+            )
+            await db.commit()
+
+            assert pref.channels["email"] == "notify@test.com"
+            assert pref.routing["P0"] == ["email"]
+
+            updated = await UserNotificationPrefRepo.upsert(
+                db,
+                TEST_ORG_ID,
+                user.id,
+                routing={"P0": ["sms"]},
+            )
+            await db.commit()
+
+            assert updated.id == pref.id
+            assert updated.channels["email"] == "notify@test.com"
+            assert updated.routing == {"P0": ["sms"]}
+
     async def test_incident_assignment_replaces_active(self, app):
         async with app.state.session_factory() as db:
-            from backend.db.repos import UserRepo
-
             inc = await IncidentRepo.create(
                 db, TEST_ORG_ID, title="t", description="d", severity="high"
             )
@@ -506,9 +555,7 @@ class TestRepos:
                 db, TEST_ORG_ID, incident_id=inc.id, user_id=u2.id
             )
             await db.commit()
-            active = await IncidentAssignmentRepo.get_active(
-                db, TEST_ORG_ID, inc.id
-            )
+            active = await IncidentAssignmentRepo.get_active(db, TEST_ORG_ID, inc.id)
             assert active.assigned_to == u2.id
             history = await IncidentAssignmentRepo.list_for_incident(
                 db, TEST_ORG_ID, inc.id
@@ -542,9 +589,7 @@ class TestPagingAPI:
         )
         assert dup.status_code == 409
 
-        deleted = await client.delete(
-            f"/teams/{team_id}", headers=auth_headers
-        )
+        deleted = await client.delete(f"/teams/{team_id}", headers=auth_headers)
         assert deleted.status_code == 204
 
     async def test_service_requires_existing_team(
@@ -674,9 +719,7 @@ class TestPagingAPI:
         assert body["response_mode"] == "page"
         assert body["assignment"] is None
 
-    async def test_incident_assign_and_release(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_incident_assign_and_release(self, client: AsyncClient, auth_headers):
         create = await client.post(
             "/incidents",
             json={"title": "x", "description": "y", "severity": "low"},

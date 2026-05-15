@@ -53,6 +53,7 @@ from backend.db.models import (
     SessionMessage,
     Skill,
     User,
+    UserNotificationPref,
     WebhookTrigger,
     WorkflowProfile,
     SLATarget,
@@ -122,7 +123,9 @@ class UserRepo:
                 UserOrganization.role,
                 UserOrganization.joined_at,
             )
-            .select_from(join(User, UserOrganization, User.id == UserOrganization.user_id))
+            .select_from(
+                join(User, UserOrganization, User.id == UserOrganization.user_id)
+            )
             .where(UserOrganization.org_id == org_id)
             .order_by(UserOrganization.joined_at)
         )
@@ -2482,20 +2485,26 @@ class MaintenanceWindowRepo:
         *,
         name: str,
         reason: str | None = None,
+        description: str | None = None,
         starts_at: datetime,
         ends_at: datetime,
         rrule: str | None = None,
-        target_ids: list[str],
+        target_ids: list[str] | None = None,
+        scope_type: str = "global",
+        scope_id: uuid.UUID | None = None,
         created_by: uuid.UUID | None = None,
     ) -> MaintenanceWindow:
         mw = MaintenanceWindow(
             org_id=org_id,
             name=name,
             reason=reason,
+            description=description,
             starts_at=starts_at,
             ends_at=ends_at,
             rrule=rrule,
-            target_ids=target_ids,
+            target_ids=target_ids or [],
+            scope_type=scope_type,
+            scope_id=scope_id,
             created_by=created_by,
         )
         db.add(mw)
@@ -2534,18 +2543,33 @@ class MaintenanceWindowRepo:
 
     @staticmethod
     async def list_active_at(
-        db: AsyncSession, org_id: uuid.UUID, dt: datetime
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        dt: datetime,
+        *,
+        scope_type: str | None = None,
+        scope_id: uuid.UUID | None = None,
     ) -> Sequence[MaintenanceWindow]:
-        """Return all maintenance windows active exactly at `dt`.
-        For v1, we simply check starts_at <= dt <= ends_at. RRULE is omitted from this quick check for now.
+        """Return maintenance windows active exactly at ``dt``.
+
+        RRULE is omitted from this quick check for now. When a scope is
+        provided, global windows are included alongside matching scoped ones.
         """
         stmt = (
             select(MaintenanceWindow)
             .where(MaintenanceWindow.org_id == org_id)
-            .where(MaintenanceWindow.org_id == org_id)
-            .where(MaintenanceWindow.org_id == org_id)
-            .where(MaintenanceWindow.starts_at <= dt, MaintenanceWindow.ends_at >= dt)
+            .where(MaintenanceWindow.starts_at <= dt, MaintenanceWindow.ends_at > dt)
         )
+        if scope_type is not None:
+            from sqlalchemy import and_, or_
+
+            scoped_match = and_(
+                MaintenanceWindow.scope_type == scope_type,
+                MaintenanceWindow.scope_id == scope_id,
+            )
+            stmt = stmt.where(
+                or_(MaintenanceWindow.scope_type == "global", scoped_match)
+            )
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -2558,17 +2582,24 @@ class MaintenanceWindowRepo:
         name: str | None = None,
         reason: str | None = None,
         reason_provided: bool = False,
+        description: str | None = None,
+        description_provided: bool = False,
         starts_at: datetime | None = None,
         ends_at: datetime | None = None,
         rrule: str | None = None,
         rrule_provided: bool = False,
         target_ids: list[str] | None = None,
+        scope_type: str | None = None,
+        scope_id: uuid.UUID | None = None,
+        scope_id_provided: bool = False,
     ) -> MaintenanceWindow | None:
         values: dict[str, Any] = {}
         if name is not None:
             values["name"] = name
         if reason_provided:
             values["reason"] = reason
+        if description_provided:
+            values["description"] = description
         if starts_at is not None:
             values["starts_at"] = starts_at
         if ends_at is not None:
@@ -2577,6 +2608,10 @@ class MaintenanceWindowRepo:
             values["rrule"] = rrule
         if target_ids is not None:
             values["target_ids"] = target_ids
+        if scope_type is not None:
+            values["scope_type"] = scope_type
+        if scope_id_provided:
+            values["scope_id"] = scope_id
         if not values:
             return await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
         stmt = (
@@ -2601,6 +2636,52 @@ class MaintenanceWindowRepo:
         await db.delete(mw)
         await db.flush()
         return True
+
+
+class UserNotificationPrefRepo:
+    @staticmethod
+    async def get_for_user(
+        db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID
+    ) -> UserNotificationPref | None:
+        stmt = select(UserNotificationPref).where(
+            UserNotificationPref.org_id == org_id,
+            UserNotificationPref.user_id == user_id,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        channels: dict[str, Any] | None = None,
+        routing: dict[str, Any] | None = None,
+        quiet_hours: dict[str, Any] | None = None,
+        quiet_hours_provided: bool = False,
+    ) -> UserNotificationPref:
+        pref = await UserNotificationPrefRepo.get_for_user(db, org_id, user_id)
+        if pref is None:
+            pref = UserNotificationPref(
+                org_id=org_id,
+                user_id=user_id,
+                channels=channels or {},
+                routing=routing or {},
+                quiet_hours=quiet_hours if quiet_hours_provided else None,
+            )
+            db.add(pref)
+            await db.flush()
+            return pref
+
+        if channels is not None:
+            pref.channels = channels
+        if routing is not None:
+            pref.routing = routing
+        if quiet_hours_provided:
+            pref.quiet_hours = quiet_hours
+        pref.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return pref
 
 
 class BotConnectorRepo:
@@ -2886,10 +2967,19 @@ class BotActionAuditRepo:
         result = await db.execute(stmt)
         return result.scalars().all()
 
+
 class OrganizationRepo:
     @staticmethod
-    async def create(db: AsyncSession, *, name: str, slug: str | None = None, branding: dict | None = None) -> Organization:
-        org = Organization(name=name, slug=slug or name.lower().replace(" ", "-"), branding=branding)
+    async def create(
+        db: AsyncSession,
+        *,
+        name: str,
+        slug: str | None = None,
+        branding: dict | None = None,
+    ) -> Organization:
+        org = Organization(
+            name=name, slug=slug or name.lower().replace(" ", "-"), branding=branding
+        )
         db.add(org)
         await db.flush()
         return org
@@ -2917,6 +3007,7 @@ class OrganizationRepo:
         name: str | None = None,
         slug: str | None = None,
         branding: dict | None = None,
+        notification_dedup_window_minutes: int | None = None,
     ) -> Organization | None:
         values: dict[str, Any] = {}
         if name is not None:
@@ -2925,15 +3016,15 @@ class OrganizationRepo:
             values["slug"] = slug
         if branding is not None:
             values["branding"] = branding
+        if notification_dedup_window_minutes is not None:
+            values["notification_dedup_window_minutes"] = (
+                notification_dedup_window_minutes
+            )
 
         if not values:
             return await OrganizationRepo.get_by_id(db, org_id)
 
-        stmt = (
-            update(Organization)
-            .where(Organization.id == org_id)
-            .values(**values)
-        )
+        stmt = update(Organization).where(Organization.id == org_id).values(**values)
         result = await db.execute(stmt)
         if not result.rowcount:
             return None
@@ -2991,7 +3082,9 @@ class OrganizationDomainRepo:
         stmt = (
             select(OrganizationDomain)
             .where(OrganizationDomain.org_id == org_id)
-            .order_by(OrganizationDomain.is_primary.desc(), OrganizationDomain.created_at)
+            .order_by(
+                OrganizationDomain.is_primary.desc(), OrganizationDomain.created_at
+            )
         )
         result = await db.execute(stmt)
         return result.scalars().all()
@@ -3003,9 +3096,7 @@ class OrganizationDomainRepo:
         return await db.get(OrganizationDomain, domain_id)
 
     @staticmethod
-    async def find_by_host(
-        db: AsyncSession, host: str
-    ) -> OrganizationDomain | None:
+    async def find_by_host(db: AsyncSession, host: str) -> OrganizationDomain | None:
         normalized = OrganizationDomainRepo.normalize(host)
         if not normalized:
             return None
@@ -3051,9 +3142,7 @@ class OrganizationDomainRepo:
 
 class OrgSSOConfigRepo:
     @staticmethod
-    async def get_for_org(
-        db: AsyncSession, org_id: uuid.UUID
-    ) -> OrgSSOConfig | None:
+    async def get_for_org(db: AsyncSession, org_id: uuid.UUID) -> OrgSSOConfig | None:
         stmt = select(OrgSSOConfig).where(OrgSSOConfig.org_id == org_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -3122,9 +3211,7 @@ class OrgSAMLConfigRepo:
     """Per-org SAML 2.0 SP configuration (Sprint 30)."""
 
     @staticmethod
-    async def get_for_org(
-        db: AsyncSession, org_id: uuid.UUID
-    ) -> OrgSAMLConfig | None:
+    async def get_for_org(db: AsyncSession, org_id: uuid.UUID) -> OrgSAMLConfig | None:
         stmt = select(OrgSAMLConfig).where(OrgSAMLConfig.org_id == org_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -3224,9 +3311,7 @@ class AuditRunRepo:
     ) -> AuditRun | None:
         return (
             await db.execute(
-                select(AuditRun).where(
-                    AuditRun.id == run_id, AuditRun.org_id == org_id
-                )
+                select(AuditRun).where(AuditRun.id == run_id, AuditRun.org_id == org_id)
             )
         ).scalar_one_or_none()
 
@@ -3280,9 +3365,7 @@ class AuditRunRepo:
         return await AuditRunRepo.get_by_id(db, org_id, run_id)
 
     @staticmethod
-    async def delete(
-        db: AsyncSession, org_id: uuid.UUID, run_id: uuid.UUID
-    ) -> bool:
+    async def delete(db: AsyncSession, org_id: uuid.UUID, run_id: uuid.UUID) -> bool:
         run = await AuditRunRepo.get_by_id(db, org_id, run_id)
         if run is None:
             return False
@@ -3340,9 +3423,7 @@ class AuditFindingRepo:
     ) -> Sequence[AuditFinding]:
         stmt = (
             select(AuditFinding)
-            .where(
-                AuditFinding.org_id == org_id, AuditFinding.run_id == run_id
-            )
+            .where(AuditFinding.org_id == org_id, AuditFinding.run_id == run_id)
             .order_by(AuditFinding.created_at.asc())
         )
         return (await db.execute(stmt)).scalars().all()
@@ -3368,11 +3449,7 @@ class AuditFindingRepo:
             stmt = stmt.where(AuditFinding.analyzer == analyzer)
         if run_id is not None:
             stmt = stmt.where(AuditFinding.run_id == run_id)
-        stmt = (
-            stmt.order_by(AuditFinding.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = stmt.order_by(AuditFinding.created_at.desc()).limit(limit).offset(offset)
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
@@ -3442,21 +3519,13 @@ class TeamRepo:
     ) -> Team | None:
         return (
             await db.execute(
-                select(Team).where(
-                    Team.id == team_id, Team.org_id == org_id
-                )
+                select(Team).where(Team.id == team_id, Team.org_id == org_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def list_all(
-        db: AsyncSession, org_id: uuid.UUID
-    ) -> Sequence[Team]:
-        stmt = (
-            select(Team)
-            .where(Team.org_id == org_id)
-            .order_by(Team.name)
-        )
+    async def list_all(db: AsyncSession, org_id: uuid.UUID) -> Sequence[Team]:
+        stmt = select(Team).where(Team.org_id == org_id).order_by(Team.name)
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
@@ -3488,9 +3557,7 @@ class TeamRepo:
         return await TeamRepo.get_by_id(db, org_id, team_id)
 
     @staticmethod
-    async def delete(
-        db: AsyncSession, org_id: uuid.UUID, team_id: uuid.UUID
-    ) -> bool:
+    async def delete(db: AsyncSession, org_id: uuid.UUID, team_id: uuid.UUID) -> bool:
         team = await TeamRepo.get_by_id(db, org_id, team_id)
         if team is None:
             return False
@@ -3507,9 +3574,7 @@ class TeamRepo:
         user_id: uuid.UUID,
         role: str = "member",
     ) -> TeamMember:
-        member = TeamMember(
-            org_id=org_id, team_id=team_id, user_id=user_id, role=role
-        )
+        member = TeamMember(org_id=org_id, team_id=team_id, user_id=user_id, role=role)
         db.add(member)
         await db.flush()
         return member
@@ -3588,9 +3653,7 @@ class ServiceRepo:
     ) -> Service | None:
         return (
             await db.execute(
-                select(Service).where(
-                    Service.org_id == org_id, Service.slug == slug
-                )
+                select(Service).where(Service.org_id == org_id, Service.slug == slug)
             )
         ).scalar_one_or_none()
 
@@ -3749,9 +3812,7 @@ class RosterRepo:
     ) -> Roster | None:
         return (
             await db.execute(
-                select(Roster).where(
-                    Roster.id == roster_id, Roster.org_id == org_id
-                )
+                select(Roster).where(Roster.id == roster_id, Roster.org_id == org_id)
             )
         ).scalar_one_or_none()
 
@@ -3789,9 +3850,7 @@ class RosterRepo:
         return await RosterRepo.get_by_id(db, org_id, roster_id)
 
     @staticmethod
-    async def delete(
-        db: AsyncSession, org_id: uuid.UUID, roster_id: uuid.UUID
-    ) -> bool:
+    async def delete(db: AsyncSession, org_id: uuid.UUID, roster_id: uuid.UUID) -> bool:
         roster = await RosterRepo.get_by_id(db, org_id, roster_id)
         if roster is None:
             return False
@@ -3991,9 +4050,7 @@ class PriorityRuleRepo:
             return await PriorityRuleRepo.get_by_id(db, org_id, rule_id)
         stmt = (
             update(PriorityRule)
-            .where(
-                PriorityRule.org_id == org_id, PriorityRule.id == rule_id
-            )
+            .where(PriorityRule.org_id == org_id, PriorityRule.id == rule_id)
             .values(**fields)
         )
         result = await db.execute(stmt)
@@ -4003,9 +4060,7 @@ class PriorityRuleRepo:
         return await PriorityRuleRepo.get_by_id(db, org_id, rule_id)
 
     @staticmethod
-    async def delete(
-        db: AsyncSession, org_id: uuid.UUID, rule_id: uuid.UUID
-    ) -> bool:
+    async def delete(db: AsyncSession, org_id: uuid.UUID, rule_id: uuid.UUID) -> bool:
         rule = await PriorityRuleRepo.get_by_id(db, org_id, rule_id)
         if rule is None:
             return False
@@ -4060,9 +4115,7 @@ class IncidentAssignmentRepo:
         user_id: uuid.UUID,
         assigned_by: str = "manual",
     ) -> IncidentAssignment:
-        existing = await IncidentAssignmentRepo.get_active(
-            db, org_id, incident_id
-        )
+        existing = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
         if existing is not None:
             existing.released_at = datetime.now(timezone.utc)
             await db.flush()
@@ -4080,9 +4133,7 @@ class IncidentAssignmentRepo:
     async def release(
         db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
     ) -> bool:
-        existing = await IncidentAssignmentRepo.get_active(
-            db, org_id, incident_id
-        )
+        existing = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
         if existing is None:
             return False
         existing.released_at = datetime.now(timezone.utc)
@@ -4168,9 +4219,7 @@ class EscalationChainRepo:
             return await EscalationChainRepo.get_by_id(db, org_id, chain_id)
         stmt = (
             update(EscalationChain)
-            .where(
-                EscalationChain.org_id == org_id, EscalationChain.id == chain_id
-            )
+            .where(EscalationChain.org_id == org_id, EscalationChain.id == chain_id)
             .values(**fields)
         )
         result = await db.execute(stmt)
@@ -4180,9 +4229,7 @@ class EscalationChainRepo:
         return await EscalationChainRepo.get_by_id(db, org_id, chain_id)
 
     @staticmethod
-    async def delete(
-        db: AsyncSession, org_id: uuid.UUID, chain_id: uuid.UUID
-    ) -> bool:
+    async def delete(db: AsyncSession, org_id: uuid.UUID, chain_id: uuid.UUID) -> bool:
         chain = await EscalationChainRepo.get_by_id(db, org_id, chain_id)
         if chain is None:
             return False
@@ -4232,9 +4279,7 @@ class EscalationStepRepo:
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
-    async def delete(
-        db: AsyncSession, org_id: uuid.UUID, step_id: uuid.UUID
-    ) -> bool:
+    async def delete(db: AsyncSession, org_id: uuid.UUID, step_id: uuid.UUID) -> bool:
         from sqlalchemy import delete as sql_delete
 
         stmt = sql_delete(EscalationStep).where(
@@ -4269,12 +4314,9 @@ class ServiceEscalationChainRepo:
     async def list_for_service(
         db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
     ) -> Sequence[ServiceEscalationChain]:
-        stmt = (
-            select(ServiceEscalationChain)
-            .where(
-                ServiceEscalationChain.org_id == org_id,
-                ServiceEscalationChain.service_id == service_id,
-            )
+        stmt = select(ServiceEscalationChain).where(
+            ServiceEscalationChain.org_id == org_id,
+            ServiceEscalationChain.service_id == service_id,
         )
         return (await db.execute(stmt)).scalars().all()
 

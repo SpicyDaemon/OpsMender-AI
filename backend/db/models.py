@@ -77,11 +77,16 @@ class Organization(Base):
     priority_llm_escalation_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    notification_dedup_window_minutes: Mapped[int] = mapped_column(
+        Integer, default=10, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
-    users: Mapped[list["UserOrganization"]] = relationship(back_populates="organization")
+    users: Mapped[list["UserOrganization"]] = relationship(
+        back_populates="organization"
+    )
     domains: Mapped[list["OrganizationDomain"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
@@ -99,7 +104,10 @@ class OrganizationDomain(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     domain: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -128,7 +136,9 @@ class OrgSSOConfig(Base):
         nullable=False,
         unique=True,
     )
-    provider: Mapped[str] = mapped_column(String(20), nullable=False)  # 'oidc' (saml deferred)
+    provider: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # 'oidc' (saml deferred)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     discovery_url: Mapped[str] = mapped_column(Text, nullable=False)
     client_id: Mapped[str] = mapped_column(Text, nullable=False)
@@ -136,9 +146,13 @@ class OrgSSOConfig(Base):
     scopes: Mapped[str] = mapped_column(
         String(255), nullable=False, default="openid email profile"
     )
-    email_claim: Mapped[str] = mapped_column(String(64), nullable=False, default="email")
+    email_claim: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="email"
+    )
     name_claim: Mapped[str] = mapped_column(String(64), nullable=False, default="name")
-    default_role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")
+    default_role: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="viewer"
+    )
     allowed_email_domains: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -244,8 +258,9 @@ class User(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
-    organizations: Mapped[list["UserOrganization"]] = relationship(back_populates="user")
-
+    organizations: Mapped[list["UserOrganization"]] = relationship(
+        back_populates="user"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +289,9 @@ class Incident(Base):
     response_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
     service_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("services.id", ondelete="SET NULL"), nullable=True
+    )
+    suppressed_by_maintenance_window_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("maintenance_windows.id", ondelete="SET NULL"), nullable=True
     )
     # External ingestion fingerprint — dedup by (external_source, external_id)
     external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -572,7 +590,9 @@ class WebhookTrigger(Base):
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_webhook_trigger_name"),)
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_webhook_trigger_name"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -600,7 +620,9 @@ class WorkflowProfile(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
-    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_workflow_profile_name"),)
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_workflow_profile_name"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -628,7 +650,9 @@ class AgentTeamProfile(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
-    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_agent_team_profile_name"),)
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_agent_team_profile_name"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -942,12 +966,12 @@ class SLO(Base):
 
 
 # ---------------------------------------------------------------------------
-# Maintenance Windows (Sprint 25)
+# Maintenance Windows (Sprint 25 + Sprint 35)
 # ---------------------------------------------------------------------------
 
 
 class MaintenanceWindow(Base):
-    """Scheduled downtime suppressing SLA hits."""
+    """Scheduled downtime suppressing SLA hits and paging fan-out."""
 
     __tablename__ = "maintenance_windows"
 
@@ -958,17 +982,52 @@ class MaintenanceWindow(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     rrule: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_ids: Mapped[list[str]] = mapped_column(
-        JSON, nullable=False
+        JSON, default=list, nullable=False
     )  # UUIDs as strings
+    scope_type: Mapped[str] = mapped_column(
+        String(20), default="global", nullable=False
+    )  # global | service | roster | team
+    scope_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_maintenance_windows_org_range", "org_id", "starts_at", "ends_at"),
+        Index("ix_maintenance_windows_scope", "org_id", "scope_type", "scope_id"),
+    )
+
+
+class UserNotificationPref(Base):
+    """Per-user, per-org paging delivery preferences."""
+
+    __tablename__ = "user_notification_prefs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    channels: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    routing: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    quiet_hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "org_id", name="uq_user_notification_pref"),
+        Index("ix_user_notification_prefs_org_user", "org_id", "user_id"),
     )
 
 
@@ -1193,9 +1252,7 @@ class TeamMember(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
-    __table_args__ = (
-        UniqueConstraint("team_id", "user_id", name="uq_team_member"),
-    )
+    __table_args__ = (UniqueConstraint("team_id", "user_id", name="uq_team_member"),)
 
 
 class Service(Base):
@@ -1235,7 +1292,9 @@ class Roster(Base):
     time_zone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
     pattern: Mapped[str] = mapped_column(String(20), default="weekly", nullable=False)
     pattern_length: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
-    handoff_time: Mapped[str] = mapped_column(String(8), default="09:00", nullable=False)
+    handoff_time: Mapped[str] = mapped_column(
+        String(8), default="09:00", nullable=False
+    )
     handoff_day: Mapped[str | None] = mapped_column(String(12), nullable=True)
     anchor_date: Mapped[datetime] = mapped_column(Date, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -1289,12 +1348,8 @@ class RosterOverride(Base):
     covering_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    starts_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    ends_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -1320,9 +1375,7 @@ class ServiceRoster(Base):
     level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint(
-            "service_id", "roster_id", name="uq_service_roster"
-        ),
+        UniqueConstraint("service_id", "roster_id", name="uq_service_roster"),
     )
 
 
@@ -1343,9 +1396,7 @@ class PriorityRule(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
-    __table_args__ = (
-        Index("ix_priority_rules_org_index", "org_id", "rule_index"),
-    )
+    __table_args__ = (Index("ix_priority_rules_org_index", "org_id", "rule_index"),)
 
 
 class PriorityLLMOverrideLog(Base):
@@ -1444,9 +1495,7 @@ class EscalationStep(Base):
         String(20), nullable=False
     )  # roster | user | team
     target_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    timeout_seconds: Mapped[int] = mapped_column(
-        Integer, default=300, nullable=False
-    )
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
     notify_channels: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
@@ -1470,9 +1519,7 @@ class ServiceEscalationChain(Base):
     applies_when: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint(
-            "service_id", "chain_id", name="uq_service_escalation_chain"
-        ),
+        UniqueConstraint("service_id", "chain_id", name="uq_service_escalation_chain"),
     )
 
 
@@ -1499,9 +1546,7 @@ class IncidentPage(Base):
         Uuid, ForeignKey("escalation_chains.id", ondelete="SET NULL"), nullable=True
     )
     step_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    channel: Mapped[str] = mapped_column(
-        String(40), default="recorded", nullable=False
-    )
+    channel: Mapped[str] = mapped_column(String(40), default="recorded", nullable=False)
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False, index=True
     )

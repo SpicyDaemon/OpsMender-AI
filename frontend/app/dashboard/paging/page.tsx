@@ -11,6 +11,11 @@ import {
 } from "lucide-react";
 
 import {
+  createMaintenanceWindow,
+  deleteMaintenanceWindow,
+  listMaintenanceWindows,
+} from "@/lib/api_reliability";
+import {
   addEscalationStep,
   createEscalationChain,
   createPriorityRule,
@@ -34,6 +39,8 @@ import type {
   EscalationChainResponse,
   EscalationStepResponse,
   EscalationTargetType,
+  MaintenanceWindowResponse,
+  MaintenanceWindowScopeType,
   Priority,
   PriorityRuleResponse,
   ResponseMode,
@@ -48,7 +55,13 @@ import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 
-type Tab = "teams" | "services" | "rosters" | "rules" | "chains";
+type Tab =
+  | "teams"
+  | "services"
+  | "rosters"
+  | "rules"
+  | "chains"
+  | "maintenance";
 
 const TABS: { id: Tab; label: string; description: string }[] = [
   { id: "teams", label: "Teams", description: "Org-chart units." },
@@ -72,6 +85,11 @@ const TABS: { id: Tab; label: string; description: string }[] = [
     label: "Escalation Chains",
     description: "Additive paging steps with timeouts.",
   },
+  {
+    id: "maintenance",
+    label: "Maintenance Windows",
+    description: "Suppress paging during planned downtime.",
+  },
 ];
 
 const PRIORITY_VARIANT: Record<Priority, string> = {
@@ -90,21 +108,24 @@ export default function PagingPage() {
   const [rosters, setRosters] = useState<RosterResponse[]>([]);
   const [rules, setRules] = useState<PriorityRuleResponse[]>([]);
   const [chains, setChains] = useState<EscalationChainResponse[]>([]);
+  const [windows, setWindows] = useState<MaintenanceWindowResponse[]>([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [t, s, r, p, c] = await Promise.all([
+      const [t, s, r, p, c, mw] = await Promise.all([
         listTeams(),
         listServices(),
         listRosters(),
         listPriorityRules(),
         listEscalationChains(),
+        listMaintenanceWindows(),
       ]);
       setTeams(t.items);
       setServices(s.items);
       setRosters(r.items);
       setRules(p.items);
       setChains(c.items);
+      setWindows(mw.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -171,6 +192,15 @@ export default function PagingPage() {
           chains={chains}
           teams={teams}
           rosters={rosters}
+          onChange={refresh}
+        />
+      )}
+      {tab === "maintenance" && (
+        <MaintenanceWindowsPanel
+          windows={windows}
+          services={services}
+          rosters={rosters}
+          teams={teams}
           onChange={refresh}
         />
       )}
@@ -1319,5 +1349,359 @@ function PagingFlowModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatRange(starts: string, ends: string): string {
+  const s = new Date(starts);
+  const e = new Date(ends);
+  return `${s.toLocaleString()} → ${e.toLocaleString()}`;
+}
+
+function MaintenanceWindowsPanel({
+  windows,
+  services,
+  rosters,
+  teams,
+  onChange,
+}: {
+  windows: MaintenanceWindowResponse[];
+  services: ServiceResponse[];
+  rosters: RosterResponse[];
+  teams: TeamResponse[];
+  onChange: () => void;
+}) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"active" | "scheduled" | "past">(
+    "scheduled",
+  );
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const nowMinusOne = () => {
+    const d = new Date();
+    d.setHours(d.getHours() + 1);
+    return toLocalInput(d.toISOString());
+  };
+  const nowPlusTwo = () => {
+    const d = new Date();
+    d.setHours(d.getHours() + 2);
+    return toLocalInput(d.toISOString());
+  };
+  const [form, setForm] = useState<{
+    name: string;
+    description: string;
+    reason: string;
+    starts_at: string;
+    ends_at: string;
+    scope_type: MaintenanceWindowScopeType;
+    scope_id: string;
+  }>({
+    name: "",
+    description: "",
+    reason: "",
+    starts_at: nowMinusOne(),
+    ends_at: nowPlusTwo(),
+    scope_type: "global",
+    scope_id: "",
+  });
+
+  const now = new Date();
+  const isActive = (w: MaintenanceWindowResponse) =>
+    new Date(w.starts_at) <= now && new Date(w.ends_at) > now;
+  const isScheduled = (w: MaintenanceWindowResponse) =>
+    new Date(w.starts_at) > now;
+  const isPast = (w: MaintenanceWindowResponse) =>
+    new Date(w.ends_at) <= now;
+
+  const inRange = (w: MaintenanceWindowResponse) => {
+    if (rangeFrom) {
+      const from = new Date(rangeFrom);
+      if (new Date(w.ends_at) < from) return false;
+    }
+    if (rangeTo) {
+      const to = new Date(rangeTo);
+      if (new Date(w.starts_at) > to) return false;
+    }
+    return true;
+  };
+
+  const filtered = windows.filter((w) => {
+    if (!inRange(w)) return false;
+    if (view === "active") return isActive(w);
+    if (view === "scheduled") return isScheduled(w);
+    return isPast(w);
+  });
+
+  const scopeOptionsFor = (
+    type: MaintenanceWindowScopeType,
+  ): { id: string; name: string }[] => {
+    if (type === "service") return services.map((s) => ({ id: s.id, name: s.name }));
+    if (type === "roster") return rosters.map((r) => ({ id: r.id, name: r.name }));
+    if (type === "team") return teams.map((t) => ({ id: t.id, name: t.name }));
+    return [];
+  };
+
+  const scopeLabelFor = (w: MaintenanceWindowResponse): string => {
+    if (w.scope_type === "global") return "global";
+    const opts = scopeOptionsFor(w.scope_type);
+    const match = opts.find((o) => o.id === w.scope_id);
+    return `${w.scope_type}: ${match?.name ?? w.scope_id ?? "?"}`;
+  };
+
+  const submit = async () => {
+    if (!form.name.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+    if (!form.starts_at || !form.ends_at) {
+      toast.error("Start and end times are required");
+      return;
+    }
+    if (new Date(form.ends_at) <= new Date(form.starts_at)) {
+      toast.error("End must be after start");
+      return;
+    }
+    if (form.scope_type !== "global" && !form.scope_id) {
+      toast.error("Pick a scope target");
+      return;
+    }
+    try {
+      await createMaintenanceWindow({
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+        reason: form.reason.trim() || null,
+        starts_at: new Date(form.starts_at).toISOString(),
+        ends_at: new Date(form.ends_at).toISOString(),
+        scope_type: form.scope_type,
+        scope_id: form.scope_type === "global" ? null : form.scope_id,
+      });
+      setOpen(false);
+      setForm({
+        name: "",
+        description: "",
+        reason: "",
+        starts_at: nowMinusOne(),
+        ends_at: nowPlusTwo(),
+        scope_type: "global",
+        scope_id: "",
+      });
+      onChange();
+      toast.success("Maintenance window scheduled");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Delete this maintenance window?")) return;
+    try {
+      await deleteMaintenanceWindow(id);
+      onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const counts = {
+    active: windows.filter(isActive).length,
+    scheduled: windows.filter(isScheduled).length,
+    past: windows.filter(isPast).length,
+  };
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap gap-1 rounded-md border border-border-default bg-bg-surface p-1">
+          {(["active", "scheduled", "past"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`rounded px-3 py-1.5 text-sm capitalize transition ${
+                view === v
+                  ? "bg-bg-elevated text-fg-primary"
+                  : "text-fg-secondary hover:text-fg-primary"
+              }`}
+            >
+              {v} <span className="text-fg-tertiary">({counts[v]})</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex items-end gap-2">
+          <div>
+            <Label className="text-xs">From</Label>
+            <Input
+              type="datetime-local"
+              value={rangeFrom}
+              onChange={(e) => setRangeFrom(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">To</Label>
+            <Input
+              type="datetime-local"
+              value={rangeTo}
+              onChange={(e) => setRangeTo(e.target.value)}
+            />
+          </div>
+          {(rangeFrom || rangeTo) && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setRangeFrom("");
+                setRangeTo("");
+              }}
+            >
+              Clear
+            </Button>
+          )}
+          <Button onClick={() => setOpen(true)}>
+            <PlusCircle className="h-4 w-4" /> New window
+          </Button>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          title={`No ${view} maintenance windows`}
+          description={
+            view === "scheduled"
+              ? "Schedule a window to suppress paging during planned downtime. Page-mode incidents during the window are suppressed; escalate_immediate is never downgraded."
+              : view === "active"
+                ? "No windows are currently in effect."
+                : "No past windows match the current range filter."
+          }
+        />
+      ) : (
+        <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
+          {filtered.map((w) => (
+            <li key={w.id} className="flex items-start justify-between px-4 py-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-fg-secondary" />
+                  <span className="font-medium text-fg-primary">{w.name}</span>
+                  <Badge variant="default">{scopeLabelFor(w)}</Badge>
+                </div>
+                <div className="text-xs text-fg-secondary">
+                  {formatRange(w.starts_at, w.ends_at)}
+                </div>
+                {w.description && (
+                  <div className="text-xs text-fg-tertiary">{w.description}</div>
+                )}
+              </div>
+              <Button variant="ghost" onClick={() => remove(w.id)} title="Delete">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Schedule maintenance window"
+      >
+        <div className="space-y-3">
+          <div>
+            <Label>Name</Label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="Database migration"
+            />
+          </div>
+          <div>
+            <Label>Description (optional)</Label>
+            <Textarea
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+              rows={2}
+              placeholder="Upgrading primary cluster to v14"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Starts at</Label>
+              <Input
+                type="datetime-local"
+                value={form.starts_at}
+                onChange={(e) =>
+                  setForm({ ...form, starts_at: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Ends at</Label>
+              <Input
+                type="datetime-local"
+                value={form.ends_at}
+                onChange={(e) =>
+                  setForm({ ...form, ends_at: e.target.value })
+                }
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Scope</Label>
+              <Select
+                value={form.scope_type}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    scope_type: e.target.value as MaintenanceWindowScopeType,
+                    scope_id: "",
+                  })
+                }
+              >
+                <option value="global">Global (all paging)</option>
+                <option value="service">Service</option>
+                <option value="roster">Roster</option>
+                <option value="team">Team</option>
+              </Select>
+            </div>
+            {form.scope_type !== "global" && (
+              <div>
+                <Label>Target {form.scope_type}</Label>
+                <Select
+                  value={form.scope_id}
+                  onChange={(e) =>
+                    setForm({ ...form, scope_id: e.target.value })
+                  }
+                >
+                  <option value="">— pick one —</option>
+                  {scopeOptionsFor(form.scope_type).map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-fg-tertiary">
+            Page-mode incidents inside the window are suppressed.{" "}
+            <span className="font-medium">escalate_immediate</span> incidents
+            still page through.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={submit}>Schedule</Button>
+          </div>
+        </div>
+      </Modal>
+    </section>
   );
 }

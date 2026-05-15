@@ -813,15 +813,20 @@ export interface SLOListResponse {
   total: number;
 }
 
+export type MaintenanceWindowScopeType = "global" | "service" | "roster" | "team";
+
 export interface MaintenanceWindowResponse {
   id: string;
   name: string;
-  reason: string;
+  reason: string | null;
+  description: string | null;
   starts_at: string;
   ends_at: string;
   rrule: string | null;
   target_ids: string[];
-  created_by: string;
+  scope_type: MaintenanceWindowScopeType;
+  scope_id: string | null;
+  created_by: string | null;
   created_at: string;
 }
 

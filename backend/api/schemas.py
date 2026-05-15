@@ -1137,3 +1137,82 @@ class WSMessage(BaseModel):
 
     type: str  # node_transition | tool_call | approval_requested | approval_resolved | chat_message_user | chat_message_assistant | error | session_end
     data: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Auditor (Sprint 32)
+# ---------------------------------------------------------------------------
+
+
+class AuditAnalyzerResponse(BaseModel):
+    key: str
+    label: str
+    description: str
+
+
+class AuditAnalyzerListResponse(BaseModel):
+    items: list[AuditAnalyzerResponse]
+    total: int
+
+
+class AuditRunCreate(BaseModel):
+    analyzers: list[str] = Field(..., min_length=1)
+    analyzer_params: Optional[dict[str, dict[str, Any]]] = None
+    execute: bool = True
+
+
+class AuditRunResponse(BaseModel):
+    id: uuid.UUID
+    status: str
+    analyzers: list[str] = Field(default_factory=list)
+    started_at: Optional[datetime]
+    finished_at: Optional[datetime]
+    finding_count: int
+    error: Optional[str] = None
+    created_by: Optional[uuid.UUID]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AuditRunListResponse(BaseModel):
+    items: list[AuditRunResponse]
+    total: int
+
+
+class AuditFindingResponse(BaseModel):
+    id: uuid.UUID
+    run_id: uuid.UUID
+    analyzer: str
+    severity: str
+    category: Optional[str]
+    resource: Optional[str]
+    message: str
+    suggested_fix: Optional[str]
+    status: str
+    dismiss_reason: Optional[str] = None
+    session_id: Optional[uuid.UUID]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AuditFindingListResponse(BaseModel):
+    items: list[AuditFindingResponse]
+    total: int
+
+
+class AuditRunDetailResponse(BaseModel):
+    run: AuditRunResponse
+    findings: list[AuditFindingResponse]
+
+
+class AuditFindingDismissRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+class AuditFindingRemediateResponse(BaseModel):
+    finding_id: uuid.UUID
+    session_id: uuid.UUID
+    status: str

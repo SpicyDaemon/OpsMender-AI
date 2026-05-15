@@ -961,3 +961,72 @@ export async function upsertOrgSAMLConfig(
 export async function deleteOrgSAMLConfig(orgId: string): Promise<void> {
   return api.del<void>(`/organizations/${orgId}/saml`);
 }
+
+// ---------------------------------------------------------------------------
+// Auditor (Sprint 32)
+// ---------------------------------------------------------------------------
+
+import type {
+  AuditAnalyzerListResponse,
+  AuditFindingListResponse,
+  AuditFindingRemediateResponse,
+  AuditFindingResponse,
+  AuditRunCreate,
+  AuditRunDetailResponse,
+  AuditRunListResponse,
+  AuditRunResponse,
+} from "./types";
+
+export async function listAuditAnalyzers(): Promise<AuditAnalyzerListResponse> {
+  return api.get<AuditAnalyzerListResponse>("/audits/analyzers");
+}
+
+export async function createAuditRun(
+  body: AuditRunCreate,
+): Promise<AuditRunResponse> {
+  return api.post<AuditRunResponse>("/audits/runs", body);
+}
+
+export async function listAuditRuns(): Promise<AuditRunListResponse> {
+  return api.get<AuditRunListResponse>("/audits/runs");
+}
+
+export async function getAuditRun(
+  id: string,
+): Promise<AuditRunDetailResponse> {
+  return api.get<AuditRunDetailResponse>(`/audits/runs/${id}`);
+}
+
+export async function listAuditFindings(params?: {
+  status?: string;
+  severity?: string;
+  analyzer?: string;
+  run_id?: string;
+}): Promise<AuditFindingListResponse> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.severity) query.set("severity", params.severity);
+  if (params?.analyzer) query.set("analyzer", params.analyzer);
+  if (params?.run_id) query.set("run_id", params.run_id);
+  const qs = query.toString();
+  return api.get<AuditFindingListResponse>(
+    `/audits/findings${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function remediateAuditFinding(
+  id: string,
+): Promise<AuditFindingRemediateResponse> {
+  return api.post<AuditFindingRemediateResponse>(
+    `/audits/findings/${id}/remediate`,
+  );
+}
+
+export async function dismissAuditFinding(
+  id: string,
+  reason?: string,
+): Promise<AuditFindingResponse> {
+  return api.post<AuditFindingResponse>(`/audits/findings/${id}/dismiss`, {
+    reason,
+  });
+}

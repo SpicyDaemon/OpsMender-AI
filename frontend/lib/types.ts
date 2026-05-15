@@ -1052,3 +1052,77 @@ export interface OrgSAMLConfigCreate {
   want_assertions_signed?: boolean;
   want_response_signed?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Auditor (Sprint 32)
+// ---------------------------------------------------------------------------
+
+export type AuditSeverity = "critical" | "high" | "medium" | "low" | "info";
+export type AuditRunStatus = "queued" | "running" | "completed" | "failed";
+export type AuditFindingStatus = "open" | "remediating" | "resolved" | "dismissed";
+
+export interface AuditAnalyzerResponse {
+  key: string;
+  label: string;
+  description: string;
+}
+
+export interface AuditAnalyzerListResponse {
+  items: AuditAnalyzerResponse[];
+  total: number;
+}
+
+export interface AuditRunCreate {
+  analyzers: string[];
+  analyzer_params?: Record<string, Record<string, unknown>>;
+  execute?: boolean;
+}
+
+export interface AuditRunResponse {
+  id: string;
+  status: AuditRunStatus;
+  analyzers: string[];
+  started_at: string | null;
+  finished_at: string | null;
+  finding_count: number;
+  error: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AuditRunListResponse {
+  items: AuditRunResponse[];
+  total: number;
+}
+
+export interface AuditFindingResponse {
+  id: string;
+  run_id: string;
+  analyzer: string;
+  severity: AuditSeverity;
+  category: string | null;
+  resource: string | null;
+  message: string;
+  suggested_fix: string | null;
+  status: AuditFindingStatus;
+  dismiss_reason: string | null;
+  session_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuditFindingListResponse {
+  items: AuditFindingResponse[];
+  total: number;
+}
+
+export interface AuditRunDetailResponse {
+  run: AuditRunResponse;
+  findings: AuditFindingResponse[];
+}
+
+export interface AuditFindingRemediateResponse {
+  finding_id: string;
+  session_id: string;
+  status: AuditFindingStatus;
+}

@@ -15,6 +15,7 @@ import {
   FileText,
   LogOut,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
 import { getConfig } from "@/lib/api";
@@ -23,6 +24,7 @@ const NAV = [
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/dashboard/detectors", label: "Detectors", icon: Radar },
+  { href: "/dashboard/audits", label: "Audits", icon: ShieldCheck },
   { href: "/dashboard/skills", label: "Skills", icon: FileText },
   { href: "/dashboard/audit", label: "Audit Log", icon: BookOpen },
   { href: "/dashboard/reliability", label: "Reliability", icon: Activity },

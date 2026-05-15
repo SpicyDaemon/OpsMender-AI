@@ -21,6 +21,8 @@ from backend.db.models import (
     AgentTeamProfile,
     ApprovalRequest,
     AuditEntry,
+    AuditFinding,
+    AuditRun,
     BotActionAudit,
     BotConnector,
     BotUserLink,
@@ -3163,3 +3165,219 @@ class OrgSAMLConfigRepo:
         result = await db.execute(stmt)
         await db.flush()
         return result.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Auditor (Sprint 32)
+# ---------------------------------------------------------------------------
+
+
+class AuditRunRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        analyzers: list[str],
+        created_by: uuid.UUID | None = None,
+        status: str = "queued",
+    ) -> AuditRun:
+        run = AuditRun(
+            org_id=org_id,
+            analyzers=list(analyzers),
+            status=status,
+            created_by=created_by,
+        )
+        db.add(run)
+        await db.flush()
+        return run
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, run_id: uuid.UUID
+    ) -> AuditRun | None:
+        return (
+            await db.execute(
+                select(AuditRun).where(
+                    AuditRun.id == run_id, AuditRun.org_id == org_id
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Sequence[AuditRun]:
+        stmt = (
+            select(AuditRun)
+            .where(AuditRun.org_id == org_id)
+            .order_by(AuditRun.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def update_status(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        status: str,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+        finding_count: int | None = None,
+        error: str | None = None,
+    ) -> AuditRun | None:
+        values: dict[str, Any] = {"status": status}
+        if started_at is not None:
+            values["started_at"] = started_at
+        if finished_at is not None:
+            values["finished_at"] = finished_at
+        if finding_count is not None:
+            values["finding_count"] = finding_count
+        if error is not None:
+            values["error"] = error
+        stmt = (
+            update(AuditRun)
+            .where(AuditRun.org_id == org_id, AuditRun.id == run_id)
+            .values(**values)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await AuditRunRepo.get_by_id(db, org_id, run_id)
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, run_id: uuid.UUID
+    ) -> bool:
+        run = await AuditRunRepo.get_by_id(db, org_id, run_id)
+        if run is None:
+            return False
+        await db.delete(run)
+        await db.flush()
+        return True
+
+
+class AuditFindingRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        run_id: uuid.UUID,
+        analyzer: str,
+        severity: str,
+        message: str,
+        category: str | None = None,
+        resource: str | None = None,
+        suggested_fix: str | None = None,
+        status: str = "open",
+    ) -> AuditFinding:
+        row = AuditFinding(
+            org_id=org_id,
+            run_id=run_id,
+            analyzer=analyzer,
+            severity=severity,
+            message=message,
+            category=category,
+            resource=resource,
+            suggested_fix=suggested_fix,
+            status=status,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, finding_id: uuid.UUID
+    ) -> AuditFinding | None:
+        return (
+            await db.execute(
+                select(AuditFinding).where(
+                    AuditFinding.id == finding_id,
+                    AuditFinding.org_id == org_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_by_run(
+        db: AsyncSession, org_id: uuid.UUID, run_id: uuid.UUID
+    ) -> Sequence[AuditFinding]:
+        stmt = (
+            select(AuditFinding)
+            .where(
+                AuditFinding.org_id == org_id, AuditFinding.run_id == run_id
+            )
+            .order_by(AuditFinding.created_at.asc())
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def list_filtered(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        severity: str | None = None,
+        analyzer: str | None = None,
+        run_id: uuid.UUID | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[AuditFinding]:
+        stmt = select(AuditFinding).where(AuditFinding.org_id == org_id)
+        if status is not None:
+            stmt = stmt.where(AuditFinding.status == status)
+        if severity is not None:
+            stmt = stmt.where(AuditFinding.severity == severity)
+        if analyzer is not None:
+            stmt = stmt.where(AuditFinding.analyzer == analyzer)
+        if run_id is not None:
+            stmt = stmt.where(AuditFinding.run_id == run_id)
+        stmt = (
+            stmt.order_by(AuditFinding.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def update_status(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        finding_id: uuid.UUID,
+        *,
+        status: str,
+        session_id: uuid.UUID | None = None,
+        session_id_provided: bool = False,
+        dismiss_reason: str | None = None,
+    ) -> AuditFinding | None:
+        values: dict[str, Any] = {
+            "status": status,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if session_id_provided:
+            values["session_id"] = session_id
+        if dismiss_reason is not None:
+            values["dismiss_reason"] = dismiss_reason
+        stmt = (
+            update(AuditFinding)
+            .where(
+                AuditFinding.org_id == org_id,
+                AuditFinding.id == finding_id,
+            )
+            .values(**values)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await AuditFindingRepo.get_by_id(db, org_id, finding_id)

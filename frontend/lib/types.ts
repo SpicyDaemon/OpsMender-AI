@@ -815,6 +815,34 @@ export interface SLOListResponse {
 
 export type MaintenanceWindowScopeType = "global" | "service" | "roster" | "team";
 
+export type NotificationChannelKey = "slack_dm" | "teams_dm" | "email" | "sms";
+
+export interface QuietHoursWindow {
+  start: string;
+  end: string;
+}
+
+export interface QuietHoursConfig {
+  weekday?: QuietHoursWindow | null;
+  weekend?: QuietHoursWindow | null;
+  min_priority_to_break?: Priority | null;
+  time_zone?: string | null;
+}
+
+export interface UserNotificationPrefResponse {
+  user_id: string;
+  org_id: string;
+  channels: Record<string, Record<string, string>>;
+  routing: Record<string, NotificationChannelKey[]>;
+  quiet_hours: QuietHoursConfig | null;
+  updated_at: string;
+}
+
+export interface NotificationSettingsResponse {
+  org_id: string;
+  notification_dedup_window_minutes: number;
+}
+
 export interface MaintenanceWindowResponse {
   id: string;
   name: string;

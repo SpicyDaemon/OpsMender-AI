@@ -28,12 +28,14 @@ import {
   deleteRoster,
   deleteService,
   deleteTeam,
+  getMyNotificationPreferences,
   listEscalationChains,
   listEscalationSteps,
   listPriorityRules,
   listRosters,
   listServices,
   listTeams,
+  updateMyNotificationPreferences,
 } from "@/lib/api";
 import type {
   EscalationChainResponse,
@@ -41,12 +43,15 @@ import type {
   EscalationTargetType,
   MaintenanceWindowResponse,
   MaintenanceWindowScopeType,
+  NotificationChannelKey,
   Priority,
   PriorityRuleResponse,
+  QuietHoursConfig,
   ResponseMode,
   RosterResponse,
   ServiceResponse,
   TeamResponse,
+  UserNotificationPrefResponse,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -61,7 +66,8 @@ type Tab =
   | "rosters"
   | "rules"
   | "chains"
-  | "maintenance";
+  | "maintenance"
+  | "preferences";
 
 const TABS: { id: Tab; label: string; description: string }[] = [
   { id: "teams", label: "Teams", description: "Org-chart units." },
@@ -89,6 +95,11 @@ const TABS: { id: Tab; label: string; description: string }[] = [
     id: "maintenance",
     label: "Maintenance Windows",
     description: "Suppress paging during planned downtime.",
+  },
+  {
+    id: "preferences",
+    label: "My Notifications",
+    description: "Channels, routing, and quiet hours.",
   },
 ];
 
@@ -204,6 +215,7 @@ export default function PagingPage() {
           onChange={refresh}
         />
       )}
+      {tab === "preferences" && <NotificationPreferencesPanel />}
     </div>
   );
 }
@@ -1702,6 +1714,379 @@ function MaintenanceWindowsPanel({
           </div>
         </div>
       </Modal>
+    </section>
+  );
+}
+
+const ALL_CHANNELS: {
+  key: NotificationChannelKey;
+  label: string;
+  helper: string;
+  fields: { name: string; label: string; placeholder: string }[];
+}[] = [
+  {
+    key: "slack_dm",
+    label: "Slack DM",
+    helper: "OpsMender DMs you via the org's Slack bot.",
+    fields: [
+      {
+        name: "user_id",
+        label: "Slack user ID",
+        placeholder: "U01ABC123",
+      },
+    ],
+  },
+  {
+    key: "teams_dm",
+    label: "Teams DM",
+    helper: "Posts to an incoming-webhook channel until Sprint 37 lands real DMs.",
+    fields: [
+      {
+        name: "webhook_url",
+        label: "Incoming webhook URL",
+        placeholder: "https://outlook.office.com/webhook/…",
+      },
+    ],
+  },
+  {
+    key: "email",
+    label: "Email",
+    helper: "SMTP delivery via the org's configured email settings.",
+    fields: [
+      {
+        name: "address",
+        label: "Email address",
+        placeholder: "you@example.com",
+      },
+    ],
+  },
+  {
+    key: "sms",
+    label: "SMS",
+    helper: "Twilio-delivered SMS to the number below.",
+    fields: [
+      {
+        name: "phone_number",
+        label: "Phone number (E.164)",
+        placeholder: "+15551234567",
+      },
+    ],
+  },
+];
+
+const ALL_PRIORITIES: Priority[] = ["P0", "P1", "P2", "P3"];
+
+function NotificationPreferencesPanel() {
+  const toast = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [pref, setPref] = useState<UserNotificationPrefResponse | null>(null);
+  const [channels, setChannels] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const [routing, setRouting] = useState<
+    Record<string, NotificationChannelKey[]>
+  >({});
+  const [quietEnabled, setQuietEnabled] = useState(false);
+  const [quiet, setQuiet] = useState<QuietHoursConfig>({
+    weekday: { start: "22:00", end: "07:00" },
+    min_priority_to_break: "P1",
+    time_zone: "UTC",
+  });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getMyNotificationPreferences();
+        setPref(data);
+        setChannels(data.channels ?? {});
+        setRouting(data.routing ?? {});
+        if (data.quiet_hours) {
+          setQuietEnabled(true);
+          setQuiet({
+            weekday: data.quiet_hours.weekday ?? {
+              start: "22:00",
+              end: "07:00",
+            },
+            min_priority_to_break:
+              data.quiet_hours.min_priority_to_break ?? "P1",
+            time_zone: data.quiet_hours.time_zone ?? "UTC",
+          });
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleChannel = (key: NotificationChannelKey, on: boolean) => {
+    if (on) {
+      const spec = ALL_CHANNELS.find((c) => c.key === key)!;
+      const seed = Object.fromEntries(spec.fields.map((f) => [f.name, ""]));
+      setChannels({ ...channels, [key]: seed });
+    } else {
+      const next = { ...channels };
+      delete next[key];
+      setChannels(next);
+      const nextRouting = { ...routing };
+      for (const p of ALL_PRIORITIES) {
+        if (nextRouting[p]) {
+          nextRouting[p] = nextRouting[p].filter((c) => c !== key);
+        }
+      }
+      setRouting(nextRouting);
+    }
+  };
+
+  const setChannelField = (
+    key: NotificationChannelKey,
+    field: string,
+    value: string,
+  ) => {
+    setChannels({
+      ...channels,
+      [key]: { ...(channels[key] ?? {}), [field]: value },
+    });
+  };
+
+  const toggleRoute = (
+    priority: Priority,
+    channel: NotificationChannelKey,
+    on: boolean,
+  ) => {
+    const current = routing[priority] ?? [];
+    const next = on
+      ? Array.from(new Set([...current, channel]))
+      : current.filter((c) => c !== channel);
+    setRouting({ ...routing, [priority]: next });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const quiet_hours: QuietHoursConfig | null = quietEnabled
+        ? {
+            weekday: quiet.weekday ?? null,
+            min_priority_to_break: quiet.min_priority_to_break ?? null,
+            time_zone: quiet.time_zone ?? "UTC",
+          }
+        : null;
+      const updated = await updateMyNotificationPreferences({
+        channels,
+        routing,
+        quiet_hours,
+      });
+      setPref(updated);
+      toast.success("Notification preferences saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <p className="text-sm text-fg-secondary">Loading your preferences…</p>
+    );
+  }
+
+  return (
+    <section className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-fg-primary">Channels</h2>
+        <p className="text-sm text-fg-secondary">
+          Pick how OpsMender can reach you, then enter the destination for
+          each enabled channel.
+        </p>
+        <ul className="mt-3 space-y-3">
+          {ALL_CHANNELS.map((c) => {
+            const enabled = channels[c.key] !== undefined;
+            return (
+              <li
+                key={c.key}
+                className="rounded-lg border border-border-default bg-bg-surface p-4"
+              >
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={(e) => toggleChannel(c.key, e.target.checked)}
+                  />
+                  <span className="font-medium text-fg-primary">
+                    {c.label}
+                  </span>
+                  <span className="text-xs text-fg-tertiary">{c.helper}</span>
+                </label>
+                {enabled && (
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {c.fields.map((f) => (
+                      <div key={f.name}>
+                        <Label className="text-xs">{f.label}</Label>
+                        <Input
+                          value={channels[c.key]?.[f.name] ?? ""}
+                          placeholder={f.placeholder}
+                          onChange={(e) =>
+                            setChannelField(c.key, f.name, e.target.value)
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold text-fg-primary">
+          Routing by priority
+        </h2>
+        <p className="text-sm text-fg-secondary">
+          Pick which enabled channels fire for each incident priority.
+          Unchecked channels are skipped even if globally enabled.
+        </p>
+        <div className="mt-3 overflow-x-auto rounded-lg border border-border-default bg-bg-surface">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-border-default text-xs text-fg-secondary">
+                <th className="px-3 py-2 text-left font-medium">Priority</th>
+                {ALL_CHANNELS.map((c) => (
+                  <th
+                    key={c.key}
+                    className="px-3 py-2 text-center font-medium"
+                  >
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ALL_PRIORITIES.map((p) => (
+                <tr key={p} className="border-b border-border-default last:border-0">
+                  <td className="px-3 py-2 font-mono text-fg-primary">{p}</td>
+                  {ALL_CHANNELS.map((c) => {
+                    const enabled = channels[c.key] !== undefined;
+                    const selected = (routing[p] ?? []).includes(c.key);
+                    return (
+                      <td
+                        key={c.key}
+                        className="px-3 py-2 text-center"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={!enabled}
+                          onChange={(e) =>
+                            toggleRoute(p, c.key, e.target.checked)
+                          }
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold text-fg-primary">Quiet hours</h2>
+        <p className="text-sm text-fg-secondary">
+          During quiet hours, incidents below the break threshold are
+          suppressed for you. Higher priorities still page through.
+        </p>
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={quietEnabled}
+            onChange={(e) => setQuietEnabled(e.target.checked)}
+          />
+          Enable quiet hours
+        </label>
+        {quietEnabled && (
+          <div className="mt-3 grid grid-cols-1 gap-3 rounded-lg border border-border-default bg-bg-surface p-4 sm:grid-cols-4">
+            <div>
+              <Label className="text-xs">Start</Label>
+              <Input
+                type="time"
+                value={quiet.weekday?.start ?? ""}
+                onChange={(e) =>
+                  setQuiet({
+                    ...quiet,
+                    weekday: {
+                      start: e.target.value,
+                      end: quiet.weekday?.end ?? "07:00",
+                    },
+                  })
+                }
+              />
+            </div>
+            <div>
+              <Label className="text-xs">End</Label>
+              <Input
+                type="time"
+                value={quiet.weekday?.end ?? ""}
+                onChange={(e) =>
+                  setQuiet({
+                    ...quiet,
+                    weekday: {
+                      start: quiet.weekday?.start ?? "22:00",
+                      end: e.target.value,
+                    },
+                  })
+                }
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Break for priority ≥</Label>
+              <Select
+                value={quiet.min_priority_to_break ?? ""}
+                onChange={(e) =>
+                  setQuiet({
+                    ...quiet,
+                    min_priority_to_break:
+                      (e.target.value || null) as Priority | null,
+                  })
+                }
+              >
+                <option value="">Never break</option>
+                {ALL_PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {p} and higher
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Time zone</Label>
+              <Input
+                value={quiet.time_zone ?? "UTC"}
+                onChange={(e) =>
+                  setQuiet({ ...quiet, time_zone: e.target.value })
+                }
+                placeholder="UTC"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-fg-tertiary">
+          {pref &&
+            `Last updated ${new Date(pref.updated_at).toLocaleString()}`}
+        </div>
+        <Button onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save preferences"}
+        </Button>
+      </div>
     </section>
   );
 }

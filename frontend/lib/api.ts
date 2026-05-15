@@ -1307,3 +1307,47 @@ export async function takeIncident(
     options,
   );
 }
+
+import type {
+  NotificationChannelKey,
+  NotificationSettingsResponse,
+  QuietHoursConfig,
+  UserNotificationPrefResponse,
+} from "./types";
+
+export async function getMyNotificationPreferences(): Promise<UserNotificationPrefResponse> {
+  return api.get<UserNotificationPrefResponse>(
+    "/users/me/notification-preferences",
+  );
+}
+
+export async function updateMyNotificationPreferences(
+  body: Partial<{
+    channels: Record<string, Record<string, string>>;
+    routing: Record<string, NotificationChannelKey[]>;
+    quiet_hours: QuietHoursConfig | null;
+  }>,
+): Promise<UserNotificationPrefResponse> {
+  return api.put<UserNotificationPrefResponse>(
+    "/users/me/notification-preferences",
+    body,
+  );
+}
+
+export async function getOrgNotificationSettings(
+  orgId: string,
+): Promise<NotificationSettingsResponse> {
+  return api.get<NotificationSettingsResponse>(
+    `/organizations/${orgId}/notification-settings`,
+  );
+}
+
+export async function updateOrgNotificationSettings(
+  orgId: string,
+  notification_dedup_window_minutes: number,
+): Promise<NotificationSettingsResponse> {
+  return api.put<NotificationSettingsResponse>(
+    `/organizations/${orgId}/notification-settings`,
+    { notification_dedup_window_minutes },
+  );
+}

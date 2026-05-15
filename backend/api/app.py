@@ -73,6 +73,14 @@ async def _lifespan(app: FastAPI):
     app.state.uptime_downsampler = downsampler
     await downsampler.start()
 
+    # Escalation chain scheduler (Sprint 34). Always on — no-op when there
+    # are no chains running.
+    from backend.paging.scheduler import EscalationScheduler
+
+    escalation_scheduler = EscalationScheduler(factory)
+    app.state.escalation_scheduler = escalation_scheduler
+    await escalation_scheduler.start()
+
     # Import any SKILL.md files under ./skills/ that aren't already in the DB.
     # Best-effort: failures are logged but do not block startup.
     try:
@@ -105,6 +113,7 @@ async def _lifespan(app: FastAPI):
     await downsampler.stop()
     await sla_poller.stop()
     await scheduler.stop()
+    await escalation_scheduler.stop()
     await engine.dispose()
 
 

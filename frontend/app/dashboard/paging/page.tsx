@@ -10,20 +10,29 @@ import {
 } from "lucide-react";
 
 import {
+  addEscalationStep,
+  createEscalationChain,
   createPriorityRule,
   createRoster,
   createService,
   createTeam,
+  deleteEscalationChain,
+  deleteEscalationStep,
   deletePriorityRule,
   deleteRoster,
   deleteService,
   deleteTeam,
+  listEscalationChains,
+  listEscalationSteps,
   listPriorityRules,
   listRosters,
   listServices,
   listTeams,
 } from "@/lib/api";
 import type {
+  EscalationChainResponse,
+  EscalationStepResponse,
+  EscalationTargetType,
   Priority,
   PriorityRuleResponse,
   ResponseMode,
@@ -38,7 +47,7 @@ import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 
-type Tab = "teams" | "services" | "rosters" | "rules";
+type Tab = "teams" | "services" | "rosters" | "rules" | "chains";
 
 const TABS: { id: Tab; label: string; description: string }[] = [
   { id: "teams", label: "Teams", description: "Org-chart units." },
@@ -57,6 +66,11 @@ const TABS: { id: Tab; label: string; description: string }[] = [
     label: "Priority Rules",
     description: "First-match-wins priority assignment.",
   },
+  {
+    id: "chains",
+    label: "Escalation Chains",
+    description: "Additive paging steps with timeouts.",
+  },
 ];
 
 const PRIORITY_VARIANT: Record<Priority, string> = {
@@ -73,19 +87,22 @@ export default function PagingPage() {
   const [services, setServices] = useState<ServiceResponse[]>([]);
   const [rosters, setRosters] = useState<RosterResponse[]>([]);
   const [rules, setRules] = useState<PriorityRuleResponse[]>([]);
+  const [chains, setChains] = useState<EscalationChainResponse[]>([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [t, s, r, p] = await Promise.all([
+      const [t, s, r, p, c] = await Promise.all([
         listTeams(),
         listServices(),
         listRosters(),
         listPriorityRules(),
+        listEscalationChains(),
       ]);
       setTeams(t.items);
       setServices(s.items);
       setRosters(r.items);
       setRules(p.items);
+      setChains(c.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -100,9 +117,9 @@ export default function PagingPage() {
       <header>
         <h1 className="text-2xl font-semibold text-fg-primary">Paging</h1>
         <p className="text-sm text-fg-secondary">
-          Teams, services, rosters, and priority rules — the foundation for
-          OpsMender-owned paging. Escalation chains, maintenance windows, and
-          notification routing land in Sprints 34–35.
+          Teams, services, rosters, priority rules, and escalation chains —
+          OpsMender-owned paging. Maintenance windows and channel fan-out land
+          in Sprint 35.
         </p>
       </header>
 
@@ -136,6 +153,14 @@ export default function PagingPage() {
         <RostersPanel rosters={rosters} teams={teams} onChange={refresh} />
       )}
       {tab === "rules" && <RulesPanel rules={rules} onChange={refresh} />}
+      {tab === "chains" && (
+        <ChainsPanel
+          chains={chains}
+          teams={teams}
+          rosters={rosters}
+          onChange={refresh}
+        />
+      )}
     </div>
   );
 }
@@ -776,5 +801,324 @@ function RulesPanel({
         </div>
       </Modal>
     </section>
+  );
+}
+
+function ChainsPanel({
+  chains,
+  teams,
+  rosters,
+  onChange,
+}: {
+  chains: EscalationChainResponse[];
+  teams: TeamResponse[];
+  rosters: RosterResponse[];
+  onChange: () => void;
+}) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", team_id: "", description: "" });
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [stepsByChain, setStepsByChain] = useState<
+    Record<string, EscalationStepResponse[]>
+  >({});
+
+  useEffect(() => {
+    if (teams.length > 0 && !form.team_id) {
+      setForm((f) => ({ ...f, team_id: teams[0].id }));
+    }
+  }, [teams, form.team_id]);
+
+  const submit = async () => {
+    if (!form.name || !form.team_id) {
+      toast.error("Name and team are required");
+      return;
+    }
+    try {
+      await createEscalationChain({
+        team_id: form.team_id,
+        name: form.name,
+        description: form.description || undefined,
+      });
+      setOpen(false);
+      setForm({ name: "", team_id: teams[0]?.id ?? "", description: "" });
+      onChange();
+      toast.success("Chain created");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Delete this chain? Steps cascade.")) return;
+    try {
+      await deleteEscalationChain(id);
+      onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const toggle = async (chainId: string) => {
+    if (expanded === chainId) {
+      setExpanded(null);
+      return;
+    }
+    try {
+      const resp = await listEscalationSteps(chainId);
+      setStepsByChain({ ...stepsByChain, [chainId]: resp.items });
+      setExpanded(chainId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <section className="space-y-3">
+      <div className="flex justify-end">
+        <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+          <PlusCircle className="h-4 w-4" /> New chain
+        </Button>
+      </div>
+      {chains.length === 0 ? (
+        <EmptyState
+          title="No escalation chains"
+          description="Without a chain, incidents flagged for paging do not page anyone. Create one per team."
+        />
+      ) : (
+        <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
+          {chains.map((c) => {
+            const team = teams.find((t) => t.id === c.team_id);
+            const isOpen = expanded === c.id;
+            const steps = stepsByChain[c.id] ?? [];
+            return (
+              <li key={c.id} className="px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <ListOrdered className="h-4 w-4 text-fg-secondary" />
+                      <span className="font-medium text-fg-primary">{c.name}</span>
+                      {!c.is_active && <Badge variant="default">inactive</Badge>}
+                    </div>
+                    <div className="text-xs text-fg-secondary">
+                      team {team?.name ?? "?"}
+                      {c.description ? ` · ${c.description}` : ""}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" onClick={() => toggle(c.id)}>
+                      {isOpen ? "Hide steps" : "Steps"}
+                    </Button>
+                    <Button variant="ghost" onClick={() => remove(c.id)} title="Delete">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                {isOpen && (
+                  <StepsEditor
+                    chainId={c.id}
+                    steps={steps}
+                    rosters={rosters}
+                    teams={teams}
+                    onChange={async () => {
+                      const resp = await listEscalationSteps(c.id);
+                      setStepsByChain({ ...stepsByChain, [c.id]: resp.items });
+                    }}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <Modal open={open} onClose={() => setOpen(false)} title="New escalation chain">
+        <div className="space-y-3">
+          <div>
+            <Label>Team</Label>
+            <Select
+              value={form.team_id}
+              onChange={(e) => setForm({ ...form, team_id: e.target.value })}
+            >
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Name</Label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="Primary on-call escalation"
+            />
+          </div>
+          <div>
+            <Label>Description (optional)</Label>
+            <Textarea
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+              rows={2}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={submit}>Create</Button>
+          </div>
+        </div>
+      </Modal>
+    </section>
+  );
+}
+
+function StepsEditor({
+  chainId,
+  steps,
+  rosters,
+  teams,
+  onChange,
+}: {
+  chainId: string;
+  steps: EscalationStepResponse[];
+  rosters: RosterResponse[];
+  teams: TeamResponse[];
+  onChange: () => Promise<void>;
+}) {
+  const toast = useToast();
+  const [stepForm, setStepForm] = useState({
+    target_type: "roster" as EscalationTargetType,
+    target_id: "",
+    timeout_seconds: 300,
+  });
+
+  const addStep = async () => {
+    if (!stepForm.target_id) {
+      toast.error("Pick a target");
+      return;
+    }
+    try {
+      const nextIndex = steps.length === 0
+        ? 0
+        : Math.max(...steps.map((s) => s.step_index)) + 1;
+      await addEscalationStep(chainId, {
+        step_index: nextIndex,
+        target_type: stepForm.target_type,
+        target_id: stepForm.target_id,
+        timeout_seconds: stepForm.timeout_seconds,
+      });
+      setStepForm({ ...stepForm, target_id: "" });
+      await onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const removeStep = async (id: string) => {
+    try {
+      await deleteEscalationStep(chainId, id);
+      await onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const targetOptions =
+    stepForm.target_type === "roster" ? rosters :
+    stepForm.target_type === "team" ? teams :
+    [];
+
+  return (
+    <div className="mt-3 space-y-2 rounded border border-border-default bg-bg-elevated p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+        Steps (additive — once paged, stay paged)
+      </div>
+      {steps.length === 0 ? (
+        <div className="text-xs text-fg-tertiary">No steps yet.</div>
+      ) : (
+        <ol className="space-y-1">
+          {steps.map((s) => {
+            const label =
+              s.target_type === "roster"
+                ? rosters.find((r) => r.id === s.target_id)?.name
+                : s.target_type === "team"
+                ? teams.find((t) => t.id === s.target_id)?.name
+                : s.target_id;
+            return (
+              <li
+                key={s.id}
+                className="flex items-center justify-between text-sm"
+              >
+                <span>
+                  <Badge variant="default">#{s.step_index}</Badge>{" "}
+                  <span className="text-fg-secondary">{s.target_type}</span>{" "}
+                  <span className="text-fg-primary">{label}</span>{" "}
+                  <span className="text-fg-tertiary">
+                    · {s.timeout_seconds}s
+                  </span>
+                </span>
+                <Button variant="ghost" onClick={() => removeStep(s.id)}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <div className="grid grid-cols-[120px_1fr_120px_auto] items-end gap-2 pt-2">
+        <div>
+          <Label>Type</Label>
+          <Select
+            value={stepForm.target_type}
+            onChange={(e) =>
+              setStepForm({
+                ...stepForm,
+                target_type: e.target.value as EscalationTargetType,
+                target_id: "",
+              })
+            }
+          >
+            <option value="roster">Roster</option>
+            <option value="team">Team</option>
+          </Select>
+        </div>
+        <div>
+          <Label>Target</Label>
+          <Select
+            value={stepForm.target_id}
+            onChange={(e) =>
+              setStepForm({ ...stepForm, target_id: e.target.value })
+            }
+          >
+            <option value="">— pick —</option>
+            {targetOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {(o as { name?: string }).name ?? o.id}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label>Timeout (s)</Label>
+          <Input
+            type="number"
+            min={10}
+            value={stepForm.timeout_seconds}
+            onChange={(e) =>
+              setStepForm({
+                ...stepForm,
+                timeout_seconds: Number(e.target.value) || 300,
+              })
+            }
+          />
+        </div>
+        <Button onClick={addStep}>Add step</Button>
+      </div>
+    </div>
   );
 }

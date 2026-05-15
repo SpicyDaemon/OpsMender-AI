@@ -1468,3 +1468,122 @@ class IncidentPagingPanelResponse(BaseModel):
     response_mode: Optional[str]
     service_id: Optional[uuid.UUID]
     assignment: Optional[IncidentAssignmentResponse]
+
+
+# ---------------------------------------------------------------------------
+# Escalation chains (Sprint 34)
+# ---------------------------------------------------------------------------
+
+
+class EscalationChainCreate(BaseModel):
+    team_id: uuid.UUID
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class EscalationChainUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class EscalationChainResponse(BaseModel):
+    id: uuid.UUID
+    team_id: uuid.UUID
+    name: str
+    description: Optional[str]
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EscalationChainListResponse(BaseModel):
+    items: list[EscalationChainResponse]
+    total: int
+
+
+class EscalationStepCreate(BaseModel):
+    step_index: int = Field(..., ge=0)
+    target_type: str = Field(..., pattern="^(roster|user|team)$")
+    target_id: uuid.UUID
+    timeout_seconds: int = Field(default=300, ge=10, le=86400)
+    notify_channels: Optional[dict[str, Any]] = None
+
+
+class EscalationStepResponse(BaseModel):
+    id: uuid.UUID
+    chain_id: uuid.UUID
+    step_index: int
+    target_type: str
+    target_id: uuid.UUID
+    timeout_seconds: int
+    notify_channels: Optional[dict[str, Any]]
+
+    model_config = {"from_attributes": True}
+
+
+class EscalationStepListResponse(BaseModel):
+    items: list[EscalationStepResponse]
+    total: int
+
+
+class ServiceEscalationChainCreate(BaseModel):
+    chain_id: uuid.UUID
+    applies_when: Optional[dict[str, Any]] = None
+
+
+class ServiceEscalationChainResponse(BaseModel):
+    id: uuid.UUID
+    service_id: uuid.UUID
+    chain_id: uuid.UUID
+    applies_when: Optional[dict[str, Any]]
+
+    model_config = {"from_attributes": True}
+
+
+class IncidentPageResponse(BaseModel):
+    id: uuid.UUID
+    incident_id: uuid.UUID
+    user_id: uuid.UUID
+    chain_id: Optional[uuid.UUID]
+    step_index: Optional[int]
+    channel: str
+    sent_at: datetime
+    ack_at: Optional[datetime]
+    ack_via: Optional[str]
+    delivery_status: str
+
+    model_config = {"from_attributes": True}
+
+
+class IncidentChainStateResponse(BaseModel):
+    id: uuid.UUID
+    incident_id: uuid.UUID
+    chain_id: uuid.UUID
+    status: str
+    current_step_index: int
+    next_step_due_at: Optional[datetime]
+    hard_deadline_at: Optional[datetime]
+    pending_takeover_user_id: Optional[uuid.UUID]
+    pending_takeover_expires_at: Optional[datetime]
+    started_at: datetime
+    finished_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class IncidentChainPanelResponse(BaseModel):
+    incident_id: uuid.UUID
+    state: Optional[IncidentChainStateResponse]
+    pages: list[IncidentPageResponse]
+
+
+class IncidentAckRequest(BaseModel):
+    via: str = Field(default="web_ui", pattern="^(button_click|slash_command|web_ui|api)$")
+
+
+class IncidentTakeRequest(BaseModel):
+    confirm: bool = False  # true = confirm a pending soft-takeover
+    force: bool = False  # true = admin force-takeover

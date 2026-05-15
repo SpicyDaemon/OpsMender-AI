@@ -34,6 +34,7 @@ from backend.api.schemas import (
     IncidentPagingPanelResponse,
 )
 from backend.paging.service import compute_priority_for_payload
+from backend.paging import escalation as _esc_kickoff
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
@@ -93,6 +94,22 @@ async def create_incident(
         priority=priority_result.priority,
         response_mode=priority_result.response_mode,
     )
+    # Kick off the escalation chain when the response mode pages humans.
+    if priority_result.response_mode in ("page", "escalate_immediate"):
+        link = await _esc_kickoff.select_chain_for_incident(
+            db,
+            org_id,
+            service_id=incident.service_id,
+            priority=priority_result.priority,
+        )
+        if link is not None:
+            await _esc_kickoff.start_chain(
+                db,
+                org_id,
+                incident_id=incident.id,
+                chain_id=link.chain_id,
+                mode=priority_result.response_mode,
+            )
     return incident
 
 
@@ -274,3 +291,128 @@ async def release_incident(
     from fastapi import Response
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Escalation chain actions (Sprint 34)
+# ---------------------------------------------------------------------------
+
+from backend.api.schemas import (
+    IncidentAckRequest,
+    IncidentChainPanelResponse,
+    IncidentChainStateResponse,
+    IncidentPageResponse,
+    IncidentTakeRequest,
+)
+from backend.db.repos import IncidentChainStateRepo, IncidentPageRepo
+from backend.paging import escalation as _esc
+
+
+@router.get(
+    "/{incident_id}/chain",
+    response_model=IncidentChainPanelResponse,
+    summary="Chain state + page log for an incident",
+)
+async def get_incident_chain(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
+    pages = await IncidentPageRepo.list_for_incident(db, org_id, incident_id)
+    return IncidentChainPanelResponse(
+        incident_id=incident_id,
+        state=(
+            IncidentChainStateResponse.model_validate(state)
+            if state is not None
+            else None
+        ),
+        pages=[IncidentPageResponse.model_validate(p) for p in pages],
+    )
+
+
+@router.post(
+    "/{incident_id}/ack",
+    response_model=IncidentChainPanelResponse,
+    summary="Ack an incident (button click / slash command / web UI / API)",
+)
+async def ack_incident(
+    incident_id: uuid.UUID,
+    body: IncidentAckRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    await _esc.handle_ack(
+        db,
+        org_id,
+        incident_id=incident_id,
+        user_id=user.id,
+        via=body.via,
+    )
+    await db.commit()
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
+    pages = await IncidentPageRepo.list_for_incident(db, org_id, incident_id)
+    return IncidentChainPanelResponse(
+        incident_id=incident_id,
+        state=(
+            IncidentChainStateResponse.model_validate(state)
+            if state is not None
+            else None
+        ),
+        pages=[IncidentPageResponse.model_validate(p) for p in pages],
+    )
+
+
+@router.post(
+    "/{incident_id}/take",
+    response_model=IncidentChainPanelResponse,
+    summary="Request soft-takeover, confirm one, or admin-force",
+)
+async def take_incident(
+    incident_id: uuid.UUID,
+    body: IncidentTakeRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    if body.force:
+        if user.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Force-takeover requires admin",
+            )
+        await _esc.handle_force_takeover(
+            db, org_id, incident_id=incident_id, admin_id=user.id
+        )
+    elif body.confirm:
+        await _esc.handle_takeover_confirm(
+            db, org_id, incident_id=incident_id
+        )
+    else:
+        await _esc.handle_takeover_request(
+            db, org_id, incident_id=incident_id, requester_id=user.id
+        )
+    await db.commit()
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
+    pages = await IncidentPageRepo.list_for_incident(db, org_id, incident_id)
+    return IncidentChainPanelResponse(
+        incident_id=incident_id,
+        state=(
+            IncidentChainStateResponse.model_validate(state)
+            if state is not None
+            else None
+        ),
+        pages=[IncidentPageResponse.model_validate(p) for p in pages],
+    )

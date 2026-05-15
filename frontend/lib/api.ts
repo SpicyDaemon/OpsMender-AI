@@ -1201,3 +1201,109 @@ export async function assignIncident(
 export async function releaseIncident(incidentId: string): Promise<void> {
   return api.post<void>(`/incidents/${incidentId}/release`);
 }
+
+// ---------------------------------------------------------------------------
+// Escalation chains (Sprint 34)
+// ---------------------------------------------------------------------------
+
+import type {
+  EscalationChainCreate,
+  EscalationChainListResponse,
+  EscalationChainResponse,
+  EscalationStepCreate,
+  EscalationStepListResponse,
+  EscalationStepResponse,
+  IncidentChainPanelResponse,
+} from "./types";
+
+export async function listEscalationChains(
+  teamId?: string,
+): Promise<EscalationChainListResponse> {
+  const qs = teamId ? `?team_id=${teamId}` : "";
+  return api.get<EscalationChainListResponse>(`/escalation-chains${qs}`);
+}
+
+export async function createEscalationChain(
+  body: EscalationChainCreate,
+): Promise<EscalationChainResponse> {
+  return api.post<EscalationChainResponse>("/escalation-chains", body);
+}
+
+export async function updateEscalationChain(
+  id: string,
+  body: Partial<EscalationChainCreate>,
+): Promise<EscalationChainResponse> {
+  return api.put<EscalationChainResponse>(`/escalation-chains/${id}`, body);
+}
+
+export async function deleteEscalationChain(id: string): Promise<void> {
+  return api.del<void>(`/escalation-chains/${id}`);
+}
+
+export async function listEscalationSteps(
+  chainId: string,
+): Promise<EscalationStepListResponse> {
+  return api.get<EscalationStepListResponse>(
+    `/escalation-chains/${chainId}/steps`,
+  );
+}
+
+export async function addEscalationStep(
+  chainId: string,
+  body: EscalationStepCreate,
+): Promise<EscalationStepResponse> {
+  return api.post<EscalationStepResponse>(
+    `/escalation-chains/${chainId}/steps`,
+    body,
+  );
+}
+
+export async function deleteEscalationStep(
+  chainId: string,
+  stepId: string,
+): Promise<void> {
+  return api.del<void>(`/escalation-chains/${chainId}/steps/${stepId}`);
+}
+
+export async function linkServiceEscalationChain(
+  serviceId: string,
+  chainId: string,
+  appliesWhen?: Record<string, unknown>,
+): Promise<void> {
+  return api.post<void>(`/services/${serviceId}/escalation-chains`, {
+    chain_id: chainId,
+    applies_when: appliesWhen,
+  });
+}
+
+export async function unlinkServiceEscalationChain(
+  serviceId: string,
+  chainId: string,
+): Promise<void> {
+  return api.del<void>(`/services/${serviceId}/escalation-chains/${chainId}`);
+}
+
+export async function getIncidentChain(
+  incidentId: string,
+): Promise<IncidentChainPanelResponse> {
+  return api.get<IncidentChainPanelResponse>(`/incidents/${incidentId}/chain`);
+}
+
+export async function ackIncident(
+  incidentId: string,
+  via: "button_click" | "slash_command" | "web_ui" | "api" = "web_ui",
+): Promise<IncidentChainPanelResponse> {
+  return api.post<IncidentChainPanelResponse>(`/incidents/${incidentId}/ack`, {
+    via,
+  });
+}
+
+export async function takeIncident(
+  incidentId: string,
+  options: { confirm?: boolean; force?: boolean } = {},
+): Promise<IncidentChainPanelResponse> {
+  return api.post<IncidentChainPanelResponse>(
+    `/incidents/${incidentId}/take`,
+    options,
+  );
+}

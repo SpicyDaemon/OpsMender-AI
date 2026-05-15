@@ -1393,3 +1393,163 @@ class IncidentAssignment(Base):
             sqlite_where=text("released_at IS NULL"),
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Escalation chains (Sprint 34) — additive paging engine. State machine lives
+# in backend/paging/escalation.py; the tables here only persist the chain
+# definition + per-incident page log.
+# ---------------------------------------------------------------------------
+
+
+class EscalationChain(Base):
+    __tablename__ = "escalation_chains"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class EscalationStep(Base):
+    __tablename__ = "escalation_steps"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    chain_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("escalation_chains.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    step_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # roster | user | team
+    target_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    timeout_seconds: Mapped[int] = mapped_column(
+        Integer, default=300, nullable=False
+    )
+    notify_channels: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("chain_id", "step_index", name="uq_escalation_step_index"),
+    )
+
+
+class ServiceEscalationChain(Base):
+    __tablename__ = "service_escalation_chains"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    service_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("services.id", ondelete="CASCADE"), nullable=False
+    )
+    chain_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("escalation_chains.id", ondelete="CASCADE"), nullable=False
+    )
+    applies_when: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "service_id", "chain_id", name="uq_service_escalation_chain"
+        ),
+    )
+
+
+class IncidentPage(Base):
+    """One row per page attempt — used as the audit log for the chain engine
+    in Sprint 34. Sprint 35 will wire ``channel`` to real delivery surfaces."""
+
+    __tablename__ = "incident_pages"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    chain_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("escalation_chains.id", ondelete="SET NULL"), nullable=True
+    )
+    step_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    channel: Mapped[str] = mapped_column(
+        String(40), default="recorded", nullable=False
+    )
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
+    )
+    ack_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ack_via: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    delivery_status: Mapped[str] = mapped_column(
+        String(20), default="recorded", nullable=False
+    )
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Per-incident chain run state (Sprint 34) — tracks current step, next
+# deadline, soft-takeover window, etc. Separate from the chain *definition*.
+# ---------------------------------------------------------------------------
+
+
+class IncidentChainState(Base):
+    __tablename__ = "incident_chain_states"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    chain_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("escalation_chains.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default="running", nullable=False
+    )  # running | paused | acked | exhausted | resolved | cancelled
+    current_step_index: Mapped[int] = mapped_column(Integer, default=-1, nullable=False)
+    next_step_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    hard_deadline_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    pending_takeover_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    pending_takeover_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

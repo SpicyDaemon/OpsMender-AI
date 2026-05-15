@@ -740,3 +740,249 @@ async def delete_priority_rule(
         raise HTTPException(status_code=404, detail="Priority rule not found")
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Escalation chains (Sprint 34)
+# ---------------------------------------------------------------------------
+
+from backend.api.schemas import (
+    EscalationChainCreate,
+    EscalationChainListResponse,
+    EscalationChainResponse,
+    EscalationChainUpdate,
+    EscalationStepCreate,
+    EscalationStepListResponse,
+    EscalationStepResponse,
+    ServiceEscalationChainCreate,
+    ServiceEscalationChainResponse,
+)
+from backend.db.repos import (
+    EscalationChainRepo,
+    EscalationStepRepo,
+    ServiceEscalationChainRepo,
+)
+
+
+@router.get(
+    "/escalation-chains",
+    response_model=EscalationChainListResponse,
+    summary="List escalation chains",
+)
+async def list_escalation_chains(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+    team_id: uuid.UUID | None = Query(default=None),
+):
+    items = await EscalationChainRepo.list_all(db, org_id, team_id=team_id)
+    return EscalationChainListResponse(
+        items=[EscalationChainResponse.model_validate(c) for c in items],
+        total=len(items),
+    )
+
+
+@router.post(
+    "/escalation-chains",
+    response_model=EscalationChainResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an escalation chain",
+)
+async def create_escalation_chain(
+    body: EscalationChainCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await TeamRepo.get_by_id(db, org_id, body.team_id) is None:
+        raise HTTPException(status_code=400, detail="Owning team not found")
+    chain = await EscalationChainRepo.create(
+        db,
+        org_id,
+        team_id=body.team_id,
+        name=body.name,
+        description=body.description,
+        is_active=body.is_active,
+    )
+    await db.commit()
+    await db.refresh(chain)
+    return EscalationChainResponse.model_validate(chain)
+
+
+@router.put(
+    "/escalation-chains/{chain_id}",
+    response_model=EscalationChainResponse,
+    summary="Update an escalation chain",
+)
+async def update_escalation_chain(
+    chain_id: uuid.UUID,
+    body: EscalationChainUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    fields = body.model_dump(exclude_unset=True)
+    updated = await EscalationChainRepo.update(db, org_id, chain_id, **fields)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    await db.commit()
+    return EscalationChainResponse.model_validate(updated)
+
+
+@router.delete(
+    "/escalation-chains/{chain_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an escalation chain",
+)
+async def delete_escalation_chain(
+    chain_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    deleted = await EscalationChainRepo.delete(db, org_id, chain_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/escalation-chains/{chain_id}/steps",
+    response_model=EscalationStepListResponse,
+    summary="List steps in an escalation chain",
+)
+async def list_escalation_steps(
+    chain_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    if await EscalationChainRepo.get_by_id(db, org_id, chain_id) is None:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    items = await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
+    return EscalationStepListResponse(
+        items=[EscalationStepResponse.model_validate(s) for s in items],
+        total=len(items),
+    )
+
+
+@router.post(
+    "/escalation-chains/{chain_id}/steps",
+    response_model=EscalationStepResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a step to an escalation chain",
+)
+async def add_escalation_step(
+    chain_id: uuid.UUID,
+    body: EscalationStepCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await EscalationChainRepo.get_by_id(db, org_id, chain_id) is None:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    # Light target_id validation — Sprint 34 only checks the type vs. obvious
+    # tables we have repos for.
+    if body.target_type == "roster":
+        if await RosterRepo.get_by_id(db, org_id, body.target_id) is None:
+            raise HTTPException(status_code=400, detail="Target roster not found")
+    elif body.target_type == "team":
+        if await TeamRepo.get_by_id(db, org_id, body.target_id) is None:
+            raise HTTPException(status_code=400, detail="Target team not found")
+    try:
+        step = await EscalationStepRepo.create(
+            db,
+            org_id,
+            chain_id=chain_id,
+            step_index=body.step_index,
+            target_type=body.target_type,
+            target_id=body.target_id,
+            timeout_seconds=body.timeout_seconds,
+            notify_channels=body.notify_channels,
+        )
+        await db.commit()
+        await db.refresh(step)
+        return EscalationStepResponse.model_validate(step)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Step index already used in this chain",
+        ) from exc
+
+
+@router.delete(
+    "/escalation-chains/{chain_id}/steps/{step_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an escalation step",
+)
+async def delete_escalation_step(
+    chain_id: uuid.UUID,
+    step_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    deleted = await EscalationStepRepo.delete(db, org_id, step_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Step not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/services/{service_id}/escalation-chains",
+    response_model=ServiceEscalationChainResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach an escalation chain to a service",
+)
+async def link_service_escalation_chain(
+    service_id: uuid.UUID,
+    body: ServiceEscalationChainCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await ServiceRepo.get_by_id(db, org_id, service_id) is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if await EscalationChainRepo.get_by_id(db, org_id, body.chain_id) is None:
+        raise HTTPException(status_code=400, detail="Chain not found")
+    try:
+        row = await ServiceEscalationChainRepo.link(
+            db,
+            org_id,
+            service_id=service_id,
+            chain_id=body.chain_id,
+            applies_when=body.applies_when,
+        )
+        await db.commit()
+        await db.refresh(row)
+        return ServiceEscalationChainResponse.model_validate(row)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Chain already linked to this service",
+        ) from exc
+
+
+@router.delete(
+    "/services/{service_id}/escalation-chains/{chain_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Detach an escalation chain from a service",
+)
+async def unlink_service_escalation_chain(
+    service_id: uuid.UUID,
+    chain_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    removed = await ServiceEscalationChainRepo.unlink(
+        db, org_id, service_id=service_id, chain_id=chain_id
+    )
+    if not removed:
+        raise HTTPException(status_code=404, detail="Link not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

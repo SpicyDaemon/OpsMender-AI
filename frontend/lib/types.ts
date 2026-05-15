@@ -1313,3 +1313,94 @@ export interface OnCallResolveResponse {
   at: string;
   user_id: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Escalation chains (Sprint 34)
+// ---------------------------------------------------------------------------
+
+export type EscalationTargetType = "roster" | "user" | "team";
+
+export type ChainStatus =
+  | "running"
+  | "paused"
+  | "acked"
+  | "exhausted"
+  | "resolved"
+  | "cancelled";
+
+export interface EscalationChainResponse {
+  id: string;
+  team_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface EscalationChainListResponse {
+  items: EscalationChainResponse[];
+  total: number;
+}
+
+export interface EscalationChainCreate {
+  team_id: string;
+  name: string;
+  description?: string;
+  is_active?: boolean;
+}
+
+export interface EscalationStepResponse {
+  id: string;
+  chain_id: string;
+  step_index: number;
+  target_type: EscalationTargetType;
+  target_id: string;
+  timeout_seconds: number;
+  notify_channels: Record<string, unknown> | null;
+}
+
+export interface EscalationStepListResponse {
+  items: EscalationStepResponse[];
+  total: number;
+}
+
+export interface EscalationStepCreate {
+  step_index: number;
+  target_type: EscalationTargetType;
+  target_id: string;
+  timeout_seconds?: number;
+  notify_channels?: Record<string, unknown>;
+}
+
+export interface IncidentPageRecord {
+  id: string;
+  incident_id: string;
+  user_id: string;
+  chain_id: string | null;
+  step_index: number | null;
+  channel: string;
+  sent_at: string;
+  ack_at: string | null;
+  ack_via: string | null;
+  delivery_status: string;
+}
+
+export interface IncidentChainStateRecord {
+  id: string;
+  incident_id: string;
+  chain_id: string;
+  status: ChainStatus;
+  current_step_index: number;
+  next_step_due_at: string | null;
+  hard_deadline_at: string | null;
+  pending_takeover_user_id: string | null;
+  pending_takeover_expires_at: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface IncidentChainPanelResponse {
+  incident_id: string;
+  state: IncidentChainStateRecord | null;
+  pages: IncidentPageRecord[];
+}

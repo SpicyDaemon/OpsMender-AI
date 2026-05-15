@@ -193,7 +193,25 @@ async def ingest_incident(
         # Apply priority rules — locked at creation per D-021.
         from backend.paging.service import apply_priority_to_incident
 
-        await apply_priority_to_incident(db, org_id, incident)
+        priority_result = await apply_priority_to_incident(db, org_id, incident)
+        # Kick off escalation chain if this incident pages humans.
+        if priority_result.response_mode in ("page", "escalate_immediate"):
+            from backend.paging import escalation as _esc_kickoff
+
+            link = await _esc_kickoff.select_chain_for_incident(
+                db,
+                org_id,
+                service_id=incident.service_id,
+                priority=priority_result.priority,
+            )
+            if link is not None:
+                await _esc_kickoff.start_chain(
+                    db,
+                    org_id,
+                    incident_id=incident.id,
+                    chain_id=link.chain_id,
+                    mode=priority_result.response_mode,
+                )
         dedup_action = "created"
 
     # ── Audit log entry ────────────────────────────────────────────────

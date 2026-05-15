@@ -28,8 +28,13 @@ from backend.db.models import (
     BotUserLink,
     DetectorHistory,
     DetectorRule,
+    EscalationChain,
+    EscalationStep,
     Incident,
     IncidentAssignment,
+    IncidentChainState,
+    IncidentPage,
+    ServiceEscalationChain,
     PriorityLLMOverrideLog,
     PriorityRule,
     Roster,
@@ -4093,5 +4098,332 @@ class IncidentAssignmentRepo:
                 IncidentAssignment.incident_id == incident_id,
             )
             .order_by(IncidentAssignment.assigned_at.desc())
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+
+# ---------------------------------------------------------------------------
+# Escalation chains (Sprint 34)
+# ---------------------------------------------------------------------------
+
+
+class EscalationChainRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        team_id: uuid.UUID,
+        name: str,
+        description: str | None = None,
+        is_active: bool = True,
+    ) -> EscalationChain:
+        chain = EscalationChain(
+            org_id=org_id,
+            team_id=team_id,
+            name=name,
+            description=description,
+            is_active=is_active,
+        )
+        db.add(chain)
+        await db.flush()
+        return chain
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, chain_id: uuid.UUID
+    ) -> EscalationChain | None:
+        return (
+            await db.execute(
+                select(EscalationChain).where(
+                    EscalationChain.id == chain_id,
+                    EscalationChain.org_id == org_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        team_id: uuid.UUID | None = None,
+    ) -> Sequence[EscalationChain]:
+        stmt = select(EscalationChain).where(EscalationChain.org_id == org_id)
+        if team_id is not None:
+            stmt = stmt.where(EscalationChain.team_id == team_id)
+        stmt = stmt.order_by(EscalationChain.name)
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        chain_id: uuid.UUID,
+        **fields: Any,
+    ) -> EscalationChain | None:
+        if not fields:
+            return await EscalationChainRepo.get_by_id(db, org_id, chain_id)
+        stmt = (
+            update(EscalationChain)
+            .where(
+                EscalationChain.org_id == org_id, EscalationChain.id == chain_id
+            )
+            .values(**fields)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await EscalationChainRepo.get_by_id(db, org_id, chain_id)
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, chain_id: uuid.UUID
+    ) -> bool:
+        chain = await EscalationChainRepo.get_by_id(db, org_id, chain_id)
+        if chain is None:
+            return False
+        await db.delete(chain)
+        await db.flush()
+        return True
+
+
+class EscalationStepRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        chain_id: uuid.UUID,
+        step_index: int,
+        target_type: str,
+        target_id: uuid.UUID,
+        timeout_seconds: int = 300,
+        notify_channels: dict | None = None,
+    ) -> EscalationStep:
+        step = EscalationStep(
+            org_id=org_id,
+            chain_id=chain_id,
+            step_index=step_index,
+            target_type=target_type,
+            target_id=target_id,
+            timeout_seconds=timeout_seconds,
+            notify_channels=notify_channels,
+        )
+        db.add(step)
+        await db.flush()
+        return step
+
+    @staticmethod
+    async def list_for_chain(
+        db: AsyncSession, org_id: uuid.UUID, chain_id: uuid.UUID
+    ) -> Sequence[EscalationStep]:
+        stmt = (
+            select(EscalationStep)
+            .where(
+                EscalationStep.org_id == org_id,
+                EscalationStep.chain_id == chain_id,
+            )
+            .order_by(EscalationStep.step_index)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, step_id: uuid.UUID
+    ) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(EscalationStep).where(
+            EscalationStep.org_id == org_id, EscalationStep.id == step_id
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+
+class ServiceEscalationChainRepo:
+    @staticmethod
+    async def link(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        service_id: uuid.UUID,
+        chain_id: uuid.UUID,
+        applies_when: dict | None = None,
+    ) -> ServiceEscalationChain:
+        row = ServiceEscalationChain(
+            org_id=org_id,
+            service_id=service_id,
+            chain_id=chain_id,
+            applies_when=applies_when,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def list_for_service(
+        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
+    ) -> Sequence[ServiceEscalationChain]:
+        stmt = (
+            select(ServiceEscalationChain)
+            .where(
+                ServiceEscalationChain.org_id == org_id,
+                ServiceEscalationChain.service_id == service_id,
+            )
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def unlink(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        service_id: uuid.UUID,
+        chain_id: uuid.UUID,
+    ) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(ServiceEscalationChain).where(
+            ServiceEscalationChain.org_id == org_id,
+            ServiceEscalationChain.service_id == service_id,
+            ServiceEscalationChain.chain_id == chain_id,
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+
+class IncidentPageRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+        chain_id: uuid.UUID | None = None,
+        step_index: int | None = None,
+        channel: str = "recorded",
+        delivery_status: str = "recorded",
+        delivery_error: str | None = None,
+    ) -> IncidentPage:
+        page = IncidentPage(
+            org_id=org_id,
+            incident_id=incident_id,
+            user_id=user_id,
+            chain_id=chain_id,
+            step_index=step_index,
+            channel=channel,
+            delivery_status=delivery_status,
+            delivery_error=delivery_error,
+        )
+        db.add(page)
+        await db.flush()
+        return page
+
+    @staticmethod
+    async def already_paged(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+        step_index: int,
+    ) -> bool:
+        stmt = select(IncidentPage).where(
+            IncidentPage.org_id == org_id,
+            IncidentPage.incident_id == incident_id,
+            IncidentPage.user_id == user_id,
+            IncidentPage.step_index == step_index,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none() is not None
+
+    @staticmethod
+    async def list_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> Sequence[IncidentPage]:
+        stmt = (
+            select(IncidentPage)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == incident_id,
+            )
+            .order_by(IncidentPage.sent_at)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def ack_all_unacked(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+        via: str,
+    ) -> int:
+        """Stamp ack_at/ack_via on every unacked page for (incident, user).
+
+        Returns the number of rows updated.
+        """
+
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(IncidentPage)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == incident_id,
+                IncidentPage.user_id == user_id,
+                IncidentPage.ack_at.is_(None),
+            )
+            .values(ack_at=now, ack_via=via)
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount or 0
+
+
+class IncidentChainStateRepo:
+    @staticmethod
+    async def get_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> IncidentChainState | None:
+        return (
+            await db.execute(
+                select(IncidentChainState).where(
+                    IncidentChainState.org_id == org_id,
+                    IncidentChainState.incident_id == incident_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        chain_id: uuid.UUID,
+    ) -> IncidentChainState:
+        state = IncidentChainState(
+            org_id=org_id, incident_id=incident_id, chain_id=chain_id
+        )
+        db.add(state)
+        await db.flush()
+        return state
+
+    @staticmethod
+    async def list_due(
+        db: AsyncSession, *, now: datetime
+    ) -> Sequence[IncidentChainState]:
+        """Return states whose next_step_due_at has passed (any org)."""
+
+        stmt = (
+            select(IncidentChainState)
+            .where(IncidentChainState.status == "running")
+            .where(IncidentChainState.next_step_due_at.is_not(None))
+            .where(IncidentChainState.next_step_due_at <= now)
         )
         return (await db.execute(stmt)).scalars().all()

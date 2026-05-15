@@ -5,6 +5,20 @@ live here so the API + workflow layers can call them deterministically and
 unit-test them without a live DB.
 """
 
+from backend.paging.escalation import (
+    HARD_INACTIVITY_TIMEOUT_SECONDS,
+    SOFT_TAKEOVER_WINDOW_SECONDS,
+    StepFireResult,
+    cancel_chain,
+    handle_ack,
+    handle_force_takeover,
+    handle_takeover_confirm,
+    handle_takeover_request,
+    select_chain_for_incident,
+    start_chain,
+    tick,
+    tick_all_due,
+)
 from backend.paging.on_call import (
     OnCallContext,
     OnCallMember,
@@ -22,13 +36,25 @@ from backend.paging.priority import (
 
 __all__ = [
     "DEFAULT_MODE_FOR",
+    "HARD_INACTIVITY_TIMEOUT_SECONDS",
     "OnCallContext",
     "OnCallMember",
     "OnCallOverride",
     "PRIORITY_RANK",
     "PriorityAssignment",
     "PriorityRuleLike",
+    "SOFT_TAKEOVER_WINDOW_SECONDS",
+    "StepFireResult",
     "assign_priority",
+    "cancel_chain",
+    "handle_ack",
+    "handle_force_takeover",
+    "handle_takeover_confirm",
+    "handle_takeover_request",
     "on_call_at",
     "rule_matches",
+    "select_chain_for_incident",
+    "start_chain",
+    "tick",
+    "tick_all_due",
 ]

@@ -24,6 +24,8 @@ from backend.api.auth import (
 from backend.api.deps import get_db
 from backend.api.schemas import (
     OnCallResolveResponse,
+    UserNotificationPrefResponse,
+    UserNotificationPrefUpdate,
     PriorityRuleCreate,
     PriorityRuleListResponse,
     PriorityRuleResponse,
@@ -58,6 +60,7 @@ from backend.db.repos import (
     RosterRepo,
     ServiceRepo,
     TeamRepo,
+    UserNotificationPrefRepo,
 )
 from backend.paging.on_call import (
     OnCallContext,
@@ -986,3 +989,59 @@ async def unlink_service_escalation_chain(
         raise HTTPException(status_code=404, detail="Link not found")
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# User notification preferences (Sprint 35)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/users/me/notification-preferences",
+    response_model=UserNotificationPrefResponse,
+    summary="Get the current user's notification preferences for the active org",
+)
+async def get_my_notification_preferences(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    pref = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
+    if pref is None:
+        pref = await UserNotificationPrefRepo.upsert(
+            db,
+            org_id,
+            user.id,
+            channels={},
+            routing={},
+            quiet_hours=None,
+            quiet_hours_provided=True,
+        )
+        await db.commit()
+        await db.refresh(pref)
+    return UserNotificationPrefResponse.model_validate(pref)
+
+
+@router.put(
+    "/users/me/notification-preferences",
+    response_model=UserNotificationPrefResponse,
+    summary="Update the current user's notification preferences for the active org",
+)
+async def update_my_notification_preferences(
+    body: UserNotificationPrefUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    pref = await UserNotificationPrefRepo.upsert(
+        db,
+        org_id,
+        user.id,
+        channels=body.channels,
+        routing=body.routing,
+        quiet_hours=body.quiet_hours,
+        quiet_hours_provided="quiet_hours" in body.model_fields_set,
+    )
+    await db.commit()
+    await db.refresh(pref)
+    return UserNotificationPrefResponse.model_validate(pref)

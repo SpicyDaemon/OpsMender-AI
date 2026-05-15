@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    NotificationSettingsResponse,
+    NotificationSettingsUpdate,
     OrganizationCreate,
     OrganizationDomainCreate,
     OrganizationDomainListResponse,
@@ -156,6 +158,49 @@ async def delete_organization(org_id: uuid.UUID, db: AsyncSession = Depends(get_
     if not success:
         raise HTTPException(status_code=404, detail="Organization not found")
     await db.commit()
+
+
+@router.get(
+    "/{org_id}/notification-settings",
+    response_model=NotificationSettingsResponse,
+    dependencies=[admin_dependency],
+)
+async def get_notification_settings(
+    org_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+):
+    """Get the org-wide notification settings (admin-only)."""
+    org = await OrganizationRepo.get_by_id(db, org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return NotificationSettingsResponse(
+        org_id=org.id,
+        notification_dedup_window_minutes=org.notification_dedup_window_minutes,
+    )
+
+
+@router.put(
+    "/{org_id}/notification-settings",
+    response_model=NotificationSettingsResponse,
+    dependencies=[admin_dependency],
+)
+async def update_notification_settings(
+    org_id: uuid.UUID,
+    body: NotificationSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the org-wide notification settings (admin-only)."""
+    updated = await OrganizationRepo.update(
+        db,
+        org_id,
+        notification_dedup_window_minutes=body.notification_dedup_window_minutes,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    await db.commit()
+    return NotificationSettingsResponse(
+        org_id=updated.id,
+        notification_dedup_window_minutes=updated.notification_dedup_window_minutes,
+    )
 
 
 @router.get(

@@ -741,3 +741,185 @@ class TestPagingAPI:
             headers=auth_headers,
         )
         assert release.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# Sprint 35 Step 7 — Notification preferences + org notification settings
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationPreferencesAPI:
+    async def test_get_creates_default_pref(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get(
+            "/users/me/notification-preferences", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["channels"] == {}
+        assert data["routing"] == {}
+        assert data["quiet_hours"] is None
+
+    async def test_put_updates_pref(self, client: AsyncClient, auth_headers):
+        body = {
+            "channels": {"slack_dm": {"handle": "@me"}, "email": {"address": "x@y"}},
+            "routing": {"P0": ["slack_dm", "email"], "P1": ["slack_dm"]},
+            "quiet_hours": {
+                "weekday": {"start": "22:00", "end": "07:00"},
+                "min_priority_to_break": "P1",
+            },
+        }
+        resp = await client.put(
+            "/users/me/notification-preferences",
+            json=body,
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["channels"] == body["channels"]
+        assert data["routing"] == body["routing"]
+        assert data["quiet_hours"] == body["quiet_hours"]
+
+        # GET reflects the update.
+        again = await client.get(
+            "/users/me/notification-preferences", headers=auth_headers
+        )
+        assert again.json()["routing"] == body["routing"]
+
+    async def test_partial_update_preserves_other_fields(
+        self, client: AsyncClient, auth_headers
+    ):
+        await client.put(
+            "/users/me/notification-preferences",
+            json={
+                "channels": {"slack_dm": {"handle": "@me"}},
+                "routing": {"P0": ["slack_dm"]},
+            },
+            headers=auth_headers,
+        )
+        resp = await client.put(
+            "/users/me/notification-preferences",
+            json={"routing": {"P1": ["slack_dm"]}},
+            headers=auth_headers,
+        )
+        data = resp.json()
+        assert data["channels"] == {"slack_dm": {"handle": "@me"}}
+        assert data["routing"] == {"P1": ["slack_dm"]}
+
+    async def test_requires_auth(self, client: AsyncClient):
+        resp = await client.get("/users/me/notification-preferences")
+        assert resp.status_code == 401
+
+
+class TestOrgNotificationSettingsAPI:
+    async def test_get_returns_default_window(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get(
+            f"/organizations/{TEST_ORG_ID}/notification-settings",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["notification_dedup_window_minutes"] == 10
+
+    async def test_put_updates_window(self, client: AsyncClient, auth_headers):
+        resp = await client.put(
+            f"/organizations/{TEST_ORG_ID}/notification-settings",
+            json={"notification_dedup_window_minutes": 25},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["notification_dedup_window_minutes"] == 25
+
+        again = await client.get(
+            f"/organizations/{TEST_ORG_ID}/notification-settings",
+            headers=auth_headers,
+        )
+        assert again.json()["notification_dedup_window_minutes"] == 25
+
+    async def test_put_rejects_negative(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.put(
+            f"/organizations/{TEST_ORG_ID}/notification-settings",
+            json={"notification_dedup_window_minutes": -5},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+
+    async def test_get_unknown_org_returns_404(
+        self, client: AsyncClient, auth_headers
+    ):
+        bogus = uuid.uuid4()
+        resp = await client.get(
+            f"/organizations/{bogus}/notification-settings",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_non_admin_forbidden(
+        self, client: AsyncClient, auth_headers
+    ):
+        # Register a viewer-role second user.
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "viewer",
+                "email": "viewer@test.com",
+                "password": "securepass123",
+                "role": "viewer",
+            },
+        )
+        login = await client.post(
+            "/auth/login",
+            json={"username": "viewer", "password": "securepass123"},
+        )
+        viewer_headers = {
+            "Authorization": f"Bearer {login.json()['access_token']}"
+        }
+        resp = await client.get(
+            f"/organizations/{TEST_ORG_ID}/notification-settings",
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
+
+class TestMaintenanceWindowScopeFields:
+    async def test_create_with_scope(self, client: AsyncClient, auth_headers):
+        now = datetime.now(timezone.utc)
+        scope_id = uuid.uuid4()
+        resp = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "service-mw",
+                "description": "DB migration window",
+                "starts_at": (now + timedelta(hours=1)).isoformat(),
+                "ends_at": (now + timedelta(hours=2)).isoformat(),
+                "scope_type": "service",
+                "scope_id": str(scope_id),
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert data["scope_type"] == "service"
+        assert data["scope_id"] == str(scope_id)
+        assert data["description"] == "DB migration window"
+        assert data["target_ids"] == []
+
+    async def test_global_scope_default(
+        self, client: AsyncClient, auth_headers
+    ):
+        now = datetime.now(timezone.utc)
+        resp = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "global-mw",
+                "starts_at": (now + timedelta(hours=1)).isoformat(),
+                "ends_at": (now + timedelta(hours=2)).isoformat(),
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert resp.json()["scope_type"] == "global"

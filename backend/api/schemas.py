@@ -793,29 +793,40 @@ class SLOStatusResponse(BaseModel):
 class MaintenanceWindowCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     reason: Optional[str] = None
+    description: Optional[str] = None
     starts_at: datetime
     ends_at: datetime
     rrule: Optional[str] = None
-    target_ids: list[str] = Field(..., min_length=1)
+    target_ids: list[str] = Field(default_factory=list)
+    scope_type: str = Field(default="global", pattern="^(global|service|roster|team)$")
+    scope_id: Optional[uuid.UUID] = None
 
 
 class MaintenanceWindowUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     reason: Optional[str] = None
+    description: Optional[str] = None
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
     rrule: Optional[str] = None
     target_ids: Optional[list[str]] = None
+    scope_type: Optional[str] = Field(
+        None, pattern="^(global|service|roster|team)$"
+    )
+    scope_id: Optional[uuid.UUID] = None
 
 
 class MaintenanceWindowResponse(BaseModel):
     id: uuid.UUID
     name: str
     reason: Optional[str]
+    description: Optional[str]
     starts_at: datetime
     ends_at: datetime
     rrule: Optional[str]
     target_ids: list[str]
+    scope_type: str
+    scope_id: Optional[uuid.UUID]
     created_by: Optional[uuid.UUID]
     created_at: datetime
 
@@ -825,6 +836,42 @@ class MaintenanceWindowResponse(BaseModel):
 class MaintenanceWindowListResponse(BaseModel):
     items: list[MaintenanceWindowResponse]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# User notification preferences (Sprint 35)
+# ---------------------------------------------------------------------------
+
+
+class UserNotificationPrefResponse(BaseModel):
+    user_id: uuid.UUID
+    org_id: uuid.UUID
+    channels: dict
+    routing: dict
+    quiet_hours: Optional[dict]
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserNotificationPrefUpdate(BaseModel):
+    channels: Optional[dict] = None
+    routing: Optional[dict] = None
+    quiet_hours: Optional[dict] = None
+
+
+# ---------------------------------------------------------------------------
+# Organization notification settings (Sprint 35)
+# ---------------------------------------------------------------------------
+
+
+class NotificationSettingsResponse(BaseModel):
+    org_id: uuid.UUID
+    notification_dedup_window_minutes: int
+
+
+class NotificationSettingsUpdate(BaseModel):
+    notification_dedup_window_minutes: int = Field(..., ge=0, le=1440)
 
 
 # ---------------------------------------------------------------------------

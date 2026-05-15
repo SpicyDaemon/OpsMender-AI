@@ -507,10 +507,13 @@ async def create_maintenance_window(
         org_id,
         name=body.name,
         reason=body.reason,
+        description=body.description,
         starts_at=body.starts_at,
         ends_at=body.ends_at,
         rrule=body.rrule,
         target_ids=body.target_ids,
+        scope_type=body.scope_type,
+        scope_id=body.scope_id,
         created_by=user.id,
     )
     await db.commit()
@@ -541,11 +544,16 @@ async def update_maintenance_window(
         name=body.name,
         reason=body.reason,
         reason_provided="reason" in body.model_fields_set,
+        description=body.description,
+        description_provided="description" in body.model_fields_set,
         starts_at=body.starts_at,
         ends_at=body.ends_at,
         rrule=body.rrule,
         rrule_provided="rrule" in body.model_fields_set,
         target_ids=body.target_ids,
+        scope_type=body.scope_type,
+        scope_id=body.scope_id,
+        scope_id_provided="scope_id" in body.model_fields_set,
     )
     await db.commit()
     if updated is None:

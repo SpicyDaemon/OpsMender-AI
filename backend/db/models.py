@@ -27,9 +27,11 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -37,6 +39,7 @@ from sqlalchemy import (
     TypeDecorator,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -71,6 +74,9 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     branding: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    priority_llm_escalation_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -261,6 +267,14 @@ class Incident(Base):
         String(20), nullable=False, default="open"
     )  # open | investigating | resolved | closed
     severity: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Paging surface (Sprint 33). Priority + response mode set at creation
+    # time and locked thereafter; service_id ties the incident to its owning
+    # service for routing decisions.
+    priority: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    response_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    service_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("services.id", ondelete="SET NULL"), nullable=True
+    )
     # External ingestion fingerprint — dedup by (external_source, external_id)
     external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -1127,3 +1141,255 @@ class AuditFinding(Base):
     )
 
     run: Mapped[AuditRun] = relationship(back_populates="findings")
+
+
+# ---------------------------------------------------------------------------
+# Paging (Sprint 33) — teams, services, rosters, priority rules, assignments.
+# Full data model lives in docs/paging-model.md.
+# ---------------------------------------------------------------------------
+
+
+class Team(Base):
+    __tablename__ = "teams"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("org_id", "slug", name="uq_team_slug"),)
+
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(20), default="member", nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("team_id", "user_id", name="uq_team_member"),
+    )
+
+
+class Service(Base):
+    __tablename__ = "services"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    external_refs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("org_id", "slug", name="uq_service_slug"),)
+
+
+class Roster(Base):
+    __tablename__ = "rosters"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    time_zone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
+    pattern: Mapped[str] = mapped_column(String(20), default="weekly", nullable=False)
+    pattern_length: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
+    handoff_time: Mapped[str] = mapped_column(String(8), default="09:00", nullable=False)
+    handoff_day: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    anchor_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class RosterMember(Base):
+    __tablename__ = "roster_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    roster_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("rosters.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    position_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("roster_id", "user_id", name="uq_roster_member_user"),
+        UniqueConstraint(
+            "roster_id", "position_index", name="uq_roster_member_position"
+        ),
+    )
+
+
+class RosterOverride(Base):
+    __tablename__ = "roster_overrides"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    roster_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("rosters.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    covering_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    starts_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    ends_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class ServiceRoster(Base):
+    __tablename__ = "service_rosters"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    service_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("services.id", ondelete="CASCADE"), nullable=False
+    )
+    roster_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("rosters.id", ondelete="CASCADE"), nullable=False
+    )
+    level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "service_id", "roster_id", name="uq_service_roster"
+        ),
+    )
+
+
+class PriorityRule(Base):
+    __tablename__ = "priority_rules"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    rule_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    condition: Mapped[dict] = mapped_column(JSON, nullable=False)
+    priority: Mapped[str] = mapped_column(String(8), nullable=False)
+    response_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_priority_rules_org_index", "org_id", "rule_index"),
+    )
+
+
+class PriorityLLMOverrideLog(Base):
+    __tablename__ = "priority_llm_override_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False
+    )
+    rule_priority: Mapped[str] = mapped_column(String(8), nullable=False)
+    llm_priority: Mapped[str] = mapped_column(String(8), nullable=False)
+    llm_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class IncidentAssignment(Base):
+    __tablename__ = "incident_assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    assigned_to: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    assigned_by: Mapped[str] = mapped_column(String(30), nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    released_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_incident_assignments_active",
+            "incident_id",
+            unique=True,
+            postgresql_where=text("released_at IS NULL"),
+            sqlite_where=text("released_at IS NULL"),
+        ),
+    )

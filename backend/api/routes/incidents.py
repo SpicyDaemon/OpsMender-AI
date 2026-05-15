@@ -23,7 +23,17 @@ from backend.api.schemas import (
 )
 from backend.config_loader import Config
 from backend.db.models import User
-from backend.db.repos import IncidentRepo, SessionRepo
+from backend.db.repos import (
+    IncidentAssignmentRepo,
+    IncidentRepo,
+    SessionRepo,
+)
+from backend.api.schemas import (
+    IncidentAssignmentResponse,
+    IncidentAssignRequest,
+    IncidentPagingPanelResponse,
+)
+from backend.paging.service import compute_priority_for_payload
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
@@ -66,12 +76,22 @@ async def create_incident(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
+    # Run priority rules first so priority/response_mode go in with the INSERT
+    # rather than via a follow-up UPDATE (D-021: locked at creation).
+    payload = {
+        "title": body.title,
+        "description": body.description,
+        "severity": body.severity,
+    }
+    priority_result = await compute_priority_for_payload(db, org_id, payload)
     incident = await IncidentRepo.create(
         db,
         org_id,
         title=body.title,
         description=body.description,
         severity=body.severity,
+        priority=priority_result.priority,
+        response_mode=priority_result.response_mode,
     )
     return incident
 
@@ -143,3 +163,114 @@ async def get_incident(
             detail="Incident not found",
         )
     return incident
+
+
+# ---------------------------------------------------------------------------
+# Paging panel + incident assignment (Sprint 33)
+# ---------------------------------------------------------------------------
+
+
+async def _ensure_can_act_on_incident(
+    db, org_id, user, incident
+) -> None:
+    """Allow admins/operators globally OR the active assignee (D-021 #9)."""
+
+    if user.role in ("admin", "operator"):
+        return
+    active = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
+    if active is not None and active.assigned_to == user.id:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Insufficient permissions for this incident",
+    )
+
+
+@router.get(
+    "/{incident_id}/paging",
+    response_model=IncidentPagingPanelResponse,
+    summary="Paging panel for an incident",
+)
+async def get_incident_paging(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    return IncidentPagingPanelResponse(
+        incident_id=incident_id,
+        priority=incident.priority,
+        response_mode=incident.response_mode,
+        service_id=incident.service_id,
+        assignment=(
+            IncidentAssignmentResponse.model_validate(assignment)
+            if assignment is not None
+            else None
+        ),
+    )
+
+
+@router.post(
+    "/{incident_id}/assign",
+    response_model=IncidentAssignmentResponse,
+    summary="Take over an incident (or assign someone else)",
+)
+async def assign_incident(
+    incident_id: uuid.UUID,
+    body: IncidentAssignRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    # Self-takeover: any authenticated user may grab an unassigned incident
+    # via self_ack (incident-scoped authority kicks in afterwards).
+    target_user_id = body.user_id or user.id
+    if target_user_id != user.id and user.role not in ("admin", "operator"):
+        raise HTTPException(
+            status_code=403,
+            detail="Only admin/operator can assign other users",
+        )
+
+    assigned_by = "self_ack" if target_user_id == user.id else "manual"
+    assignment = await IncidentAssignmentRepo.assign(
+        db,
+        org_id,
+        incident_id=incident_id,
+        user_id=target_user_id,
+        assigned_by=assigned_by,
+    )
+    await db.commit()
+    await db.refresh(assignment)
+    return IncidentAssignmentResponse.model_validate(assignment)
+
+
+@router.post(
+    "/{incident_id}/release",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Release the active assignment",
+)
+async def release_incident(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    await _ensure_can_act_on_incident(db, org_id, user, incident)
+    released = await IncidentAssignmentRepo.release(db, org_id, incident_id)
+    if not released:
+        raise HTTPException(status_code=404, detail="No active assignment")
+    await db.commit()
+    from fastapi import Response
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

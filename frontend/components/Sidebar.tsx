@@ -14,6 +14,7 @@ import {
   Radar,
   FileText,
   LogOut,
+  Phone,
   Settings,
   ShieldCheck,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/dashboard/detectors", label: "Detectors", icon: Radar },
   { href: "/dashboard/audits", label: "Audits", icon: ShieldCheck },
+  { href: "/dashboard/paging", label: "Paging", icon: Phone },
   { href: "/dashboard/skills", label: "Skills", icon: FileText },
   { href: "/dashboard/audit", label: "Audit Log", icon: BookOpen },
   { href: "/dashboard/reliability", label: "Reliability", icon: Activity },

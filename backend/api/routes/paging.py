@@ -1,0 +1,742 @@
+"""Paging endpoints (Sprint 33).
+
+Combines the team / service / roster / priority-rule / on-call surface in
+a single router because they are all admin-config CRUD with identical
+auth and pagination patterns. Incident-level paging actions live in
+``backend/api/routes/incidents.py`` (Take Over / Release / panel) to keep
+incident operations together.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.api.auth import (
+    get_current_org,
+    get_current_user,
+    require_role,
+)
+from backend.api.deps import get_db
+from backend.api.schemas import (
+    OnCallResolveResponse,
+    PriorityRuleCreate,
+    PriorityRuleListResponse,
+    PriorityRuleResponse,
+    PriorityRuleUpdate,
+    RosterCreate,
+    RosterListResponse,
+    RosterMemberAdd,
+    RosterMemberListResponse,
+    RosterMemberResponse,
+    RosterOverrideCreate,
+    RosterOverrideListResponse,
+    RosterOverrideResponse,
+    RosterReorderRequest,
+    RosterResponse,
+    RosterUpdate,
+    ServiceCreate,
+    ServiceListResponse,
+    ServiceResponse,
+    ServiceUpdate,
+    TeamCreate,
+    TeamListResponse,
+    TeamMemberAdd,
+    TeamMemberListResponse,
+    TeamMemberResponse,
+    TeamResponse,
+    TeamUpdate,
+)
+from backend.db.models import User
+from backend.db.repos import (
+    PriorityRuleRepo,
+    RosterOverrideRepo,
+    RosterRepo,
+    ServiceRepo,
+    TeamRepo,
+)
+from backend.paging.on_call import (
+    OnCallContext,
+    OnCallMember,
+    OnCallOverride,
+    on_call_at,
+)
+
+
+router = APIRouter(tags=["paging"])
+
+
+# ---------------------------------------------------------------------------
+# Teams
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/teams",
+    response_model=TeamListResponse,
+    summary="List teams",
+)
+async def list_teams(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    items = await TeamRepo.list_all(db, org_id)
+    return TeamListResponse(
+        items=[TeamResponse.model_validate(t) for t in items],
+        total=len(items),
+    )
+
+
+@router.post(
+    "/teams",
+    response_model=TeamResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a team",
+)
+async def create_team(
+    body: TeamCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    try:
+        team = await TeamRepo.create(
+            db,
+            org_id,
+            name=body.name,
+            slug=body.slug,
+            description=body.description,
+            created_by=user.id,
+        )
+        await db.commit()
+        await db.refresh(team)
+        return TeamResponse.model_validate(team)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Team slug already exists",
+        ) from exc
+
+
+@router.put(
+    "/teams/{team_id}",
+    response_model=TeamResponse,
+    summary="Update a team",
+)
+async def update_team(
+    team_id: uuid.UUID,
+    body: TeamUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    description_provided = "description" in body.model_fields_set
+    updated = await TeamRepo.update(
+        db,
+        org_id,
+        team_id,
+        name=body.name,
+        description=body.description,
+        description_provided=description_provided,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+    await db.commit()
+    return TeamResponse.model_validate(updated)
+
+
+@router.delete(
+    "/teams/{team_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a team",
+)
+async def delete_team(
+    team_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    deleted = await TeamRepo.delete(db, org_id, team_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Team not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/teams/{team_id}/members",
+    response_model=TeamMemberListResponse,
+    summary="List team members",
+)
+async def list_team_members(
+    team_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    if await TeamRepo.get_by_id(db, org_id, team_id) is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+    members = await TeamRepo.list_members(db, org_id, team_id)
+    return TeamMemberListResponse(
+        items=[TeamMemberResponse.model_validate(m) for m in members],
+        total=len(members),
+    )
+
+
+@router.post(
+    "/teams/{team_id}/members",
+    response_model=TeamMemberResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a member to a team",
+)
+async def add_team_member(
+    team_id: uuid.UUID,
+    body: TeamMemberAdd,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await TeamRepo.get_by_id(db, org_id, team_id) is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+    try:
+        member = await TeamRepo.add_member(
+            db, org_id, team_id, user_id=body.user_id, role=body.role
+        )
+        await db.commit()
+        await db.refresh(member)
+        return TeamMemberResponse.model_validate(member)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User already a member",
+        ) from exc
+
+
+@router.delete(
+    "/teams/{team_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a team member",
+)
+async def remove_team_member(
+    team_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    removed = await TeamRepo.remove_member(db, org_id, team_id, user_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Member not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/services",
+    response_model=ServiceListResponse,
+    summary="List services",
+)
+async def list_services(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+    team_id: uuid.UUID | None = Query(default=None),
+):
+    items = await ServiceRepo.list_all(db, org_id, team_id=team_id)
+    return ServiceListResponse(
+        items=[ServiceResponse.model_validate(s) for s in items],
+        total=len(items),
+    )
+
+
+@router.post(
+    "/services",
+    response_model=ServiceResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a service",
+)
+async def create_service(
+    body: ServiceCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await TeamRepo.get_by_id(db, org_id, body.team_id) is None:
+        raise HTTPException(status_code=400, detail="Owning team not found")
+    try:
+        svc = await ServiceRepo.create(
+            db,
+            org_id,
+            team_id=body.team_id,
+            name=body.name,
+            slug=body.slug,
+            description=body.description,
+            external_refs=body.external_refs,
+            is_active=body.is_active,
+        )
+        await db.commit()
+        await db.refresh(svc)
+        return ServiceResponse.model_validate(svc)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Service slug already exists",
+        ) from exc
+
+
+@router.put(
+    "/services/{service_id}",
+    response_model=ServiceResponse,
+    summary="Update a service",
+)
+async def update_service(
+    service_id: uuid.UUID,
+    body: ServiceUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if body.team_id is not None and await TeamRepo.get_by_id(
+        db, org_id, body.team_id
+    ) is None:
+        raise HTTPException(status_code=400, detail="Owning team not found")
+    updated = await ServiceRepo.update(
+        db,
+        org_id,
+        service_id,
+        team_id=body.team_id,
+        name=body.name,
+        description=body.description,
+        description_provided="description" in body.model_fields_set,
+        external_refs=body.external_refs,
+        external_refs_provided="external_refs" in body.model_fields_set,
+        is_active=body.is_active,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    await db.commit()
+    return ServiceResponse.model_validate(updated)
+
+
+@router.delete(
+    "/services/{service_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a service",
+)
+async def delete_service(
+    service_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    deleted = await ServiceRepo.delete(db, org_id, service_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Service not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Rosters
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/rosters",
+    response_model=RosterListResponse,
+    summary="List rosters",
+)
+async def list_rosters(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+    team_id: uuid.UUID | None = Query(default=None),
+):
+    items = await RosterRepo.list_all(db, org_id, team_id=team_id)
+    return RosterListResponse(
+        items=[RosterResponse.model_validate(r) for r in items],
+        total=len(items),
+    )
+
+
+@router.post(
+    "/rosters",
+    response_model=RosterResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a roster",
+)
+async def create_roster(
+    body: RosterCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await TeamRepo.get_by_id(db, org_id, body.team_id) is None:
+        raise HTTPException(status_code=400, detail="Owning team not found")
+    roster = await RosterRepo.create(
+        db,
+        org_id,
+        team_id=body.team_id,
+        name=body.name,
+        anchor_date=body.anchor_date,
+        description=body.description,
+        time_zone=body.time_zone,
+        pattern=body.pattern,
+        pattern_length=body.pattern_length,
+        handoff_time=body.handoff_time,
+        handoff_day=body.handoff_day,
+        is_active=body.is_active,
+    )
+    await db.commit()
+    await db.refresh(roster)
+    return RosterResponse.model_validate(roster)
+
+
+@router.put(
+    "/rosters/{roster_id}",
+    response_model=RosterResponse,
+    summary="Update a roster",
+)
+async def update_roster(
+    roster_id: uuid.UUID,
+    body: RosterUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    fields = body.model_dump(exclude_unset=True)
+    updated = await RosterRepo.update(db, org_id, roster_id, **fields)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    await db.commit()
+    return RosterResponse.model_validate(updated)
+
+
+@router.delete(
+    "/rosters/{roster_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a roster",
+)
+async def delete_roster(
+    roster_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    deleted = await RosterRepo.delete(db, org_id, roster_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/rosters/{roster_id}/members",
+    response_model=RosterMemberListResponse,
+    summary="List roster members",
+)
+async def list_roster_members(
+    roster_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    members = await RosterRepo.list_members(db, org_id, roster_id)
+    return RosterMemberListResponse(
+        items=[RosterMemberResponse.model_validate(m) for m in members],
+        total=len(members),
+    )
+
+
+@router.post(
+    "/rosters/{roster_id}/members",
+    response_model=RosterMemberResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a roster member",
+)
+async def add_roster_member(
+    roster_id: uuid.UUID,
+    body: RosterMemberAdd,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    try:
+        member = await RosterRepo.add_member(
+            db,
+            org_id,
+            roster_id=roster_id,
+            user_id=body.user_id,
+            position_index=body.position_index,
+        )
+        await db.commit()
+        await db.refresh(member)
+        return RosterMemberResponse.model_validate(member)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User already a roster member or position taken",
+        ) from exc
+
+
+@router.delete(
+    "/rosters/{roster_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a roster member",
+)
+async def remove_roster_member(
+    roster_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    removed = await RosterRepo.remove_member(db, org_id, roster_id, user_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Member not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/rosters/{roster_id}/members/reorder",
+    response_model=RosterMemberListResponse,
+    summary="Reorder roster members",
+)
+async def reorder_roster_members(
+    roster_id: uuid.UUID,
+    body: RosterReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    await RosterRepo.reorder_members(
+        db, org_id, roster_id, ordered_user_ids=body.ordered_user_ids
+    )
+    await db.commit()
+    members = await RosterRepo.list_members(db, org_id, roster_id)
+    return RosterMemberListResponse(
+        items=[RosterMemberResponse.model_validate(m) for m in members],
+        total=len(members),
+    )
+
+
+@router.get(
+    "/rosters/{roster_id}/overrides",
+    response_model=RosterOverrideListResponse,
+    summary="List roster overrides",
+)
+async def list_roster_overrides(
+    roster_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    items = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
+    return RosterOverrideListResponse(
+        items=[RosterOverrideResponse.model_validate(o) for o in items],
+        total=len(items),
+    )
+
+
+@router.post(
+    "/rosters/{roster_id}/overrides",
+    response_model=RosterOverrideResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a roster override",
+)
+async def create_roster_override(
+    roster_id: uuid.UUID,
+    body: RosterOverrideCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    if body.ends_at <= body.starts_at:
+        raise HTTPException(status_code=400, detail="ends_at must be > starts_at")
+    ov = await RosterOverrideRepo.create(
+        db,
+        org_id,
+        roster_id=roster_id,
+        covering_user_id=body.covering_user_id,
+        starts_at=body.starts_at,
+        ends_at=body.ends_at,
+        reason=body.reason,
+        created_by=user.id,
+    )
+    await db.commit()
+    await db.refresh(ov)
+    return RosterOverrideResponse.model_validate(ov)
+
+
+@router.delete(
+    "/rosters/{roster_id}/overrides/{override_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a roster override",
+)
+async def delete_roster_override(
+    roster_id: uuid.UUID,
+    override_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    deleted = await RosterOverrideRepo.delete(db, org_id, override_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Override not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/rosters/{roster_id}/on-call",
+    response_model=OnCallResolveResponse,
+    summary="Resolve who is on call at a given time",
+)
+async def resolve_on_call(
+    roster_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+    at: datetime | None = Query(default=None),
+):
+    roster = await RosterRepo.get_by_id(db, org_id, roster_id)
+    if roster is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    members = await RosterRepo.list_members(db, org_id, roster_id)
+    overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
+    ctx = OnCallContext(
+        members=[
+            OnCallMember(user_id=m.user_id, position_index=m.position_index)
+            for m in members
+        ],
+        overrides=[
+            OnCallOverride(
+                covering_user_id=o.covering_user_id,
+                starts_at=o.starts_at,
+                ends_at=o.ends_at,
+            )
+            for o in overrides
+        ],
+        time_zone=roster.time_zone,
+        pattern=roster.pattern,
+        pattern_length=roster.pattern_length,
+        handoff_time=roster.handoff_time,
+        anchor_date=roster.anchor_date,
+    )
+    when = at or datetime.now()
+    user_id = on_call_at(ctx, when)
+    return OnCallResolveResponse(
+        roster_id=roster_id, at=when, user_id=user_id
+    )
+
+
+# ---------------------------------------------------------------------------
+# Priority rules
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/priority-rules",
+    response_model=PriorityRuleListResponse,
+    summary="List priority rules",
+)
+async def list_priority_rules(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    items = await PriorityRuleRepo.list_all(db, org_id)
+    return PriorityRuleListResponse(
+        items=[PriorityRuleResponse.model_validate(r) for r in items],
+        total=len(items),
+    )
+
+
+@router.post(
+    "/priority-rules",
+    response_model=PriorityRuleResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a priority rule",
+)
+async def create_priority_rule(
+    body: PriorityRuleCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    rule = await PriorityRuleRepo.create(
+        db,
+        org_id,
+        name=body.name,
+        condition=body.condition,
+        priority=body.priority,
+        rule_index=body.rule_index,
+        response_mode=body.response_mode,
+        is_active=body.is_active,
+    )
+    await db.commit()
+    await db.refresh(rule)
+    return PriorityRuleResponse.model_validate(rule)
+
+
+@router.put(
+    "/priority-rules/{rule_id}",
+    response_model=PriorityRuleResponse,
+    summary="Update a priority rule",
+)
+async def update_priority_rule(
+    rule_id: uuid.UUID,
+    body: PriorityRuleUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    fields = body.model_dump(exclude_unset=True)
+    updated = await PriorityRuleRepo.update(db, org_id, rule_id, **fields)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Priority rule not found")
+    await db.commit()
+    return PriorityRuleResponse.model_validate(updated)
+
+
+@router.delete(
+    "/priority-rules/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a priority rule",
+)
+async def delete_priority_rule(
+    rule_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    deleted = await PriorityRuleRepo.delete(db, org_id, rule_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Priority rule not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

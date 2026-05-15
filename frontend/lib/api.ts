@@ -1030,3 +1030,174 @@ export async function dismissAuditFinding(
     reason,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Paging (Sprint 33)
+// ---------------------------------------------------------------------------
+
+import type {
+  IncidentAssignmentResponse,
+  IncidentPagingPanelResponse,
+  OnCallResolveResponse,
+  PriorityRuleCreate,
+  PriorityRuleListResponse,
+  PriorityRuleResponse,
+  RosterCreate,
+  RosterListResponse,
+  RosterMemberListResponse,
+  RosterMemberResponse,
+  RosterOverrideResponse,
+  RosterResponse,
+  ServiceCreate,
+  ServiceListResponse,
+  ServiceResponse,
+  ServiceUpdate,
+  TeamCreate,
+  TeamListResponse,
+  TeamMemberListResponse,
+  TeamMemberResponse,
+  TeamResponse,
+  TeamUpdate,
+} from "./types";
+
+export async function listTeams(): Promise<TeamListResponse> {
+  return api.get<TeamListResponse>("/teams");
+}
+export async function createTeam(body: TeamCreate): Promise<TeamResponse> {
+  return api.post<TeamResponse>("/teams", body);
+}
+export async function updateTeam(id: string, body: TeamUpdate): Promise<TeamResponse> {
+  return api.put<TeamResponse>(`/teams/${id}`, body);
+}
+export async function deleteTeam(id: string): Promise<void> {
+  return api.del<void>(`/teams/${id}`);
+}
+export async function listTeamMembers(id: string): Promise<TeamMemberListResponse> {
+  return api.get<TeamMemberListResponse>(`/teams/${id}/members`);
+}
+export async function addTeamMember(
+  id: string,
+  body: { user_id: string; role?: "member" | "lead" },
+): Promise<TeamMemberResponse> {
+  return api.post<TeamMemberResponse>(`/teams/${id}/members`, body);
+}
+export async function removeTeamMember(teamId: string, userId: string): Promise<void> {
+  return api.del<void>(`/teams/${teamId}/members/${userId}`);
+}
+
+export async function listServices(teamId?: string): Promise<ServiceListResponse> {
+  const qs = teamId ? `?team_id=${teamId}` : "";
+  return api.get<ServiceListResponse>(`/services${qs}`);
+}
+export async function createService(body: ServiceCreate): Promise<ServiceResponse> {
+  return api.post<ServiceResponse>("/services", body);
+}
+export async function updateService(id: string, body: ServiceUpdate): Promise<ServiceResponse> {
+  return api.put<ServiceResponse>(`/services/${id}`, body);
+}
+export async function deleteService(id: string): Promise<void> {
+  return api.del<void>(`/services/${id}`);
+}
+
+export async function listRosters(teamId?: string): Promise<RosterListResponse> {
+  const qs = teamId ? `?team_id=${teamId}` : "";
+  return api.get<RosterListResponse>(`/rosters${qs}`);
+}
+export async function createRoster(body: RosterCreate): Promise<RosterResponse> {
+  return api.post<RosterResponse>("/rosters", body);
+}
+export async function updateRoster(
+  id: string,
+  body: Partial<RosterCreate>,
+): Promise<RosterResponse> {
+  return api.put<RosterResponse>(`/rosters/${id}`, body);
+}
+export async function deleteRoster(id: string): Promise<void> {
+  return api.del<void>(`/rosters/${id}`);
+}
+export async function listRosterMembers(id: string): Promise<RosterMemberListResponse> {
+  return api.get<RosterMemberListResponse>(`/rosters/${id}/members`);
+}
+export async function addRosterMember(
+  id: string,
+  body: { user_id: string; position_index: number },
+): Promise<RosterMemberResponse> {
+  return api.post<RosterMemberResponse>(`/rosters/${id}/members`, body);
+}
+export async function removeRosterMember(
+  rosterId: string,
+  userId: string,
+): Promise<void> {
+  return api.del<void>(`/rosters/${rosterId}/members/${userId}`);
+}
+export async function reorderRosterMembers(
+  id: string,
+  orderedUserIds: string[],
+): Promise<RosterMemberListResponse> {
+  return api.post<RosterMemberListResponse>(`/rosters/${id}/members/reorder`, {
+    ordered_user_ids: orderedUserIds,
+  });
+}
+export async function listRosterOverrides(id: string): Promise<{
+  items: RosterOverrideResponse[];
+  total: number;
+}> {
+  return api.get(`/rosters/${id}/overrides`);
+}
+export async function createRosterOverride(
+  id: string,
+  body: {
+    covering_user_id: string;
+    starts_at: string;
+    ends_at: string;
+    reason?: string;
+  },
+): Promise<RosterOverrideResponse> {
+  return api.post<RosterOverrideResponse>(`/rosters/${id}/overrides`, body);
+}
+export async function deleteRosterOverride(
+  rosterId: string,
+  overrideId: string,
+): Promise<void> {
+  return api.del<void>(`/rosters/${rosterId}/overrides/${overrideId}`);
+}
+export async function resolveOnCall(
+  id: string,
+  at?: string,
+): Promise<OnCallResolveResponse> {
+  const qs = at ? `?at=${encodeURIComponent(at)}` : "";
+  return api.get<OnCallResolveResponse>(`/rosters/${id}/on-call${qs}`);
+}
+
+export async function listPriorityRules(): Promise<PriorityRuleListResponse> {
+  return api.get<PriorityRuleListResponse>("/priority-rules");
+}
+export async function createPriorityRule(body: PriorityRuleCreate): Promise<PriorityRuleResponse> {
+  return api.post<PriorityRuleResponse>("/priority-rules", body);
+}
+export async function updatePriorityRule(
+  id: string,
+  body: Partial<PriorityRuleCreate>,
+): Promise<PriorityRuleResponse> {
+  return api.put<PriorityRuleResponse>(`/priority-rules/${id}`, body);
+}
+export async function deletePriorityRule(id: string): Promise<void> {
+  return api.del<void>(`/priority-rules/${id}`);
+}
+
+export async function getIncidentPaging(
+  incidentId: string,
+): Promise<IncidentPagingPanelResponse> {
+  return api.get<IncidentPagingPanelResponse>(`/incidents/${incidentId}/paging`);
+}
+export async function assignIncident(
+  incidentId: string,
+  userId?: string,
+): Promise<IncidentAssignmentResponse> {
+  return api.post<IncidentAssignmentResponse>(`/incidents/${incidentId}/assign`, {
+    user_id: userId,
+  });
+}
+export async function releaseIncident(incidentId: string): Promise<void> {
+  return api.post<void>(`/incidents/${incidentId}/release`);
+}

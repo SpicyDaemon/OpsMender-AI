@@ -173,6 +173,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.sso import router as sso_router
     from backend.api.routes.saml import router as saml_router
     from backend.api.routes.audits import router as audits_router
+    from backend.api.routes.paging import router as paging_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -198,6 +199,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(sso_router)
     app.include_router(saml_router)
     app.include_router(audits_router)
+    app.include_router(paging_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

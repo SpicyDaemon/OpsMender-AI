@@ -7,7 +7,7 @@ to see the full API surface at a glance.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr, Field
@@ -1216,3 +1216,255 @@ class AuditFindingRemediateResponse(BaseModel):
     finding_id: uuid.UUID
     session_id: uuid.UUID
     status: str
+
+
+# ---------------------------------------------------------------------------
+# Paging (Sprint 33) — teams / services / rosters / priority rules / incident
+# assignments. See docs/paging-model.md for the data model.
+# ---------------------------------------------------------------------------
+
+
+class TeamCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = None
+
+
+class TeamUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+
+
+class TeamResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    description: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TeamListResponse(BaseModel):
+    items: list[TeamResponse]
+    total: int
+
+
+class TeamMemberAdd(BaseModel):
+    user_id: uuid.UUID
+    role: str = Field(default="member", pattern="^(member|lead)$")
+
+
+class TeamMemberResponse(BaseModel):
+    id: uuid.UUID
+    team_id: uuid.UUID
+    user_id: uuid.UUID
+    role: str
+    added_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TeamMemberListResponse(BaseModel):
+    items: list[TeamMemberResponse]
+    total: int
+
+
+class ServiceCreate(BaseModel):
+    team_id: uuid.UUID
+    name: str = Field(..., min_length=1, max_length=200)
+    slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = None
+    external_refs: Optional[dict[str, Any]] = None
+    is_active: bool = True
+
+
+class ServiceUpdate(BaseModel):
+    team_id: Optional[uuid.UUID] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    external_refs: Optional[dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+
+class ServiceResponse(BaseModel):
+    id: uuid.UUID
+    team_id: uuid.UUID
+    name: str
+    slug: str
+    description: Optional[str]
+    external_refs: Optional[dict[str, Any]]
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ServiceListResponse(BaseModel):
+    items: list[ServiceResponse]
+    total: int
+
+
+class RosterCreate(BaseModel):
+    team_id: uuid.UUID
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    time_zone: str = Field(default="UTC", max_length=64)
+    pattern: str = Field(default="weekly", pattern="^(weekly|daily|custom_n_days)$")
+    pattern_length: int = Field(default=7, ge=1, le=365)
+    handoff_time: str = Field(default="09:00", pattern=r"^\d{2}:\d{2}$")
+    handoff_day: Optional[str] = None
+    anchor_date: date
+    is_active: bool = True
+
+
+class RosterUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    time_zone: Optional[str] = Field(None, max_length=64)
+    pattern: Optional[str] = Field(None, pattern="^(weekly|daily|custom_n_days)$")
+    pattern_length: Optional[int] = Field(None, ge=1, le=365)
+    handoff_time: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
+    handoff_day: Optional[str] = None
+    anchor_date: Optional[date] = None
+    is_active: Optional[bool] = None
+
+
+class RosterResponse(BaseModel):
+    id: uuid.UUID
+    team_id: uuid.UUID
+    name: str
+    description: Optional[str]
+    time_zone: str
+    pattern: str
+    pattern_length: int
+    handoff_time: str
+    handoff_day: Optional[str]
+    anchor_date: date
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RosterListResponse(BaseModel):
+    items: list[RosterResponse]
+    total: int
+
+
+class RosterMemberAdd(BaseModel):
+    user_id: uuid.UUID
+    position_index: int = Field(..., ge=0)
+
+
+class RosterMemberResponse(BaseModel):
+    id: uuid.UUID
+    roster_id: uuid.UUID
+    user_id: uuid.UUID
+    position_index: int
+    added_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RosterMemberListResponse(BaseModel):
+    items: list[RosterMemberResponse]
+    total: int
+
+
+class RosterReorderRequest(BaseModel):
+    ordered_user_ids: list[uuid.UUID] = Field(..., min_length=1)
+
+
+class RosterOverrideCreate(BaseModel):
+    covering_user_id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+class RosterOverrideResponse(BaseModel):
+    id: uuid.UUID
+    roster_id: uuid.UUID
+    covering_user_id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    reason: Optional[str]
+    created_by: Optional[uuid.UUID]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RosterOverrideListResponse(BaseModel):
+    items: list[RosterOverrideResponse]
+    total: int
+
+
+class OnCallResolveResponse(BaseModel):
+    roster_id: uuid.UUID
+    at: datetime
+    user_id: Optional[uuid.UUID]
+
+
+class PriorityRuleCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    rule_index: int = Field(default=0, ge=0)
+    condition: dict[str, Any]
+    priority: str = Field(..., pattern="^(P0|P1|P2|P3)$")
+    response_mode: Optional[str] = Field(
+        None, pattern="^(auto_resolve|notify|page|escalate_immediate)$"
+    )
+    is_active: bool = True
+
+
+class PriorityRuleUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    rule_index: Optional[int] = Field(None, ge=0)
+    condition: Optional[dict[str, Any]] = None
+    priority: Optional[str] = Field(None, pattern="^(P0|P1|P2|P3)$")
+    response_mode: Optional[str] = Field(
+        None, pattern="^(auto_resolve|notify|page|escalate_immediate)$"
+    )
+    is_active: Optional[bool] = None
+
+
+class PriorityRuleResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    rule_index: int
+    condition: dict[str, Any]
+    priority: str
+    response_mode: Optional[str]
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PriorityRuleListResponse(BaseModel):
+    items: list[PriorityRuleResponse]
+    total: int
+
+
+class IncidentAssignmentResponse(BaseModel):
+    id: uuid.UUID
+    incident_id: uuid.UUID
+    assigned_to: uuid.UUID
+    assigned_by: str
+    assigned_at: datetime
+    released_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class IncidentAssignRequest(BaseModel):
+    user_id: Optional[uuid.UUID] = None  # null means self
+
+
+class IncidentPagingPanelResponse(BaseModel):
+    incident_id: uuid.UUID
+    priority: Optional[str]
+    response_mode: Optional[str]
+    service_id: Optional[uuid.UUID]
+    assignment: Optional[IncidentAssignmentResponse]

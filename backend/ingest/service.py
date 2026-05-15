@@ -190,6 +190,10 @@ async def ingest_incident(
         )
         db.add(incident)
         await db.flush()
+        # Apply priority rules — locked at creation per D-021.
+        from backend.paging.service import apply_priority_to_incident
+
+        await apply_priority_to_incident(db, org_id, incident)
         dedup_action = "created"
 
     # ── Audit log entry ────────────────────────────────────────────────

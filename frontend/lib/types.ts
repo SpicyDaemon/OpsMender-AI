@@ -1126,3 +1126,190 @@ export interface AuditFindingRemediateResponse {
   session_id: string;
   status: AuditFindingStatus;
 }
+
+// ---------------------------------------------------------------------------
+// Paging (Sprint 33)
+// ---------------------------------------------------------------------------
+
+export type Priority = "P0" | "P1" | "P2" | "P3";
+export type ResponseMode =
+  | "auto_resolve"
+  | "notify"
+  | "page"
+  | "escalate_immediate";
+export type RosterPattern = "weekly" | "daily" | "custom_n_days";
+
+export interface TeamResponse {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_at: string;
+}
+
+export interface TeamListResponse {
+  items: TeamResponse[];
+  total: number;
+}
+
+export interface TeamCreate {
+  name: string;
+  slug: string;
+  description?: string;
+}
+
+export interface TeamUpdate {
+  name?: string;
+  description?: string;
+}
+
+export interface TeamMemberResponse {
+  id: string;
+  team_id: string;
+  user_id: string;
+  role: "member" | "lead";
+  added_at: string;
+}
+
+export interface TeamMemberListResponse {
+  items: TeamMemberResponse[];
+  total: number;
+}
+
+export interface ServiceResponse {
+  id: string;
+  team_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  external_refs: Record<string, unknown> | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ServiceListResponse {
+  items: ServiceResponse[];
+  total: number;
+}
+
+export interface ServiceCreate {
+  team_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  external_refs?: Record<string, unknown>;
+  is_active?: boolean;
+}
+
+export interface ServiceUpdate {
+  team_id?: string;
+  name?: string;
+  description?: string;
+  external_refs?: Record<string, unknown>;
+  is_active?: boolean;
+}
+
+export interface RosterResponse {
+  id: string;
+  team_id: string;
+  name: string;
+  description: string | null;
+  time_zone: string;
+  pattern: RosterPattern;
+  pattern_length: number;
+  handoff_time: string;
+  handoff_day: string | null;
+  anchor_date: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface RosterListResponse {
+  items: RosterResponse[];
+  total: number;
+}
+
+export interface RosterCreate {
+  team_id: string;
+  name: string;
+  description?: string;
+  time_zone?: string;
+  pattern?: RosterPattern;
+  pattern_length?: number;
+  handoff_time?: string;
+  handoff_day?: string;
+  anchor_date: string;
+  is_active?: boolean;
+}
+
+export interface RosterMemberResponse {
+  id: string;
+  roster_id: string;
+  user_id: string;
+  position_index: number;
+  added_at: string;
+}
+
+export interface RosterMemberListResponse {
+  items: RosterMemberResponse[];
+  total: number;
+}
+
+export interface RosterOverrideResponse {
+  id: string;
+  roster_id: string;
+  covering_user_id: string;
+  starts_at: string;
+  ends_at: string;
+  reason: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface PriorityRuleResponse {
+  id: string;
+  name: string;
+  rule_index: number;
+  condition: Record<string, unknown>;
+  priority: Priority;
+  response_mode: ResponseMode | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface PriorityRuleListResponse {
+  items: PriorityRuleResponse[];
+  total: number;
+}
+
+export interface PriorityRuleCreate {
+  name: string;
+  rule_index?: number;
+  condition: Record<string, unknown>;
+  priority: Priority;
+  response_mode?: ResponseMode;
+  is_active?: boolean;
+}
+
+export interface IncidentAssignmentResponse {
+  id: string;
+  incident_id: string;
+  assigned_to: string;
+  assigned_by: "escalation_chain" | "manual" | "self_ack" | "admin_force";
+  assigned_at: string;
+  released_at: string | null;
+}
+
+export interface IncidentPagingPanelResponse {
+  incident_id: string;
+  priority: Priority | null;
+  response_mode: ResponseMode | null;
+  service_id: string | null;
+  assignment: IncidentAssignmentResponse | null;
+}
+
+export interface OnCallResolveResponse {
+  roster_id: string;
+  at: string;
+  user_id: string | null;
+}

@@ -29,6 +29,16 @@ from backend.db.models import (
     DetectorHistory,
     DetectorRule,
     Incident,
+    IncidentAssignment,
+    PriorityLLMOverrideLog,
+    PriorityRule,
+    Roster,
+    RosterMember,
+    RosterOverride,
+    Service,
+    ServiceRoster,
+    Team,
+    TeamMember,
     IngestLog,
     IngestToken,
     MCPServer,
@@ -202,9 +212,18 @@ class IncidentRepo:
         title: str,
         description: str,
         severity: str | None = None,
+        priority: str | None = None,
+        response_mode: str | None = None,
+        service_id: uuid.UUID | None = None,
     ) -> Incident:
         incident = Incident(
-            org_id=org_id, title=title, description=description, severity=severity
+            org_id=org_id,
+            title=title,
+            description=description,
+            severity=severity,
+            priority=priority,
+            response_mode=response_mode,
+            service_id=service_id,
         )
         db.add(incident)
         await db.flush()
@@ -3381,3 +3400,698 @@ class AuditFindingRepo:
             return None
         await db.flush()
         return await AuditFindingRepo.get_by_id(db, org_id, finding_id)
+
+
+# ---------------------------------------------------------------------------
+# Paging (Sprint 33)
+# ---------------------------------------------------------------------------
+
+
+class TeamRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        name: str,
+        slug: str,
+        description: str | None = None,
+        created_by: uuid.UUID | None = None,
+    ) -> Team:
+        team = Team(
+            org_id=org_id,
+            name=name,
+            slug=slug,
+            description=description,
+            created_by=created_by,
+        )
+        db.add(team)
+        await db.flush()
+        return team
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, team_id: uuid.UUID
+    ) -> Team | None:
+        return (
+            await db.execute(
+                select(Team).where(
+                    Team.id == team_id, Team.org_id == org_id
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[Team]:
+        stmt = (
+            select(Team)
+            .where(Team.org_id == org_id)
+            .order_by(Team.name)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        team_id: uuid.UUID,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        description_provided: bool = False,
+    ) -> Team | None:
+        values: dict[str, Any] = {}
+        if name is not None:
+            values["name"] = name
+        if description_provided:
+            values["description"] = description
+        if not values:
+            return await TeamRepo.get_by_id(db, org_id, team_id)
+        stmt = (
+            update(Team)
+            .where(Team.org_id == org_id, Team.id == team_id)
+            .values(**values)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await TeamRepo.get_by_id(db, org_id, team_id)
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, team_id: uuid.UUID
+    ) -> bool:
+        team = await TeamRepo.get_by_id(db, org_id, team_id)
+        if team is None:
+            return False
+        await db.delete(team)
+        await db.flush()
+        return True
+
+    @staticmethod
+    async def add_member(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        team_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID,
+        role: str = "member",
+    ) -> TeamMember:
+        member = TeamMember(
+            org_id=org_id, team_id=team_id, user_id=user_id, role=role
+        )
+        db.add(member)
+        await db.flush()
+        return member
+
+    @staticmethod
+    async def remove_member(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        team_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(TeamMember).where(
+            TeamMember.org_id == org_id,
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == user_id,
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+    @staticmethod
+    async def list_members(
+        db: AsyncSession, org_id: uuid.UUID, team_id: uuid.UUID
+    ) -> Sequence[TeamMember]:
+        stmt = (
+            select(TeamMember)
+            .where(TeamMember.org_id == org_id, TeamMember.team_id == team_id)
+            .order_by(TeamMember.added_at)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+
+class ServiceRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        team_id: uuid.UUID,
+        name: str,
+        slug: str,
+        description: str | None = None,
+        external_refs: dict | None = None,
+        is_active: bool = True,
+    ) -> Service:
+        service = Service(
+            org_id=org_id,
+            team_id=team_id,
+            name=name,
+            slug=slug,
+            description=description,
+            external_refs=external_refs,
+            is_active=is_active,
+        )
+        db.add(service)
+        await db.flush()
+        return service
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
+    ) -> Service | None:
+        return (
+            await db.execute(
+                select(Service).where(
+                    Service.id == service_id, Service.org_id == org_id
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_slug(
+        db: AsyncSession, org_id: uuid.UUID, slug: str
+    ) -> Service | None:
+        return (
+            await db.execute(
+                select(Service).where(
+                    Service.org_id == org_id, Service.slug == slug
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        team_id: uuid.UUID | None = None,
+    ) -> Sequence[Service]:
+        stmt = select(Service).where(Service.org_id == org_id)
+        if team_id is not None:
+            stmt = stmt.where(Service.team_id == team_id)
+        stmt = stmt.order_by(Service.name)
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        service_id: uuid.UUID,
+        *,
+        team_id: uuid.UUID | None = None,
+        name: str | None = None,
+        description: str | None = None,
+        description_provided: bool = False,
+        external_refs: dict | None = None,
+        external_refs_provided: bool = False,
+        is_active: bool | None = None,
+    ) -> Service | None:
+        values: dict[str, Any] = {}
+        if team_id is not None:
+            values["team_id"] = team_id
+        if name is not None:
+            values["name"] = name
+        if description_provided:
+            values["description"] = description
+        if external_refs_provided:
+            values["external_refs"] = external_refs
+        if is_active is not None:
+            values["is_active"] = is_active
+        if not values:
+            return await ServiceRepo.get_by_id(db, org_id, service_id)
+        stmt = (
+            update(Service)
+            .where(Service.org_id == org_id, Service.id == service_id)
+            .values(**values)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await ServiceRepo.get_by_id(db, org_id, service_id)
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
+    ) -> bool:
+        svc = await ServiceRepo.get_by_id(db, org_id, service_id)
+        if svc is None:
+            return False
+        await db.delete(svc)
+        await db.flush()
+        return True
+
+    @staticmethod
+    async def attach_roster(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        service_id: uuid.UUID,
+        roster_id: uuid.UUID,
+        level: int = 1,
+    ) -> ServiceRoster:
+        link = ServiceRoster(
+            org_id=org_id,
+            service_id=service_id,
+            roster_id=roster_id,
+            level=level,
+        )
+        db.add(link)
+        await db.flush()
+        return link
+
+    @staticmethod
+    async def list_rosters_for_service(
+        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
+    ) -> Sequence[ServiceRoster]:
+        stmt = (
+            select(ServiceRoster)
+            .where(
+                ServiceRoster.org_id == org_id,
+                ServiceRoster.service_id == service_id,
+            )
+            .order_by(ServiceRoster.level)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def detach_roster(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        service_id: uuid.UUID,
+        roster_id: uuid.UUID,
+    ) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(ServiceRoster).where(
+            ServiceRoster.org_id == org_id,
+            ServiceRoster.service_id == service_id,
+            ServiceRoster.roster_id == roster_id,
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+
+class RosterRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        team_id: uuid.UUID,
+        name: str,
+        anchor_date,
+        description: str | None = None,
+        time_zone: str = "UTC",
+        pattern: str = "weekly",
+        pattern_length: int = 7,
+        handoff_time: str = "09:00",
+        handoff_day: str | None = None,
+        is_active: bool = True,
+    ) -> Roster:
+        roster = Roster(
+            org_id=org_id,
+            team_id=team_id,
+            name=name,
+            description=description,
+            time_zone=time_zone,
+            pattern=pattern,
+            pattern_length=pattern_length,
+            handoff_time=handoff_time,
+            handoff_day=handoff_day,
+            anchor_date=anchor_date,
+            is_active=is_active,
+        )
+        db.add(roster)
+        await db.flush()
+        return roster
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, roster_id: uuid.UUID
+    ) -> Roster | None:
+        return (
+            await db.execute(
+                select(Roster).where(
+                    Roster.id == roster_id, Roster.org_id == org_id
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        team_id: uuid.UUID | None = None,
+    ) -> Sequence[Roster]:
+        stmt = select(Roster).where(Roster.org_id == org_id)
+        if team_id is not None:
+            stmt = stmt.where(Roster.team_id == team_id)
+        stmt = stmt.order_by(Roster.name)
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        roster_id: uuid.UUID,
+        **fields: Any,
+    ) -> Roster | None:
+        if not fields:
+            return await RosterRepo.get_by_id(db, org_id, roster_id)
+        stmt = (
+            update(Roster)
+            .where(Roster.org_id == org_id, Roster.id == roster_id)
+            .values(**fields)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await RosterRepo.get_by_id(db, org_id, roster_id)
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, roster_id: uuid.UUID
+    ) -> bool:
+        roster = await RosterRepo.get_by_id(db, org_id, roster_id)
+        if roster is None:
+            return False
+        await db.delete(roster)
+        await db.flush()
+        return True
+
+    @staticmethod
+    async def add_member(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        roster_id: uuid.UUID,
+        user_id: uuid.UUID,
+        position_index: int,
+    ) -> RosterMember:
+        m = RosterMember(
+            org_id=org_id,
+            roster_id=roster_id,
+            user_id=user_id,
+            position_index=position_index,
+        )
+        db.add(m)
+        await db.flush()
+        return m
+
+    @staticmethod
+    async def list_members(
+        db: AsyncSession, org_id: uuid.UUID, roster_id: uuid.UUID
+    ) -> Sequence[RosterMember]:
+        stmt = (
+            select(RosterMember)
+            .where(
+                RosterMember.org_id == org_id,
+                RosterMember.roster_id == roster_id,
+            )
+            .order_by(RosterMember.position_index)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def remove_member(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        roster_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(RosterMember).where(
+            RosterMember.org_id == org_id,
+            RosterMember.roster_id == roster_id,
+            RosterMember.user_id == user_id,
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+    @staticmethod
+    async def reorder_members(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        roster_id: uuid.UUID,
+        *,
+        ordered_user_ids: list[uuid.UUID],
+    ) -> None:
+        """Replace position_index for each listed user. Two-phase to avoid
+        running afoul of the (roster_id, position_index) UNIQUE constraint."""
+        members = await RosterRepo.list_members(db, org_id, roster_id)
+        # Phase 1: move everyone to a temporary offset to free positions.
+        offset = len(members) + 1
+        for i, m in enumerate(members):
+            m.position_index = offset + i
+        await db.flush()
+        # Phase 2: set the requested positions.
+        index_by_user = {uid: i for i, uid in enumerate(ordered_user_ids)}
+        for m in members:
+            if m.user_id in index_by_user:
+                m.position_index = index_by_user[m.user_id]
+        await db.flush()
+
+
+class RosterOverrideRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        roster_id: uuid.UUID,
+        covering_user_id: uuid.UUID,
+        starts_at: datetime,
+        ends_at: datetime,
+        reason: str | None = None,
+        created_by: uuid.UUID | None = None,
+    ) -> RosterOverride:
+        ov = RosterOverride(
+            org_id=org_id,
+            roster_id=roster_id,
+            covering_user_id=covering_user_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            reason=reason,
+            created_by=created_by,
+        )
+        db.add(ov)
+        await db.flush()
+        return ov
+
+    @staticmethod
+    async def list_for_roster(
+        db: AsyncSession, org_id: uuid.UUID, roster_id: uuid.UUID
+    ) -> Sequence[RosterOverride]:
+        stmt = (
+            select(RosterOverride)
+            .where(
+                RosterOverride.org_id == org_id,
+                RosterOverride.roster_id == roster_id,
+            )
+            .order_by(RosterOverride.starts_at)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, override_id: uuid.UUID
+    ) -> bool:
+        from sqlalchemy import delete as sql_delete
+
+        stmt = sql_delete(RosterOverride).where(
+            RosterOverride.org_id == org_id, RosterOverride.id == override_id
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
+
+
+class PriorityRuleRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        name: str,
+        condition: dict,
+        priority: str,
+        rule_index: int = 0,
+        response_mode: str | None = None,
+        is_active: bool = True,
+    ) -> PriorityRule:
+        rule = PriorityRule(
+            org_id=org_id,
+            name=name,
+            condition=condition,
+            priority=priority,
+            rule_index=rule_index,
+            response_mode=response_mode,
+            is_active=is_active,
+        )
+        db.add(rule)
+        await db.flush()
+        return rule
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, rule_id: uuid.UUID
+    ) -> PriorityRule | None:
+        return (
+            await db.execute(
+                select(PriorityRule).where(
+                    PriorityRule.id == rule_id,
+                    PriorityRule.org_id == org_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_all(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        active_only: bool = False,
+    ) -> Sequence[PriorityRule]:
+        stmt = select(PriorityRule).where(PriorityRule.org_id == org_id)
+        if active_only:
+            stmt = stmt.where(PriorityRule.is_active == True)
+        stmt = stmt.order_by(PriorityRule.rule_index)
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        rule_id: uuid.UUID,
+        **fields: Any,
+    ) -> PriorityRule | None:
+        if not fields:
+            return await PriorityRuleRepo.get_by_id(db, org_id, rule_id)
+        stmt = (
+            update(PriorityRule)
+            .where(
+                PriorityRule.org_id == org_id, PriorityRule.id == rule_id
+            )
+            .values(**fields)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await PriorityRuleRepo.get_by_id(db, org_id, rule_id)
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, rule_id: uuid.UUID
+    ) -> bool:
+        rule = await PriorityRuleRepo.get_by_id(db, org_id, rule_id)
+        if rule is None:
+            return False
+        await db.delete(rule)
+        await db.flush()
+        return True
+
+    @staticmethod
+    async def log_llm_override(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        rule_priority: str,
+        llm_priority: str,
+        llm_reason: str | None,
+    ) -> PriorityLLMOverrideLog:
+        row = PriorityLLMOverrideLog(
+            org_id=org_id,
+            incident_id=incident_id,
+            rule_priority=rule_priority,
+            llm_priority=llm_priority,
+            llm_reason=llm_reason,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+
+class IncidentAssignmentRepo:
+    @staticmethod
+    async def get_active(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> IncidentAssignment | None:
+        stmt = (
+            select(IncidentAssignment)
+            .where(
+                IncidentAssignment.org_id == org_id,
+                IncidentAssignment.incident_id == incident_id,
+                IncidentAssignment.released_at.is_(None),
+            )
+            .order_by(IncidentAssignment.assigned_at.desc())
+        )
+        return (await db.execute(stmt)).scalars().first()
+
+    @staticmethod
+    async def assign(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+        assigned_by: str = "manual",
+    ) -> IncidentAssignment:
+        existing = await IncidentAssignmentRepo.get_active(
+            db, org_id, incident_id
+        )
+        if existing is not None:
+            existing.released_at = datetime.now(timezone.utc)
+            await db.flush()
+        row = IncidentAssignment(
+            org_id=org_id,
+            incident_id=incident_id,
+            assigned_to=user_id,
+            assigned_by=assigned_by,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def release(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> bool:
+        existing = await IncidentAssignmentRepo.get_active(
+            db, org_id, incident_id
+        )
+        if existing is None:
+            return False
+        existing.released_at = datetime.now(timezone.utc)
+        await db.flush()
+        return True
+
+    @staticmethod
+    async def list_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> Sequence[IncidentAssignment]:
+        stmt = (
+            select(IncidentAssignment)
+            .where(
+                IncidentAssignment.org_id == org_id,
+                IncidentAssignment.incident_id == incident_id,
+            )
+            .order_by(IncidentAssignment.assigned_at.desc())
+        )
+        return (await db.execute(stmt)).scalars().all()

@@ -4400,6 +4400,29 @@ class IncidentPageRepo:
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
+    async def has_recent_delivery(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+        channel: str,
+        after: datetime,
+    ) -> bool:
+        """Sprint 35 dedup: was this (incident, user, channel) already
+        delivered (or attempted with non-skipped status) since ``after``?"""
+
+        stmt = select(IncidentPage).where(
+            IncidentPage.org_id == org_id,
+            IncidentPage.incident_id == incident_id,
+            IncidentPage.user_id == user_id,
+            IncidentPage.channel == channel,
+            IncidentPage.delivery_status.in_(("sent", "failed")),
+            IncidentPage.sent_at >= after,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none() is not None
+
+    @staticmethod
     async def ack_all_unacked(
         db: AsyncSession,
         org_id: uuid.UUID,

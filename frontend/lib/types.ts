@@ -563,6 +563,7 @@ export interface SkillResponse {
   description: string | null;
   mcp_server_id: string | null;
   content_md: string;
+  focus_areas: string[];
   created_at: string;
   updated_at: string;
 }

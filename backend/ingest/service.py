@@ -178,7 +178,9 @@ async def ingest_incident(
             incident = existing
 
     if incident is None:
-        # Create a new incident
+        # Create a new incident. If the token is service-scoped, pre-fill
+        # service_id so the paging engine routes to the owning team without
+        # the alert payload needing to encode the service.
         incident = Incident(
             org_id=org_id,
             title=parsed.title,
@@ -187,6 +189,7 @@ async def ingest_incident(
             status=parsed.status,
             external_id=parsed.external_id,
             external_source=parsed.external_source,
+            service_id=token.service_id,
         )
         db.add(incident)
         await db.flush()

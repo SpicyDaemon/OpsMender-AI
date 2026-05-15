@@ -13,16 +13,18 @@ import {
   createAuditRun,
   dismissAuditFinding,
   getAuditRun,
-  listAuditAnalyzers,
   listAuditRuns,
+  listMCPServers,
+  listSkills,
   remediateAuditFinding,
 } from "@/lib/api";
 import type {
-  AuditAnalyzerResponse,
   AuditFindingResponse,
   AuditFindingStatus,
   AuditRunResponse,
   AuditSeverity,
+  MCPServerResponse,
+  SkillResponse,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -62,24 +64,31 @@ function fmtDate(iso: string | null): string {
   });
 }
 
-export default function AuditsPage() {
+export default function EnvironmentScansPage() {
   const toast = useToast();
-  const [analyzers, setAnalyzers] = useState<AuditAnalyzerResponse[]>([]);
   const [runs, setRuns] = useState<AuditRunResponse[]>([]);
   const [selectedRun, setSelectedRun] = useState<AuditRunResponse | null>(null);
   const [findings, setFindings] = useState<AuditFindingResponse[]>([]);
-  const [selectedAnalyzers, setSelectedAnalyzers] = useState<string[]>([]);
+  const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
+  const [selectedMcpServer, setSelectedMcpServer] = useState<string>("");
+  const [skills, setSkills] = useState<SkillResponse[]>([]);
+  const [selectedFocusAreas, setSelectedFocusAreas] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [a, r] = await Promise.all([
-        listAuditAnalyzers(),
+      const [r, m, s] = await Promise.all([
         listAuditRuns(),
+        listMCPServers(),
+        listSkills(),
       ]);
-      setAnalyzers(a.items);
       setRuns(r.items);
+      setMcpServers(m.items);
+      setSkills(s.items);
+      if (!selectedMcpServer && m.items.length > 0) {
+        setSelectedMcpServer(m.items[0].name);
+      }
       if (!selectedRun && r.items.length > 0) {
         const detail = await getAuditRun(r.items[0].id);
         setSelectedRun(detail.run);
@@ -90,7 +99,15 @@ export default function AuditsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedRun, toast]);
+  }, [selectedRun, selectedMcpServer, toast]);
+
+  // Focus areas for the selected MCP server come from its bound SKILL.md.
+  const focusAreasForServer = (() => {
+    const server = mcpServers.find((s) => s.name === selectedMcpServer);
+    if (!server) return [] as string[];
+    const skill = skills.find((sk) => sk.mcp_server_id === server.id);
+    return skill?.focus_areas ?? [];
+  })();
 
   useEffect(() => {
     refresh();
@@ -109,27 +126,35 @@ export default function AuditsPage() {
     [toast],
   );
 
-  const toggleAnalyzer = (key: string) => {
-    setSelectedAnalyzers((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+  const toggleFocusArea = (item: string) => {
+    setSelectedFocusAreas((prev) =>
+      prev.includes(item) ? prev.filter((k) => k !== item) : [...prev, item],
     );
   };
 
   const startRun = async () => {
-    if (selectedAnalyzers.length === 0) {
-      toast.error("Pick at least one analyzer");
+    if (!selectedMcpServer) {
+      toast.error("Pick an MCP server first");
       return;
     }
     setRunning(true);
     try {
+      // The single default analyzer is "environment-scan". Pass the chosen
+      // MCP server name as a param, and (optionally) the user's narrowed
+      // focus areas — empty means "use whatever the SKILL.md says, or let
+      // the LLM decide if no focus areas are configured".
+      const analyzer_params: Record<string, Record<string, unknown>> = {
+        "environment-scan": { mcp_server_name: selectedMcpServer },
+      };
+      if (selectedFocusAreas.length > 0) {
+        analyzer_params["environment-scan"].focus_areas = selectedFocusAreas;
+      }
       const run = await createAuditRun({
-        analyzers: selectedAnalyzers,
+        analyzers: ["environment-scan"],
+        analyzer_params,
         execute: true,
       });
-      toast.success(
-        `Audit ${run.status}: ${run.finding_count} finding(s)`,
-      );
-      setSelectedAnalyzers([]);
+      toast.success(`Scan ${run.status}: ${run.finding_count} finding(s)`);
       const detail = await getAuditRun(run.id);
       setSelectedRun(detail.run);
       setFindings(detail.findings);
@@ -189,10 +214,13 @@ export default function AuditsPage() {
     <div className="space-y-6 p-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-fg-primary">Audits</h1>
+          <h1 className="text-2xl font-semibold text-fg-primary">
+            Environment Scans
+          </h1>
           <p className="text-sm text-fg-secondary">
-            Run read-only environment scans and triage findings without paging
-            anyone.
+            Run read-only scans against an MCP server and triage findings
+            without paging anyone. Analyzers only see tools the MCP server
+            exposes — skill + tier enforcement still applies.
           </p>
         </div>
         <Button variant="ghost" onClick={refresh}>
@@ -202,41 +230,86 @@ export default function AuditsPage() {
 
       <section className="rounded-lg border border-border-default bg-bg-surface p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-secondary">
-          New audit run
+          New scan
         </h2>
         <p className="mt-1 text-sm text-fg-secondary">
-          Pick one or more analyzers. The run executes immediately; findings
-          land in the report below.
+          Pick an MCP server. The scan is LLM-driven and platform-agnostic —
+          it works against any deployment surface the MCP server can reach
+          (Kubernetes, container services, monolithic VMs, …). Focus areas
+          configured in the server&rsquo;s SKILL.md narrow what the LLM
+          weighs.
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {analyzers.map((a) => {
-            const checked = selectedAnalyzers.includes(a.key);
-            return (
-              <button
-                key={a.key}
-                type="button"
-                onClick={() => toggleAnalyzer(a.key)}
-                className={`rounded-md border px-3 py-1.5 text-sm transition ${
-                  checked
-                    ? "border-accent-default bg-accent-subtle text-accent-default"
-                    : "border-border-default bg-bg-elevated text-fg-primary hover:border-accent-default/50"
-                }`}
-                title={a.description}
-              >
-                {a.label}
-              </button>
-            );
-          })}
-          {analyzers.length === 0 && (
-            <span className="text-sm text-fg-secondary">
-              No analyzers registered.
+
+        <div className="mt-3 space-y-1">
+          <label className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
+            MCP server
+          </label>
+          {mcpServers.length === 0 ? (
+            <p className="text-sm text-status-medium">
+              No MCP servers configured. Add one under{" "}
+              <a className="underline" href="/dashboard/config#mcp">
+                Config → MCP
+              </a>{" "}
+              first.
+            </p>
+          ) : (
+            <select
+              value={selectedMcpServer}
+              onChange={(e) => setSelectedMcpServer(e.target.value)}
+              className="w-full rounded-md border border-border-default bg-bg-elevated px-3 py-1.5 text-sm text-fg-primary"
+            >
+              {mcpServers.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.name} · {s.transport}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="mt-4 space-y-1">
+          <label className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
+            Focus areas{" "}
+            <span className="font-normal normal-case text-fg-tertiary">
+              (optional · from this server&rsquo;s SKILL.md)
             </span>
+          </label>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {focusAreasForServer.length === 0 ? (
+            <p className="text-xs text-fg-tertiary">
+              No focus areas configured. The LLM will pick what to scan.
+              Configure a <code>focus_areas:</code> list in the SKILL.md
+              attached to this server to narrow future scans.
+            </p>
+          ) : (
+            focusAreasForServer.map((area) => {
+              const checked = selectedFocusAreas.includes(area);
+              return (
+                <button
+                  key={area}
+                  type="button"
+                  onClick={() => toggleFocusArea(area)}
+                  className={`rounded-md border px-3 py-1.5 text-sm transition ${
+                    checked
+                      ? "border-accent-default bg-accent-subtle text-accent-default"
+                      : "border-border-default bg-bg-elevated text-fg-primary hover:border-accent-default/50"
+                  }`}
+                  title="Toggle to narrow this run"
+                >
+                  {area}
+                </button>
+              );
+            })
           )}
         </div>
         <div className="mt-4 flex justify-end">
-          <Button onClick={startRun} disabled={running || selectedAnalyzers.length === 0}>
+          <Button
+            onClick={startRun}
+            disabled={running || !selectedMcpServer}
+          >
             <Sparkles className="h-4 w-4" />
-            {running ? "Running…" : "Run audit"}
+            {running ? "Running…" : "Run scan"}
           </Button>
         </div>
       </section>

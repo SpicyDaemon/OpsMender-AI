@@ -20,7 +20,7 @@ const NAV_SHORTCUTS: Shortcut[] = [
   { keys: [ALT_LABEL, "A"], label: "Approvals", target: "/dashboard/approvals" },
   { keys: [ALT_LABEL, "D"], label: "Detectors", target: "/dashboard/detectors" },
   { keys: [ALT_LABEL, "S"], label: "Skills", target: "/dashboard/skills" },
-  { keys: [ALT_LABEL, "L"], label: "Audit log", target: "/dashboard/audit" },
+  { keys: [ALT_LABEL, "L"], label: "Activity", target: "/dashboard/activity" },
   { keys: [ALT_LABEL, "C"], label: "Config", target: "/dashboard/config" },
 ];
 
@@ -36,7 +36,7 @@ const NAV_CODE_MAP: Record<string, string> = {
   KeyA: "/dashboard/approvals",
   KeyD: "/dashboard/detectors",
   KeyS: "/dashboard/skills",
-  KeyL: "/dashboard/audit",
+  KeyL: "/dashboard/activity",
   KeyC: "/dashboard/config",
 };
 

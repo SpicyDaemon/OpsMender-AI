@@ -21,14 +21,27 @@ import {
 import { useAuth } from "@/context/auth";
 import { getConfig } from "@/lib/api";
 
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof AlertTriangle;
+  reqRole?: string;
+  badge?: { label: string; tone: "neutral" | "warn" };
+};
+
+const NAV: NavItem[] = [
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
-  { href: "/dashboard/detectors", label: "Detectors", icon: Radar },
-  { href: "/dashboard/audits", label: "Audits", icon: ShieldCheck },
+  {
+    href: "/dashboard/detectors",
+    label: "Detectors",
+    icon: Radar,
+    badge: { label: "Legacy", tone: "warn" },
+  },
+  { href: "/dashboard/scans", label: "Environment Scans", icon: ShieldCheck },
   { href: "/dashboard/paging", label: "Paging", icon: Phone },
   { href: "/dashboard/skills", label: "Skills", icon: FileText },
-  { href: "/dashboard/audit", label: "Audit Log", icon: BookOpen },
+  { href: "/dashboard/activity", label: "Activity", icon: BookOpen },
   { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
   { href: "/dashboard/organizations", label: "Organizations", icon: CheckSquare, reqRole: "admin" },
   { href: "/dashboard/config", label: "Config", icon: Settings },
@@ -135,7 +148,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 space-y-0.5 px-2 py-3 overflow-y-auto">
-        {visibleNav.map(({ href, label, icon: Icon }) => {
+        {visibleNav.map(({ href, label, icon: Icon, badge }) => {
           const active = pathname.startsWith(href);
           return (
             <Link
@@ -150,7 +163,18 @@ export function Sidebar() {
             >
               <Icon size={16} className="shrink-0" />
               {!collapsed && <span className="truncate">{label}</span>}
-              {active && !collapsed && (
+              {!collapsed && badge && (
+                <span
+                  className={`ml-auto rounded-pill border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide ${
+                    badge.tone === "warn"
+                      ? "border-status-high-border bg-status-high-bg text-status-high"
+                      : "border-status-neutral-border bg-status-neutral-bg text-fg-secondary"
+                  }`}
+                >
+                  {badge.label}
+                </span>
+              )}
+              {active && !collapsed && !badge && (
                 <span className="ml-auto h-1.5 w-1.5 rounded-pill bg-accent" />
               )}
             </Link>

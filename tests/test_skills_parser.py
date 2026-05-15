@@ -75,6 +75,43 @@ class TestLoad:
         assert sd.environment == "kubernetes-production"
         assert len(sd.operations) > 10
 
+    def test_focus_areas_parsed_when_present(self, tmp_path):
+        from backend.skills.parser import loads
+
+        md = (
+            "---\n"
+            "version: 1\n"
+            "environment: ecs-prod\n"
+            "focus_areas:\n"
+            "  - tasks stuck in PROVISIONING\n"
+            "  - services below desired count\n"
+            "operations: []\n"
+            "---\n"
+        )
+        sd = loads(md, fmt="md")
+        assert sd.focus_areas == [
+            "tasks stuck in PROVISIONING",
+            "services below desired count",
+        ]
+
+    def test_focus_areas_default_empty(self, skill_md):
+        sd = load(skill_md)
+        assert sd.focus_areas == []
+
+    def test_focus_areas_comma_string(self):
+        from backend.skills.parser import loads
+
+        md = (
+            "---\n"
+            "version: 1\n"
+            "environment: t\n"
+            "focus_areas: a, b , c\n"
+            "operations: []\n"
+            "---\n"
+        )
+        sd = loads(md, fmt="md")
+        assert sd.focus_areas == ["a", "b", "c"]
+
 
 class TestClassify:
     def test_exact_match(self, skill_md):

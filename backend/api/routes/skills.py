@@ -33,6 +33,19 @@ from backend.skills.parser import loads as parse_skill
 router = APIRouter(prefix="/skills", tags=["skills"])
 
 
+def _extract_focus_areas(content_md: str) -> list[str]:
+    """Best-effort parse of focus_areas from a Skill's YAML frontmatter."""
+
+    if not content_md:
+        return []
+    try:
+        from backend.skills.parser import loads as _parse
+
+        return list(_parse(content_md, fmt="md").focus_areas or [])
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _to_response(skill: Skill) -> SkillResponse:
     return SkillResponse(
         id=skill.id,
@@ -40,6 +53,7 @@ def _to_response(skill: Skill) -> SkillResponse:
         description=skill.description,
         mcp_server_id=skill.mcp_server_id,
         content_md=skill.content_md,
+        focus_areas=_extract_focus_areas(skill.content_md),
         created_at=skill.created_at,
         updated_at=skill.updated_at,
     )

@@ -232,6 +232,15 @@ async def create_ingest_token(
             shape = compute_shape_hash(body.sample_payload)
             shape_cache = {shape: paths}
 
+    if body.service_id is not None:
+        from backend.db.repos import ServiceRepo
+
+        if await ServiceRepo.get_by_id(db, org_id, body.service_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Service not found",
+            )
+
     token_obj = await IngestTokenRepo.create(
         db,
         org_id,
@@ -239,6 +248,7 @@ async def create_ingest_token(
         provider=body.provider,
         token_hash=hash_token(raw),
         shape_cache=shape_cache,
+        service_id=body.service_id,
     )
 
     return IngestTokenCreatedResponse(

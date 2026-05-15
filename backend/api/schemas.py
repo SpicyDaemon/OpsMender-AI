@@ -326,6 +326,7 @@ class SkillResponse(BaseModel):
     description: Optional[str]
     mcp_server_id: Optional[uuid.UUID]
     content_md: str
+    focus_areas: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -524,6 +525,10 @@ class IngestTokenCreate(BaseModel):
     # server parses it on create so future payloads with the same shape
     # skip the LLM fallback.
     sample_payload: Optional[dict] = None
+    # Optional service to bind this token to. When set, every incident
+    # created through this token gets ``service_id`` pre-filled so the
+    # paging engine routes to the owning team automatically.
+    service_id: Optional[uuid.UUID] = None
 
 
 class IngestTokenResponse(BaseModel):
@@ -533,6 +538,7 @@ class IngestTokenResponse(BaseModel):
     name: str
     provider: str
     is_active: bool
+    service_id: Optional[uuid.UUID] = None
     created_at: datetime
     last_used_at: Optional[datetime]
     shape_cache_size: int = 0  # number of learned payload shapes

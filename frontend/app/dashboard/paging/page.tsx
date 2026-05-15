@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Calendar,
+  Info,
   ListOrdered,
   PlusCircle,
   Trash2,
@@ -83,6 +84,7 @@ const PRIORITY_VARIANT: Record<Priority, string> = {
 export default function PagingPage() {
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("teams");
+  const [showFlow, setShowFlow] = useState(false);
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [services, setServices] = useState<ServiceResponse[]>([]);
   const [rosters, setRosters] = useState<RosterResponse[]>([]);
@@ -114,14 +116,25 @@ export default function PagingPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <header>
-        <h1 className="text-2xl font-semibold text-fg-primary">Paging</h1>
-        <p className="text-sm text-fg-secondary">
-          Teams, services, rosters, priority rules, and escalation chains —
-          OpsMender-owned paging. Maintenance windows and channel fan-out land
-          in Sprint 35.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-fg-primary">Paging</h1>
+          <p className="text-sm text-fg-secondary">
+            Teams, services, rosters, priority rules, and escalation chains —
+            OpsMender-owned paging. Maintenance windows and channel fan-out
+            land in Sprint 35.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          onClick={() => setShowFlow(true)}
+          title="How paging works"
+        >
+          <Info className="h-4 w-4" /> How it works
+        </Button>
       </header>
+
+      <PagingFlowModal open={showFlow} onClose={() => setShowFlow(false)} />
 
       <nav className="flex flex-wrap gap-1 rounded-md border border-border-default bg-bg-surface p-1">
         {TABS.map((t) => (
@@ -1120,5 +1133,191 @@ function StepsEditor({
         <Button onClick={addStep}>Add step</Button>
       </div>
     </div>
+  );
+}
+
+function PagingFlowModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title="How paging works">
+      <div className="space-y-4">
+        <p className="text-sm text-fg-secondary">
+          Every incident flows through the same pipeline. The first stop decides
+          how urgent it is. The second decides whether to wake anyone up. The
+          third decides who.
+        </p>
+
+        <div className="overflow-x-auto rounded-lg border border-border-default bg-bg-elevated p-4">
+          <svg
+            viewBox="0 0 720 360"
+            className="w-full"
+            xmlns="http://www.w3.org/2000/svg"
+            role="img"
+            aria-label="Paging pipeline diagram"
+          >
+            <defs>
+              <marker
+                id="arrow"
+                viewBox="0 0 10 10"
+                refX="8"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+              </marker>
+            </defs>
+
+            {/* row 1: inbound -> priority rules -> response mode */}
+            <g className="text-fg-secondary">
+              <rect x="10" y="20" width="150" height="48" rx="6" fill="none" stroke="currentColor" />
+              <text x="85" y="42" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                Inbound alert
+              </text>
+              <text x="85" y="58" textAnchor="middle" fontSize="10" fill="currentColor">
+                (Datadog / Prom / …)
+              </text>
+
+              <line x1="160" y1="44" x2="220" y2="44" stroke="currentColor" markerEnd="url(#arrow)" />
+
+              <rect x="220" y="20" width="170" height="48" rx="6" fill="none" stroke="currentColor" />
+              <text x="305" y="42" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                Priority Rules
+              </text>
+              <text x="305" y="58" textAnchor="middle" fontSize="10" fill="currentColor">
+                first match → P0..P3
+              </text>
+
+              <line x1="390" y1="44" x2="450" y2="44" stroke="currentColor" markerEnd="url(#arrow)" />
+
+              <rect x="450" y="20" width="200" height="48" rx="6" fill="none" stroke="currentColor" />
+              <text x="550" y="42" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                Response Mode
+              </text>
+              <text x="550" y="58" textAnchor="middle" fontSize="10" fill="currentColor">
+                auto_resolve / notify / page
+              </text>
+            </g>
+
+            {/* row 2: page → service → chain */}
+            <g className="text-fg-secondary">
+              <line x1="550" y1="68" x2="550" y2="100" stroke="currentColor" markerEnd="url(#arrow)" />
+
+              <rect x="450" y="100" width="200" height="48" rx="6" fill="none" stroke="currentColor" />
+              <text x="550" y="122" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                Service
+              </text>
+              <text x="550" y="138" textAnchor="middle" fontSize="10" fill="currentColor">
+                owns a Team
+              </text>
+
+              <line x1="450" y1="124" x2="390" y2="124" stroke="currentColor" markerEnd="url(#arrow)" />
+
+              <rect x="220" y="100" width="170" height="48" rx="6" fill="none" stroke="currentColor" />
+              <text x="305" y="122" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                Escalation Chain
+              </text>
+              <text x="305" y="138" textAnchor="middle" fontSize="10" fill="currentColor">
+                ordered steps
+              </text>
+            </g>
+
+            {/* row 3: chain steps → roster → user */}
+            <g className="text-fg-secondary">
+              <line x1="305" y1="148" x2="305" y2="180" stroke="currentColor" markerEnd="url(#arrow)" />
+
+              <rect x="180" y="180" width="250" height="60" rx="6" fill="none" stroke="currentColor" />
+              <text x="305" y="200" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                Step N → target
+              </text>
+              <text x="305" y="216" textAnchor="middle" fontSize="10" fill="currentColor">
+                roster · user · team
+              </text>
+              <text x="305" y="230" textAnchor="middle" fontSize="10" fill="currentColor">
+                timeout → fire next step (additive)
+              </text>
+
+              <line x1="430" y1="210" x2="490" y2="210" stroke="currentColor" markerEnd="url(#arrow)" />
+
+              <rect x="490" y="180" width="200" height="60" rx="6" fill="none" stroke="currentColor" />
+              <text x="590" y="200" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                Roster · on_call_at(now)
+              </text>
+              <text x="590" y="216" textAnchor="middle" fontSize="10" fill="currentColor">
+                weekly / daily / N-day rotation
+              </text>
+              <text x="590" y="230" textAnchor="middle" fontSize="10" fill="currentColor">
+                overrides win
+              </text>
+            </g>
+
+            {/* row 4: ack / takeover */}
+            <g className="text-fg-secondary">
+              <line x1="305" y1="240" x2="305" y2="272" stroke="currentColor" markerEnd="url(#arrow)" />
+
+              <rect x="180" y="272" width="250" height="60" rx="6" fill="none" stroke="currentColor" />
+              <text x="305" y="292" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                Ack → assignee
+              </text>
+              <text x="305" y="308" textAnchor="middle" fontSize="10" fill="currentColor">
+                chain pauses · incident-scoped authority
+              </text>
+              <text x="305" y="322" textAnchor="middle" fontSize="10" fill="currentColor">
+                soft-takeover 5 min · admin force any time
+              </text>
+
+              <line x1="430" y1="302" x2="490" y2="302" stroke="currentColor" markerEnd="url(#arrow)" />
+
+              <rect x="490" y="272" width="200" height="60" rx="6" fill="none" stroke="currentColor" />
+              <text x="590" y="292" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
+                15-min hard timeout
+              </text>
+              <text x="590" y="308" textAnchor="middle" fontSize="10" fill="currentColor">
+                chain → exhausted
+              </text>
+              <text x="590" y="322" textAnchor="middle" fontSize="10" fill="currentColor">
+                team channel fan-out (S35)
+              </text>
+            </g>
+          </svg>
+        </div>
+
+        <ul className="space-y-1 text-xs text-fg-secondary">
+          <li>
+            <span className="font-semibold text-fg-primary">Priority rules</span>{" "}
+            are first-match-wins; LLM escalation can only bump priority up.
+          </li>
+          <li>
+            <span className="font-semibold text-fg-primary">Response mode</span>{" "}
+            is locked at incident creation. The AI may resolve an incident but
+            never downgrades its mode.
+          </li>
+          <li>
+            <span className="font-semibold text-fg-primary">
+              Escalation is additive
+            </span>
+            : once paged, you stay paged. Later steps add people, they do not
+            replace earlier ones.
+          </li>
+          <li>
+            <span className="font-semibold text-fg-primary">
+              Incident-scoped authority
+            </span>
+            : the active assignee gets operator-equivalent rights on that
+            incident regardless of global role.
+          </li>
+        </ul>
+
+        <div className="flex justify-end">
+          <Button onClick={onClose}>Got it</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

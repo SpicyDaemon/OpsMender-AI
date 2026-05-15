@@ -76,6 +76,11 @@ class SkillDefinition:
     version: str
     environment: str
     operations: List[OperationClassification]
+    # Optional free-form list of areas the operator wants Environment Scans
+    # to weight (e.g. "crashlooping containers", "tasks stuck in PROVISIONING",
+    # "high systemd restart counts"). Platform-agnostic by design — the LLM
+    # decides what each phrase means given the MCP server's tools.
+    focus_areas: List[str] = dataclasses.field(default_factory=list)
 
     def _match(self, tool_name: str) -> Optional[OperationClassification]:
         """Return the first matching OperationClassification or None."""
@@ -184,10 +189,19 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
             )
         )
 
+    raw_focus = data.get("focus_areas") or []
+    focus_areas: list[str] = []
+    if isinstance(raw_focus, list):
+        focus_areas = [str(item).strip() for item in raw_focus if str(item).strip()]
+    elif isinstance(raw_focus, str):
+        # Allow a single comma-separated string for convenience.
+        focus_areas = [s.strip() for s in raw_focus.split(",") if s.strip()]
+
     return SkillDefinition(
         version=str(data.get("version", "1")),
         environment=data.get("environment", "default"),
         operations=operations,
+        focus_areas=focus_areas,
     )
 
 

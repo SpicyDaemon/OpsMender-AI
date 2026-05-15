@@ -1749,6 +1749,7 @@ class IngestTokenRepo:
         provider: str,
         token_hash: str,
         shape_cache: dict | None = None,
+        service_id: uuid.UUID | None = None,
     ) -> IngestToken:
         token = IngestToken(
             org_id=org_id,
@@ -1756,6 +1757,7 @@ class IngestTokenRepo:
             provider=provider,
             token_hash=token_hash,
             shape_cache=shape_cache,
+            service_id=service_id,
         )
         db.add(token)
         await db.flush()

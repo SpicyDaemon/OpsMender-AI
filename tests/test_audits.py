@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_mcp_pool, set_session_factory
-from backend.auditor.analyzers import (
-    GenericLLMAnalyzer,
+from backend.auditor.analyzers import EnvironmentScanAnalyzer
+from backend.auditor.example_analyzers import (
     IstioctlAnalyzeAnalyzer,
     KubeScoreAnalyzer,
 )
@@ -202,14 +202,14 @@ class TestAnalyzerParsing:
                 }
             ]
         )
-        findings = GenericLLMAnalyzer().parse(raw)
+        findings = EnvironmentScanAnalyzer().parse(raw)
         assert len(findings) == 1
         assert findings[0].severity == "high"
         assert findings[0].suggested_fix == "Increase memory limit"
 
     def test_generic_llm_strips_code_fences(self):
         raw = "```json\n[{\"severity\":\"low\",\"message\":\"hi\"}]\n```"
-        findings = GenericLLMAnalyzer().parse(raw)
+        findings = EnvironmentScanAnalyzer().parse(raw)
         assert len(findings) == 1
         assert findings[0].message == "hi"
 
@@ -224,9 +224,17 @@ class TestAnalyzerParsing:
 
 
 class TestRegistry:
-    def test_built_in_analyzers_registered(self):
+    def test_default_analyzer_registered(self):
         keys = {s.key for s in list_analyzers()}
-        assert {"kube-score", "istioctl-analyze", "generic-llm-analyzer"} <= keys
+        # Only the platform-agnostic environment-scan is registered by
+        # default. Example platform-specific analyzers must be opted into
+        # by the operator at startup.
+        assert "environment-scan" in keys
+
+    def test_legacy_analyzers_not_auto_registered(self):
+        keys = {s.key for s in list_analyzers()}
+        assert "kube-score" not in keys
+        assert "istioctl-analyze" not in keys
 
     def test_get_analyzer_returns_none_for_unknown(self):
         assert get_analyzer("does-not-exist") is None
@@ -345,14 +353,12 @@ class TestRunner:
             assert len(findings) == 1
             assert findings[0].severity == "high"
 
-        # cleanup — re-register the real built-ins so other tests stay green
+        # cleanup — re-register the default analyzer so other tests stay green
         _reset_for_tests()
         import backend.auditor as _a  # noqa: F401
         from backend.auditor import analyzers as _an
 
-        register_analyzer(_an.KubeScoreAnalyzer())
-        register_analyzer(_an.IstioctlAnalyzeAnalyzer())
-        register_analyzer(_an.GenericLLMAnalyzer())
+        register_analyzer(_an.EnvironmentScanAnalyzer())
 
     async def test_runner_captures_analyzer_exception_as_info(self, app):
         fake = _FakeAnalyzer("boomer", raise_exc=RuntimeError("network down"))
@@ -389,9 +395,7 @@ class TestRunner:
         _reset_for_tests()
         from backend.auditor import analyzers as _an
 
-        register_analyzer(_an.KubeScoreAnalyzer())
-        register_analyzer(_an.IstioctlAnalyzeAnalyzer())
-        register_analyzer(_an.GenericLLMAnalyzer())
+        register_analyzer(_an.EnvironmentScanAnalyzer())
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +410,8 @@ class TestAuditAPI:
         resp = await client.get("/audits/analyzers", headers=auth_headers)
         assert resp.status_code == 200
         keys = {item["key"] for item in resp.json()["items"]}
-        assert {"kube-score", "istioctl-analyze", "generic-llm-analyzer"} <= keys
+        # Only the platform-agnostic default analyzer ships registered.
+        assert "environment-scan" in keys
 
     async def test_create_run_rejects_unknown_analyzer(
         self, client: AsyncClient, auth_headers
@@ -423,13 +428,13 @@ class TestAuditAPI:
     ):
         resp = await client.post(
             "/audits/runs",
-            json={"analyzers": ["kube-score"], "execute": False},
+            json={"analyzers": ["environment-scan"], "execute": False},
             headers=auth_headers,
         )
         assert resp.status_code == 201
         body = resp.json()
         assert body["status"] == "queued"
-        assert body["analyzers"] == ["kube-score"]
+        assert body["analyzers"] == ["environment-scan"]
         assert body["finding_count"] == 0
 
     async def test_run_detail_includes_findings(

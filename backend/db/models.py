@@ -663,6 +663,12 @@ class IngestToken(Base):
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     shape_cache: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # When set, every incident created through this token gets ``service_id``
+    # pre-filled so the paging engine routes to the owning team automatically
+    # (Simplification pass 1, post-Sprint 34).
+    service_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("services.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

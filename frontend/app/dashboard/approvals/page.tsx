@@ -162,7 +162,7 @@ export default function ApprovalsPage() {
           description={
             statusFilter
               ? "Try a different status filter."
-              : "Tier 1 actions that need human sign-off will show up here."
+              : "Tier 1 actions that need human sign-off show up here. You can also approve them directly from the session detail page or your chat — this is the catch-up inbox."
           }
         />
       ) : (
@@ -228,30 +228,39 @@ export default function ApprovalsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {isPending && (
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="success"
-                            onClick={() => handleApprove(a.id)}
-                            loading={actionLoading}
-                            className="min-w-[90px]"
-                          >
-                            <CheckCircle2 size={14} />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() => handleReject(a.id)}
-                            loading={actionLoading}
-                            className="min-w-[80px]"
-                          >
-                            <XCircle size={14} />
-                            Reject
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`/dashboard/sessions/detail?id=${a.session_id}`}
+                          className="inline-flex items-center gap-1 rounded-md border border-border-default bg-bg-surface px-2.5 py-1 text-xs font-medium text-fg-primary hover:bg-bg-elevated transition-colors"
+                          title="Open the session that requested this approval"
+                        >
+                          Open session →
+                        </Link>
+                        {isPending && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="success"
+                              onClick={() => handleApprove(a.id)}
+                              loading={actionLoading}
+                              className="min-w-[90px]"
+                            >
+                              <CheckCircle2 size={14} />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => handleReject(a.id)}
+                              loading={actionLoading}
+                              className="min-w-[80px]"
+                            >
+                              <XCircle size={14} />
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

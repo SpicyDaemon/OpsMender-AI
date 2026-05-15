@@ -181,7 +181,7 @@ function ColumnToggle({
 // Page
 // ---------------------------------------------------------------------------
 
-export default function AuditPage() {
+export default function ActivityPage() {
   const [data, setData] = useState<AuditListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -209,7 +209,7 @@ export default function AuditPage() {
       });
       setData(res);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load audit log");
+      toast.error(err instanceof Error ? err.message : "Failed to load activity");
     } finally {
       setLoading(false);
     }
@@ -236,7 +236,7 @@ export default function AuditPage() {
             <BookOpen size={18} className="text-accent" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-fg-primary">Audit Log</h1>
+            <h1 className="text-2xl font-bold text-fg-primary">Activity</h1>
             {data && (
               <p className="text-sm text-fg-secondary mt-0.5">{data.total} entries</p>
             )}

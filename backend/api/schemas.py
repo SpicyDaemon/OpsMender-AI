@@ -1515,12 +1515,21 @@ class IncidentAssignRequest(BaseModel):
     user_id: Optional[uuid.UUID] = None  # null means self
 
 
+class SuppressedByMaintenanceWindow(BaseModel):
+    id: uuid.UUID
+    name: str
+    starts_at: datetime
+    ends_at: datetime
+    scope_type: str
+
+
 class IncidentPagingPanelResponse(BaseModel):
     incident_id: uuid.UUID
     priority: Optional[str]
     response_mode: Optional[str]
     service_id: Optional[uuid.UUID]
     assignment: Optional[IncidentAssignmentResponse]
+    suppressed_by_maintenance_window: Optional[SuppressedByMaintenanceWindow] = None
 
 
 # ---------------------------------------------------------------------------

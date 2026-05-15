@@ -8,6 +8,7 @@ import {
   CalendarClock,
   ChevronRight,
   CircleDot,
+  CalendarX,
   Play,
   Radar,
   ShieldAlert,
@@ -16,6 +17,7 @@ import {
 import {
   createSession,
   getIncident,
+  getIncidentPaging,
   listAgentTeamProfiles,
   listIncidentSessions,
   listProviders,
@@ -23,6 +25,7 @@ import {
 } from "@/lib/api";
 import type {
   AgentTeamProfileResponse,
+  IncidentPagingPanelResponse,
   IncidentResponse,
   ProviderModelsResponse,
   SessionCreate,
@@ -114,6 +117,8 @@ function IncidentDetailContent() {
   const id = searchParams.get("id") ?? "";
   const router = useRouter();
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
+  const [pagingPanel, setPagingPanel] =
+    useState<IncidentPagingPanelResponse | null>(null);
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [sessionsError, setSessionsError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -134,6 +139,13 @@ function IncidentDetailContent() {
         const incidentRes = await getIncident(id);
         if (cancelled) return;
         setIncident(incidentRes);
+        getIncidentPaging(id)
+          .then((p) => {
+            if (!cancelled) setPagingPanel(p);
+          })
+          .catch(() => {
+            if (!cancelled) setPagingPanel(null);
+          });
       } catch (err) {
         if (!cancelled) {
           setIncident(null);
@@ -182,6 +194,34 @@ function IncidentDetailContent() {
           >
             <ArrowLeft size={14} /> Incidents
           </Link>
+
+          {pagingPanel?.suppressed_by_maintenance_window && (
+            <div className="mb-4 flex items-start gap-3 rounded-lg border border-status-warning/40 bg-status-warning/10 px-4 py-3 text-sm">
+              <CalendarX
+                size={18}
+                className="mt-0.5 shrink-0 text-status-warning"
+              />
+              <div>
+                <div className="font-medium text-fg-primary">
+                  Paging suppressed by maintenance window
+                </div>
+                <div className="text-xs text-fg-secondary">
+                  <span className="font-medium">
+                    {pagingPanel.suppressed_by_maintenance_window.name}
+                  </span>{" "}
+                  ({pagingPanel.suppressed_by_maintenance_window.scope_type}){" "}
+                  · {new Date(
+                    pagingPanel.suppressed_by_maintenance_window.starts_at,
+                  ).toLocaleString()}
+                  {" → "}
+                  {new Date(
+                    pagingPanel.suppressed_by_maintenance_window.ends_at,
+                  ).toLocaleString()}
+                  . No one was paged for this incident.
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mb-6 overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
             <div className="border-b border-border-subtle bg-[linear-gradient(135deg,rgba(59,130,246,0.12),transparent_45%),linear-gradient(225deg,rgba(234,179,8,0.10),transparent_50%)] px-6 py-6">

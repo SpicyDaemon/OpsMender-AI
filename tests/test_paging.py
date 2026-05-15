@@ -923,3 +923,68 @@ class TestMaintenanceWindowScopeFields:
         )
         assert resp.status_code == 201
         assert resp.json()["scope_type"] == "global"
+
+
+# ---------------------------------------------------------------------------
+# Sprint 35 Step 10 — Incident paging panel exposes suppression
+# ---------------------------------------------------------------------------
+
+
+class TestIncidentPagingSuppression:
+    async def test_panel_returns_suppression_when_set(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        # Create the maintenance window via API to anchor scope.
+        now = datetime.now(timezone.utc)
+        mw_resp = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "DB freeze",
+                "starts_at": (now - timedelta(hours=1)).isoformat(),
+                "ends_at": (now + timedelta(hours=1)).isoformat(),
+            },
+            headers=auth_headers,
+        )
+        assert mw_resp.status_code == 201
+        mw_id = mw_resp.json()["id"]
+
+        # Create an incident and stamp the suppression directly on the row.
+        factory = app.state.session_factory
+        async with factory() as session:
+            incident = await IncidentRepo.create(
+                session,
+                TEST_ORG_ID,
+                title="Outage",
+                description="db",
+            )
+            incident.suppressed_by_maintenance_window_id = uuid.UUID(mw_id)
+            await session.commit()
+            incident_id = str(incident.id)
+
+        resp = await client.get(
+            f"/incidents/{incident_id}/paging", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["suppressed_by_maintenance_window"] is not None
+        assert data["suppressed_by_maintenance_window"]["name"] == "DB freeze"
+
+    async def test_panel_omits_suppression_when_unset(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        factory = app.state.session_factory
+        async with factory() as session:
+            incident = await IncidentRepo.create(
+                session,
+                TEST_ORG_ID,
+                title="ok",
+                description="ok",
+            )
+            await session.commit()
+            incident_id = str(incident.id)
+
+        resp = await client.get(
+            f"/incidents/{incident_id}/paging", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["suppressed_by_maintenance_window"] is None

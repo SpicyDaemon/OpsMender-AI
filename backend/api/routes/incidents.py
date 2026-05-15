@@ -26,12 +26,14 @@ from backend.db.models import User
 from backend.db.repos import (
     IncidentAssignmentRepo,
     IncidentRepo,
+    MaintenanceWindowRepo,
     SessionRepo,
 )
 from backend.api.schemas import (
     IncidentAssignmentResponse,
     IncidentAssignRequest,
     IncidentPagingPanelResponse,
+    SuppressedByMaintenanceWindow,
 )
 from backend.paging.service import compute_priority_for_payload
 from backend.paging import escalation as _esc_kickoff
@@ -218,6 +220,19 @@ async def get_incident_paging(
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    suppressed = None
+    if incident.suppressed_by_maintenance_window_id is not None:
+        mw = await MaintenanceWindowRepo.get_by_id(
+            db, org_id, incident.suppressed_by_maintenance_window_id
+        )
+        if mw is not None:
+            suppressed = SuppressedByMaintenanceWindow(
+                id=mw.id,
+                name=mw.name,
+                starts_at=mw.starts_at,
+                ends_at=mw.ends_at,
+                scope_type=mw.scope_type,
+            )
     return IncidentPagingPanelResponse(
         incident_id=incident_id,
         priority=incident.priority,
@@ -228,6 +243,7 @@ async def get_incident_paging(
             if assignment is not None
             else None
         ),
+        suppressed_by_maintenance_window=suppressed,
     )
 
 

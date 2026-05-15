@@ -1334,12 +1334,21 @@ export interface IncidentAssignmentResponse {
   released_at: string | null;
 }
 
+export interface SuppressedByMaintenanceWindow {
+  id: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  scope_type: MaintenanceWindowScopeType;
+}
+
 export interface IncidentPagingPanelResponse {
   incident_id: string;
   priority: Priority | null;
   response_mode: ResponseMode | null;
   service_id: string | null;
   assignment: IncidentAssignmentResponse | null;
+  suppressed_by_maintenance_window: SuppressedByMaintenanceWindow | null;
 }
 
 export interface OnCallResolveResponse {

@@ -770,3 +770,80 @@ class TestEmailChannel:
         )
         assert attempt.status == "failed"
         assert "boom" in (attempt.error or "")
+
+# ---------------------------------------------------------------------------
+# End-to-end: dispatch through a real SlackDMChannel + MockTransport
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchEndToEnd:
+    async def test_slack_dm_via_mock_transport(self, session_factory):
+        """dispatch_page → real SlackDMChannel → MockTransport captures payload."""
+        user = await _make_user(session_factory, username="end-to-end")
+        inc = await _make_incident(
+            session_factory, priority="P0", title="Database is down"
+        )
+        await _record_page(
+            session_factory, incident_id=inc.id, user_id=user.id
+        )
+
+        async with session_factory() as db:
+            await UserNotificationPrefRepo.upsert(
+                db,
+                TEST_ORG_ID,
+                user.id,
+                channels={"slack_dm": "U_END2END"},
+                routing={"P0": ["slack_dm"]},
+            )
+            await db.commit()
+
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            captured["auth"] = request.headers.get("authorization")
+            captured["body"] = request.read().decode("utf-8")
+            return httpx.Response(200, json={"ok": True, "ts": "1234.5678"})
+
+        slack_channel = SlackDMChannel(
+            bot_token="xoxb-end2end",
+            http_client_factory=_mock_factory(handler),
+        )
+
+        def channel_factory(key: str):
+            return slack_channel if key == "slack_dm" else None
+
+        async with session_factory() as db:
+            inc_loaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)
+            user_loaded = await UserRepo.get_by_id(db, user.id)
+            page_loaded = (
+                await IncidentPageRepo.list_for_incident(db, TEST_ORG_ID, inc.id)
+            )[0]
+            result = await dispatch_page(
+                db,
+                TEST_ORG_ID,
+                incident=inc_loaded,
+                user=user_loaded,
+                page=page_loaded,
+                channel_factory=channel_factory,
+            )
+            await db.commit()
+
+        assert result.suppressed is False
+        assert len(result.attempts) == 1
+        assert result.attempts[0].channel == "slack_dm"
+        assert result.attempts[0].status == "sent"
+
+        # MockTransport captured the real HTTP call.
+        assert captured["url"] == "https://slack.com/api/chat.postMessage"
+        assert captured["auth"] == "Bearer xoxb-end2end"
+        assert "U_END2END" in captured["body"]
+        assert "Database is down" in captured["body"]
+
+        # And the dispatcher recorded a `slack_dm` row alongside the audit anchor.
+        async with session_factory() as db:
+            rows = await IncidentPageRepo.list_for_incident(
+                db, TEST_ORG_ID, inc.id
+            )
+            statuses = {(r.channel, r.delivery_status) for r in rows}
+            assert ("slack_dm", "sent") in statuses

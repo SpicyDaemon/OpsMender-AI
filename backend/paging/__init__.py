@@ -5,6 +5,10 @@ live here so the API + workflow layers can call them deterministically and
 unit-test them without a live DB.
 """
 
+from backend.paging.channel_factory import (
+    build_channel_factory,
+    null_channel_factory,
+)
 from backend.paging.escalation import (
     HARD_INACTIVITY_TIMEOUT_SECONDS,
     SOFT_TAKEOVER_WINDOW_SECONDS,
@@ -46,11 +50,13 @@ __all__ = [
     "SOFT_TAKEOVER_WINDOW_SECONDS",
     "StepFireResult",
     "assign_priority",
+    "build_channel_factory",
     "cancel_chain",
     "handle_ack",
     "handle_force_takeover",
     "handle_takeover_confirm",
     "handle_takeover_request",
+    "null_channel_factory",
     "on_call_at",
     "rule_matches",
     "select_chain_for_incident",

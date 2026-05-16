@@ -208,12 +208,15 @@ async def ingest_incident(
                 priority=priority_result.priority,
             )
             if link is not None:
+                from backend.paging.channel_factory import build_channel_factory
+
                 await _esc_kickoff.start_chain(
                     db,
                     org_id,
                     incident_id=incident.id,
                     chain_id=link.chain_id,
                     mode=priority_result.response_mode,
+                    channel_factory=build_channel_factory(),
                 )
         dedup_action = "created"
 

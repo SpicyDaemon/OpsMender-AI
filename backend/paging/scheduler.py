@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from backend.paging.channel_factory import build_channel_factory
 from backend.paging.escalation import tick_all_due
 
 
@@ -59,7 +60,9 @@ class EscalationScheduler:
         now = datetime.now(timezone.utc)
         async with self._session_factory() as db:
             try:
-                advanced = await tick_all_due(db, at=now)
+                advanced = await tick_all_due(
+                    db, at=now, channel_factory=build_channel_factory()
+                )
                 if advanced:
                     await db.commit()
             except Exception:

@@ -54,11 +54,14 @@ from backend.db.repos import (
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentPageRepo,
+    IncidentRepo,
     RosterOverrideRepo,
     RosterRepo,
     ServiceEscalationChainRepo,
     TeamRepo,
+    UserRepo,
 )
+from backend.paging.dispatch import ChannelFactory, dispatch_page
 from backend.paging.on_call import (
     OnCallContext,
     OnCallMember,
@@ -144,11 +147,18 @@ async def _fire_step(
     chain_id: uuid.UUID,
     step,
     at: datetime,
+    channel_factory: ChannelFactory | None = None,
 ) -> StepFireResult:
     """Persist incident_pages for every user that step ``step`` targets.
 
     Additive: a user already paged for an earlier step is NOT paged again
     for the same step_index. We only deduplicate within the same step row.
+
+    When ``channel_factory`` is provided, each newly-recorded page row is
+    immediately fanned out to the dispatcher (Sprint 35), which records one
+    additional ``incident_pages`` row per delivery attempt. When omitted,
+    only the audit-anchor ``recorded`` row is written — preserving the
+    Sprint 34 behavior.
     """
 
     user_ids = await _resolve_step_targets(
@@ -159,6 +169,7 @@ async def _fire_step(
         at=at,
     )
     fired: list[uuid.UUID] = []
+    incident = None
     for uid in user_ids:
         if await IncidentPageRepo.already_paged(
             db,
@@ -168,7 +179,7 @@ async def _fire_step(
             step_index=step.step_index,
         ):
             continue
-        await IncidentPageRepo.create(
+        page = await IncidentPageRepo.create(
             db,
             org_id,
             incident_id=incident_id,
@@ -177,6 +188,22 @@ async def _fire_step(
             step_index=step.step_index,
         )
         fired.append(uid)
+        if channel_factory is not None:
+            if incident is None:
+                incident = await IncidentRepo.get_by_id(
+                    db, org_id, incident_id
+                )
+            user = await UserRepo.get_by_id(db, uid)
+            if incident is not None and user is not None:
+                await dispatch_page(
+                    db,
+                    org_id,
+                    incident=incident,
+                    user=user,
+                    page=page,
+                    channel_factory=channel_factory,
+                    at=at,
+                )
     return StepFireResult(step_index=step.step_index, users_paged=fired)
 
 
@@ -222,6 +249,7 @@ async def start_chain(
     chain_id: uuid.UUID,
     mode: str = "page",
     at: datetime | None = None,
+    channel_factory: ChannelFactory | None = None,
 ) -> StepFireResult | None:
     """Create the chain state row, fire step 0 (and all steps if mode is
     ``escalate_immediate``), and schedule the next tick.
@@ -260,6 +288,7 @@ async def start_chain(
                 chain_id=chain_id,
                 step=step,
                 at=now,
+                channel_factory=channel_factory,
             )
             state.current_step_index = step.step_index
         state.next_step_due_at = None
@@ -275,6 +304,7 @@ async def start_chain(
         chain_id=chain_id,
         step=step0,
         at=now,
+        channel_factory=channel_factory,
     )
     state.current_step_index = step0.step_index
     if len(steps) > 1:
@@ -291,6 +321,7 @@ async def tick(
     *,
     incident_id: uuid.UUID,
     at: datetime | None = None,
+    channel_factory: ChannelFactory | None = None,
 ) -> StepFireResult | None:
     """Advance the chain for ``incident_id`` if its timer has expired.
 
@@ -337,6 +368,7 @@ async def tick(
         chain_id=state.chain_id,
         step=next_step,
         at=now,
+        channel_factory=channel_factory,
     )
     state.current_step_index = next_step.step_index
     has_more = any(s.step_index > next_step.step_index for s in steps)
@@ -526,7 +558,10 @@ async def cancel_chain(
 
 
 async def tick_all_due(
-    db: AsyncSession, *, at: datetime | None = None
+    db: AsyncSession,
+    *,
+    at: datetime | None = None,
+    channel_factory: ChannelFactory | None = None,
 ) -> int:
     """Scheduler entry point — advance every chain whose timer has expired.
 
@@ -542,6 +577,7 @@ async def tick_all_due(
             state.org_id,
             incident_id=state.incident_id,
             at=now,
+            channel_factory=channel_factory,
         )
         if result is not None or state.status != "running":
             advanced += 1

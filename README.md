@@ -459,6 +459,33 @@ OPSMENDER_DATABASE_URL=postgresql+asyncpg://opsmender:opsmender@localhost:5432/o
 OPSMENDER_JWT_SECRET=change-me-in-production
 ```
 
+### Notification channels (Sprint 35)
+
+When the escalation engine pages a user, it fans out across the channels the user enabled in **My Notifications**. Per-deployment credentials for those channels are read from env:
+
+```dotenv
+# Slack DM
+OPSMENDER_SLACK_BOT_TOKEN=xoxb-...
+
+# Teams DM (MessageCard webhook; Graph API is Sprint 37)
+OPSMENDER_TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...
+
+# Email
+OPSMENDER_SMTP_HOST=smtp.example.com
+OPSMENDER_SMTP_PORT=587
+OPSMENDER_SMTP_USER=opsmender
+OPSMENDER_SMTP_PASSWORD=...
+OPSMENDER_SMTP_FROM=opsmender@example.com
+OPSMENDER_SMTP_USE_TLS=true
+
+# SMS (Twilio)
+OPSMENDER_TWILIO_ACCOUNT_SID=AC...
+OPSMENDER_TWILIO_AUTH_TOKEN=...
+OPSMENDER_TWILIO_FROM_NUMBER=+15550000000
+```
+
+Channels with missing credentials are silently skipped — the dispatcher writes an `incident_pages` row with `delivery_status='skipped'` and reason `channel_unconfigured` so operators can see in the audit log which channel was unavailable.
+
 `OPSMENDER_SKILL_DEFINITION` should point to an operator-owned `SKILL.md` file. Different environments can use different skill files, for example:
 
 ```text

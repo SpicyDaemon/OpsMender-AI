@@ -805,3 +805,152 @@ class TestScheduler:
                 db, TEST_ORG_ID, inc.id
             )
             assert {p.user_id for p in pages} == {u1, u2}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 35 wiring: engine → dispatcher hand-off
+# ---------------------------------------------------------------------------
+
+
+class TestEngineDispatchWiring:
+    async def test_fire_step_invokes_dispatcher_when_factory_provided(self, app):
+        """When start_chain is given a channel_factory, _fire_step records the
+        audit-anchor ``recorded`` row AND hands the page to dispatch_page,
+        which writes one ``incident_pages`` row per resolved channel."""
+
+        from backend.db.repos import UserNotificationPrefRepo
+        from backend.paging.channels import SlackDMChannel
+        from backend.paging.dispatch import Channel
+
+        import httpx
+
+        team_id = await _make_team(app)
+        user_id = await _make_user(app, username="dispatch-target")
+        chain_id, _ = await _make_user_in_chain(
+            app, team_id=team_id, user_id=user_id
+        )
+
+        async with app.state.session_factory() as db:
+            await UserNotificationPrefRepo.upsert(
+                db,
+                TEST_ORG_ID,
+                user_id,
+                channels={"slack_dm": "U_TARGET"},
+                routing={"P1": ["slack_dm"]},
+            )
+            await db.commit()
+
+        calls: list[dict] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append({"url": str(request.url)})
+            return httpx.Response(200, json={"ok": True, "ts": "1.2"})
+
+        transport = httpx.MockTransport(handler)
+
+        def http_factory():
+            return httpx.AsyncClient(transport=transport, timeout=5.0)
+
+        slack = SlackDMChannel(
+            bot_token="xoxb-wiring", http_client_factory=http_factory
+        )
+
+        def channel_factory(key: str) -> Channel | None:
+            return slack if key == "slack_dm" else None
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="dispatch wiring",
+                description="ensures engine calls dispatcher",
+                severity="high",
+                priority="P1",
+                response_mode="page",
+            )
+            await db.commit()
+
+            await _esc.start_chain(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                chain_id=chain_id,
+                channel_factory=channel_factory,
+            )
+            await db.commit()
+
+            rows = await IncidentPageRepo.list_for_incident(
+                db, TEST_ORG_ID, incident.id
+            )
+            channels = {(r.channel, r.delivery_status) for r in rows}
+            # Audit anchor + the dispatched Slack row.
+            assert ("recorded", "recorded") in channels
+            assert ("slack_dm", "sent") in channels
+
+        # The MockTransport actually saw the chat.postMessage call.
+        assert calls and calls[0]["url"] == "https://slack.com/api/chat.postMessage"
+
+    async def test_fire_step_without_factory_only_records(self, app):
+        """No channel_factory → only the audit-anchor row is written (Sprint 34
+        behavior preserved)."""
+
+        team_id = await _make_team(app)
+        user_id = await _make_user(app, username="no-dispatch")
+        chain_id, _ = await _make_user_in_chain(
+            app, team_id=team_id, user_id=user_id
+        )
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="t", description="d", severity="high"
+            )
+            await db.commit()
+            await _esc.start_chain(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                chain_id=chain_id,
+            )
+            await db.commit()
+            rows = await IncidentPageRepo.list_for_incident(
+                db, TEST_ORG_ID, incident.id
+            )
+            assert len(rows) == 1
+            assert rows[0].channel == "recorded"
+
+
+class TestChannelFactoryBuilder:
+    def test_returns_none_for_unconfigured_channels(self):
+        from backend.paging.channel_factory import build_channel_factory
+
+        factory = build_channel_factory(env={})
+        for key in ("slack_dm", "teams_dm", "email", "sms"):
+            assert factory(key) is None
+
+    def test_builds_slack_when_token_set(self):
+        from backend.paging.channel_factory import build_channel_factory
+        from backend.paging.channels import SlackDMChannel
+
+        factory = build_channel_factory(
+            env={"OPSMENDER_SLACK_BOT_TOKEN": "xoxb-prod"}
+        )
+        ch = factory("slack_dm")
+        assert isinstance(ch, SlackDMChannel)
+
+    def test_builds_sms_only_when_all_three_twilio_vars_present(self):
+        from backend.paging.channel_factory import build_channel_factory
+        from backend.paging.channels import SMSChannel
+
+        partial = build_channel_factory(
+            env={"OPSMENDER_TWILIO_ACCOUNT_SID": "AC"}
+        )
+        assert partial("sms") is None
+
+        full = build_channel_factory(
+            env={
+                "OPSMENDER_TWILIO_ACCOUNT_SID": "AC",
+                "OPSMENDER_TWILIO_AUTH_TOKEN": "tok",
+                "OPSMENDER_TWILIO_FROM_NUMBER": "+15550000000",
+            }
+        )
+        assert isinstance(full("sms"), SMSChannel)

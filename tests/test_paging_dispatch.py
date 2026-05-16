@@ -238,7 +238,7 @@ class _StubChannel:
         self._error = error
         self.calls: list[tuple[str, str, str]] = []
 
-    async def send(self, *, recipient, subject, body):
+    async def send(self, *, recipient, subject, body, blocks=None):
         self.calls.append((recipient, subject, body))
         return DeliveryAttempt(self.key, self._status, self._error)
 

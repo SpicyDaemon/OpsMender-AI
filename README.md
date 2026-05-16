@@ -482,9 +482,20 @@ OPSMENDER_SMTP_USE_TLS=true
 OPSMENDER_TWILIO_ACCOUNT_SID=AC...
 OPSMENDER_TWILIO_AUTH_TOKEN=...
 OPSMENDER_TWILIO_FROM_NUMBER=+15550000000
+
+# Public URL — used to deep-link from Slack page cards back to the web UI
+OPSMENDER_PUBLIC_URL=https://opsmender.example.com
 ```
 
 Channels with missing credentials are silently skipped — the dispatcher writes an `incident_pages` row with `delivery_status='skipped'` and reason `channel_unconfigured` so operators can see in the audit log which channel was unavailable.
+
+### Slack interactivity (Sprint 36)
+
+Page cards delivered via `slack_dm` ship with Acknowledge / Take Over / Resolve buttons and a "View in OpsMender" deep-link. Wire it up:
+
+1. In your Slack app, enable **Interactivity & Shortcuts** and set the **Request URL** to `https://<your-opsmender-host>/bot/slack/interactions`.
+2. Make sure the Slack `bot_connectors` row has both `bot_token` and `signing_secret` populated — the same signing secret powers the existing Events API and the new interactions endpoint.
+3. Add a `bot_user_links` row for every operator who should be able to click the buttons (`POST /bot-connectors/{id}/user-links`). Slack users without a link get a friendly ephemeral "your account isn't linked" message and the click is ignored.
 
 `OPSMENDER_SKILL_DEFINITION` should point to an operator-owned `SKILL.md` file. Different environments can use different skill files, for example:
 

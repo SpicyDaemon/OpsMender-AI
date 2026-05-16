@@ -49,9 +49,17 @@ class SlackDMChannel:
         self._factory = http_client_factory or _default_http_client
 
     async def send(
-        self, *, recipient: str, subject: str, body: str
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        blocks: list[dict] | None = None,
     ) -> DeliveryAttempt:
         text = f"*{subject}*\n{body}"
+        payload: dict = {"channel": recipient, "text": text}
+        if blocks:
+            payload["blocks"] = blocks
         try:
             async with self._factory() as client:
                 resp = await client.post(
@@ -60,7 +68,7 @@ class SlackDMChannel:
                         "Authorization": f"Bearer {self._bot_token}",
                         "Content-Type": "application/json; charset=utf-8",
                     },
-                    json={"channel": recipient, "text": text},
+                    json=payload,
                 )
         except httpx.HTTPError as exc:
             return DeliveryAttempt(self.key, "failed", f"network: {exc}")
@@ -92,7 +100,12 @@ class TeamsDMChannel:
         self._factory = http_client_factory or _default_http_client
 
     async def send(
-        self, *, recipient: str, subject: str, body: str
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        blocks: list[dict] | None = None,
     ) -> DeliveryAttempt:
         payload = {
             "@type": "MessageCard",
@@ -160,7 +173,12 @@ class EmailChannel:
                 pass
 
     async def send(
-        self, *, recipient: str, subject: str, body: str
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        blocks: list[dict] | None = None,
     ) -> DeliveryAttempt:
         try:
             await asyncio.to_thread(
@@ -191,7 +209,12 @@ class SMSChannel:
         self._factory = http_client_factory or _default_http_client
 
     async def send(
-        self, *, recipient: str, subject: str, body: str
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        blocks: list[dict] | None = None,
     ) -> DeliveryAttempt:
         text = f"{subject}\n{body}"
         if len(text) > 1500:

@@ -29,6 +29,7 @@ Pipeline per page:
 from __future__ import annotations
 
 import dataclasses
+import os
 import uuid
 import zoneinfo
 from datetime import datetime, timedelta, timezone
@@ -71,7 +72,12 @@ class Channel(Protocol):
     key: ClassVar[str]
 
     async def send(
-        self, *, recipient: str, subject: str, body: str
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        blocks: list[dict] | None = None,
     ) -> DeliveryAttempt: ...
 
 
@@ -247,6 +253,8 @@ async def dispatch_page(
     if not addresses.get("email") and getattr(user, "email", None):
         addresses.setdefault("email", user.email)
 
+    from backend.paging.slack_cards import build_page_card_blocks
+
     subject = f"OpsMender: {incident.title or 'Incident page'}"
     body_lines = [
         f"Priority: {incident.priority or 'P?'}",
@@ -293,9 +301,17 @@ async def dispatch_page(
             if channel is None:
                 attempt = DeliveryAttempt(key, "skipped", "channel_unconfigured")
             else:
+                blocks: list[dict] | None = None
+                if key == "slack_dm":
+                    blocks = build_page_card_blocks(
+                        incident, base_url=os.environ.get("OPSMENDER_PUBLIC_URL")
+                    )
                 try:
                     attempt = await channel.send(
-                        recipient=recipient, subject=subject, body=body
+                        recipient=recipient,
+                        subject=subject,
+                        body=body,
+                        blocks=blocks,
                     )
                 except Exception as exc:  # noqa: BLE001
                     attempt = DeliveryAttempt(key, "failed", str(exc))

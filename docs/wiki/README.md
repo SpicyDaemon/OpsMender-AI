@@ -19,4 +19,5 @@ If you are a developer looking for internal architecture documentation, API deta
 
 ### 3. Operator Guide
 * [Operator Guide](operator-guide.md) — Incident triage flow, managing approvals, interacting with session chat, using the audit log, and understanding rollback behavior.
+* [Notification Preferences](notification-preferences.md) — Channels, per-priority routing matrix, quiet hours, dedup, and maintenance windows.
 * [Troubleshooting](troubleshooting.md) — Solutions for common login, connectivity, and configuration issues.

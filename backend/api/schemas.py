@@ -868,10 +868,12 @@ class UserNotificationPrefUpdate(BaseModel):
 class NotificationSettingsResponse(BaseModel):
     org_id: uuid.UUID
     notification_dedup_window_minutes: int
+    slack_incident_channels_enabled: bool = False
 
 
 class NotificationSettingsUpdate(BaseModel):
-    notification_dedup_window_minutes: int = Field(..., ge=0, le=1440)
+    notification_dedup_window_minutes: int | None = Field(default=None, ge=0, le=1440)
+    slack_incident_channels_enabled: bool | None = None
 
 
 # ---------------------------------------------------------------------------

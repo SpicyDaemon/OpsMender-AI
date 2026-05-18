@@ -175,6 +175,9 @@ async def get_notification_settings(
     return NotificationSettingsResponse(
         org_id=org.id,
         notification_dedup_window_minutes=org.notification_dedup_window_minutes,
+        slack_incident_channels_enabled=getattr(
+            org, "slack_incident_channels_enabled", False
+        ),
     )
 
 
@@ -193,6 +196,7 @@ async def update_notification_settings(
         db,
         org_id,
         notification_dedup_window_minutes=body.notification_dedup_window_minutes,
+        slack_incident_channels_enabled=body.slack_incident_channels_enabled,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -200,6 +204,9 @@ async def update_notification_settings(
     return NotificationSettingsResponse(
         org_id=updated.id,
         notification_dedup_window_minutes=updated.notification_dedup_window_minutes,
+        slack_incident_channels_enabled=getattr(
+            updated, "slack_incident_channels_enabled", False
+        ),
     )
 
 

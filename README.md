@@ -500,6 +500,10 @@ Page cards delivered via `slack_dm` ship with Acknowledge / Take Over / Resolve 
 
 Slash commands accept an explicit incident UUID in the command text (e.g. `/ack 7f1c0e84-…`). When omitted, OpsMender resolves the user's most-recently-paged active incident automatically — so a paged operator can just type `/ack` to acknowledge the page they just received. `/snooze <duration>` accepts compact forms like `30m`, `2h`, `1d`; it pauses the chain and pushes `next_step_due_at` forward. `/status` with no arguments lists the org's active chains.
 
+#### Per-incident Slack channels
+
+If you want each paged incident to spawn its own workspace channel, turn on `slack_incident_channels_enabled` for the org (admin: `PUT /organizations/{id}/notification-settings`). When the chain starts in `page` mode, OpsMender calls `conversations.create` to make a deterministic `inc-<first8hex>` channel, stores the channel id on the incident, and posts the Block Kit page card there. The mirror is idempotent — re-running the kickoff is safe. The Slack app must have the `channels:manage` scope (or `groups:write` for private channels) plus the usual `chat:write`; missing scopes are logged and skipped without blocking the chain.
+
 `OPSMENDER_SKILL_DEFINITION` should point to an operator-owned `SKILL.md` file. Different environments can use different skill files, for example:
 
 ```text

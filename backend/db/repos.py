@@ -3008,6 +3008,7 @@ class OrganizationRepo:
         slug: str | None = None,
         branding: dict | None = None,
         notification_dedup_window_minutes: int | None = None,
+        slack_incident_channels_enabled: bool | None = None,
     ) -> Organization | None:
         values: dict[str, Any] = {}
         if name is not None:
@@ -3019,6 +3020,10 @@ class OrganizationRepo:
         if notification_dedup_window_minutes is not None:
             values["notification_dedup_window_minutes"] = (
                 notification_dedup_window_minutes
+            )
+        if slack_incident_channels_enabled is not None:
+            values["slack_incident_channels_enabled"] = (
+                slack_incident_channels_enabled
             )
 
         if not values:

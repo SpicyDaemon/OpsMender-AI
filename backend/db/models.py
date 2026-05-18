@@ -80,6 +80,9 @@ class Organization(Base):
     notification_dedup_window_minutes: Mapped[int] = mapped_column(
         Integer, default=10, nullable=False
     )
+    slack_incident_channels_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -293,6 +296,10 @@ class Incident(Base):
     suppressed_by_maintenance_window_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("maintenance_windows.id", ondelete="SET NULL"), nullable=True
     )
+    # Sprint 36 step 5 — per-incident Slack channel mirror. Populated when
+    # the chain starts in ``page`` mode AND the org opt-in is on.
+    slack_channel_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    slack_channel_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     # External ingestion fingerprint — dedup by (external_source, external_id)
     external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_source: Mapped[str | None] = mapped_column(String(100), nullable=True)

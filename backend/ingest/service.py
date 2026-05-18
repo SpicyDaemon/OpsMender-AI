@@ -218,6 +218,17 @@ async def ingest_incident(
                     mode=priority_result.response_mode,
                     channel_factory=build_channel_factory(),
                 )
+                import os as _os
+                from backend.paging.slack_channel_mirror import (
+                    mirror_incident_to_slack_channel,
+                )
+
+                await mirror_incident_to_slack_channel(
+                    db,
+                    org_id,
+                    incident=incident,
+                    base_url=_os.environ.get("OPSMENDER_PUBLIC_URL"),
+                )
         dedup_action = "created"
 
     # ── Audit log entry ────────────────────────────────────────────────

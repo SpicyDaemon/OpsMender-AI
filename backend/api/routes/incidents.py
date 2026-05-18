@@ -7,6 +7,7 @@ GET  /incidents/{id}   — get single incident with sessions
 
 from __future__ import annotations
 
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -114,6 +115,16 @@ async def create_incident(
                 chain_id=link.chain_id,
                 mode=priority_result.response_mode,
                 channel_factory=build_channel_factory(),
+            )
+            from backend.paging.slack_channel_mirror import (
+                mirror_incident_to_slack_channel,
+            )
+
+            await mirror_incident_to_slack_channel(
+                db,
+                org_id,
+                incident=incident,
+                base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
             )
     return incident
 

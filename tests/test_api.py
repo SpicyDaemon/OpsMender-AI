@@ -455,6 +455,61 @@ class TestMyOrganizations:
         assert resp.status_code == 403
 
 
+class TestOrganizationDeletionGuards:
+    async def test_delete_last_organization_is_blocked(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.delete(
+            f"/organizations/{TEST_ORG_ID}", headers=auth_headers
+        )
+        assert resp.status_code == 409
+        assert "last organization" in resp.json()["detail"]
+
+    async def test_delete_active_organization_is_blocked(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.db.repos import OrganizationRepo
+
+        async with app.state.session_factory() as db:
+            await OrganizationRepo.create(db, name="Spare", slug="spare")
+            await db.commit()
+
+        resp = await client.delete(
+            f"/organizations/{TEST_ORG_ID}", headers=auth_headers
+        )
+        assert resp.status_code == 409
+        assert "Switch to another organization" in resp.json()["detail"]
+
+    async def test_delete_non_active_organization_cascades_memberships(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from sqlalchemy import select
+
+        from backend.db.models import UserOrganization
+        from backend.db.repos import OrganizationRepo, UserRepo
+
+        async with app.state.session_factory() as db:
+            org = await OrganizationRepo.create(db, name="Delete Me", slug="delete-me")
+            user = await UserRepo.get_by_username(db, "testadmin")
+            await UserRepo.add_to_organization(
+                db, user_id=user.id, org_id=org.id, role="admin"
+            )
+            await db.commit()
+            org_id = org.id
+
+        resp = await client.delete(f"/organizations/{org_id}", headers=auth_headers)
+        assert resp.status_code == 204
+
+        async with app.state.session_factory() as db:
+            assert await OrganizationRepo.get_by_id(db, org_id) is None
+            link = (
+                await db.execute(
+                    select(UserOrganization).where(UserOrganization.org_id == org_id)
+                )
+            ).scalar_one_or_none()
+            assert link is None
+
+
 class TestDomainIsolation:
     async def test_resolve_unknown_host(self, client: AsyncClient):
         resp = await client.get(

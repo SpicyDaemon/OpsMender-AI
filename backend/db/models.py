@@ -86,7 +86,7 @@ class Organization(Base):
     )
 
     users: Mapped[list["UserOrganization"]] = relationship(
-        back_populates="organization"
+        back_populates="organization", cascade="all, delete-orphan"
     )
     domains: Mapped[list["OrganizationDomain"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
@@ -260,7 +260,7 @@ class User(Base):
     )
 
     organizations: Mapped[list["UserOrganization"]] = relationship(
-        back_populates="user"
+        back_populates="user", cascade="all, delete-orphan"
     )
 
 

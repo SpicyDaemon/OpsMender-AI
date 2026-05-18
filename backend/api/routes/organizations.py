@@ -151,9 +151,30 @@ async def update_organization(
     return org
 
 
-@router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_dependency])
-async def delete_organization(org_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+@router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_organization(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
     """Delete an organization."""
+    org = await OrganizationRepo.get_by_id(db, org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    org_count = await OrganizationRepo.count(db)
+    if org_count <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete the last organization.",
+        )
+
+    if current_user.primary_org_id == org_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Switch to another organization before deleting this one.",
+        )
+
     success = await OrganizationRepo.delete(db, org_id)
     if not success:
         raise HTTPException(status_code=404, detail="Organization not found")

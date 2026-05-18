@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
     AgentTeamProfile,
@@ -2779,6 +2779,11 @@ class OrganizationRepo:
     async def list_all(db: AsyncSession) -> Sequence[Organization]:
         result = await db.execute(select(Organization).order_by(Organization.name))
         return result.scalars().all()
+
+    @staticmethod
+    async def count(db: AsyncSession) -> int:
+        result = await db.execute(select(func.count()).select_from(Organization))
+        return int(result.scalar_one())
 
     @staticmethod
     async def update(

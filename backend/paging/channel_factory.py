@@ -18,6 +18,10 @@ Env vars consumed:
   ``OPSMENDER_SMTP_FROM``, ``OPSMENDER_SMTP_USE_TLS``)
 * ``OPSMENDER_TWILIO_ACCOUNT_SID`` (+ ``OPSMENDER_TWILIO_AUTH_TOKEN``,
   ``OPSMENDER_TWILIO_FROM_NUMBER``)
+* ``OPSMENDER_TEAMS_GRAPH_TENANT_ID`` (+ ``OPSMENDER_TEAMS_GRAPH_CLIENT_ID``,
+  ``OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET``) — Sprint 37 step 2. When all
+  three are set, the ``teams_dm_graph`` channel key resolves to a
+  ``TeamsGraphDMChannel`` that posts via Graph ``chats/{id}/messages``.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from backend.paging.channels import (
     SlackDMChannel,
     SMSChannel,
     TeamsDMChannel,
+    TeamsGraphDMChannel,
 )
 from backend.paging.dispatch import Channel, ChannelFactory
 
@@ -66,6 +71,10 @@ def build_channel_factory(
     twilio_token = src.get("OPSMENDER_TWILIO_AUTH_TOKEN") or None
     twilio_from = src.get("OPSMENDER_TWILIO_FROM_NUMBER") or None
 
+    teams_graph_tenant = src.get("OPSMENDER_TEAMS_GRAPH_TENANT_ID") or None
+    teams_graph_client = src.get("OPSMENDER_TEAMS_GRAPH_CLIENT_ID") or None
+    teams_graph_secret = src.get("OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET") or None
+
     def factory(key: str) -> Channel | None:
         if key == "slack_dm" and slack_token:
             return SlackDMChannel(bot_token=slack_token)
@@ -85,6 +94,17 @@ def build_channel_factory(
                 account_sid=twilio_sid,
                 auth_token=twilio_token,
                 from_number=twilio_from,
+            )
+        if (
+            key == "teams_dm_graph"
+            and teams_graph_tenant
+            and teams_graph_client
+            and teams_graph_secret
+        ):
+            return TeamsGraphDMChannel(
+                tenant_id=teams_graph_tenant,
+                client_id=teams_graph_client,
+                client_secret=teams_graph_secret,
             )
         return None
 

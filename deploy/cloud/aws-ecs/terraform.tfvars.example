@@ -1,0 +1,57 @@
+## Copy to `terraform.tfvars` and fill in your values.
+## Never commit terraform.tfvars — it can carry secret ARNs and CIDR
+## allowlists you don't want in git history.
+
+# Identity ────────────────────────────────────────────────────────────────
+name = "opsmender"
+
+tags = {
+  Application = "opsmender-ai"
+  Environment = "prod"
+  ManagedBy   = "terraform"
+}
+
+# Networking ──────────────────────────────────────────────────────────────
+vpc_id             = "vpc-0123456789abcdef0"
+private_subnet_ids = ["subnet-0aaa...", "subnet-0bbb..."]
+public_subnet_ids  = ["subnet-0ccc...", "subnet-0ddd..."]
+
+# Tighten before going to production. Default 0.0.0.0/0 is fine for a
+# private subnet ALB or a dev environment, NOT for an internet-facing
+# production deploy.
+allowed_ingress_cidrs = ["0.0.0.0/0"]
+
+# alb_internal = false  # set true for VPC-internal access only
+
+# Container ───────────────────────────────────────────────────────────────
+# container_image  = "ghcr.io/shipitpirate/opsmender-ai:v1.0.0"  # pin in prod
+# container_cpu    = 1024
+# container_memory = 2048
+# desired_count    = 2
+# assign_public_ip = false   # leave false when private subnets have a NAT
+
+# Secrets (Secrets Manager ARNs — pre-create these) ──────────────────────
+jwt_secret_arn          = "arn:aws:secretsmanager:us-east-1:123456789012:secret:opsmender/jwt-secret-AbCdEf"
+database_url_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:opsmender/database-url-AbCdEf"
+
+provider_secret_arns = {
+  ANTHROPIC_API_KEY = "arn:aws:secretsmanager:us-east-1:123456789012:secret:opsmender/anthropic-key-AbCdEf"
+  # OPENAI_API_KEY      = "arn:aws:secretsmanager:us-east-1:123456789012:secret:opsmender/openai-key-..."
+  # AZURE_OPENAI_API_KEY = "arn:aws:secretsmanager:us-east-1:123456789012:secret:opsmender/azure-openai-key-..."
+}
+
+# TLS (optional) ─────────────────────────────────────────────────────────
+# Leave empty for HTTP-only (e.g. testing, internal-only). For
+# production, request/import an ACM cert covering your dashboard hostname
+# and paste its ARN here.
+# acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/..."
+
+# Runtime config (non-secret env vars) ────────────────────────────────────
+extra_environment = {
+  OPSMENDER_TIER      = "2"
+  OPSMENDER_LOG_LEVEL = "INFO"
+  # OPSMENDER_PUBLIC_URL = "https://opsmender.example.com"  # set after the ALB has a hostname
+  # OPSMENDER_CORS_ORIGINS = "https://opsmender.example.com"
+}
+
+# log_retention_days = 30

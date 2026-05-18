@@ -2,6 +2,16 @@
 .env
 .venv/
 
+# Terraform (deploy/cloud/*) — local init artifacts, state, and secret-bearing values
+**/.terraform/
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.backup
+**/*.tfplan
+**/terraform.tfvars
+**/*.auto.tfvars
+!**/terraform.tfvars.example
+
 # Python
 __pycache__/
 *.pyc

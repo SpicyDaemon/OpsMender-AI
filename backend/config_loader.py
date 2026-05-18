@@ -154,15 +154,6 @@ class IngestConfig:
 
 
 @dataclasses.dataclass
-class DetectorConfig:
-    """MCP-driven detector scheduler + guardrail settings."""
-
-    enabled: bool = False
-    max_runs_per_hour: int = 12
-    budget: int = 500
-
-
-@dataclasses.dataclass
 class SLAConfig:
     """SLA polling settings."""
 
@@ -313,7 +304,6 @@ class AppConfig:
     audit: AuditConfig
     approvals: ApprovalConfig
     ingest: IngestConfig
-    detector: DetectorConfig
     sla: SLAConfig
     tier0: "Tier0Config"
     app: AppSettings
@@ -366,11 +356,6 @@ class AppConfig:
                 or None
             ),
         )
-        detector = DetectorConfig(
-            enabled=_env_bool(env, "OPSMENDER_DETECTOR_ENABLED", False),
-            max_runs_per_hour=_env_int(env, "OPSMENDER_DETECTOR_MAX_RUNS_PER_HOUR", 12),
-            budget=_env_int(env, "OPSMENDER_DETECTOR_BUDGET", 500),
-        )
         sla = SLAConfig(
             poller_enabled=_env_bool(env, "OPSMENDER_SLA_POLLER_ENABLED", False),
             poll_interval_default=_env_int(env, "OPSMENDER_SLA_POLL_INTERVAL_DEFAULT", 60),
@@ -389,7 +374,6 @@ class AppConfig:
             audit=audit,
             approvals=approvals,
             ingest=ingest,
-            detector=detector,
             sla=sla,
             tier0=tier0,
             app=app,

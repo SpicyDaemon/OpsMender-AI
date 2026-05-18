@@ -15,7 +15,6 @@ If you are a developer looking for internal architecture documentation, API deta
 * [Administrator Guide](admin-guide.md) — User authentication, runtime configurations, LLM providers, setting up MCP servers, chat bot connectors, webhooks, and ingest tokens.
 * [Integrations Guide](integrations-guide.md) — Incident ingest adapters, chat bot connectors, outbound webhooks, and Docker deployment basics.
 * [Skills Guide](skills-guide.md) — Managing MCP servers, enforcement tiers, and capability examples.
-* [Detectors Guide](detectors-guide.md) — Creating LLM-based proactive detection rules.
 
 ### 3. Operator Guide
 * [Operator Guide](operator-guide.md) — Incident triage flow, managing approvals, interacting with session chat, using the audit log, and understanding rollback behavior.

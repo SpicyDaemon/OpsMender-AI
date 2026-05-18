@@ -177,7 +177,6 @@ type ConfigSectionId =
   | "models"
   | "mcp"
   | "skills"
-  | "detectors"
   | "ingest"
   | "integrations"
   | "webhooks"
@@ -204,8 +203,8 @@ const CONFIG_GROUPS: Array<{
   {
     id: "inbound",
     label: "Inbound",
-    caption: "How alerts get into OpsMender — ingest tokens and detector rules.",
-    sections: ["ingest", "detectors"],
+    caption: "How alerts get into OpsMender — ingest tokens.",
+    sections: ["ingest"],
     defaultOpen: true,
   },
   {
@@ -231,7 +230,6 @@ const SECTION_LABELS: Record<ConfigSectionId, string> = {
   models: "Models",
   mcp: "MCP servers",
   skills: "Skills",
-  detectors: "Detectors",
   ingest: "Ingest tokens",
   integrations: "Bot connectors",
   webhooks: "Webhook triggers",
@@ -4974,10 +4972,6 @@ export default function ConfigPage() {
       stat: "Dedicated page",
       detail: "Import, clone, and edit skills",
     },
-    detectors: {
-      stat: "Dedicated page",
-      detail: "Rule runs and verdict history",
-    },
     ingest: {
       stat: `${ingestTokens.length} token${ingestTokens.length === 1 ? "" : "s"}`,
       detail: cfg.ingest_auto_start_enabled
@@ -5033,15 +5027,6 @@ export default function ConfigPage() {
             description="Skill management already has a richer dedicated workspace with import, clone, edit, and delete flows."
             href="/dashboard/skills"
             cta="Open Skills"
-          />
-        );
-      case "detectors":
-        return (
-          <ConfigPageLinkCard
-            title="Detectors"
-            description="Detector rules and run history already live on their own page, where status and execution details fit better than inside a long admin form."
-            href="/dashboard/detectors"
-            cta="Open Detectors"
           />
         );
       case "ingest":

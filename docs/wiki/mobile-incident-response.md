@@ -57,7 +57,7 @@ These surfaces still target tablet+ and may show overflow on phones:
 
 - `/dashboard/config` (operator setup, not a runtime path).
 - `/dashboard/organizations` (super-admin only).
-- `/dashboard/skills`, `/dashboard/detectors`, `/dashboard/scans` (authoring surfaces).
+- `/dashboard/skills`, `/dashboard/scans` (authoring surfaces).
 - The full session-detail split view (event stream + co-pilot chat) is usable but cramped on phones. Use the incident-detail page's "Open in sidecar" surface on tablet+ for the rich view.
 
 These will land iteratively. The Sprint 38 goal was the **respond-to-a-page** path, not the full SRE console on a phone.

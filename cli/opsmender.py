@@ -369,6 +369,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output the resolved request as JSON",
     )
 
+    # -- detectors-migrate --------------------------------------------------
+    detectors_migrate = sub.add_parser(
+        "detectors-migrate",
+        help="Plan (or apply) a migration of legacy detector rules to audit schedules (Sprint 39 step 3)",
+    )
+    detectors_migrate.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually create the audit_schedules rows. Default is a dry-run that only prints the plan.",
+    )
+
     # -- saml ---------------------------------------------------------------
     saml_parser = sub.add_parser(
         "saml",
@@ -1340,6 +1351,74 @@ def _run_serve(args: argparse.Namespace) -> int:
 # -- main --------------------------------------------------------------------
 
 
+async def _run_detectors_migrate(cfg: Config, args: argparse.Namespace) -> int:
+    """Plan (and optionally apply) a Detector → Audit Schedule migration.
+
+    Sprint 39 step 3 — print the proposed migration in a readable table,
+    then exit. With ``--apply``, persist ``audit_schedules`` rows for
+    every applicable plan (collisions and unresolvable MCP servers are
+    skipped with a noted reason).
+    """
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from backend.auditor.detector_migration import (
+        apply_migrations,
+        plan_migrations,
+    )
+
+    engine = create_async_engine(_database_url(cfg), echo=False)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as db:
+            plans = await plan_migrations(db)
+    finally:
+        await engine.dispose()
+
+    if not plans:
+        print("No detector rules found. Nothing to migrate.")
+        return 0
+
+    migratable = [p for p in plans if p.skip_reason is None]
+    blocked = [p for p in plans if p.skip_reason is not None]
+
+    print(f"Found {len(plans)} detector rule(s).")
+    print(f"  Migratable: {len(migratable)}")
+    print(f"  Blocked:    {len(blocked)}")
+    print()
+
+    for plan in plans:
+        marker = "  ⨯" if plan.skip_reason else "  ✓"
+        print(f"{marker} {plan.name}")
+        print(f"      MCP server:    {plan.mcp_server_name or '— missing —'}")
+        print(f"      Interval:      every {plan.interval_minutes} min")
+        print(f"      Active:        {plan.is_active}")
+        if plan.focus_areas:
+            print(f"      Focus areas:   {', '.join(plan.focus_areas)}")
+        if plan.skip_reason:
+            print(f"      Skip reason:   {plan.skip_reason}")
+        print()
+
+    if not args.apply:
+        print(
+            "(Dry run — nothing was written. Re-run with --apply to persist "
+            "the audit_schedules rows.)"
+        )
+        return 0
+
+    engine = create_async_engine(_database_url(cfg), echo=False)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as db:
+            created, skipped = await apply_migrations(db, plans)
+            await db.commit()
+    finally:
+        await engine.dispose()
+
+    print(f"Applied: {created} created, {skipped} skipped.")
+    return 0
+
+
 def _run_saml_gen_sp_keys(args: argparse.Namespace) -> int:
     """Emit a self-signed SP keypair (PEM cert + key) to stdout.
 
@@ -1434,6 +1513,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "approvals":
         rc = asyncio.run(_run_approvals(cfg, args))
+        sys.exit(rc)
+
+    if args.command == "detectors-migrate":
+        rc = asyncio.run(_run_detectors_migrate(cfg, args))
         sys.exit(rc)
 
     if args.command == "saml":

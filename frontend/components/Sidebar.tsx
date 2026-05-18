@@ -11,7 +11,6 @@ import {
   CheckSquare,
   ChevronLeft,
   ChevronRight,
-  Radar,
   FileText,
   LogOut,
   Phone,
@@ -32,12 +31,6 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
-  {
-    href: "/dashboard/detectors",
-    label: "Detectors",
-    icon: Radar,
-    badge: { label: "Legacy", tone: "warn" },
-  },
   { href: "/dashboard/scans", label: "Environment Scans", icon: ShieldCheck },
   { href: "/dashboard/paging", label: "Paging", icon: Phone },
   { href: "/dashboard/skills", label: "Skills", icon: FileText },

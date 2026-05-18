@@ -88,13 +88,13 @@ The Config page groups settings by how often you'll touch them:
 | Group | Frequency | What's in it |
 |-------|-----------|--------------|
 | **Day-1 setup** (must do once) | Always | Models, MCP servers, Skills |
-| **Inbound** (alerts → OpsMender) | Most operators | Ingest tokens (primary), Detectors (legacy — see note below) |
+| **Inbound** (alerts → OpsMender) | Most operators | Ingest tokens |
 | **Outbound** (OpsMender → people/systems) | Most operators | Webhook triggers, Bot connectors |
 | **Advanced** (defaults work for 95%) | Rarely | Workflows, Agent teams |
 
 If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (Day-1), then wire your monitoring to Ingest, then add a Slack webhook trigger so your team sees what OpsMender is doing. Workflows and Agent teams can wait until you have a concrete reason to touch them.
 
-> **About Detectors:** Detectors are a legacy feature — LLM-driven polling loops that produce incidents indistinguishable from real inbound alerts. They are being deprecated in favor of an **Auditor** surface (Sprint 32, planned) that scans an environment, produces a *findings report* (separate data model from incidents), and offers per-finding one-click AI remediation. Existing detector rules will keep running until the auditor lands and provides a migration path. New deployments should rely on inbound alerts via Ingest.
+> **Scheduled environment checks:** The legacy Detector surface has been retired. Use **Environment Scans** (`/dashboard/scans`) for on-demand sweeps, `POST /audits/schedules` for recurring read-only scans, and `opsmender detectors-migrate --apply` before running the detector-drop migration if an older deployment still has `detector_rules` rows.
 
 ## Quick Start
 
@@ -843,7 +843,6 @@ ai-incident-manager/
 │   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, gcp_monitoring, oci_monitoring, legacy_alert_vendor, legacy_alert_relay, generic)
 │   │   ├── registry.py     # Adapter registry (provider key → adapter class)
 │   │   └── service.py      # Token auth, adapter dispatch, dedup, audit logging, availability signal → uptime_samples
-│   ├── detector/           # MCP-driven detector runner + scheduler + templates (Sprint 14)
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic
 │   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
 │   ├── config_loader.py    # .env/AppConfig loader + typed dataclasses
@@ -855,7 +854,7 @@ ai-incident-manager/
 │   ├── api/routes/bot_*    # Chat connector management + inbound bot webhooks
 │   └── tiers/              # Tier enforcement layer
 ├── cli/
-│   └── opsmender.py              # CLI entry point (run, check, audit, config, approvals)
+│   └── opsmender.py              # CLI entry point (run, check, audit, config, approvals, migration helpers)
 ├── examples/
 │   └── SKILL.md            # Reference Kubernetes skill definition
 ├── skills/                 # Operator-owned environment skill files (auto-imported on startup)
@@ -883,7 +882,7 @@ ai-incident-manager/
   - Sprint 11: ✅ Next.js frontend + Docker setup
   - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, Co-pilot Chat)
   - Sprint 13: ✅ Single-container app — `opsmender serve` + unified `docker/Dockerfile` + PyInstaller binary, E2E + frontend-mount verification green
-  - Sprint 14: ✅ External incident ingestion — core API + 5 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting + MCP-driven detector + auto-start
+  - Sprint 14: ✅ External incident ingestion — core API + 5 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting + auto-start
   - Sprint 15: ✅ Universal ingestion — `auto` adapter with heuristics + LLM fallback + per-token shape cache
   - Sprint 16: ✅ Bundle Node.js/npx in Docker + binary builds
   - Sprint 17: ✅ Tier 0 sandbox + hard time limits + rollback

@@ -19,8 +19,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config_loader import AppConfig
 from backend.api.deps import set_mcp_pool, set_session_factory
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
-from backend.detector.runner import DetectorBudgetGuard
-from backend.detector.scheduler import DetectorScheduler
 from backend.mcp.pool import MCPServerPool
 from backend.sla.downsampler import UptimeDownsampler
 from backend.sla.poller import SLAPoller
@@ -50,20 +48,6 @@ async def _lifespan(app: FastAPI):
     pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
     set_mcp_pool(pool)
     app.state.mcp_pool = pool
-    app.state.detector_budget = DetectorBudgetGuard(
-        max_runs_per_hour=config.detector.max_runs_per_hour,
-        global_budget=config.detector.budget,
-    )
-    scheduler = DetectorScheduler(
-        factory,
-        pool=pool,
-        config=config,
-        budget_guard=app.state.detector_budget,
-    )
-    app.state.detector_scheduler = scheduler
-    if config.detector.enabled:
-        await scheduler.start()
-
     sla_poller = SLAPoller(factory, config)
     app.state.sla_poller = sla_poller
     if config.sla.poller_enabled:
@@ -123,7 +107,6 @@ async def _lifespan(app: FastAPI):
 
     await downsampler.stop()
     await sla_poller.stop()
-    await scheduler.stop()
     await escalation_scheduler.stop()
     await audit_scheduler.stop()
     await engine.dispose()
@@ -177,7 +160,6 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.config import router as config_router
     from backend.api.routes.ws import router as ws_router
     from backend.api.routes.ingest import router as ingest_router
-    from backend.api.routes.detectors import router as detectors_router
     from backend.api.routes.webhook_triggers import router as webhook_triggers_router
     from backend.api.routes.workflow_profiles import router as workflow_profiles_router
     from backend.api.routes.agent_team_profiles import (
@@ -209,7 +191,6 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(config_router)
     app.include_router(ws_router)
     app.include_router(ingest_router)
-    app.include_router(detectors_router)
     app.include_router(webhook_triggers_router)
     app.include_router(workflow_profiles_router)
     app.include_router(agent_team_profiles_router)

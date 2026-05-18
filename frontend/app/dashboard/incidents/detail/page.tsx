@@ -81,7 +81,7 @@ function sourceMeta(incident: IncidentResponse) {
     .join(" / ");
   return {
     label: label || "Ingested",
-    detail: incident.external_id ?? "Webhook or detector-driven incident",
+    detail: incident.external_id ?? "Inbound alert",
     tone: "bg-status-medium-bg text-status-medium border-status-medium-border",
   };
 }

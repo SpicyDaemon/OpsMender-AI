@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/shipitpirate/ai-incident-manager
+  repository: ghcr.io/shipitpirate/opsmender-ai
   tag: ""               # Defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 

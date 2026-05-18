@@ -60,7 +60,7 @@ jobs:
             ${{ steps.image.outputs.name }}:${{ steps.ref.outputs.ref }}
             ${{ steps.image.outputs.name }}:latest
           labels: |
-            org.opencontainers.image.title=ai-incident-manager
+            org.opencontainers.image.title=opsmender-ai
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.ref.outputs.ref }}
             org.opencontainers.image.licenses=MIT

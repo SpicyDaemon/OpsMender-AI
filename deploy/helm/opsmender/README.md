@@ -5,20 +5,30 @@ Deploys the OpsMender AI (OpsMender) onto Kubernetes: app Deployment + Service, 
 ## Prerequisites
 
 - Kubernetes 1.25+
-- Helm 3.10+
+- Helm 3.10+ (tested through Helm 4.2)
 - An ingress controller if `ingress.enabled=true`
 - A `StorageClass` that supports `ReadWriteOnce` (for logs + bundled Postgres)
 
 ## Quick start (bundled Postgres)
 
 ```bash
-helm dependency update ./deploy/helm/opsmender
+# 1. Register the Bitnami repo (one-time) and pull the Postgres subchart.
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm dependency build ./deploy/helm/opsmender
 
+# 2. Helm 4 no longer auto-extracts subchart .tgz archives — extract manually.
+#    (Skip this step on Helm 3; it expands the archive automatically.)
+( cd ./deploy/helm/opsmender/charts && tar -xzf postgresql-*.tgz )
+
+# 3. Install.
 helm install opsmender ./deploy/helm/opsmender \
   --namespace opsmender --create-namespace \
   --set secrets.OPSMENDER_JWT_SECRET=$(openssl rand -hex 32) \
   --set secrets.ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 ```
+
+> **Verified on Helm 4.2.0:** `helm template opsmender ./deploy/helm/opsmender` renders 13 Kubernetes manifests (ServiceAccount, Secret, ConfigMap, PVC, Service, Deployment for the app; plus Bitnami Postgres ServiceAccount/Secret/ConfigMap/Service/StatefulSet/Headless/Network policies — set `--set postgresql.enabled=false` for BYO Postgres deployments).
 
 Port-forward and open:
 
@@ -76,7 +86,7 @@ ingress:
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `image.repository` | Container image | `ghcr.io/shipitpirate/ai-incident-manager` |
+| `image.repository` | Container image | `ghcr.io/shipitpirate/opsmender-ai` |
 | `image.tag` | Image tag | `.Chart.AppVersion` |
 | `replicaCount` | Replica count (ignored if `autoscaling.enabled`) | `1` |
 | `service.type` | Service type | `ClusterIP` |

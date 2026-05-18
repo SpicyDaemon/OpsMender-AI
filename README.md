@@ -363,9 +363,9 @@ Build the binary locally with:
 
 Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (see [End-to-End Verification](#end-to-end-verification)).
 
-### Three supported distribution paths
+### Supported distribution paths
 
-All three were last verified end-to-end in Session 086 (2026-05-18).
+All five were last verified in Sessions 086–087 (2026-05-18).
 
 | Path | When to use | How it works | Verification |
 |---|---|---|---|
@@ -373,6 +373,7 @@ All three were last verified end-to-end in Session 086 (2026-05-18).
 | **Monolith — `opsmender serve` + external Postgres** | Production deployments where Postgres is already managed elsewhere (RDS, Cloud SQL, on-prem). | The console-script entry point (`pyproject.toml` → `[project.scripts]`) runs `alembic upgrade head` then Uvicorn against an external Postgres. No Docker involved. | `OPSMENDER_DATABASE_URL=postgresql+asyncpg://... .venv/bin/opsmender serve` → migrations apply, Uvicorn binds, `/health` → 200. |
 | **Monolith — `scripts/dev_server.py` on SQLite** | Zero-dep local evaluation / dev iteration. | `dev_server.py` uses `Base.metadata.create_all` (not Alembic — Alembic migrations reference Postgres-specific types like `JSONB`), seeds `admin / admin123` + the default org, and serves on port 8000. | `OPSMENDER_DATABASE_URL=sqlite+aiosqlite:///./opsmender-local.db uv run python scripts/dev_server.py` → schema created, admin seeded, `/health` → 200, login → JWT issued. |
 | **Standalone binary (`dist/opsmender serve`)** | Single-file distribution where neither Docker nor a `uv` install is desired on the host. Needs Postgres just like the `opsmender serve` path. | `scripts/build_binary.sh` runs the Next.js static export, installs the PyInstaller build group, and produces `./dist/opsmender` (~52 MB on macOS arm64). The binary embeds the Python runtime, the Next static export, Alembic migrations, and `examples/SKILL.md`. **Node.js is not bundled** — install Node LTS on the host if you use `npx`-based MCP servers. | `./scripts/build_binary.sh` → `./dist/opsmender --version` → `1.0.0`; `./dist/opsmender check` → "Config OK"; `OPSMENDER_DATABASE_URL=postgresql+asyncpg://... ./dist/opsmender serve --port 8766` → migrations apply, `/health` → 200, `/auth/register` → 201 Created. |
+| **Kubernetes (Helm chart)** | Production deployments on Kubernetes (any flavor — vanilla, EKS, GKE, AKS, OKE, OpenShift). | [deploy/helm/opsmender/](deploy/helm/opsmender/) is a chart v0.1.0 / appVersion 1.0.0 with templates for Deployment + Service + Ingress + HPA + PVC (logs) + ServiceAccount + ConfigMap + Secret + NOTES. The Bitnami Postgres subchart is bundled (`postgresql.enabled=true` default) or wire your own DB via `values-external-db.yaml`. Helm 4 requires an extra `tar -xzf charts/postgresql-*.tgz` step after `helm dependency build` — covered in the chart README. | `helm template opsmender deploy/helm/opsmender` → renders 13 Kubernetes manifests cleanly on Helm 4.2; `helm lint` → 1 chart, 0 failures. Live install verification recipe lives in [deploy/helm/opsmender/README.md](deploy/helm/opsmender/README.md). |
 
 > **`opsmender serve` does not support SQLite.** The Alembic migrations reference Postgres-only types (`JSONB`). If you want a zero-dependency SQLite path for local evaluation, use `scripts/dev_server.py` (which calls `Base.metadata.create_all` instead). The PyInstaller binary inherits the same constraint.
 

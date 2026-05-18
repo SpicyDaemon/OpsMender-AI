@@ -665,7 +665,7 @@ function SessionPageContent() {
           {pendingApprovals.map((a) => (
             <div
               key={a.id}
-              className="flex items-start gap-4 rounded-lg bg-bg-panel border border-status-medium-border/60 p-4"
+              className="flex flex-col gap-3 rounded-lg bg-bg-panel border border-status-medium-border/60 p-4 sm:flex-row sm:items-start sm:gap-4"
             >
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-fg-secondary uppercase tracking-wide mb-1.5">
@@ -683,12 +683,22 @@ function SessionPageContent() {
                   Expires {new Date(a.expires_at).toLocaleTimeString()}
                 </p>
               </div>
-              <div className="flex flex-col gap-2 shrink-0">
-                <Button size="sm" variant="success" onClick={() => handleApprove(a.id)} className="min-w-[100px]">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-col sm:shrink-0">
+                <Button
+                  size="sm"
+                  variant="success"
+                  onClick={() => handleApprove(a.id)}
+                  className="justify-center sm:min-w-[100px]"
+                >
                   <CheckCircle2 size={14} />
                   Approve
                 </Button>
-                <Button size="sm" variant="danger" onClick={() => handleReject(a.id)} className="min-w-[100px]">
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => handleReject(a.id)}
+                  className="justify-center sm:min-w-[100px]"
+                >
                   <XCircle size={14} />
                   Reject
                 </Button>

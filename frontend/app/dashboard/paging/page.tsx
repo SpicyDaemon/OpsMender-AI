@@ -1125,7 +1125,7 @@ function StepsEditor({
           })}
         </ol>
       )}
-      <div className="grid grid-cols-[120px_1fr_120px_auto] items-end gap-2 pt-2">
+      <div className="grid grid-cols-1 items-end gap-2 pt-2 sm:grid-cols-[120px_1fr_120px_auto]">
         <div>
           <Label>Type</Label>
           <Select

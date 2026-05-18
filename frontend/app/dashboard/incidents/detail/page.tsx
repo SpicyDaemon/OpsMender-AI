@@ -242,8 +242,8 @@ function IncidentDetailContent() {
           )}
 
           <div className="mb-6 overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-            <div className="border-b border-border-subtle bg-[linear-gradient(135deg,rgba(59,130,246,0.12),transparent_45%),linear-gradient(225deg,rgba(234,179,8,0.10),transparent_50%)] px-6 py-6">
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="border-b border-border-subtle bg-[linear-gradient(135deg,rgba(59,130,246,0.12),transparent_45%),linear-gradient(225deg,rgba(234,179,8,0.10),transparent_50%)] px-4 py-4 sm:px-6 sm:py-6">
+              <div className="flex flex-col gap-4 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${source?.tone}`}>
@@ -258,7 +258,7 @@ function IncidentDetailContent() {
                     )}
                     <Badge variant={sessionSummary.variant}>{sessionSummary.label}</Badge>
                   </div>
-                  <h1 className="mt-4 text-3xl font-semibold tracking-tight text-fg-primary">
+                  <h1 className="mt-3 text-xl font-semibold tracking-tight text-fg-primary sm:mt-4 sm:text-3xl">
                     {incident.title}
                   </h1>
                   <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-fg-secondary">
@@ -272,7 +272,7 @@ function IncidentDetailContent() {
                   </div>
                 </div>
 
-                <div className="flex min-w-[240px] flex-col gap-3">
+                <div className="flex w-full flex-col gap-3 lg:min-w-[240px] lg:w-auto">
                   <Button size="lg" className="justify-center" onClick={() => setShowSession(true)}>
                     <Play size={16} />
                     Start Session
@@ -300,7 +300,7 @@ function IncidentDetailContent() {
               </div>
             </div>
 
-            <div className="grid gap-3 px-6 py-4 md:grid-cols-3">
+            <div className="grid gap-3 px-4 py-4 sm:px-6 md:grid-cols-3">
               <DetailMetric
                 icon={CalendarClock}
                 label="Created"
@@ -324,22 +324,23 @@ function IncidentDetailContent() {
 
           <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
             <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-              <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
-                <div>
+              <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
+                <div className="min-w-0">
                   <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">
                     Session Timeline
                   </p>
-                  <h2 className="mt-1 text-lg font-semibold text-fg-primary">
+                  <h2 className="mt-1 text-base font-semibold text-fg-primary sm:text-lg">
                     Response history
                   </h2>
                 </div>
                 <Button size="sm" variant="secondary" onClick={() => setShowSession(true)}>
                   <Play size={14} />
-                  New Session
+                  <span className="hidden sm:inline">New Session</span>
+                  <span className="sm:hidden">New</span>
                 </Button>
               </div>
 
-              <div className="p-5">
+              <div className="p-3 sm:p-5">
                 {sessionsError ? (
                   <div className="rounded-lg border border-status-high-border bg-status-high-bg px-4 py-4 text-sm text-fg-secondary">
                     We couldn&apos;t load session history for this incident right now. You can still review the incident details and start a new session in the sidecar.

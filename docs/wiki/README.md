@@ -22,4 +22,5 @@ If you are a developer looking for internal architecture documentation, API deta
 * [Notification Preferences](notification-preferences.md) — Channels, per-priority routing matrix, quiet hours, dedup, and maintenance windows.
 * [Slack as your paging surface](slack-paging-surface.md) — Block Kit page cards, slash commands (`/ack` / `/take` / `/release` / `/resolve` / `/snooze` / `/status`), per-incident channel mirroring, and Slack app setup.
 * [Teams as your paging surface](teams-paging-surface.md) — Adaptive-card page cards with Acknowledge / Take Over / Resolve actions via the Microsoft Bot Framework, Graph app-only OAuth setup, and a verification recipe.
+* [Responding from your phone](mobile-incident-response.md) — Which OpsMender pages are mobile-optimized, the chat → web UI flow on phones, and a real-device verification checklist.
 * [Troubleshooting](troubleshooting.md) — Solutions for common login, connectivity, and configuration issues.

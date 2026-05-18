@@ -363,6 +363,18 @@ Build the binary locally with:
 
 Verified end-to-end via `tests/test_e2e.py` + `tests/test_frontend_mount.py` (see [End-to-End Verification](#end-to-end-verification)).
 
+### Three supported distribution paths
+
+All three were last verified end-to-end in Session 086 (2026-05-18).
+
+| Path | When to use | How it works | Verification |
+|---|---|---|---|
+| **Docker (`docker compose up`)** | Production deployments where Postgres is bundled alongside the app. | `docker/docker-compose.yml` builds `docker/Dockerfile` (one container — FastAPI serves the static frontend), starts a Postgres 16 sidecar, runs `alembic upgrade head` on boot, exposes port 8000. | `docker compose -f docker/docker-compose.yml up -d` → both containers healthy, `/health` → 200, `/auth/register` + `/auth/login` + `/auth/me` happy-path returns 200. |
+| **Monolith — `opsmender serve` + external Postgres** | Production deployments where Postgres is already managed elsewhere (RDS, Cloud SQL, on-prem). | The console-script entry point (`pyproject.toml` → `[project.scripts]`) runs `alembic upgrade head` then Uvicorn against an external Postgres. No Docker involved. | `OPSMENDER_DATABASE_URL=postgresql+asyncpg://... .venv/bin/opsmender serve` → migrations apply, Uvicorn binds, `/health` → 200. |
+| **Monolith — `scripts/dev_server.py` on SQLite** | Zero-dep local evaluation / dev iteration. | `dev_server.py` uses `Base.metadata.create_all` (not Alembic — Alembic migrations reference Postgres-specific types like `JSONB`), seeds `admin / admin123` + the default org, and serves on port 8000. | `OPSMENDER_DATABASE_URL=sqlite+aiosqlite:///./opsmender-local.db uv run python scripts/dev_server.py` → schema created, admin seeded, `/health` → 200, login → JWT issued. |
+
+> **`opsmender serve` does not support SQLite.** The Alembic migrations reference Postgres-only types (`JSONB`). If you want a zero-dependency SQLite path for local evaluation, use `scripts/dev_server.py` (which calls `Base.metadata.create_all` instead). The PyInstaller binary inherits the same constraint.
+
 ### API Endpoints
 
 | Method | Endpoint | Auth | Description |

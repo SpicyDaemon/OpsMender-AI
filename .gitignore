@@ -26,16 +26,53 @@ logs/
 .vscode/
 .idea/
 
-# AI Agent Files
+# AI Coding Agents — Claude Code
 .claude/
-.codex/
-.gemini/
-.anthropic/
+CLAUDE.local.md
 
+# AI Coding Agents — OpenAI Codex
+.codex
+.codex/
+
+# AI Coding Agents — Cline
+.clinerules
+.clinerules/
+.clineignore
+
+# AI Coding Agents — Cursor
+.cursor/
+.cursorrules
+.cursorignore
+
+# AI Coding Agents — Windsurf
+.windsurf/
+.windsurfrules
+
+# AI Coding Agents — Aider
+.aider*
+.aiderignore
+
+# AI Coding Agents — Other / Generic
+.anthropic/
+.gemini/
+.copilot/
+
+# macOS
+.DS_Store
+
+# Node.js
+node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
 
 # local DB Files
 *.db
 *.db/
+
+# Scratch / temp scripts
+scratch/
 
 # Helm chart dependencies (downloaded by `helm dependency update`)
 deploy/helm/opsmender/charts/

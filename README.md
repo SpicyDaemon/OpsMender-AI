@@ -146,6 +146,8 @@ register/login → POST /incidents → POST /sessions → tier gate creates appr
             → mocked MCP call → PgAuditLogger writes rows → GET /audit
 ```
 
+`tests/test_e2e_paging_flow.py` is the canonical paging-loop check (Sprint 40 step 1). It drives one cohesive test through real HTTP routes: an inbound alert hits `/incidents/ingest` (service-scoped token) → the priority rule fires (`severity: critical → P1 + page`) → the escalation chain is selected and started → a signed Slack `block_actions` ACK on `/bot/slack/interactions` pauses the chain and assigns the operator → an admin's `POST /incidents/{id}/take {force: true}` swaps the assignment via the web UI → a signed Slack ACTION_RESOLVE cancels the chain and flips `incidents.status` to `resolved`. The channel factory yields `None` for every channel in the test env, so the dispatcher writes the audit-anchor `incident_pages` row without attempting delivery — exactly the production path on a deployment with no configured channels.
+
 `tests/test_frontend_mount.py` covers the static frontend mount + SPA fallback served by FastAPI (the same path the binary and Docker image use).
 
 Run both together:

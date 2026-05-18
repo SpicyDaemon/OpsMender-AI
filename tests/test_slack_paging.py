@@ -375,3 +375,249 @@ class TestSlackInteractionsEndpoint:
         async with app.state.session_factory() as db:
             reloaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
             assert reloaded.status == "resolved"
+
+
+# ---------------------------------------------------------------------------
+# Slash commands
+# ---------------------------------------------------------------------------
+
+
+def _slash_body(*, command: str, text: str, user_id: str) -> bytes:
+    import urllib.parse
+
+    return urllib.parse.urlencode(
+        {
+            "command": command,
+            "text": text,
+            "user_id": user_id,
+            "team_id": "T1",
+            "channel_id": "C1",
+            "response_url": "https://hooks.slack.com/x",
+        }
+    ).encode("utf-8")
+
+
+class TestSlackSlashCommandEndpoint:
+    async def test_rejects_invalid_signature(self, client, app):
+        await _seed_slack_connector(app)
+        resp = await client.post(
+            "/bot/slack/commands",
+            data={"command": "/ack", "text": "", "user_id": "U1"},
+        )
+        assert resp.status_code == 403
+
+    async def test_unknown_command_returns_ephemeral(self, client, app):
+        await _seed_slack_connector(app)
+        body = _slash_body(command="/nope", text="", user_id="U1")
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "Unknown command" in resp.json()["text"]
+
+    async def test_unlinked_user_friendly(self, client, app):
+        await _seed_slack_connector(app)
+        incident = await _seed_incident(app)
+        body = _slash_body(
+            command="/ack", text=str(incident.id), user_id="U_NOLINK"
+        )
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "isn't linked" in resp.json()["text"]
+
+    async def test_ack_with_explicit_id(self, client, app):
+        connector = await _seed_slack_connector(app)
+        user, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_A"
+        )
+        incident = await _seed_incident(app)
+        async with app.state.session_factory() as db:
+            await IncidentPageRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                user_id=user.id,
+            )
+            await db.commit()
+        body = _slash_body(
+            command="/ack", text=str(incident.id), user_id="U_A"
+        )
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        text_out = resp.json()["text"]
+        assert "acknowledged" in text_out or "recorded" in text_out
+
+    async def test_ack_falls_back_to_latest_paged_incident(self, client, app):
+        connector = await _seed_slack_connector(app)
+        user, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_B"
+        )
+        incident = await _seed_incident(app, title="auto-resolved-target")
+        # Seed a chain state + page so the fallback lookup matches.
+        async with app.state.session_factory() as db:
+            from backend.db.repos import (
+                EscalationChainRepo,
+                IncidentChainStateRepo,
+                TeamRepo,
+            )
+
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="t", slug=f"t-{uuid.uuid4().hex[:8]}"
+            )
+            chain = await EscalationChainRepo.create(
+                db, TEST_ORG_ID, team_id=team.id, name="c", description=None
+            )
+            await IncidentChainStateRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                chain_id=chain.id,
+            )
+            await IncidentPageRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                user_id=user.id,
+            )
+            await db.commit()
+        body = _slash_body(command="/ack", text="", user_id="U_B")
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "auto-resolved-target" in resp.json()["text"]
+
+    async def test_resolve_marks_incident_resolved(self, client, app):
+        connector = await _seed_slack_connector(app)
+        user, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_R"
+        )
+        incident = await _seed_incident(app, title="bye")
+        body = _slash_body(
+            command="/resolve", text=str(incident.id), user_id="U_R"
+        )
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        async with app.state.session_factory() as db:
+            reloaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
+            assert reloaded.status == "resolved"
+
+    async def test_snooze_pushes_due_time_forward(self, client, app):
+        connector = await _seed_slack_connector(app)
+        user, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_S"
+        )
+        incident = await _seed_incident(app, title="snz")
+        async with app.state.session_factory() as db:
+            from backend.db.repos import (
+                EscalationChainRepo,
+                IncidentChainStateRepo,
+                TeamRepo,
+            )
+
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="t-s", slug=f"ts-{uuid.uuid4().hex[:8]}"
+            )
+            chain = await EscalationChainRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="c-s",
+                description=None,
+            )
+            state = await IncidentChainStateRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                chain_id=chain.id,
+            )
+            await db.commit()
+            state_id = state.id
+        body = _slash_body(
+            command="/snooze", text=f"{incident.id} 30m", user_id="U_S"
+        )
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "Snoozed" in resp.json()["text"]
+        async with app.state.session_factory() as db:
+            from backend.db.models import IncidentChainState
+            from sqlalchemy import select
+
+            row = (
+                await db.execute(
+                    select(IncidentChainState).where(
+                        IncidentChainState.id == state_id
+                    )
+                )
+            ).scalar_one()
+            assert row.next_step_due_at is not None
+            assert row.status == "paused"
+
+    async def test_snooze_rejects_bad_duration(self, client, app):
+        connector = await _seed_slack_connector(app)
+        user, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_SB"
+        )
+        incident = await _seed_incident(app)
+        body = _slash_body(
+            command="/snooze", text=f"{incident.id} banana", user_id="U_SB"
+        )
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "Usage" in resp.json()["text"]
+
+    async def test_status_no_args_lists_active_chains(self, client, app):
+        connector = await _seed_slack_connector(app)
+        user, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_ST"
+        )
+        # Empty state first.
+        body = _slash_body(command="/status", text="", user_id="U_ST")
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "No active escalation chains" in resp.json()["text"]
+
+    async def test_release_with_no_assignment(self, client, app):
+        connector = await _seed_slack_connector(app)
+        user, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_REL"
+        )
+        incident = await _seed_incident(app, title="unowned")
+        body = _slash_body(
+            command="/release", text=str(incident.id), user_id="U_REL"
+        )
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "no active assignee" in resp.json()["text"]

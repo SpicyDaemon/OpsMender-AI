@@ -494,8 +494,11 @@ Channels with missing credentials are silently skipped — the dispatcher writes
 Page cards delivered via `slack_dm` ship with Acknowledge / Take Over / Resolve buttons and a "View in OpsMender" deep-link. Wire it up:
 
 1. In your Slack app, enable **Interactivity & Shortcuts** and set the **Request URL** to `https://<your-opsmender-host>/bot/slack/interactions`.
-2. Make sure the Slack `bot_connectors` row has both `bot_token` and `signing_secret` populated — the same signing secret powers the existing Events API and the new interactions endpoint.
-3. Add a `bot_user_links` row for every operator who should be able to click the buttons (`POST /bot-connectors/{id}/user-links`). Slack users without a link get a friendly ephemeral "your account isn't linked" message and the click is ignored.
+2. Under **Slash Commands**, register `/ack`, `/take`, `/release`, `/resolve`, `/snooze`, and `/status`, each with the **Request URL** `https://<your-opsmender-host>/bot/slack/commands`. The endpoint dispatches on the `command` field, so a single route handles all six.
+3. Make sure the Slack `bot_connectors` row has both `bot_token` and `signing_secret` populated — the same signing secret powers the existing Events API, the interactions endpoint, and the slash command endpoint.
+4. Add a `bot_user_links` row for every operator who should be able to click the buttons or run the slash commands (`POST /bot-connectors/{id}/user-links`). Slack users without a link get a friendly ephemeral "your account isn't linked" message and the action is ignored.
+
+Slash commands accept an explicit incident UUID in the command text (e.g. `/ack 7f1c0e84-…`). When omitted, OpsMender resolves the user's most-recently-paged active incident automatically — so a paged operator can just type `/ack` to acknowledge the page they just received. `/snooze <duration>` accepts compact forms like `30m`, `2h`, `1d`; it pauses the chain and pushes `next_step_due_at` forward. `/status` with no arguments lists the org's active chains.
 
 `OPSMENDER_SKILL_DEFINITION` should point to an operator-owned `SKILL.md` file. Different environments can use different skill files, for example:
 

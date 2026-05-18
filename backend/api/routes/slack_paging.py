@@ -1,24 +1,22 @@
-"""Slack interactivity endpoint for paging actions (Sprint 36).
+"""Slack interactivity + slash command endpoints for paging actions (Sprint 36).
 
-Receives Slack ``block_actions`` payloads from buttons on the page cards
-built by :mod:`backend.paging.slack_cards`. Routes the click to the
-escalation engine:
+Two endpoints share the same signing-secret verification and bot-user-link
+enforcement:
 
-* ``opsmender:ack``     → :func:`backend.paging.escalation.handle_ack`
-* ``opsmender:take``    → :func:`backend.paging.escalation.handle_takeover_request`
-* ``opsmender:resolve`` → :func:`backend.paging.escalation.cancel_chain` and
-  marks the incident ``resolved``.
-* ``opsmender:view``    → no-op (the deep link is a ``url`` button — Slack
-  follows it client-side and reports it back as an action; we just ack).
+* ``POST /bot/slack/interactions`` — receives ``block_actions`` button
+  clicks from the page card built by :mod:`backend.paging.slack_cards`.
+* ``POST /bot/slack/commands`` — receives slash command invocations
+  (``/ack``, ``/take``, ``/release``, ``/resolve``, ``/snooze``,
+  ``/status``).
 
-Security: every request is verified with the Slack signing secret stored on
-the matching ``bot_connectors`` row. The Slack user issuing the action MUST
-have a ``bot_user_links`` row in the same org; if they don't, the endpoint
-returns an ephemeral "your Slack account isn't linked" message.
+Both routes verify the Slack v0 HMAC against every enabled Slack
+connector's ``signing_secret`` (5-minute replay window) and require the
+clicker to have a ``bot_user_links`` row in the matched org.
 
-The endpoint is wired at ``POST /bot/slack/interactions``. Slack apps need
-to be configured with this URL under
-*Interactivity & Shortcuts → Request URL*.
+Slack app configuration:
+
+* *Interactivity & Shortcuts → Request URL* → ``/bot/slack/interactions``
+* *Slash Commands → Request URL* (per command) → ``/bot/slack/commands``
 """
 
 from __future__ import annotations
@@ -33,13 +31,18 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
+import re
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_db
-from backend.db.models import BotConnector, Incident
+from backend.db.models import BotConnector, Incident, IncidentChainState, IncidentPage
 from backend.db.repos import (
     BotUserLinkRepo,
+    IncidentAssignmentRepo,
+    IncidentChainStateRepo,
     IncidentRepo,
 )
 from backend.paging import escalation as _esc
@@ -228,3 +231,288 @@ async def slack_interactions(
         return _ephemeral(f"Marked *{incident.title}* resolved.")
 
     return _ephemeral(f"Unknown action `{action_id}`.")
+
+
+# ---------------------------------------------------------------------------
+# Slash commands (/ack, /take, /release, /resolve, /snooze, /status)
+# ---------------------------------------------------------------------------
+
+
+SLASH_COMMANDS = {
+    "/ack",
+    "/take",
+    "/release",
+    "/resolve",
+    "/snooze",
+    "/status",
+}
+
+
+_UUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+
+_DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd])\s*$", re.IGNORECASE)
+
+
+def _parse_duration(text: str) -> int | None:
+    """Parse '30m' / '2h' / '90s' / '1d' → seconds. Returns ``None`` on
+    failure or non-positive values."""
+
+    m = _DURATION_RE.match(text or "")
+    if not m:
+        return None
+    value = int(m.group(1))
+    unit = m.group(2).lower()
+    if value <= 0:
+        return None
+    return value * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
+
+
+def _extract_incident_id(text: str) -> uuid.UUID | None:
+    if not text:
+        return None
+    m = _UUID_RE.search(text)
+    if m is None:
+        return None
+    try:
+        return uuid.UUID(m.group(0))
+    except ValueError:
+        return None
+
+
+async def _latest_user_incident_id(
+    db: AsyncSession, *, org_id: uuid.UUID, user_id: uuid.UUID
+) -> uuid.UUID | None:
+    """Find the most recently paged incident for ``user_id`` whose chain is
+    still ``running`` or ``paused``. Used when a slash command is invoked
+    without an explicit incident id."""
+
+    stmt = (
+        select(IncidentPage.incident_id)
+        .join(
+            IncidentChainState,
+            IncidentChainState.incident_id == IncidentPage.incident_id,
+        )
+        .where(
+            IncidentPage.org_id == org_id,
+            IncidentPage.user_id == user_id,
+            IncidentChainState.status.in_(("running", "paused", "acked")),
+        )
+        .order_by(IncidentPage.sent_at.desc())
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+def _fmt_incident(inc: Incident) -> str:
+    pri = inc.priority or "P?"
+    return f"[{pri}] {inc.title}"
+
+
+async def _handle_slash(
+    db: AsyncSession,
+    *,
+    connector: BotConnector,
+    command: str,
+    text: str,
+    slack_user_id: str,
+) -> JSONResponse:
+    link = await BotUserLinkRepo.get_by_platform_user(
+        db,
+        connector.org_id,
+        connector_id=connector.id,
+        platform_user_id=slack_user_id,
+    )
+    if link is None:
+        return _ephemeral(
+            "Your Slack account isn't linked to OpsMender. "
+            "Ask an admin to add a Bot User Link for you, then try again."
+        )
+
+    incident_id = _extract_incident_id(text)
+    if incident_id is None:
+        incident_id = await _latest_user_incident_id(
+            db, org_id=connector.org_id, user_id=link.opsmender_user_id
+        )
+    if incident_id is None and command != "/status":
+        return _ephemeral(
+            f"Usage: `{command} <incident-id>` "
+            "(no active page found for your account)."
+        )
+
+    if command == "/status" and incident_id is None:
+        # Org-level overview: list running chains.
+        stmt = (
+            select(IncidentChainState, Incident)
+            .join(Incident, Incident.id == IncidentChainState.incident_id)
+            .where(
+                IncidentChainState.org_id == connector.org_id,
+                IncidentChainState.status.in_(("running", "paused")),
+            )
+            .order_by(IncidentChainState.started_at.desc())
+            .limit(10)
+        )
+        rows = (await db.execute(stmt)).all()
+        if not rows:
+            return _ephemeral("No active escalation chains. :tada:")
+        lines = ["*Active pages:*"]
+        for state, inc in rows:
+            lines.append(
+                f"• {_fmt_incident(inc)} — status `{state.status}`, "
+                f"step {state.current_step_index}"
+            )
+        return _ephemeral("\n".join(lines))
+
+    incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
+    if incident is None:
+        return _ephemeral("That incident no longer exists.")
+
+    if command == "/ack":
+        ok = await _esc.handle_ack(
+            db,
+            connector.org_id,
+            incident_id=incident_id,
+            user_id=link.opsmender_user_id,
+            via="slash_command",
+        )
+        verb = "acknowledged" if ok else "recorded"
+        return _ephemeral(f"You {verb} *{incident.title}*.")
+
+    if command == "/take":
+        result = await _esc.handle_takeover_request(
+            db,
+            connector.org_id,
+            incident_id=incident_id,
+            requester_id=link.opsmender_user_id,
+        )
+        if result == "assigned":
+            msg = f"You're now assigned to *{incident.title}*."
+        elif result == "pending":
+            msg = (
+                f"Take-over requested for *{incident.title}*. "
+                "Current owner has 5 minutes to confirm."
+            )
+        elif result == "noop":
+            msg = f"You already own *{incident.title}*."
+        else:
+            msg = (
+                f"Take-over for *{incident.title}* requires an admin "
+                "(chain ended)."
+            )
+        return _ephemeral(msg)
+
+    if command == "/release":
+        released = await IncidentAssignmentRepo.release(
+            db, connector.org_id, incident_id
+        )
+        if not released:
+            return _ephemeral(f"*{incident.title}* has no active assignee.")
+        return _ephemeral(
+            f"Released *{incident.title}*. Escalation may resume on the next tick."
+        )
+
+    if command == "/resolve":
+        await _esc.cancel_chain(
+            db, connector.org_id, incident_id=incident_id
+        )
+        await IncidentRepo.update_status(
+            db, connector.org_id, incident_id, "resolved"
+        )
+        return _ephemeral(f"Marked *{incident.title}* resolved.")
+
+    if command == "/snooze":
+        # First token of `text` after stripping any UUID is the duration.
+        remainder = _UUID_RE.sub("", text or "").strip() or "30m"
+        seconds = _parse_duration(remainder)
+        if seconds is None:
+            return _ephemeral(
+                "Usage: `/snooze <duration>` — examples: `30m`, `2h`, `1d`."
+            )
+        state = await IncidentChainStateRepo.get_for_incident(
+            db, connector.org_id, incident_id
+        )
+        if state is None or state.status not in ("running", "paused"):
+            return _ephemeral(
+                f"No active chain to snooze for *{incident.title}*."
+            )
+        now = datetime.now(timezone.utc)
+        new_due = now + timedelta(seconds=seconds)
+        state.next_step_due_at = new_due
+        state.status = "paused"
+        await db.flush()
+        # Human-readable duration: re-render from the input.
+        return _ephemeral(
+            f"Snoozed *{incident.title}* for {remainder}. "
+            f"Next step due {new_due.strftime('%Y-%m-%d %H:%M UTC')}."
+        )
+
+    if command == "/status":
+        state = await IncidentChainStateRepo.get_for_incident(
+            db, connector.org_id, incident_id
+        )
+        active = await IncidentAssignmentRepo.get_active(
+            db, connector.org_id, incident_id
+        )
+        owner = f"<@{active.assigned_to}>" if active else "unassigned"
+        if state is None:
+            return _ephemeral(
+                f"*{incident.title}* — status `{incident.status}`, no chain. "
+                f"Owner: {owner}."
+            )
+        due = (
+            state.next_step_due_at.strftime("%Y-%m-%d %H:%M UTC")
+            if state.next_step_due_at
+            else "—"
+        )
+        return _ephemeral(
+            f"*{incident.title}* — chain `{state.status}`, "
+            f"step {state.current_step_index}, next due {due}. "
+            f"Owner: {owner}."
+        )
+
+    return _ephemeral(f"Unsupported command `{command}`.")
+
+
+@router.post(
+    "/commands",
+    summary="Receive Slack slash command invocations for paging actions",
+)
+async def slack_commands(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    raw_body = await request.body()
+
+    connector = await _find_slack_connector(
+        db, signing_secret_must_match=raw_body, headers=request.headers
+    )
+    if connector is None:
+        return JSONResponse(
+            {"error": "invalid_signature"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    form = await request.form()
+    command = (form.get("command") or "").strip()
+    text = (form.get("text") or "").strip()
+    slack_user_id = (form.get("user_id") or "").strip()
+
+    if not command:
+        return _ephemeral("Missing command.")
+    if command not in SLASH_COMMANDS:
+        return _ephemeral(
+            f"Unknown command `{command}`. "
+            f"Supported: {', '.join(sorted(SLASH_COMMANDS))}."
+        )
+    if not slack_user_id:
+        return _ephemeral("Slack didn't tell us who ran the command.")
+
+    return await _handle_slash(
+        db,
+        connector=connector,
+        command=command,
+        text=text,
+        slack_user_id=slack_user_id,
+    )

@@ -16,6 +16,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # The Postgres port is exposed on the host for dev convenience
+    # (psql / pgAdmin / migration tooling without `docker exec`). For
+    # production deployments, comment this out so Postgres is only
+    # reachable from inside the compose network.
     ports:
       - "5432:5432"
 

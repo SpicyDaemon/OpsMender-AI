@@ -1174,6 +1174,47 @@ class AuditRun(Base):
     )
 
 
+class AuditSchedule(Base):
+    """Sprint 39 step 2 — scheduled audit runs.
+
+    Background scheduler polls this table; rows with ``is_active`` and a
+    past ``next_run_at`` get a new ``audit_runs`` row queued, then their
+    ``last_run_at`` / ``next_run_at`` advance by ``interval_minutes``.
+    """
+
+    __tablename__ = "audit_schedules"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    analyzers: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    mcp_server_name: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
+    focus_areas: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    last_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_run_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class AuditFinding(Base):
     """One finding produced by an analyzer during an audit run."""
 

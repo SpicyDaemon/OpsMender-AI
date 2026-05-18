@@ -1267,6 +1267,49 @@ class AuditFindingDismissRequest(BaseModel):
     reason: Optional[str] = Field(None, max_length=2000)
 
 
+class AuditScheduleCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    analyzers: list[str] = Field(..., min_length=1)
+    mcp_server_name: Optional[str] = Field(None, max_length=200)
+    focus_areas: list[str] = Field(default_factory=list)
+    interval_minutes: int = Field(..., ge=15, le=43200)  # 15 min .. 30 days
+    is_active: bool = True
+
+
+class AuditScheduleUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    analyzers: Optional[list[str]] = Field(None, min_length=1)
+    mcp_server_name: Optional[str] = Field(None, max_length=200)
+    focus_areas: Optional[list[str]] = None
+    interval_minutes: Optional[int] = Field(None, ge=15, le=43200)
+    is_active: Optional[bool] = None
+
+
+class AuditScheduleResponse(BaseModel):
+    id: uuid.UUID
+    org_id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    analyzers: list[str]
+    mcp_server_name: Optional[str] = None
+    focus_areas: list[str] = Field(default_factory=list)
+    interval_minutes: int
+    is_active: bool
+    last_run_at: Optional[datetime] = None
+    next_run_at: datetime
+    created_by: Optional[uuid.UUID] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AuditScheduleListResponse(BaseModel):
+    items: list[AuditScheduleResponse]
+    total: int
+
+
 class AuditFindingRemediateResponse(BaseModel):
     finding_id: uuid.UUID
     session_id: uuid.UUID

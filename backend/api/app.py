@@ -81,6 +81,17 @@ async def _lifespan(app: FastAPI):
     app.state.escalation_scheduler = escalation_scheduler
     await escalation_scheduler.start()
 
+    # Audit scheduler (Sprint 39 step 2). No-op when no schedules exist.
+    from backend.auditor.scheduler import AuditScheduler
+
+    audit_scheduler = AuditScheduler(
+        factory,
+        pool=app.state.mcp_pool,
+        config=app.state.config,
+    )
+    app.state.audit_scheduler = audit_scheduler
+    await audit_scheduler.start()
+
     # Import any SKILL.md files under ./skills/ that aren't already in the DB.
     # Best-effort: failures are logged but do not block startup.
     try:
@@ -114,6 +125,7 @@ async def _lifespan(app: FastAPI):
     await sla_poller.stop()
     await scheduler.stop()
     await escalation_scheduler.stop()
+    await audit_scheduler.stop()
     await engine.dispose()
 
 

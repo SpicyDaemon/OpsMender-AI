@@ -556,3 +556,166 @@ class TestAuditAPI:
         items = resp.json()["items"]
         assert all(item["severity"] == "high" for item in items)
         assert any(item["message"] == "sev-high" for item in items)
+
+
+# ---------------------------------------------------------------------------
+# Sprint 39 step 2 — Scheduled audit runs
+# ---------------------------------------------------------------------------
+
+
+class TestAuditScheduleAPI:
+    async def test_create_list_get_update_delete_cycle(
+        self, client, auth_headers
+    ):
+        # Create
+        resp = await client.post(
+            "/audits/schedules",
+            headers=auth_headers,
+            json={
+                "name": "Nightly env scan",
+                "description": "Catch overnight regressions",
+                "analyzers": ["environment-scan"],
+                "interval_minutes": 60,
+                "focus_areas": ["pods", "deployments"],
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        schedule_id = resp.json()["id"]
+        assert resp.json()["analyzers"] == ["environment-scan"]
+        assert resp.json()["focus_areas"] == ["pods", "deployments"]
+        assert resp.json()["is_active"] is True
+
+        # List
+        resp = await client.get("/audits/schedules", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 1
+        assert resp.json()["items"][0]["id"] == schedule_id
+
+        # Get
+        resp = await client.get(
+            f"/audits/schedules/{schedule_id}", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "Nightly env scan"
+
+        # Update
+        resp = await client.patch(
+            f"/audits/schedules/{schedule_id}",
+            headers=auth_headers,
+            json={"interval_minutes": 30, "is_active": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["interval_minutes"] == 30
+        assert resp.json()["is_active"] is False
+
+        # Delete
+        resp = await client.delete(
+            f"/audits/schedules/{schedule_id}", headers=auth_headers
+        )
+        assert resp.status_code == 204
+
+        resp = await client.get(
+            f"/audits/schedules/{schedule_id}", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+    async def test_create_rejects_unknown_analyzer(
+        self, client, auth_headers
+    ):
+        resp = await client.post(
+            "/audits/schedules",
+            headers=auth_headers,
+            json={
+                "name": "bad",
+                "analyzers": ["does-not-exist"],
+                "interval_minutes": 60,
+            },
+        )
+        assert resp.status_code == 400
+        assert "does-not-exist" in resp.json()["detail"]
+
+    async def test_create_rejects_interval_below_15(
+        self, client, auth_headers
+    ):
+        resp = await client.post(
+            "/audits/schedules",
+            headers=auth_headers,
+            json={
+                "name": "too-fast",
+                "analyzers": ["environment-scan"],
+                "interval_minutes": 5,
+            },
+        )
+        assert resp.status_code == 422
+
+
+class TestAuditSchedulerTick:
+    async def test_tick_fires_due_schedule_and_advances(self, app):
+        from datetime import datetime, timedelta, timezone
+
+        from backend.auditor.scheduler import AuditScheduler
+        from backend.db.repos import AuditScheduleRepo
+
+        factory = app.state.session_factory
+        config = app.state.config
+        pool = app.state.mcp_pool
+
+        # Seed an active schedule that's already due.
+        now = datetime.now(timezone.utc)
+        past = now - timedelta(minutes=1)
+        async with factory() as db:
+            schedule = await AuditScheduleRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="due-now",
+                analyzers=["environment-scan"],
+                interval_minutes=60,
+                next_run_at=past,
+            )
+            await db.commit()
+            schedule_id = schedule.id
+
+        scheduler = AuditScheduler(factory, pool=pool, config=config)
+        fired = await scheduler.tick(now=now)
+        assert fired == 1
+
+        # Schedule advanced + a run row was created.
+        async with factory() as db:
+            reloaded = await AuditScheduleRepo.get_by_id(
+                db, TEST_ORG_ID, schedule_id
+            )
+            assert reloaded.last_run_at is not None
+            # SQLite drops tzinfo; compare on tz-stripped wall-clock.
+            assert reloaded.next_run_at.replace(tzinfo=None) > now.replace(
+                tzinfo=None
+            )
+            runs = await AuditRunRepo.list_all(db, TEST_ORG_ID, limit=10, offset=0)
+            assert len(runs) >= 1
+            assert runs[0].analyzers == ["environment-scan"]
+
+    async def test_tick_skips_inactive_schedules(self, app):
+        from datetime import datetime, timedelta, timezone
+
+        from backend.auditor.scheduler import AuditScheduler
+        from backend.db.repos import AuditScheduleRepo
+
+        factory = app.state.session_factory
+        config = app.state.config
+        pool = app.state.mcp_pool
+
+        now = datetime.now(timezone.utc)
+        async with factory() as db:
+            await AuditScheduleRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="off",
+                analyzers=["environment-scan"],
+                interval_minutes=60,
+                next_run_at=now - timedelta(minutes=1),
+                is_active=False,
+            )
+            await db.commit()
+
+        scheduler = AuditScheduler(factory, pool=pool, config=config)
+        fired = await scheduler.tick(now=now)
+        assert fired == 0

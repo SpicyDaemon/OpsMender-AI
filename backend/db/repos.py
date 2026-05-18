@@ -13,7 +13,7 @@ Usage::
 
 from __future__ import annotations
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from backend.db.models import (
     AuditEntry,
     AuditFinding,
     AuditRun,
+    AuditSchedule,
     BotActionAudit,
     BotConnector,
     BotUserLink,
@@ -3377,6 +3378,125 @@ class AuditRunRepo:
         await db.delete(run)
         await db.flush()
         return True
+
+
+class AuditScheduleRepo:
+    """Sprint 39 step 2 — scheduled audit runs."""
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        name: str,
+        analyzers: list[str],
+        interval_minutes: int,
+        next_run_at: datetime,
+        description: str | None = None,
+        mcp_server_name: str | None = None,
+        focus_areas: list[str] | None = None,
+        is_active: bool = True,
+        created_by: uuid.UUID | None = None,
+    ) -> AuditSchedule:
+        row = AuditSchedule(
+            org_id=org_id,
+            name=name,
+            description=description,
+            analyzers=list(analyzers),
+            mcp_server_name=mcp_server_name,
+            focus_areas=list(focus_areas or []),
+            interval_minutes=interval_minutes,
+            is_active=is_active,
+            next_run_at=next_run_at,
+            created_by=created_by,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, schedule_id: uuid.UUID
+    ) -> AuditSchedule | None:
+        stmt = select(AuditSchedule).where(
+            AuditSchedule.id == schedule_id, AuditSchedule.org_id == org_id
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[AuditSchedule]:
+        stmt = (
+            select(AuditSchedule)
+            .where(AuditSchedule.org_id == org_id)
+            .order_by(AuditSchedule.created_at.desc())
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def list_due(
+        db: AsyncSession, *, now: datetime
+    ) -> Sequence[AuditSchedule]:
+        """Return active schedules whose ``next_run_at`` is in the past."""
+
+        stmt = (
+            select(AuditSchedule)
+            .where(AuditSchedule.is_active.is_(True))
+            .where(AuditSchedule.next_run_at <= now)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def mark_run(
+        db: AsyncSession,
+        schedule: AuditSchedule,
+        *,
+        now: datetime,
+    ) -> None:
+        """Advance ``last_run_at`` to ``now`` and push ``next_run_at`` by
+        ``interval_minutes``. Idempotent — never moves backwards."""
+
+        schedule.last_run_at = now
+        schedule.next_run_at = now + timedelta(minutes=schedule.interval_minutes)
+        await db.flush()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        schedule: AuditSchedule,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        analyzers: list[str] | None = None,
+        mcp_server_name: str | None = None,
+        focus_areas: list[str] | None = None,
+        interval_minutes: int | None = None,
+        is_active: bool | None = None,
+    ) -> AuditSchedule:
+        if name is not None:
+            schedule.name = name
+        if description is not None:
+            schedule.description = description
+        if analyzers is not None:
+            schedule.analyzers = list(analyzers)
+        if mcp_server_name is not None:
+            schedule.mcp_server_name = mcp_server_name
+        if focus_areas is not None:
+            schedule.focus_areas = list(focus_areas)
+        if interval_minutes is not None:
+            schedule.interval_minutes = interval_minutes
+        if is_active is not None:
+            schedule.is_active = is_active
+        await db.flush()
+        return schedule
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, schedule: AuditSchedule
+    ) -> None:
+        await db.delete(schedule)
+        await db.flush()
 
 
 class AuditFindingRepo:

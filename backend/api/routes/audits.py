@@ -34,10 +34,19 @@ from backend.api.schemas import (
     AuditRunDetailResponse,
     AuditRunListResponse,
     AuditRunResponse,
+    AuditScheduleCreate,
+    AuditScheduleListResponse,
+    AuditScheduleResponse,
+    AuditScheduleUpdate,
 )
 from backend.auditor import list_analyzers, run_audit
 from backend.db.models import User
-from backend.db.repos import AuditFindingRepo, AuditRunRepo, SessionRepo
+from backend.db.repos import (
+    AuditFindingRepo,
+    AuditRunRepo,
+    AuditScheduleRepo,
+    SessionRepo,
+)
 from backend.mcp.pool import MCPServerPool
 
 router = APIRouter(prefix="/audits", tags=["audits"])
@@ -265,3 +274,151 @@ async def dismiss_audit_finding(
     )
     await db.commit()
     return _to_finding_response(updated or finding)
+
+
+# ---------------------------------------------------------------------------
+# Scheduled audit runs (Sprint 39 step 2)
+# ---------------------------------------------------------------------------
+
+
+def _to_schedule_response(row) -> AuditScheduleResponse:
+    return AuditScheduleResponse.model_validate(row)
+
+
+@router.get(
+    "/schedules",
+    response_model=AuditScheduleListResponse,
+    summary="List scheduled audit runs",
+)
+async def list_audit_schedules(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    rows = await AuditScheduleRepo.list_for_org(db, org_id)
+    return AuditScheduleListResponse(
+        items=[_to_schedule_response(r) for r in rows], total=len(rows)
+    )
+
+
+@router.post(
+    "/schedules",
+    response_model=AuditScheduleResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a scheduled audit run",
+)
+async def create_audit_schedule(
+    body: AuditScheduleCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    from datetime import datetime, timezone
+
+    known = {s.key for s in list_analyzers()}
+    unknown = [a for a in body.analyzers if a not in known]
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown analyzers: {', '.join(unknown)}",
+        )
+
+    # First run fires immediately on the next scheduler tick.
+    row = await AuditScheduleRepo.create(
+        db,
+        org_id,
+        name=body.name,
+        description=body.description,
+        analyzers=body.analyzers,
+        mcp_server_name=body.mcp_server_name,
+        focus_areas=body.focus_areas,
+        interval_minutes=body.interval_minutes,
+        is_active=body.is_active,
+        next_run_at=datetime.now(timezone.utc),
+        created_by=user.id,
+    )
+    await db.commit()
+    return _to_schedule_response(row)
+
+
+@router.get(
+    "/schedules/{schedule_id}",
+    response_model=AuditScheduleResponse,
+    summary="Get a scheduled audit run",
+)
+async def get_audit_schedule(
+    schedule_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    row = await AuditScheduleRepo.get_by_id(db, org_id, schedule_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audit schedule not found",
+        )
+    return _to_schedule_response(row)
+
+
+@router.patch(
+    "/schedules/{schedule_id}",
+    response_model=AuditScheduleResponse,
+    summary="Update a scheduled audit run",
+)
+async def update_audit_schedule(
+    schedule_id: uuid.UUID,
+    body: AuditScheduleUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    row = await AuditScheduleRepo.get_by_id(db, org_id, schedule_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audit schedule not found",
+        )
+    if body.analyzers is not None:
+        known = {s.key for s in list_analyzers()}
+        unknown = [a for a in body.analyzers if a not in known]
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown analyzers: {', '.join(unknown)}",
+            )
+
+    updated = await AuditScheduleRepo.update(
+        db,
+        row,
+        name=body.name,
+        description=body.description,
+        analyzers=body.analyzers,
+        mcp_server_name=body.mcp_server_name,
+        focus_areas=body.focus_areas,
+        interval_minutes=body.interval_minutes,
+        is_active=body.is_active,
+    )
+    await db.commit()
+    return _to_schedule_response(updated)
+
+
+@router.delete(
+    "/schedules/{schedule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a scheduled audit run",
+)
+async def delete_audit_schedule(
+    schedule_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    row = await AuditScheduleRepo.get_by_id(db, org_id, schedule_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audit schedule not found",
+        )
+    await AuditScheduleRepo.delete(db, row)
+    await db.commit()

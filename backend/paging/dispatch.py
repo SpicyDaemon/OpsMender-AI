@@ -46,7 +46,13 @@ from backend.db.repos import (
 )
 
 
-CHANNEL_KEYS: tuple[str, ...] = ("slack_dm", "teams_dm", "email", "sms")
+CHANNEL_KEYS: tuple[str, ...] = (
+    "slack_dm",
+    "teams_dm",
+    "teams_dm_graph",
+    "email",
+    "sms",
+)
 DEFAULT_CHANNELS: tuple[str, ...] = ("email",)
 PRIORITY_RANK: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 
@@ -306,6 +312,20 @@ async def dispatch_page(
                     blocks = build_page_card_blocks(
                         incident, base_url=os.environ.get("OPSMENDER_PUBLIC_URL")
                     )
+                elif key == "teams_dm_graph":
+                    from backend.paging.teams_cards import (
+                        build_page_card_adaptive,
+                        wrap_card_as_attachment,
+                    )
+
+                    blocks = [
+                        wrap_card_as_attachment(
+                            build_page_card_adaptive(
+                                incident,
+                                base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+                            )
+                        )
+                    ]
                 try:
                     attempt = await channel.send(
                         recipient=recipient,

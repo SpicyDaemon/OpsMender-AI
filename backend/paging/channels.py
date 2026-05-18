@@ -178,17 +178,35 @@ class TeamsGraphDMChannel:
         except GraphOAuthError as exc:
             return DeliveryAttempt(self.key, "failed", f"graph_oauth: {exc}")
 
-        # HTML body — Graph chat messages support `contentType: "html"`.
-        # Step 3 will switch to an adaptive card attachment.
-        text_html = (
-            f"<p><strong>{subject}</strong></p><p>{body}</p>"
-        )
-        payload: dict = {
-            "body": {
-                "contentType": "html",
-                "content": text_html,
+        # If the caller passed adaptive-card attachments via ``blocks``,
+        # use them directly. Otherwise fall back to a plain HTML body.
+        # ``blocks`` here is expected to be a Graph ``attachments`` array
+        # (built by :func:`backend.paging.teams_cards.wrap_card_as_attachment`).
+        # The HTML body still references each attachment by id.
+        if blocks:
+            attachments = list(blocks)
+            attachment_refs = "".join(
+                f'<attachment id="{att.get("id")}"></attachment>'
+                for att in attachments
+            )
+            text_html = (
+                f"<p><strong>{subject}</strong></p>"
+                f"<p>{body}</p>{attachment_refs}"
+            )
+            payload: dict = {
+                "body": {"contentType": "html", "content": text_html},
+                "attachments": attachments,
             }
-        }
+        else:
+            text_html = (
+                f"<p><strong>{subject}</strong></p><p>{body}</p>"
+            )
+            payload = {
+                "body": {
+                    "contentType": "html",
+                    "content": text_html,
+                }
+            }
 
         try:
             async with self._factory() as client:

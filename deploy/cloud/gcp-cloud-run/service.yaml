@@ -1,0 +1,83 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: opsmender
+  namespace: PROJECT_NUMBER
+  labels:
+    cloud.googleapis.com/location: REGION
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/minScale: "1"
+    run.googleapis.com/maxScale: "3"
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:REGION:CLOUD_SQL_INSTANCE
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      serviceAccountName: opsmender-run@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: ghcr.io/shipitpirate/opsmender-ai:latest
+          ports:
+            - name: http1
+              containerPort: 8000
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: PORT
+              value: "8000"
+            - name: OPSMENDER_TIER
+              value: "2"
+            - name: OPSMENDER_LOG_LEVEL
+              value: INFO
+            - name: OPSMENDER_MODEL_PROVIDER
+              value: anthropic
+            - name: OPSMENDER_MODEL_ID
+              value: claude-sonnet-4-20250514
+            - name: OPSMENDER_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opsmender-database-url
+                  key: latest
+            - name: OPSMENDER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: opsmender-jwt-secret
+                  key: latest
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: opsmender-anthropic-key
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 18
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+  traffic:
+    - percent: 100
+      latestRevision: true

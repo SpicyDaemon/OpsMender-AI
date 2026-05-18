@@ -27,43 +27,69 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Multi-tenant** — strict per-org isolation across every entity. Optional host-based routing pins each tenant to its own URL (`acme.opsmender.example.com`, `globex.opsmender.example.com`) with custom branding.
 - **Per-tenant SSO** — each org can wire its own **OIDC** identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak) **or SAML 2.0** IdP (older Okta, ADFS, classic Azure AD enterprise apps). Users are JIT-provisioned on first login; OIDC client secrets are encrypted at rest, SAML uses a global SP keypair from env. Local login stays available as a break-glass path.
 
+## The full incident-response loop
+
+OpsMender's job is one cohesive loop: **alert → AI → ack → fix → resolve.** Every paged incident walks the same five stages.
+
+```
+   ┌────────────────────────────────────────────────────────────────┐
+   │                                                                │
+   │  1. ALERT FIRES                                                │
+   │     Prometheus / Datadog / CloudWatch / Azure Monitor /        │
+   │     LegacyAlertVendor / Slack alerts / anything-that-POSTs-JSON        │
+   │     hits /incidents/ingest with a service-scoped token.        │
+   │                                                                │
+   │  2. AI STARTS WORKING                                          │
+   │     Priority rule decides P0/P1/P2/P3 + response mode          │
+   │     (auto_resolve / notify / page / escalate_immediate).       │
+   │     LangGraph workflow runs the tier-gated session in          │
+   │     parallel — Tier 0 fixes autonomously, Tier 1 pauses on     │
+   │     destructive actions, Tier 2 stays read-only, Tier 3        │
+   │     advises only.                                              │
+   │                                                                │
+   │  3. OPERATOR ACKS                                              │
+   │     Page mode → escalation chain fires step 0; on-call user    │
+   │     gets a Slack DM / Teams DM / Email / SMS with             │
+   │     Acknowledge / Take Over / Resolve buttons. Click           │
+   │     Acknowledge (or run /ack in chat) — chain pauses,          │
+   │     incident assignment created.                               │
+   │                                                                │
+   │  4. INCIDENT FIXED                                             │
+   │     Either the AI auto-resolves it (Tier 0/1 executes a        │
+   │     remediation plan, you approve any Tier 1 actions through   │
+   │     the dashboard or chat), or the operator takes over and     │
+   │     drives the fix themselves.                                 │
+   │                                                                │
+   │  5. RESOLUTION                                                 │
+   │     Click Resolve (in chat or web UI). Chain cancels,          │
+   │     incident.status → resolved, the full audit trail (every    │
+   │     node transition, tool call, approval, rollback step) is    │
+   │     preserved for postmortem.                                  │
+   │                                                                │
+   └────────────────────────────────────────────────────────────────┘
+```
+
+The end-to-end loop is exercised by `tests/test_e2e_paging_flow.py::TestIncidentResponseLoop` — that test walks the entire flow through real HTTP routes (ingest → priority → page → chain → Slack ack → web force-takeover → Slack resolve) and ships as the canonical regression guard for the paging surface.
+
+For the operator-facing walkthrough — services / teams / rosters / escalation chains / priority rules / response modes / maintenance windows / notification preferences — see [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md). For platform-specific chat-surface details, see the [Slack](docs/wiki/slack-paging-surface.md) and [Teams](docs/wiki/teams-paging-surface.md) guides.
+
 ## How OpsMender thinks (concepts in 60 seconds)
 
-A picture first, then the parts:
+The loop above is the operator's view. Underneath, four configurable surfaces drive the behavior:
 
-```
-        external systems                           OpsMender internals
-  ─────────────────────────────             ────────────────────────────
-                              ┌─── Ingest ─→  Incident created
-  CloudWatch / LegacyAlertVendor /    │
-  Datadog / Slack / etc.      │             ┌─ Workflow profile picks
-                              │             │  the LangGraph node order
-                              │             │  (observe → diagnose → …)
-                              │             │
-                              │   Session ──┤
-                              │   started   │
-                              │             └─ Agent team profile picks
-                              │                which specialist roles
-                              │                (SRE / DBA / SecOps) get
-                              │                consulted in reasoning nodes
-                              │
-                              ↓
-            Webhook ←── session-state events
-            triggers       (created / awaiting_approval /
-                            completed / failed / timed_out)
-                              ↓
-            Slack / Teams / Sumo / generic JSON
-```
-
-Four concepts confuse new operators most often, so here's what each one actually does:
-
-### Ingest — *getting alerts in (this is the primary path)*
+### Ingest — *getting alerts in (stage 1 of the loop)*
 
 OpsMender's core job is to take alerts your existing monitoring already fires and respond to them intelligently. Your monitoring tools (Prometheus Alertmanager, Datadog, CloudWatch, Azure Monitor, Sumo Logic, Grafana, third-party automation suites, anything that can POST JSON) send to `/incidents/ingest`; OpsMender creates an incident from the payload and runs the tier-gated AI response workflow. The **universal adapter** accepts any shape and asks the LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Typed adapters exist for CloudWatch SNS, Azure Monitor, GCP Monitoring, OCI, LegacyAlertVendor, LegacyAlertRelay, and a Generic JSON adapter for stricter parsing.
 
 > **This is what 90% of operators set up first.** Bring your existing alerts; OpsMender responds. Incidents can also be created manually from the dashboard for the cases where monitoring missed something and an operator wants to attach a session + audit trail to an ad-hoc investigation.
 
-### Workflows — *the order of the autonomous response steps*
+### Paging — *deciding who gets pinged (stage 3 of the loop)*
+
+OpsMender owns paging end-to-end — you don't bolt LegacyAlertVendor on top. Configure **services**, **teams**, **rosters** (with deterministic on-call rotation in IANA time zones), **escalation chains** (additive — once paged, stay paged, with a hard 15-minute inactivity timeout), and **priority rules** (first-match-wins on the alert payload) under `/dashboard/paging`. Operators set per-user **notification preferences** (which channels, priority routing matrix, quiet hours) under `/dashboard/paging` → My Notifications. **Maintenance windows** suppress paging in a time range (scoped global / service / roster / team). The chain engine and notification dispatcher run as background loops with restart-safe watermarks.
+
+> **Wire this once per service.** Walkthrough lives in [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md).
+
+### Workflows — *the order of the autonomous response steps (stage 2 of the loop)*
 
 When a session runs, OpsMender walks a LangGraph: `observe → diagnose → plan → tier_gate → execute → verify → summarize`. A **Workflow profile** lets you save a *different* node order — same nodes, just rearranged or trimmed. The tier gate must always sit immediately before `execute` (programmatic safety floor; cannot be moved or removed).
 
@@ -92,7 +118,7 @@ The Config page groups settings by how often you'll touch them:
 | **Outbound** (OpsMender → people/systems) | Most operators | Webhook triggers, Bot connectors |
 | **Advanced** (defaults work for 95%) | Rarely | Workflows, Agent teams |
 
-If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (Day-1), then wire your monitoring to Ingest, then add a Slack webhook trigger so your team sees what OpsMender is doing. Workflows and Agent teams can wait until you have a concrete reason to touch them.
+If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (Day-1), then wire your monitoring to Ingest, then configure one paging service + roster + chain (`/dashboard/paging` — see the [Paging Guide](docs/wiki/paging-guide.md)) so on-call operators actually get pinged. Workflows and Agent teams can wait until you have a concrete reason to touch them.
 
 > **Scheduled environment checks:** The legacy Detector surface has been retired. Use **Environment Scans** (`/dashboard/scans`) for on-demand sweeps, `POST /audits/schedules` for recurring read-only scans, and `opsmender detectors-migrate --apply` before running the detector-drop migration if an older deployment still has `detector_rules` rows.
 

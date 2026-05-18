@@ -12,6 +12,10 @@
 **/*.auto.tfvars
 !**/terraform.tfvars.example
 
+# Bicep (deploy/cloud/azure-containerapps/) — compiled ARM templates + local param files
+deploy/cloud/**/main.json
+deploy/cloud/**/*.bicepparam.local
+
 # Python
 __pycache__/
 *.pyc

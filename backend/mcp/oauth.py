@@ -54,7 +54,6 @@ from urllib.parse import quote, urlencode, urlparse
 import httpx
 from jose import JWTError, jwt
 
-
 # Snapshot of the MCP authorization spec consulted in Session 093.
 # Bump this when the spec advances to a numbered version (likely
 # 2025-11 or similar) and re-validate.
@@ -233,6 +232,8 @@ def sign_state(
     code_verifier: str,
     resource: str,
     org_id: str,
+    client_id: str | None = None,
+    client_secret: str | None = None,
 ) -> str:
     """Sign a short-lived state JWT carrying the per-request record.
 
@@ -243,6 +244,8 @@ def sign_state(
         to complete the code exchange).
       - ``res`` — the RFC 8707 resource indicator (must match on token req).
       - ``org`` — for the tenant boundary check on the callback.
+      - ``cid`` / ``csec`` — short-lived client registration needed for
+        the callback's token exchange when DCR is used.
     """
 
     now = int(time.time())
@@ -257,6 +260,10 @@ def sign_state(
         "iat": now,
         "exp": now + STATE_TTL_SECONDS,
     }
+    if client_id:
+        payload["cid"] = client_id
+    if client_secret:
+        payload["csec"] = client_secret
     return jwt.encode(payload, _jwt_secret(), algorithm=_jwt_algorithm())
 
 
@@ -279,9 +286,7 @@ def verify_state(token: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-_RESOURCE_METADATA_RE = re.compile(
-    r'resource_metadata="?([^",]+)"?', re.IGNORECASE
-)
+_RESOURCE_METADATA_RE = re.compile(r'resource_metadata="?([^",]+)"?', re.IGNORECASE)
 
 
 def parse_www_authenticate(header_value: str | None) -> str | None:
@@ -474,9 +479,7 @@ def _parse_authz_metadata(
 
     authorize_endpoint = body.get("authorization_endpoint")
     token_endpoint = body.get("token_endpoint")
-    if not isinstance(authorize_endpoint, str) or not isinstance(
-        token_endpoint, str
-    ):
+    if not isinstance(authorize_endpoint, str) or not isinstance(token_endpoint, str):
         return None
 
     code_methods = body.get("code_challenge_methods_supported")
@@ -541,9 +544,7 @@ async def register_client_dynamically(
             ) from exc
 
     if resp.status_code not in (200, 201):
-        raise MCPOAuthError(
-            f"DCR rejected: HTTP {resp.status_code} {resp.text[:200]}"
-        )
+        raise MCPOAuthError(f"DCR rejected: HTTP {resp.status_code} {resp.text[:200]}")
 
     body = resp.json()
     client_id = body.get("client_id")
@@ -735,9 +736,7 @@ def _parse_token_response(resp: httpx.Response, *, op: str) -> TokenResponse:
         except ValueError:
             error = ""
             detail = resp.text[:200]
-        raise MCPOAuthError(
-            f"{op} failed: HTTP {resp.status_code} {error} — {detail}"
-        )
+        raise MCPOAuthError(f"{op} failed: HTTP {resp.status_code} {error} — {detail}")
 
     body = resp.json()
     access = body.get("access_token")

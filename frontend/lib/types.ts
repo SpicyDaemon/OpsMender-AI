@@ -319,6 +319,10 @@ export interface MCPServerTestResponse {
   tool_names: string[];
 }
 
+export interface MCPOAuthStartResponse {
+  authorize_url: string;
+}
+
 // ---------------------------------------------------------------------------
 // Bot Connectors
 // ---------------------------------------------------------------------------

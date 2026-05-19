@@ -18,8 +18,10 @@ OpsMender supports two transport mechanisms for MCP servers:
 
 1. **Stdio (Command-line):** The MCP server runs as a local subprocess. OpsMender communicates with it over standard input/output.
    - *Example:* `python mcp_server.py` or `npx @modelcontextprotocol/server-postgres`
-2. **SSE (Server-Sent Events):** The MCP server runs as an independent web service, and OpsMender connects to it over HTTP.
+2. **HTTP / SSE:** The MCP server runs as an independent web service, and OpsMender connects to it over HTTP.
    - *Example:* `https://my-internal-mcp-server.local/sse`
+
+For URL-based MCP servers, admins can use **Connect** from Config -> MCP Servers to run the OAuth 2.1 + PKCE flow. OpsMender discovers the server's authorization metadata, validates the callback issuer, and stores access/refresh tokens encrypted in the database. Stdio servers still get credentials from environment variables.
 
 ## 4. Enforcement & Safety Tiers
 

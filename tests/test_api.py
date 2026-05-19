@@ -35,6 +35,14 @@ from backend.db.repos import (
     WebhookTriggerRepo,
     WorkflowProfileRepo,
 )
+from backend.mcp.oauth import (
+    AuthzServerMetadata,
+    ClientRegistration,
+    PKCEPair,
+    ProtectedResourceMetadata,
+    TokenResponse,
+    sign_state,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -56,6 +64,7 @@ async def app(tmp_path):
     # Multi-tenancy: Ensure the default test organization exists
     async with factory() as db:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         db.add(org)
         await db.commit()
@@ -117,6 +126,7 @@ async def auth_headers(client: AsyncClient, app) -> dict[str, str]:
     )
     # Manually assign primary_org_id to satisfy tenant isolation requirements
     from backend.db.repos import UserRepo
+
     async with app.state.session_factory() as db:
         user = await UserRepo.get_by_username(db, "testadmin")
         if user:
@@ -148,6 +158,7 @@ async def viewer_headers(client: AsyncClient, app, auth_headers) -> dict[str, st
     )
     # Manually assign primary_org_id to satisfy tenant isolation requirements
     from backend.db.repos import UserRepo
+
     async with app.state.session_factory() as db:
         user = await UserRepo.get_by_username(db, "viewer1")
         if user:
@@ -386,9 +397,7 @@ class TestAuth:
 
 
 class TestMyOrganizations:
-    async def test_list_my_organizations(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_list_my_organizations(self, client: AsyncClient, app, auth_headers):
         resp = await client.get("/auth/me/organizations", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
@@ -398,11 +407,10 @@ class TestMyOrganizations:
         assert len(primary) == 1
         assert primary[0]["id"] == str(TEST_ORG_ID)
 
-    async def test_set_primary_org_member(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_set_primary_org_member(self, client: AsyncClient, app, auth_headers):
         # Create a second org and link the user
         from backend.db.repos import OrganizationRepo, UserRepo
+
         async with app.state.session_factory() as db:
             org2 = await OrganizationRepo.create(db, name="Second", slug="second-org")
             user = await UserRepo.get_by_username(db, "testadmin")
@@ -412,9 +420,7 @@ class TestMyOrganizations:
             await db.commit()
             org2_id = str(org2.id)
 
-        resp = await client.put(
-            f"/auth/me/primary-org/{org2_id}", headers=auth_headers
-        )
+        resp = await client.put(f"/auth/me/primary-org/{org2_id}", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json()["primary_org_id"] == org2_id
 
@@ -422,19 +428,16 @@ class TestMyOrganizations:
         self, client: AsyncClient, app, auth_headers
     ):
         from backend.db.repos import OrganizationRepo
+
         async with app.state.session_factory() as db:
             org3 = await OrganizationRepo.create(db, name="Third", slug="third-org")
             await db.commit()
             org3_id = str(org3.id)
 
-        resp = await client.put(
-            f"/auth/me/primary-org/{org3_id}", headers=auth_headers
-        )
+        resp = await client.put(f"/auth/me/primary-org/{org3_id}", headers=auth_headers)
         assert resp.status_code == 403
 
-    async def test_x_org_id_header_member(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_x_org_id_header_member(self, client: AsyncClient, app, auth_headers):
         # User is a member of TEST_ORG_ID; explicitly setting it via header
         # should succeed for org-scoped endpoints.
         headers = {**auth_headers, "X-Org-ID": str(TEST_ORG_ID)}
@@ -445,6 +448,7 @@ class TestMyOrganizations:
         self, client: AsyncClient, app, auth_headers
     ):
         from backend.db.repos import OrganizationRepo
+
         async with app.state.session_factory() as db:
             other = await OrganizationRepo.create(db, name="Other", slug="other-org")
             await db.commit()
@@ -543,9 +547,7 @@ class TestDomainIsolation:
         )
         assert resp.status_code == 400
 
-    async def test_create_domain_conflict(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_create_domain_conflict(self, client: AsyncClient, auth_headers):
         await client.post(
             f"/organizations/{TEST_ORG_ID}/domains",
             json={"domain": "dup.example.com"},
@@ -1968,9 +1970,7 @@ class TestBotConnectorsAPI:
         resp = await client.get("/bot-connectors", headers=viewer_headers)
         assert resp.status_code == 403
 
-    async def test_list_platform_schemas(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_list_platform_schemas(self, client: AsyncClient, auth_headers):
         resp = await client.get("/bot-connectors/platforms", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
@@ -1998,9 +1998,7 @@ class TestBotConnectorsAPI:
             assert isinstance(item["fields"], list)
             assert len(item["fields"]) > 0
 
-    async def test_get_single_platform_schema(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_get_single_platform_schema(self, client: AsyncClient, auth_headers):
         resp = await client.get(
             "/bot-connectors/platforms/telegram/schema", headers=auth_headers
         )
@@ -2026,9 +2024,7 @@ class TestBotConnectorsAPI:
     async def test_platform_schema_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):
-        resp = await client.get(
-            "/bot-connectors/platforms", headers=viewer_headers
-        )
+        resp = await client.get("/bot-connectors/platforms", headers=viewer_headers)
         assert resp.status_code == 403
 
 
@@ -2267,7 +2263,9 @@ class TestTelegramBotWebhook:
             approval_id = str(approval.id)
             session_id = session.id
 
-        await self._link_user(client, auth_headers, connector_id, "111", opsmender_user_id)
+        await self._link_user(
+            client, auth_headers, connector_id, "111", opsmender_user_id
+        )
 
         resp = await client.post(
             f"/bot-connectors/{connector_id}/telegram/webhook",
@@ -2340,7 +2338,9 @@ class TestTelegramBotWebhook:
             await db.commit()
             session_id = session.id
 
-        await self._link_user(client, auth_headers, connector_id, "111", opsmender_user_id)
+        await self._link_user(
+            client, auth_headers, connector_id, "111", opsmender_user_id
+        )
 
         resp = await client.post(
             f"/bot-connectors/{connector_id}/telegram/webhook",
@@ -3614,6 +3614,204 @@ class TestMCPServerAPI:
         data = resp.json()
         assert data["success"] is False
         assert "connection refused" in data["detail"]
+
+    async def test_oauth_start_returns_authorize_url(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="github",
+                transport="http",
+                url="https://mcp.example.com/api/mcp",
+                env_vars={"OPSMENDER_MCP_OAUTH_SCOPES": "repo read:user"},
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        async def _discover(url):
+            assert url == "https://mcp.example.com/api/mcp"
+            return ProtectedResourceMetadata(
+                resource="https://mcp.example.com/api/mcp",
+                authorization_servers=["https://auth.example.com"],
+            )
+
+        async def _fetch(issuer):
+            assert issuer == "https://auth.example.com"
+            return AuthzServerMetadata(
+                issuer="https://auth.example.com",
+                authorization_endpoint="https://auth.example.com/authorize",
+                token_endpoint="https://auth.example.com/token",
+                registration_endpoint="https://auth.example.com/register",
+                code_challenge_methods_supported=["S256"],
+            )
+
+        async def _register(metadata, *, redirect_uris):
+            assert metadata.issuer == "https://auth.example.com"
+            assert redirect_uris == ["http://test/mcp-servers/oauth/callback"]
+            return ClientRegistration(client_id="client-1", client_secret=None)
+
+        monkeypatch.setattr(
+            "backend.api.routes.mcp_servers.discover_protected_resource_metadata",
+            _discover,
+        )
+        monkeypatch.setattr(
+            "backend.api.routes.mcp_servers.fetch_authz_server_metadata", _fetch
+        )
+        monkeypatch.setattr(
+            "backend.api.routes.mcp_servers.register_client_dynamically", _register
+        )
+        monkeypatch.setattr(
+            "backend.api.routes.mcp_servers.generate_pkce_pair",
+            lambda: PKCEPair(code_verifier="verifier", code_challenge="challenge"),
+        )
+
+        resp = await client.get(
+            f"/mcp-servers/oauth/start?id={server_id}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        url = resp.json()["authorize_url"]
+        assert url.startswith("https://auth.example.com/authorize?")
+        assert "client_id=client-1" in url
+        assert "code_challenge=challenge" in url
+        assert "resource=https%3A%2F%2Fmcp.example.com%2Fapi%2Fmcp" in url
+        assert "scope=repo%20read%3Auser" in url
+
+    async def test_oauth_start_rejects_stdio_server(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="local",
+                transport="stdio",
+                command="npx",
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        resp = await client.get(
+            f"/mcp-servers/oauth/start?id={server_id}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_oauth_callback_persists_encrypted_tokens(
+        self, client: AsyncClient, app, monkeypatch
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="github",
+                transport="http",
+                url="https://mcp.example.com/api/mcp",
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        async def _fetch(issuer):
+            assert issuer == "https://auth.example.com"
+            return AuthzServerMetadata(
+                issuer="https://auth.example.com",
+                authorization_endpoint="https://auth.example.com/authorize",
+                token_endpoint="https://auth.example.com/token",
+                registration_endpoint="https://auth.example.com/register",
+                code_challenge_methods_supported=["S256"],
+            )
+
+        async def _exchange(metadata, **kwargs):
+            assert kwargs["code"] == "auth-code"
+            assert kwargs["code_verifier"] == "verifier"
+            assert kwargs["resource"] == "https://mcp.example.com/api/mcp"
+            assert kwargs["client_registration"].client_id == "client-1"
+            return TokenResponse(
+                access_token="access-token",
+                token_type="Bearer",
+                expires_in=3600,
+                refresh_token="refresh-token",
+                scope=["repo"],
+            )
+
+        monkeypatch.setattr(
+            "backend.api.routes.mcp_servers.fetch_authz_server_metadata", _fetch
+        )
+        monkeypatch.setattr("backend.api.routes.mcp_servers.exchange_code", _exchange)
+
+        state = sign_state(
+            server_id=str(server_id),
+            issuer="https://auth.example.com",
+            code_verifier="verifier",
+            resource="https://mcp.example.com/api/mcp",
+            org_id=str(TEST_ORG_ID),
+            client_id="client-1",
+        )
+        resp = await client.get(
+            "/mcp-servers/oauth/callback",
+            params={
+                "code": "auth-code",
+                "state": state,
+                "iss": "https://auth.example.com",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert "mcp_oauth=ok" in resp.headers["location"]
+
+        async with app.state.session_factory() as db:
+            from backend.db.repos import MCPServerOAuthTokenRepo
+
+            row = await MCPServerOAuthTokenRepo.get_for_server(
+                db, TEST_ORG_ID, server_id
+            )
+            assert row is not None
+            assert row.access_token_encrypted != "access-token"
+            access, refresh = await MCPServerOAuthTokenRepo.read_plaintext(row)
+            assert access == "access-token"
+            assert refresh == "refresh-token"
+            assert row.scopes == ["repo"]
+
+    async def test_oauth_callback_rejects_issuer_mismatch(
+        self, client: AsyncClient, app
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="github",
+                transport="http",
+                url="https://mcp.example.com/api/mcp",
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        state = sign_state(
+            server_id=str(server_id),
+            issuer="https://auth.example.com",
+            code_verifier="verifier",
+            resource="https://mcp.example.com/api/mcp",
+            org_id=str(TEST_ORG_ID),
+            client_id="client-1",
+        )
+        resp = await client.get(
+            "/mcp-servers/oauth/callback",
+            params={
+                "code": "auth-code",
+                "state": state,
+                "iss": "https://evil.example.com",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert "mcp_oauth=error" in resp.headers["location"]
+        assert "iss" in resp.headers["location"].lower()
 
 
 # ===========================================================================

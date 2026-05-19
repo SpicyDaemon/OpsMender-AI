@@ -410,6 +410,8 @@ All nine were last verified or template-validated in Sessions 086–091 (2026-05
 | `PUT` | `/mcp-servers/{id}` | admin | Update saved MCP server |
 | `DELETE` | `/mcp-servers/{id}` | admin | Delete saved MCP server |
 | `POST` | `/mcp-servers/{id}/test` | admin | Test live connectivity to a saved MCP server |
+| `GET` | `/mcp-servers/oauth/start?id=<server_id>` | admin | Begin OAuth 2.1 + PKCE authorization for a URL-based MCP server |
+| `GET` | `/mcp-servers/oauth/callback` | signed state | OAuth callback — validates issuer, exchanges code, stores encrypted MCP tokens |
 | `GET` | `/bot-connectors` | admin | List external chat bot connectors |
 | `POST` | `/bot-connectors` | admin | Create external chat bot connector |
 | `PUT` | `/bot-connectors/{id}` | admin | Update external chat bot connector |
@@ -489,7 +491,20 @@ The first registered user is automatically assigned the `admin` role.
 Runtime defaults now live in `.env`, and UI edits to tier/log level are persisted in the `runtime_config` table.
 Saved model profiles and MCP server definitions are also persisted in the database, with `.env` remaining the source of truth for deployment defaults and secrets.
 
-MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-reads the DB on every lookup — servers added via `POST /mcp-servers` or the dashboard are visible to already-running sessions with no reload. `OPSMENDER_MCP_SERVERS_JSON` stays supported as a read-only fallback for bootstrapping before any DB entries exist.
+MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-reads the DB on every lookup — servers added via `POST /mcp-servers` or the dashboard are visible to already-running sessions with no reload. URL-based MCP servers can also use the OAuth 2.1 + PKCE flow from the Config page's Connect action; tokens are encrypted in `mcp_server_oauth_tokens`, not returned through the API or written to `mcp.json`. `OPSMENDER_MCP_SERVERS_JSON` stays supported as a read-only fallback for bootstrapping before any DB entries exist.
+
+The upcoming `mcp.json` mirror uses the Claude Code-compatible shape:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    }
+  }
+}
+```
 
 External chat bot connectors are managed in **Config -> Integrations** or through the `/bot-connectors` API. Credentials are write-only: API responses expose `credential_keys` and `has_credentials`, never raw token values. OpsMender supports 15 platforms: Telegram, Signal, WhatsApp, Slack, Discord, MS Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Twilio, Email, Home Assistant, and BlueBubbles.
 

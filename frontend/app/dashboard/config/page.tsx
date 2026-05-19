@@ -53,6 +53,7 @@ import {
   revokeIngestToken,
   setDefaultModelConfig,
   startBotOAuth,
+  startMCPOAuth,
   testMCPServer,
   testBotConnector,
   testWebhookTrigger,
@@ -1385,6 +1386,7 @@ function MCPSection({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [testStates, setTestStates] = useState<Record<string, TestState>>({});
+  const [oauthStartingId, setOauthStartingId] = useState<string | null>(null);
 
   function openCreateModal() {
     setEditing(null);
@@ -1482,6 +1484,40 @@ function MCPSection({
     }
   }
 
+  async function handleConnectOAuth(server: MCPServerResponse) {
+    setOauthStartingId(server.id);
+    setError("");
+    setNotice("");
+    try {
+      const { authorize_url } = await startMCPOAuth(server.id);
+      window.location.assign(authorize_url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "OAuth start failed");
+      setOauthStartingId(null);
+    }
+  }
+
+  // Surface MCP OAuth-callback result. The backend redirects to
+  // /dashboard/config?mcp_oauth=ok|error&detail=…
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get("mcp_oauth");
+    if (!outcome) return;
+    const detail = params.get("detail") ?? "";
+    if (outcome === "ok") {
+      setNotice(detail || "MCP OAuth connection complete.");
+    } else {
+      setError(detail || "MCP OAuth connection failed.");
+    }
+    params.delete("mcp_oauth");
+    params.delete("detail");
+    params.delete("server_id");
+    const qs = params.toString();
+    const url = window.location.pathname + (qs ? `?${qs}` : "");
+    window.history.replaceState({}, "", url);
+  }, []);
+
   return (
     <Section
       title="MCP Servers"
@@ -1568,6 +1604,17 @@ function MCPSection({
                         >
                           <Plug size={13} /> Test
                         </Button>
+                        {server.transport !== "stdio" && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleConnectOAuth(server)}
+                            loading={oauthStartingId === server.id}
+                            disabled={!canEdit}
+                          >
+                            <ExternalLink size={13} /> Connect
+                          </Button>
+                        )}
                         <Button
                           variant="secondary"
                           size="sm"

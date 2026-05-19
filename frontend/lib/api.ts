@@ -337,6 +337,7 @@ export async function setDefaultModelConfig(
 
 import type {
   MCPServerListResponse,
+  MCPOAuthStartResponse,
   MCPServerResponse,
   MCPServerTestResponse,
   MCPServerUpsert,
@@ -367,6 +368,12 @@ export async function testMCPServer(
   id: string,
 ): Promise<MCPServerTestResponse> {
   return api.post<MCPServerTestResponse>(`/mcp-servers/${id}/test`);
+}
+
+export async function startMCPOAuth(id: string): Promise<MCPOAuthStartResponse> {
+  return api.get<MCPOAuthStartResponse>(
+    `/mcp-servers/oauth/start?id=${encodeURIComponent(id)}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

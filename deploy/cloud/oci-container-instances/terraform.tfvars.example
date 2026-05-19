@@ -1,0 +1,54 @@
+## Copy to `terraform.tfvars` and fill in your values.
+## Never commit terraform.tfvars — secret OCIDs and CIDR allowlists
+## belong in your encrypted backend, not git history.
+
+# Identity ────────────────────────────────────────────────────────────────
+name = "opsmender"
+
+freeform_tags = {
+  Application = "opsmender-ai"
+  Environment = "prod"
+  ManagedBy   = "terraform"
+}
+
+compartment_id      = "ocid1.compartment.oc1..aaaa..."
+availability_domain = "XYZ:US-ASHBURN-AD-1"
+
+# Networking ──────────────────────────────────────────────────────────────
+vcn_id    = "ocid1.vcn.oc1.iad.aaaa..."
+subnet_id = "ocid1.subnet.oc1.iad.aaaa..."
+
+# Tighten before going to production. Default 0.0.0.0/0 is fine for a
+# private subnet or a dev environment, NOT for a public production deploy.
+allowed_ingress_cidrs = ["0.0.0.0/0"]
+
+# assign_public_ip = false   # set false when fronting with an NLB
+
+# Container ───────────────────────────────────────────────────────────────
+# container_image                = "ghcr.io/shipitpirate/opsmender-ai:v1.0.0"  # pin in prod
+# shape                          = "CI.Standard.E5.Flex"
+# shape_ocpus                    = 2
+# shape_memory_in_gbs            = 16
+# container_memory_limit_in_gbs  = 8
+# container_vcpus_limit          = 4
+# container_restart_policy       = "ALWAYS"
+
+# Secrets (Vault secret OCIDs — pre-create these) ────────────────────────
+jwt_secret_ocid          = "ocid1.vaultsecret.oc1.iad.aaaa..."
+database_url_secret_ocid = "ocid1.vaultsecret.oc1.iad.aaaa..."
+
+provider_secret_ocids = {
+  ANTHROPIC_API_KEY = "ocid1.vaultsecret.oc1.iad.aaaa..."
+  # OPENAI_API_KEY       = "ocid1.vaultsecret.oc1.iad.aaaa..."
+  # AZURE_OPENAI_API_KEY = "ocid1.vaultsecret.oc1.iad.aaaa..."
+}
+
+# Runtime config (non-secret env vars) ────────────────────────────────────
+extra_environment = {
+  OPSMENDER_TIER      = "2"
+  OPSMENDER_LOG_LEVEL = "INFO"
+  # OPSMENDER_PUBLIC_URL = "https://opsmender.example.com"
+  # OPSMENDER_CORS_ORIGINS = "https://opsmender.example.com"
+}
+
+# log_retention_duration = 30

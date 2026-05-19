@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-TEST_ORG_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -31,12 +31,14 @@ async def app_db():
 
     # Wire the factory into the app dependencies
     from backend.api import deps
+
     deps._session_factory = factory
     app.state.session_factory = factory
 
     # Create an admin user
     async with factory() as db:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         db.add(org)
         await db.commit()
@@ -85,28 +87,58 @@ class TestSLATargetAPI:
 
     @pytest.mark.asyncio
     async def test_create_sla_target(self, client: AsyncClient):
-        resp = await client.post("/sla-targets", json={
-            "name": "web-app",
-            "kind": "http",
-            "config": {"url": "https://example.com", "expected_status": 200},
-            "owner_team": "platform",
-        })
+        resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "web-app",
+                "kind": "http",
+                "config": {
+                    "url": "https://example.com",
+                    "expected_statuses": [200, "2xx"],
+                },
+                "owner_team": "platform",
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "web-app"
         assert data["kind"] == "http"
         assert data["config"]["url"] == "https://example.com"
+        assert data["config"]["expected_statuses"] == [200, "2xx"]
         assert data["owner_team"] == "platform"
         assert data["is_active"] is True
 
     @pytest.mark.asyncio
+    async def test_create_sla_target_rejects_bad_expected_status(
+        self, client: AsyncClient
+    ):
+        resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "bad-status",
+                "kind": "http",
+                "config": {"url": "https://example.com", "expected_statuses": ["wat"]},
+            },
+        )
+        assert resp.status_code == 400
+        assert "Invalid HTTP status code" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
     async def test_list_sla_targets(self, client: AsyncClient):
-        await client.post("/sla-targets", json={
-            "name": "t1", "kind": "http",
-        })
-        await client.post("/sla-targets", json={
-            "name": "t2", "kind": "tcp",
-        })
+        await client.post(
+            "/sla-targets",
+            json={
+                "name": "t1",
+                "kind": "http",
+            },
+        )
+        await client.post(
+            "/sla-targets",
+            json={
+                "name": "t2",
+                "kind": "tcp",
+            },
+        )
 
         resp = await client.get("/sla-targets")
         assert resp.status_code == 200
@@ -116,9 +148,13 @@ class TestSLATargetAPI:
 
     @pytest.mark.asyncio
     async def test_get_sla_target(self, client: AsyncClient):
-        create_resp = await client.post("/sla-targets", json={
-            "name": "get-me", "kind": "external",
-        })
+        create_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "get-me",
+                "kind": "external",
+            },
+        )
         tid = create_resp.json()["id"]
 
         resp = await client.get(f"/sla-targets/{tid}")
@@ -132,24 +168,35 @@ class TestSLATargetAPI:
 
     @pytest.mark.asyncio
     async def test_update_sla_target(self, client: AsyncClient):
-        create_resp = await client.post("/sla-targets", json={
-            "name": "updatable", "kind": "http",
-        })
+        create_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "updatable",
+                "kind": "http",
+            },
+        )
         tid = create_resp.json()["id"]
 
-        resp = await client.put(f"/sla-targets/{tid}", json={
-            "name": "updated-name",
-            "is_active": False,
-        })
+        resp = await client.put(
+            f"/sla-targets/{tid}",
+            json={
+                "name": "updated-name",
+                "is_active": False,
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["name"] == "updated-name"
         assert resp.json()["is_active"] is False
 
     @pytest.mark.asyncio
     async def test_delete_sla_target(self, client: AsyncClient):
-        create_resp = await client.post("/sla-targets", json={
-            "name": "deletable", "kind": "tcp",
-        })
+        create_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "deletable",
+                "kind": "tcp",
+            },
+        )
         tid = create_resp.json()["id"]
 
         resp = await client.delete(f"/sla-targets/{tid}")
@@ -160,12 +207,20 @@ class TestSLATargetAPI:
 
     @pytest.mark.asyncio
     async def test_create_duplicate_name_conflict(self, client: AsyncClient):
-        await client.post("/sla-targets", json={
-            "name": "duped", "kind": "http",
-        })
-        resp = await client.post("/sla-targets", json={
-            "name": "duped", "kind": "tcp",
-        })
+        await client.post(
+            "/sla-targets",
+            json={
+                "name": "duped",
+                "kind": "http",
+            },
+        )
+        resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "duped",
+                "kind": "tcp",
+            },
+        )
         assert resp.status_code == 409
 
 
@@ -178,17 +233,24 @@ class TestSLOAPI:
 
     @pytest.mark.asyncio
     async def test_create_slo(self, client: AsyncClient):
-        target_resp = await client.post("/sla-targets", json={
-            "name": "slo-target", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "slo-target",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
-        resp = await client.post("/slos", json={
-            "target_id": target_id,
-            "name": "99.9% availability",
-            "objective_pct": 99.9,
-            "window_seconds": 604800,  # 7d
-        })
+        resp = await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "99.9% availability",
+                "objective_pct": 99.9,
+                "window_seconds": 604800,  # 7d
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "99.9% availability"
@@ -197,33 +259,46 @@ class TestSLOAPI:
 
     @pytest.mark.asyncio
     async def test_create_slo_bad_target(self, client: AsyncClient):
-        resp = await client.post("/slos", json={
-            "target_id": str(uuid.uuid4()),
-            "name": "orphan",
-            "objective_pct": 99.0,
-            "window_seconds": 3600,
-        })
+        resp = await client.post(
+            "/slos",
+            json={
+                "target_id": str(uuid.uuid4()),
+                "name": "orphan",
+                "objective_pct": 99.0,
+                "window_seconds": 3600,
+            },
+        )
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_list_slos(self, client: AsyncClient):
-        target_resp = await client.post("/sla-targets", json={
-            "name": "slo-list-target", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "slo-list-target",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
-        await client.post("/slos", json={
-            "target_id": target_id,
-            "name": "slo-1",
-            "objective_pct": 99.0,
-            "window_seconds": 3600,
-        })
-        await client.post("/slos", json={
-            "target_id": target_id,
-            "name": "slo-2",
-            "objective_pct": 99.5,
-            "window_seconds": 86400,
-        })
+        await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "slo-1",
+                "objective_pct": 99.0,
+                "window_seconds": 3600,
+            },
+        )
+        await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "slo-2",
+                "objective_pct": 99.5,
+                "window_seconds": 86400,
+            },
+        )
 
         resp = await client.get("/slos")
         assert resp.status_code == 200
@@ -231,38 +306,55 @@ class TestSLOAPI:
 
     @pytest.mark.asyncio
     async def test_update_slo(self, client: AsyncClient):
-        target_resp = await client.post("/sla-targets", json={
-            "name": "slo-update-target", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "slo-update-target",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
-        create_resp = await client.post("/slos", json={
-            "target_id": target_id,
-            "name": "adjustable",
-            "objective_pct": 99.0,
-            "window_seconds": 3600,
-        })
+        create_resp = await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "adjustable",
+                "objective_pct": 99.0,
+                "window_seconds": 3600,
+            },
+        )
         slo_id = create_resp.json()["id"]
 
-        resp = await client.put(f"/slos/{slo_id}", json={
-            "objective_pct": 99.5,
-        })
+        resp = await client.put(
+            f"/slos/{slo_id}",
+            json={
+                "objective_pct": 99.5,
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["objective_pct"] == 99.5
 
     @pytest.mark.asyncio
     async def test_delete_slo(self, client: AsyncClient):
-        target_resp = await client.post("/sla-targets", json={
-            "name": "slo-del-target", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "slo-del-target",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
-        create_resp = await client.post("/slos", json={
-            "target_id": target_id,
-            "name": "removable",
-            "objective_pct": 99.9,
-            "window_seconds": 3600,
-        })
+        create_resp = await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "removable",
+                "objective_pct": 99.9,
+                "window_seconds": 3600,
+            },
+        )
         slo_id = create_resp.json()["id"]
 
         resp = await client.delete(f"/slos/{slo_id}")
@@ -271,17 +363,24 @@ class TestSLOAPI:
     @pytest.mark.asyncio
     async def test_slo_status_no_samples(self, client: AsyncClient):
         """SLO with no uptime samples should report 100% uptime."""
-        target_resp = await client.post("/sla-targets", json={
-            "name": "slo-status-target", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "slo-status-target",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
-        create_resp = await client.post("/slos", json={
-            "target_id": target_id,
-            "name": "status-test",
-            "objective_pct": 99.9,
-            "window_seconds": 604800,
-        })
+        create_resp = await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "status-test",
+                "objective_pct": 99.9,
+                "window_seconds": 604800,
+            },
+        )
         slo_id = create_resp.json()["id"]
 
         resp = await client.get(f"/slos/{slo_id}/status")
@@ -301,13 +400,16 @@ class TestMaintenanceWindowAPI:
     @pytest.mark.asyncio
     async def test_create_maintenance_window(self, client: AsyncClient):
         now = datetime.now(timezone.utc)
-        resp = await client.post("/maintenance-windows", json={
-            "name": "deploy",
-            "reason": "weekly deploy",
-            "starts_at": (now + timedelta(hours=1)).isoformat(),
-            "ends_at": (now + timedelta(hours=2)).isoformat(),
-            "target_ids": ["*"],
-        })
+        resp = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "deploy",
+                "reason": "weekly deploy",
+                "starts_at": (now + timedelta(hours=1)).isoformat(),
+                "ends_at": (now + timedelta(hours=2)).isoformat(),
+                "target_ids": ["*"],
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "deploy"
@@ -317,23 +419,29 @@ class TestMaintenanceWindowAPI:
     @pytest.mark.asyncio
     async def test_create_maintenance_window_bad_times(self, client: AsyncClient):
         now = datetime.now(timezone.utc)
-        resp = await client.post("/maintenance-windows", json={
-            "name": "bad",
-            "starts_at": (now + timedelta(hours=2)).isoformat(),
-            "ends_at": (now + timedelta(hours=1)).isoformat(),
-            "target_ids": ["*"],
-        })
+        resp = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "bad",
+                "starts_at": (now + timedelta(hours=2)).isoformat(),
+                "ends_at": (now + timedelta(hours=1)).isoformat(),
+                "target_ids": ["*"],
+            },
+        )
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_list_maintenance_windows(self, client: AsyncClient):
         now = datetime.now(timezone.utc)
-        await client.post("/maintenance-windows", json={
-            "name": "mw1",
-            "starts_at": (now + timedelta(hours=1)).isoformat(),
-            "ends_at": (now + timedelta(hours=2)).isoformat(),
-            "target_ids": ["*"],
-        })
+        await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "mw1",
+                "starts_at": (now + timedelta(hours=1)).isoformat(),
+                "ends_at": (now + timedelta(hours=2)).isoformat(),
+                "target_ids": ["*"],
+            },
+        )
 
         resp = await client.get("/maintenance-windows")
         assert resp.status_code == 200
@@ -342,29 +450,38 @@ class TestMaintenanceWindowAPI:
     @pytest.mark.asyncio
     async def test_update_maintenance_window(self, client: AsyncClient):
         now = datetime.now(timezone.utc)
-        create_resp = await client.post("/maintenance-windows", json={
-            "name": "updatable-mw",
-            "starts_at": (now + timedelta(hours=1)).isoformat(),
-            "ends_at": (now + timedelta(hours=2)).isoformat(),
-            "target_ids": ["*"],
-        })
+        create_resp = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "updatable-mw",
+                "starts_at": (now + timedelta(hours=1)).isoformat(),
+                "ends_at": (now + timedelta(hours=2)).isoformat(),
+                "target_ids": ["*"],
+            },
+        )
         mw_id = create_resp.json()["id"]
 
-        resp = await client.put(f"/maintenance-windows/{mw_id}", json={
-            "name": "renamed-mw",
-        })
+        resp = await client.put(
+            f"/maintenance-windows/{mw_id}",
+            json={
+                "name": "renamed-mw",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["name"] == "renamed-mw"
 
     @pytest.mark.asyncio
     async def test_delete_maintenance_window(self, client: AsyncClient):
         now = datetime.now(timezone.utc)
-        create_resp = await client.post("/maintenance-windows", json={
-            "name": "deletable-mw",
-            "starts_at": (now + timedelta(hours=1)).isoformat(),
-            "ends_at": (now + timedelta(hours=2)).isoformat(),
-            "target_ids": ["*"],
-        })
+        create_resp = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "deletable-mw",
+                "starts_at": (now + timedelta(hours=1)).isoformat(),
+                "ends_at": (now + timedelta(hours=2)).isoformat(),
+                "target_ids": ["*"],
+            },
+        )
         mw_id = create_resp.json()["id"]
 
         resp = await client.delete(f"/maintenance-windows/{mw_id}")
@@ -380,9 +497,13 @@ class TestUptimeAPI:
 
     @pytest.mark.asyncio
     async def test_uptime_empty(self, client: AsyncClient):
-        target_resp = await client.post("/sla-targets", json={
-            "name": "uptime-empty", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "uptime-empty",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
         resp = await client.get(f"/sla-targets/{target_id}/uptime?window=7d")
@@ -393,16 +514,23 @@ class TestUptimeAPI:
 
     @pytest.mark.asyncio
     async def test_uptime_with_samples(self, client: AsyncClient, db: AsyncSession):
-        target_resp = await client.post("/sla-targets", json={
-            "name": "uptime-samples", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "uptime-samples",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
         # Insert some uptime samples directly
         from backend.db.repos import UptimeSampleRepo
+
         now = datetime.now(timezone.utc)
         for i in range(10):
-            await UptimeSampleRepo.create(db, TEST_ORG_ID,
+            await UptimeSampleRepo.create(
+                db,
+                TEST_ORG_ID,
                 target_id=uuid.UUID(target_id),
                 up=(i < 9),  # 9 up, 1 down = 90% uptime
                 latency_ms=50,
@@ -419,24 +547,34 @@ class TestUptimeAPI:
 
     @pytest.mark.asyncio
     async def test_slo_status_with_data(self, client: AsyncClient, db: AsyncSession):
-        target_resp = await client.post("/sla-targets", json={
-            "name": "slo-data-target", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "slo-data-target",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
         # Create SLO with 95% objective
-        slo_resp = await client.post("/slos", json={
-            "target_id": target_id,
-            "name": "95pct",
-            "objective_pct": 95.0,
-            "window_seconds": 604800,
-        })
+        slo_resp = await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "95pct",
+                "objective_pct": 95.0,
+                "window_seconds": 604800,
+            },
+        )
         slo_id = slo_resp.json()["id"]
 
         # Insert 100 samples: 90 up, 10 down = 90% uptime (violating 95% SLO)
         from backend.db.repos import UptimeSampleRepo
+
         for i in range(100):
-            await UptimeSampleRepo.create(db, TEST_ORG_ID,
+            await UptimeSampleRepo.create(
+                db,
+                TEST_ORG_ID,
                 target_id=uuid.UUID(target_id),
                 up=(i < 90),
                 latency_ms=50,
@@ -452,23 +590,34 @@ class TestUptimeAPI:
         assert data["burn_rate"] > 1.0  # consuming budget faster than allowed
 
     @pytest.mark.asyncio
-    async def test_uptime_suppressed_excluded(self, client: AsyncClient, db: AsyncSession):
+    async def test_uptime_suppressed_excluded(
+        self, client: AsyncClient, db: AsyncSession
+    ):
         """Suppressed samples should be excluded from uptime calculation."""
-        target_resp = await client.post("/sla-targets", json={
-            "name": "uptime-suppressed", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "uptime-suppressed",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
         from backend.db.repos import UptimeSampleRepo
+
         # 8 up, 2 down but suppressed = 100% effective uptime
         for i in range(8):
-            await UptimeSampleRepo.create(db, TEST_ORG_ID,
+            await UptimeSampleRepo.create(
+                db,
+                TEST_ORG_ID,
                 target_id=uuid.UUID(target_id),
                 up=True,
                 source="poller",
             )
         for _ in range(2):
-            await UptimeSampleRepo.create(db, TEST_ORG_ID,
+            await UptimeSampleRepo.create(
+                db,
+                TEST_ORG_ID,
                 target_id=uuid.UUID(target_id),
                 up=False,
                 source="poller",
@@ -485,13 +634,20 @@ class TestUptimeAPI:
 
     @pytest.mark.asyncio
     async def test_sla_target_incidents(self, client: AsyncClient, db: AsyncSession):
-        target_resp = await client.post("/sla-targets", json={
-            "name": "target-incidents", "kind": "http",
-        })
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "target-incidents",
+                "kind": "http",
+            },
+        )
         target_id = target_resp.json()["id"]
 
         from backend.db.repos import IncidentRepo
-        incident = await IncidentRepo.create(db, TEST_ORG_ID, title="Target Outage", description="Test")
+
+        incident = await IncidentRepo.create(
+            db, TEST_ORG_ID, title="Target Outage", description="Test"
+        )
         incident.target_id = uuid.UUID(target_id)
         await db.commit()
 

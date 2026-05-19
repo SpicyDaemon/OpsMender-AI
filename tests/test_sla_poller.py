@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from backend.config_loader import AppConfig
 from backend.db.models import Base, MaintenanceWindow
 from backend.db.repos import MaintenanceWindowRepo, SLATargetRepo
-from backend.sla.poller import SLAPoller
+from backend.sla.poller import SLAPoller, expected_status_matches
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -27,6 +27,7 @@ async def factory():
     fac = async_sessionmaker(engine, expire_on_commit=False)
     async with fac() as session:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         session.add(org)
         await session.commit()
@@ -82,6 +83,33 @@ class TestSLAPoller:
 
             assert up is False
             assert latency is not None
+
+    @pytest.mark.asyncio
+    async def test_probe_target_http_expected_error_code(
+        self, factory, config, db: AsyncSession
+    ):
+        poller = SLAPoller(factory, config)
+        target = await SLATargetRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="missing-page",
+            kind="http",
+            config={"url": "http://test.com/missing", "expected_statuses": [404]},
+        )
+
+        with patch("httpx.AsyncClient.request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = Response(404)
+            up, latency = await poller._probe_target(target)
+
+            assert up is True
+            assert latency is not None
+
+    def test_expected_status_matches_multiple_forms(self):
+        assert expected_status_matches(204, {"expected_statuses": [200, 204]})
+        assert expected_status_matches(404, {"expected_statuses": "200,404"})
+        assert expected_status_matches(202, {"expected_statuses": "2xx"})
+        assert expected_status_matches(503, {"expected_statuses": "500-599"})
+        assert expected_status_matches(500, {"expected_status": 200}) is False
 
     @pytest.mark.asyncio
     async def test_probe_target_tcp_success(self, factory, config, db: AsyncSession):

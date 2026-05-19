@@ -508,6 +508,8 @@ The upcoming `mcp.json` mirror uses the Claude Code-compatible shape:
 
 External chat bot connectors are managed in **Config -> Integrations** or through the `/bot-connectors` API. Credentials are write-only: API responses expose `credential_keys` and `has_credentials`, never raw token values. OpsMender supports 15 platforms: Telegram, Signal, WhatsApp, Slack, Discord, MS Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Twilio, Email, Home Assistant, and BlueBubbles.
 
+Reliability & SLA includes a non-AI poller for website and TCP checks. Enable it with `OPSMENDER_SLA_POLLER_ENABLED=true`; set the cadence with `OPSMENDER_SLA_POLL_INTERVAL_DEFAULT` seconds. HTTP targets call the configured URL and mark the sample up when the response matches the expected status configuration. Supported forms are a single code (`expected_status: 200`), a list (`expected_statuses: [200, 204, 404]`), a class (`2xx`), or a range (`200-299`). This supports checks where an expected 404 or 401 is healthy for a specific endpoint.
+
 Example `.env` keys:
 
 ```dotenv

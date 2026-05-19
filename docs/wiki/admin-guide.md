@@ -72,7 +72,7 @@ These settings apply globally to the OpsMender instance.
 Key configurations include:
 - **Default Tier:** The default safety tier for new sessions (e.g., Tier 2).
 - **Auto-Start Policies:** Conditions under which OpsMender will automatically start an AI session upon incident ingestion.
-- **SLA Poller Defaults:** The default interval for checking SLA target uptime.
+- **SLA Poller Defaults:** The non-AI Reliability checker that repeatedly probes HTTP/TCP targets. HTTP targets can treat exact codes, status classes (`2xx`), ranges (`200-299`), or expected error codes such as `404` as healthy.
 
 ## 3. Model Configuration
 

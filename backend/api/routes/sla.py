@@ -34,6 +34,7 @@ from backend.db.repos import (
     SLORepo,
     UptimeSampleRepo,
 )
+from backend.sla.poller import validate_expected_status_config
 
 router = APIRouter(tags=["reliability"])
 
@@ -42,6 +43,15 @@ router = APIRouter(tags=["reliability"])
 # ======================================================================
 
 _targets_prefix = "/sla-targets"
+
+
+def _validate_sla_target_payload(kind: str | None, config: dict | None) -> None:
+    if kind != "http" or config is None:
+        return
+    try:
+        validate_expected_status_config(config)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
 @router.get(
@@ -90,6 +100,7 @@ async def create_sla_target(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
+    _validate_sla_target_payload(body.kind, body.config)
     try:
         target = await SLATargetRepo.create(
             db,
@@ -126,6 +137,10 @@ async def update_sla_target(
     existing = await SLATargetRepo.get_by_id(db, org_id, target_id)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
+
+    next_kind = body.kind if body.kind is not None else existing.kind
+    next_config = body.config if "config" in body.model_fields_set else existing.config
+    _validate_sla_target_payload(next_kind, next_config)
 
     try:
         updated = await SLATargetRepo.update(

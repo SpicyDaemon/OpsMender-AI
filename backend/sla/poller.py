@@ -36,6 +36,100 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _status_tokens(config: dict) -> list[object]:
+    raw = config.get("expected_statuses")
+    if raw is None:
+        raw = config.get("expected_status", 200)
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        return [part.strip() for part in raw.split(",") if part.strip()]
+    return [raw]
+
+
+def expected_status_matches(status_code: int, config: dict) -> bool:
+    """Return whether ``status_code`` satisfies an HTTP target config.
+
+    Backwards-compatible inputs:
+      - expected_status: 200
+      - expected_statuses: [200, 204, 404]
+      - expected_statuses: "200,204,404,2xx,500-599"
+    """
+
+    for token in _status_tokens(config):
+        if isinstance(token, int):
+            if status_code == token:
+                return True
+            continue
+
+        value = str(token).strip().lower()
+        if not value:
+            continue
+        if value.endswith("xx") and len(value) == 3 and value[0].isdigit():
+            start = int(value[0]) * 100
+            if start <= status_code <= start + 99:
+                return True
+            continue
+        if "-" in value:
+            start_raw, end_raw = value.split("-", 1)
+            try:
+                start, end = int(start_raw), int(end_raw)
+            except ValueError:
+                continue
+            if start <= status_code <= end:
+                return True
+            continue
+        try:
+            if status_code == int(value):
+                return True
+        except ValueError:
+            continue
+
+    return False
+
+
+def validate_expected_status_config(config: dict) -> None:
+    """Validate expected status syntax for API/UI saves."""
+
+    tokens = _status_tokens(config)
+    if not tokens:
+        raise ValueError("At least one expected HTTP status code is required")
+    for token in tokens:
+        if isinstance(token, int):
+            if token < 100 or token > 599:
+                raise ValueError("HTTP status codes must be between 100 and 599")
+            continue
+
+        value = str(token).strip().lower()
+        if not value:
+            raise ValueError("Expected HTTP status code entries cannot be empty")
+        if value.endswith("xx") and len(value) == 3 and value[0].isdigit():
+            if value[0] not in {"1", "2", "3", "4", "5"}:
+                raise ValueError("HTTP status class must be 1xx through 5xx")
+            continue
+        if "-" in value:
+            start_raw, end_raw = value.split("-", 1)
+            try:
+                start, end = int(start_raw), int(end_raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid HTTP status range {token!r}; use e.g. 200-299"
+                ) from exc
+            if start < 100 or end > 599 or start > end:
+                raise ValueError(
+                    f"Invalid HTTP status range {token!r}; use values 100-599"
+                )
+            continue
+        try:
+            code = int(value)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid HTTP status code {token!r}; use 200, 2xx, or 200-299"
+            ) from exc
+        if code < 100 or code > 599:
+            raise ValueError("HTTP status codes must be between 100 and 599")
+
+
 class SLAPoller:
     """Background task to probe SLA targets and record UptimeSamples."""
 
@@ -235,7 +329,9 @@ class SLAPoller:
                     if should_auto_start_session(
                         incident, dedup_action=dedup_action, policy=policy
                     ):
-                        if not await has_active_session_for_incident(db, org_id, incident.id):
+                        if not await has_active_session_for_incident(
+                            db, org_id, incident.id
+                        ):
                             await SessionRepo.create(
                                 db,
                                 org_id,
@@ -291,12 +387,11 @@ class SLAPoller:
                 if not url:
                     return False, None
                 method = config.get("method", "GET")
-                expected_status = config.get("expected_status", 200)
                 timeout = config.get("timeout", 10.0)
 
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     resp = await client.request(method, url)
-                    up = resp.status_code == expected_status
+                    up = expected_status_matches(resp.status_code, config)
             elif kind == "tcp":
                 host = config.get("host")
                 port = config.get("port")

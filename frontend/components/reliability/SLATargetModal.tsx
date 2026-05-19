@@ -15,6 +15,26 @@ interface SLATargetModalProps {
   initialData?: SLATargetResponse | null;
 }
 
+function expectedStatusesText(config: Record<string, unknown>): string {
+  const statuses = config.expected_statuses;
+  if (Array.isArray(statuses)) {
+    return statuses.map((status) => String(status)).join(", ");
+  }
+  if (typeof statuses === "string") return statuses;
+  if (typeof config.expected_status === "number" || typeof config.expected_status === "string") {
+    return String(config.expected_status);
+  }
+  return "200";
+}
+
+function parseExpectedStatuses(value: string): Array<number | string> {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+}
+
 export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATargetModalProps) {
   const [form, setForm] = useState({
     name: "",
@@ -24,7 +44,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
     // HTTP config
     http_url: "",
     http_method: "GET",
-    http_expected_status: "200",
+    http_expected_statuses: "200",
     // TCP config
     tcp_host: "",
     tcp_port: "",
@@ -43,7 +63,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
           is_active: initialData.is_active,
           http_url: initialData.kind === "http" ? (config.url as string || "") : "",
           http_method: initialData.kind === "http" ? (config.method as string || "GET") : "GET",
-          http_expected_status: initialData.kind === "http" ? String(config.expected_status || "200") : "200",
+          http_expected_statuses: initialData.kind === "http" ? expectedStatusesText(config) : "200",
           tcp_host: initialData.kind === "tcp" ? (config.host as string || "") : "",
           tcp_port: initialData.kind === "tcp" ? String(config.port || "") : "",
         });
@@ -55,7 +75,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
           is_active: true,
           http_url: "",
           http_method: "GET",
-          http_expected_status: "200",
+          http_expected_statuses: "200",
           tcp_host: "",
           tcp_port: "",
         });
@@ -74,14 +94,20 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
     setError("");
 
     try {
-      const config: Record<string, any> = {};
+      const config: Record<string, unknown> = {};
       if (form.kind === "http") {
         config.url = form.http_url.trim();
         config.method = form.http_method;
-        config.expected_status = parseInt(form.http_expected_status, 10) || 200;
+        const expectedStatuses = parseExpectedStatuses(form.http_expected_statuses);
+        config.expected_statuses = expectedStatuses;
         
         if (!config.url) {
           setError("URL is required for HTTP targets");
+          setSaving(false);
+          return;
+        }
+        if (expectedStatuses.length === 0) {
+          setError("At least one expected HTTP status code is required");
           setSaving(false);
           return;
         }
@@ -190,10 +216,13 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
                 <Label htmlFor="http-status">Expected Status</Label>
                 <Input
                   id="http-status"
-                  type="number"
-                  value={form.http_expected_status}
-                  onChange={(e) => setForm({ ...form, http_expected_status: e.target.value })}
+                  value={form.http_expected_statuses}
+                  onChange={(e) => setForm({ ...form, http_expected_statuses: e.target.value })}
+                  placeholder="200, 204, 404, 2xx"
                 />
+                <p className="mt-1 text-[11px] text-fg-muted">
+                  Accepts exact codes, classes like 2xx, or ranges like 200-299.
+                </p>
               </div>
             </div>
           </div>

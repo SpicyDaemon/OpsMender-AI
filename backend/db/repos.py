@@ -46,6 +46,7 @@ from backend.db.models import (
     IngestLog,
     IngestToken,
     MCPServer,
+    MCPServerOAuthToken,
     ModelConfig,
     RuntimeConfig,
     Session,
@@ -967,6 +968,181 @@ class MCPServerRepo:
         if server is None:
             return False
         await db.delete(server)
+        await db.flush()
+        return True
+
+
+class MCPServerOAuthTokenRepo:
+    """OAuth 2.1 token persistence for HTTP-transport MCP servers (Sprint 42).
+
+    Tokens are encrypted at rest using the project's Fernet helper in
+    ``backend/auth/secrets.py`` — callers pass plaintext and read
+    plaintext; the repository owns the encrypt/decrypt boundary.
+
+    Refresh-token rotation (OAuth 2.1 §4.3.1) is the common case: every
+    successful token-endpoint response carries a *new* refresh_token
+    that supersedes the old one. ``rotate`` writes both the new access
+    token and the new refresh token in one shot and bumps
+    ``last_refreshed_at``.
+    """
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        mcp_server_id: uuid.UUID,
+        access_token: str,
+        refresh_token: str | None,
+        expires_at: datetime | None,
+        scopes: list[str] | None = None,
+        issuer: str | None = None,
+        token_type: str = "Bearer",
+    ) -> MCPServerOAuthToken:
+        """Create the token row, or replace the existing one for this server.
+
+        Used after the initial OAuth code exchange and any later forced
+        re-authorization. For routine refresh-token rotation use
+        :meth:`rotate` instead.
+        """
+
+        from backend.auth.secrets import encrypt_secret
+
+        existing = await MCPServerOAuthTokenRepo.get_for_server(
+            db, org_id, mcp_server_id
+        )
+        if existing is not None:
+            existing.access_token_encrypted = encrypt_secret(access_token)
+            existing.refresh_token_encrypted = (
+                encrypt_secret(refresh_token) if refresh_token else None
+            )
+            existing.expires_at = expires_at
+            existing.scopes = scopes
+            existing.issuer = issuer
+            existing.token_type = token_type
+            existing.obtained_at = datetime.now(timezone.utc)
+            existing.last_refreshed_at = None
+            await db.flush()
+            return existing
+
+        row = MCPServerOAuthToken(
+            org_id=org_id,
+            mcp_server_id=mcp_server_id,
+            access_token_encrypted=encrypt_secret(access_token),
+            refresh_token_encrypted=(
+                encrypt_secret(refresh_token) if refresh_token else None
+            ),
+            token_type=token_type,
+            scopes=scopes,
+            expires_at=expires_at,
+            issuer=issuer,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def rotate(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        mcp_server_id: uuid.UUID,
+        access_token: str,
+        refresh_token: str | None,
+        expires_at: datetime | None,
+        scopes: list[str] | None = None,
+    ) -> MCPServerOAuthToken | None:
+        """Update an existing token row after a successful refresh.
+
+        Per OAuth 2.1 §4.3.1, public-client refresh responses rotate the
+        refresh_token — callers MUST pass the new value (or ``None`` if
+        the authorization server didn't issue one this round).
+        """
+
+        from backend.auth.secrets import encrypt_secret
+
+        row = await MCPServerOAuthTokenRepo.get_for_server(db, org_id, mcp_server_id)
+        if row is None:
+            return None
+        row.access_token_encrypted = encrypt_secret(access_token)
+        if refresh_token is not None:
+            row.refresh_token_encrypted = encrypt_secret(refresh_token)
+        # If the response omitted refresh_token we keep the existing one
+        # (the AS opted not to rotate this turn — still valid per spec).
+        row.expires_at = expires_at
+        if scopes is not None:
+            row.scopes = scopes
+        row.last_refreshed_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_for_server(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        mcp_server_id: uuid.UUID,
+    ) -> MCPServerOAuthToken | None:
+        return (
+            await db.execute(
+                select(MCPServerOAuthToken).where(
+                    MCPServerOAuthToken.org_id == org_id,
+                    MCPServerOAuthToken.mcp_server_id == mcp_server_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def read_plaintext(
+        row: MCPServerOAuthToken,
+    ) -> tuple[str, str | None]:
+        """Decrypt and return ``(access_token, refresh_token)``.
+
+        Returned as a plain tuple so callers can hand the values
+        directly to ``httpx.AsyncClient`` without juggling the model
+        instance.
+        """
+
+        from backend.auth.secrets import decrypt_secret
+
+        access = decrypt_secret(row.access_token_encrypted)
+        refresh = (
+            decrypt_secret(row.refresh_token_encrypted)
+            if row.refresh_token_encrypted
+            else None
+        )
+        return access, refresh
+
+    @staticmethod
+    async def list_expiring_before(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        cutoff: datetime,
+    ) -> Sequence[MCPServerOAuthToken]:
+        """Tokens with ``expires_at <= cutoff`` — the auto-refresh sweep query."""
+
+        stmt = (
+            select(MCPServerOAuthToken)
+            .where(MCPServerOAuthToken.org_id == org_id)
+            .where(MCPServerOAuthToken.expires_at.is_not(None))
+            .where(MCPServerOAuthToken.expires_at <= cutoff)
+            .order_by(MCPServerOAuthToken.expires_at)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def delete_for_server(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        mcp_server_id: uuid.UUID,
+    ) -> bool:
+        """Remove the OAuth row when the operator disconnects the server."""
+
+        row = await MCPServerOAuthTokenRepo.get_for_server(db, org_id, mcp_server_id)
+        if row is None:
+            return False
+        await db.delete(row)
         await db.flush()
         return True
 

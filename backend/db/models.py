@@ -489,6 +489,65 @@ class MCPServer(Base):
     __table_args__ = (UniqueConstraint("org_id", "name", name="uq_mcp_server_name"),)
 
 
+class MCPServerOAuthToken(Base):
+    """OAuth 2.1 token bundle for an HTTP-transport MCP server (Sprint 42).
+
+    One row per ``(org_id, mcp_server_id)``. ``access_token`` and
+    ``refresh_token`` are encrypted at rest with the project-wide Fernet
+    helper in ``backend/auth/secrets.py`` — repo callers pass plaintext;
+    encryption happens at the boundary.
+
+    The ``issuer`` column captures the authorization-server issuer
+    recorded at authorize-request time, used for RFC 9207 validation
+    when redirects come back and on every subsequent refresh.
+
+    The spec says refresh tokens MAY NOT be issued (OAuth 2.1 §4.3 / MCP
+    authz §6.4), so ``refresh_token_encrypted`` is nullable. The auto-
+    refresh path treats absence as "operator must reauthorize."
+    """
+
+    __tablename__ = "mcp_server_oauth_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    mcp_server_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("mcp_servers.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,  # exactly one OAuth row per MCP server
+    )
+    access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="Bearer"
+    )
+    scopes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    obtained_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        # Auto-refresh poll uses (org_id, expires_at) to find tokens about
+        # to expire across an org's MCP fleet.
+        Index(
+            "ix_mcp_server_oauth_tokens_org_expires",
+            "org_id",
+            "expires_at",
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Skills
 # ---------------------------------------------------------------------------

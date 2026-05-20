@@ -217,6 +217,7 @@ class ReconcileResult:
     created: list[str] = field(default_factory=list)
     updated: list[str] = field(default_factory=list)
     db_only: list[str] = field(default_factory=list)
+    deleted: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
@@ -275,12 +276,22 @@ class MCPJSONSyncer:
         except OSError as exc:
             logger.warning("mcp_json: export failed (%s): %s", self._path, exc)
 
-    async def reconcile_on_startup(self, org_id: uuid.UUID) -> ReconcileResult:
+    async def reconcile_on_startup(
+        self,
+        org_id: uuid.UUID,
+        *,
+        prune: bool = False,
+        dry_run: bool = False,
+    ) -> ReconcileResult:
         """Apply ``mcp.json`` deltas into the DB for one org.
 
         File wins on conflict for fields the file actually sets;
-        DB-only servers are reported in ``ReconcileResult.db_only`` but
-        not deleted.
+        DB-only servers are reported in ``ReconcileResult.db_only``
+        and additionally deleted (and recorded in
+        ``ReconcileResult.deleted``) when ``prune=True``. When
+        ``dry_run=True`` the planned mutations are computed but never
+        committed — used by ``opsmender mcp reload`` without
+        ``--apply``.
         """
         result = ReconcileResult()
         if not self.enabled:
@@ -323,13 +334,25 @@ class MCPJSONSyncer:
                         "mcp_json: reconcile updated server=%r org=%s", name, org_id
                     )
 
-            for name in existing_by_name:
-                if name not in file_entries:
-                    result.db_only.append(name)
+            for name, row in existing_by_name.items():
+                if name in file_entries:
+                    continue
+                result.db_only.append(name)
+                if prune:
+                    await MCPServerRepo.delete(session, org_id, row.id)
+                    result.deleted.append(name)
+                    logger.info(
+                        "mcp_json: reconcile deleted server=%r org=%s (--prune)",
+                        name,
+                        org_id,
+                    )
 
-            await session.commit()
+            if dry_run:
+                await session.rollback()
+            else:
+                await session.commit()
 
-        if result.db_only:
+        if result.db_only and not prune:
             logger.info(
                 "mcp_json: %d DB-only server(s) not in file (preserved): %s",
                 len(result.db_only),

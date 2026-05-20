@@ -407,3 +407,74 @@ class TestSyncerReconcile:
         result = await syncer.reconcile_on_startup(TEST_ORG_ID)
         assert result.errors
         assert "not valid JSON" in result.errors[0]
+
+
+class TestReconcilePrune:
+    async def test_prune_deletes_db_only(self, db_factory, tmp_path):
+        async with db_factory() as session:
+            await MCPServerRepo.create(
+                session,
+                TEST_ORG_ID,
+                name="keep",
+                transport="stdio",
+                command="echo",
+                is_active=True,
+            )
+            await MCPServerRepo.create(
+                session,
+                TEST_ORG_ID,
+                name="drop",
+                transport="stdio",
+                command="rm",
+                is_active=True,
+            )
+            await session.commit()
+        path = tmp_path / "mcp.json"
+        path.write_text(
+            json.dumps({"mcpServers": {"keep": {"type": "stdio", "command": "echo"}}}),
+            encoding="utf-8",
+        )
+        syncer = MCPJSONSyncer(db_factory, path=path, enabled=True)
+        result = await syncer.reconcile_on_startup(TEST_ORG_ID, prune=True)
+        assert result.deleted == ["drop"]
+        async with db_factory() as session:
+            assert await MCPServerRepo.get_by_name(session, TEST_ORG_ID, "drop") is None
+            assert await MCPServerRepo.get_by_name(session, TEST_ORG_ID, "keep") is not None
+
+
+class TestReconcileDryRun:
+    async def test_dry_run_does_not_commit(self, db_factory, tmp_path):
+        async with db_factory() as session:
+            await MCPServerRepo.create(
+                session,
+                TEST_ORG_ID,
+                name="kube",
+                transport="stdio",
+                command="OLD",
+                is_active=True,
+            )
+            await session.commit()
+        path = tmp_path / "mcp.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "kube": {"type": "stdio", "command": "NEW"},
+                        "fresh": {"type": "stdio", "command": "new-one"},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        syncer = MCPJSONSyncer(db_factory, path=path, enabled=True)
+        result = await syncer.reconcile_on_startup(TEST_ORG_ID, dry_run=True)
+        # Plan reported
+        assert "fresh" in result.created
+        assert "kube" in result.updated
+        # But DB is unchanged
+        async with db_factory() as session:
+            kube = await MCPServerRepo.get_by_name(session, TEST_ORG_ID, "kube")
+            assert kube.command == "OLD"
+            assert (
+                await MCPServerRepo.get_by_name(session, TEST_ORG_ID, "fresh")
+            ) is None

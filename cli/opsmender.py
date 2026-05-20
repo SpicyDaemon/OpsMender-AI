@@ -380,6 +380,45 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Actually create the audit_schedules rows. Default is a dry-run that only prints the plan.",
     )
 
+    # -- mcp ----------------------------------------------------------------
+    mcp_parser = sub.add_parser(
+        "mcp",
+        help="mcp.json file mirror utilities (Sprint 42 step 7)",
+    )
+    mcp_sub = mcp_parser.add_subparsers(dest="mcp_command")
+
+    mcp_export = mcp_sub.add_parser(
+        "export",
+        help="Write the current DB state for an org to mcp.json",
+    )
+    mcp_export.add_argument(
+        "--path",
+        default=None,
+        help="Output path (default: $OPSMENDER_MCP_CONFIG_PATH or ~/.opsmender/mcp.json)",
+    )
+    mcp_export.add_argument(
+        "--org-id",
+        default=None,
+        help="Org UUID to export. Defaults to $OPSMENDER_MCP_JSON_ORG_ID or the only org when exactly one exists.",
+    )
+
+    mcp_reload = mcp_sub.add_parser(
+        "reload",
+        help="Apply mcp.json deltas back into the DB (dry-run by default)",
+    )
+    mcp_reload.add_argument("--path", default=None, help="Input path (same default as export)")
+    mcp_reload.add_argument("--org-id", default=None, help="Org UUID (same default as export)")
+    mcp_reload.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually commit the changes. Default is a dry-run that prints the plan.",
+    )
+    mcp_reload.add_argument(
+        "--prune",
+        action="store_true",
+        help="Also delete DB servers that are not in the file. Default keeps DB-only servers.",
+    )
+
     # -- saml ---------------------------------------------------------------
     saml_parser = sub.add_parser(
         "saml",
@@ -1419,6 +1458,102 @@ async def _run_detectors_migrate(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+async def _resolve_mcp_org_id(
+    factory, raw_arg: str | None
+) -> tuple[uuid.UUID | None, str | None]:
+    """Resolve the org UUID for `opsmender mcp ...`.
+
+    Precedence: ``--org-id`` argument, then ``OPSMENDER_MCP_JSON_ORG_ID``
+    env var, then the only org in the DB when exactly one exists.
+    Returns ``(org_id, error_message)`` — exactly one is non-None.
+    """
+
+    from backend.db.repos import OrganizationRepo
+
+    raw = raw_arg or os.environ.get("OPSMENDER_MCP_JSON_ORG_ID")
+    if raw:
+        try:
+            return uuid.UUID(raw.strip()), None
+        except ValueError:
+            return None, f"--org-id is not a valid UUID: {raw!r}"
+
+    async with factory() as session:
+        orgs = await OrganizationRepo.list_all(session)
+    if not orgs:
+        return None, "No organizations exist in the database."
+    if len(orgs) > 1:
+        names = ", ".join(f"{o.id} ({o.name})" for o in orgs)
+        return None, (
+            "Multiple organizations exist; pass --org-id or set "
+            f"OPSMENDER_MCP_JSON_ORG_ID. Known: {names}"
+        )
+    return orgs[0].id, None
+
+
+async def _run_mcp(cfg: Config, args: argparse.Namespace) -> int:
+    """Dispatch ``opsmender mcp <export|reload>`` (Sprint 42 step 7)."""
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from backend.mcp.mcp_json import MCPJSONSyncer, default_path
+
+    if args.mcp_command not in {"export", "reload"}:
+        _build_parser().parse_args(["mcp", "--help"])
+        return 0
+
+    path = pathlib.Path(args.path).expanduser() if args.path else default_path()
+
+    engine = create_async_engine(_database_url(cfg), echo=False)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        org_id, err = await _resolve_mcp_org_id(factory, args.org_id)
+        if err is not None:
+            print(f"opsmender mcp: {err}", file=sys.stderr)
+            return 2
+
+        # CLI invocations bypass the OPSMENDER_MCP_JSON_SYNC opt-in flag —
+        # the operator just typed the command, that's consent enough.
+        syncer = MCPJSONSyncer(factory, path=path, enabled=True)
+
+        if args.mcp_command == "export":
+            await syncer.export_org(org_id)
+            print(f"Exported MCP servers for org {org_id} to {path}")
+            return 0
+
+        # reload
+        result = await syncer.reconcile_on_startup(
+            org_id,
+            prune=args.prune,
+            dry_run=not args.apply,
+        )
+
+        print(f"mcp reload — file={path} org={org_id}")
+        print(f"  created: {len(result.created)}")
+        for name in result.created:
+            print(f"    + {name}")
+        print(f"  updated: {len(result.updated)}")
+        for name in result.updated:
+            print(f"    ~ {name}")
+        print(f"  db-only: {len(result.db_only)}")
+        for name in result.db_only:
+            marker = "-" if args.prune else "·"
+            print(f"    {marker} {name}")
+        if args.prune:
+            print(f"  deleted: {len(result.deleted)}")
+        if result.errors:
+            print(f"  errors:  {len(result.errors)}")
+            for msg in result.errors:
+                print(f"    ! {msg}")
+
+        if not args.apply:
+            print("(Dry run — nothing was written. Re-run with --apply to commit.)")
+        if result.errors:
+            return 1
+        return 0
+    finally:
+        await engine.dispose()
+
+
 def _run_saml_gen_sp_keys(args: argparse.Namespace) -> int:
     """Emit a self-signed SP keypair (PEM cert + key) to stdout.
 
@@ -1517,6 +1652,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "detectors-migrate":
         rc = asyncio.run(_run_detectors_migrate(cfg, args))
+        sys.exit(rc)
+
+    if args.command == "mcp":
+        rc = asyncio.run(_run_mcp(cfg, args))
         sys.exit(rc)
 
     if args.command == "saml":

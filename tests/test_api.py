@@ -1294,6 +1294,54 @@ class TestConfig:
         assert data["ingest_auto_start_source"] is None
 
 
+class TestSetupChecklist:
+    async def test_fresh_org_has_all_false(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get("/config/setup-checklist", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data == {
+            "model_configured": False,
+            "mcp_server_added": False,
+            "skill_defined": False,
+            "ingest_token_created": False,
+            "paging_service_added": False,
+            "all_complete": False,
+        }
+
+    async def test_mcp_server_flips_after_create(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        from backend.db.repos import MCPServerRepo
+
+        async with app.state.session_factory() as db:
+            await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="probe",
+                transport="stdio",
+                command="echo",
+                is_active=True,
+            )
+            await db.commit()
+        resp = await client.get("/config/setup-checklist", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["mcp_server_added"] is True
+        assert data["all_complete"] is False
+
+    async def test_viewer_can_read(self, client: AsyncClient, viewer_headers):
+        resp = await client.get(
+            "/config/setup-checklist", headers=viewer_headers
+        )
+        assert resp.status_code == 200
+
+    async def test_unauthenticated_rejected(self, client: AsyncClient):
+        resp = await client.get("/config/setup-checklist")
+        assert resp.status_code in {401, 403}
+
+
 # ===========================================================================
 # Webhook triggers
 # ===========================================================================

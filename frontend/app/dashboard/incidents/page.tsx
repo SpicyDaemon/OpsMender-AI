@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Plus, RefreshCw, Search, X } from "lucide-react";
 import { createIncident, listIncidents } from "@/lib/api";
+import { SetupChecklist } from "@/components/SetupChecklist";
 import type {
   IncidentCreate,
   IncidentListResponse,
@@ -160,6 +161,7 @@ export default function IncidentsPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
+      <SetupChecklist />
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>

@@ -6,6 +6,8 @@ PUT  /config — update config (admin only)
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,10 +20,18 @@ from backend.api.schemas import (
     ModelConfigSaveResponse,
     ModelConfigValidationIssue,
     ModelConfigUpdate,
+    SetupChecklistResponse,
 )
 from backend.config_loader import Config, set_env_path
 from backend.db.models import User
-from backend.db.repos import ModelConfigRepo, RuntimeConfigRepo
+from backend.db.repos import (
+    IngestTokenRepo,
+    MCPServerRepo,
+    ModelConfigRepo,
+    RuntimeConfigRepo,
+    ServiceRepo,
+    SkillRepo,
+)
 from backend.llm import ProviderRegistry
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -125,6 +135,55 @@ async def get_config(
         ingest_auto_start_enabled=ingest_auto_start_enabled,
         ingest_auto_start_min_severity=ingest_auto_start_min_severity,
         ingest_auto_start_source=ingest_auto_start_source,
+    )
+
+
+@router.get(
+    "/setup-checklist",
+    response_model=SetupChecklistResponse,
+    summary="First-run setup checklist state (Sprint 43 P0 #1)",
+)
+async def get_setup_checklist(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator", "viewer")),
+):
+    """Return whether the org has completed each first-run setup step.
+
+    The frontend renders a checklist on the incidents page when
+    ``all_complete`` is false, deep-linking each unchecked row into
+    the relevant Config section.
+    """
+
+    models = await ModelConfigRepo.list_all(db, org_id)
+    mcp_servers = await MCPServerRepo.list_all(db, org_id)
+    skills = await SkillRepo.list_all(db, org_id)
+    ingest_tokens = await IngestTokenRepo.list_all(db, org_id)
+    services = await ServiceRepo.list_all(db, org_id)
+
+    model_configured = len(models) > 0
+    mcp_server_added = len(mcp_servers) > 0
+    skill_defined = len(skills) > 0
+    ingest_token_created = len(ingest_tokens) > 0
+    paging_service_added = len(services) > 0
+
+    all_complete = all(
+        [
+            model_configured,
+            mcp_server_added,
+            skill_defined,
+            ingest_token_created,
+            paging_service_added,
+        ]
+    )
+
+    return SetupChecklistResponse(
+        model_configured=model_configured,
+        mcp_server_added=mcp_server_added,
+        skill_defined=skill_defined,
+        ingest_token_created=ingest_token_created,
+        paging_service_added=paging_service_added,
+        all_complete=all_complete,
     )
 
 

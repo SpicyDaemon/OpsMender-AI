@@ -221,6 +221,23 @@ class ConfigResponse(BaseModel):
     ingest_auto_start_source: Optional[str] = None
 
 
+class SetupChecklistResponse(BaseModel):
+    """First-run setup checklist state (Sprint 43 P0 #1).
+
+    Each flag indicates whether the org has completed that setup step.
+    The frontend renders the checklist when ``all_complete`` is false
+    and hides it otherwise. ``paging_service_added`` is marked optional
+    so a fresh org with the other four checked off is considered done.
+    """
+
+    model_configured: bool
+    mcp_server_added: bool
+    skill_defined: bool
+    ingest_token_created: bool
+    paging_service_added: bool
+    all_complete: bool
+
+
 class ConfigUpdate(BaseModel):
     tier: Optional[int] = Field(default=None, ge=0, le=3)
     logging_level: Optional[str] = Field(

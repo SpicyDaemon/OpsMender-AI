@@ -269,7 +269,11 @@ export async function rejectRequest(id: string): Promise<ApprovalRequestResponse
 // Config
 // ---------------------------------------------------------------------------
 
-import type { ConfigResponse, ConfigUpdate } from "./types";
+import type {
+  ConfigResponse,
+  ConfigUpdate,
+  SetupChecklistResponse,
+} from "./types";
 
 export async function getConfig(): Promise<ConfigResponse> {
   return api.get<ConfigResponse>("/config");
@@ -277,6 +281,10 @@ export async function getConfig(): Promise<ConfigResponse> {
 
 export async function updateConfig(body: ConfigUpdate): Promise<ConfigResponse> {
   return api.put<ConfigResponse>("/config", body);
+}
+
+export async function getSetupChecklist(): Promise<SetupChecklistResponse> {
+  return api.get<SetupChecklistResponse>("/config/setup-checklist");
 }
 
 // ---------------------------------------------------------------------------

@@ -207,6 +207,15 @@ export interface ConfigUpdate {
   ingest_auto_start_source?: string;
 }
 
+export interface SetupChecklistResponse {
+  model_configured: boolean;
+  mcp_server_added: boolean;
+  skill_defined: boolean;
+  ingest_token_created: boolean;
+  paging_service_added: boolean;
+  all_complete: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Models / Providers
 // ---------------------------------------------------------------------------

@@ -41,6 +41,21 @@ from backend.mcp.oauth import (
 router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
 
 
+async def _maybe_sync_mcp_json(request: Request, org_id: uuid.UUID) -> None:
+    """Best-effort file mirror (Sprint 42 step 6). No-op when disabled."""
+    syncer = getattr(request.app.state, "mcp_json_syncer", None)
+    if syncer is None or not syncer.enabled:
+        return
+    try:
+        await syncer.export_org(org_id)
+    except Exception:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "mcp_json: export after CRUD failed", exc_info=True
+        )
+
+
 def _public_base_url(request: Request) -> str:
     fwd_proto = request.headers.get("x-forwarded-proto")
     fwd_host = request.headers.get("x-forwarded-host")
@@ -335,6 +350,7 @@ async def list_mcp_servers(
     summary="Create a saved MCP server",
 )
 async def create_mcp_server(
+    request: Request,
     body: MCPServerUpsert,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
@@ -357,6 +373,7 @@ async def create_mcp_server(
         )
         await db.commit()
         await db.refresh(server)
+        await _maybe_sync_mcp_json(request, org_id)
         return _to_response(server)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -374,6 +391,7 @@ async def create_mcp_server(
     summary="Update a saved MCP server",
 )
 async def update_mcp_server(
+    request: Request,
     server_id: uuid.UUID,
     body: MCPServerUpsert,
     db: AsyncSession = Depends(get_db),
@@ -410,6 +428,7 @@ async def update_mcp_server(
                 detail="MCP server not found",
             )
         await db.refresh(updated)
+        await _maybe_sync_mcp_json(request, org_id)
         return _to_response(updated)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -427,6 +446,7 @@ async def update_mcp_server(
     summary="Delete a saved MCP server",
 )
 async def delete_mcp_server(
+    request: Request,
     server_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
@@ -439,6 +459,7 @@ async def delete_mcp_server(
             detail="MCP server not found",
         )
     await db.commit()
+    await _maybe_sync_mcp_json(request, org_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

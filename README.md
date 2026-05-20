@@ -493,7 +493,7 @@ Saved model profiles and MCP server definitions are also persisted in the databa
 
 MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-reads the DB on every lookup — servers added via `POST /mcp-servers` or the dashboard are visible to already-running sessions with no reload. URL-based MCP servers can also use the OAuth 2.1 + PKCE flow from the Config page's Connect action; tokens are encrypted in `mcp_server_oauth_tokens`, not returned through the API or written to `mcp.json`. `OPSMENDER_MCP_SERVERS_JSON` stays supported as a read-only fallback for bootstrapping before any DB entries exist.
 
-The upcoming `mcp.json` mirror uses the Claude Code-compatible shape:
+The `mcp.json` mirror (Sprint 42 Step 6) uses the Claude Code-compatible shape:
 
 ```json
 {
@@ -505,6 +505,8 @@ The upcoming `mcp.json` mirror uses the Claude Code-compatible shape:
   }
 }
 ```
+
+The mirror is opt-in. Set `OPSMENDER_MCP_JSON_SYNC=true` to enable two-way sync between the DB and `~/.opsmender/mcp.json` (override the path with `OPSMENDER_MCP_CONFIG_PATH`; pin to one org in a multi-tenant deployment via `OPSMENDER_MCP_JSON_ORG_ID`). Behavior: UI mutations write to disk; on startup the file is reconciled into the DB (file wins on conflict; DB-only servers are preserved — they are reported in the log but never deleted). OAuth tokens and the static bearer `token` column are never serialized to the file; secrets stay in the DB.
 
 External chat bot connectors are managed in **Config -> Integrations** or through the `/bot-connectors` API. Credentials are write-only: API responses expose `credential_keys` and `has_credentials`, never raw token values. OpsMender supports 15 platforms: Telegram, Signal, WhatsApp, Slack, Discord, MS Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Twilio, Email, Home Assistant, and BlueBubbles.
 

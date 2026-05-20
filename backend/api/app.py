@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config_loader import AppConfig
 from backend.api.deps import set_mcp_pool, set_session_factory
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
+from backend.mcp.mcp_json import MCPJSONSyncer
 from backend.mcp.pool import MCPServerPool
 from backend.sla.downsampler import UptimeDownsampler
 from backend.sla.poller import SLAPoller
@@ -76,6 +77,31 @@ async def _lifespan(app: FastAPI):
     app.state.audit_scheduler = audit_scheduler
     await audit_scheduler.start()
 
+    # mcp.json file mirror (Sprint 42 step 6). Opt-in via OPSMENDER_MCP_JSON_SYNC.
+    # When enabled, reconcile the file against every org's MCP servers on
+    # startup so file edits made while the service was down are applied.
+    mcp_json_syncer = MCPJSONSyncer(factory)
+    app.state.mcp_json_syncer = mcp_json_syncer
+    if mcp_json_syncer.enabled:
+        try:
+            from backend.db.repos import OrganizationRepo
+
+            async with factory() as session:
+                orgs = await OrganizationRepo.list_all(session)
+            target_orgs = (
+                [mcp_json_syncer.pinned_org_id]
+                if mcp_json_syncer.pinned_org_id is not None
+                else [org.id for org in orgs]
+            )
+            for target in target_orgs:
+                await mcp_json_syncer.reconcile_on_startup(target)
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "mcp_json: startup reconcile failed: %s", exc
+            )
+
     # Import any SKILL.md files under ./skills/ that aren't already in the DB.
     # Best-effort: failures are logged but do not block startup.
     try:
@@ -125,6 +151,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.state.config = config
     app.state.session_factory = None
     app.state.mcp_pool = MCPServerPool(None, env_fallback=config.mcp_servers)
+    app.state.mcp_json_syncer = MCPJSONSyncer(None)
     app.state.session_tasks = set()
     app.state.background_tasks = set()
 

@@ -1597,6 +1597,14 @@ function MCPSection({
                         {server.oauth_status === "reconnect_needed" && (
                           <Badge variant="high">Reconnect needed</Badge>
                         )}
+                        {server.transport !== "stdio" &&
+                          server.oauth_status === null &&
+                          server.has_token && <Badge>Bearer</Badge>}
+                        {server.transport !== "stdio" &&
+                          server.oauth_status === null &&
+                          !server.has_token && (
+                            <Badge variant="medium">Not authorized</Badge>
+                          )}
                       </div>
                     </td>
                     <td className="px-4 py-3 align-top">

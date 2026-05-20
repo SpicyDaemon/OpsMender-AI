@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.config_loader import AppConfig
+from backend.config_loader import AppConfig, check_production_safety
 from backend.api.deps import set_mcp_pool, set_session_factory
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.mcp.mcp_json import MCPJSONSyncer
@@ -141,6 +141,7 @@ async def _lifespan(app: FastAPI):
 def create_app(config: AppConfig | None = None) -> FastAPI:
     """Build and return the fully-configured FastAPI application."""
     config = config or AppConfig.load()
+    check_production_safety(config)
 
     app = FastAPI(
         title=config.app.name,

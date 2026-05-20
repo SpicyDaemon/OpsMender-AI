@@ -19,6 +19,10 @@ from dataclasses import replace
 # Place project root on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+# Sprint 43 P0 #4 — opt into the development bypass so the production
+# default-secret guard does not refuse to start the local dev server.
+os.environ.setdefault("OPSMENDER_DEPLOYMENT_MODE", "development")
+
 
 def _sqlite_literal(value):
     if isinstance(value, bool):

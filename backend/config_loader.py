@@ -14,6 +14,41 @@ DEFAULT_ENV_FILE = ".env"
 DEFAULT_LOCAL_POSTGRES_URL = "postgresql+asyncpg://opsmender:opsmender@localhost:5432/opsmender"
 DEFAULT_LOCAL_SQLITE_URL = "sqlite+aiosqlite:///./opsmender-local.db"
 
+# Sprint 43 P0 #4 — default JWT secrets that MUST be replaced before a
+# production deployment. The startup guard refuses to start the API
+# when any of these is in effect unless OPSMENDER_DEPLOYMENT_MODE is
+# explicitly set to "development".
+_DEFAULT_JWT_SECRETS: frozenset[str] = frozenset(
+    {
+        "change-me-in-production",  # .env.example default
+        "dev-secret-change-in-production",  # AuthConfig dataclass default
+    }
+)
+
+
+class InsecureProductionConfigError(RuntimeError):
+    """Raised when the API would start in production with an unsafe default."""
+
+
+def check_production_safety(config: "AppConfig") -> None:
+    """Refuse to start the API in production with an unset JWT secret.
+
+    Activated when ``OPSMENDER_DEPLOYMENT_MODE`` is unset or set to any
+    value other than ``"development"``. ``scripts/dev_server.py`` sets
+    the env var to ``development`` so local dev keeps working.
+    """
+    mode = (os.environ.get("OPSMENDER_DEPLOYMENT_MODE") or "").strip().lower()
+    if mode == "development":
+        return
+    secret = (config.auth.jwt_secret or "").strip()
+    if secret in _DEFAULT_JWT_SECRETS:
+        raise InsecureProductionConfigError(
+            "OPSMENDER_JWT_SECRET is still the default placeholder "
+            f"({secret!r}). Set a strong value before starting the API in "
+            "production — e.g. `openssl rand -hex 32` — or set "
+            "OPSMENDER_DEPLOYMENT_MODE=development for local dev."
+        )
+
 _ENV_PATH_OVERRIDE: pathlib.Path | None = None
 
 

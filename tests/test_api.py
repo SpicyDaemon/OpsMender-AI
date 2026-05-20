@@ -825,6 +825,68 @@ class TestIncidents:
         assert data["total"] == 2
         assert len(data["items"]) == 2
 
+    async def test_list_incidents_supports_case_insensitive_query(
+        self, client: AsyncClient, auth_headers
+    ):
+        await client.post(
+            "/incidents",
+            json={
+                "title": "Database cluster unreachable",
+                "description": "Primary node stopped answering health checks",
+            },
+            headers=auth_headers,
+        )
+        await client.post(
+            "/incidents",
+            json={
+                "title": "Cache pressure",
+                "description": "Redis memory usage climbing",
+            },
+            headers=auth_headers,
+        )
+
+        resp = await client.get("/incidents?q=HEALTH", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["title"] == "Database cluster unreachable"
+
+    async def test_list_incidents_query_composes_with_status_filter(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        first = await client.post(
+            "/incidents",
+            json={
+                "title": "API latency spike",
+                "description": "p95 latency exceeded budget",
+            },
+            headers=auth_headers,
+        )
+        second = await client.post(
+            "/incidents",
+            json={
+                "title": "API latency spike follow-up",
+                "description": "Same subsystem, now resolved",
+            },
+            headers=auth_headers,
+        )
+        first_id = uuid.UUID(first.json()["id"])
+        second_id = uuid.UUID(second.json()["id"])
+
+        async with app.state.session_factory() as db:
+            await IncidentRepo.update_status(db, TEST_ORG_ID, first_id, "resolved")
+            await IncidentRepo.update_status(db, TEST_ORG_ID, second_id, "open")
+            await db.commit()
+
+        resp = await client.get(
+            "/incidents?status=open&q=latency",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["id"] == str(second_id)
+
     async def test_list_incidents_with_status_filter(
         self, client: AsyncClient, auth_headers
     ):

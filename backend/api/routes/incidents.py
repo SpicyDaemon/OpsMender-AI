@@ -149,6 +149,7 @@ async def create_incident(
 )
 async def list_incidents(
     status_filter: str | None = Query(None, alias="status"),
+    query: str | None = Query(None, alias="q"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -156,12 +157,22 @@ async def list_incidents(
     user: User = Depends(get_current_user),
 ):
     items = await IncidentRepo.list_all(
-        db, org_id, status=status_filter, limit=limit, offset=offset
+        db,
+        org_id,
+        status=status_filter,
+        query=query,
+        limit=limit,
+        offset=offset,
     )
     # For total count we re-query without limit/offset.
     # A lightweight approach — fine for now, can optimise later.
     all_items = await IncidentRepo.list_all(
-        db, org_id, status=status_filter, limit=10_000, offset=0
+        db,
+        org_id,
+        status=status_filter,
+        query=query,
+        limit=10_000,
+        offset=0,
     )
     return IncidentListResponse(items=list(items), total=len(all_items))
 

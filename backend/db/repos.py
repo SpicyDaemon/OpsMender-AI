@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
     AgentTeamProfile,
@@ -261,6 +261,7 @@ class IncidentRepo:
         org_id: uuid.UUID,
         *,
         status: str | None = None,
+        query: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> Sequence[Incident]:
@@ -273,6 +274,14 @@ class IncidentRepo:
         )
         if status:
             stmt = stmt.where(Incident.status == status)
+        if query:
+            pattern = f"%{query.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    Incident.title.ilike(pattern),
+                    Incident.description.ilike(pattern),
+                )
+            )
         stmt = stmt.limit(limit).offset(offset)
         result = await db.execute(stmt)
         return result.scalars().all()

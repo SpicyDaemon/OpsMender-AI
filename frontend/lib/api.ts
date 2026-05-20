@@ -151,11 +151,13 @@ import type {
 
 export async function listIncidents(params?: {
   status?: string;
+  q?: string;
   limit?: number;
   offset?: number;
 }): Promise<IncidentListResponse> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
+  if (params?.q) qs.set("q", params.q);
   if (params?.limit !== undefined) qs.set("limit", String(params.limit));
   if (params?.offset !== undefined) qs.set("offset", String(params.offset));
   const q = qs.toString();

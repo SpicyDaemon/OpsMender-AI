@@ -104,43 +104,47 @@ export default function IncidentsPage() {
   const [severityFilter, setSeverityFilter] = useState<Severity | "">("");
   const [sourceFilter, setSourceFilter] = useState<"" | "manual" | "ingested">("");
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showTest, setShowTest] = useState(false);
   const toast = useToast();
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listIncidents({ status: statusFilter || undefined, limit: 100 });
+      const res = await listIncidents({
+        status: statusFilter || undefined,
+        q: debouncedQuery || undefined,
+        limit: 100,
+      });
       setData(res);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load incidents");
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, toast]);
+  }, [debouncedQuery, statusFilter, toast]);
 
   useEffect(() => { load(); }, [load]);
 
   const filteredItems = useMemo(() => {
     const items = data?.items ?? [];
-    const normalizedQuery = query.trim().toLowerCase();
 
     return items.filter((incident) => {
       const source = sourceMeta(incident).key;
       const matchesSeverity = !severityFilter || incident.severity === severityFilter;
       const matchesSource = !sourceFilter || source === sourceFilter;
-      const matchesQuery =
-        !normalizedQuery
-        || incident.title.toLowerCase().includes(normalizedQuery)
-        || incident.description.toLowerCase().includes(normalizedQuery)
-        || incident.id.toLowerCase().includes(normalizedQuery)
-        || (incident.external_source ?? "").toLowerCase().includes(normalizedQuery);
-
-      return matchesSeverity && matchesSource && matchesQuery;
+      return matchesSeverity && matchesSource;
     });
-  }, [data?.items, query, severityFilter, sourceFilter]);
+  }, [data?.items, severityFilter, sourceFilter]);
 
   const hasLocalFilters = Boolean(query || severityFilter || sourceFilter);
   const hasAnyFilters = Boolean(statusFilter || hasLocalFilters);
@@ -226,10 +230,13 @@ export default function IncidentsPage() {
                 id="inc-search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search title, description, ID, or source…"
+                placeholder="Search title or description…"
                 className="pl-9"
               />
             </div>
+            {query.trim() !== debouncedQuery && (
+              <p className="mt-1 text-xs text-fg-muted">Searching…</p>
+            )}
           </div>
 
           <div>

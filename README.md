@@ -126,6 +126,8 @@ Sprint 43 also adds contextual empty states across the dashboard and live Config
 
 The incidents page also includes a one-click **Fire Test Incident** flow for operator drills: it creates a synthetic high-severity incident, optionally binds it to a service, auto-starts a session, and marks the resulting session as `TEST · synthetic alert` so it never blends in with a real outage.
 
+The incidents list now also has a debounced server-backed search box for title/description triage: type a few words, wait 300 ms, and `/dashboard/incidents` narrows the set through `GET /incidents?q=...` while keeping the existing status, severity, and source filters working together.
+
 ## Quick Start
 
 Requires [uv](https://docs.astral.sh/uv/) (Python package manager) and Python 3.11+.

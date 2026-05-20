@@ -530,6 +530,10 @@ class MCPServerOAuthToken(Base):
         DateTime(timezone=True), nullable=True
     )
     issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # OAuth client credentials used for refresh (DCR client_id or pre-registered).
+    # client_secret is encrypted; client_id is stored plaintext (it's not sensitive).
+    client_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     obtained_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

@@ -998,12 +998,18 @@ class MCPServerOAuthTokenRepo:
         scopes: list[str] | None = None,
         issuer: str | None = None,
         token_type: str = "Bearer",
+        client_id: str | None = None,
+        client_secret: str | None = None,
     ) -> MCPServerOAuthToken:
         """Create the token row, or replace the existing one for this server.
 
         Used after the initial OAuth code exchange and any later forced
         re-authorization. For routine refresh-token rotation use
         :meth:`rotate` instead.
+
+        ``client_id`` and ``client_secret`` are the OAuth client credentials
+        used for the token endpoint. Stored so the refresh path can
+        reconstruct ``ClientRegistration`` without re-running DCR.
         """
 
         from backend.auth.secrets import encrypt_secret
@@ -1020,6 +1026,10 @@ class MCPServerOAuthTokenRepo:
             existing.scopes = scopes
             existing.issuer = issuer
             existing.token_type = token_type
+            existing.client_id = client_id
+            existing.client_secret_encrypted = (
+                encrypt_secret(client_secret) if client_secret else None
+            )
             existing.obtained_at = datetime.now(timezone.utc)
             existing.last_refreshed_at = None
             await db.flush()
@@ -1036,6 +1046,10 @@ class MCPServerOAuthTokenRepo:
             scopes=scopes,
             expires_at=expires_at,
             issuer=issuer,
+            client_id=client_id,
+            client_secret_encrypted=(
+                encrypt_secret(client_secret) if client_secret else None
+            ),
         )
         db.add(row)
         await db.flush()
@@ -1111,6 +1125,45 @@ class MCPServerOAuthTokenRepo:
             else None
         )
         return access, refresh
+
+    @staticmethod
+    async def read_client_credentials(
+        row: MCPServerOAuthToken,
+    ) -> tuple[str | None, str | None]:
+        """Decrypt and return ``(client_id, client_secret)``.
+
+        ``client_id`` is stored plaintext; ``client_secret`` is Fernet-
+        encrypted. Either may be ``None`` for public clients or when
+        credentials were not captured during authorization.
+        """
+
+        from backend.auth.secrets import decrypt_secret
+
+        client_id = row.client_id
+        client_secret = (
+            decrypt_secret(row.client_secret_encrypted)
+            if row.client_secret_encrypted
+            else None
+        )
+        return client_id, client_secret
+
+    @staticmethod
+    async def map_by_server_id(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+    ) -> dict[uuid.UUID, "MCPServerOAuthToken"]:
+        """Return a ``{mcp_server_id: token_row}`` dict for all org tokens.
+
+        Used by the list endpoint to annotate each server with its OAuth
+        status in a single query rather than N per-server lookups.
+        """
+
+        result = await db.execute(
+            select(MCPServerOAuthToken).where(
+                MCPServerOAuthToken.org_id == org_id
+            )
+        )
+        return {row.mcp_server_id: row for row in result.scalars().all()}
 
     @staticmethod
     async def list_expiring_before(

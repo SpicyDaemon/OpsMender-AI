@@ -94,7 +94,21 @@ def _to_runtime_config(
     )
 
 
-def _to_response(server: MCPServer) -> MCPServerResponse:
+def _oauth_status_from_token(token_row) -> str | None:
+    """Compute the oauth_status string from a token row (or None)."""
+    if token_row is None:
+        return None
+    now = datetime.now(timezone.utc)
+    if (
+        token_row.expires_at is not None
+        and token_row.expires_at < now
+        and not token_row.refresh_token_encrypted
+    ):
+        return "reconnect_needed"
+    return "connected"
+
+
+def _to_response(server: MCPServer, token_row=None) -> MCPServerResponse:
     return MCPServerResponse(
         id=server.id,
         name=server.name,
@@ -106,6 +120,7 @@ def _to_response(server: MCPServer) -> MCPServerResponse:
         is_active=server.is_active,
         created_at=server.created_at,
         has_token=bool(server.token),
+        oauth_status=_oauth_status_from_token(token_row),
     )
 
 
@@ -270,6 +285,12 @@ async def mcp_oauth_callback(
             scopes=token.scope,
             issuer=issuer,
             token_type=token.token_type,
+            client_id=client_id,
+            client_secret=(
+                str(client_secret)
+                if isinstance(client_secret, str) and client_secret
+                else None
+            ),
         )
         await db.commit()
     except Exception as exc:  # noqa: BLE001 — provider failures vary widely
@@ -300,8 +321,9 @@ async def list_mcp_servers(
     user: User = Depends(get_current_user),
 ):
     items = await MCPServerRepo.list_all(db, org_id)
+    token_map = await MCPServerOAuthTokenRepo.map_by_server_id(db, org_id)
     return MCPServerListResponse(
-        items=[_to_response(item) for item in items],
+        items=[_to_response(item, token_map.get(item.id)) for item in items],
         total=len(items),
     )
 

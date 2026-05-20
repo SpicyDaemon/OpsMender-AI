@@ -21,6 +21,7 @@ Usage::
 
 from __future__ import annotations
 
+import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Sequence
 
@@ -29,8 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.config_loader import MCPServerConfig
 from backend.db.models import MCPServer
-from backend.db.repos import MCPServerRepo
-from backend.mcp.client import connect as mcp_connect
+from backend.db.repos import MCPServerOAuthTokenRepo, MCPServerRepo
+from backend.mcp.client import connect as mcp_connect, resolve_oauth_access_token
+from backend.mcp.oauth import MCPAuthorizationRequiredError
 
 
 class MCPPoolError(Exception):
@@ -113,9 +115,70 @@ class MCPServerPool:
     async def connect(
         self, org_id: uuid.UUID | None, name: str
     ) -> AsyncIterator[ClientSession]:
-        """Resolve *name* fresh and open a live MCP session."""
-        server = await self.get_server(org_id, name)
-        if server is None:
+        """Resolve *name* fresh and open a live MCP session.
+
+        For HTTP/SSE servers that have an OAuth token row in the DB, the
+        access token is refreshed automatically (``OAUTH_REFRESH_MARGIN_SECONDS``
+        before expiry) before the connection is opened.
+
+        :raises MCPAuthorizationRequiredError: when the token is expiring
+            and cannot be refreshed (no refresh token, invalid grant, etc.).
+            The caller should propagate this so the operator can Reconnect
+            via the Config page.
+        """
+        cfg = await self._resolve_server_config_with_oauth(org_id, name)
+        if cfg is None:
             raise MCPPoolError(f"MCP server not found: {name}")
-        async with mcp_connect(server) as session:
+        async with mcp_connect(cfg) as session:
             yield session
+
+    async def _resolve_server_config_with_oauth(
+        self,
+        org_id: uuid.UUID | None,
+        name: str,
+    ) -> MCPServerConfig | None:
+        """Return an ``MCPServerConfig``, injecting a refreshed OAuth bearer
+        token when the server has an OAuth token row in the DB.
+
+        The DB session is committed (if a token was rotated) and closed
+        before the MCP connection is opened so the two lifetimes don't
+        overlap.
+        """
+        if self._session_factory is not None and org_id is not None:
+            try:
+                async with self._session_factory() as db:
+                    row = await MCPServerRepo.get_by_name(db, org_id, name)
+                    if row is None:
+                        return None
+
+                    cfg = _db_to_runtime(row)
+
+                    if row.transport in ("http", "sse") and row.url:
+                        token_row = await MCPServerOAuthTokenRepo.get_for_server(
+                            db, org_id, row.id
+                        )
+                        if token_row is not None:
+                            # May raise MCPAuthorizationRequiredError.
+                            access_token = await resolve_oauth_access_token(
+                                db, org_id, row.id, row.url
+                            )
+                            await db.commit()
+                            return MCPServerConfig(
+                                name=cfg.name,
+                                transport=cfg.transport,
+                                command=cfg.command,
+                                args=cfg.args,
+                                env=cfg.env,
+                                url=cfg.url,
+                                token=access_token,
+                            )
+                    return cfg
+            except MCPAuthorizationRequiredError:
+                raise
+            except Exception:
+                pass  # DB unreachable — fall through to env fallback
+
+        for fallback in self._env_fallback:
+            if fallback.name == name:
+                return fallback
+        return None

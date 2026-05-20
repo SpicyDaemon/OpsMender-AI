@@ -9,8 +9,10 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import uuid
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -20,14 +22,140 @@ from mcp.types import CallToolResult, Tool
 
 from backend.config_loader import MCPServerConfig
 
+if TYPE_CHECKING:
+    import httpx
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 logger = logging.getLogger(__name__)
 
 # Commands that require Node.js to be installed.
 _NODE_COMMANDS = frozenset({"node", "npx", "npm"})
 
+# Refresh the access token when it expires within this margin.
+OAUTH_REFRESH_MARGIN_SECONDS = 300
+
 
 class MCPClientError(Exception):
     """Raised when an MCP operation fails."""
+
+
+async def resolve_oauth_access_token(
+    db: "AsyncSession",
+    org_id: uuid.UUID,
+    mcp_server_id: uuid.UUID,
+    server_url: str,
+    *,
+    http_client_factory: "Callable[[], httpx.AsyncClient] | None" = None,
+) -> str:
+    """Return a valid OAuth access token for a DB-backed HTTP MCP server.
+
+    Checks token expiry against ``OAUTH_REFRESH_MARGIN_SECONDS`` and
+    refreshes automatically when the token is about to expire.  Rotation
+    (OAuth 2.1 §4.3.1) is handled transparently — the new refresh token
+    is persisted via ``MCPServerOAuthTokenRepo.rotate`` before this
+    function returns.
+
+    Raises :class:`backend.mcp.oauth.MCPAuthorizationRequiredError` when:
+
+    * No token row exists for the server.
+    * The access token is expiring but no refresh token is available.
+    * The issuer or client credentials are missing from the token row.
+    * The authorization server rejects the refresh (invalid_grant, etc.).
+
+    The caller is responsible for committing the DB session after a
+    successful refresh so the rotated tokens are persisted.
+    """
+
+    from backend.db.repos import MCPServerOAuthTokenRepo
+    from backend.mcp.oauth import (
+        ClientRegistration,
+        MCPAuthorizationRequiredError,
+        canonical_resource_uri,
+        fetch_authz_server_metadata,
+        refresh_access_token as _refresh,
+    )
+
+    row = await MCPServerOAuthTokenRepo.get_for_server(db, org_id, mcp_server_id)
+    if row is None:
+        raise MCPAuthorizationRequiredError(
+            f"No OAuth credentials for MCP server {mcp_server_id}. "
+            "Use the Config page to Connect the server via OAuth."
+        )
+
+    access_token, refresh_token = await MCPServerOAuthTokenRepo.read_plaintext(row)
+
+    # Decide whether a refresh is needed.
+    needs_refresh = False
+    if row.expires_at is not None:
+        # SQLite returns naive datetimes; Postgres returns tz-aware ones.
+        # Normalise to UTC so the subtraction is always valid.
+        expires_at = (
+            row.expires_at.replace(tzinfo=timezone.utc)
+            if row.expires_at.tzinfo is None
+            else row.expires_at
+        )
+        margin = timedelta(seconds=OAUTH_REFRESH_MARGIN_SECONDS)
+        needs_refresh = (expires_at - datetime.now(timezone.utc)) <= margin
+
+    if not needs_refresh:
+        return access_token
+
+    # Token is within the expiry margin — attempt to refresh.
+    if not refresh_token:
+        await MCPServerOAuthTokenRepo.delete_for_server(db, org_id, mcp_server_id)
+        raise MCPAuthorizationRequiredError(
+            f"Access token for MCP server {mcp_server_id} is expiring and "
+            "no refresh token is available. Re-authorize via the Config page."
+        )
+
+    if not row.issuer:
+        raise MCPAuthorizationRequiredError(
+            f"Cannot refresh token for MCP server {mcp_server_id}: "
+            "no issuer recorded. Re-authorize via the Config page."
+        )
+
+    client_id, client_secret = await MCPServerOAuthTokenRepo.read_client_credentials(row)
+    if not client_id:
+        raise MCPAuthorizationRequiredError(
+            f"Cannot refresh token for MCP server {mcp_server_id}: "
+            "no client credentials recorded. Re-authorize via the Config page."
+        )
+
+    try:
+        metadata = await fetch_authz_server_metadata(
+            row.issuer, http_client_factory=http_client_factory
+        )
+        token_resp = await _refresh(
+            metadata,
+            refresh_token=refresh_token,
+            resource=canonical_resource_uri(server_url),
+            client_registration=ClientRegistration(
+                client_id=client_id,
+                client_secret=client_secret,
+            ),
+            http_client_factory=http_client_factory,
+        )
+    except MCPAuthorizationRequiredError:
+        # Invalid grant — clear the stale token row so the status pill
+        # immediately shows "reconnect needed" on the next Config page load.
+        await MCPServerOAuthTokenRepo.delete_for_server(db, org_id, mcp_server_id)
+        raise
+
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(seconds=token_resp.expires_in)
+        if token_resp.expires_in is not None
+        else None
+    )
+    await MCPServerOAuthTokenRepo.rotate(
+        db,
+        org_id,
+        mcp_server_id=mcp_server_id,
+        access_token=token_resp.access_token,
+        refresh_token=token_resp.refresh_token,
+        expires_at=expires_at,
+        scopes=token_resp.scope,
+    )
+    return token_resp.access_token
 
 
 def _resolve_node_command(command: str) -> str:

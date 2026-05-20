@@ -294,6 +294,10 @@ class MCPServerResponse(BaseModel):
     is_active: bool
     created_at: datetime
     has_token: bool
+    # OAuth 2.1 connection status: "connected" when a valid token row exists;
+    # "reconnect_needed" when the token expired with no refresh token; None
+    # when no OAuth credentials have been obtained for this server.
+    oauth_status: Optional[str] = None
 
 
 class MCPServerListResponse(BaseModel):

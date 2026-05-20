@@ -1591,6 +1591,12 @@ function MCPSection({
                           {server.is_active ? "Active" : "Inactive"}
                         </Badge>
                         <TestPill state={testState} />
+                        {server.oauth_status === "connected" && (
+                          <Badge variant="resolved">OAuth Connected</Badge>
+                        )}
+                        {server.oauth_status === "reconnect_needed" && (
+                          <Badge variant="high">Reconnect needed</Badge>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 align-top">
@@ -1606,13 +1612,14 @@ function MCPSection({
                         </Button>
                         {server.transport !== "stdio" && (
                           <Button
-                            variant="secondary"
+                            variant={server.oauth_status === "reconnect_needed" ? "danger" : "secondary"}
                             size="sm"
                             onClick={() => handleConnectOAuth(server)}
                             loading={oauthStartingId === server.id}
                             disabled={!canEdit}
                           >
-                            <ExternalLink size={13} /> Connect
+                            <ExternalLink size={13} />
+                            {server.oauth_status === "connected" ? "Reconnect" : "Connect"}
                           </Button>
                         )}
                         <Button

@@ -293,6 +293,8 @@ export interface MCPServerResponse {
   is_active: boolean;
   created_at: string;
   has_token: boolean;
+  /** "connected" | "reconnect_needed" | null */
+  oauth_status: string | null;
 }
 
 export interface MCPServerListResponse {

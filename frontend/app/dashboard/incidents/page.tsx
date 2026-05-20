@@ -294,6 +294,8 @@ export default function IncidentsPage() {
               ? "Try widening the filters or clearing the search to see more incidents."
               : "Incidents you create or receive from integrations will appear here."
           }
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
+          learnMoreLabel="Operator guide"
           action={
             !hasAnyFilters && (
               <Button size="sm" onClick={() => setShowCreate(true)}>

@@ -523,6 +523,8 @@ export default function SkillsPage() {
               ? "Skills classify MCP tool calls as safe, caution, or destructive. Import a SKILL.md file or author one from scratch."
               : "Ask an admin to import or create a SKILL.md file."
           }
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/skills-guide.md"
+          learnMoreLabel="Skills guide"
           action={
             canEdit ? (
               <div className="flex items-center gap-2">

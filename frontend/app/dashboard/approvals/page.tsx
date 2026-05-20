@@ -164,6 +164,8 @@ export default function ApprovalsPage() {
               ? "Try a different status filter."
               : "Tier 1 actions that need human sign-off show up here. You can also approve them directly from the session detail page or your chat — this is the catch-up inbox."
           }
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
+          learnMoreLabel="Operator guide"
         />
       ) : (
         <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">

@@ -1,11 +1,15 @@
 import { type ReactNode } from "react";
-import { type LucideIcon } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, type LucideIcon } from "lucide-react";
 
 interface EmptyStateProps {
   icon?: LucideIcon;
   title: string;
   description?: string;
   action?: ReactNode;
+  /** Optional "Learn more" deep-link rendered below the action. */
+  learnMoreHref?: string;
+  learnMoreLabel?: string;
   className?: string;
 }
 
@@ -14,6 +18,8 @@ export function EmptyState({
   title,
   description,
   action,
+  learnMoreHref,
+  learnMoreLabel = "Learn more",
   className = "",
 }: EmptyStateProps) {
   return (
@@ -30,6 +36,18 @@ export function EmptyState({
         <p className="mt-1 max-w-sm text-xs text-fg-secondary">{description}</p>
       )}
       {action && <div className="mt-4">{action}</div>}
+      {learnMoreHref && (
+        <Link
+          href={learnMoreHref}
+          className="mt-3 inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-primary"
+          {...(learnMoreHref.startsWith("http")
+            ? { target: "_blank", rel: "noreferrer" }
+            : {})}
+        >
+          {learnMoreLabel}
+          <ExternalLink size={11} aria-hidden />
+        </Link>
+      )}
     </div>
   );
 }

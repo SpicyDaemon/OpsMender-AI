@@ -274,6 +274,8 @@ function TeamsPanel({
         <EmptyState
           title="No teams yet"
           description="Create your first team to start grouping services and rosters."
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+          learnMoreLabel="Paging guide"
         />
       ) : (
         <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
@@ -411,6 +413,8 @@ function ServicesPanel({
               ? "Create a team first, then add services to it."
               : "Add a service so incidents can be routed to its owning team."
           }
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+          learnMoreLabel="Paging guide"
         />
       ) : (
         <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
@@ -560,6 +564,8 @@ function RostersPanel({
         <EmptyState
           title="No rosters yet"
           description="Rosters define who is on call. Add one per team to start."
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+          learnMoreLabel="Paging guide"
         />
       ) : (
         <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
@@ -746,6 +752,8 @@ function RulesPanel({
         <EmptyState
           title="No priority rules"
           description="Without rules every incident lands at P3. Add a rule to surface real urgencies."
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+          learnMoreLabel="Paging guide"
         />
       ) : (
         <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
@@ -939,6 +947,8 @@ function ChainsPanel({
         <EmptyState
           title="No escalation chains"
           description="Without a chain, incidents flagged for paging do not page anyone. Create one per team."
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+          learnMoreLabel="Paging guide"
         />
       ) : (
         <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
@@ -1589,6 +1599,16 @@ function MaintenanceWindowsPanel({
               : view === "active"
                 ? "No windows are currently in effect."
                 : "No past windows match the current range filter."
+          }
+          learnMoreHref={
+            view === "scheduled" || view === "active"
+              ? "https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+              : "https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/notification-preferences.md"
+          }
+          learnMoreLabel={
+            view === "scheduled" || view === "active"
+              ? "Paging guide"
+              : "Notification guide"
           }
         />
       ) : (

@@ -312,6 +312,8 @@ export default function ActivityPage() {
               ? "Try clearing filters above."
               : "Every MCP tool call — permitted or blocked — is recorded here once sessions start running."
           }
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
+          learnMoreLabel="Operator guide"
         />
       ) : (
         <>

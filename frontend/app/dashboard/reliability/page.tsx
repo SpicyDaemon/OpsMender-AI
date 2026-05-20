@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Activity, Plus, ServerCrash, Shield, Clock, Calendar, Trash2, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { MaintenanceWindowModal } from "@/components/reliability/MaintenanceWindowModal";
 import { SLATargetModal } from "@/components/reliability/SLATargetModal";
 import { SLOModal } from "@/components/reliability/SLOModal";
@@ -164,13 +165,13 @@ export default function ReliabilityPage() {
               ))}
             </div>
           ) : targets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-strong px-6 py-16 text-center">
-              <ServerCrash className="mb-3 h-8 w-8 text-fg-muted" />
-              <p className="text-sm font-medium text-fg-primary">No SLA targets configured</p>
-              <p className="mt-1 text-sm text-fg-secondary max-w-md">
-                Configure your first HTTP or TCP target to begin monitoring uptime and tracking SLO error budgets.
-              </p>
-            </div>
+            <EmptyState
+              icon={ServerCrash}
+              title="No SLA targets configured"
+              description="Configure your first HTTP or TCP target to begin monitoring uptime and tracking SLO error budgets."
+              learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
+              learnMoreLabel="Operator guide"
+            />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {targets.map((target) => (
@@ -307,13 +308,13 @@ export default function ReliabilityPage() {
             {loading ? (
               <div className="h-40 rounded-xl border border-border-subtle bg-bg-elevated animate-pulse" />
             ) : maintenanceWindows.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-strong px-6 py-12 text-center">
-                <Calendar className="mb-3 h-8 w-8 text-fg-muted" />
-                <p className="text-sm font-medium text-fg-primary">No maintenance windows</p>
-                <p className="mt-1 text-sm text-fg-secondary max-w-md">
-                  Schedule maintenance to temporarily disable alerts and exclude time from SLA calculations.
-                </p>
-              </div>
+              <EmptyState
+                icon={Calendar}
+                title="No maintenance windows"
+                description="Schedule maintenance to temporarily disable alerts and exclude time from SLA calculations."
+                learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
+                learnMoreLabel="Operator guide"
+              />
             ) : (
               <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm overflow-hidden">
                 <table className="w-full text-sm">

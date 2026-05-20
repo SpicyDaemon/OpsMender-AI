@@ -394,6 +394,8 @@ export default function EnvironmentScansPage() {
                 <EmptyState
                   title="No findings"
                   description="The run completed without surfacing any anomalies."
+                  learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
+                  learnMoreLabel="Operator guide"
                 />
               ) : (
                 <div className="overflow-hidden rounded-lg border border-border-default">
@@ -481,6 +483,8 @@ export default function EnvironmentScansPage() {
             <EmptyState
               title="No audit selected"
               description="Run a new audit above or pick an existing one from the list."
+              learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
+              learnMoreLabel="Operator guide"
             />
           )}
         </div>

@@ -4,6 +4,8 @@ Project website: **[opsmenderai.com](https://opsmenderai.com)**
 
 Welcome to the OpsMender AI (OpsMender) Wiki! This documentation is designed to help operators, administrators, and incident commanders deploy, configure, and use OpsMender effectively.
 
+The dashboard now deep-links back into these guides from its empty states, so the pages below are also the contextual "what do I do next?" surface inside the product.
+
 If you are a developer looking for internal architecture documentation, API details, or codebase references, please see [`REFERENCE.md`](../REFERENCE.md) in the main repository.
 
 ## Table of Contents

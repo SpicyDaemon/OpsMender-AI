@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Fixed
+
+### Removed
+
+## [1.0.0] — 2026-05-20
+
+First public release. MIT-licensed. All work from Sprints 1–43 ships in this tag.
+
+### Added
 - **Sprint 43 P1 #8 — debounced server-side incidents search** (Session 109). `GET /incidents` now accepts `q=...`, and incident listing applies case-insensitive title/description matching in SQL so operators can search large incident sets without pulling everything into browser-only filtering. `/dashboard/incidents` now debounces the search box by 300 ms, sends `status` + `q` together to the API, keeps severity/source as local refinements, updates the placeholder to `Search title or description…`, and shows a small `Searching…` hint while the debounced request catches up. Added API coverage for case-insensitive query matching and composition with the existing status filter. Verification: `npm run build` clean; full suite **1206 passed, 2 skipped**.
 - **Sprint 43 P1 #7 — one-click synthetic test incidents** (Session 108). `/dashboard/incidents` now has a **Fire Test Incident** button that opens a small modal with a pre-filled high-severity synthetic payload, optional service binding, and `source: "opsmender-test"`. Submitting the modal uses the normal incident-creation API, immediately starts a session, and shows a success toast with an `Open session` deep-link. The manual incident API now accepts optional `service_id`, `external_id`, and `external_source`, with server-side service validation. Incident/session detail views recognize `opsmender-test` and render the resulting path as a clearly marked `TEST · synthetic alert` session. Verification: `npm run build` clean; full suite **1204 passed, 2 skipped**.
 - **Sprint 43 P1 #6 — live connection status indicators on Config** (Session 107). `mcp_servers` now persists `last_successful_call_at` plus the latest `last_error`, backed by Alembic migration `f6b7c8d9e0f1_add_mcp_server_connection_status.py`. Runtime MCP connections in `backend/mcp/pool.py` stamp those fields automatically, and the existing `POST /mcp-servers/{id}/test` path updates them too. New `GET /mcp-servers/status` returns per-server runtime health (`healthy` / `stale` / `error`), which the Config page polls every 30 seconds. New shared `frontend/components/ui/StatusDot.tsx` renders the green/amber/red dots inline on the Models and MCP sections, with hover text showing the exact last-success timestamp and latest error for red states. Verification: `npm run build` clean; full suite **1202 passed, 2 skipped**.
@@ -99,9 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - **Sprint 39 step 4 — Legacy Detector surface.** Removed `backend/detector/`, `/detectors` API routes and schemas, Detector ORM models/repos/tests, `/dashboard/detectors`, Detector sidebar/config links, and Detector env/Helm settings. Alembic `d8e9f0a1b2c3` drops `detector_history` and `detector_rules`; run `opsmender detectors-migrate --apply` before applying that migration on older deployments that still have rules.
 
-## [1.0.0] — 2026-04-22
+## [Archived Draft Release Notes] — 2026-04-22
 
-First public release. MIT-licensed. Complete feature set from Sprints 1–23.
+Archived draft release notes from the earlier Sprints 1–23 milestone planning. Kept for historical context; the actual v1.0.0 release is the 2026-05-20 section above.
 
 ### Added
 

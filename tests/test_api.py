@@ -30,7 +30,9 @@ from backend.db.repos import (
     IncidentRepo,
     MCPServerRepo,
     ModelConfigRepo,
+    ServiceRepo,
     SessionRepo,
+    TeamRepo,
     UserRepo,
     WebhookTriggerRepo,
     WorkflowProfileRepo,
@@ -722,6 +724,68 @@ class TestIncidents:
         assert data["title"] == "High CPU on api-server"
         assert data["status"] == "open"
         assert data["severity"] == "high"
+
+    async def test_create_test_incident_with_service_and_source(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Platform",
+                slug="platform",
+                created_by=uuid.uuid4(),
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="checkout-api",
+                slug="checkout-api",
+            )
+            await db.commit()
+            service_id = service.id
+
+        resp = await client.post(
+            "/incidents",
+            json={
+                "title": "TEST · synthetic alert for checkout-api",
+                "description": "Synthetic alert fired from the dashboard.",
+                "severity": "high",
+                "service_id": str(service_id),
+                "external_id": "test-123",
+                "external_source": "opsmender-test",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["external_id"] == "test-123"
+        assert data["external_source"] == "opsmender-test"
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(data["id"])
+            )
+            assert incident is not None
+            assert incident.service_id == service_id
+            assert incident.external_source == "opsmender-test"
+            assert incident.external_id == "test-123"
+
+    async def test_create_incident_with_missing_service_returns_404(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Broken service reference",
+                "description": "This should fail.",
+                "service_id": str(uuid.uuid4()),
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Service not found"
 
     async def test_create_incident_viewer_forbidden(
         self, client: AsyncClient, viewer_headers

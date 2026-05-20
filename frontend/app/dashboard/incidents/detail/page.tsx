@@ -71,6 +71,13 @@ function sourceMeta(incident: IncidentResponse) {
       tone: "bg-status-info-bg text-status-info border-status-info-border",
     };
   }
+  if (incident.external_source === "opsmender-test") {
+    return {
+      label: "Test",
+      detail: "Synthetic alert",
+      tone: "bg-status-high-bg text-status-high border-status-high-border",
+    };
+  }
   const label = incident.external_source
     .replace(/^auto:/, "")
     .replace(/_/g, " ")

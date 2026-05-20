@@ -48,6 +48,9 @@ export interface IncidentCreate {
   title: string;
   description: string;
   severity?: Severity;
+  service_id?: string;
+  external_id?: string;
+  external_source?: string;
 }
 
 // ---------------------------------------------------------------------------

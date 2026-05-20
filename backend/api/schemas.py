@@ -62,6 +62,9 @@ class IncidentCreate(BaseModel):
     severity: Optional[str] = Field(
         default=None, pattern="^(critical|high|medium|low)$"
     )
+    service_id: Optional[uuid.UUID] = None
+    external_id: Optional[str] = Field(default=None, max_length=500)
+    external_source: Optional[str] = Field(default=None, max_length=100)
 
 
 class IncidentResponse(BaseModel):

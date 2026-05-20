@@ -223,6 +223,8 @@ class IncidentRepo:
         priority: str | None = None,
         response_mode: str | None = None,
         service_id: uuid.UUID | None = None,
+        external_id: str | None = None,
+        external_source: str | None = None,
     ) -> Incident:
         incident = Incident(
             org_id=org_id,
@@ -232,6 +234,8 @@ class IncidentRepo:
             priority=priority,
             response_mode=response_mode,
             service_id=service_id,
+            external_id=external_id,
+            external_source=external_source,
         )
         db.add(incident)
         await db.flush()

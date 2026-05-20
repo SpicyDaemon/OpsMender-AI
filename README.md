@@ -124,6 +124,8 @@ If you're new to OpsMender, work top-down: get one model + one MCP server + one 
 
 Sprint 43 also adds contextual empty states across the dashboard and live Config-page health dots: when a page is blank, OpsMender links straight to the relevant wiki guide instead of leaving the operator at a dead end, and `/dashboard/config` now shows inline green/amber/red status dots for model-provider availability and MCP runtime health.
 
+The incidents page also includes a one-click **Fire Test Incident** flow for operator drills: it creates a synthetic high-severity incident, optionally binds it to a service, auto-starts a session, and marks the resulting session as `TEST · synthetic alert` so it never blends in with a real outage.
+
 ## Quick Start
 
 Requires [uv](https://docs.astral.sh/uv/) (Python package manager) and Python 3.11+.

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   createContext,
   useCallback,
@@ -16,14 +17,20 @@ interface Toast {
   id: number;
   message: string;
   variant: ToastVariant;
+  action?: ToastAction;
+}
+
+interface ToastAction {
+  label: string;
+  href: string;
 }
 
 interface ToastContextValue {
-  toast: (message: string, variant?: ToastVariant) => void;
-  success: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
-  warning: (message: string) => void;
+  toast: (message: string, variant?: ToastVariant, action?: ToastAction) => void;
+  success: (message: string, action?: ToastAction) => void;
+  error: (message: string, action?: ToastAction) => void;
+  info: (message: string, action?: ToastAction) => void;
+  warning: (message: string, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -63,18 +70,30 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toast = useCallback(
-    (message: string, variant: ToastVariant = "info") => {
+    (message: string, variant: ToastVariant = "info", action?: ToastAction) => {
       const id = Date.now() + Math.random();
-      setToasts((prev) => [...prev, { id, message, variant }]);
+      setToasts((prev) => [...prev, { id, message, variant, action }]);
       setTimeout(() => dismiss(id), 4000);
     },
     [dismiss],
   );
 
-  const success = useCallback((message: string) => toast(message, "success"), [toast]);
-  const error = useCallback((message: string) => toast(message, "error"), [toast]);
-  const info = useCallback((message: string) => toast(message, "info"), [toast]);
-  const warning = useCallback((message: string) => toast(message, "warning"), [toast]);
+  const success = useCallback(
+    (message: string, action?: ToastAction) => toast(message, "success", action),
+    [toast],
+  );
+  const error = useCallback(
+    (message: string, action?: ToastAction) => toast(message, "error", action),
+    [toast],
+  );
+  const info = useCallback(
+    (message: string, action?: ToastAction) => toast(message, "info", action),
+    [toast],
+  );
+  const warning = useCallback(
+    (message: string, action?: ToastAction) => toast(message, "warning", action),
+    [toast],
+  );
 
   const value: ToastContextValue = useMemo(
     () => ({
@@ -101,7 +120,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               role="status"
             >
               <Icon size={16} className={`${s.iconColor} mt-0.5 shrink-0`} />
-              <p className="flex-1 text-sm text-fg-primary">{t.message}</p>
+              <div className="flex-1">
+                <p className="text-sm text-fg-primary">{t.message}</p>
+                {t.action && (
+                  <Link
+                    href={t.action.href}
+                    className="mt-1 inline-flex text-xs font-medium text-accent hover:underline"
+                    onClick={() => dismiss(t.id)}
+                  >
+                    {t.action.label}
+                  </Link>
+                )}
+              </div>
               <button
                 onClick={() => dismiss(t.id)}
                 className="shrink-0 rounded p-0.5 text-fg-muted hover:text-fg-primary"

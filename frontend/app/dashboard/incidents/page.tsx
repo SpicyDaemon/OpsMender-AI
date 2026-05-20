@@ -3,13 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Plus, RefreshCw, Search, X } from "lucide-react";
-import { createIncident, listIncidents } from "@/lib/api";
+import { createIncident, createSession, getConfig, listIncidents, listServices } from "@/lib/api";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import type {
+  ConfigResponse,
   IncidentCreate,
   IncidentListResponse,
   IncidentResponse,
   IncidentStatus,
+  ServiceResponse,
+  SessionResponse,
   Severity,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -48,6 +51,14 @@ function sourceMeta(incident: IncidentResponse) {
       label: "Manual",
       icon: "M",
       className: "bg-status-info-bg text-status-info border-status-info-border",
+    };
+  }
+  if (incident.external_source === "opsmender-test") {
+    return {
+      key: "ingested",
+      label: "Test",
+      icon: "T",
+      className: "bg-status-high-bg text-status-high border-status-high-border",
     };
   }
   const raw = incident.external_source.replace(/^auto:/, "").replace(/_/g, " ");
@@ -95,6 +106,7 @@ export default function IncidentsPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showTest, setShowTest] = useState(false);
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -176,6 +188,9 @@ export default function IncidentsPage() {
           <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Refresh
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setShowTest(true)}>
+            Fire Test Incident
           </Button>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus size={14} />
@@ -383,6 +398,18 @@ export default function IncidentsPage() {
           load();
         }}
       />
+      <FireTestIncidentModal
+        open={showTest}
+        onClose={() => setShowTest(false)}
+        onCreated={(incident, session) => {
+          setShowTest(false);
+          toast.success("Test incident created and session started.", {
+            label: "Open session",
+            href: `/dashboard/sessions/detail?id=${session.id}`,
+          });
+          load();
+        }}
+      />
     </div>
   );
 }
@@ -479,6 +506,156 @@ function CreateIncidentModal({
           </Button>
           <Button onClick={handleSubmit} loading={loading} disabled={!form.title || !form.description}>
             Create
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function createSyntheticPayload(serviceName?: string): Pick<
+  IncidentCreate,
+  "title" | "description" | "severity" | "external_id" | "external_source"
+> {
+  const scope = serviceName ? ` for ${serviceName}` : "";
+  return {
+    title: `TEST · synthetic alert${scope}`,
+    description:
+      `Synthetic alert fired from the Incidents page${scope}. ` +
+      "Use this to verify ingestion, paging, sessions, and operator workflow end to end.",
+    severity: "high",
+    external_id: `test-${Date.now()}`,
+    external_source: "opsmender-test",
+  };
+}
+
+function FireTestIncidentModal({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (incident: IncidentResponse, session: SessionResponse) => void;
+}) {
+  const [services, setServices] = useState<ServiceResponse[]>([]);
+  const [config, setConfig] = useState<ConfigResponse | null>(null);
+  const [serviceId, setServiceId] = useState("");
+  const [form, setForm] = useState<IncidentCreate>(() => createSyntheticPayload());
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    listServices()
+      .then((res) => setServices(res.items))
+      .catch(() => setServices([]));
+    getConfig()
+      .then((res) => setConfig(res))
+      .catch(() => setConfig(null));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const selectedService = services.find((service) => service.id === serviceId);
+    const base = createSyntheticPayload(selectedService?.name);
+    setForm({
+      ...base,
+      service_id: serviceId || undefined,
+    });
+  }, [open, serviceId, services]);
+
+  function reset() {
+    setServiceId("");
+    setForm(createSyntheticPayload());
+    setError("");
+  }
+
+  async function handleSubmit() {
+    setError("");
+    setLoading(true);
+    try {
+      const incident = await createIncident(form);
+      const session = await createSession({
+        incident_id: incident.id,
+        tier: config?.tier ?? 2,
+        initial_briefing:
+          "TEST · synthetic alert. Validate the response path without treating this as a real production incident.",
+      });
+      reset();
+      onCreated(incident, session);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fire test incident");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => {
+        reset();
+        onClose();
+      }}
+      title="Fire Test Incident"
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg border border-status-high-border bg-status-high-bg/40 px-4 py-3 text-sm text-fg-primary">
+          This creates a synthetic high-severity incident and immediately starts a session so you can verify the operator flow end to end.
+        </div>
+
+        <div>
+          <Label htmlFor="test-service">Service (optional)</Label>
+          <Select
+            id="test-service"
+            value={serviceId}
+            onChange={(e) => setServiceId(e.target.value)}
+          >
+            <option value="">No linked service</option>
+            {services.map((service) => (
+              <option key={service.id} value={service.id}>
+                {service.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="test-title">Synthetic Payload</Label>
+          <Textarea
+            id="test-title"
+            rows={6}
+            value={JSON.stringify(
+              {
+                title: form.title,
+                description: form.description,
+                severity: form.severity,
+                source: form.external_source,
+                service_id: form.service_id ?? null,
+              },
+              null,
+              2,
+            )}
+            readOnly
+            className="font-mono text-xs"
+          />
+        </div>
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              reset();
+              onClose();
+            }}
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} loading={loading}>
+            Fire Test Incident
           </Button>
         </div>
       </div>

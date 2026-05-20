@@ -29,6 +29,7 @@ from backend.db.repos import (
     IncidentRepo,
     MaintenanceWindowRepo,
     SessionRepo,
+    ServiceRepo,
 )
 from backend.api.schemas import (
     IncidentAssignmentResponse,
@@ -80,12 +81,21 @@ async def create_incident(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
+    if body.service_id is not None:
+        service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
+        if service is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Service not found",
+            )
+
     # Run priority rules first so priority/response_mode go in with the INSERT
     # rather than via a follow-up UPDATE (D-021: locked at creation).
     payload = {
         "title": body.title,
         "description": body.description,
         "severity": body.severity,
+        "source": body.external_source,
     }
     priority_result = await compute_priority_for_payload(db, org_id, payload)
     incident = await IncidentRepo.create(
@@ -96,6 +106,9 @@ async def create_incident(
         severity=body.severity,
         priority=priority_result.priority,
         response_mode=priority_result.response_mode,
+        service_id=body.service_id,
+        external_id=body.external_id,
+        external_source=body.external_source,
     )
     # Kick off the escalation chain when the response mode pages humans.
     if priority_result.response_mode in ("page", "escalate_immediate"):

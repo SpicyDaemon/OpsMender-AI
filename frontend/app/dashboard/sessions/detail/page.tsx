@@ -561,6 +561,8 @@ function SessionPageContent() {
   if (!id) return <p className="text-status-critical">Missing session id.</p>;
   if (!session) return <p className="text-status-critical">Session not found.</p>;
 
+  const isSyntheticTest = incident?.external_source === "opsmender-test";
+
   return (
     <div className="flex flex-col gap-4 h-full">
       {/* Back + incident context strip */}
@@ -576,6 +578,9 @@ function SessionPageContent() {
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
+                {isSyntheticTest && (
+                  <Badge variant="high">TEST · synthetic alert</Badge>
+                )}
                 {incident ? (
                   <Link
                     href={`/dashboard/incidents/detail?id=${incident.id}`}

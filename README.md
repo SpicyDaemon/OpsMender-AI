@@ -495,6 +495,8 @@ Saved model profiles and MCP server definitions are also persisted in the databa
 
 MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-reads the DB on every lookup — servers added via `POST /mcp-servers` or the dashboard are visible to already-running sessions with no reload. URL-based MCP servers can also use the OAuth 2.1 + PKCE flow from the Config page's Connect action; tokens are encrypted in `mcp_server_oauth_tokens`, not returned through the API or written to `mcp.json`. `OPSMENDER_MCP_SERVERS_JSON` stays supported as a read-only fallback for bootstrapping before any DB entries exist.
 
+The Config → MCP Servers modal now includes curated templates for common server shapes (Kubernetes, Postgres, GitHub Copilot MCP, and generic HTTP/bearer/stdio starting points). OAuth-shaped templates can go straight into the Connect flow after creation.
+
 The `mcp.json` mirror (Sprint 42 Step 6) uses the Claude Code-compatible shape:
 
 ```json

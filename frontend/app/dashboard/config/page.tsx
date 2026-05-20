@@ -1047,6 +1047,112 @@ type MCPFormState = {
   is_active: boolean;
 };
 
+type MCPServerTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  transport: MCPTransport;
+  suggestedName: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  tokenStrategy: "none" | "bearer" | "oauth";
+  docsHref: string;
+  docsLabel: string;
+};
+
+const MCP_SERVER_TEMPLATES: MCPServerTemplate[] = [
+  {
+    id: "k8s_stdio",
+    name: "Kubernetes",
+    description:
+      "Local stdio server for cluster inspection via the Anthropic k8s MCP package.",
+    transport: "stdio",
+    suggestedName: "k8s-prod",
+    command: "npx",
+    args: ["-y", "@anthropic/mcp-server-k8s"],
+    tokenStrategy: "none",
+    docsHref: "https://www.npmjs.com/package/@anthropic/mcp-server-k8s",
+    docsLabel: "Package docs",
+  },
+  {
+    id: "postgres_stdio",
+    name: "Postgres",
+    description:
+      "Local stdio bridge to a PostgreSQL database using the reference MCP server.",
+    transport: "stdio",
+    suggestedName: "postgres-prod",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/opsmender"],
+    tokenStrategy: "none",
+    docsHref: "https://www.npmjs.com/package/@modelcontextprotocol/server-postgres",
+    docsLabel: "Package docs",
+  },
+  {
+    id: "github_http",
+    name: "GitHub Copilot MCP",
+    description:
+      "Remote HTTP MCP endpoint with OAuth. Good default for repo-aware investigation workflows.",
+    transport: "http",
+    suggestedName: "github",
+    url: "https://api.githubcopilot.com/mcp/",
+    tokenStrategy: "oauth",
+    docsHref: "https://github.com/SpicyDaemon/OpsMender-AI#configuration",
+    docsLabel: "OpsMender config docs",
+  },
+  {
+    id: "http_oauth",
+    name: "Generic HTTP + OAuth",
+    description:
+      "Remote HTTP MCP endpoint that authenticates through the Sprint 42 OAuth connect flow.",
+    transport: "http",
+    suggestedName: "remote-http",
+    url: "https://mcp.example.com/",
+    tokenStrategy: "oauth",
+    docsHref: "https://github.com/SpicyDaemon/OpsMender-AI#configuration",
+    docsLabel: "OpsMender config docs",
+  },
+  {
+    id: "http_bearer",
+    name: "Generic HTTP + Bearer",
+    description:
+      "Remote HTTP MCP endpoint with a static bearer token saved in OpsMender.",
+    transport: "http",
+    suggestedName: "remote-http-bearer",
+    url: "https://mcp.example.com/",
+    tokenStrategy: "bearer",
+    docsHref: "https://github.com/SpicyDaemon/OpsMender-AI#configuration",
+    docsLabel: "OpsMender config docs",
+  },
+  {
+    id: "stdio_custom",
+    name: "Custom stdio",
+    description:
+      "Start from a local Python or Node command when you already have a custom MCP bridge.",
+    transport: "stdio",
+    suggestedName: "custom-stdio",
+    command: "python",
+    args: ["/path/to/mcp_server.py"],
+    tokenStrategy: "none",
+    docsHref: "https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/skills-guide.md",
+    docsLabel: "Skills guide",
+  },
+];
+
+function createMCPFormStateFromTemplate(template: MCPServerTemplate): MCPFormState {
+  return {
+    name: template.suggestedName,
+    transport: template.transport,
+    command: template.command ?? "",
+    argsText: template.args?.join("\n") ?? "",
+    url: template.url ?? "",
+    token: "",
+    tokenMode: template.tokenStrategy === "bearer" ? "replace" : "keep",
+    envText: "",
+    is_active: true,
+  };
+}
+
 function createMCPFormState(current?: MCPServerResponse | null): MCPFormState {
   const envText = current?.env_vars
     ? Object.entries(current.env_vars)
@@ -1134,7 +1240,10 @@ function MCPServerModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (form: MCPFormState) => Promise<void>;
+  onSubmit: (
+    form: MCPFormState,
+    intent: "save" | "connect",
+  ) => Promise<void>;
   saving: boolean;
   error: string;
   initialServer: MCPServerResponse | null;
@@ -1142,11 +1251,13 @@ function MCPServerModal({
   const [form, setForm] = useState<MCPFormState>(() =>
     createMCPFormState(initialServer),
   );
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(createMCPFormState(initialServer));
+    setSelectedTemplateId(null);
   }, [open, initialServer]);
 
   function setField<K extends keyof MCPFormState>(
@@ -1158,11 +1269,23 @@ function MCPServerModal({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    await onSubmit(form);
+    const selectedTemplate = MCP_SERVER_TEMPLATES.find(
+      (template) => template.id === selectedTemplateId,
+    );
+    const intent =
+      !initialServer &&
+      selectedTemplate?.tokenStrategy === "oauth" &&
+      form.transport !== "stdio"
+        ? "connect"
+        : "save";
+    await onSubmit(form, intent);
   }
 
   const showTokenField = form.transport !== "stdio";
   const hasExistingToken = Boolean(initialServer?.has_token);
+  const selectedTemplate = MCP_SERVER_TEMPLATES.find(
+    (template) => template.id === selectedTemplateId,
+  );
 
   return (
     <Modal
@@ -1172,6 +1295,80 @@ function MCPServerModal({
       maxWidth="max-w-2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {!initialServer && (
+          <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-4">
+            <div className="flex items-center gap-2">
+              <Star size={14} className="text-accent" />
+              <div>
+                <p className="text-sm font-medium text-fg-primary">Templates</p>
+                <p className="text-xs text-fg-secondary">
+                  Start from a common MCP shape, then tweak the manual form before saving.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {MCP_SERVER_TEMPLATES.map((template) => {
+                const isSelected = template.id === selectedTemplateId;
+                return (
+                  <div
+                    key={template.id}
+                    className={`rounded-lg border px-3 py-3 text-left transition ${
+                      isSelected
+                        ? "border-accent bg-accent-bg/40"
+                        : "border-border-subtle bg-bg-panel hover:border-border-strong"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-fg-primary">
+                          {template.name}
+                        </p>
+                        <p className="mt-1 text-xs text-fg-secondary">
+                          {template.description}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge>{template.transport}</Badge>
+                      {template.tokenStrategy === "oauth" && (
+                        <Badge variant="info">OAuth</Badge>
+                      )}
+                      {template.tokenStrategy === "bearer" && (
+                        <Badge variant="default">Bearer token</Badge>
+                      )}
+                      {template.tokenStrategy === "none" && (
+                        <Badge variant="resolved">No auth</Badge>
+                      )}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <Link
+                        href={template.docsHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-primary"
+                      >
+                        {template.docsLabel}
+                        <ExternalLink size={11} aria-hidden />
+                      </Link>
+                      <Button
+                        type="button"
+                        variant={isSelected ? "primary" : "secondary"}
+                        size="sm"
+                        onClick={() => {
+                          setSelectedTemplateId(template.id);
+                          setForm(createMCPFormStateFromTemplate(template));
+                        }}
+                      >
+                        {isSelected ? "Selected" : "Use template"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <Label htmlFor="mcp-name">Name</Label>
@@ -1327,7 +1524,15 @@ function MCPServerModal({
             Cancel
           </Button>
           <Button type="submit" loading={saving} disabled={!form.name.trim()}>
-            <Save size={13} /> {initialServer ? "Save Changes" : "Create Server"}
+            {selectedTemplate?.tokenStrategy === "oauth" && !initialServer ? (
+              <>
+                <ExternalLink size={13} /> Create & Connect
+              </>
+            ) : (
+              <>
+                <Save size={13} /> {initialServer ? "Save Changes" : "Create Server"}
+              </>
+            )}
           </Button>
         </div>
       </form>
@@ -1407,7 +1612,10 @@ function MCPSection({
     setError("");
   }
 
-  async function handleSubmit(form: MCPFormState) {
+  async function handleSubmit(
+    form: MCPFormState,
+    intent: "save" | "connect",
+  ) {
     const { payload, error: buildError } = buildMCPPayload(form);
     if (buildError || !payload) {
       setError(buildError ?? "Invalid form values.");
@@ -1420,13 +1628,29 @@ function MCPSection({
       if (editing) {
         await updateMCPServer(editing.id, payload);
         setNotice("MCP server updated.");
+        setModalOpen(false);
+        setEditing(null);
+        await onReload();
       } else {
-        await createMCPServer(payload);
+        const created = await createMCPServer(payload);
         setNotice("MCP server created.");
+        setModalOpen(false);
+        setEditing(null);
+        if (intent === "connect" && created.transport !== "stdio") {
+          try {
+            const { authorize_url } = await startMCPOAuth(created.id);
+            window.location.assign(authorize_url);
+            return;
+          } catch (oauthErr) {
+            setError(
+              oauthErr instanceof Error
+                ? `${oauthErr.message} The server was created; use Connect from the row to retry.`
+                : "OAuth start failed. The server was created; use Connect from the row to retry.",
+            );
+          }
+        }
+        await onReload();
       }
-      setModalOpen(false);
-      setEditing(null);
-      await onReload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {

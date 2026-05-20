@@ -380,6 +380,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Actually create the audit_schedules rows. Default is a dry-run that only prints the plan.",
     )
 
+    # -- doctor -------------------------------------------------------------
+    sub.add_parser(
+        "doctor",
+        help="Production-readiness checks (Sprint 43 P0 #3)",
+    )
+
     # -- mcp ----------------------------------------------------------------
     mcp_parser = sub.add_parser(
         "mcp",
@@ -1458,6 +1464,45 @@ async def _run_detectors_migrate(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+async def _run_doctor(cfg: Config) -> int:
+    """Run every check in ``backend.doctor`` and print a status line per result."""
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from backend import doctor as doctor_module
+
+    factory = None
+    engine = None
+    try:
+        engine = create_async_engine(_database_url(cfg), echo=False)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+    except Exception:  # noqa: BLE001
+        factory = None
+
+    try:
+        results = await doctor_module.run_all_checks(cfg, factory)
+    finally:
+        if engine is not None:
+            await engine.dispose()
+
+    print("OpsMender doctor -- production readiness checks")
+    print()
+    for result in results:
+        print(f"  {result.glyph} {result.name} -- {result.detail}")
+    print()
+
+    rc = doctor_module.exit_code(results)
+    warn_count = sum(1 for r in results if r.status == "warn")
+    fail_count = sum(1 for r in results if r.status == "fail")
+    summary_bits = [f"{len(results) - warn_count - fail_count} ok"]
+    if warn_count:
+        summary_bits.append(f"{warn_count} warn")
+    if fail_count:
+        summary_bits.append(f"{fail_count} fail")
+    print("Summary: " + ", ".join(summary_bits))
+    return rc
+
+
 async def _resolve_mcp_org_id(
     factory, raw_arg: str | None
 ) -> tuple[uuid.UUID | None, str | None]:
@@ -1652,6 +1697,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "detectors-migrate":
         rc = asyncio.run(_run_detectors_migrate(cfg, args))
+        sys.exit(rc)
+
+    if args.command == "doctor":
+        rc = asyncio.run(_run_doctor(cfg))
         sys.exit(rc)
 
     if args.command == "mcp":

@@ -44,6 +44,7 @@ import {
   listBotConnectors,
   listBotPlatformSchemas,
   listIngestProviders,
+  listMCPServerStatuses,
   listIngestTokens,
   listMCPServers,
   listModelConfigs,
@@ -91,6 +92,7 @@ import type {
   IngestTokenListResponse,
   IngestTokenResponse,
   MCPServerResponse,
+  MCPServerStatusResponse,
   MCPServerTestResponse,
   MCPServerUpsert,
   MCPTransport,
@@ -113,6 +115,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { StatusDot } from "@/components/ui/StatusDot";
 
 function ConfigCard({
   title,
@@ -136,6 +139,50 @@ function ConfigCard({
       <div className="space-y-4 px-6 py-5">{children}</div>
     </div>
   );
+}
+
+function formatLastSeen(timestamp: string | null): string {
+  if (!timestamp) return "Never connected successfully";
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) return "Unknown timestamp";
+  return parsed.toLocaleString();
+}
+
+function describeMCPStatus(status: MCPServerStatusResponse | undefined): {
+  tone: "green" | "amber" | "red";
+  label: string;
+  title: string;
+} {
+  if (!status) {
+    return {
+      tone: "red",
+      label: "Unknown",
+      title: "No runtime status has been recorded yet.",
+    };
+  }
+
+  const lastSeen = formatLastSeen(status.last_successful_call_at);
+  if (status.status === "healthy") {
+    return {
+      tone: "green",
+      label: "Healthy",
+      title: `Last successful call: ${lastSeen}`,
+    };
+  }
+  if (status.status === "stale") {
+    return {
+      tone: "amber",
+      label: "Stale",
+      title: `Last successful call: ${lastSeen}`,
+    };
+  }
+  return {
+    tone: "red",
+    label: "Error",
+    title: status.last_error
+      ? `Last successful call: ${lastSeen}\nError: ${status.last_error}`
+      : `Last successful call: ${lastSeen}`,
+  };
 }
 
 function Section({
@@ -786,6 +833,7 @@ function ModelSection({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [warningNotice, setWarningNotice] = useState("");
+  const providerById = new Map(providers.map((provider) => [provider.provider, provider]));
 
   function openCreateModal() {
     setEditing(null);
@@ -968,8 +1016,19 @@ function ModelSection({
                       {config.api_key_env_var ?? "No API key env var"}
                     </p>
                   </td>
-                  <td className="px-4 py-3 align-top capitalize text-fg-primary">
-                    {config.provider.replace("_", " ")}
+                  <td className="px-4 py-3 align-top text-fg-primary">
+                    <div className="flex items-center gap-2 capitalize">
+                      <StatusDot
+                        tone={providerById.get(config.provider)?.available ? "green" : "red"}
+                        title={
+                          providerById.get(config.provider)?.available
+                            ? `${providerById.get(config.provider)?.label ?? config.provider} is available.`
+                            : providerById.get(config.provider)?.error ??
+                              `${providerById.get(config.provider)?.label ?? config.provider} is unavailable.`
+                        }
+                      />
+                      <span>{config.provider.replace("_", " ")}</span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 align-top font-mono text-xs text-fg-secondary">
                     {config.model_id}
@@ -1578,11 +1637,15 @@ function TestPill({ state }: { state: TestState }) {
 
 function MCPSection({
   servers,
+  statuses,
   onReload,
+  onStatusReload,
   canEdit,
 }: {
   servers: MCPServerResponse[];
+  statuses: MCPServerStatusResponse[];
   onReload: () => Promise<void>;
+  onStatusReload: () => Promise<void>;
   canEdit: boolean;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -1592,6 +1655,7 @@ function MCPSection({
   const [notice, setNotice] = useState("");
   const [testStates, setTestStates] = useState<Record<string, TestState>>({});
   const [oauthStartingId, setOauthStartingId] = useState<string | null>(null);
+  const statusByServerId = new Map(statuses.map((status) => [status.server_id, status]));
 
   function openCreateModal() {
     setEditing(null);
@@ -1705,6 +1769,8 @@ function MCPSection({
           },
         },
       }));
+    } finally {
+      await onStatusReload();
     }
   }
 
@@ -1791,6 +1857,7 @@ function MCPSection({
                     : server.url ?? "";
                 const testState: TestState =
                   testStates[server.id] ?? { status: "idle" };
+                const runtimeStatus = describeMCPStatus(statusByServerId.get(server.id));
                 return (
                   <tr key={server.id}>
                     <td className="px-4 py-3 align-top">
@@ -1811,6 +1878,11 @@ function MCPSection({
                     </td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex flex-col gap-1.5">
+                        <StatusDot
+                          tone={runtimeStatus.tone}
+                          label={runtimeStatus.label}
+                          title={runtimeStatus.title}
+                        />
                         <Badge variant={server.is_active ? "resolved" : "closed"}>
                           {server.is_active ? "Active" : "Inactive"}
                         </Badge>
@@ -5162,6 +5234,7 @@ export default function ConfigPage() {
   const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
   const [modelBootstrap, setModelBootstrap] = useState<ModelBootstrapStatusResponse | null>(null);
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
+  const [mcpStatuses, setMcpStatuses] = useState<MCPServerStatusResponse[]>([]);
   const [botConnectors, setBotConnectors] = useState<BotConnectorResponse[]>([]);
   const [ingestTokens, setIngestTokens] = useState<IngestTokenResponse[]>([]);
   const [ingestProviderList, setIngestProviderList] = useState<IngestProviderItem[]>([]);
@@ -5195,6 +5268,7 @@ export default function ConfigPage() {
       savedConfigs,
       bootstrapStatus,
       mcpList,
+      mcpStatusList,
       botConnectorList,
       tokenList,
       ipList,
@@ -5208,6 +5282,7 @@ export default function ConfigPage() {
         listModelConfigs(),
         getModelBootstrapStatus(),
         listMCPServers(),
+        listMCPServerStatuses().catch(() => ({ items: [], total: 0 })),
         listBotConnectors().catch(() => ({ items: [], total: 0 })),
         listIngestTokens().catch(() => ({ items: [], total: 0 })),
         listIngestProviders().catch(() => ({ items: [] })),
@@ -5220,6 +5295,7 @@ export default function ConfigPage() {
     setModelConfigs(savedConfigs.items);
     setModelBootstrap(bootstrapStatus);
     setMcpServers(mcpList.items);
+    setMcpStatuses(mcpStatusList.items);
     setBotConnectors(botConnectorList.items);
     setIngestTokens(tokenList.items);
     setIngestProviderList(ipList.items);
@@ -5228,10 +5304,22 @@ export default function ConfigPage() {
     setWorkflowProfiles(workflowList.items);
   }, []);
 
+  const loadMCPStatuses = useCallback(async () => {
+    const statusList = await listMCPServerStatuses().catch(() => ({ items: [], total: 0 }));
+    setMcpStatuses(statusList.items);
+  }, []);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPageData().finally(() => setLoading(false));
   }, [loadPageData]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadMCPStatuses();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [loadMCPStatuses]);
 
   if (loading || !config || !modelBootstrap) return <ConfigPageSkeleton />;
 
@@ -5302,7 +5390,9 @@ export default function ConfigPage() {
         return (
           <MCPSection
             servers={mcpServers}
+            statuses={mcpStatuses}
             onReload={loadPageData}
+            onStatusReload={loadMCPStatuses}
             canEdit={canEdit}
           />
         );

@@ -122,7 +122,7 @@ If you're new to OpsMender, work top-down: get one model + one MCP server + one 
 
 > **Scheduled environment checks:** The legacy Detector surface has been retired. Use **Environment Scans** (`/dashboard/scans`) for on-demand sweeps, `POST /audits/schedules` for recurring read-only scans, and `opsmender detectors-migrate --apply` before running the detector-drop migration if an older deployment still has `detector_rules` rows.
 
-Sprint 43 also adds contextual empty states across the dashboard: when a page is blank, OpsMender now links straight to the relevant wiki guide instead of leaving the operator at a dead end.
+Sprint 43 also adds contextual empty states across the dashboard and live Config-page health dots: when a page is blank, OpsMender links straight to the relevant wiki guide instead of leaving the operator at a dead end, and `/dashboard/config` now shows inline green/amber/red status dots for model-provider availability and MCP runtime health.
 
 ## Quick Start
 

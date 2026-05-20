@@ -3632,6 +3632,12 @@ class TestMCPServerAPI:
         assert data["tool_count"] == 2
         assert data["tool_names"] == ["get_pods", "describe_pod"]
 
+        async with app.state.session_factory() as db:
+            refreshed = await MCPServerRepo.get_by_id(db, TEST_ORG_ID, server_id)
+            assert refreshed is not None
+            assert refreshed.last_successful_call_at is not None
+            assert refreshed.last_error is None
+
     async def test_test_mcp_server_failure(
         self, client: AsyncClient, app, auth_headers, monkeypatch
     ):
@@ -3662,6 +3668,63 @@ class TestMCPServerAPI:
         data = resp.json()
         assert data["success"] is False
         assert "connection refused" in data["detail"]
+
+        async with app.state.session_factory() as db:
+            refreshed = await MCPServerRepo.get_by_id(db, TEST_ORG_ID, server_id)
+            assert refreshed is not None
+            assert refreshed.last_successful_call_at is None
+            assert refreshed.last_error == "connection refused"
+
+    async def test_list_mcp_server_statuses(self, client: AsyncClient, app, auth_headers):
+        async with app.state.session_factory() as db:
+            healthy = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="healthy",
+                transport="stdio",
+                command="echo",
+            )
+            stale = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="stale",
+                transport="stdio",
+                command="echo",
+            )
+            broken = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="broken",
+                transport="stdio",
+                command="echo",
+            )
+            await MCPServerRepo.mark_connection_success(
+                db,
+                TEST_ORG_ID,
+                healthy.id,
+                at=datetime.now(timezone.utc) - timedelta(minutes=2),
+            )
+            await MCPServerRepo.mark_connection_success(
+                db,
+                TEST_ORG_ID,
+                stale.id,
+                at=datetime.now(timezone.utc) - timedelta(minutes=30),
+            )
+            await MCPServerRepo.mark_connection_failure(
+                db,
+                TEST_ORG_ID,
+                broken.id,
+                error="timed out",
+            )
+            await db.commit()
+
+        resp = await client.get("/mcp-servers/status", headers=auth_headers)
+        assert resp.status_code == 200
+        items = {item["server_id"]: item for item in resp.json()["items"]}
+        assert items[str(healthy.id)]["status"] == "healthy"
+        assert items[str(stale.id)]["status"] == "stale"
+        assert items[str(broken.id)]["status"] == "error"
+        assert items[str(broken.id)]["last_error"] == "timed out"
 
     async def test_oauth_start_returns_authorize_url(
         self, client: AsyncClient, app, auth_headers, monkeypatch

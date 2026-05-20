@@ -322,6 +322,18 @@ class MCPServerListResponse(BaseModel):
     total: int
 
 
+class MCPServerStatusResponse(BaseModel):
+    server_id: uuid.UUID
+    status: str
+    last_successful_call_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+
+
+class MCPServerStatusListResponse(BaseModel):
+    items: list[MCPServerStatusResponse]
+    total: int
+
+
 class MCPServerUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     transport: str = Field(pattern="^(stdio|sse|http)$")

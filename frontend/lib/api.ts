@@ -347,12 +347,17 @@ import type {
   MCPServerListResponse,
   MCPOAuthStartResponse,
   MCPServerResponse,
+  MCPServerStatusListResponse,
   MCPServerTestResponse,
   MCPServerUpsert,
 } from "./types";
 
 export async function listMCPServers(): Promise<MCPServerListResponse> {
   return api.get<MCPServerListResponse>("/mcp-servers");
+}
+
+export async function listMCPServerStatuses(): Promise<MCPServerStatusListResponse> {
+  return api.get<MCPServerStatusListResponse>("/mcp-servers/status");
 }
 
 export async function createMCPServer(

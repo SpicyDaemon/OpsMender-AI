@@ -971,6 +971,49 @@ class MCPServerRepo:
         await db.flush()
         return True
 
+    @staticmethod
+    async def mark_connection_success(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        server_id: uuid.UUID,
+        *,
+        at: datetime | None = None,
+    ) -> MCPServer | None:
+        stmt = (
+            update(MCPServer)
+            .where(MCPServer.org_id == org_id)
+            .where(MCPServer.id == server_id)
+            .values(
+                last_successful_call_at=at or datetime.now(timezone.utc),
+                last_error=None,
+            )
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await MCPServerRepo.get_by_id(db, org_id, server_id)
+
+    @staticmethod
+    async def mark_connection_failure(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        server_id: uuid.UUID,
+        *,
+        error: str,
+    ) -> MCPServer | None:
+        stmt = (
+            update(MCPServer)
+            .where(MCPServer.org_id == org_id)
+            .where(MCPServer.id == server_id)
+            .values(last_error=error)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await MCPServerRepo.get_by_id(db, org_id, server_id)
+
 
 class MCPServerOAuthTokenRepo:
     """OAuth 2.1 token persistence for HTTP-transport MCP servers (Sprint 42).

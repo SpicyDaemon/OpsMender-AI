@@ -16,6 +16,8 @@ from backend.api.deps import get_db
 from backend.api.schemas import (
     MCPServerListResponse,
     MCPServerResponse,
+    MCPServerStatusListResponse,
+    MCPServerStatusResponse,
     MCPServerTestResponse,
     MCPServerUpsert,
 )
@@ -149,6 +151,21 @@ def _resolve_token(
     if body.token == "":
         return None
     return body.token
+
+
+def _status_from_server(server: MCPServer) -> str:
+    now = datetime.now(timezone.utc)
+    if server.last_successful_call_at is None:
+        return "error"
+    last_success = server.last_successful_call_at
+    if last_success.tzinfo is None:
+        last_success = last_success.replace(tzinfo=timezone.utc)
+    age = now - last_success
+    if age < timedelta(minutes=5):
+        return "healthy"
+    if age <= timedelta(minutes=60):
+        return "stale"
+    return "error"
 
 
 @router.get(
@@ -343,6 +360,31 @@ async def list_mcp_servers(
     )
 
 
+@router.get(
+    "/status",
+    response_model=MCPServerStatusListResponse,
+    summary="List runtime connection status for saved MCP servers",
+)
+async def list_mcp_server_statuses(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    items = await MCPServerRepo.list_all(db, org_id)
+    return MCPServerStatusListResponse(
+        items=[
+            MCPServerStatusResponse(
+                server_id=item.id,
+                status=_status_from_server(item),
+                last_successful_call_at=item.last_successful_call_at,
+                last_error=item.last_error,
+            )
+            for item in items
+        ],
+        total=len(items),
+    )
+
+
 @router.post(
     "",
     response_model=MCPServerResponse,
@@ -494,6 +536,8 @@ async def test_mcp_server(
         async with connect(runtime_config) as session:
             tools = await list_tools(session)
         tool_names = [tool.name for tool in tools]
+        await MCPServerRepo.mark_connection_success(db, org_id, server_id)
+        await db.commit()
         return MCPServerTestResponse(
             success=True,
             detail="Connection successful",
@@ -501,6 +545,13 @@ async def test_mcp_server(
             tool_names=tool_names,
         )
     except Exception as exc:
+        await MCPServerRepo.mark_connection_failure(
+            db,
+            org_id,
+            server_id,
+            error=str(exc),
+        )
+        await db.commit()
         return MCPServerTestResponse(
             success=False,
             detail=str(exc),

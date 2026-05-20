@@ -85,3 +85,32 @@ class TestPatchSqliteDevSchema:
 
         assert "format" in by_name
         assert by_name["format"][4] == "'generic'"
+
+    def test_adds_missing_mcp_status_columns(self, tmp_path):
+        db_path = tmp_path / "dev.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                """
+                CREATE TABLE mcp_servers (
+                    id CHAR(32) NOT NULL PRIMARY KEY,
+                    org_id CHAR(32) NOT NULL,
+                    name VARCHAR(100) NOT NULL,
+                    transport VARCHAR(20) NOT NULL,
+                    command VARCHAR(500),
+                    args JSON,
+                    url VARCHAR(1000),
+                    token TEXT,
+                    env_vars JSON,
+                    is_active BOOLEAN NOT NULL,
+                    created_at DATETIME NOT NULL
+                )
+                """
+            )
+
+            _patch_sqlite_dev_schema(conn, Base.metadata)
+            columns = _column_names(conn, "mcp_servers")
+
+        assert "last_successful_call_at" in columns
+        assert "last_error" in columns

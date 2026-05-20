@@ -126,17 +126,22 @@ class MCPServerPool:
             The caller should propagate this so the operator can Reconnect
             via the Config page.
         """
-        cfg = await self._resolve_server_config_with_oauth(org_id, name)
+        cfg, server_id = await self._resolve_server_config_with_oauth(org_id, name)
         if cfg is None:
             raise MCPPoolError(f"MCP server not found: {name}")
-        async with mcp_connect(cfg) as session:
-            yield session
+        try:
+            async with mcp_connect(cfg) as session:
+                await self._record_connection_success(org_id, server_id)
+                yield session
+        except Exception as exc:
+            await self._record_connection_failure(org_id, server_id, str(exc))
+            raise
 
     async def _resolve_server_config_with_oauth(
         self,
         org_id: uuid.UUID | None,
         name: str,
-    ) -> MCPServerConfig | None:
+    ) -> tuple[MCPServerConfig | None, uuid.UUID | None]:
         """Return an ``MCPServerConfig``, injecting a refreshed OAuth bearer
         token when the server has an OAuth token row in the DB.
 
@@ -149,7 +154,7 @@ class MCPServerPool:
                 async with self._session_factory() as db:
                     row = await MCPServerRepo.get_by_name(db, org_id, name)
                     if row is None:
-                        return None
+                        return None, None
 
                     cfg = _db_to_runtime(row)
 
@@ -158,12 +163,22 @@ class MCPServerPool:
                             db, org_id, row.id
                         )
                         if token_row is not None:
-                            # May raise MCPAuthorizationRequiredError.
-                            access_token = await resolve_oauth_access_token(
-                                db, org_id, row.id, row.url
-                            )
+                            try:
+                                access_token = await resolve_oauth_access_token(
+                                    db, org_id, row.id, row.url
+                                )
+                            except MCPAuthorizationRequiredError as exc:
+                                await MCPServerRepo.mark_connection_failure(
+                                    db,
+                                    org_id,
+                                    row.id,
+                                    error=str(exc),
+                                )
+                                await db.commit()
+                                raise
                             await db.commit()
-                            return MCPServerConfig(
+                            return (
+                                MCPServerConfig(
                                 name=cfg.name,
                                 transport=cfg.transport,
                                 command=cfg.command,
@@ -171,8 +186,10 @@ class MCPServerPool:
                                 env=cfg.env,
                                 url=cfg.url,
                                 token=access_token,
+                                ),
+                                row.id,
                             )
-                    return cfg
+                    return cfg, row.id
             except MCPAuthorizationRequiredError:
                 raise
             except Exception:
@@ -180,5 +197,39 @@ class MCPServerPool:
 
         for fallback in self._env_fallback:
             if fallback.name == name:
-                return fallback
-        return None
+                return fallback, None
+        return None, None
+
+    async def _record_connection_success(
+        self,
+        org_id: uuid.UUID | None,
+        server_id: uuid.UUID | None,
+    ) -> None:
+        if self._session_factory is None or org_id is None or server_id is None:
+            return
+        try:
+            async with self._session_factory() as db:
+                await MCPServerRepo.mark_connection_success(db, org_id, server_id)
+                await db.commit()
+        except Exception:
+            return
+
+    async def _record_connection_failure(
+        self,
+        org_id: uuid.UUID | None,
+        server_id: uuid.UUID | None,
+        error: str,
+    ) -> None:
+        if self._session_factory is None or org_id is None or server_id is None:
+            return
+        try:
+            async with self._session_factory() as db:
+                await MCPServerRepo.mark_connection_failure(
+                    db,
+                    org_id,
+                    server_id,
+                    error=error,
+                )
+                await db.commit()
+        except Exception:
+            return

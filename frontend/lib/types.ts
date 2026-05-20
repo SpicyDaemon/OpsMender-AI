@@ -311,6 +311,20 @@ export interface MCPServerListResponse {
   total: number;
 }
 
+export type MCPServerConnectionStatus = "healthy" | "stale" | "error";
+
+export interface MCPServerStatusResponse {
+  server_id: string;
+  status: MCPServerConnectionStatus;
+  last_successful_call_at: string | null;
+  last_error: string | null;
+}
+
+export interface MCPServerStatusListResponse {
+  items: MCPServerStatusResponse[];
+  total: number;
+}
+
 export interface MCPServerUpsert {
   name: string;
   transport: MCPTransport;

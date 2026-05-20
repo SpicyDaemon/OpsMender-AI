@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import pytest
 import uuid
 
@@ -156,3 +157,65 @@ class TestMCPServerPoolFallback:
         with pytest.raises(MCPPoolError):
             async with pool.connect(TEST_ORG_ID, "nope"):
                 pass
+
+    async def test_connect_marks_successful_runtime_calls(
+        self, session_factory, monkeypatch
+    ):
+        async with session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="k8s",
+                transport="stdio",
+                command="/bin/echo",
+            )
+            await db.commit()
+            server_id = server.id
+
+        @asynccontextmanager
+        async def _fake_connect(_cfg):
+            class _Session:
+                pass
+
+            yield _Session()
+
+        monkeypatch.setattr("backend.mcp.pool.mcp_connect", _fake_connect)
+
+        pool = MCPServerPool(session_factory)
+        async with pool.connect(TEST_ORG_ID, "k8s"):
+            pass
+
+        async with session_factory() as db:
+            refreshed = await MCPServerRepo.get_by_id(db, TEST_ORG_ID, server_id)
+            assert refreshed is not None
+            assert refreshed.last_successful_call_at is not None
+            assert refreshed.last_error is None
+
+    async def test_connect_marks_failures(self, session_factory, monkeypatch):
+        async with session_factory() as db:
+            server = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="broken",
+                transport="stdio",
+                command="/bin/false",
+            )
+            await db.commit()
+            server_id = server.id
+
+        @asynccontextmanager
+        async def _failing_connect(_cfg):
+            raise RuntimeError("boom")
+            yield None
+
+        monkeypatch.setattr("backend.mcp.pool.mcp_connect", _failing_connect)
+
+        pool = MCPServerPool(session_factory)
+        with pytest.raises(RuntimeError, match="boom"):
+            async with pool.connect(TEST_ORG_ID, "broken"):
+                pass
+
+        async with session_factory() as db:
+            refreshed = await MCPServerRepo.get_by_id(db, TEST_ORG_ID, server_id)
+            assert refreshed is not None
+            assert refreshed.last_error == "boom"

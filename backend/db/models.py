@@ -1636,3 +1636,88 @@ class IncidentChainState(Base):
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+# ---------------------------------------------------------------------------
+# AI incident memory (Sprint 45 — D-025)
+# ---------------------------------------------------------------------------
+
+
+class IncidentMemory(Base):
+    """A short markdown lesson distilled from a successfully resolved incident.
+
+    The agent reads matching memories at session start (advisory context) and
+    writes a new one after `summarize` on resolved sessions. Operators can also
+    author and edit memories by hand. Memory cannot bypass tier or skill
+    enforcement — it is context only.
+    """
+
+    __tablename__ = "incident_memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    service_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("services.id", ondelete="SET NULL"), nullable=True
+    )
+    source_incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary_md: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unhelpful_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    is_hidden: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index("ix_incident_memories_org_service", "org_id", "service_id"),
+        Index("ix_incident_memories_org_hidden", "org_id", "is_hidden"),
+    )
+
+
+class IncidentMemoryRecallLog(Base):
+    """One row per (memory, session) surfacing event.
+
+    Used for analytics, audit ("which memories shaped this session?"), and for
+    populating the "Memories used" panel on the session detail page.
+    """
+
+    __tablename__ = "incident_memory_recall_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    memory_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("incident_memories.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    surfaced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    score: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_incident_memory_recall_session", "session_id", "surfaced_at"
+        ),
+    )

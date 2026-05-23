@@ -32,6 +32,8 @@ from backend.db.models import (
     Incident,
     IncidentAssignment,
     IncidentChainState,
+    IncidentMemory,
+    IncidentMemoryRecallLog,
     IncidentPage,
     ServiceEscalationChain,
     PriorityLLMOverrideLog,
@@ -4687,5 +4689,259 @@ class IncidentChainStateRepo:
             .where(IncidentChainState.status == "running")
             .where(IncidentChainState.next_step_due_at.is_not(None))
             .where(IncidentChainState.next_step_due_at <= now)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+
+class IncidentMemoryRepo:
+    """Sprint 45 — AI incident memory.
+
+    All methods are org-scoped; callers must pass `org_id` and the repo
+    enforces the boundary on every read and write.
+    """
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        org_id: uuid.UUID,
+        title: str,
+        summary_md: str,
+        service_id: uuid.UUID | None = None,
+        source_incident_id: uuid.UUID | None = None,
+        tags: list[str] | None = None,
+        created_by_user_id: uuid.UUID | None = None,
+    ) -> IncidentMemory:
+        row = IncidentMemory(
+            org_id=org_id,
+            service_id=service_id,
+            source_incident_id=source_incident_id,
+            title=title,
+            summary_md=summary_md,
+            tags=list(tags or []),
+            created_by_user_id=created_by_user_id,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, memory_id: uuid.UUID, org_id: uuid.UUID
+    ) -> IncidentMemory | None:
+        stmt = (
+            select(IncidentMemory)
+            .where(IncidentMemory.id == memory_id)
+            .where(IncidentMemory.org_id == org_id)
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_org(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        service_id: uuid.UUID | None = None,
+        include_hidden: bool = False,
+    ) -> Sequence[IncidentMemory]:
+        stmt = select(IncidentMemory).where(IncidentMemory.org_id == org_id)
+        if service_id is not None:
+            stmt = stmt.where(IncidentMemory.service_id == service_id)
+        if not include_hidden:
+            stmt = stmt.where(IncidentMemory.is_hidden.is_(False))
+        stmt = stmt.order_by(IncidentMemory.updated_at.desc())
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def count_for_service(
+        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(IncidentMemory)
+            .where(IncidentMemory.org_id == org_id)
+            .where(IncidentMemory.service_id == service_id)
+            .where(IncidentMemory.is_hidden.is_(False))
+        )
+        return int((await db.execute(stmt)).scalar() or 0)
+
+    @staticmethod
+    async def find_relevant(
+        db: AsyncSession,
+        *,
+        org_id: uuid.UUID,
+        service_id: uuid.UUID | None,
+        query: str | None,
+        tags: list[str] | None,
+        limit: int = 5,
+    ) -> list[tuple[IncidentMemory, float]]:
+        """Return top-K (memory, score) for the given service + free-text query.
+
+        Composite score:
+          - 2.0 if service_id matches exactly (or memory has no service)
+          - 1.0 * number of tag overlaps
+          - 0.5 if query keyword matches title or summary (ILIKE)
+          - plus helpful_ratio_boost = helpful / (helpful + unhelpful + 1)
+        """
+        stmt = (
+            select(IncidentMemory)
+            .where(IncidentMemory.org_id == org_id)
+            .where(IncidentMemory.is_hidden.is_(False))
+        )
+        rows = (await db.execute(stmt)).scalars().all()
+
+        normalized_query = (query or "").strip().lower()
+        normalized_tags = {t.lower() for t in (tags or []) if t}
+
+        scored: list[tuple[IncidentMemory, float]] = []
+        for row in rows:
+            score = 0.0
+            if service_id is not None and row.service_id == service_id:
+                score += 2.0
+            elif row.service_id is None:
+                # Global memories (no service binding) get a small lift so they
+                # surface for fresh services that have no service-bound memory yet.
+                score += 0.5
+
+            if normalized_tags and row.tags:
+                row_tags = {str(t).lower() for t in row.tags}
+                overlap = len(row_tags & normalized_tags)
+                if overlap:
+                    score += float(overlap)
+
+            if normalized_query:
+                hay = f"{row.title}\n{row.summary_md}".lower()
+                if normalized_query in hay:
+                    score += 0.5
+                else:
+                    # Token-level match: any whole word from the query landing
+                    # in title/summary counts as a partial hit.
+                    tokens = [
+                        t for t in normalized_query.split() if len(t) >= 3
+                    ]
+                    if any(t in hay for t in tokens):
+                        score += 0.25
+
+            helpful_ratio = row.helpful_count / float(
+                row.helpful_count + row.unhelpful_count + 1
+            )
+            score += helpful_ratio
+
+            if score > 0:
+                scored.append((row, score))
+
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        return scored[:limit]
+
+    @staticmethod
+    async def touch_last_used(
+        db: AsyncSession, memory_id: uuid.UUID
+    ) -> None:
+        await db.execute(
+            update(IncidentMemory)
+            .where(IncidentMemory.id == memory_id)
+            .values(last_used_at=datetime.now(timezone.utc))
+        )
+
+    @staticmethod
+    async def record_feedback(
+        db: AsyncSession,
+        *,
+        memory_id: uuid.UUID,
+        org_id: uuid.UUID,
+        helpful: bool,
+    ) -> IncidentMemory | None:
+        row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+        if row is None:
+            return None
+        if helpful:
+            row.helpful_count = row.helpful_count + 1
+        else:
+            row.unhelpful_count = row.unhelpful_count + 1
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def set_hidden(
+        db: AsyncSession,
+        *,
+        memory_id: uuid.UUID,
+        org_id: uuid.UUID,
+        hidden: bool,
+    ) -> IncidentMemory | None:
+        row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+        if row is None:
+            return None
+        row.is_hidden = hidden
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        *,
+        memory_id: uuid.UUID,
+        org_id: uuid.UUID,
+        title: str | None = None,
+        summary_md: str | None = None,
+        tags: list[str] | None = None,
+        service_id: uuid.UUID | None = None,
+        service_id_set: bool = False,
+    ) -> IncidentMemory | None:
+        row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+        if row is None:
+            return None
+        if title is not None:
+            row.title = title
+        if summary_md is not None:
+            row.summary_md = summary_md
+        if tags is not None:
+            row.tags = list(tags)
+        if service_id_set:
+            row.service_id = service_id
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, *, memory_id: uuid.UUID, org_id: uuid.UUID
+    ) -> bool:
+        row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+        if row is None:
+            return False
+        await db.delete(row)
+        await db.flush()
+        return True
+
+
+class IncidentMemoryRecallLogRepo:
+    @staticmethod
+    async def record(
+        db: AsyncSession,
+        *,
+        memory_id: uuid.UUID,
+        session_id: uuid.UUID,
+        score: float | None = None,
+    ) -> IncidentMemoryRecallLog:
+        row = IncidentMemoryRecallLog(
+            memory_id=memory_id,
+            session_id=session_id,
+            score=score,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def list_for_session(
+        db: AsyncSession, session_id: uuid.UUID
+    ) -> Sequence[IncidentMemoryRecallLog]:
+        stmt = (
+            select(IncidentMemoryRecallLog)
+            .where(IncidentMemoryRecallLog.session_id == session_id)
+            .order_by(IncidentMemoryRecallLog.surfaced_at.asc())
         )
         return (await db.execute(stmt)).scalars().all()

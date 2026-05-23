@@ -2,12 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  Bell,
   Calendar,
+  GitBranch,
   Info,
   ListOrdered,
   PlusCircle,
+  Repeat,
+  Server,
   Trash2,
   Users,
+  Wrench,
+  type LucideIcon,
 } from "lucide-react";
 
 import {
@@ -69,37 +75,54 @@ type Tab =
   | "maintenance"
   | "preferences";
 
-const TABS: { id: Tab; label: string; description: string }[] = [
-  { id: "teams", label: "Teams", description: "Org-chart units." },
+const TABS: {
+  id: Tab;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}[] = [
+  {
+    id: "teams",
+    label: "Teams",
+    description: "Org-chart units that group services and rosters.",
+    icon: Users,
+  },
   {
     id: "services",
     label: "Services",
-    description: "Owned by one team in v1.",
+    description: "Owned by one team in v1. Incidents page the owning team.",
+    icon: Server,
   },
   {
     id: "rosters",
     label: "Rosters",
-    description: "Deterministic on-call rotations.",
+    description: "Deterministic on-call rotations resolved per-incident.",
+    icon: Repeat,
   },
   {
     id: "rules",
     label: "Priority Rules",
-    description: "First-match-wins priority assignment.",
+    description:
+      "First-match-wins assignment of P0–P3 and the response mode.",
+    icon: ListOrdered,
   },
   {
     id: "chains",
     label: "Escalation Chains",
-    description: "Additive paging steps with timeouts.",
+    description: "Additive paging steps that fire on a timeout cadence.",
+    icon: GitBranch,
   },
   {
     id: "maintenance",
     label: "Maintenance Windows",
     description: "Suppress paging during planned downtime.",
+    icon: Wrench,
   },
   {
     id: "preferences",
     label: "My Notifications",
-    description: "Channels, routing, and quiet hours.",
+    description: "Channels, routing, and quiet hours for your account.",
+    icon: Bell,
   },
 ];
 
@@ -146,6 +169,8 @@ export default function PagingPage() {
     refresh();
   }, [refresh]);
 
+  const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
+
   return (
     <div className="space-y-6 p-6">
       <header className="flex items-start justify-between gap-4">
@@ -153,8 +178,7 @@ export default function PagingPage() {
           <h1 className="text-2xl font-semibold text-fg-primary">Paging</h1>
           <p className="text-sm text-fg-secondary">
             Teams, services, rosters, priority rules, and escalation chains —
-            OpsMender-owned paging. Maintenance windows and channel fan-out
-            land in Sprint 35.
+            the OpsMender-owned paging surface.
           </p>
         </div>
         <Button
@@ -168,23 +192,38 @@ export default function PagingPage() {
 
       <PagingFlowModal open={showFlow} onClose={() => setShowFlow(false)} />
 
-      <nav className="flex flex-wrap gap-1 rounded-md border border-border-default bg-bg-surface p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`flex-1 rounded px-3 py-2 text-left text-sm transition ${
-              tab === t.id
-                ? "bg-bg-elevated text-fg-primary"
-                : "text-fg-secondary hover:text-fg-primary"
-            }`}
-          >
-            <div className="font-medium">{t.label}</div>
-            <div className="text-xs text-fg-tertiary">{t.description}</div>
-          </button>
-        ))}
+      <nav
+        aria-label="Paging sections"
+        className="flex flex-wrap gap-2"
+      >
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const isActive = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              aria-current={isActive ? "page" : undefined}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
+                isActive
+                  ? "bg-accent text-white shadow-sm"
+                  : "border border-border-default bg-bg-surface text-fg-secondary hover:border-border-strong hover:text-fg-primary"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          );
+        })}
       </nav>
+
+      <div className="border-b border-border-subtle pb-3">
+        <h2 className="text-lg font-semibold text-fg-primary">
+          {activeTab.label}
+        </h2>
+        <p className="text-sm text-fg-secondary">{activeTab.description}</p>
+      </div>
 
       {tab === "teams" && <TeamsPanel teams={teams} onChange={refresh} />}
       {tab === "services" && (

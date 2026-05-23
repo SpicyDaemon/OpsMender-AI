@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Paging page visual refresh** (Session 111). `/dashboard/paging` now uses icon + label pill tabs in place of the previous cramped 7-card row. Active tab is filled with the accent color; inactive tabs are ghost-styled with hover affordance. Each tab carries a dedicated lucide icon (Users, Server, Repeat, ListOrdered, GitBranch, Wrench, Bell), and the selected section's description has moved into a clearer subhead in the body so descriptions no longer word-wrap across narrow tab cards. Header copy tightened. No behavior or routing change. Verification: `cd frontend && npm run build` clean; full suite still green.
 
 ### Fixed
 

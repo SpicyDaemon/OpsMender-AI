@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select } from "@/components/ui/Input";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
@@ -229,26 +230,29 @@ export default function ActivityPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-accent-bg border border-status-info-border">
-            <BookOpen size={18} className="text-accent" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-fg-primary">Activity</h1>
-            {data && (
-              <p className="text-sm text-fg-secondary mt-0.5">{data.total} entries</p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <ColumnToggle visible={visibleCols} onChange={setVisibleCols} />
-          <Button variant="ghost" size="sm" onClick={() => { setPage(0); load(); }} disabled={loading}>
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </Button>
-        </div>
+      <div className="mb-6">
+        <PageHeader
+          title="Activity"
+          subtitle={data ? `${data.total} entries` : undefined}
+          icon={<BookOpen size={18} />}
+          actions={
+            <>
+              <ColumnToggle visible={visibleCols} onChange={setVisibleCols} />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setPage(0);
+                  load();
+                }}
+                disabled={loading}
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                Refresh
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {/* Filters */}

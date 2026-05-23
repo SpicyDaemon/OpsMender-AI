@@ -15,8 +15,9 @@ import type { ApprovalListResponse, ApprovalRequestResponse, ApprovalStatus } fr
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Select } from "@/components/ui/Input";
+import { FilterChips } from "@/components/ui/FilterChips";
 import { Modal } from "@/components/ui/Modal";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
@@ -99,43 +100,37 @@ export default function ApprovalsPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-status-medium-bg border border-status-medium-border">
-            <Shield size={18} className="text-status-medium" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-fg-primary flex items-center gap-2">
+      <div className="mb-6">
+        <PageHeader
+          title={
+            <span className="flex items-center gap-2">
               Approvals
               {pendingCount > 0 && (
                 <span className="inline-flex items-center justify-center rounded-full bg-status-medium text-fg-inverse text-xs font-bold min-w-[22px] h-[22px] px-1.5 animate-pulse">
                   {pendingCount}
                 </span>
               )}
-            </h1>
-            {data && (
-              <p className="text-sm text-fg-secondary mt-0.5">{data.total} total requests</p>
-            )}
-          </div>
-        </div>
-        <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </Button>
+            </span>
+          }
+          subtitle={data ? `${data.total} total requests` : undefined}
+          icon={<Shield size={18} />}
+          actions={
+            <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </Button>
+          }
+        />
       </div>
 
       {/* Filter bar */}
-      <div className="mb-5 flex items-center gap-3">
-        <Select
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <FilterChips
+          ariaLabel="Filter by approval status"
+          options={STATUS_OPTIONS}
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as ApprovalStatus | "")}
-          className="w-48"
-        >
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </Select>
+          onChange={(v) => setStatusFilter(v)}
+        />
         <span className="text-xs text-fg-muted">
           {data ? `${data.items.length} shown` : ""}
         </span>

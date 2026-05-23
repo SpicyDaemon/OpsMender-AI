@@ -29,6 +29,7 @@ import type {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
@@ -212,21 +213,15 @@ export default function EnvironmentScansPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-fg-primary">
-            Environment Scans
-          </h1>
-          <p className="text-sm text-fg-secondary">
-            Run read-only scans against an MCP server and triage findings
-            without paging anyone. Analyzers only see tools the MCP server
-            exposes — skill + tier enforcement still applies.
-          </p>
-        </div>
-        <Button variant="ghost" onClick={refresh}>
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </Button>
-      </header>
+      <PageHeader
+        title="Environment Scans"
+        subtitle="Run read-only scans against an MCP server and triage findings without paging anyone. Analyzers only see tools the MCP server exposes — skill + tier enforcement still applies."
+        actions={
+          <Button variant="ghost" onClick={refresh}>
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </Button>
+        }
+      />
 
       <section className="rounded-lg border border-border-default bg-bg-surface p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-secondary">

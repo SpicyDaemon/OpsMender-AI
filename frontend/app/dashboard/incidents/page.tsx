@@ -18,8 +18,10 @@ import type {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterChips } from "@/components/ui/FilterChips";
 import { Input, Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
@@ -178,29 +180,30 @@ export default function IncidentsPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <SetupChecklist />
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-fg-primary">Incidents</h1>
-          {data && (
-            <p className="mt-0.5 text-sm text-fg-secondary">
-              Showing {filteredItems.length} of {data.total} incidents
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setShowTest(true)}>
-            Fire Test Incident
-          </Button>
-          <Button size="sm" onClick={() => setShowCreate(true)}>
-            <Plus size={14} />
-            New Incident
-          </Button>
-        </div>
+      <div className="mb-6">
+        <PageHeader
+          title="Incidents"
+          subtitle={
+            data
+              ? `Showing ${filteredItems.length} of ${data.total} incidents`
+              : undefined
+          }
+          actions={
+            <>
+              <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                Refresh
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setShowTest(true)}>
+                Fire Test Incident
+              </Button>
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                <Plus size={14} />
+                New Incident
+              </Button>
+            </>
+          }
+        />
       </div>
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -220,9 +223,9 @@ export default function IncidentsPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-4 rounded-lg border border-border-subtle bg-bg-panel p-4 shadow-sm">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.8fr))_auto]">
-          <div>
+      <div className="mb-4 space-y-3 rounded-lg border border-border-subtle bg-bg-panel p-4 shadow-sm">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-0 flex-1">
             <Label htmlFor="inc-search">Search</Label>
             <div className="relative">
               <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
@@ -238,69 +241,52 @@ export default function IncidentsPage() {
               <p className="mt-1 text-xs text-fg-muted">Searching…</p>
             )}
           </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!hasAnyFilters}
+            onClick={() => {
+              setQuery("");
+              setStatusFilter("");
+              setSeverityFilter("");
+              setSourceFilter("");
+            }}
+          >
+            <X size={14} />
+            Clear
+          </Button>
+        </div>
 
-          <div>
-            <Label htmlFor="inc-status">Status</Label>
-            <Select
-              id="inc-status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as IncidentStatus | "")}
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </div>
+        <div className="grid gap-3 sm:grid-cols-[6rem_1fr] sm:items-center">
+          <span className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
+            Status
+          </span>
+          <FilterChips
+            ariaLabel="Filter by status"
+            options={STATUS_OPTIONS}
+            value={statusFilter}
+            onChange={(v) => setStatusFilter(v)}
+          />
 
-          <div>
-            <Label htmlFor="inc-severity">Severity</Label>
-            <Select
-              id="inc-severity"
-              value={severityFilter}
-              onChange={(e) => setSeverityFilter(e.target.value as Severity | "")}
-            >
-              {SEVERITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <span className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
+            Severity
+          </span>
+          <FilterChips
+            ariaLabel="Filter by severity"
+            options={SEVERITY_OPTIONS}
+            value={severityFilter}
+            onChange={(v) => setSeverityFilter(v)}
+          />
 
-          <div>
-            <Label htmlFor="inc-source">Source</Label>
-            <Select
-              id="inc-source"
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value as "" | "manual" | "ingested")}
-            >
-              {SOURCE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="flex items-end">
-            <Button
-              variant="secondary"
-              size="sm"
-              className="w-full justify-center"
-              disabled={!hasAnyFilters}
-              onClick={() => {
-                setQuery("");
-                setStatusFilter("");
-                setSeverityFilter("");
-                setSourceFilter("");
-              }}
-            >
-              <X size={14} />
-              Clear
-            </Button>
-          </div>
+          <span className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
+            Source
+          </span>
+          <FilterChips
+            ariaLabel="Filter by source"
+            options={SOURCE_OPTIONS as readonly { value: "" | "manual" | "ingested"; label: string }[]}
+            value={sourceFilter}
+            onChange={(v) => setSourceFilter(v)}
+          />
         </div>
       </div>
 

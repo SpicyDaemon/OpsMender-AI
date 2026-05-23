@@ -64,6 +64,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useToast } from "@/components/ui/Toast";
 
 type Tab =
@@ -173,22 +174,19 @@ export default function PagingPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-fg-primary">Paging</h1>
-          <p className="text-sm text-fg-secondary">
-            Teams, services, rosters, priority rules, and escalation chains —
-            the OpsMender-owned paging surface.
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          onClick={() => setShowFlow(true)}
-          title="How paging works"
-        >
-          <Info className="h-4 w-4" /> How it works
-        </Button>
-      </header>
+      <PageHeader
+        title="Paging"
+        subtitle="Teams, services, rosters, priority rules, and escalation chains — the OpsMender-owned paging surface."
+        actions={
+          <Button
+            variant="ghost"
+            onClick={() => setShowFlow(true)}
+            title="How paging works"
+          >
+            <Info className="h-4 w-4" /> How it works
+          </Button>
+        }
+      />
 
       <PagingFlowModal open={showFlow} onClose={() => setShowFlow(false)} />
 
@@ -1234,176 +1232,121 @@ function PagingFlowModal({
   open: boolean;
   onClose: () => void;
 }) {
+  const stages = [
+    {
+      number: "1",
+      heading: "Triage",
+      question: "How urgent is it?",
+      tone: "info" as const,
+      lines: [
+        "Priority Rule picks P0–P3 (first match wins)",
+        "Response Mode is locked: auto-resolve · notify · page",
+      ],
+    },
+    {
+      number: "2",
+      heading: "Route",
+      question: "Who owns this?",
+      tone: "accent" as const,
+      lines: [
+        "The Service owns one Team",
+        "The Team’s Escalation Chain takes over",
+      ],
+    },
+    {
+      number: "3",
+      heading: "Page",
+      question: "Who wakes up — and when?",
+      tone: "warn" as const,
+      lines: [
+        "Chain fires steps additively on a timeout",
+        "Roster resolves who’s on-call right now",
+        "Ack pauses the chain · 15-min hard cap",
+      ],
+    },
+  ];
+
+  const toneStyles: Record<string, string> = {
+    info: "border-status-info-border bg-status-info-bg text-status-info",
+    accent: "border-accent bg-accent-bg text-accent",
+    warn: "border-status-medium-border bg-status-medium-bg text-status-medium",
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="How paging works">
-      <div className="space-y-4">
+      <div className="space-y-5">
         <p className="text-sm text-fg-secondary">
-          Every incident flows through the same pipeline. The first stop decides
-          how urgent it is. The second decides whether to wake anyone up. The
-          third decides who.
+          Every incident flows through the same three stops. The first decides
+          how urgent it is. The second decides who owns it. The third decides
+          who actually gets paged.
         </p>
 
-        <div className="overflow-x-auto rounded-lg border border-border-default bg-bg-elevated p-4">
-          <svg
-            viewBox="0 0 720 360"
-            className="w-full"
-            xmlns="http://www.w3.org/2000/svg"
-            role="img"
-            aria-label="Paging pipeline diagram"
-          >
-            <defs>
-              <marker
-                id="arrow"
-                viewBox="0 0 10 10"
-                refX="8"
-                refY="5"
-                markerWidth="6"
-                markerHeight="6"
-                orient="auto"
-              >
-                <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
-              </marker>
-            </defs>
-
-            {/* row 1: inbound -> priority rules -> response mode */}
-            <g className="text-fg-secondary">
-              <rect x="10" y="20" width="150" height="48" rx="6" fill="none" stroke="currentColor" />
-              <text x="85" y="42" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                Inbound alert
-              </text>
-              <text x="85" y="58" textAnchor="middle" fontSize="10" fill="currentColor">
-                (Datadog / Prom / …)
-              </text>
-
-              <line x1="160" y1="44" x2="220" y2="44" stroke="currentColor" markerEnd="url(#arrow)" />
-
-              <rect x="220" y="20" width="170" height="48" rx="6" fill="none" stroke="currentColor" />
-              <text x="305" y="42" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                Priority Rules
-              </text>
-              <text x="305" y="58" textAnchor="middle" fontSize="10" fill="currentColor">
-                first match → P0..P3
-              </text>
-
-              <line x1="390" y1="44" x2="450" y2="44" stroke="currentColor" markerEnd="url(#arrow)" />
-
-              <rect x="450" y="20" width="200" height="48" rx="6" fill="none" stroke="currentColor" />
-              <text x="550" y="42" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                Response Mode
-              </text>
-              <text x="550" y="58" textAnchor="middle" fontSize="10" fill="currentColor">
-                auto_resolve / notify / page
-              </text>
-            </g>
-
-            {/* row 2: page → service → chain */}
-            <g className="text-fg-secondary">
-              <line x1="550" y1="68" x2="550" y2="100" stroke="currentColor" markerEnd="url(#arrow)" />
-
-              <rect x="450" y="100" width="200" height="48" rx="6" fill="none" stroke="currentColor" />
-              <text x="550" y="122" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                Service
-              </text>
-              <text x="550" y="138" textAnchor="middle" fontSize="10" fill="currentColor">
-                owns a Team
-              </text>
-
-              <line x1="450" y1="124" x2="390" y2="124" stroke="currentColor" markerEnd="url(#arrow)" />
-
-              <rect x="220" y="100" width="170" height="48" rx="6" fill="none" stroke="currentColor" />
-              <text x="305" y="122" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                Escalation Chain
-              </text>
-              <text x="305" y="138" textAnchor="middle" fontSize="10" fill="currentColor">
-                ordered steps
-              </text>
-            </g>
-
-            {/* row 3: chain steps → roster → user */}
-            <g className="text-fg-secondary">
-              <line x1="305" y1="148" x2="305" y2="180" stroke="currentColor" markerEnd="url(#arrow)" />
-
-              <rect x="180" y="180" width="250" height="60" rx="6" fill="none" stroke="currentColor" />
-              <text x="305" y="200" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                Step N → target
-              </text>
-              <text x="305" y="216" textAnchor="middle" fontSize="10" fill="currentColor">
-                roster · user · team
-              </text>
-              <text x="305" y="230" textAnchor="middle" fontSize="10" fill="currentColor">
-                timeout → fire next step (additive)
-              </text>
-
-              <line x1="430" y1="210" x2="490" y2="210" stroke="currentColor" markerEnd="url(#arrow)" />
-
-              <rect x="490" y="180" width="200" height="60" rx="6" fill="none" stroke="currentColor" />
-              <text x="590" y="200" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                Roster · on_call_at(now)
-              </text>
-              <text x="590" y="216" textAnchor="middle" fontSize="10" fill="currentColor">
-                weekly / daily / N-day rotation
-              </text>
-              <text x="590" y="230" textAnchor="middle" fontSize="10" fill="currentColor">
-                overrides win
-              </text>
-            </g>
-
-            {/* row 4: ack / takeover */}
-            <g className="text-fg-secondary">
-              <line x1="305" y1="240" x2="305" y2="272" stroke="currentColor" markerEnd="url(#arrow)" />
-
-              <rect x="180" y="272" width="250" height="60" rx="6" fill="none" stroke="currentColor" />
-              <text x="305" y="292" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                Ack → assignee
-              </text>
-              <text x="305" y="308" textAnchor="middle" fontSize="10" fill="currentColor">
-                chain pauses · incident-scoped authority
-              </text>
-              <text x="305" y="322" textAnchor="middle" fontSize="10" fill="currentColor">
-                soft-takeover 5 min · admin force any time
-              </text>
-
-              <line x1="430" y1="302" x2="490" y2="302" stroke="currentColor" markerEnd="url(#arrow)" />
-
-              <rect x="490" y="272" width="200" height="60" rx="6" fill="none" stroke="currentColor" />
-              <text x="590" y="292" textAnchor="middle" fontSize="12" fill="currentColor" fontWeight="600">
-                15-min hard timeout
-              </text>
-              <text x="590" y="308" textAnchor="middle" fontSize="10" fill="currentColor">
-                chain → exhausted
-              </text>
-              <text x="590" y="322" textAnchor="middle" fontSize="10" fill="currentColor">
-                team channel fan-out (S35)
-              </text>
-            </g>
-          </svg>
+        <div className="rounded-xl border border-border-default bg-bg-elevated p-5">
+          <ol className="grid gap-4 md:grid-cols-3">
+            {stages.map((stage, i) => (
+              <li key={stage.number} className="relative flex flex-col">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-base font-bold ${toneStyles[stage.tone]}`}
+                  >
+                    {stage.number}
+                  </div>
+                  <div>
+                    <div className="text-base font-semibold text-fg-primary">
+                      {stage.heading}
+                    </div>
+                    <div className="text-xs text-fg-tertiary">
+                      {stage.question}
+                    </div>
+                  </div>
+                </div>
+                <ul className="mt-3 space-y-1.5 text-sm text-fg-secondary">
+                  {stage.lines.map((line) => (
+                    <li key={line} className="flex gap-2">
+                      <span className="text-fg-muted">·</span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                {i < stages.length - 1 && (
+                  <div
+                    aria-hidden
+                    className="hidden md:block absolute -right-2 top-4 text-fg-muted"
+                  >
+                    →
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
         </div>
 
-        <ul className="space-y-1 text-xs text-fg-secondary">
-          <li>
-            <span className="font-semibold text-fg-primary">Priority rules</span>{" "}
-            are first-match-wins; LLM escalation can only bump priority up.
-          </li>
-          <li>
-            <span className="font-semibold text-fg-primary">Response mode</span>{" "}
-            is locked at incident creation. The AI may resolve an incident but
-            never downgrades its mode.
-          </li>
-          <li>
+        <div className="grid gap-2 sm:grid-cols-2 text-xs text-fg-secondary">
+          <div className="rounded-md border border-border-subtle bg-bg-surface px-3 py-2">
             <span className="font-semibold text-fg-primary">
-              Escalation is additive
-            </span>
-            : once paged, you stay paged. Later steps add people, they do not
-            replace earlier ones.
-          </li>
-          <li>
+              Escalation is additive.
+            </span>{" "}
+            Later steps add people; they don’t replace earlier ones.
+          </div>
+          <div className="rounded-md border border-border-subtle bg-bg-surface px-3 py-2">
             <span className="font-semibold text-fg-primary">
-              Incident-scoped authority
-            </span>
-            : the active assignee gets operator-equivalent rights on that
-            incident regardless of global role.
-          </li>
-        </ul>
+              Response mode is locked.
+            </span>{" "}
+            AI can resolve, but never downgrade.
+          </div>
+          <div className="rounded-md border border-border-subtle bg-bg-surface px-3 py-2">
+            <span className="font-semibold text-fg-primary">
+              Priority can only go up.
+            </span>{" "}
+            LLM escalation never lowers the assigned tier.
+          </div>
+          <div className="rounded-md border border-border-subtle bg-bg-surface px-3 py-2">
+            <span className="font-semibold text-fg-primary">
+              Incident-scoped authority.
+            </span>{" "}
+            The active assignee gets operator rights on that incident.
+          </div>
+        </div>
 
         <div className="flex justify-end">
           <Button onClick={onClose}>Got it</Button>

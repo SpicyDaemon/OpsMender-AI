@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
@@ -491,28 +492,22 @@ export default function SkillsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-fg-primary">Skills</h1>
-          <p className="mt-1 text-sm text-fg-secondary">
-            Operator-owned skill definitions. Each MCP server can have its
-            own skill; a global skill acts as the fallback.
-          </p>
-        </div>
-        {canEdit && (
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setShowImport(true)}
-            >
-              <FileUp size={14} /> Import .md
-            </Button>
-            <Button onClick={openCreate}>
-              <Plus size={14} /> New skill
-            </Button>
-          </div>
-        )}
-      </div>
+      <PageHeader
+        title="Skills"
+        subtitle="Operator-owned skill definitions. Each MCP server can have its own skill; a global skill acts as the fallback."
+        actions={
+          canEdit ? (
+            <>
+              <Button variant="secondary" onClick={() => setShowImport(true)}>
+                <FileUp size={14} /> Import .md
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus size={14} /> New skill
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
       {skills.length === 0 ? (
         <EmptyState

@@ -246,8 +246,86 @@ def _invoke_multi_agent(llm: LLM, *, task_prompt: str, agent_roles: list[str]) -
 
 
 # ---------------------------------------------------------------------------
+# recall (Sprint 45)
+# ---------------------------------------------------------------------------
+
+
+def _build_recall(
+    memory_factory: Any,
+    *,
+    org_id: uuid.UUID,
+    service_id: uuid.UUID | None,
+):
+    """Return a recall node closed over the org + service binding.
+
+    The closure performs no LLM call — it's a pure SQL lookup against the
+    ``incident_memories`` table. Surfaced memories are written to
+    ``incident_memory_recall_log`` and stamped via ``last_used_at`` so the
+    self-improvement signal stays accurate.
+
+    The node always succeeds. Memory is advisory; any retrieval failure is
+    swallowed inside :func:`backend.memory.retrieval.recall_for_session` so
+    the session keeps moving.
+    """
+
+    # Local import to avoid pulling DB code into stub / CLI test paths that
+    # never enable memory.
+    from backend.memory.retrieval import recall_for_session
+
+    async def recall(state: IncidentState) -> dict:
+        session_id_raw = state.get("session_id")
+        if not session_id_raw:
+            return {}
+        try:
+            session_id = uuid.UUID(str(session_id_raw))
+        except (TypeError, ValueError):
+            return {}
+
+        incident = state.get("incident") or {}
+        result = await recall_for_session(
+            memory_factory,
+            org_id=org_id,
+            session_id=session_id,
+            service_id=service_id,
+            incident=dict(incident),
+        )
+        if result.is_empty:
+            return {}
+        return {
+            "memory_context": result.context_block,
+            "recalled_memory_ids": list(result.memory_ids),
+        }
+
+    return recall
+
+
+def recall(state: IncidentState) -> dict:
+    """Stub recall node (no memory). Use ``_build_recall`` for real logic."""
+    return {}
+
+
+# ---------------------------------------------------------------------------
 # observe
 # ---------------------------------------------------------------------------
+
+OBSERVE_PROMPT_WITH_MEMORY = """\
+You are an expert Site Reliability Engineer (SRE) performing incident response.
+
+{memory_context}\
+An incident has been reported with the following description:
+
+---
+{incident_description}
+---
+
+Based on this description, provide a structured summary of:
+1. What is known so far
+2. What systems or components appear to be affected
+3. What initial observations can be made
+4. What information would be useful to gather next
+
+Be concise and actionable.  Focus on facts, not speculation."""
+
 
 def _build_observe(llm: LLM, agent_roles: list[str] | None = None):
     """Return an observe node function closed over the LLM instance."""
@@ -258,10 +336,22 @@ def _build_observe(llm: LLM, agent_roles: list[str] | None = None):
         """Gather initial observations about the incident.
 
         Sends the incident description to the LLM for structured
-        analysis and initial observation gathering.
+        analysis and initial observation gathering. When memory recall
+        produced a context block (Sprint 45), it is prepended to the
+        prompt so prior lessons inform the first pass.
         """
         description = state.get("incident_description", "")
-        prompt = OBSERVE_PROMPT.format(incident_description=description)
+        memory_context = state.get("memory_context", "")
+        if memory_context:
+            # Trailing blank line so the memory block reads cleanly above
+            # the next paragraph.
+            memory_block = memory_context.rstrip() + "\n\n"
+            prompt = OBSERVE_PROMPT_WITH_MEMORY.format(
+                memory_context=memory_block,
+                incident_description=description,
+            )
+        else:
+            prompt = OBSERVE_PROMPT.format(incident_description=description)
         observations = _invoke_multi_agent(
             llm,
             task_prompt=prompt,

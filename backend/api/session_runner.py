@@ -482,6 +482,13 @@ async def run_session_workflow(
             "node_event_publisher": lambda node_name, status, _payload=None: _publish_node_event(
                 session_id, node_name, status
             ),
+            # Sprint 45 — feed memory into the graph so the recall node can
+            # query org + service scope. service_id may be None for unbound
+            # incidents; recall handles that case (global memories still
+            # surface).
+            "memory_factory": factory,
+            "org_id": org_id,
+            "service_id": getattr(incident, "service_id", None),
         }
         if session.workflow_profile_id is not None:
             async with factory() as db:

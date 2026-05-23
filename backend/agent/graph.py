@@ -46,6 +46,7 @@ from backend.agent.nodes import (
     execute,
     verify,
     summarize,
+    recall,
     # Builder versions (with dependencies)
     _build_observe,
     _build_diagnose,
@@ -55,11 +56,13 @@ from backend.agent.nodes import (
     _build_execute,
     _build_verify,
     _build_summarize,
+    _build_recall,
     validate_agent_roles,
 )
 from backend.skills.parser import SkillDefinition
 
 DEFAULT_WORKFLOW_NODE_ORDER = [
+    "recall",
     "observe",
     "diagnose",
     "plan",
@@ -135,6 +138,9 @@ def build_graph(
     node_event_publisher=None,
     node_order: list[str] | None = None,
     agent_roles: list[str] | None = None,
+    memory_factory=None,
+    org_id=None,
+    service_id=None,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -192,6 +198,13 @@ def build_graph(
     else:
         execute_fn = execute
 
+    if memory_factory is not None and org_id is not None:
+        recall_fn = _build_recall(
+            memory_factory, org_id=org_id, service_id=service_id
+        )
+    else:
+        recall_fn = recall
+
     tier_gate_fn = _build_tier_gate(tier, skill_def, approval_service)
 
     # -- Tier 0 per-node timeouts -------------------------------------------
@@ -200,6 +213,7 @@ def build_graph(
     # agent cannot hang a session on a single slow LLM call.
     if tier == 0 and tier0_time_config is not None:
         secs = tier0_time_config.max_node_seconds
+        recall_fn = wrap_node_with_timeout(recall_fn, seconds=secs, node_name="recall")
         observe_fn = wrap_node_with_timeout(observe_fn, seconds=secs, node_name="observe")
         diagnose_fn = wrap_node_with_timeout(diagnose_fn, seconds=secs, node_name="diagnose")
         plan_fn = wrap_node_with_timeout(plan_fn, seconds=secs, node_name="plan")
@@ -209,6 +223,9 @@ def build_graph(
         summarize_fn = wrap_node_with_timeout(summarize_fn, seconds=secs, node_name="summarize")
 
     if node_event_publisher is not None:
+        recall_fn = _wrap_node_with_events(
+            recall_fn, node_name="recall", publisher=node_event_publisher
+        )
         observe_fn = _wrap_node_with_events(
             observe_fn, node_name="observe", publisher=node_event_publisher
         )
@@ -233,6 +250,7 @@ def build_graph(
 
     # -- register nodes ------------------------------------------------------
     node_impls = {
+        "recall": recall_fn,
         "observe": observe_fn,
         "diagnose": diagnose_fn,
         "plan": plan_fn,

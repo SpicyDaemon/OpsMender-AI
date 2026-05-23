@@ -69,6 +69,14 @@ class IncidentState(TypedDict, total=False):
     incident_description: str     # kept for back-compat with existing nodes
     incident: IncidentContext     # full record fed into the system prompt
 
+    # -- memory (Sprint 45) --------------------------------------------------
+    # Populated by the `recall` node when memory_factory is provided. The
+    # context block is markdown ready for prompt injection; the id list lets
+    # downstream nodes and the API surface know which memories shaped this
+    # session.
+    memory_context: str
+    recalled_memory_ids: list[str]
+
     # -- node outputs --------------------------------------------------------
     observations: str              # output of the observe node
     diagnosis: str                 # output of the diagnose node

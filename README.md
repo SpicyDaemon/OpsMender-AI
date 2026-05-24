@@ -20,7 +20,8 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Human in the loop** — Tier 1 pauses the workflow on destructive actions and requires explicit approval from an operator or admin.
 - **Programmatic tier gate** — enforced in code, not by prompt. The agent cannot reason its way past it.
 - **Org-owned skill definitions** — a single `SKILL.md` classifies every operation as `safe`, `caution`, or `destructive`. Your call, not ours.
-- **Full audit log** — every node transition, every tool call, every approval, every rollback step.
+- **AI incident memory** *(in progress, Sprint 45)* — successful sessions leave behind short markdown lessons; the next similar incident gets them injected into the agent's prompt before the first observe call. Per-org, advisory only (never bypasses tier or skill gates), bounded by auto-compaction at 50 memories per service, and rankable by operator thumbs up/down.
+- **Full audit log** — every node transition, every tool call, every approval, every rollback step. Memory recall and writeback are audited too.
 - **Bring your own model** — Anthropic, OpenAI, Azure OpenAI, or local Ollama.
 - **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
 - **Outbound triggers** — fire session-lifecycle notifications to Slack, Teams, Sumo Logic, or any generic webhook endpoint.
@@ -106,6 +107,23 @@ Inside the reasoning nodes (`diagnose`, `plan`), instead of one generic LLM pass
 Whenever a session changes state (`created`, `awaiting_approval`, `active`, `completed`, `failed`, `timed_out`), OpsMender POSTs a payload to whatever URLs you've configured. Format presets exist for **Slack** incoming webhooks, **Teams** workflow webhooks, **Sumo Logic**, or **generic JSON**.
 
 > **This is what you set up if you want OpsMender to ping your chat / SIEM / pager.** Most teams configure one Slack webhook and stop there. Distinct from Bot connectors below — webhook triggers are fire-and-forget event notifications, bot connectors are two-way command/chat surfaces.
+
+### AI incident memory — *carrying lessons forward (Sprint 45, in progress)*
+
+OpsMender is an agent harness. Like Claude Code, Aider, and every other harness, the agent benefits from memory that survives across sessions — otherwise every incident starts cold, no matter how many times you've seen it before.
+
+Memory shape: each successfully resolved session writes one short markdown lesson (`title`, `tags`, `summary_md`) into `incident_memories`, scoped to the org and to the service that owned the incident. On the next incident for that service, a new `recall` node runs *before* `observe` — pure SQL match on service + tag overlap + keyword match, weighted by operator thumbs up/down. The top 5 matches get injected into the agent's system prompt as a `### Past lessons from similar incidents` block, so the first observation is informed by everything the agent has learned before.
+
+Guarantees that hold by design:
+
+- **Per-org isolated.** A memory from Acme never surfaces in Globex's prompt. Same multi-tenant boundary as every other Sprint 29 entity.
+- **Advisory only.** Memory cannot bypass tier gates, cannot override `SKILL.md`, and cannot authorize a tool call that would otherwise be blocked.
+- **The agent doesn't write memory directly.** A dedicated post-session `remember` node runs after `summarize` with a strict JSON-schema-validated output. There's no prompt-injection path from chat or tool output into the memory table.
+- **Failed sessions don't earn memory.** Timed-out, errored, or rolled-back sessions skip the writeback. The signal we keep is "this approach worked," not "this approach was attempted."
+- **Bounded growth.** When an org passes 50 memories for one service, the next `remember` call runs one bounded auto-compaction pass (exact-title dedup first, then up to 5 LLM-suggested deletes). Never recursive, always audit-logged.
+- **Operator-curated.** Memories will get a `/dashboard/memories` page with full CRUD plus thumbs up/down on each surfaced memory (Sprint 45 Step 7, in flight). The retrieval ranking factors in `helpful / (helpful + unhelpful)` so the agent learns *which lessons are actually useful*.
+
+> **Status (Session 115):** recall + remember + auto-compaction are wired end-to-end in `main`. Live REST sessions are already producing memories on successful resolutions and seeing them on subsequent incidents. The operator-visible REST API and `/dashboard/memories` UI ship in Sprint 45 Steps 6–7.
 
 ### Where each concept lives in the dashboard
 

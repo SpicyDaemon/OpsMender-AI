@@ -9,7 +9,9 @@ import {
   AlertTriangle,
   BookOpen,
   Brain,
+  Building2,
   CheckSquare,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -29,20 +31,51 @@ type NavItem = {
   badge?: { label: string; tone: "neutral" | "warn" };
 };
 
-const NAV: NavItem[] = [
-  { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
-  { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
-  { href: "/dashboard/scans", label: "Environment Scans", icon: ShieldCheck },
-  { href: "/dashboard/paging", label: "Paging", icon: Phone },
-  { href: "/dashboard/skills", label: "Skills", icon: FileText },
-  { href: "/dashboard/memories", label: "Memories", icon: Brain },
-  { href: "/dashboard/activity", label: "Activity", icon: BookOpen },
-  { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
-  { href: "/dashboard/organizations", label: "Organizations", icon: CheckSquare, reqRole: "admin" },
-  { href: "/dashboard/config", label: "Config", icon: Settings },
+type NavGroup = {
+  id: string;
+  label: string;
+  items: NavItem[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: "respond",
+    label: "Respond",
+    items: [
+      { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
+      { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
+    ],
+  },
+  {
+    id: "configure",
+    label: "Configure",
+    items: [
+      { href: "/dashboard/paging", label: "Paging", icon: Phone },
+      { href: "/dashboard/skills", label: "Skills", icon: FileText },
+      { href: "/dashboard/memories", label: "Memories", icon: Brain },
+    ],
+  },
+  {
+    id: "observe",
+    label: "Observe",
+    items: [
+      { href: "/dashboard/scans", label: "Environment Scans", icon: ShieldCheck },
+      { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
+      { href: "/dashboard/activity", label: "Activity", icon: BookOpen },
+    ],
+  },
+  {
+    id: "admin",
+    label: "Admin",
+    items: [
+      { href: "/dashboard/organizations", label: "Organizations", icon: Building2, reqRole: "admin" },
+      { href: "/dashboard/config", label: "Config", icon: Settings },
+    ],
+  },
 ];
 
 const COLLAPSE_KEY = "opsmender:sidebar-collapsed";
+const GROUP_COLLAPSE_KEY = "opsmender:sidebar-groups-collapsed";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-status-info-bg text-status-info border-status-info-border",
@@ -57,17 +90,72 @@ const TIER_STYLES: Record<number, { label: string; cls: string }> = {
   3: { label: "Advisory", cls: "bg-status-low-bg text-status-low border-status-low-border" },
 };
 
+type NavLinkArgs = {
+  href: string;
+  label: string;
+  Icon: typeof AlertTriangle;
+  badge?: NavItem["badge"];
+  active: boolean;
+  collapsed: boolean;
+};
+
+function renderNavLink({ href, label, Icon, badge, active, collapsed }: NavLinkArgs) {
+  return (
+    <Link
+      key={href}
+      href={href}
+      title={collapsed ? label : undefined}
+      className={`group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
+        active
+          ? "bg-accent-bg text-accent"
+          : "text-fg-secondary hover:bg-bg-hover hover:text-fg-primary"
+      }`}
+    >
+      <Icon size={16} className="shrink-0" />
+      {!collapsed && <span className="truncate">{label}</span>}
+      {!collapsed && badge && (
+        <span
+          className={`ml-auto rounded-pill border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide ${
+            badge.tone === "warn"
+              ? "border-status-high-border bg-status-high-bg text-status-high"
+              : "border-status-neutral-border bg-status-neutral-bg text-fg-secondary"
+          }`}
+        >
+          {badge.label}
+        </span>
+      )}
+      {active && !collapsed && !badge && (
+        <span className="ml-auto h-1.5 w-1.5 rounded-pill bg-accent" />
+      )}
+    </Link>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [tier, setTier] = useState<number | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored === "1") setCollapsed(true);
+    try {
+      const rawGroups = localStorage.getItem(GROUP_COLLAPSE_KEY);
+      if (rawGroups) {
+        const parsed = JSON.parse(rawGroups);
+        if (Array.isArray(parsed)) {
+          setCollapsedGroups(new Set(parsed.map(String)));
+        }
+      }
+    } catch {
+      // ignore malformed value
+    }
     setHydrated(true);
   }, []);
 
@@ -84,11 +172,43 @@ export function Sidebar() {
     if (hydrated) localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
   }, [collapsed, hydrated]);
 
+  useEffect(() => {
+    if (hydrated) {
+      localStorage.setItem(
+        GROUP_COLLAPSE_KEY,
+        JSON.stringify(Array.from(collapsedGroups)),
+      );
+    }
+  }, [collapsedGroups, hydrated]);
+
+  const toggleGroup = (id: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const width = collapsed ? "w-16" : "w-60";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
   const tierInfo = tier !== null ? TIER_STYLES[tier] : null;
 
-  const visibleNav = NAV.filter(n => !n.reqRole || (user && user.role === n.reqRole));
+  // Filter items by role and drop any group that ends up empty.
+  const visibleGroups: NavGroup[] = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => !item.reqRole || (user && user.role === item.reqRole),
+    ),
+  })).filter((group) => group.items.length > 0);
+
+  // When the sidebar is fully collapsed (icon-only), groups don't render
+  // their headers — we just stream the items as a flat icon list because
+  // there's no room for the labels.
+  const flatVisibleItems = visibleGroups.flatMap((g) => g.items);
 
   return (
     <aside
@@ -142,39 +262,51 @@ export function Sidebar() {
       )}
 
       {/* Nav */}
-      <nav className="flex-1 space-y-0.5 px-2 py-3 overflow-y-auto">
-        {visibleNav.map(({ href, label, icon: Icon, badge }) => {
-          const active = pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              title={collapsed ? label : undefined}
-              className={`group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-accent-bg text-accent"
-                  : "text-fg-secondary hover:bg-bg-hover hover:text-fg-primary"
-              }`}
-            >
-              <Icon size={16} className="shrink-0" />
-              {!collapsed && <span className="truncate">{label}</span>}
-              {!collapsed && badge && (
-                <span
-                  className={`ml-auto rounded-pill border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide ${
-                    badge.tone === "warn"
-                      ? "border-status-high-border bg-status-high-bg text-status-high"
-                      : "border-status-neutral-border bg-status-neutral-bg text-fg-secondary"
-                  }`}
-                >
-                  {badge.label}
-                </span>
-              )}
-              {active && !collapsed && !badge && (
-                <span className="ml-auto h-1.5 w-1.5 rounded-pill bg-accent" />
-              )}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 space-y-1 px-2 py-3 overflow-y-auto">
+        {collapsed
+          ? flatVisibleItems.map(({ href, label, icon: Icon, badge }) =>
+              renderNavLink({
+                href,
+                label,
+                Icon,
+                badge,
+                active: pathname.startsWith(href),
+                collapsed: true,
+              }),
+            )
+          : visibleGroups.map((group) => {
+              const isCollapsed = collapsedGroups.has(group.id);
+              return (
+                <div key={group.id} className="mb-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.id)}
+                    className="flex w-full items-center gap-1 px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-muted hover:text-fg-secondary transition-colors"
+                    aria-expanded={!isCollapsed}
+                  >
+                    <ChevronDown
+                      size={10}
+                      className={`shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                    />
+                    <span>{group.label}</span>
+                  </button>
+                  {!isCollapsed && (
+                    <div className="space-y-0.5">
+                      {group.items.map(({ href, label, icon: Icon, badge }) =>
+                        renderNavLink({
+                          href,
+                          label,
+                          Icon,
+                          badge,
+                          active: pathname.startsWith(href),
+                          collapsed: false,
+                        }),
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
       </nav>
 
       {/* Collapse toggle */}

@@ -207,6 +207,10 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.paging import router as paging_router
     from backend.api.routes.slack_paging import router as slack_paging_router
     from backend.api.routes.teams_paging import router as teams_paging_router
+    from backend.api.routes.memories import (
+        router as memories_router,
+        sessions_memory_router,
+    )
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -234,6 +238,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(paging_router)
     app.include_router(slack_paging_router)
     app.include_router(teams_paging_router)
+    app.include_router(memories_router)
+    app.include_router(sessions_memory_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

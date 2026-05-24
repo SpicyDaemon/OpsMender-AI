@@ -1,6 +1,6 @@
 # AI Incident Memory
 
-> **Status (2026-05-23):** Sprint 45 in progress. The agent-side surface — `recall`, `remember`, and auto-compaction — is live in `main` as of Session 115 and runs on every REST session. The operator-visible REST API (`/memories` CRUD + thumbs feedback) and the `/dashboard/memories` page ship in Steps 6 + 7. Until those land, memories accumulate silently and surface in the next session's prompt, but you can't yet curate them through the UI.
+> **Status (2026-05-23):** Sprint 45 in progress. The agent-side surface (`recall` / `remember` / auto-compaction) is live as of Session 115. The full operator-curation **REST API** (`GET/POST/PUT/DELETE /memories` + `/feedback` + `/hide` + `GET /sessions/{id}/memories-used`) is live as of Session 117 — see the "REST API" section below. The `/dashboard/memories` UI page and the session-detail "Memories used" panel ship in Step 7. Until those land, you can curate memory through `curl` or the API client of your choice; the agent already produces and consumes memories on every session.
 
 OpsMender is an agent harness. Like every other harness — Claude Code, Aider, OpenAI Assistants — the agent gets better when it has memory that survives across sessions. Without memory, every incident starts cold no matter how many times you've seen it before. Memory is what lets OpsMender accumulate institutional knowledge instead of forgetting it the moment a session ends.
 
@@ -83,6 +83,51 @@ The locked Sprint 45 scope (D-025 in `REFERENCE.md`) defers four directions to v
 - **Operator-preference memory.** Per-user "always run `kubectl describe` first" / "prefer dry-run for migrations" rules. Deferred — interesting but adds an additional taxonomy we want to validate against real usage before locking in.
 - **pgvector embeddings.** Semantic match ("k8s pod oomkilled" matches "memory pressure on cluster"). Deferred until SQL recall quality is the bottleneck — adds an embedding-model choice, a pgvector dependency, an Alembic extension migration, and embedding-cost on every write.
 - **Cross-org memory sharing.** Hard "no" by design. Would violate the multi-tenant isolation that the rest of OpsMender depends on.
+
+## REST API (Step 6 — live as of Session 117)
+
+All routes are org-scoped via the active org dependency. Auth follows the same admin/operator/viewer model as the rest of OpsMender.
+
+| Method | Endpoint | Auth | Notes |
+|---|---|---|---|
+| `GET` | `/memories?service_id=…&include_hidden=true` | any authenticated | Default returns visible memories only |
+| `GET` | `/memories/{id}` | any authenticated | 404 if not in active org |
+| `POST` | `/memories` | admin or operator | Tags get lower-cased + trimmed in the route; `service_id` validated against the active org |
+| `PUT` | `/memories/{id}` | admin or operator | Set `service_id_set: true` to explicitly null the service binding (otherwise the field is left untouched) |
+| `DELETE` | `/memories/{id}` | admin only | 204 on success |
+| `POST` | `/memories/{id}/feedback` | admin or operator | Body: `{"helpful": true}` or `{"helpful": false}` |
+| `POST` | `/memories/{id}/hide` | admin only | Body: `{"hidden": true}` (or `false` to un-hide) |
+| `GET` | `/sessions/{id}/memories-used` | any authenticated | Returns recall trail (memory + surfaced_at + score) for one session |
+
+Operator example — author a memory by hand:
+
+```bash
+curl -X POST http://localhost:8000/memories \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Checkout 500s = payments-service connection drop",
+    "summary_md": "Symptoms: 500s on /checkout. Cause: payments-service drops idle conns after 30s under load. Fix: enable keepalive on the upstream proxy. Watch for: similar drops on /refund.",
+    "tags": ["high", "payments", "checkout"],
+    "service_id": "1234-…"
+  }'
+```
+
+Operator example — thumbs-down a memory that misled you:
+
+```bash
+curl -X POST http://localhost:8000/memories/$ID/feedback \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"helpful": false}'
+```
+
+Operator example — list what the agent saw on a session:
+
+```bash
+curl http://localhost:8000/sessions/$SESSION_ID/memories-used \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 ## Where memory lives in the codebase
 

@@ -1638,3 +1638,68 @@ class IncidentAckRequest(BaseModel):
 class IncidentTakeRequest(BaseModel):
     confirm: bool = False  # true = confirm a pending soft-takeover
     force: bool = False  # true = admin force-takeover
+
+
+# ---------------------------------------------------------------------------
+# AI incident memory (Sprint 45 Step 6)
+# ---------------------------------------------------------------------------
+
+
+class IncidentMemoryResponse(BaseModel):
+    id: uuid.UUID
+    org_id: uuid.UUID
+    service_id: Optional[uuid.UUID] = None
+    source_incident_id: Optional[uuid.UUID] = None
+    title: str
+    summary_md: str
+    tags: list[str] = Field(default_factory=list)
+    helpful_count: int = 0
+    unhelpful_count: int = 0
+    is_hidden: bool = False
+    created_by_user_id: Optional[uuid.UUID] = None
+    created_at: datetime
+    updated_at: datetime
+    last_used_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class IncidentMemoryListResponse(BaseModel):
+    items: list[IncidentMemoryResponse]
+    total: int
+
+
+class IncidentMemoryCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    summary_md: str = Field(..., min_length=1, max_length=4000)
+    tags: list[str] = Field(default_factory=list, max_length=5)
+    service_id: Optional[uuid.UUID] = None
+
+
+class IncidentMemoryUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    summary_md: Optional[str] = Field(default=None, min_length=1, max_length=4000)
+    tags: Optional[list[str]] = Field(default=None, max_length=5)
+    # Use a sentinel so an operator can clear the service binding (set to null)
+    # vs leave it untouched (field omitted from request body).
+    service_id: Optional[uuid.UUID] = None
+    service_id_set: bool = False
+
+
+class IncidentMemoryFeedbackRequest(BaseModel):
+    helpful: bool
+
+
+class IncidentMemoryHideRequest(BaseModel):
+    hidden: bool = True
+
+
+class SessionMemoriesUsedItem(BaseModel):
+    memory: IncidentMemoryResponse
+    surfaced_at: datetime
+    score: Optional[float] = None
+
+
+class SessionMemoriesUsedResponse(BaseModel):
+    items: list[SessionMemoriesUsedItem]
+    total: int

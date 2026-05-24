@@ -474,6 +474,14 @@ All nine were last verified or template-validated in Sessions 086–091 (2026-05
 | `DELETE` | `/skills/{id}` | admin | Delete a saved skill |
 | `POST` | `/skills/{id}/clone` | admin | Clone a saved skill (optionally rebind to MCP server) |
 | `POST` | `/skills/import` | admin | Upload and import a `SKILL.md` file |
+| `GET` | `/memories` | any | List AI incident memories (filters: `service_id`, `include_hidden`) |
+| `GET` | `/memories/{id}` | any | Get a single memory |
+| `POST` | `/memories` | admin/operator | Author a memory by hand |
+| `PUT` | `/memories/{id}` | admin/operator | Edit a memory (use `service_id_set=true` to explicitly null the binding) |
+| `DELETE` | `/memories/{id}` | admin | Delete a memory |
+| `POST` | `/memories/{id}/feedback` | admin/operator | Record thumbs up/down (`{helpful: bool}`) |
+| `POST` | `/memories/{id}/hide` | admin | Soft-hide (`{hidden: bool}`) without deleting |
+| `GET` | `/sessions/{id}/memories-used` | any | List memories the `recall` node surfaced for a session |
 | `GET` | `/audit` | any | Query audit entries (filters + pagination) |
 | `GET` | `/config` | admin/operator | Read system config |
 | `PUT` | `/config` | admin | Update system config |

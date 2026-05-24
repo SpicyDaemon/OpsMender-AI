@@ -1420,6 +1420,305 @@ class TestConfig:
         assert data["ingest_auto_start_source"] is None
 
 
+class TestIncidentMemoryAPI:
+    """Sprint 45 Step 6 — /memories CRUD + feedback + per-session memories-used."""
+
+    async def _seed_service(self, app) -> uuid.UUID:
+        from backend.db.repos import ServiceRepo, TeamRepo
+
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="t1", slug=f"t1-{uuid.uuid4().hex[:6]}"
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="api",
+                slug=f"api-{uuid.uuid4().hex[:6]}",
+            )
+            await db.commit()
+            return service.id
+
+    async def test_list_empty(self, client: AsyncClient, auth_headers):
+        resp = await client.get("/memories", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body == {"items": [], "total": 0}
+
+    async def test_create_and_get(self, client: AsyncClient, auth_headers, app):
+        service_id = await self._seed_service(app)
+        resp = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "Pod OOMKilled",
+                "summary_md": "Increase memory limits.",
+                "tags": ["k8s", "OOM"],
+                "service_id": str(service_id),
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["title"] == "Pod OOMKilled"
+        assert body["service_id"] == str(service_id)
+        # Tags get lower-cased + trimmed by the route.
+        assert body["tags"] == ["k8s", "oom"]
+        assert body["helpful_count"] == 0
+        assert body["unhelpful_count"] == 0
+
+        memory_id = body["id"]
+        get_resp = await client.get(
+            f"/memories/{memory_id}", headers=auth_headers
+        )
+        assert get_resp.status_code == 200
+        assert get_resp.json()["id"] == memory_id
+
+    async def test_create_rejects_unknown_service(
+        self, client: AsyncClient, auth_headers
+    ):
+        bogus = str(uuid.uuid4())
+        resp = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "x",
+                "summary_md": "y",
+                "service_id": bogus,
+            },
+        )
+        assert resp.status_code == 400
+
+    async def test_list_filters_by_service(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        service_a = await self._seed_service(app)
+        service_b = await self._seed_service(app)
+        for svc, title in [(service_a, "A1"), (service_b, "B1")]:
+            await client.post(
+                "/memories",
+                headers=auth_headers,
+                json={
+                    "title": title,
+                    "summary_md": "x",
+                    "service_id": str(svc),
+                },
+            )
+        resp = await client.get(
+            f"/memories?service_id={service_a}", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        titles = {m["title"] for m in resp.json()["items"]}
+        assert titles == {"A1"}
+
+    async def test_update_changes_fields(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        service_id = await self._seed_service(app)
+        create = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "orig",
+                "summary_md": "orig body",
+                "service_id": str(service_id),
+            },
+        )
+        memory_id = create.json()["id"]
+
+        resp = await client.put(
+            f"/memories/{memory_id}",
+            headers=auth_headers,
+            json={
+                "title": "updated",
+                "summary_md": "new body",
+                "tags": ["one", "two"],
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["title"] == "updated"
+        assert body["summary_md"] == "new body"
+        assert body["tags"] == ["one", "two"]
+        # service_id stays untouched when service_id_set is omitted/false.
+        assert body["service_id"] == str(service_id)
+
+    async def test_feedback_increments_counter(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        service_id = await self._seed_service(app)
+        create = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "x",
+                "summary_md": "y",
+                "service_id": str(service_id),
+            },
+        )
+        memory_id = create.json()["id"]
+
+        for _ in range(3):
+            resp = await client.post(
+                f"/memories/{memory_id}/feedback",
+                headers=auth_headers,
+                json={"helpful": True},
+            )
+            assert resp.status_code == 200
+        resp = await client.post(
+            f"/memories/{memory_id}/feedback",
+            headers=auth_headers,
+            json={"helpful": False},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["helpful_count"] == 3
+        assert body["unhelpful_count"] == 1
+
+    async def test_hide_admin_only(
+        self, client: AsyncClient, auth_headers, viewer_headers, app
+    ):
+        service_id = await self._seed_service(app)
+        create = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "x",
+                "summary_md": "y",
+                "service_id": str(service_id),
+            },
+        )
+        memory_id = create.json()["id"]
+
+        # Viewer is denied (route requires admin).
+        resp = await client.post(
+            f"/memories/{memory_id}/hide",
+            headers=viewer_headers,
+            json={"hidden": True},
+        )
+        assert resp.status_code in {401, 403}
+
+        # Admin succeeds.
+        resp = await client.post(
+            f"/memories/{memory_id}/hide",
+            headers=auth_headers,
+            json={"hidden": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["is_hidden"] is True
+
+        # And the hidden memory drops out of the default list.
+        listing = await client.get("/memories", headers=auth_headers)
+        assert all(m["id"] != memory_id for m in listing.json()["items"])
+
+        # include_hidden=true brings it back.
+        listing = await client.get(
+            "/memories?include_hidden=true", headers=auth_headers
+        )
+        assert any(m["id"] == memory_id for m in listing.json()["items"])
+
+    async def test_delete_admin_only(
+        self, client: AsyncClient, auth_headers, viewer_headers, app
+    ):
+        service_id = await self._seed_service(app)
+        create = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "x",
+                "summary_md": "y",
+                "service_id": str(service_id),
+            },
+        )
+        memory_id = create.json()["id"]
+
+        # Viewer denied.
+        resp = await client.delete(
+            f"/memories/{memory_id}", headers=viewer_headers
+        )
+        assert resp.status_code in {401, 403}
+
+        # Admin succeeds with 204.
+        resp = await client.delete(
+            f"/memories/{memory_id}", headers=auth_headers
+        )
+        assert resp.status_code == 204
+
+        # 404 on subsequent GET.
+        get_resp = await client.get(
+            f"/memories/{memory_id}", headers=auth_headers
+        )
+        assert get_resp.status_code == 404
+
+    async def test_unauthenticated_rejected(self, client: AsyncClient):
+        resp = await client.get("/memories")
+        assert resp.status_code in {401, 403}
+
+    async def test_session_memories_used(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        from backend.db.repos import (
+            IncidentMemoryRecallLogRepo,
+            IncidentMemoryRepo,
+            IncidentRepo,
+            SessionRepo,
+        )
+
+        service_id = await self._seed_service(app)
+
+        # Seed an incident, a session, and a memory + recall log row.
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="t",
+                description="d",
+                severity="high",
+                service_id=service_id,
+            )
+            session = await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                tier=2,
+            )
+            memory = await IncidentMemoryRepo.create(
+                db,
+                org_id=TEST_ORG_ID,
+                service_id=service_id,
+                title="surfaced lesson",
+                summary_md="be sure to check x",
+                tags=["high"],
+            )
+            await IncidentMemoryRecallLogRepo.record(
+                db,
+                memory_id=memory.id,
+                session_id=session.id,
+                score=4.2,
+            )
+            await db.commit()
+            session_id = session.id
+            memory_id = memory.id
+
+        resp = await client.get(
+            f"/sessions/{session_id}/memories-used", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 1
+        assert body["items"][0]["memory"]["id"] == str(memory_id)
+        assert body["items"][0]["score"] == pytest.approx(4.2)
+
+    async def test_session_memories_used_unknown_session(
+        self, client: AsyncClient, auth_headers
+    ):
+        bogus = str(uuid.uuid4())
+        resp = await client.get(
+            f"/sessions/{bogus}/memories-used", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+
 class TestSetupChecklist:
     async def test_fresh_org_has_all_false(
         self, client: AsyncClient, auth_headers

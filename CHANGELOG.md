@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **TopBar cleanup** (Session 129). Removed the always-visible Incident/Session UUID jump field from the dashboard top bar. Direct UUID navigation remains available through existing detail links and audit/activity surfaces, while the header now prioritizes tenant context, approvals, shortcuts, and user controls. Verification: `cd frontend && npm run build` → clean; full suite **1293 passed, 2 skipped**.
+
 ### Added
 - **Sprint 51 — DataTable rollout sweep: MCP Servers** (Session 128). Config → MCP Servers now uses the shared `DataTable` instead of the page-local bespoke table. Operators get consistent search, sort, transport/auth/runtime/state filter chips, created-at date-range filtering, column show/hide, persisted preferences under `opsmender:mcp-servers-table`, and shared pagination. Existing admin workflows are preserved as row actions: Test, OAuth Connect/Reconnect, Edit, and Delete, with runtime status dots and test-result pills still inline. Verification: `cd frontend && npm run build` → clean; full suite **1293 passed, 2 skipped**.
 - **Sprint 51 — DataTable rollout sweep: Skills** (Session 127). `/dashboard/skills` now uses the shared `DataTable` instead of grouped card/list sections. The former global-vs-MCP grouping is now a sortable/filterable MCP server column with a Global fallback chip, while focus areas get their own searchable column. Existing admin workflows are preserved as row actions: Edit, Clone, Delete, plus the existing Import .md and New skill header actions. Table preferences persist under `opsmender:skills-table`. Verification: `cd frontend && npm run build` → clean; full suite **1293 passed, 2 skipped**.

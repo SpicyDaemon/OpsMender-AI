@@ -47,6 +47,7 @@ from backend.agent.nodes import (
     verify,
     summarize,
     recall,
+    remember,
     # Builder versions (with dependencies)
     _build_observe,
     _build_diagnose,
@@ -57,6 +58,7 @@ from backend.agent.nodes import (
     _build_verify,
     _build_summarize,
     _build_recall,
+    _build_remember,
     validate_agent_roles,
 )
 from backend.skills.parser import SkillDefinition
@@ -70,6 +72,7 @@ DEFAULT_WORKFLOW_NODE_ORDER = [
     "execute",
     "verify",
     "summarize",
+    "remember",
 ]
 
 
@@ -141,6 +144,7 @@ def build_graph(
     memory_factory=None,
     org_id=None,
     service_id=None,
+    source_incident_id=None,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -205,6 +209,17 @@ def build_graph(
     else:
         recall_fn = recall
 
+    if memory_factory is not None and org_id is not None and llm is not None:
+        remember_fn = _build_remember(
+            llm,
+            memory_factory,
+            org_id=org_id,
+            service_id=service_id,
+            source_incident_id=source_incident_id,
+        )
+    else:
+        remember_fn = remember
+
     tier_gate_fn = _build_tier_gate(tier, skill_def, approval_service)
 
     # -- Tier 0 per-node timeouts -------------------------------------------
@@ -221,6 +236,7 @@ def build_graph(
         execute_fn = wrap_node_with_timeout(execute_fn, seconds=secs, node_name="execute")
         verify_fn = wrap_node_with_timeout(verify_fn, seconds=secs, node_name="verify")
         summarize_fn = wrap_node_with_timeout(summarize_fn, seconds=secs, node_name="summarize")
+        remember_fn = wrap_node_with_timeout(remember_fn, seconds=secs, node_name="remember")
 
     if node_event_publisher is not None:
         recall_fn = _wrap_node_with_events(
@@ -247,6 +263,9 @@ def build_graph(
         summarize_fn = _wrap_node_with_events(
             summarize_fn, node_name="summarize", publisher=node_event_publisher
         )
+        remember_fn = _wrap_node_with_events(
+            remember_fn, node_name="remember", publisher=node_event_publisher
+        )
 
     # -- register nodes ------------------------------------------------------
     node_impls = {
@@ -258,6 +277,7 @@ def build_graph(
         "execute": execute_fn,
         "verify": verify_fn,
         "summarize": summarize_fn,
+        "remember": remember_fn,
     }
     for node_name in node_order:
         builder.add_node(node_name, node_impls[node_name])

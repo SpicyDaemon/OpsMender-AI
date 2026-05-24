@@ -801,3 +801,50 @@ def summarize(state: IncidentState) -> dict:
                    f"Diagnosis: {diagnosis} | Verification: {verification}",
         "status": status if status in {"failed", "timed_out"} else "completed",
     }
+
+
+# ---------------------------------------------------------------------------
+# remember (Sprint 45 — Step 4)
+# ---------------------------------------------------------------------------
+
+
+def _build_remember(
+    llm: LLM,
+    memory_factory: Any,
+    *,
+    org_id: uuid.UUID,
+    service_id: uuid.UUID | None,
+    source_incident_id: uuid.UUID | None,
+):
+    """Return a remember node closed over the LLM + memory binding.
+
+    The closure runs :func:`backend.memory.writeback.remember_for_session`
+    which checks `should_remember`, calls the LLM once, parses the JSON
+    response, persists a row, and (if the per-service threshold is reached)
+    triggers one bounded auto-compaction pass.
+
+    Memory writeback never raises into the workflow. If anything fails the
+    node returns an empty delta and the session is unaffected.
+    """
+
+    from backend.memory.writeback import remember_for_session
+
+    async def remember(state: IncidentState) -> dict:
+        memorized = await remember_for_session(
+            memory_factory,
+            llm=llm,
+            org_id=org_id,
+            service_id=service_id,
+            source_incident_id=source_incident_id,
+            state=dict(state),
+        )
+        if memorized is None:
+            return {}
+        return {"memorized_id": str(memorized)}
+
+    return remember
+
+
+def remember(state: IncidentState) -> dict:
+    """Stub remember node (no LLM / no memory). Use ``_build_remember``."""
+    return {}

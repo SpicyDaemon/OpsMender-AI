@@ -73,9 +73,11 @@ class IncidentState(TypedDict, total=False):
     # Populated by the `recall` node when memory_factory is provided. The
     # context block is markdown ready for prompt injection; the id list lets
     # downstream nodes and the API surface know which memories shaped this
-    # session.
+    # session. `memorized_id` is set by the `remember` node when the session
+    # earned a memory.
     memory_context: str
     recalled_memory_ids: list[str]
+    memorized_id: str
 
     # -- node outputs --------------------------------------------------------
     observations: str              # output of the observe node

@@ -489,6 +489,7 @@ async def run_session_workflow(
             "memory_factory": factory,
             "org_id": org_id,
             "service_id": getattr(incident, "service_id", None),
+            "source_incident_id": getattr(incident, "id", None),
         }
         if session.workflow_profile_id is not None:
             async with factory() as db:

@@ -913,6 +913,111 @@ function ModelSection({
     }
   }
 
+  const modelColumns = useMemo<DataTableColumn<ModelConfigResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Config",
+        accessor: (config) => config.name,
+        sortable: true,
+        searchable: true,
+        cell: (config) => (
+          <div className="min-w-[12rem]">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-fg-primary">{config.name}</span>
+              {config.is_default && <Badge>Default</Badge>}
+            </div>
+            <p className="mt-1 font-mono text-xs text-fg-muted">
+              {config.api_key_env_var ?? "No API key env var"}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "provider",
+        label: "Provider",
+        accessor: (config) => config.provider,
+        sortable: true,
+        searchable: true,
+        filterChips: {
+          options: Array.from(
+            new Map(
+              configs.map((c) => [
+                c.provider,
+                {
+                  value: c.provider,
+                  label:
+                    providerById.get(c.provider)?.label ??
+                    c.provider.replace("_", " "),
+                },
+              ]),
+            ).values(),
+          ),
+          valueOf: (config) => config.provider,
+        },
+        cell: (config) => (
+          <div className="flex items-center gap-2 capitalize">
+            <StatusDot
+              tone={providerById.get(config.provider)?.available ? "green" : "red"}
+              title={
+                providerById.get(config.provider)?.available
+                  ? `${providerById.get(config.provider)?.label ?? config.provider} is available.`
+                  : providerById.get(config.provider)?.error ??
+                    `${providerById.get(config.provider)?.label ?? config.provider} is unavailable.`
+              }
+            />
+            <span>{config.provider.replace("_", " ")}</span>
+          </div>
+        ),
+      },
+      {
+        id: "model_id",
+        label: "Model",
+        accessor: (config) => config.model_id,
+        sortable: true,
+        searchable: true,
+        cell: (config) => (
+          <span className="font-mono text-xs text-fg-secondary">
+            {config.model_id}
+          </span>
+        ),
+      },
+      {
+        id: "runtime",
+        label: "Runtime",
+        accessor: (config) => config.max_tokens,
+        sortable: true,
+        cell: (config) => (
+          <div className="text-fg-secondary">
+            <div>Max tokens: {config.max_tokens}</div>
+            <div>Temp: {config.temperature}</div>
+          </div>
+        ),
+      },
+      {
+        id: "default_state",
+        label: "State",
+        accessor: (config) => (config.is_default ? "default" : "alternate"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "default", label: "Default" },
+            { value: "alternate", label: "Alternate" },
+          ],
+          valueOf: (config) => (config.is_default ? "default" : "alternate"),
+        },
+        cell: (config) =>
+          config.is_default ? (
+            <Badge variant="resolved">default</Badge>
+          ) : (
+            <span className="text-fg-muted text-xs">alternate</span>
+          ),
+        hiddenByDefault: true,
+      },
+    ],
+    [configs, providerById],
+  );
+
   async function handleSetDefault(config: ModelConfigResponse) {
     setError("");
     setNotice("");
@@ -969,111 +1074,68 @@ function ModelSection({
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-fg-secondary">
-            {configs.length} saved config{configs.length === 1 ? "" : "s"}
-          </p>
-          {!canEdit && (
-            <p className="text-sm text-fg-secondary">
-              Admin role required to add or edit saved model configs.
-            </p>
-          )}
-        </div>
-        <Button onClick={openCreateModal} disabled={!canEdit}>
-          <Plus size={14} /> Add Model Config
-        </Button>
-      </div>
+      {!canEdit && (
+        <p className="text-sm text-fg-secondary">
+          Admin role required to add or edit saved model configs.
+        </p>
+      )}
 
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
       {warningNotice && <p className="text-sm text-status-medium">{warningNotice}</p>}
 
-      {configs.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No saved model configs yet. Create one to make provider switching easier for operators.
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle">
-          <table className="min-w-full divide-y divide-border-subtle text-sm">
-            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-              <tr>
-                <th className="px-4 py-3">Config</th>
-                <th className="px-4 py-3">Provider</th>
-                <th className="px-4 py-3">Model</th>
-                <th className="px-4 py-3">Runtime</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle bg-bg-panel">
-              {configs.map((config) => (
-                <tr key={config.id}>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-fg-primary">{config.name}</span>
-                      {config.is_default && <Badge>Default</Badge>}
-                    </div>
-                    <p className="mt-1 font-mono text-xs text-fg-muted">
-                      {config.api_key_env_var ?? "No API key env var"}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 align-top text-fg-primary">
-                    <div className="flex items-center gap-2 capitalize">
-                      <StatusDot
-                        tone={providerById.get(config.provider)?.available ? "green" : "red"}
-                        title={
-                          providerById.get(config.provider)?.available
-                            ? `${providerById.get(config.provider)?.label ?? config.provider} is available.`
-                            : providerById.get(config.provider)?.error ??
-                              `${providerById.get(config.provider)?.label ?? config.provider} is unavailable.`
-                        }
-                      />
-                      <span>{config.provider.replace("_", " ")}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-top font-mono text-xs text-fg-secondary">
-                    {config.model_id}
-                  </td>
-                  <td className="px-4 py-3 align-top text-fg-secondary">
-                    <div>Max tokens: {config.max_tokens}</div>
-                    <div>Temp: {config.temperature}</div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex justify-end gap-2">
-                      {!config.is_default && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleSetDefault(config)}
-                          disabled={!canEdit}
-                        >
-                          <Star size={13} /> Default
-                        </Button>
-                      )}
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openEditModal(config)}
-                        disabled={!canEdit}
-                      >
-                        <Pencil size={13} /> Edit
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleDelete(config)}
-                        disabled={!canEdit}
-                      >
-                        <Trash2 size={13} /> Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        rows={configs}
+        columns={modelColumns}
+        rowKey={(config) => config.id}
+        storageKey="opsmender:model-configs-table"
+        searchPlaceholder="Search by config name, model, or env var…"
+        toolbarRight={
+          <>
+            <span className="text-sm text-fg-secondary">
+              {configs.length} saved config{configs.length === 1 ? "" : "s"}
+            </span>
+            <Button onClick={openCreateModal} disabled={!canEdit}>
+              <Plus size={14} /> Add Model Config
+            </Button>
+          </>
+        }
+        empty={
+          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+            No saved model configs yet. Create one to make provider switching easier for operators.
+          </div>
+        }
+        rowActions={(config) => (
+          <div className="flex justify-end gap-2">
+            {!config.is_default && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleSetDefault(config)}
+                disabled={!canEdit}
+              >
+                <Star size={13} /> Default
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => openEditModal(config)}
+              disabled={!canEdit}
+            >
+              <Pencil size={13} /> Edit
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => handleDelete(config)}
+              disabled={!canEdit}
+            >
+              <Trash2 size={13} /> Delete
+            </Button>
+          </div>
+        )}
+      />
 
       <ModelConfigModal
         open={modalOpen}
@@ -3613,120 +3675,171 @@ function IngestTokenSection({
     return `${diffDays}d ago`;
   }
 
+  const providerOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          ingestProviders.map((p) => [p.key, { value: p.key, label: p.label }]),
+        ).values(),
+      ),
+    [ingestProviders],
+  );
+
+  const tokenColumns = useMemo<DataTableColumn<IngestTokenResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Name",
+        accessor: (token) => token.name,
+        sortable: true,
+        searchable: true,
+        cell: (token) => (
+          <div className="flex items-center gap-2">
+            <Key size={14} className="text-fg-muted" />
+            <span className="font-medium text-fg-primary">{token.name}</span>
+          </div>
+        ),
+      },
+      {
+        id: "provider",
+        label: "Provider",
+        accessor: (token) => token.provider,
+        sortable: true,
+        searchable: true,
+        filterChips: {
+          options: providerOptions,
+          valueOf: (token) => token.provider,
+        },
+        cell: (token) => <ProviderBadge provider={token.provider} />,
+      },
+      {
+        id: "status",
+        label: "Status",
+        accessor: (token) => (token.is_active ? "active" : "revoked"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "active", label: "Active" },
+            { value: "revoked", label: "Revoked" },
+          ],
+          valueOf: (token) => (token.is_active ? "active" : "revoked"),
+        },
+        cell: (token) => (
+          <Badge variant={token.is_active ? "resolved" : "closed"}>
+            {token.is_active ? "Active" : "Revoked"}
+          </Badge>
+        ),
+      },
+      {
+        id: "shapes",
+        label: "Shapes",
+        accessor: (token) =>
+          token.provider === "auto" ? token.shape_cache_size : -1,
+        sortable: true,
+        align: "right",
+        cell: (token) =>
+          token.provider === "auto" ? (
+            <span
+              className="text-xs text-fg-secondary"
+              title="Unique payload shapes this token has learned"
+            >
+              {token.shape_cache_size} learned
+            </span>
+          ) : (
+            <span className="text-xs text-fg-muted">—</span>
+          ),
+      },
+      {
+        id: "last_used",
+        label: "Last Used",
+        accessor: (token) => token.last_used_at ?? "",
+        sortable: true,
+        cell: (token) => (
+          <span className="text-fg-secondary">
+            {formatLastUsed(token.last_used_at)}
+          </span>
+        ),
+      },
+      {
+        id: "created_at",
+        label: "Created",
+        accessor: (token) => token.created_at,
+        sortable: true,
+        cell: (token) => (
+          <span className="text-xs text-fg-secondary">
+            {new Date(token.created_at).toLocaleDateString()}
+          </span>
+        ),
+      },
+    ],
+    [providerOptions],
+  );
+
   return (
     <Section
       title="Ingest Tokens"
       description="Manage webhook tokens for external alerting systems (CloudWatch, Azure Monitor, GCP Monitoring, OCI, LegacyAlertVendor, etc.)."
     >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-fg-secondary">
-            {tokens.length} token{tokens.length === 1 ? "" : "s"}
-            {tokens.filter((t) => t.is_active).length < tokens.length &&
-              ` (${tokens.filter((t) => t.is_active).length} active)`}
-          </p>
-          {!canEdit && (
-            <p className="text-sm text-fg-secondary">
-              Admin role required to manage ingest tokens.
-            </p>
-          )}
-        </div>
-        <Button onClick={openCreateModal} disabled={!canEdit}>
-          <Plus size={14} /> New Token
-        </Button>
-      </div>
+      {!canEdit && (
+        <p className="text-sm text-fg-secondary">
+          Admin role required to manage ingest tokens.
+        </p>
+      )}
 
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
 
-      {tokens.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No ingest tokens yet. Create one to start receiving incidents from external monitoring tools.
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle">
-          <table className="min-w-full divide-y divide-border-subtle text-sm">
-            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-              <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Provider</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Shapes</th>
-                <th className="px-4 py-3">Last Used</th>
-                <th className="px-4 py-3">Created</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle bg-bg-panel">
-              {tokens.map((token) => (
-                <tr
-                  key={token.id}
-                  className={!token.is_active ? "bg-bg-elevated opacity-60" : ""}
-                >
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex items-center gap-2">
-                      <Key size={14} className="text-fg-muted" />
-                      <span className="font-medium text-fg-primary">
-                        {token.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <ProviderBadge provider={token.provider} />
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <Badge
-                      variant={token.is_active ? "resolved" : "closed"}
-                    >
-                      {token.is_active ? "Active" : "Revoked"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 align-top text-fg-secondary">
-                    {token.provider === "auto" ? (
-                      <span
-                        className="text-xs"
-                        title="Unique payload shapes this token has learned"
-                      >
-                        {token.shape_cache_size} learned
-                      </span>
-                    ) : (
-                      <span className="text-xs text-fg-muted">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 align-top text-fg-secondary">
-                    {formatLastUsed(token.last_used_at)}
-                  </td>
-                  <td className="px-4 py-3 align-top text-fg-secondary text-xs">
-                    {new Date(token.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex justify-end gap-2">
-                      {token.is_active && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleRevoke(token)}
-                          disabled={!canEdit}
-                        >
-                          <ShieldOff size={13} /> Revoke
-                        </Button>
-                      )}
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleDelete(token)}
-                        disabled={!canEdit}
-                      >
-                        <Trash2 size={13} /> Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        rows={tokens}
+        columns={tokenColumns}
+        rowKey={(token) => token.id}
+        storageKey="opsmender:ingest-tokens-table"
+        searchPlaceholder="Search by token name or provider…"
+        dateRangeColumn={{
+          id: "created_at",
+          label: "Created",
+          valueOf: (token) => token.created_at,
+        }}
+        toolbarRight={
+          <>
+            <span className="text-sm text-fg-secondary">
+              {tokens.length} token{tokens.length === 1 ? "" : "s"}
+              {tokens.filter((t) => t.is_active).length < tokens.length &&
+                ` (${tokens.filter((t) => t.is_active).length} active)`}
+            </span>
+            <Button onClick={openCreateModal} disabled={!canEdit}>
+              <Plus size={14} /> New Token
+            </Button>
+          </>
+        }
+        empty={
+          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+            No ingest tokens yet. Create one to start receiving incidents from external monitoring tools.
+          </div>
+        }
+        rowActions={(token) => (
+          <div className="flex justify-end gap-2">
+            {token.is_active && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleRevoke(token)}
+                disabled={!canEdit}
+              >
+                <ShieldOff size={13} /> Revoke
+              </Button>
+            )}
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => handleDelete(token)}
+              disabled={!canEdit}
+            >
+              <Trash2 size={13} /> Delete
+            </Button>
+          </div>
+        )}
+      />
 
       {/* Create Token Modal */}
       <Modal
@@ -5203,151 +5316,194 @@ function WebhookTriggerSection({
     }
   }
 
+  const formatOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          triggers.map((t) => [t.format, { value: t.format, label: t.format }]),
+        ).values(),
+      ),
+    [triggers],
+  );
+
+  const webhookColumns = useMemo<DataTableColumn<WebhookTriggerResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Trigger",
+        accessor: (trigger) => trigger.name,
+        sortable: true,
+        searchable: true,
+        cell: (trigger) => (
+          <div className="min-w-[14rem]">
+            <div className="flex items-center gap-2">
+              <Bell size={14} className="text-fg-muted" />
+              <span className="font-medium text-fg-primary">{trigger.name}</span>
+            </div>
+            <p className="mt-1 break-all font-mono text-xs text-fg-secondary">
+              {trigger.url}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {trigger.has_token && (
+                <span className="text-xs text-fg-secondary">
+                  Bearer token stored
+                </span>
+              )}
+              {trigger.header_names.length > 0 && (
+                <span className="text-xs text-fg-secondary">
+                  Headers: {trigger.header_names.join(", ")}
+                </span>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "format",
+        label: "Format",
+        accessor: (trigger) => trigger.format,
+        sortable: true,
+        filterChips: {
+          options: formatOptions,
+          valueOf: (trigger) => trigger.format,
+        },
+        cell: (trigger) => <Badge>{trigger.format}</Badge>,
+      },
+      {
+        id: "events",
+        label: "Events",
+        accessor: (trigger) => trigger.event_types.join(","),
+        cell: (trigger) => (
+          <div className="flex flex-wrap gap-1.5">
+            {trigger.event_types.map((eventType) => (
+              <Badge key={eventType}>
+                {eventType === "*" ? "all" : eventType.replace("session.", "")}
+              </Badge>
+            ))}
+          </div>
+        ),
+      },
+      {
+        id: "delivery",
+        label: "Delivery",
+        accessor: (trigger) => trigger.last_triggered_at ?? "",
+        sortable: true,
+        cell: (trigger) => (
+          <div>
+            <p className="text-sm text-fg-primary">
+              Last send: {formatRelativeTimestamp(trigger.last_triggered_at)}
+            </p>
+            {trigger.last_error ? (
+              <p
+                className="mt-1 line-clamp-2 text-xs text-status-critical"
+                title={trigger.last_error}
+              >
+                {trigger.last_error}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-fg-muted">
+                No delivery errors recorded.
+              </p>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: "status",
+        label: "Status",
+        accessor: (trigger) => (trigger.is_active ? "active" : "inactive"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ],
+          valueOf: (trigger) => (trigger.is_active ? "active" : "inactive"),
+        },
+        cell: (trigger) => {
+          const testState = testStates[trigger.id] ?? { status: "idle" };
+          return (
+            <div className="flex flex-col gap-1.5">
+              <Badge variant={trigger.is_active ? "resolved" : "closed"}>
+                {trigger.is_active ? "Active" : "Inactive"}
+              </Badge>
+              <WebhookTestPill state={testState} />
+            </div>
+          );
+        },
+      },
+    ],
+    [formatOptions, testStates],
+  );
+
   return (
     <Section
       title="Outbound Webhooks"
       description="Saved triggers notify external systems when session state changes. This uses the existing generic webhook backend."
     >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-fg-secondary">
-            {triggers.length} saved trigger{triggers.length === 1 ? "" : "s"}
-          </p>
-          {!canEdit && (
-            <p className="text-sm text-fg-secondary">
-              Admin role required to manage outbound webhook triggers.
-            </p>
-          )}
-        </div>
-        <Button onClick={openCreateModal} disabled={!canEdit}>
-          <Plus size={14} /> Add Trigger
-        </Button>
-      </div>
+      {!canEdit && (
+        <p className="text-sm text-fg-secondary">
+          Admin role required to manage outbound webhook triggers.
+        </p>
+      )}
 
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
 
-      {triggers.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No outbound webhook triggers yet. Add one to deliver OpsMender session events to downstream systems.
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle">
-          <table className="min-w-full divide-y divide-border-subtle text-sm">
-            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-              <tr>
-                <th className="px-4 py-3">Trigger</th>
-                <th className="px-4 py-3">Format</th>
-                <th className="px-4 py-3">Events</th>
-                <th className="px-4 py-3">Delivery</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle bg-bg-panel">
-              {triggers.map((trigger) => {
-                const testState = testStates[trigger.id] ?? { status: "idle" };
-                return (
-                  <tr
-                    key={trigger.id}
-                    className={!trigger.is_active ? "bg-bg-elevated opacity-70" : ""}
-                  >
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex items-center gap-2">
-                        <Bell size={14} className="text-fg-muted" />
-                        <span className="font-medium text-fg-primary">
-                          {trigger.name}
-                        </span>
-                      </div>
-                      <p className="mt-1 break-all font-mono text-xs text-fg-secondary">
-                        {trigger.url}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {trigger.has_token && (
-                          <span className="text-xs text-fg-secondary">
-                            Bearer token stored
-                          </span>
-                        )}
-                        {trigger.header_names.length > 0 && (
-                          <span className="text-xs text-fg-secondary">
-                            Headers: {trigger.header_names.join(", ")}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <Badge>{trigger.format}</Badge>
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex flex-wrap gap-1.5">
-                        {trigger.event_types.map((eventType) => (
-                          <Badge key={eventType}>
-                            {eventType === "*" ? "all" : eventType.replace("session.", "")}
-                          </Badge>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <p className="text-sm text-fg-primary">
-                        Last send: {formatRelativeTimestamp(trigger.last_triggered_at)}
-                      </p>
-                      {trigger.last_error ? (
-                        <p
-                          className="mt-1 line-clamp-2 text-xs text-status-critical"
-                          title={trigger.last_error}
-                        >
-                          {trigger.last_error}
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-fg-muted">
-                          No delivery errors recorded.
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex flex-col gap-1.5">
-                        <Badge variant={trigger.is_active ? "resolved" : "closed"}>
-                          {trigger.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                        <WebhookTestPill state={testState} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleTest(trigger)}
-                          loading={testState.status === "running"}
-                          disabled={!canEdit}
-                        >
-                          <Send size={13} /> Test
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => openEditModal(trigger)}
-                          disabled={!canEdit}
-                        >
-                          <Pencil size={13} /> Edit
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDelete(trigger)}
-                          disabled={!canEdit}
-                        >
-                          <Trash2 size={13} /> Delete
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        rows={triggers}
+        columns={webhookColumns}
+        rowKey={(trigger) => trigger.id}
+        storageKey="opsmender:webhook-triggers-table"
+        searchPlaceholder="Search by trigger name or URL…"
+        toolbarRight={
+          <>
+            <span className="text-sm text-fg-secondary">
+              {triggers.length} saved trigger{triggers.length === 1 ? "" : "s"}
+            </span>
+            <Button onClick={openCreateModal} disabled={!canEdit}>
+              <Plus size={14} /> Add Trigger
+            </Button>
+          </>
+        }
+        empty={
+          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+            No outbound webhook triggers yet. Add one to deliver OpsMender session events to downstream systems.
+          </div>
+        }
+        rowActions={(trigger) => {
+          const testState = testStates[trigger.id] ?? { status: "idle" };
+          return (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleTest(trigger)}
+                loading={testState.status === "running"}
+                disabled={!canEdit}
+              >
+                <Send size={13} /> Test
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openEditModal(trigger)}
+                disabled={!canEdit}
+              >
+                <Pencil size={13} /> Edit
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => handleDelete(trigger)}
+                disabled={!canEdit}
+              >
+                <Trash2 size={13} /> Delete
+              </Button>
+            </div>
+          );
+        }}
+      />
 
       {modalOpen && (
         <WebhookTriggerModal

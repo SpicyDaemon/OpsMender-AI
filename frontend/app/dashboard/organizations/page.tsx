@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Building2,
   FileKey,
@@ -43,6 +43,7 @@ import type {
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormError, Input, Label, Select } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -232,6 +233,44 @@ function UsersModal({
   const memberIds = new Set(members.map((m) => m.user_id));
   const availableUsers = allUsers.filter((u) => !memberIds.has(u.id));
 
+  const memberColumns = useMemo<DataTableColumn<UserOrganizationResponse>[]>(
+    () => [
+      {
+        id: "username",
+        label: "User",
+        accessor: (m) => m.username,
+        sortable: true,
+        searchable: true,
+        cell: (m) => (
+          <div>
+            <p className="text-sm font-medium text-fg-primary">{m.username}</p>
+            <p className="text-xs text-fg-muted">{m.email}</p>
+          </div>
+        ),
+      },
+      {
+        id: "role",
+        label: "Role",
+        accessor: (m) => m.role,
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "admin", label: "Admin" },
+            { value: "operator", label: "Operator" },
+            { value: "viewer", label: "Viewer" },
+          ],
+          valueOf: (m) => m.role,
+        },
+        cell: (m) => (
+          <span className="rounded-pill bg-bg-muted px-2 py-0.5 text-xs font-medium uppercase text-fg-secondary">
+            {m.role}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <Modal
       open={open}
@@ -278,37 +317,37 @@ function UsersModal({
 
         {/* User List */}
         <div>
-          <h3 className="mb-3 text-sm font-semibold text-fg-primary">Organization Members ({members.length})</h3>
+          <h3 className="mb-3 text-sm font-semibold text-fg-primary">
+            Organization Members ({members.length})
+          </h3>
           {loading ? (
             <div className="animate-pulse space-y-2">
               <div className="h-10 rounded-md bg-bg-muted" />
               <div className="h-10 rounded-md bg-bg-muted" />
             </div>
-          ) : members.length === 0 ? (
-            <p className="text-sm text-fg-secondary">No members in this organization.</p>
           ) : (
-            <div className="divide-y divide-border-subtle rounded-md border border-border-subtle">
-              {members.map((m) => (
-                <div key={m.user_id} className="flex items-center justify-between p-3">
-                  <div>
-                    <p className="text-sm font-medium text-fg-primary">{m.username}</p>
-                    <p className="text-xs text-fg-muted">{m.email}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="rounded-pill bg-bg-muted px-2 py-0.5 text-xs font-medium uppercase text-fg-secondary">
-                      {m.role}
-                    </span>
-                    <button
-                      onClick={() => handleRemoveUser(m.user_id)}
-                      className="text-fg-muted hover:text-status-error transition-colors"
-                      title="Remove User"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <DataTable
+              rows={members}
+              columns={memberColumns}
+              rowKey={(m) => m.user_id}
+              searchPlaceholder="Search by username or email…"
+              defaultPageSize={10}
+              pageSizeOptions={[10, 25, 50]}
+              empty={
+                <p className="text-sm text-fg-secondary">
+                  No members in this organization.
+                </p>
+              }
+              rowActions={(m) => (
+                <button
+                  onClick={() => handleRemoveUser(m.user_id)}
+                  className="text-fg-muted hover:text-status-error transition-colors"
+                  title="Remove User"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            />
           )}
         </div>
 
@@ -401,6 +440,72 @@ function DomainsModal({
     }
   }
 
+  const domainColumns = useMemo<DataTableColumn<OrganizationDomainResponse>[]>(
+    () => [
+      {
+        id: "domain",
+        label: "Domain",
+        accessor: (d) => d.domain,
+        sortable: true,
+        searchable: true,
+        cell: (d) => (
+          <div className="min-w-[12rem]">
+            <p className="truncate font-mono text-sm text-fg-primary">{d.domain}</p>
+            <p className="text-xs text-fg-muted">
+              {d.verified ? "Verified" : "Unverified"} · added{" "}
+              {fmtDate(d.created_at)}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "verified",
+        label: "Status",
+        accessor: (d) => (d.verified ? "verified" : "unverified"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "verified", label: "Verified" },
+            { value: "unverified", label: "Unverified" },
+          ],
+          valueOf: (d) => (d.verified ? "verified" : "unverified"),
+        },
+        cell: (d) =>
+          d.verified ? (
+            <span className="rounded-pill bg-status-low-bg px-2 py-0.5 text-xs font-medium text-status-low">
+              Verified
+            </span>
+          ) : (
+            <span className="rounded-pill bg-bg-muted px-2 py-0.5 text-xs font-medium text-fg-secondary">
+              Unverified
+            </span>
+          ),
+      },
+      {
+        id: "primary",
+        label: "Primary",
+        accessor: (d) => (d.is_primary ? "primary" : "alternate"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "primary", label: "Primary" },
+            { value: "alternate", label: "Alternate" },
+          ],
+          valueOf: (d) => (d.is_primary ? "primary" : "alternate"),
+        },
+        cell: (d) =>
+          d.is_primary ? (
+            <span className="flex items-center gap-1 rounded-pill bg-status-low-bg px-2 py-0.5 text-xs font-medium text-status-low">
+              <Star size={12} /> Primary
+            </span>
+          ) : (
+            <span className="text-xs text-fg-muted">—</span>
+          ),
+      },
+    ],
+    [],
+  );
+
   return (
     <Modal
       open={open}
@@ -449,44 +554,38 @@ function DomainsModal({
               <div className="h-10 rounded-md bg-bg-muted" />
               <div className="h-10 rounded-md bg-bg-muted" />
             </div>
-          ) : domains.length === 0 ? (
-            <p className="text-sm text-fg-secondary">No domains registered.</p>
           ) : (
-            <div className="divide-y divide-border-subtle rounded-md border border-border-subtle">
-              {domains.map((d) => (
-                <div key={d.id} className="flex items-center justify-between p-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm text-fg-primary">{d.domain}</p>
-                    <p className="text-xs text-fg-muted">
-                      {d.verified ? "Verified" : "Unverified"} · added{" "}
-                      {fmtDate(d.created_at)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {d.is_primary ? (
-                      <span className="flex items-center gap-1 rounded-pill bg-status-low-bg px-2 py-0.5 text-xs font-medium text-status-low">
-                        <Star size={12} /> Primary
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => handleSetPrimary(d)}
-                        className="text-xs text-fg-secondary hover:text-fg-primary transition-colors"
-                        title="Set as primary"
-                      >
-                        Make primary
-                      </button>
-                    )}
+            <DataTable
+              rows={domains}
+              columns={domainColumns}
+              rowKey={(d) => d.id}
+              searchPlaceholder="Search domains…"
+              defaultPageSize={10}
+              pageSizeOptions={[10, 25, 50]}
+              empty={
+                <p className="text-sm text-fg-secondary">No domains registered.</p>
+              }
+              rowActions={(d) => (
+                <div className="flex items-center gap-2">
+                  {!d.is_primary && (
                     <button
-                      onClick={() => handleDelete(d)}
-                      className="text-fg-muted hover:text-status-error transition-colors"
-                      title="Remove domain"
+                      onClick={() => handleSetPrimary(d)}
+                      className="text-xs text-fg-secondary hover:text-fg-primary transition-colors"
+                      title="Set as primary"
                     >
-                      <X size={16} />
+                      Make primary
                     </button>
-                  </div>
+                  )}
+                  <button
+                    onClick={() => handleDelete(d)}
+                    className="text-fg-muted hover:text-status-error transition-colors"
+                    title="Remove domain"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            />
           )}
         </div>
 

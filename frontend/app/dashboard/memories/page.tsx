@@ -28,15 +28,27 @@ import type {
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import {
+  DataTable,
+  type DataTableColumn,
+} from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { FilterChips } from "@/components/ui/FilterChips";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
-type ServiceFilter = "" | "global" | string;
+const GLOBAL_SERVICE = "__global";
+
+function fmtDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default function MemoriesPage() {
   const toast = useToast();
@@ -47,9 +59,8 @@ export default function MemoriesPage() {
   const [memories, setMemories] = useState<IncidentMemoryResponse[]>([]);
   const [services, setServices] = useState<ServiceResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("");
   const [includeHidden, setIncludeHidden] = useState(false);
-  const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<IncidentMemoryResponse | null>(null);
@@ -58,42 +69,24 @@ export default function MemoriesPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const params: { service_id?: string; include_hidden?: boolean } = {};
-      if (serviceFilter && serviceFilter !== "global") {
-        params.service_id = serviceFilter;
-      }
+      const params: { include_hidden?: boolean } = {};
       if (includeHidden) params.include_hidden = true;
       const [memResp, svcResp] = await Promise.all([
         listMemories(params),
         listServices(),
       ]);
-      let items = memResp.items;
-      if (serviceFilter === "global") {
-        items = items.filter((m) => !m.service_id);
-      }
-      setMemories(items);
+      setMemories(memResp.items);
       setServices(svcResp.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [serviceFilter, includeHidden, toast]);
+  }, [includeHidden, toast]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  const filteredMemories = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return memories;
-    return memories.filter(
-      (m) =>
-        m.title.toLowerCase().includes(q) ||
-        m.summary_md.toLowerCase().includes(q) ||
-        m.tags.some((t) => t.toLowerCase().includes(q)),
-    );
-  }, [memories, search]);
 
   const serviceNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -101,25 +94,163 @@ export default function MemoriesPage() {
     return map;
   }, [services]);
 
-  const serviceOptions = useMemo(
+  const serviceFilterOptions = useMemo(
     () => [
-      { value: "" as ServiceFilter, label: "All" },
-      { value: "global" as ServiceFilter, label: "Global" },
-      ...services.map((s) => ({ value: s.id as ServiceFilter, label: s.name })),
+      { value: GLOBAL_SERVICE, label: "Global" },
+      ...services.map((s) => ({ value: s.id, label: s.name })),
     ],
     [services],
   );
 
-  const handleFeedback = async (memory: IncidentMemoryResponse, helpful: boolean) => {
-    try {
-      const updated = await recordMemoryFeedback(memory.id, helpful);
-      setMemories((prev) =>
-        prev.map((m) => (m.id === updated.id ? updated : m)),
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  };
+  const expandedKeys = useMemo(
+    () => (expanded ? new Set([expanded]) : new Set<string>()),
+    [expanded],
+  );
+
+  const handleFeedback = useCallback(
+    async (memory: IncidentMemoryResponse, helpful: boolean) => {
+      try {
+        const updated = await recordMemoryFeedback(memory.id, helpful);
+        setMemories((prev) =>
+          prev.map((m) => (m.id === updated.id ? updated : m)),
+        );
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [toast],
+  );
+
+  const columns = useMemo<DataTableColumn<IncidentMemoryResponse>[]>(
+    () => [
+      {
+        id: "title",
+        label: "Memory",
+        accessor: (memory) => `${memory.title} ${memory.summary_md}`,
+        cell: (memory) => (
+          <div className="min-w-[16rem]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-fg-primary">
+                {memory.title}
+              </span>
+              {memory.is_hidden && <Badge variant="default">Hidden</Badge>}
+            </div>
+            <p className="mt-1 line-clamp-2 max-w-xl text-xs text-fg-muted">
+              {memory.summary_md}
+            </p>
+          </div>
+        ),
+        sortable: true,
+        searchable: true,
+      },
+      {
+        id: "service",
+        label: "Service",
+        accessor: (memory) =>
+          memory.service_id
+            ? serviceNameById.get(memory.service_id) ?? memory.service_id
+            : "Global",
+        cell: (memory) => (
+          <span className="text-sm text-fg-secondary">
+            {memory.service_id
+              ? serviceNameById.get(memory.service_id) ?? memory.service_id
+              : "Global"}
+          </span>
+        ),
+        sortable: true,
+        filterChips: {
+          options: serviceFilterOptions,
+          valueOf: (memory) => memory.service_id ?? GLOBAL_SERVICE,
+        },
+      },
+      {
+        id: "tags",
+        label: "Tags",
+        accessor: (memory) => memory.tags.join(" "),
+        cell: (memory) =>
+          memory.tags.length > 0 ? (
+            <div className="flex max-w-sm flex-wrap gap-1">
+              {memory.tags.map((tag) => (
+                <Badge key={tag} variant="default">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <span className="text-fg-muted">—</span>
+          ),
+        searchable: true,
+      },
+      {
+        id: "feedback",
+        label: "Feedback",
+        accessor: (memory) => memory.helpful_count - memory.unhelpful_count,
+        cell: (memory) => (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              title="Helpful"
+              onClick={() => canEdit && handleFeedback(memory, true)}
+              disabled={!canEdit}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-secondary hover:bg-bg-hover hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ThumbsUp size={13} /> {memory.helpful_count}
+            </button>
+            <button
+              type="button"
+              title="Not helpful"
+              onClick={() => canEdit && handleFeedback(memory, false)}
+              disabled={!canEdit}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-secondary hover:bg-bg-hover hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ThumbsDown size={13} /> {memory.unhelpful_count}
+            </button>
+          </div>
+        ),
+        sortable: true,
+      },
+      {
+        id: "last_used",
+        label: "Last surfaced",
+        accessor: (memory) => memory.last_used_at ?? "",
+        cell: (memory) => (
+          <span className="whitespace-nowrap text-xs text-fg-secondary">
+            {fmtDate(memory.last_used_at)}
+          </span>
+        ),
+        sortable: true,
+        hiddenByDefault: true,
+      },
+      {
+        id: "visibility",
+        label: "Visibility",
+        accessor: (memory) => (memory.is_hidden ? "hidden" : "visible"),
+        cell: (memory) => (
+          <Badge variant={memory.is_hidden ? "default" : "resolved"}>
+            {memory.is_hidden ? "Hidden" : "Visible"}
+          </Badge>
+        ),
+        filterChips: includeHidden
+          ? {
+              options: [
+                { value: "visible", label: "Visible" },
+                { value: "hidden", label: "Hidden" },
+              ],
+              valueOf: (memory) =>
+                memory.is_hidden ? "hidden" : "visible",
+            }
+          : undefined,
+        hiddenByDefault: true,
+      },
+    ],
+    [
+      canEdit,
+      handleFeedback,
+      includeHidden,
+      serviceFilterOptions,
+      serviceNameById,
+    ],
+  );
 
   const handleHide = async (memory: IncidentMemoryResponse) => {
     try {
@@ -175,56 +306,13 @@ export default function MemoriesPage() {
         }
       />
 
-      <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-panel p-4 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <Label htmlFor="mem-search">Search</Label>
-            <Input
-              id="mem-search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search title, summary, or tag…"
-            />
-          </div>
-          {isAdmin && (
-            <label className="flex items-center gap-2 text-xs text-fg-secondary pb-2">
-              <input
-                type="checkbox"
-                checked={includeHidden}
-                onChange={(e) => setIncludeHidden(e.target.checked)}
-              />
-              Include hidden
-            </label>
-          )}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-[6rem_1fr] sm:items-center">
-          <span className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
-            Service
-          </span>
-          <FilterChips
-            ariaLabel="Filter by service"
-            options={serviceOptions}
-            value={serviceFilter}
-            onChange={(v) => setServiceFilter(v)}
-          />
-        </div>
-      </div>
-
       {loading && memories.length === 0 ? (
         <TableSkeleton rows={4} columns={4} />
-      ) : filteredMemories.length === 0 ? (
+      ) : memories.length === 0 ? (
         <EmptyState
           icon={Brain}
-          title={
-            search
-              ? "No memories match this search"
-              : "No memories yet"
-          }
-          description={
-            search
-              ? "Clear the search to see all memories for this service."
-              : "Memories accumulate automatically after successfully resolved sessions. You can also author one by hand."
-          }
+          title="No memories yet"
+          description="Memories accumulate automatically after successfully resolved sessions. You can also author one by hand."
           learnMoreHref="/docs/wiki/memory-guide.md"
           learnMoreLabel="Memory Guide"
           action={
@@ -236,105 +324,75 @@ export default function MemoriesPage() {
           }
         />
       ) : (
-        <ul className="space-y-3">
-          {filteredMemories.map((memory) => (
-            <li
-              key={memory.id}
-              className={`rounded-lg border ${
-                memory.is_hidden
-                  ? "border-border-subtle bg-bg-surface opacity-60"
-                  : "border-border-default bg-bg-panel"
-              } p-4 shadow-sm`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-semibold text-fg-primary">
-                      {memory.title}
-                    </h3>
-                    {memory.is_hidden && (
-                      <Badge variant="default">Hidden</Badge>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-xs text-fg-muted">
-                    {memory.service_id
-                      ? `Service: ${
-                          serviceNameById.get(memory.service_id) ??
-                          memory.service_id
-                        }`
-                      : "Global memory"}
-                    {memory.last_used_at &&
-                      ` · last surfaced ${new Date(
-                        memory.last_used_at,
-                      ).toLocaleDateString()}`}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    title="Helpful"
-                    onClick={() => canEdit && handleFeedback(memory, true)}
-                    disabled={!canEdit}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-secondary hover:bg-bg-hover hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <ThumbsUp size={13} /> {memory.helpful_count}
-                  </button>
-                  <button
-                    type="button"
-                    title="Not helpful"
-                    onClick={() => canEdit && handleFeedback(memory, false)}
-                    disabled={!canEdit}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-secondary hover:bg-bg-hover hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <ThumbsDown size={13} /> {memory.unhelpful_count}
-                  </button>
-                  {canEdit && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditing(memory)}
-                      title="Edit"
-                    >
-                      <Pencil size={13} />
-                    </Button>
-                  )}
-                  {isAdmin && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleHide(memory)}
-                        title={memory.is_hidden ? "Unhide" : "Hide"}
-                      >
-                        <EyeOff size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setDeleting(memory)}
-                        title="Delete"
-                      >
-                        <Trash2 size={13} />
-                      </Button>
-                    </>
-                  )}
-                </div>
+        <DataTable
+          rows={memories}
+          columns={columns}
+          rowKey={(memory) => memory.id}
+          storageKey="opsmender:memories-table"
+          searchPlaceholder="Search title, summary, tag, or service…"
+          toolbarRight={
+            isAdmin ? (
+              <label className="flex items-center gap-2 text-xs text-fg-secondary">
+                <input
+                  type="checkbox"
+                  checked={includeHidden}
+                  onChange={(e) => setIncludeHidden(e.target.checked)}
+                />
+                Include hidden
+              </label>
+            ) : undefined
+          }
+          expandedRow={{
+            expandedKeys,
+            onToggle: (key) =>
+              setExpanded((cur) => (cur === key ? null : key)),
+            render: (memory) => (
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
+                  Summary
+                </p>
+                <p className="whitespace-pre-wrap text-sm text-fg-secondary">
+                  {memory.summary_md}
+                </p>
               </div>
-              {memory.tags.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {memory.tags.map((t) => (
-                    <Badge key={t} variant="default">
-                      {t}
-                    </Badge>
-                  ))}
-                </div>
+            ),
+            label: "Memory summary",
+          }}
+          rowActions={(memory) => (
+            <div className="flex justify-end gap-1">
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditing(memory)}
+                  title="Edit"
+                >
+                  <Pencil size={13} />
+                </Button>
               )}
-              <p className="mt-3 whitespace-pre-wrap text-sm text-fg-secondary">
-                {memory.summary_md}
-              </p>
-            </li>
-          ))}
-        </ul>
+              {isAdmin && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleHide(memory)}
+                    title={memory.is_hidden ? "Unhide" : "Hide"}
+                  >
+                    <EyeOff size={13} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDeleting(memory)}
+                    title="Delete"
+                  >
+                    <Trash2 size={13} />
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        />
       )}
 
       {createOpen && (

@@ -148,6 +148,8 @@ The incidents list is now a full table surface: sortable columns, generic title/
 
 The Activity page uses the same table controls for audit-log triage: search, sort, type/tier/status filter chips, timestamp date ranges, column show/hide, and expandable rows for the Parameters / Result JSON payloads.
 
+The Memories page has the same table treatment for curation: search and filter by service or visibility, expand long markdown lessons inline, and keep feedback/edit/hide/delete actions on each row.
+
 ## Quick Start
 
 Requires [uv](https://docs.astral.sh/uv/) (Python package manager) and Python 3.11+.

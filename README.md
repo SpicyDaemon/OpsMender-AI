@@ -144,7 +144,7 @@ Sprint 43 also adds contextual empty states across the dashboard and live Config
 
 The incidents page also includes a one-click **Fire Test Incident** flow for operator drills: it creates a synthetic high-severity incident, optionally binds it to a service, auto-starts a session, and marks the resulting session as `TEST · synthetic alert` so it never blends in with a real outage.
 
-The incidents list now also has a debounced server-backed search box for title/description triage: type a few words, wait 300 ms, and `/dashboard/incidents` narrows the set through `GET /incidents?q=...` while keeping the existing status, severity, and source filters working together.
+The incidents list is now a full table surface: sortable columns, generic title/description/source search, status/severity/source filter chips, a "Last activity" date-range filter, column show/hide, persisted table preferences, and row selection. Select one or more incidents to bulk acknowledge or resolve them without opening each detail page.
 
 ## Quick Start
 
@@ -416,6 +416,7 @@ All nine were last verified or template-validated in Sessions 086–091 (2026-05
 | `POST` | `/incidents` | admin/operator | Create incident |
 | `GET` | `/incidents` | any | List incidents (pagination, status filter) |
 | `GET` | `/incidents/{id}` | any | Get single incident |
+| `POST` | `/incidents/bulk` | any | Bulk acknowledge, resolve, or reassign up to 200 incidents |
 | `POST` | `/incidents/ingest` | Ingest token | Webhook — ingest incident from external source |
 | `POST` | `/sessions` | admin/operator | Start a session |
 | `GET` | `/sessions/{id}` | any | Get session details |

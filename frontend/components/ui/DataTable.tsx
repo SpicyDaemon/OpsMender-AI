@@ -72,6 +72,14 @@ export interface DataTableProps<T> {
   dateRangeColumn?: DateRangeColumnConfig<T>;
   /** Optional row-action slot rendered in a trailing cell. */
   rowActions?: (row: T) => ReactNode;
+  /** Sprint 50 — enable row-selection checkboxes. */
+  selectable?: boolean;
+  /** Sprint 50 — controlled selection (a Set of row keys). */
+  selectedKeys?: Set<string>;
+  /** Sprint 50 — fires whenever the selection set changes. */
+  onSelectionChange?: (next: Set<string>) => void;
+  /** Sprint 50 — rendered above the table when at least one row is selected. */
+  bulkActions?: (selected: Set<string>, rows: T[]) => ReactNode;
   pageSizeOptions?: number[];
   defaultPageSize?: number;
   /** Empty-state node when the filtered result set is empty. */
@@ -133,6 +141,10 @@ export function DataTable<T>({
   rowKey,
   dateRangeColumn,
   rowActions,
+  selectable = false,
+  selectedKeys,
+  onSelectionChange,
+  bulkActions,
   pageSizeOptions = [10, 25, 50, 100],
   defaultPageSize = 25,
   empty,
@@ -328,6 +340,41 @@ export function DataTable<T>({
     Boolean(dateFrom) ||
     Boolean(dateTo);
 
+  // ----- Row selection (Sprint 50) --------------------------------------------
+  const selection = selectedKeys ?? new Set<string>();
+  const pageKeys = useMemo(
+    () => pageRows.map((r) => rowKey(r)),
+    [pageRows, rowKey],
+  );
+  const allOnPageSelected =
+    pageKeys.length > 0 && pageKeys.every((k) => selection.has(k));
+  const someOnPageSelected =
+    !allOnPageSelected && pageKeys.some((k) => selection.has(k));
+
+  const toggleRow = (key: string) => {
+    if (!onSelectionChange) return;
+    const next = new Set(selection);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    onSelectionChange(next);
+  };
+
+  const togglePage = () => {
+    if (!onSelectionChange) return;
+    const next = new Set(selection);
+    if (allOnPageSelected) {
+      for (const k of pageKeys) next.delete(k);
+    } else {
+      for (const k of pageKeys) next.add(k);
+    }
+    onSelectionChange(next);
+  };
+
+  const clearSelection = () => {
+    if (!onSelectionChange) return;
+    onSelectionChange(new Set<string>());
+  };
+
   // ----- Render ---------------------------------------------------------------
   return (
     <div className={`space-y-3 ${className}`}>
@@ -480,6 +527,28 @@ export function DataTable<T>({
         )}
       </div>
 
+      {/* Bulk action bar (only when rows are selected) */}
+      {selectable && selection.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-accent bg-accent-bg/40 px-3 py-2 text-sm">
+          <span className="font-medium text-fg-primary">
+            {selection.size} selected
+          </span>
+          {bulkActions && (
+            <span className="ml-2 inline-flex flex-wrap items-center gap-2">
+              {bulkActions(selection, rows)}
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearSelection}
+            className="ml-auto"
+          >
+            <X size={14} /> Clear
+          </Button>
+        </div>
+      )}
+
       {/* Table */}
       {pageRows.length === 0 ? (
         empty ?? (
@@ -494,6 +563,22 @@ export function DataTable<T>({
           <table className="min-w-full divide-y divide-border-subtle text-sm">
             <thead className="bg-bg-elevated text-left">
               <tr>
+                {selectable && (
+                  <th
+                    scope="col"
+                    className="w-0 whitespace-nowrap px-3 py-2 text-left"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someOnPageSelected;
+                      }}
+                      onChange={togglePage}
+                      aria-label="Select all rows on this page"
+                    />
+                  </th>
+                )}
                 {visibleColumns.map((col) => {
                   const isSorted = sortState.columnId === col.id;
                   const align =
@@ -542,11 +627,26 @@ export function DataTable<T>({
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
-              {pageRows.map((row) => (
+              {pageRows.map((row) => {
+                const k = rowKey(row);
+                const isSelected = selection.has(k);
+                return (
                 <tr
-                  key={rowKey(row)}
-                  className="hover:bg-bg-hover/40 transition-colors"
+                  key={k}
+                  className={`hover:bg-bg-hover/40 transition-colors ${
+                    isSelected ? "bg-accent-bg/30" : ""
+                  }`}
                 >
+                  {selectable && (
+                    <td className="w-0 whitespace-nowrap px-3 py-2 align-middle">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleRow(k)}
+                        aria-label="Select row"
+                      />
+                    </td>
+                  )}
                   {visibleColumns.map((col) => {
                     const align =
                       col.align === "right"
@@ -575,7 +675,8 @@ export function DataTable<T>({
                     </td>
                   )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -34,6 +34,9 @@ from backend.db.repos import (
 from backend.api.schemas import (
     IncidentAssignmentResponse,
     IncidentAssignRequest,
+    IncidentBulkActionRequest,
+    IncidentBulkActionResponse,
+    IncidentBulkActionResult,
     IncidentPagingPanelResponse,
     SuppressedByMaintenanceWindow,
 )
@@ -345,6 +348,122 @@ async def release_incident(
     from fastapi import Response
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/bulk",
+    response_model=IncidentBulkActionResponse,
+    summary="Run a single action across a set of incidents (Sprint 50)",
+)
+async def bulk_incident_action(
+    body: IncidentBulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    """Apply ``action`` to every id in ``incident_ids``. Per-row failures
+    don't abort the batch — each result reports its own ``ok`` + optional
+    ``error``. Self-only enforcement on reassign matches the per-incident
+    `/assign` route: only admin/operator can target someone else.
+
+    Acknowledge = assign the current user (or ``user_id``) AND advance status
+    from ``open`` → ``in_progress`` if it's still ``open``. The ack payload
+    is incident-local; we don't poke the chain engine here (that path is
+    via ``/incidents/{id}/ack`` for chain-driven sessions).
+
+    Resolve = set status to ``resolved``. Idempotent.
+    """
+    action = body.action
+    # Role gate for reassign — match the per-incident /assign route.
+    if action == "reassign":
+        if body.user_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="reassign requires user_id",
+            )
+        if body.user_id != user.id and user.role not in ("admin", "operator"):
+            raise HTTPException(
+                status_code=403,
+                detail="Only admin/operator can reassign other users",
+            )
+
+    items: list[IncidentBulkActionResult] = []
+    succeeded = 0
+    failed = 0
+    for incident_id in body.incident_ids:
+        try:
+            incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+            if incident is None:
+                items.append(
+                    IncidentBulkActionResult(
+                        incident_id=incident_id, ok=False, error="not found"
+                    )
+                )
+                failed += 1
+                continue
+
+            if action == "resolve":
+                if incident.status != "closed":
+                    await IncidentRepo.update_status(
+                        db, org_id, incident_id, "resolved"
+                    )
+            elif action == "acknowledge":
+                target = body.user_id or user.id
+                if target != user.id and user.role not in ("admin", "operator"):
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id,
+                            ok=False,
+                            error="Only admin/operator can assign other users",
+                        )
+                    )
+                    failed += 1
+                    continue
+                await IncidentAssignmentRepo.assign(
+                    db,
+                    org_id,
+                    incident_id=incident_id,
+                    user_id=target,
+                    assigned_by="self_ack" if target == user.id else "manual",
+                )
+                if incident.status == "open":
+                    await IncidentRepo.update_status(
+                        db, org_id, incident_id, "in_progress"
+                    )
+            elif action == "reassign":
+                await IncidentAssignmentRepo.assign(
+                    db,
+                    org_id,
+                    incident_id=incident_id,
+                    user_id=body.user_id,  # already validated above
+                    assigned_by="manual",
+                )
+            items.append(
+                IncidentBulkActionResult(incident_id=incident_id, ok=True)
+            )
+            succeeded += 1
+        except HTTPException as exc:
+            items.append(
+                IncidentBulkActionResult(
+                    incident_id=incident_id,
+                    ok=False,
+                    error=str(exc.detail),
+                )
+            )
+            failed += 1
+        except Exception as exc:  # noqa: BLE001
+            items.append(
+                IncidentBulkActionResult(
+                    incident_id=incident_id, ok=False, error=str(exc)
+                )
+            )
+            failed += 1
+
+    if succeeded > 0:
+        await db.commit()
+    return IncidentBulkActionResponse(
+        action=action, succeeded=succeeded, failed=failed, items=items
+    )
 
 
 # ---------------------------------------------------------------------------

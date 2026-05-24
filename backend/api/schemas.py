@@ -1520,6 +1520,33 @@ class IncidentAssignRequest(BaseModel):
     user_id: Optional[uuid.UUID] = None  # null means self
 
 
+class IncidentBulkActionRequest(BaseModel):
+    """Sprint 50 — bulk action on a set of incidents.
+
+    The ``action`` field is the discriminator. ``incident_ids`` is the set
+    targeted; the route returns a summary of which ids succeeded and which
+    failed, never aborting on the first error.
+    """
+
+    action: str = Field(..., pattern="^(acknowledge|resolve|reassign)$")
+    incident_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+    # For action="reassign" (also used to set the assignee when acknowledging).
+    user_id: Optional[uuid.UUID] = None
+
+
+class IncidentBulkActionResult(BaseModel):
+    incident_id: uuid.UUID
+    ok: bool
+    error: Optional[str] = None
+
+
+class IncidentBulkActionResponse(BaseModel):
+    action: str
+    succeeded: int
+    failed: int
+    items: list[IncidentBulkActionResult]
+
+
 class SuppressedByMaintenanceWindow(BaseModel):
     id: uuid.UUID
     name: str

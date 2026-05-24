@@ -7,9 +7,11 @@ This guide is intended for Incident Commanders and Operators using OpsMender to 
 
 When an incident is ingested (either manually or via an external alert), it appears on the **Incidents Dashboard**.
 
-1. **Review:** Click on an incident to view its details, including title, description, severity, and any linked SLA targets.
-2. **Start Session:** If an AI session hasn't auto-started, click **Start Session**. This provisions a dedicated AI agent context for the incident.
-3. **Investigation:** Open the **Session Details** view to interact with the AI.
+1. **Triage the list:** Use the table search, status/severity/source chips, Last activity date range, sorting, and column controls to narrow the incident set.
+2. **Bulk-handle obvious rows:** Select one or more rows to bulk **Acknowledge** or **Resolve** without opening each incident.
+3. **Review:** Click on an incident to view its details, including title, description, severity, paging state, and linked service context.
+4. **Start Session:** If an AI session hasn't auto-started, click **Start Session**. This provisions a dedicated AI agent context for the incident.
+5. **Investigation:** Open the **Session Details** view to interact with the AI.
 
 ## 2. Interacting with Session Chat
 

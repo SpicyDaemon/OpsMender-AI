@@ -1013,6 +1013,124 @@ class TestIncidents:
         assert data["total"] == 5
 
 
+class TestIncidentBulkActions:
+    """Sprint 50 — POST /incidents/bulk."""
+
+    async def _seed_incidents(
+        self, client: AsyncClient, auth_headers, count: int
+    ) -> list[str]:
+        ids: list[str] = []
+        for i in range(count):
+            resp = await client.post(
+                "/incidents",
+                json={
+                    "title": f"Bulk incident {i}",
+                    "description": f"#{i}",
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 201
+            ids.append(resp.json()["id"])
+        return ids
+
+    async def test_bulk_resolve_marks_all_resolved(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        ids = await self._seed_incidents(client, auth_headers, count=3)
+        resp = await client.post(
+            "/incidents/bulk",
+            json={"action": "resolve", "incident_ids": ids},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["action"] == "resolve"
+        assert body["succeeded"] == 3
+        assert body["failed"] == 0
+
+        # Verify status flipped on each.
+        async with app.state.session_factory() as db:
+            for inc_id in ids:
+                incident = await IncidentRepo.get_by_id(
+                    db, TEST_ORG_ID, uuid.UUID(inc_id)
+                )
+                assert incident.status == "resolved"
+
+    async def test_bulk_acknowledge_assigns_self_and_progresses(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        ids = await self._seed_incidents(client, auth_headers, count=2)
+        resp = await client.post(
+            "/incidents/bulk",
+            json={"action": "acknowledge", "incident_ids": ids},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["succeeded"] == 2
+
+        async with app.state.session_factory() as db:
+            for inc_id in ids:
+                incident = await IncidentRepo.get_by_id(
+                    db, TEST_ORG_ID, uuid.UUID(inc_id)
+                )
+                # ack flipped open -> in_progress.
+                assert incident.status == "in_progress"
+
+    async def test_bulk_reports_per_row_not_found_without_aborting(
+        self, client: AsyncClient, auth_headers
+    ):
+        ids = await self._seed_incidents(client, auth_headers, count=2)
+        ghost = str(uuid.uuid4())
+        resp = await client.post(
+            "/incidents/bulk",
+            json={"action": "resolve", "incident_ids": [ids[0], ghost, ids[1]]},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["succeeded"] == 2
+        assert body["failed"] == 1
+        ghost_row = next(item for item in body["items"] if item["incident_id"] == ghost)
+        assert ghost_row["ok"] is False
+        assert "not found" in ghost_row["error"].lower()
+
+    async def test_bulk_reassign_requires_user_id(
+        self, client: AsyncClient, auth_headers
+    ):
+        ids = await self._seed_incidents(client, auth_headers, count=1)
+        resp = await client.post(
+            "/incidents/bulk",
+            json={"action": "reassign", "incident_ids": ids},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_bulk_rejects_unknown_action(
+        self, client: AsyncClient, auth_headers
+    ):
+        ids = await self._seed_incidents(client, auth_headers, count=1)
+        resp = await client.post(
+            "/incidents/bulk",
+            json={"action": "frobnicate", "incident_ids": ids},
+            headers=auth_headers,
+        )
+        # Pydantic enum-pattern validation rejects → 422.
+        assert resp.status_code in (400, 422)
+
+    async def test_bulk_caps_at_200_ids(
+        self, client: AsyncClient, auth_headers
+    ):
+        ids = [str(uuid.uuid4()) for _ in range(201)]
+        resp = await client.post(
+            "/incidents/bulk",
+            json={"action": "resolve", "incident_ids": ids},
+            headers=auth_headers,
+        )
+        # Schema-level max_length = 200.
+        assert resp.status_code in (400, 422)
+
+
 # ===========================================================================
 # Sessions
 # ===========================================================================

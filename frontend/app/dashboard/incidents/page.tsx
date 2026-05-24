@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Plus, RefreshCw, Search, X } from "lucide-react";
-import { createIncident, createSession, getConfig, listIncidents, listServices } from "@/lib/api";
+import {
+  bulkIncidentAction,
+  createIncident,
+  createSession,
+  getConfig,
+  listIncidents,
+  listServices,
+} from "@/lib/api";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import type {
   ConfigResponse,
@@ -17,8 +24,11 @@ import type {
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import {
+  DataTable,
+  type DataTableColumn,
+} from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { FilterChips } from "@/components/ui/FilterChips";
 import { Input, Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -100,59 +110,172 @@ const SOURCE_OPTIONS = [
   { value: "ingested", label: "Ingested" },
 ];
 
+const INCIDENT_COLUMNS: DataTableColumn<IncidentResponse>[] = [
+  {
+    id: "title",
+    label: "Incident",
+    accessor: (inc) => inc.title,
+    cell: (inc) => (
+      <div>
+        <Link
+          href={`/dashboard/incidents/detail?id=${inc.id}`}
+          className="font-medium text-fg-primary hover:text-accent"
+        >
+          {inc.title}
+        </Link>
+        <p className="mt-0.5 max-w-md truncate text-xs text-fg-muted">
+          {inc.description}
+        </p>
+        <p className="mt-1 font-mono text-[11px] text-fg-muted">
+          {inc.id.slice(0, 8)}… • created {fmtDate(inc.created_at)}
+        </p>
+      </div>
+    ),
+    sortable: true,
+    searchable: true,
+  },
+  {
+    id: "source",
+    label: "Source",
+    accessor: (inc) => sourceMeta(inc).key,
+    cell: (inc) => {
+      const source = sourceMeta(inc);
+      return (
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md border px-1 text-[10px] font-semibold uppercase tracking-wide ${source.className}`}
+          >
+            {source.icon}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm text-fg-primary">{source.label}</p>
+            <p className="truncate text-[11px] text-fg-muted">
+              {inc.external_id ?? "Operator-created"}
+            </p>
+          </div>
+        </div>
+      );
+    },
+    sortable: true,
+    searchable: true,
+    filterChips: {
+      options: [
+        { value: "manual", label: "Manual" },
+        { value: "ingested", label: "Ingested" },
+      ],
+      valueOf: (inc) => sourceMeta(inc).key,
+    },
+  },
+  {
+    id: "status",
+    label: "Status",
+    accessor: (inc) => inc.status,
+    cell: (inc) => (
+      <Badge variant={inc.status as Parameters<typeof Badge>[0]["variant"]}>
+        {inc.status.replace("_", " ")}
+      </Badge>
+    ),
+    sortable: true,
+    filterChips: {
+      options: [
+        { value: "open", label: "Open" },
+        { value: "in_progress", label: "In progress" },
+        { value: "resolved", label: "Resolved" },
+        { value: "closed", label: "Closed" },
+      ],
+      valueOf: (inc) => inc.status,
+    },
+  },
+  {
+    id: "severity",
+    label: "Severity",
+    accessor: (inc) => inc.severity ?? "",
+    cell: (inc) =>
+      inc.severity ? (
+        <Badge variant={inc.severity}>{inc.severity}</Badge>
+      ) : (
+        <span className="text-fg-muted">—</span>
+      ),
+    sortable: true,
+    filterChips: {
+      options: [
+        { value: "critical", label: "Critical" },
+        { value: "high", label: "High" },
+        { value: "medium", label: "Medium" },
+        { value: "low", label: "Low" },
+      ],
+      valueOf: (inc) => inc.severity,
+    },
+  },
+  {
+    id: "updated_at",
+    label: "Last activity",
+    accessor: (inc) => inc.updated_at,
+    cell: (inc) => (
+      <div className="whitespace-nowrap">
+        <p className="text-sm text-fg-primary">{fmtRelative(inc.updated_at)}</p>
+        <p className="mt-0.5 text-[11px] text-fg-muted">{fmtDate(inc.updated_at)}</p>
+      </div>
+    ),
+    sortable: true,
+  },
+];
+
 export default function IncidentsPage() {
   const [data, setData] = useState<IncidentListResponse | null>(null);
-  const [statusFilter, setStatusFilter] = useState<IncidentStatus | "">("");
-  const [severityFilter, setSeverityFilter] = useState<Severity | "">("");
-  const [sourceFilter, setSourceFilter] = useState<"" | "manual" | "ingested">("");
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showTest, setShowTest] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const toast = useToast();
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedQuery(query.trim());
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [query]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listIncidents({
-        status: statusFilter || undefined,
-        q: debouncedQuery || undefined,
-        limit: 100,
-      });
+      // Fetch a generous page; DataTable handles the rest client-side.
+      const res = await listIncidents({ limit: 200 });
       setData(res);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load incidents");
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, statusFilter, toast]);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
-  const filteredItems = useMemo(() => {
-    const items = data?.items ?? [];
+  const items = data?.items ?? [];
 
-    return items.filter((incident) => {
-      const source = sourceMeta(incident).key;
-      const matchesSeverity = !severityFilter || incident.severity === severityFilter;
-      const matchesSource = !sourceFilter || source === sourceFilter;
-      return matchesSeverity && matchesSource;
-    });
-  }, [data?.items, severityFilter, sourceFilter]);
-
-  const hasLocalFilters = Boolean(query || severityFilter || sourceFilter);
-  const hasAnyFilters = Boolean(statusFilter || hasLocalFilters);
+  const runBulk = useCallback(
+    async (
+      action: "acknowledge" | "resolve" | "reassign",
+      userId?: string,
+    ) => {
+      if (selectedIds.size === 0) return;
+      setBulkBusy(true);
+      try {
+        const ids = Array.from(selectedIds);
+        const res = await bulkIncidentAction(action, ids, userId);
+        if (res.failed > 0) {
+          toast.error(
+            `${res.action}: ${res.succeeded} ok, ${res.failed} failed`,
+          );
+        } else {
+          toast.success(`${res.action}: ${res.succeeded} updated`);
+        }
+        setSelectedIds(new Set());
+        await load();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [selectedIds, toast, load],
+  );
 
   const overview = useMemo(() => {
-    const items = filteredItems;
     return [
       {
         label: "Visible",
@@ -174,8 +297,8 @@ export default function IncidentsPage() {
         value: String(items.filter((item) => sourceMeta(item).key === "ingested").length),
         tone: "text-status-medium",
       },
-    ];
-  }, [filteredItems]);
+    ] as const;
+  }, [items]);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -183,11 +306,7 @@ export default function IncidentsPage() {
       <div className="mb-6">
         <PageHeader
           title="Incidents"
-          subtitle={
-            data
-              ? `Showing ${filteredItems.length} of ${data.total} incidents`
-              : undefined
-          }
+          subtitle={data ? `${data.total} incidents` : undefined}
           actions={
             <>
               <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
@@ -222,164 +341,59 @@ export default function IncidentsPage() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="mb-4 space-y-3 rounded-lg border border-border-subtle bg-bg-panel p-4 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <Label htmlFor="inc-search">Search</Label>
-            <div className="relative">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-              <Input
-                id="inc-search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search title or description…"
-                className="pl-9"
-              />
-            </div>
-            {query.trim() !== debouncedQuery && (
-              <p className="mt-1 text-xs text-fg-muted">Searching…</p>
-            )}
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!hasAnyFilters}
-            onClick={() => {
-              setQuery("");
-              setStatusFilter("");
-              setSeverityFilter("");
-              setSourceFilter("");
-            }}
-          >
-            <X size={14} />
-            Clear
-          </Button>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-[6rem_1fr] sm:items-center">
-          <span className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
-            Status
-          </span>
-          <FilterChips
-            ariaLabel="Filter by status"
-            options={STATUS_OPTIONS}
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v)}
-          />
-
-          <span className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
-            Severity
-          </span>
-          <FilterChips
-            ariaLabel="Filter by severity"
-            options={SEVERITY_OPTIONS}
-            value={severityFilter}
-            onChange={(v) => setSeverityFilter(v)}
-          />
-
-          <span className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
-            Source
-          </span>
-          <FilterChips
-            ariaLabel="Filter by source"
-            options={SOURCE_OPTIONS as readonly { value: "" | "manual" | "ingested"; label: string }[]}
-            value={sourceFilter}
-            onChange={(v) => setSourceFilter(v)}
-          />
-        </div>
-      </div>
-
       {/* Table */}
       {loading && !data ? (
         <TableSkeleton rows={6} columns={5} />
-      ) : filteredItems.length === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyState
           icon={AlertTriangle}
-          title={hasAnyFilters ? "No incidents match these filters" : "No incidents yet"}
-          description={
-            hasAnyFilters
-              ? "Try widening the filters or clearing the search to see more incidents."
-              : "Incidents you create or receive from integrations will appear here."
-          }
+          title="No incidents yet"
+          description="Incidents you create or receive from integrations will appear here."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
           action={
-            !hasAnyFilters && (
-              <Button size="sm" onClick={() => setShowCreate(true)}>
-                <Plus size={14} />
-                New Incident
-              </Button>
-            )
+            <Button size="sm" onClick={() => setShowCreate(true)}>
+              <Plus size={14} />
+              New Incident
+            </Button>
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
-                <th className="px-4 py-3">Incident</th>
-                <th className="px-4 py-3">Source</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Severity</th>
-                <th className="px-4 py-3">Last Activity</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {filteredItems.map((inc) => {
-                const source = sourceMeta(inc);
-                return (
-                <tr key={inc.id} className="hover:bg-bg-elevated transition-colors">
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/dashboard/incidents/detail?id=${inc.id}`}
-                      className="font-medium text-fg-primary hover:text-accent"
-                    >
-                      {inc.title}
-                    </Link>
-                    <p className="mt-0.5 max-w-md truncate text-xs text-fg-muted">
-                      {inc.description}
-                    </p>
-                    <p className="mt-1 font-mono text-[11px] text-fg-muted">
-                      {inc.id.slice(0, 8)}… • created {fmtDate(inc.created_at)}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md border px-1 text-[10px] font-semibold uppercase tracking-wide ${source.className}`}
-                      >
-                        {source.icon}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm text-fg-primary">{source.label}</p>
-                        <p className="truncate text-[11px] text-fg-muted">
-                          {inc.external_id ?? "Operator-created"}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={inc.status as Parameters<typeof Badge>[0]["variant"]}>
-                      {inc.status.replace("_", " ")}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    {inc.severity ? (
-                      <Badge variant={inc.severity}>{inc.severity}</Badge>
-                    ) : (
-                      <span className="text-fg-muted">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <p className="text-sm text-fg-primary">{fmtRelative(inc.updated_at)}</p>
-                    <p className="mt-0.5 text-[11px] text-fg-muted">{fmtDate(inc.updated_at)}</p>
-                  </td>
-                </tr>
-              )})}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          rows={items}
+          columns={INCIDENT_COLUMNS}
+          rowKey={(inc) => inc.id}
+          storageKey="opsmender:incidents-table"
+          searchPlaceholder="Search title or description…"
+          selectable
+          selectedKeys={selectedIds}
+          onSelectionChange={setSelectedIds}
+          dateRangeColumn={{
+            id: "updated_at",
+            label: "Last activity",
+            valueOf: (inc) => inc.updated_at,
+          }}
+          bulkActions={() => (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={bulkBusy}
+                onClick={() => runBulk("acknowledge")}
+              >
+                Acknowledge
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={bulkBusy}
+                onClick={() => runBulk("resolve")}
+              >
+                Resolve
+              </Button>
+            </>
+          )}
+        />
       )}
 
       {/* Create modal */}

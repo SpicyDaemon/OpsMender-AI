@@ -1194,6 +1194,31 @@ export async function releaseIncident(incidentId: string): Promise<void> {
   return api.post<void>(`/incidents/${incidentId}/release`);
 }
 
+export interface IncidentBulkActionResult {
+  incident_id: string;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface IncidentBulkActionResponse {
+  action: string;
+  succeeded: number;
+  failed: number;
+  items: IncidentBulkActionResult[];
+}
+
+export async function bulkIncidentAction(
+  action: "acknowledge" | "resolve" | "reassign",
+  incidentIds: string[],
+  userId?: string,
+): Promise<IncidentBulkActionResponse> {
+  return api.post<IncidentBulkActionResponse>("/incidents/bulk", {
+    action,
+    incident_ids: incidentIds,
+    ...(userId ? { user_id: userId } : {}),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Escalation chains (Sprint 34)
 // ---------------------------------------------------------------------------

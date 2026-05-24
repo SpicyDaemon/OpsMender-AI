@@ -813,57 +813,158 @@ function RostersPanel({
     }
   };
 
+  const teamNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of teams) map.set(t.id, t.name);
+    return map;
+  }, [teams]);
+
+  const teamFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          rosters
+            .map((r) => teamNameById.get(r.team_id))
+            .filter((n): n is string => Boolean(n))
+            .map((name) => [name, { value: name, label: name }]),
+        ).values(),
+      ),
+    [rosters, teamNameById],
+  );
+
+  const rosterColumns = useMemo<DataTableColumn<RosterResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Roster",
+        accessor: (r) => r.name,
+        sortable: true,
+        searchable: true,
+        cell: (r) => (
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-fg-secondary" />
+            <span className="font-medium text-fg-primary">{r.name}</span>
+          </div>
+        ),
+      },
+      {
+        id: "team",
+        label: "Team",
+        accessor: (r) => teamNameById.get(r.team_id) ?? "",
+        sortable: true,
+        searchable: true,
+        filterChips: {
+          options: teamFilterOptions,
+          valueOf: (r) => teamNameById.get(r.team_id) ?? null,
+        },
+        cell: (r) => (
+          <span className="text-fg-secondary">
+            {teamNameById.get(r.team_id) ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "pattern",
+        label: "Pattern",
+        accessor: (r) => r.pattern,
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "weekly", label: "Weekly" },
+            { value: "daily", label: "Daily" },
+            { value: "custom_n_days", label: "Custom" },
+          ],
+          valueOf: (r) => r.pattern,
+        },
+        cell: (r) => (
+          <span className="inline-flex items-center gap-2">
+            <Badge variant="default">{r.pattern}</Badge>
+            {r.pattern === "custom_n_days" && (
+              <span className="text-xs text-fg-muted">
+                {r.pattern_length}d
+              </span>
+            )}
+          </span>
+        ),
+      },
+      {
+        id: "time_zone",
+        label: "Time zone",
+        accessor: (r) => r.time_zone,
+        sortable: true,
+        cell: (r) => (
+          <span className="font-mono text-xs text-fg-secondary">
+            {r.time_zone}
+          </span>
+        ),
+      },
+      {
+        id: "handoff_time",
+        label: "Handoff",
+        accessor: (r) => r.handoff_time,
+        sortable: true,
+        cell: (r) => (
+          <span className="font-mono text-xs text-fg-secondary">
+            {r.handoff_time}
+          </span>
+        ),
+      },
+    ],
+    [teamNameById, teamFilterOptions],
+  );
+
   return (
     <section className="space-y-3">
-      <div className="flex justify-end">
-        <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
-          <PlusCircle className="h-4 w-4" /> New roster
-        </Button>
-      </div>
       {rosters.length === 0 ? (
         <EmptyState
           title="No rosters yet"
           description="Rosters define who is on call. Add one per team to start."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
+          action={
+            <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+              <PlusCircle className="h-4 w-4" /> New roster
+            </Button>
+          }
         />
       ) : (
-        <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
-          {rosters.map((r) => {
-            const team = teams.find((t) => t.id === r.team_id);
-            return (
-              <li
-                key={r.id}
-                className="flex items-center justify-between px-4 py-3"
+        <DataTable
+          rows={rosters}
+          columns={rosterColumns}
+          rowKey={(r) => r.id}
+          storageKey="opsmender:rosters-table"
+          searchPlaceholder="Search by roster name or team…"
+          toolbarRight={
+            <>
+              <span className="text-sm text-fg-secondary">
+                {rosters.length} roster{rosters.length === 1 ? "" : "s"}
+              </span>
+              <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+                <PlusCircle className="h-4 w-4" /> New roster
+              </Button>
+            </>
+          }
+          empty={
+            <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+              No rosters match the current filters.
+            </div>
+          }
+          rowActions={(r) => (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setCalendarFor(r)}
+                title="Open calendar view"
               >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-fg-secondary" />
-                    <span className="font-medium text-fg-primary">{r.name}</span>
-                    <Badge variant="default">{r.pattern}</Badge>
-                  </div>
-                  <div className="text-xs text-fg-secondary">
-                    team {team?.name ?? "?"} · {r.time_zone} · handoff{" "}
-                    {r.handoff_time}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setCalendarFor(r)}
-                    title="Open calendar view"
-                  >
-                    <CalendarDays className="h-4 w-4" /> Calendar
-                  </Button>
-                  <Button variant="ghost" onClick={() => remove(r.id)} title="Delete">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                <CalendarDays className="h-4 w-4" /> Calendar
+              </Button>
+              <Button variant="ghost" onClick={() => remove(r.id)} title="Delete">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        />
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="New roster">
@@ -1200,79 +1301,182 @@ function ChainsPanel({
     }
   };
 
-  const toggle = async (chainId: string) => {
-    if (expanded === chainId) {
-      setExpanded(null);
-      return;
-    }
-    try {
-      const resp = await listEscalationSteps(chainId);
-      setStepsByChain({ ...stepsByChain, [chainId]: resp.items });
+  const loadStepsFor = useCallback(
+    async (chainId: string) => {
+      try {
+        const resp = await listEscalationSteps(chainId);
+        setStepsByChain((prev) => ({ ...prev, [chainId]: resp.items }));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [toast],
+  );
+
+  const toggleExpand = useCallback(
+    async (chainId: string) => {
+      if (expanded === chainId) {
+        setExpanded(null);
+        return;
+      }
+      await loadStepsFor(chainId);
       setExpanded(chainId);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  };
+    },
+    [expanded, loadStepsFor],
+  );
+
+  const expandedKeys = useMemo(
+    () => new Set<string>(expanded ? [expanded] : []),
+    [expanded],
+  );
+
+  const teamNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of teams) map.set(t.id, t.name);
+    return map;
+  }, [teams]);
+
+  const teamFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          chains
+            .map((c) => teamNameById.get(c.team_id))
+            .filter((n): n is string => Boolean(n))
+            .map((name) => [name, { value: name, label: name }]),
+        ).values(),
+      ),
+    [chains, teamNameById],
+  );
+
+  const chainColumns = useMemo<DataTableColumn<EscalationChainResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Chain",
+        accessor: (c) => c.name,
+        sortable: true,
+        searchable: true,
+        cell: (c) => (
+          <div className="flex items-center gap-2">
+            <ListOrdered className="h-4 w-4 text-fg-secondary" />
+            <span className="font-medium text-fg-primary">{c.name}</span>
+          </div>
+        ),
+      },
+      {
+        id: "team",
+        label: "Team",
+        accessor: (c) => teamNameById.get(c.team_id) ?? "",
+        sortable: true,
+        searchable: true,
+        filterChips: {
+          options: teamFilterOptions,
+          valueOf: (c) => teamNameById.get(c.team_id) ?? null,
+        },
+        cell: (c) => (
+          <span className="text-fg-secondary">
+            {teamNameById.get(c.team_id) ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "description",
+        label: "Description",
+        accessor: (c) => c.description ?? "",
+        searchable: true,
+        cell: (c) =>
+          c.description ? (
+            <span className="line-clamp-2 max-w-[28rem] text-xs text-fg-secondary">
+              {c.description}
+            </span>
+          ) : (
+            <span className="text-fg-muted">—</span>
+          ),
+      },
+      {
+        id: "status",
+        label: "Status",
+        accessor: (c) => (c.is_active ? "active" : "inactive"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ],
+          valueOf: (c) => (c.is_active ? "active" : "inactive"),
+        },
+        cell: (c) =>
+          c.is_active ? (
+            <Badge variant="resolved">active</Badge>
+          ) : (
+            <Badge variant="closed">inactive</Badge>
+          ),
+      },
+    ],
+    [teamNameById, teamFilterOptions],
+  );
 
   return (
     <section className="space-y-3">
-      <div className="flex justify-end">
-        <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
-          <PlusCircle className="h-4 w-4" /> New chain
-        </Button>
-      </div>
       {chains.length === 0 ? (
         <EmptyState
           title="No escalation chains"
           description="Without a chain, incidents flagged for paging do not page anyone. Create one per team."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
+          action={
+            <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+              <PlusCircle className="h-4 w-4" /> New chain
+            </Button>
+          }
         />
       ) : (
-        <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
-          {chains.map((c) => {
-            const team = teams.find((t) => t.id === c.team_id);
-            const isOpen = expanded === c.id;
-            const steps = stepsByChain[c.id] ?? [];
-            return (
-              <li key={c.id} className="px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <ListOrdered className="h-4 w-4 text-fg-secondary" />
-                      <span className="font-medium text-fg-primary">{c.name}</span>
-                      {!c.is_active && <Badge variant="default">inactive</Badge>}
-                    </div>
-                    <div className="text-xs text-fg-secondary">
-                      team {team?.name ?? "?"}
-                      {c.description ? ` · ${c.description}` : ""}
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" onClick={() => toggle(c.id)}>
-                      {isOpen ? "Hide steps" : "Steps"}
-                    </Button>
-                    <Button variant="ghost" onClick={() => remove(c.id)} title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                {isOpen && (
-                  <StepsEditor
-                    chainId={c.id}
-                    steps={steps}
-                    rosters={rosters}
-                    teams={teams}
-                    onChange={async () => {
-                      const resp = await listEscalationSteps(c.id);
-                      setStepsByChain({ ...stepsByChain, [c.id]: resp.items });
-                    }}
-                  />
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <DataTable
+          rows={chains}
+          columns={chainColumns}
+          rowKey={(c) => c.id}
+          storageKey="opsmender:chains-table"
+          searchPlaceholder="Search by chain name, team, or description…"
+          toolbarRight={
+            <>
+              <span className="text-sm text-fg-secondary">
+                {chains.length} chain{chains.length === 1 ? "" : "s"}
+              </span>
+              <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+                <PlusCircle className="h-4 w-4" /> New chain
+              </Button>
+            </>
+          }
+          empty={
+            <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+              No chains match the current filters.
+            </div>
+          }
+          expandedRow={{
+            expandedKeys,
+            onToggle: (key) => void toggleExpand(key),
+            label: "Steps",
+            render: (c) => (
+              <StepsEditor
+                chainId={c.id}
+                steps={stepsByChain[c.id] ?? []}
+                rosters={rosters}
+                teams={teams}
+                onChange={() => loadStepsFor(c.id)}
+              />
+            ),
+          }}
+          rowActions={(c) => (
+            <Button
+              variant="ghost"
+              onClick={() => remove(c.id)}
+              title="Delete chain"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        />
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="New escalation chain">

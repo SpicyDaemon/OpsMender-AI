@@ -77,6 +77,15 @@ async def _lifespan(app: FastAPI):
     app.state.audit_scheduler = audit_scheduler
     await audit_scheduler.start()
 
+    # Data-retention scheduler (Sprint 53). Enabled by default so a fresh
+    # deployment auto-prunes from day one; operators can disable per category
+    # via Config → "Storage & retention" or set OPSMENDER_RETENTION_ENABLED=false.
+    from backend.retention.scheduler import RetentionScheduler
+
+    retention_scheduler = RetentionScheduler(factory)
+    app.state.retention_scheduler = retention_scheduler
+    await retention_scheduler.start()
+
     # mcp.json file mirror (Sprint 42 step 6). Opt-in via OPSMENDER_MCP_JSON_SYNC.
     # When enabled, reconcile the file against every org's MCP servers on
     # startup so file edits made while the service was down are applied.
@@ -135,6 +144,7 @@ async def _lifespan(app: FastAPI):
     await sla_poller.stop()
     await escalation_scheduler.stop()
     await audit_scheduler.stop()
+    await retention_scheduler.stop()
     await engine.dispose()
 
 
@@ -211,6 +221,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         router as memories_router,
         sessions_memory_router,
     )
+    from backend.api.routes.retention import router as retention_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -240,6 +251,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(teams_paging_router)
     app.include_router(memories_router)
     app.include_router(sessions_memory_router)
+    app.include_router(retention_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

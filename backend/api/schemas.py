@@ -1777,3 +1777,67 @@ class SessionMemoriesUsedItem(BaseModel):
 class SessionMemoriesUsedResponse(BaseModel):
     items: list[SessionMemoriesUsedItem]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Data retention (Sprint 53)
+# ---------------------------------------------------------------------------
+
+
+class RetentionCategoryConfig(BaseModel):
+    category: str
+    ttl_days: Optional[int] = Field(
+        default=None,
+        description="NULL disables auto-deletion for this category.",
+    )
+    last_pruned_at: Optional[datetime] = None
+    last_pruned_count: Optional[int] = None
+    is_default: bool = Field(
+        default=False,
+        description="True when the operator hasn't overridden the system default.",
+    )
+
+
+class RetentionCategoryStorage(BaseModel):
+    category: str
+    row_count: int
+    estimated_bytes: int
+    avg_bytes_per_row: int
+    non_prunable: bool = False
+
+
+class RetentionStatusResponse(BaseModel):
+    default_ttl_days: int
+    scheduler_enabled: bool
+    last_run_at: Optional[datetime] = None
+    configs: list[RetentionCategoryConfig]
+    storage: list[RetentionCategoryStorage]
+
+
+class RetentionUpdateItem(BaseModel):
+    category: str
+    ttl_days: Optional[int] = Field(
+        default=None,
+        description="NULL disables auto-deletion. Otherwise must be >= 1.",
+    )
+
+
+class RetentionUpdateRequest(BaseModel):
+    configs: list[RetentionUpdateItem] = Field(..., min_length=1, max_length=20)
+
+
+class RetentionRunReportItem(BaseModel):
+    category: str
+    ttl_days: Optional[int]
+    cutoff: Optional[datetime]
+    deleted_count: int
+    skipped_reason: Optional[str] = None
+    error: Optional[str] = None
+
+
+class RetentionRunReportResponse(BaseModel):
+    started_at: datetime
+    finished_at: Optional[datetime]
+    total_deleted: int
+    total_errors: int
+    items: list[RetentionRunReportItem]

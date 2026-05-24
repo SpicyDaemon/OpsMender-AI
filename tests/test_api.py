@@ -1837,6 +1837,100 @@ class TestIncidentMemoryAPI:
         assert resp.status_code == 404
 
 
+class TestRetentionAPI:
+    """Sprint 53 — /retention status, config, and run."""
+
+    async def test_status_returns_defaults_for_fresh_org(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get("/retention", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["default_ttl_days"] == 90
+        # All four configured categories surface with is_default=true.
+        categories = {c["category"] for c in body["configs"]}
+        assert categories == {
+            "audit_entries",
+            "ingest_log",
+            "incident_memory_recall_log",
+            "bot_action_audit",
+        }
+        for cfg in body["configs"]:
+            assert cfg["is_default"] is True
+            assert cfg["ttl_days"] == 90
+        # Storage panel includes memories as non-prunable.
+        storage_categories = {s["category"] for s in body["storage"]}
+        assert "incident_memories" in storage_categories
+        mem_row = next(s for s in body["storage"] if s["category"] == "incident_memories")
+        assert mem_row["non_prunable"] is True
+
+    async def test_put_persists_per_category_ttl(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.put(
+            "/retention",
+            headers=auth_headers,
+            json={
+                "configs": [
+                    {"category": "audit_entries", "ttl_days": 30},
+                    {"category": "ingest_log", "ttl_days": None},
+                ]
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        by_cat = {c["category"]: c for c in body["configs"]}
+        assert by_cat["audit_entries"]["ttl_days"] == 30
+        assert by_cat["audit_entries"]["is_default"] is False
+        assert by_cat["ingest_log"]["ttl_days"] is None
+        assert by_cat["ingest_log"]["is_default"] is False
+        # Untouched categories still show defaults.
+        assert by_cat["incident_memory_recall_log"]["is_default"] is True
+
+    async def test_put_rejects_unknown_category(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.put(
+            "/retention",
+            headers=auth_headers,
+            json={"configs": [{"category": "frobnicate", "ttl_days": 7}]},
+        )
+        assert resp.status_code == 400
+
+    async def test_put_rejects_zero_ttl(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.put(
+            "/retention",
+            headers=auth_headers,
+            json={"configs": [{"category": "audit_entries", "ttl_days": 0}]},
+        )
+        assert resp.status_code == 400
+
+    async def test_run_returns_per_category_report(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post("/retention/run", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "total_deleted" in body
+        assert body["total_errors"] == 0
+        categories = {item["category"] for item in body["items"]}
+        # All four show up even when there's nothing to delete.
+        assert categories == {
+            "audit_entries",
+            "ingest_log",
+            "incident_memory_recall_log",
+            "bot_action_audit",
+        }
+
+    async def test_viewer_cannot_read_retention(
+        self, client: AsyncClient, viewer_headers
+    ):
+        resp = await client.get("/retention", headers=viewer_headers)
+        assert resp.status_code in (401, 403)
+
+
 class TestSetupChecklist:
     async def test_fresh_org_has_all_false(
         self, client: AsyncClient, auth_headers

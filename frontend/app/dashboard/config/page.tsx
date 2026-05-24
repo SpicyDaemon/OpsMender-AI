@@ -27,6 +27,9 @@ import {
   createAgentTeamProfile,
   createBotConnector,
   createIngestToken,
+  getRetentionStatus,
+  runRetentionNow,
+  updateRetention,
   createMCPServer,
   createModelConfig,
   createWebhookTrigger,
@@ -100,6 +103,9 @@ import type {
   ModelConfigResponse,
   ModelConfigUpdate,
   ProviderModelsResponse,
+  RetentionCategoryStorage,
+  RetentionRunReportResponse,
+  RetentionStatusResponse,
   WebhookTriggerEventType,
   WebhookTriggerFormat,
   WebhookTriggerResponse,
@@ -230,9 +236,15 @@ type ConfigSectionId =
   | "integrations"
   | "webhooks"
   | "workflows"
-  | "agent-teams";
+  | "agent-teams"
+  | "retention";
 
-type ConfigGroupId = "day1" | "inbound" | "outbound" | "advanced";
+type ConfigGroupId =
+  | "day1"
+  | "inbound"
+  | "outbound"
+  | "advanced"
+  | "storage";
 
 const CONFIG_GROUPS: Array<{
   id: ConfigGroupId;
@@ -265,6 +277,14 @@ const CONFIG_GROUPS: Array<{
     defaultOpen: true,
   },
   {
+    id: "storage",
+    label: "Storage & retention",
+    caption:
+      "Per-category log retention windows + storage estimates. Logs auto-prune after 90 days by default; disable or shorten per category.",
+    sections: ["retention"],
+    defaultOpen: false,
+  },
+  {
     id: "advanced",
     label: "Advanced",
     caption:
@@ -284,6 +304,7 @@ const SECTION_LABELS: Record<ConfigSectionId, string> = {
   webhooks: "Webhook triggers",
   workflows: "Workflows",
   "agent-teams": "Agent teams",
+  retention: "Storage & retention",
 };
 
 function ConfigPageLinkCard({
@@ -5519,6 +5540,403 @@ function WebhookTriggerSection({
   );
 }
 
+const RETENTION_CATEGORY_LABELS: Record<string, string> = {
+  audit_entries: "Audit entries",
+  ingest_log: "Inbound webhook payloads",
+  incident_memory_recall_log: "Memory recall log",
+  bot_action_audit: "Bot action audit",
+  incident_memories: "Incident memories",
+};
+
+const RETENTION_CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  audit_entries:
+    "Every agent tool call, every block, every node transition. High-volume on busy clusters; default 90-day TTL.",
+  ingest_log:
+    "Raw inbound webhook payloads kept for replay/debugging. Highest per-row cost (~5 KB avg); usually safe to prune aggressively.",
+  incident_memory_recall_log:
+    "One row per (memory, session) surfacing event. Tiny rows but volume grows with traffic.",
+  bot_action_audit:
+    "Inbound bot commands (Slack/Teams ack/take/resolve). Default 90-day TTL.",
+  incident_memories:
+    "Operator- and agent-curated lessons. Never auto-deleted — manage manually from /dashboard/memories.",
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function RetentionSection({ canEdit }: { canEdit: boolean }) {
+  const [status, setStatus] = useState<RetentionStatusResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [lastRun, setLastRun] = useState<RetentionRunReportResponse | null>(
+    null,
+  );
+  const [error, setError] = useState<string>("");
+  const [notice, setNotice] = useState<string>("");
+  // Per-category draft state (string so the input can be cleared mid-typing).
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await getRetentionStatus();
+      setStatus(res);
+      setDrafts(
+        res.configs.reduce<Record<string, string>>((acc, cfg) => {
+          acc[cfg.category] =
+            cfg.ttl_days === null ? "" : String(cfg.ttl_days);
+          return acc;
+        }, {}),
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load retention status",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const storageByCategory = useMemo(() => {
+    const map = new Map<string, RetentionCategoryStorage>();
+    for (const row of status?.storage ?? []) map.set(row.category, row);
+    return map;
+  }, [status]);
+
+  async function saveCategory(
+    category: string,
+    ttl_days: number | null,
+  ) {
+    if (!canEdit) return;
+    setSaving(category);
+    setError("");
+    setNotice("");
+    try {
+      const res = await updateRetention({
+        configs: [{ category, ttl_days }],
+      });
+      setStatus(res);
+      setDrafts(
+        res.configs.reduce<Record<string, string>>((acc, cfg) => {
+          acc[cfg.category] =
+            cfg.ttl_days === null ? "" : String(cfg.ttl_days);
+          return acc;
+        }, {}),
+      );
+      setNotice(
+        ttl_days === null
+          ? `${RETENTION_CATEGORY_LABELS[category] ?? category}: auto-deletion disabled.`
+          : `${RETENTION_CATEGORY_LABELS[category] ?? category}: TTL set to ${ttl_days} day${ttl_days === 1 ? "" : "s"}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleRunNow() {
+    if (!canEdit) return;
+    setRunning(true);
+    setError("");
+    setNotice("");
+    try {
+      const report = await runRetentionNow();
+      setLastRun(report);
+      setNotice(
+        `Pruner ran: deleted ${report.total_deleted} row${report.total_deleted === 1 ? "" : "s"}` +
+          (report.total_errors > 0
+            ? `, ${report.total_errors} error${report.total_errors === 1 ? "" : "s"}`
+            : ""),
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pruner run failed");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <Section
+        title="Storage & retention"
+        description="Per-category log retention windows + storage estimate."
+      >
+        <p className="text-sm text-fg-muted">Loading retention status…</p>
+      </Section>
+    );
+  }
+
+  if (!status) {
+    return (
+      <Section
+        title="Storage & retention"
+        description="Per-category log retention windows + storage estimate."
+      >
+        <FormError message={error || "Retention status unavailable."} />
+      </Section>
+    );
+  }
+
+  const totalEstimatedBytes = status.storage
+    .filter((row) => !row.non_prunable)
+    .reduce((acc, row) => acc + row.estimated_bytes, 0);
+  const memoryStorage = storageByCategory.get("incident_memories");
+
+  return (
+    <Section
+      title="Storage & retention"
+      description={`Logs auto-prune after ${status.default_ttl_days} days by default. Shorten, extend, or disable per category to bound storage growth and avoid OOM / out-of-disk errors. Memories are operator-curated and never auto-deleted.`}
+    >
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-lg border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+            Estimated log storage
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-fg-primary">
+            {formatBytes(totalEstimatedBytes)}
+          </p>
+          <p className="mt-1 text-xs text-fg-muted">
+            Sum of the four prunable categories.
+          </p>
+        </div>
+        <div className="rounded-lg border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+            Memories (non-prunable)
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-fg-primary">
+            {memoryStorage
+              ? `${memoryStorage.row_count} row${memoryStorage.row_count === 1 ? "" : "s"}`
+              : "—"}
+          </p>
+          <p className="mt-1 text-xs text-fg-muted">
+            {memoryStorage
+              ? `~${formatBytes(memoryStorage.estimated_bytes)} — manage at /dashboard/memories`
+              : "Manage at /dashboard/memories"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+            Pruner
+          </p>
+          <p
+            className={`mt-2 text-2xl font-semibold tracking-tight ${status.scheduler_enabled ? "text-status-low" : "text-status-medium"}`}
+          >
+            {status.scheduler_enabled ? "Enabled" : "Disabled"}
+          </p>
+          <p className="mt-1 text-xs text-fg-muted">
+            {status.scheduler_enabled
+              ? "Runs every 6 hours. Override per category below."
+              : "Disabled at process level via OPSMENDER_RETENTION_ENABLED=false."}
+          </p>
+        </div>
+      </div>
+
+      {error && <FormError message={error} />}
+      {notice && <p className="text-sm text-status-low">{notice}</p>}
+
+      <div className="overflow-hidden rounded-xl border border-border-subtle">
+        <table className="min-w-full divide-y divide-border-subtle text-sm">
+          <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+            <tr>
+              <th className="px-4 py-3">Category</th>
+              <th className="px-4 py-3 text-right">Rows</th>
+              <th className="px-4 py-3 text-right">~Size</th>
+              <th className="px-4 py-3">Retention</th>
+              <th className="px-4 py-3">Last pruned</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-subtle bg-bg-panel">
+            {status.configs.map((cfg) => {
+              const storage = storageByCategory.get(cfg.category);
+              const draft = drafts[cfg.category] ?? "";
+              const draftNum = draft.trim() === "" ? null : Number(draft);
+              const draftInvalid =
+                draft.trim() !== "" &&
+                (Number.isNaN(draftNum as number) ||
+                  (draftNum !== null && draftNum < 1));
+              const dirty =
+                (draftNum ?? null) !==
+                (cfg.ttl_days === null ? null : cfg.ttl_days);
+              return (
+                <tr key={cfg.category} className="align-top">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-fg-primary">
+                      {RETENTION_CATEGORY_LABELS[cfg.category] ?? cfg.category}
+                    </div>
+                    <p className="mt-1 max-w-md text-xs text-fg-muted">
+                      {RETENTION_CATEGORY_DESCRIPTIONS[cfg.category] ?? ""}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 text-right text-fg-primary tabular-nums">
+                    {storage ? storage.row_count.toLocaleString() : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-right text-fg-secondary tabular-nums">
+                    {storage ? formatBytes(storage.estimated_bytes) : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {cfg.ttl_days === null ? (
+                      <Badge variant="medium">Auto-delete disabled</Badge>
+                    ) : (
+                      <Badge variant={cfg.is_default ? "default" : "info"}>
+                        {cfg.ttl_days} day{cfg.ttl_days === 1 ? "" : "s"}
+                        {cfg.is_default ? " (default)" : ""}
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-fg-muted">
+                    {cfg.last_pruned_at
+                      ? `${new Date(cfg.last_pruned_at).toLocaleString()} · ${cfg.last_pruned_count ?? 0} row${
+                          (cfg.last_pruned_count ?? 0) === 1 ? "" : "s"
+                        }`
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        value={draft}
+                        onChange={(e) =>
+                          setDrafts((prev) => ({
+                            ...prev,
+                            [cfg.category]: e.target.value,
+                          }))
+                        }
+                        disabled={!canEdit || saving === cfg.category}
+                        className="w-20"
+                        placeholder="Days"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          saveCategory(cfg.category, draftNum)
+                        }
+                        disabled={
+                          !canEdit ||
+                          !dirty ||
+                          draftInvalid ||
+                          saving === cfg.category
+                        }
+                        loading={saving === cfg.category}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => saveCategory(cfg.category, null)}
+                        disabled={
+                          !canEdit ||
+                          cfg.ttl_days === null ||
+                          saving === cfg.category
+                        }
+                        title="Disable auto-deletion for this category"
+                      >
+                        Disable
+                      </Button>
+                    </div>
+                    {draftInvalid && (
+                      <p className="mt-1 text-right text-xs text-status-critical">
+                        Must be ≥ 1 day.
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {memoryStorage && (
+              <tr className="align-top bg-bg-elevated/40">
+                <td className="px-4 py-3">
+                  <div className="font-medium text-fg-primary">
+                    {RETENTION_CATEGORY_LABELS["incident_memories"]}
+                  </div>
+                  <p className="mt-1 max-w-md text-xs text-fg-muted">
+                    {RETENTION_CATEGORY_DESCRIPTIONS["incident_memories"]}
+                  </p>
+                </td>
+                <td className="px-4 py-3 text-right text-fg-primary tabular-nums">
+                  {memoryStorage.row_count.toLocaleString()}
+                </td>
+                <td className="px-4 py-3 text-right text-fg-secondary tabular-nums">
+                  {formatBytes(memoryStorage.estimated_bytes)}
+                </td>
+                <td className="px-4 py-3">
+                  <Badge variant="closed">Never auto-deleted</Badge>
+                </td>
+                <td className="px-4 py-3 text-xs text-fg-muted">
+                  Manual via{" "}
+                  <Link
+                    href="/dashboard/memories"
+                    className="text-accent hover:underline"
+                  >
+                    /dashboard/memories
+                  </Link>
+                </td>
+                <td className="px-4 py-3 text-right text-xs text-fg-muted">
+                  —
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-fg-muted">
+          Estimated sizes use conservative per-row averages — exact sizes
+          require Postgres-only system tables. Use the trend over time, not the
+          absolute number, to size storage.
+        </p>
+        <Button
+          onClick={handleRunNow}
+          loading={running}
+          disabled={!canEdit}
+          title="Trigger a one-shot pruner run for this org"
+        >
+          Run pruner now
+        </Button>
+      </div>
+
+      {lastRun && (
+        <div className="rounded-lg border border-border-subtle bg-bg-panel px-4 py-3 text-xs">
+          <p className="font-medium text-fg-primary">
+            Last manual run · {new Date(lastRun.started_at).toLocaleString()}
+          </p>
+          <ul className="mt-2 space-y-1 text-fg-secondary">
+            {lastRun.items.map((item) => (
+              <li key={item.category}>
+                <span className="font-mono">
+                  {RETENTION_CATEGORY_LABELS[item.category] ?? item.category}
+                </span>
+                {": "}
+                {item.skipped_reason
+                  ? `skipped (${item.skipped_reason})`
+                  : item.error
+                    ? `error: ${item.error}`
+                    : `deleted ${item.deleted_count} row${item.deleted_count === 1 ? "" : "s"}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 export default function ConfigPage() {
   const { user } = useAuth();
   const canEdit = user?.role === "admin";
@@ -5662,6 +6080,10 @@ export default function ConfigPage() {
       stat: `${agentTeamProfiles.length} team${agentTeamProfiles.length === 1 ? "" : "s"}`,
       detail: `${agentTeamProfiles.filter((profile) => profile.is_active).length} active`,
     },
+    retention: {
+      stat: "90d default",
+      detail: "Per-category log TTL + storage estimate",
+    },
   };
 
   function renderSection(id: ConfigSectionId) {
@@ -5747,6 +6169,8 @@ export default function ConfigPage() {
             canEdit={canEdit}
           />
         );
+      case "retention":
+        return <RetentionSection canEdit={canEdit} />;
     }
   }
 

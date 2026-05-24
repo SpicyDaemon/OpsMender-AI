@@ -1470,3 +1470,27 @@ export async function getSessionMemoriesUsed(
     `/sessions/${sessionId}/memories-used`,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Data retention (Sprint 53)
+// ---------------------------------------------------------------------------
+
+import type {
+  RetentionRunReportResponse,
+  RetentionStatusResponse,
+  RetentionUpdateRequest,
+} from "./types";
+
+export async function getRetentionStatus(): Promise<RetentionStatusResponse> {
+  return api.get<RetentionStatusResponse>("/retention");
+}
+
+export async function updateRetention(
+  body: RetentionUpdateRequest,
+): Promise<RetentionStatusResponse> {
+  return api.put<RetentionStatusResponse>("/retention", body);
+}
+
+export async function runRetentionNow(): Promise<RetentionRunReportResponse> {
+  return api.post<RetentionRunReportResponse>("/retention/run");
+}

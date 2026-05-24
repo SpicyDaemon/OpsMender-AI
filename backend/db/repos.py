@@ -38,6 +38,7 @@ from backend.db.models import (
     ServiceEscalationChain,
     PriorityLLMOverrideLog,
     PriorityRule,
+    RetentionConfig,
     Roster,
     RosterMember,
     RosterOverride,
@@ -5042,3 +5043,127 @@ class IncidentMemoryRecallLogRepo:
             .order_by(IncidentMemoryRecallLog.surfaced_at.asc())
         )
         return (await db.execute(stmt)).scalars().all()
+
+
+# ---------------------------------------------------------------------------
+# Data retention (Sprint 53)
+# ---------------------------------------------------------------------------
+
+
+# Default TTL applied when no per-org row exists. Operators can override
+# per-category via the Config → "Storage & retention" UI or disable a category
+# entirely by setting ttl_days to NULL.
+DEFAULT_RETENTION_TTL_DAYS = 90
+
+RETENTION_CATEGORIES = (
+    "audit_entries",
+    "ingest_log",
+    "incident_memory_recall_log",
+    "bot_action_audit",
+)
+
+
+class RetentionConfigRepo:
+    """Per-org per-category retention windows for high-volume log tables."""
+
+    @staticmethod
+    async def list_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[RetentionConfig]:
+        stmt = (
+            select(RetentionConfig)
+            .where(RetentionConfig.org_id == org_id)
+            .order_by(RetentionConfig.category.asc())
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def get(
+        db: AsyncSession, org_id: uuid.UUID, category: str
+    ) -> RetentionConfig | None:
+        stmt = select(RetentionConfig).where(
+            RetentionConfig.org_id == org_id,
+            RetentionConfig.category == category,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        category: str,
+        ttl_days: int | None,
+        updated_by_user_id: uuid.UUID | None = None,
+    ) -> RetentionConfig:
+        """Create or update the (org, category) row.
+
+        ``ttl_days = None`` disables the pruner for this category (operator
+        explicit opt-out). Otherwise ``ttl_days`` must be >= 1.
+        """
+        if category not in RETENTION_CATEGORIES:
+            raise ValueError(f"Unknown retention category: {category}")
+        if ttl_days is not None and ttl_days < 1:
+            raise ValueError("ttl_days must be NULL (disabled) or >= 1")
+
+        existing = await RetentionConfigRepo.get(db, org_id, category)
+        now = datetime.now(timezone.utc)
+        if existing is None:
+            row = RetentionConfig(
+                org_id=org_id,
+                category=category,
+                ttl_days=ttl_days,
+                updated_by_user_id=updated_by_user_id,
+            )
+            db.add(row)
+            await db.flush()
+            return row
+        existing.ttl_days = ttl_days
+        existing.updated_at = now
+        existing.updated_by_user_id = updated_by_user_id
+        await db.flush()
+        return existing
+
+    @staticmethod
+    async def effective_ttl_days(
+        db: AsyncSession, org_id: uuid.UUID, category: str
+    ) -> int | None:
+        """Resolved TTL for the (org, category) pair.
+
+        Returns the stored TTL when a row exists (which may be NULL =
+        disabled). Falls back to ``DEFAULT_RETENTION_TTL_DAYS`` when no row
+        exists so a fresh org auto-prunes from day one without operator
+        action.
+        """
+        existing = await RetentionConfigRepo.get(db, org_id, category)
+        if existing is None:
+            return DEFAULT_RETENTION_TTL_DAYS
+        return existing.ttl_days
+
+    @staticmethod
+    async def stamp_run(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        category: str,
+        deleted_count: int,
+    ) -> None:
+        """Record the last pruner outcome. Creates the row if it doesn't
+        exist so the operator can see the default applied + last result even
+        before they explicitly configure the category."""
+        existing = await RetentionConfigRepo.get(db, org_id, category)
+        now = datetime.now(timezone.utc)
+        if existing is None:
+            row = RetentionConfig(
+                org_id=org_id,
+                category=category,
+                ttl_days=DEFAULT_RETENTION_TTL_DAYS,
+                last_pruned_at=now,
+                last_pruned_count=deleted_count,
+            )
+            db.add(row)
+            await db.flush()
+            return
+        existing.last_pruned_at = now
+        existing.last_pruned_count = deleted_count
+        await db.flush()

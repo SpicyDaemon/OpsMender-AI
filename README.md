@@ -22,6 +22,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Org-owned skill definitions** — a single `SKILL.md` classifies every operation as `safe`, `caution`, or `destructive`. Your call, not ours.
 - **AI incident memory** — successful sessions leave behind short markdown lessons; the next similar incident gets them injected into the agent's prompt before the first observe call. Per-org, advisory only (never bypasses tier or skill gates), bounded by auto-compaction at 50 memories per service, and rankable by operator thumbs up/down via `/dashboard/memories`.
 - **Full audit log** — every node transition, every tool call, every approval, every rollback step. Memory recall and writeback are audited too.
+- **Bounded storage** — logs auto-prune after 90 days by default (operator-overridable per category from Config → "Storage & retention"); memories are operator-curated and never auto-deleted. Avoids OOM and out-of-disk failure modes on long-running deployments.
 - **Bring your own model** — Anthropic, OpenAI, Azure OpenAI, or local Ollama.
 - **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
 - **Outbound triggers** — fire session-lifecycle notifications to Slack, Teams, Sumo Logic, or any generic webhook endpoint.

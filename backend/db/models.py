@@ -1721,3 +1721,55 @@ class IncidentMemoryRecallLog(Base):
             "ix_incident_memory_recall_session", "session_id", "surfaced_at"
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Data retention (Sprint 53)
+# ---------------------------------------------------------------------------
+
+
+class RetentionConfig(Base):
+    """Per-org per-category TTL for high-volume log tables (Sprint 53).
+
+    Categories under retention control:
+        - audit_entries
+        - ingest_log
+        - incident_memory_recall_log
+        - bot_action_audit
+
+    ``ttl_days`` semantics:
+        - NULL => retention disabled for this category (never auto-delete).
+        - integer >= 1 => rows older than (now - ttl_days) are pruned by the
+          nightly RetentionScheduler.
+
+    When no row exists for an (org, category) pair, the pruner falls back to
+    the system default of 90 days (Sprint 53 D-026).
+    """
+
+    __tablename__ = "retention_configs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    ttl_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_pruned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_pruned_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "category", name="uq_retention_org_category"),
+    )

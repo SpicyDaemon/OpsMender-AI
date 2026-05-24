@@ -1480,3 +1480,58 @@ export interface SessionMemoriesUsedResponse {
   items: SessionMemoriesUsedItem[];
   total: number;
 }
+
+// ---------------------------------------------------------------------------
+// Data retention (Sprint 53)
+// ---------------------------------------------------------------------------
+
+export type RetentionCategory =
+  | "audit_entries"
+  | "ingest_log"
+  | "incident_memory_recall_log"
+  | "bot_action_audit";
+
+export interface RetentionCategoryConfig {
+  category: string;
+  ttl_days: number | null;
+  last_pruned_at: string | null;
+  last_pruned_count: number | null;
+  is_default: boolean;
+}
+
+export interface RetentionCategoryStorage {
+  category: string;
+  row_count: number;
+  estimated_bytes: number;
+  avg_bytes_per_row: number;
+  non_prunable: boolean;
+}
+
+export interface RetentionStatusResponse {
+  default_ttl_days: number;
+  scheduler_enabled: boolean;
+  last_run_at: string | null;
+  configs: RetentionCategoryConfig[];
+  storage: RetentionCategoryStorage[];
+}
+
+export interface RetentionUpdateRequest {
+  configs: Array<{ category: string; ttl_days: number | null }>;
+}
+
+export interface RetentionRunReportItem {
+  category: string;
+  ttl_days: number | null;
+  cutoff: string | null;
+  deleted_count: number;
+  skipped_reason: string | null;
+  error: string | null;
+}
+
+export interface RetentionRunReportResponse {
+  started_at: string;
+  finished_at: string | null;
+  total_deleted: number;
+  total_errors: number;
+  items: RetentionRunReportItem[];
+}

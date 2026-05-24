@@ -47,6 +47,7 @@ import { Button } from "@/components/ui/Button";
 import { Label, Select } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { SessionDetailSkeleton } from "@/components/ui/Skeleton";
+import { SessionMemoriesPanel } from "@/components/SessionMemoriesPanel";
 import { useAuth } from "@/context/auth";
 
 // ---------------------------------------------------------------------------
@@ -844,6 +845,8 @@ function SessionPageContent() {
           </div>
         </div>
       </div>
+
+      <SessionMemoriesPanel sessionId={session.id} />
 
       {canRollback && session.tier === 0 && (
         <RollbackModal

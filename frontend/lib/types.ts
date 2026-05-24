@@ -1398,3 +1398,55 @@ export interface IncidentChainPanelResponse {
   state: IncidentChainStateRecord | null;
   pages: IncidentPageRecord[];
 }
+
+// ---------------------------------------------------------------------------
+// AI incident memory (Sprint 45)
+// ---------------------------------------------------------------------------
+
+export interface IncidentMemoryResponse {
+  id: string;
+  org_id: string;
+  service_id: string | null;
+  source_incident_id: string | null;
+  title: string;
+  summary_md: string;
+  tags: string[];
+  helpful_count: number;
+  unhelpful_count: number;
+  is_hidden: boolean;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+}
+
+export interface IncidentMemoryListResponse {
+  items: IncidentMemoryResponse[];
+  total: number;
+}
+
+export interface IncidentMemoryCreate {
+  title: string;
+  summary_md: string;
+  tags?: string[];
+  service_id?: string | null;
+}
+
+export interface IncidentMemoryUpdate {
+  title?: string;
+  summary_md?: string;
+  tags?: string[];
+  service_id?: string | null;
+  service_id_set?: boolean;
+}
+
+export interface SessionMemoriesUsedItem {
+  memory: IncidentMemoryResponse;
+  surfaced_at: string;
+  score: number | null;
+}
+
+export interface SessionMemoriesUsedResponse {
+  items: SessionMemoriesUsedItem[];
+  total: number;
+}

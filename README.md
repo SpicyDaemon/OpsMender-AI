@@ -20,7 +20,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Human in the loop** — Tier 1 pauses the workflow on destructive actions and requires explicit approval from an operator or admin.
 - **Programmatic tier gate** — enforced in code, not by prompt. The agent cannot reason its way past it.
 - **Org-owned skill definitions** — a single `SKILL.md` classifies every operation as `safe`, `caution`, or `destructive`. Your call, not ours.
-- **AI incident memory** *(in progress, Sprint 45)* — successful sessions leave behind short markdown lessons; the next similar incident gets them injected into the agent's prompt before the first observe call. Per-org, advisory only (never bypasses tier or skill gates), bounded by auto-compaction at 50 memories per service, and rankable by operator thumbs up/down.
+- **AI incident memory** — successful sessions leave behind short markdown lessons; the next similar incident gets them injected into the agent's prompt before the first observe call. Per-org, advisory only (never bypasses tier or skill gates), bounded by auto-compaction at 50 memories per service, and rankable by operator thumbs up/down via `/dashboard/memories`.
 - **Full audit log** — every node transition, every tool call, every approval, every rollback step. Memory recall and writeback are audited too.
 - **Bring your own model** — Anthropic, OpenAI, Azure OpenAI, or local Ollama.
 - **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
@@ -123,7 +123,7 @@ Guarantees that hold by design:
 - **Bounded growth.** When an org passes 50 memories for one service, the next `remember` call runs one bounded auto-compaction pass (exact-title dedup first, then up to 5 LLM-suggested deletes). Never recursive, always audit-logged.
 - **Operator-curated.** Memories will get a `/dashboard/memories` page with full CRUD plus thumbs up/down on each surfaced memory (Sprint 45 Step 7, in flight). The retrieval ranking factors in `helpful / (helpful + unhelpful)` so the agent learns *which lessons are actually useful*.
 
-> **Status (Session 115):** recall + remember + auto-compaction are wired end-to-end in `main`. Live REST sessions are already producing memories on successful resolutions and seeing them on subsequent incidents. The operator-visible REST API and `/dashboard/memories` UI ship in Sprint 45 Steps 6–7.
+> **Status (Session 118):** the full Sprint 45 surface is live — agent-side recall + remember + auto-compaction, the operator-curation REST API, the `/dashboard/memories` page, and the session-detail "Memories used" panel. Operators can author memories by hand, vote on each surfaced memory with thumbs up/down, and admins can hide or delete entries. The only remaining Sprint 45 work is broader integration tests (Step 8) and the v1.0.0 tag cutover (Sprint 44).
 
 ### Where each concept lives in the dashboard
 

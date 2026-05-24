@@ -1324,3 +1324,71 @@ export async function updateOrgNotificationSettings(
     { notification_dedup_window_minutes },
   );
 }
+
+// ---------------------------------------------------------------------------
+// AI incident memory (Sprint 45 Step 6)
+// ---------------------------------------------------------------------------
+
+import type {
+  IncidentMemoryCreate,
+  IncidentMemoryListResponse,
+  IncidentMemoryResponse,
+  IncidentMemoryUpdate,
+  SessionMemoriesUsedResponse,
+} from "./types";
+
+export async function listMemories(params?: {
+  service_id?: string;
+  include_hidden?: boolean;
+}): Promise<IncidentMemoryListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.service_id) qs.set("service_id", params.service_id);
+  if (params?.include_hidden) qs.set("include_hidden", "true");
+  const q = qs.toString();
+  return api.get<IncidentMemoryListResponse>(`/memories${q ? `?${q}` : ""}`);
+}
+
+export async function getMemory(id: string): Promise<IncidentMemoryResponse> {
+  return api.get<IncidentMemoryResponse>(`/memories/${id}`);
+}
+
+export async function createMemory(
+  body: IncidentMemoryCreate,
+): Promise<IncidentMemoryResponse> {
+  return api.post<IncidentMemoryResponse>("/memories", body);
+}
+
+export async function updateMemory(
+  id: string,
+  body: IncidentMemoryUpdate,
+): Promise<IncidentMemoryResponse> {
+  return api.put<IncidentMemoryResponse>(`/memories/${id}`, body);
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  return api.del<void>(`/memories/${id}`);
+}
+
+export async function recordMemoryFeedback(
+  id: string,
+  helpful: boolean,
+): Promise<IncidentMemoryResponse> {
+  return api.post<IncidentMemoryResponse>(`/memories/${id}/feedback`, {
+    helpful,
+  });
+}
+
+export async function setMemoryHidden(
+  id: string,
+  hidden: boolean,
+): Promise<IncidentMemoryResponse> {
+  return api.post<IncidentMemoryResponse>(`/memories/${id}/hide`, { hidden });
+}
+
+export async function getSessionMemoriesUsed(
+  sessionId: string,
+): Promise<SessionMemoriesUsedResponse> {
+  return api.get<SessionMemoriesUsedResponse>(
+    `/sessions/${sessionId}/memories-used`,
+  );
+}

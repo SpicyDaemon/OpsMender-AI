@@ -150,6 +150,8 @@ The Activity page uses the same table controls for audit-log triage: search, sor
 
 The Memories page has the same table treatment for curation: search and filter by service or visibility, expand long markdown lessons inline, and keep feedback/edit/hide/delete actions on each row.
 
+The Skills page uses the shared table controls too: search by skill/description/focus area/server, filter by MCP server or global fallback, and keep Import/New/Edit/Clone/Delete workflows in place.
+
 ## Quick Start
 
 Requires [uv](https://docs.astral.sh/uv/) (Python package manager) and Python 3.11+.

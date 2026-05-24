@@ -9,6 +9,7 @@ An MCP Server is an external process or service that exposes a standard set of "
 
 You can manage your skills from the **Skills** tab in the OpsMender Dashboard.
 
+- **Find:** Search by skill name, description, focus area, or MCP server. Use the MCP server chips to filter to one server or the global fallback skill.
 - **Import:** Add a pre-existing MCP server configuration.
 - **Edit:** Modify the command, environment variables, or transport mechanism of a skill.
 - **Clone:** Duplicate an existing skill to quickly create a variation (e.g., duplicating a dev-environment skill and changing the credentials for production).

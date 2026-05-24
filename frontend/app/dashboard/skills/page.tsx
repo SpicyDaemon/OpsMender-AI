@@ -25,12 +25,18 @@ import type {
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import {
+  DataTable,
+  type DataTableColumn,
+} from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+
+const GLOBAL_SERVER = "__global";
 
 const TEMPLATE_SKILL = `---
 version: "1"
@@ -441,20 +447,16 @@ export default function SkillsPage() {
     return map;
   }, [servers]);
 
-  const grouped = useMemo(() => {
-    const byServer = new Map<string, SkillResponse[]>();
-    const globals: SkillResponse[] = [];
-    for (const skill of skills) {
-      if (!skill.mcp_server_id) {
-        globals.push(skill);
-        continue;
-      }
-      const bucket = byServer.get(skill.mcp_server_id);
-      if (bucket) bucket.push(skill);
-      else byServer.set(skill.mcp_server_id, [skill]);
-    }
-    return { byServer, globals };
-  }, [skills]);
+  const serverFilterOptions = useMemo(
+    () => [
+      { value: GLOBAL_SERVER, label: "Global" },
+      ...servers.map((server) => ({
+        value: server.id,
+        label: server.name,
+      })),
+    ],
+    [servers],
+  );
 
   async function handleDelete(skill: SkillResponse) {
     if (!confirm(`Delete skill "${skill.name}"?`)) return;
@@ -479,6 +481,101 @@ export default function SkillsPage() {
     setCloning(skill);
     setShowClone(true);
   }
+
+  const columns = useMemo<DataTableColumn<SkillResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Skill",
+        accessor: (skill) => `${skill.name} ${skill.description ?? ""}`,
+        cell: (skill) => (
+          <div className="min-w-[14rem]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-fg-primary">
+                {skill.name}
+              </span>
+              {skill.mcp_server_id ? (
+                <Badge variant="in_progress">
+                  {serverNameById.get(skill.mcp_server_id) ?? "server"}
+                </Badge>
+              ) : (
+                <Badge variant="default">global</Badge>
+              )}
+            </div>
+            {skill.description && (
+              <p className="mt-1 line-clamp-2 max-w-xl text-xs text-fg-secondary">
+                {skill.description}
+              </p>
+            )}
+          </div>
+        ),
+        sortable: true,
+        searchable: true,
+      },
+      {
+        id: "mcp_server",
+        label: "MCP server",
+        accessor: (skill) =>
+          skill.mcp_server_id
+            ? serverNameById.get(skill.mcp_server_id) ?? skill.mcp_server_id
+            : "Global",
+        cell: (skill) => (
+          <span className="text-sm text-fg-secondary">
+            {skill.mcp_server_id
+              ? serverNameById.get(skill.mcp_server_id) ?? skill.mcp_server_id
+              : "Global fallback"}
+          </span>
+        ),
+        sortable: true,
+        filterChips: {
+          options: serverFilterOptions,
+          valueOf: (skill) => skill.mcp_server_id ?? GLOBAL_SERVER,
+        },
+      },
+      {
+        id: "focus_areas",
+        label: "Focus areas",
+        accessor: (skill) => skill.focus_areas.join(" "),
+        cell: (skill) =>
+          skill.focus_areas.length > 0 ? (
+            <div className="flex max-w-sm flex-wrap gap-1">
+              {skill.focus_areas.map((area) => (
+                <Badge key={area} variant="default">
+                  {area}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <span className="text-fg-muted">—</span>
+          ),
+        searchable: true,
+      },
+      {
+        id: "updated_at",
+        label: "Updated",
+        accessor: (skill) => skill.updated_at,
+        cell: (skill) => (
+          <span className="whitespace-nowrap text-xs text-fg-secondary">
+            {fmtDate(skill.updated_at)}
+          </span>
+        ),
+        sortable: true,
+      },
+      {
+        id: "created_at",
+        label: "Created",
+        accessor: (skill) => skill.created_at,
+        cell: (skill) => (
+          <span className="whitespace-nowrap text-xs text-fg-secondary">
+            {fmtDate(skill.created_at)}
+          </span>
+        ),
+        sortable: true,
+        hiddenByDefault: true,
+      },
+    ],
+    [serverFilterOptions, serverNameById],
+  );
 
   if (loading) {
     return (
@@ -534,35 +631,40 @@ export default function SkillsPage() {
           }
         />
       ) : (
-        <div className="space-y-6">
-          <SkillGroup
-            title="Global (fallback)"
-            subtitle="Used when the active MCP server has no bound skill"
-            skills={grouped.globals}
-            serverNameById={serverNameById}
-            canEdit={canEdit}
-            onEdit={openEdit}
-            onClone={openClone}
-            onDelete={handleDelete}
-          />
-          {servers.map((server) => {
-            const bucket = grouped.byServer.get(server.id) ?? [];
-            if (bucket.length === 0) return null;
-            return (
-              <SkillGroup
-                key={server.id}
-                title={server.name}
-                subtitle={`MCP server — ${server.transport}`}
-                skills={bucket}
-                serverNameById={serverNameById}
-                canEdit={canEdit}
-                onEdit={openEdit}
-                onClone={openClone}
-                onDelete={handleDelete}
-              />
-            );
-          })}
-        </div>
+        <DataTable
+          rows={skills}
+          columns={columns}
+          rowKey={(skill) => skill.id}
+          storageKey="opsmender:skills-table"
+          searchPlaceholder="Search skill, description, focus area, or server…"
+          rowActions={(skill) =>
+            canEdit ? (
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openEdit(skill)}
+                >
+                  <Pencil size={14} /> Edit
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openClone(skill)}
+                >
+                  <Copy size={14} /> Clone
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => handleDelete(skill)}
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            ) : undefined
+          }
+        />
       )}
 
       <SkillModal
@@ -585,95 +687,6 @@ export default function SkillsPage() {
         onClose={() => setShowImport(false)}
         onSaved={load}
       />
-    </div>
-  );
-}
-
-function SkillGroup({
-  title,
-  subtitle,
-  skills,
-  serverNameById,
-  canEdit,
-  onEdit,
-  onClone,
-  onDelete,
-}: {
-  title: string;
-  subtitle?: string;
-  skills: SkillResponse[];
-  serverNameById: Map<string, string>;
-  canEdit: boolean;
-  onEdit: (s: SkillResponse) => void;
-  onClone: (s: SkillResponse) => void;
-  onDelete: (s: SkillResponse) => void;
-}) {
-  return (
-    <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-      <div className="border-b border-border-subtle px-6 py-4">
-        <h2 className="text-base font-semibold text-fg-primary">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-xs text-fg-secondary">{subtitle}</p>}
-      </div>
-      <div className="divide-y divide-border-subtle">
-        {skills.length === 0 ? (
-          <p className="px-6 py-4 text-sm text-fg-secondary">No skills.</p>
-        ) : (
-          skills.map((skill) => (
-            <div
-              key={skill.id}
-              className="flex items-start justify-between gap-4 px-6 py-4"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-fg-primary">{skill.name}</span>
-                  {skill.mcp_server_id ? (
-                    <Badge variant="in_progress">
-                      {serverNameById.get(skill.mcp_server_id) ?? "server"}
-                    </Badge>
-                  ) : (
-                    <Badge variant="default">global</Badge>
-                  )}
-                </div>
-                {skill.description && (
-                  <p className="mt-1 text-sm text-fg-secondary">
-                    {skill.description}
-                  </p>
-                )}
-                <p className="mt-1 text-xs text-fg-muted">
-                  Updated {fmtDate(skill.updated_at)}
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                {canEdit && (
-                  <>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => onEdit(skill)}
-                    >
-                      <Pencil size={14} /> Edit
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => onClone(skill)}
-                    >
-                      <Copy size={14} /> Clone
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => onDelete(skill)}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
     </div>
   );
 }

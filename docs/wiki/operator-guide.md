@@ -35,6 +35,7 @@ OpsMender enforces safety through "Tiers". If an AI session is operating in a ti
 Every action taken by the AI is immutably recorded in the **Audit Log**.
 
 - The Audit Log provides a chronological trace of all tool executions, approvals, and system state changes.
+- The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
 - It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it.
 
 ## 5. Rollback Behavior

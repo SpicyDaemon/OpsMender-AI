@@ -1,8 +1,8 @@
 "use client";
 
 import {
+  Fragment,
   type ReactNode,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -13,6 +13,8 @@ import {
   ArrowUp,
   ArrowUpDown,
   Calendar as CalIcon,
+  ChevronDown,
+  ChevronRight,
   Columns3,
   Search,
   X,
@@ -72,6 +74,13 @@ export interface DataTableProps<T> {
   dateRangeColumn?: DateRangeColumnConfig<T>;
   /** Optional row-action slot rendered in a trailing cell. */
   rowActions?: (row: T) => ReactNode;
+  /** Optional expanded detail row rendered below a row. */
+  expandedRow?: {
+    expandedKeys: Set<string>;
+    onToggle: (key: string, row: T) => void;
+    render: (row: T) => ReactNode;
+    label?: string;
+  };
   /** Sprint 50 — enable row-selection checkboxes. */
   selectable?: boolean;
   /** Sprint 50 — controlled selection (a Set of row keys). */
@@ -141,6 +150,7 @@ export function DataTable<T>({
   rowKey,
   dateRangeColumn,
   rowActions,
+  expandedRow,
   selectable = false,
   selectedKeys,
   onSelectionChange,
@@ -375,6 +385,8 @@ export function DataTable<T>({
     onSelectionChange(new Set<string>());
   };
 
+  const leadingColumnCount = (selectable ? 1 : 0) + (expandedRow ? 1 : 0);
+
   // ----- Render ---------------------------------------------------------------
   return (
     <div className={`space-y-3 ${className}`}>
@@ -563,6 +575,16 @@ export function DataTable<T>({
           <table className="min-w-full divide-y divide-border-subtle text-sm">
             <thead className="bg-bg-elevated text-left">
               <tr>
+                {expandedRow && (
+                  <th
+                    scope="col"
+                    className="w-0 whitespace-nowrap px-3 py-2 text-left"
+                  >
+                    <span className="sr-only">
+                      {expandedRow.label ?? "Expand row"}
+                    </span>
+                  </th>
+                )}
                 {selectable && (
                   <th
                     scope="col"
@@ -630,51 +652,87 @@ export function DataTable<T>({
               {pageRows.map((row) => {
                 const k = rowKey(row);
                 const isSelected = selection.has(k);
+                const isExpanded = Boolean(expandedRow?.expandedKeys.has(k));
                 return (
-                <tr
-                  key={k}
-                  className={`hover:bg-bg-hover/40 transition-colors ${
-                    isSelected ? "bg-accent-bg/30" : ""
-                  }`}
-                >
-                  {selectable && (
-                    <td className="w-0 whitespace-nowrap px-3 py-2 align-middle">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleRow(k)}
-                        aria-label="Select row"
-                      />
-                    </td>
-                  )}
-                  {visibleColumns.map((col) => {
-                    const align =
-                      col.align === "right"
-                        ? "text-right"
-                        : col.align === "center"
-                          ? "text-center"
-                          : "text-left";
-                    const content = col.cell
-                      ? col.cell(row)
-                      : (() => {
-                          const v = col.accessor(row);
-                          return v == null ? "—" : String(v);
-                        })();
-                    return (
-                      <td
-                        key={col.id}
-                        className={`px-3 py-2 align-middle text-sm text-fg-primary ${align}`}
-                      >
-                        {content}
-                      </td>
-                    );
-                  })}
-                  {rowActions && (
-                    <td className="px-3 py-2 text-right align-middle">
-                      {rowActions(row)}
-                    </td>
-                  )}
-                </tr>
+                  <Fragment key={k}>
+                    <tr
+                      className={`hover:bg-bg-hover/40 transition-colors ${
+                        isSelected ? "bg-accent-bg/30" : ""
+                      } ${isExpanded ? "bg-bg-elevated/60" : ""}`}
+                    >
+                      {expandedRow && (
+                        <td className="w-0 whitespace-nowrap px-3 py-2 align-middle">
+                          <button
+                            type="button"
+                            onClick={() => expandedRow.onToggle(k, row)}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded text-fg-muted hover:bg-bg-hover hover:text-fg-primary"
+                            aria-label={
+                              isExpanded
+                                ? "Collapse row details"
+                                : "Expand row details"
+                            }
+                          >
+                            {isExpanded ? (
+                              <ChevronDown size={14} />
+                            ) : (
+                              <ChevronRight size={14} />
+                            )}
+                          </button>
+                        </td>
+                      )}
+                      {selectable && (
+                        <td className="w-0 whitespace-nowrap px-3 py-2 align-middle">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleRow(k)}
+                            aria-label="Select row"
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.map((col) => {
+                        const align =
+                          col.align === "right"
+                            ? "text-right"
+                            : col.align === "center"
+                              ? "text-center"
+                              : "text-left";
+                        const content = col.cell
+                          ? col.cell(row)
+                          : (() => {
+                              const v = col.accessor(row);
+                              return v == null ? "—" : String(v);
+                            })();
+                        return (
+                          <td
+                            key={col.id}
+                            className={`px-3 py-2 align-middle text-sm text-fg-primary ${align}`}
+                          >
+                            {content}
+                          </td>
+                        );
+                      })}
+                      {rowActions && (
+                        <td className="px-3 py-2 text-right align-middle">
+                          {rowActions(row)}
+                        </td>
+                      )}
+                    </tr>
+                    {expandedRow && isExpanded && (
+                      <tr key={`${k}:expanded`} className="bg-bg-elevated/60">
+                        <td
+                          colSpan={
+                            leadingColumnCount +
+                            visibleColumns.length +
+                            (rowActions ? 1 : 0)
+                          }
+                          className="px-4 py-4"
+                        >
+                          {expandedRow.render(row)}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>

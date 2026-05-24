@@ -1,38 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
-  ChevronDown,
-  ChevronRight,
   ClipboardCopy,
-  Columns3,
   RefreshCw,
-  X,
 } from "lucide-react";
 import { listAudit } from "@/lib/api";
 import type { AuditEntryResponse, AuditListResponse } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import {
+  DataTable,
+  type DataTableColumn,
+} from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Input, Label, Select } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
-const PAGE_SIZE = 25;
-
-const ALL_COLUMNS = [
-  { key: "timestamp", label: "Timestamp", default: true },
-  { key: "entry_type", label: "Type", default: true },
-  { key: "tool_name", label: "Tool", default: true },
-  { key: "tier", label: "Tier", default: true },
-  { key: "status", label: "Status", default: true },
-  { key: "duration", label: "Duration", default: true },
-  { key: "session_id", label: "Session", default: false },
-] as const;
-
-type ColumnKey = (typeof ALL_COLUMNS)[number]["key"];
+const FETCH_LIMIT = 500;
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -116,351 +103,200 @@ function escapeHtml(str: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Column visibility popover
-// ---------------------------------------------------------------------------
-
-function ColumnToggle({
-  visible,
-  onChange,
-}: {
-  visible: Set<ColumnKey>;
-  onChange: (next: Set<ColumnKey>) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  function toggle(key: ColumnKey) {
-    const next = new Set(visible);
-    if (next.has(key)) {
-      if (next.size > 2) next.delete(key); // keep at least 2 columns
-    } else {
-      next.add(key);
-    }
-    onChange(next);
-  }
-
-  return (
-    <div className="relative" ref={ref}>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(!open)}>
-        <Columns3 size={14} />
-        Columns
-      </Button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 w-48 rounded-lg border border-border-subtle bg-bg-panel shadow-lg p-2 space-y-0.5">
-          {ALL_COLUMNS.map((col) => (
-            <label
-              key={col.key}
-              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-hover cursor-pointer text-sm text-fg-primary"
-            >
-              <input
-                type="checkbox"
-                checked={visible.has(col.key)}
-                onChange={() => toggle(col.key)}
-                className="rounded border-border-strong accent-accent"
-              />
-              {col.label}
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function ActivityPage() {
   const [data, setData] = useState<AuditListResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-
-  // Filters
-  const [sessionId, setSessionId] = useState("");
-  const [toolName, setToolName] = useState("");
-  const [permitted, setPermitted] = useState<"" | "true" | "false">("");
-
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [visibleCols, setVisibleCols] = useState<Set<ColumnKey>>(
-    () => new Set(ALL_COLUMNS.filter((c) => c.default).map((c) => c.key)),
-  );
   const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listAudit({
-        session_id: sessionId.trim() || undefined,
-        tool_name: toolName.trim() || undefined,
-        permitted: permitted === "" ? undefined : permitted === "true",
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      });
+      const res = await listAudit({ limit: FETCH_LIMIT });
       setData(res);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load activity");
     } finally {
       setLoading(false);
     }
-  }, [sessionId, toolName, permitted, page, toast]);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
-  const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
-  const hasFilters = sessionId || toolName || permitted;
+  const entries = data?.items ?? [];
+  const expandedKeys = useMemo(
+    () => (expanded ? new Set([expanded]) : new Set<string>()),
+    [expanded],
+  );
 
-  function clearFilters() {
-    setSessionId("");
-    setToolName("");
-    setPermitted("");
-    setPage(0);
-  }
+  const columns = useMemo<DataTableColumn<AuditEntryResponse>[]>(
+    () => [
+      {
+        id: "timestamp",
+        label: "Timestamp",
+        accessor: (entry) => entry.timestamp,
+        cell: (entry) => (
+          <span className="whitespace-nowrap font-mono text-xs tabular-nums text-fg-secondary">
+            {fmtDate(entry.timestamp)}
+          </span>
+        ),
+        sortable: true,
+        searchable: true,
+      },
+      {
+        id: "entry_type",
+        label: "Type",
+        accessor: (entry) => entry.entry_type,
+        cell: (entry) => (
+          <Badge variant={entry.entry_type === "pre" ? "info" : "default"}>
+            {entry.entry_type}
+          </Badge>
+        ),
+        sortable: true,
+        searchable: true,
+        filterChips: {
+          options: [
+            { value: "pre", label: "Pre" },
+            { value: "post", label: "Post" },
+          ],
+          valueOf: (entry) => entry.entry_type,
+        },
+      },
+      {
+        id: "tool_name",
+        label: "Tool",
+        accessor: (entry) => entry.tool_name ?? "",
+        cell: (entry) => (
+          <span className="font-mono text-xs text-fg-primary">
+            {entry.tool_name ?? <span className="text-fg-muted">—</span>}
+          </span>
+        ),
+        sortable: true,
+        searchable: true,
+      },
+      {
+        id: "tier",
+        label: "Tier",
+        accessor: (entry) => entry.tier,
+        cell: (entry) => (
+          <span className="text-xs tabular-nums text-fg-secondary">
+            {entry.tier}
+          </span>
+        ),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "0", label: "Tier 0" },
+            { value: "1", label: "Tier 1" },
+            { value: "2", label: "Tier 2" },
+            { value: "3", label: "Tier 3" },
+          ],
+          valueOf: (entry) => String(entry.tier),
+        },
+      },
+      {
+        id: "status",
+        label: "Status",
+        accessor: (entry) => (entry.permitted ? "permitted" : "blocked"),
+        cell: (entry) => <PermittedDot permitted={entry.permitted} />,
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "permitted", label: "Permitted" },
+            { value: "blocked", label: "Blocked" },
+          ],
+          valueOf: (entry) => (entry.permitted ? "permitted" : "blocked"),
+        },
+      },
+      {
+        id: "duration",
+        label: "Duration",
+        accessor: (entry) => entry.duration_ms ?? null,
+        cell: (entry) => (
+          <span className="whitespace-nowrap font-mono text-xs tabular-nums text-fg-secondary">
+            {entry.duration_ms != null ? `${entry.duration_ms}ms` : "—"}
+          </span>
+        ),
+        sortable: true,
+        align: "right",
+      },
+      {
+        id: "session_id",
+        label: "Session",
+        accessor: (entry) => entry.session_id,
+        cell: (entry) => (
+          <span className="font-mono text-xs text-fg-muted">
+            {entry.session_id?.slice(0, 8) ?? "—"}
+          </span>
+        ),
+        searchable: true,
+        hiddenByDefault: true,
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="max-w-6xl mx-auto">
       <div className="mb-6">
         <PageHeader
           title="Activity"
-          subtitle={data ? `${data.total} entries` : undefined}
+          subtitle={
+            data
+              ? data.total > entries.length
+                ? `${entries.length} latest of ${data.total} entries`
+                : `${data.total} entries`
+              : undefined
+          }
           icon={<BookOpen size={18} />}
           actions={
-            <>
-              <ColumnToggle visible={visibleCols} onChange={setVisibleCols} />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setPage(0);
-                  load();
-                }}
-                disabled={loading}
-              >
-                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-                Refresh
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={load}
+              disabled={loading}
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </Button>
           }
         />
       </div>
 
-      {/* Filters */}
-      <div className="rounded-xl border border-border-subtle bg-bg-panel p-4 mb-5">
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <Label htmlFor="au-session">Session ID</Label>
-            <Input
-              id="au-session"
-              placeholder="uuid…"
-              value={sessionId}
-              onChange={(e) => { setSessionId(e.target.value); setPage(0); }}
-            />
-          </div>
-          <div>
-            <Label htmlFor="au-tool">Tool Name</Label>
-            <Input
-              id="au-tool"
-              placeholder="kubectl_get"
-              value={toolName}
-              onChange={(e) => { setToolName(e.target.value); setPage(0); }}
-            />
-          </div>
-          <div>
-            <Label htmlFor="au-perm">Permission</Label>
-            <Select
-              id="au-perm"
-              value={permitted}
-              onChange={(e) => { setPermitted(e.target.value as "" | "true" | "false"); setPage(0); }}
-            >
-              <option value="">All</option>
-              <option value="true">Permitted</option>
-              <option value="false">Blocked</option>
-            </Select>
-          </div>
-        </div>
-        {hasFilters && (
-          <button
-            onClick={clearFilters}
-            className="mt-2 inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-primary transition-colors"
-          >
-            <X size={12} />
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {/* Table */}
       {loading && !data ? (
         <TableSkeleton rows={8} columns={6} />
-      ) : data?.items.length === 0 ? (
+      ) : entries.length === 0 ? (
         <EmptyState
           icon={BookOpen}
-          title={
-            hasFilters
-              ? "No audit entries match these filters"
-              : "No audit entries yet"
-          }
-          description={
-            hasFilters
-              ? "Try clearing filters above."
-              : "Every MCP tool call — permitted or blocked — is recorded here once sessions start running."
-          }
+          title="No audit entries yet"
+          description="Every MCP tool call — permitted or blocked — is recorded here once sessions start running."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
         />
       ) : (
-        <>
-          <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
-                  <th className="px-3 py-3 w-8"></th>
-                  {visibleCols.has("timestamp") && <th className="px-4 py-3">Timestamp</th>}
-                  {visibleCols.has("entry_type") && <th className="px-4 py-3">Type</th>}
-                  {visibleCols.has("tool_name") && <th className="px-4 py-3">Tool</th>}
-                  {visibleCols.has("tier") && <th className="px-4 py-3">Tier</th>}
-                  {visibleCols.has("status") && <th className="px-4 py-3">Status</th>}
-                  {visibleCols.has("duration") && <th className="px-4 py-3">Duration</th>}
-                  {visibleCols.has("session_id") && <th className="px-4 py-3">Session</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {data?.items.map((entry) => {
-                  const isExpanded = expanded === entry.id;
-                  return (
-                    <AuditRow
-                      key={entry.id}
-                      entry={entry}
-                      isExpanded={isExpanded}
-                      visibleCols={visibleCols}
-                      onToggle={() => setExpanded(isExpanded ? null : entry.id)}
-                    />
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-fg-secondary">
-              <span className="tabular-nums font-mono text-xs">
-                Page {page + 1} of {totalPages} · {data?.total} total
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={page + 1 >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
+        <DataTable
+          rows={entries}
+          columns={columns}
+          rowKey={(entry) => entry.id}
+          storageKey="opsmender:activity-table"
+          searchPlaceholder="Search timestamp, type, tool, or session…"
+          dateRangeColumn={{
+            id: "timestamp",
+            label: "Timestamp",
+            valueOf: (entry) => entry.timestamp,
+          }}
+          expandedRow={{
+            expandedKeys,
+            onToggle: (key) => setExpanded((cur) => (cur === key ? null : key)),
+            render: (entry) => <ExpandedAuditRow entry={entry} />,
+            label: "Activity details",
+          }}
+        />
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Table row with expandable detail
-// ---------------------------------------------------------------------------
-
-function AuditRow({
-  entry,
-  isExpanded,
-  visibleCols,
-  onToggle,
-}: {
-  entry: AuditEntryResponse;
-  isExpanded: boolean;
-  visibleCols: Set<ColumnKey>;
-  onToggle: () => void;
-}) {
-  const colCount = 1 + visibleCols.size; // +1 for expand column
-
-  return (
-    <>
-      <tr
-        className={`cursor-pointer transition-colors ${
-          isExpanded ? "bg-bg-elevated" : "hover:bg-bg-elevated"
-        } ${!entry.permitted ? "border-l-2 border-l-status-critical/40" : ""}`}
-        onClick={onToggle}
-      >
-        <td className="px-3 py-3 text-fg-muted">
-          {isExpanded ? (
-            <ChevronDown size={14} className="text-fg-secondary" />
-          ) : (
-            <ChevronRight size={14} />
-          )}
-        </td>
-        {visibleCols.has("timestamp") && (
-          <td className="px-4 py-3 text-fg-secondary whitespace-nowrap font-mono text-xs tabular-nums">
-            {fmtDate(entry.timestamp)}
-          </td>
-        )}
-        {visibleCols.has("entry_type") && (
-          <td className="px-4 py-3">
-            <Badge variant={entry.entry_type === "pre" ? "info" : "default"}>
-              {entry.entry_type}
-            </Badge>
-          </td>
-        )}
-        {visibleCols.has("tool_name") && (
-          <td className="px-4 py-3 font-mono text-xs text-fg-primary">
-            {entry.tool_name ?? <span className="text-fg-muted">—</span>}
-          </td>
-        )}
-        {visibleCols.has("tier") && (
-          <td className="px-4 py-3 text-fg-secondary text-xs tabular-nums">{entry.tier}</td>
-        )}
-        {visibleCols.has("status") && (
-          <td className="px-4 py-3">
-            <PermittedDot permitted={entry.permitted} />
-          </td>
-        )}
-        {visibleCols.has("duration") && (
-          <td className="px-4 py-3 text-fg-secondary whitespace-nowrap text-xs tabular-nums font-mono">
-            {entry.duration_ms != null ? `${entry.duration_ms}ms` : "—"}
-          </td>
-        )}
-        {visibleCols.has("session_id") && (
-          <td className="px-4 py-3 font-mono text-xs text-fg-muted">
-            {entry.session_id?.slice(0, 8) ?? "—"}
-          </td>
-        )}
-      </tr>
-      {/* Expanded detail row */}
-      {isExpanded && (
-        <tr className="bg-bg-elevated/60">
-          <td colSpan={colCount} className="px-4 py-4">
-            <ExpandedAuditRow entry={entry} />
-          </td>
-        </tr>
-      )}
-    </>
   );
 }
 

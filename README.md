@@ -146,6 +146,8 @@ The incidents page also includes a one-click **Fire Test Incident** flow for ope
 
 The incidents list is now a full table surface: sortable columns, generic title/description/source search, status/severity/source filter chips, a "Last activity" date-range filter, column show/hide, persisted table preferences, and row selection. Select one or more incidents to bulk acknowledge or resolve them without opening each detail page.
 
+The Activity page uses the same table controls for audit-log triage: search, sort, type/tier/status filter chips, timestamp date ranges, column show/hide, and expandable rows for the Parameters / Result JSON payloads.
+
 ## Quick Start
 
 Requires [uv](https://docs.astral.sh/uv/) (Python package manager) and Python 3.11+.

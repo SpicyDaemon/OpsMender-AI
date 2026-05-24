@@ -33,6 +33,7 @@ export interface IncidentResponse {
   description: string;
   status: IncidentStatus;
   severity: Severity | null;
+  service_id: string | null;
   external_id: string | null;
   external_source: string | null;
   created_at: string;

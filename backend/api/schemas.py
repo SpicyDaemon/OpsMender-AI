@@ -73,6 +73,7 @@ class IncidentResponse(BaseModel):
     description: str
     status: str
     severity: Optional[str]
+    service_id: Optional[uuid.UUID] = None
     external_id: Optional[str] = None
     external_source: Optional[str] = None
     created_at: datetime

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   Calendar,
@@ -40,16 +40,20 @@ import {
   getMyNotificationPreferences,
   listEscalationChains,
   listEscalationSteps,
+  listIncidents,
   listPriorityRules,
   listRosters,
   listServices,
   listTeams,
+  listUsers,
+  resolveOnCall,
   updateMyNotificationPreferences,
 } from "@/lib/api";
 import type {
   EscalationChainResponse,
   EscalationStepResponse,
   EscalationTargetType,
+  IncidentResponse,
   MaintenanceWindowResponse,
   MaintenanceWindowScopeType,
   NotificationChannelKey,
@@ -61,9 +65,11 @@ import type {
   ServiceResponse,
   TeamResponse,
   UserNotificationPrefResponse,
+  UserResponse,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -231,6 +237,7 @@ export default function PagingPage() {
         <ServicesPanel
           services={services}
           teams={teams}
+          rosters={rosters}
           onChange={refresh}
         />
       )}
@@ -383,13 +390,24 @@ function TeamsPanel({
   );
 }
 
+interface ServiceRow {
+  service: ServiceResponse;
+  team_name: string | null;
+  on_call_user_id: string | null;
+  on_call_username: string | null;
+  open_incidents: number;
+  last_incident_at: string | null;
+}
+
 function ServicesPanel({
   services,
   teams,
+  rosters,
   onChange,
 }: {
   services: ServiceResponse[];
   teams: TeamResponse[];
+  rosters: RosterResponse[];
   onChange: () => void;
 }) {
   const toast = useToast();
@@ -400,12 +418,61 @@ function ServicesPanel({
     team_id: "",
     description: "",
   });
+  const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
+  const [users, setUsers] = useState<UserResponse[]>([]);
+  const [onCallByTeam, setOnCallByTeam] = useState<Map<string, string | null>>(
+    new Map(),
+  );
 
   useEffect(() => {
     if (teams.length > 0 && !form.team_id) {
       setForm((f) => ({ ...f, team_id: teams[0].id }));
     }
   }, [teams, form.team_id]);
+
+  // Enrich rows: load incidents + users + per-team on-call resolution.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [incList, uList] = await Promise.all([
+          listIncidents({ limit: 200 }).catch(() => ({
+            items: [] as IncidentResponse[],
+            total: 0,
+          })),
+          listUsers().catch(() => ({ items: [] as UserResponse[], total: 0 })),
+        ]);
+        if (cancelled) return;
+        setIncidents(incList.items);
+        setUsers(uList.items);
+
+        // Resolve on-call once per team via the team's first roster.
+        const teamRoster = new Map<string, string>(); // team_id → roster_id
+        for (const r of rosters) {
+          if (!teamRoster.has(r.team_id)) teamRoster.set(r.team_id, r.id);
+        }
+        const entries = await Promise.all(
+          Array.from(teamRoster.entries()).map(async ([teamId, rosterId]) => {
+            try {
+              const res = await resolveOnCall(rosterId);
+              return [teamId, res.user_id] as const;
+            } catch {
+              return [teamId, null] as const;
+            }
+          }),
+        );
+        if (cancelled) return;
+        setOnCallByTeam(new Map(entries));
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err instanceof Error ? err.message : String(err));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rosters, toast]);
 
   const submit = async () => {
     if (!form.name || !form.slug || !form.team_id) {
@@ -438,13 +505,145 @@ function ServicesPanel({
     }
   };
 
+  // Aggregate per-service incident stats.
+  const incidentStatsByService = useMemo(() => {
+    const stats = new Map<
+      string,
+      { open: number; last_at: string | null }
+    >();
+    for (const inc of incidents) {
+      if (!inc.service_id) continue;
+      const cur = stats.get(inc.service_id) ?? { open: 0, last_at: null };
+      if (inc.status === "open" || inc.status === "in_progress") {
+        cur.open += 1;
+      }
+      if (!cur.last_at || inc.created_at > cur.last_at) {
+        cur.last_at = inc.created_at;
+      }
+      stats.set(inc.service_id, cur);
+    }
+    return stats;
+  }, [incidents]);
+
+  const userById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const u of users) map.set(u.id, u.username);
+    return map;
+  }, [users]);
+
+  const rows: ServiceRow[] = useMemo(() => {
+    return services.map((s) => {
+      const team = teams.find((t) => t.id === s.team_id);
+      const onCallId = onCallByTeam.get(s.team_id) ?? null;
+      const stats = incidentStatsByService.get(s.id);
+      return {
+        service: s,
+        team_name: team?.name ?? null,
+        on_call_user_id: onCallId,
+        on_call_username: onCallId ? userById.get(onCallId) ?? null : null,
+        open_incidents: stats?.open ?? 0,
+        last_incident_at: stats?.last_at ?? null,
+      };
+    });
+  }, [services, teams, onCallByTeam, incidentStatsByService, userById]);
+
+  const teamFilterOptions = useMemo(
+    () =>
+      Array.from(new Set(rows.map((r) => r.team_name).filter(Boolean))).map(
+        (name) => ({ value: name as string, label: name as string }),
+      ),
+    [rows],
+  );
+
+  const columns: DataTableColumn<ServiceRow>[] = [
+    {
+      id: "name",
+      label: "Service",
+      accessor: (r) => r.service.name,
+      cell: (r) => (
+        <div>
+          <div className="font-medium text-fg-primary">{r.service.name}</div>
+          <div className="text-[11px] text-fg-muted">{r.service.slug}</div>
+        </div>
+      ),
+      sortable: true,
+      searchable: true,
+    },
+    {
+      id: "team",
+      label: "Team",
+      accessor: (r) => r.team_name ?? "",
+      cell: (r) => r.team_name ?? "—",
+      sortable: true,
+      searchable: true,
+      filterChips: {
+        options: teamFilterOptions,
+        valueOf: (r) => r.team_name,
+      },
+    },
+    {
+      id: "on_call_now",
+      label: "On call now",
+      accessor: (r) => r.on_call_username ?? "",
+      cell: (r) =>
+        r.on_call_username ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-status-low" />
+            <span>{r.on_call_username}</span>
+          </span>
+        ) : (
+          <span className="text-fg-muted">—</span>
+        ),
+      sortable: true,
+    },
+    {
+      id: "open_incidents",
+      label: "Open",
+      accessor: (r) => r.open_incidents,
+      cell: (r) =>
+        r.open_incidents > 0 ? (
+          <Badge variant="open">{r.open_incidents}</Badge>
+        ) : (
+          <span className="text-fg-muted">0</span>
+        ),
+      sortable: true,
+      align: "right",
+    },
+    {
+      id: "last_incident",
+      label: "Last incident",
+      accessor: (r) => r.last_incident_at ?? "",
+      cell: (r) =>
+        r.last_incident_at ? (
+          new Date(r.last_incident_at).toLocaleString()
+        ) : (
+          <span className="text-fg-muted">—</span>
+        ),
+      sortable: true,
+    },
+    {
+      id: "status",
+      label: "Status",
+      accessor: (r) => (r.service.is_active ? "active" : "inactive"),
+      cell: (r) =>
+        r.service.is_active ? (
+          <Badge variant="resolved">active</Badge>
+        ) : (
+          <Badge variant="closed">inactive</Badge>
+        ),
+      sortable: true,
+      filterChips: {
+        options: [
+          { value: "active", label: "Active" },
+          { value: "inactive", label: "Inactive" },
+        ],
+        valueOf: (r) => (r.service.is_active ? "active" : "inactive"),
+      },
+    },
+  ];
+
   return (
     <section className="space-y-3">
-      <div className="flex justify-end">
-        <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
-          <PlusCircle className="h-4 w-4" /> New service
-        </Button>
-      </div>
       {services.length === 0 ? (
         <EmptyState
           title="No services yet"
@@ -455,30 +654,46 @@ function ServicesPanel({
           }
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
+          action={
+            teams.length > 0 ? (
+              <Button onClick={() => setOpen(true)}>
+                <PlusCircle className="h-4 w-4" /> New service
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
-        <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
-          {services.map((s) => {
-            const team = teams.find((t) => t.id === s.team_id);
-            return (
-              <li
-                key={s.id}
-                className="flex items-center justify-between px-4 py-3"
-              >
-                <div>
-                  <div className="font-medium text-fg-primary">{s.name}</div>
-                  <div className="text-xs text-fg-secondary">
-                    {s.slug} · team {team?.name ?? "(unknown)"}
-                    {!s.is_active && " · inactive"}
-                  </div>
-                </div>
-                <Button variant="ghost" onClick={() => remove(s.id)} title="Delete">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
+        <DataTable
+          rows={rows}
+          columns={columns}
+          rowKey={(r) => r.service.id}
+          storageKey="opsmender:services-table"
+          searchPlaceholder="Search by service name or team…"
+          dateRangeColumn={{
+            id: "last_incident",
+            label: "Last incident",
+            valueOf: (r) => r.last_incident_at,
+          }}
+          toolbarRight={
+            <Button
+              size="sm"
+              onClick={() => setOpen(true)}
+              disabled={teams.length === 0}
+            >
+              <PlusCircle className="h-4 w-4" /> New service
+            </Button>
+          }
+          rowActions={(r) => (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => remove(r.service.id)}
+              title="Delete service"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        />
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="New service">

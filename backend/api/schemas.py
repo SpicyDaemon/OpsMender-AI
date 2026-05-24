@@ -1610,6 +1610,37 @@ class ServiceEscalationChainResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EscalationStepUpdate(BaseModel):
+    """Sprint 49 — partial update for an escalation step."""
+
+    timeout_seconds: Optional[int] = Field(default=None, ge=10, le=86400)
+    notify_channels: Optional[dict[str, Any]] = None
+    # When true, ``notify_channels`` is treated as the new value even if null
+    # (lets the operator explicitly clear the channels map). Defaults to false
+    # so an omitted field leaves the existing value untouched.
+    notify_channels_set: bool = False
+
+
+class EscalationStepReorderRequest(BaseModel):
+    """Sprint 49 — drag-reorder a chain's steps."""
+
+    step_ids: list[uuid.UUID] = Field(..., min_length=1)
+
+
+class ChainWhereUsedItem(BaseModel):
+    service_id: uuid.UUID
+    service_name: str
+    team_id: Optional[uuid.UUID]
+    team_name: Optional[str]
+    applies_when: Optional[dict[str, Any]] = None
+
+
+class ChainWhereUsedResponse(BaseModel):
+    chain_id: uuid.UUID
+    items: list[ChainWhereUsedItem]
+    total: int
+
+
 class IncidentPageResponse(BaseModel):
     id: uuid.UUID
     incident_id: uuid.UUID

@@ -1382,6 +1382,20 @@ export interface EscalationStepCreate {
   notify_channels?: Record<string, unknown>;
 }
 
+export interface ChainWhereUsedItem {
+  service_id: string;
+  service_name: string;
+  team_id: string | null;
+  team_name: string | null;
+  applies_when: Record<string, unknown> | null;
+}
+
+export interface ChainWhereUsedResponse {
+  chain_id: string;
+  items: ChainWhereUsedItem[];
+  total: number;
+}
+
 export interface IncidentPageRecord {
   id: string;
   incident_id: string;

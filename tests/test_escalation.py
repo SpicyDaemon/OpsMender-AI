@@ -615,6 +615,169 @@ class TestEscalationAPI:
         )
         assert link.status_code == 201
 
+    async def test_step_inline_patch(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """Sprint 49 — PATCH a step's timeout (and channels) without
+        re-creating it."""
+        team_id = await _make_team(app, name="patch-team")
+        u1 = await _make_user(app, username="patch-user")
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": str(team_id), "name": "patch-c"},
+            headers=auth_headers,
+        )
+        chain_id = chain.json()["id"]
+        add = await client.post(
+            f"/escalation-chains/{chain_id}/steps",
+            json={
+                "step_index": 0,
+                "target_type": "user",
+                "target_id": str(u1),
+                "timeout_seconds": 60,
+            },
+            headers=auth_headers,
+        )
+        step_id = add.json()["id"]
+
+        patched = await client.patch(
+            f"/escalation-chains/{chain_id}/steps/{step_id}",
+            json={"timeout_seconds": 900},
+            headers=auth_headers,
+        )
+        assert patched.status_code == 200
+        assert patched.json()["timeout_seconds"] == 900
+
+        # Unknown step id returns 404.
+        ghost = await client.patch(
+            f"/escalation-chains/{chain_id}/steps/{uuid.uuid4()}",
+            json={"timeout_seconds": 120},
+            headers=auth_headers,
+        )
+        assert ghost.status_code == 404
+
+    async def test_chain_reorder_steps(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """Sprint 49 — drag-reorder support via POST reorder-steps."""
+        team_id = await _make_team(app, name="reorder-team")
+        u1 = await _make_user(app, username="r-u1")
+        u2 = await _make_user(app, username="r-u2")
+        u3 = await _make_user(app, username="r-u3")
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": str(team_id), "name": "reorder-c"},
+            headers=auth_headers,
+        )
+        chain_id = chain.json()["id"]
+        step_ids: list[str] = []
+        for idx, uid in enumerate([u1, u2, u3]):
+            add = await client.post(
+                f"/escalation-chains/{chain_id}/steps",
+                json={
+                    "step_index": idx,
+                    "target_type": "user",
+                    "target_id": str(uid),
+                    "timeout_seconds": 60,
+                },
+                headers=auth_headers,
+            )
+            step_ids.append(add.json()["id"])
+
+        # Reverse the order.
+        reordered = await client.post(
+            f"/escalation-chains/{chain_id}/reorder-steps",
+            json={"step_ids": list(reversed(step_ids))},
+            headers=auth_headers,
+        )
+        assert reordered.status_code == 200
+        body = reordered.json()
+        assert body["total"] == 3
+        # Server returns steps ordered by step_index ascending.
+        returned_ids = [s["id"] for s in body["items"]]
+        assert returned_ids == list(reversed(step_ids))
+        for i, item in enumerate(body["items"]):
+            assert item["step_index"] == i
+
+    async def test_chain_reorder_rejects_partial_id_set(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        team_id = await _make_team(app, name="partial-reorder-team")
+        u1 = await _make_user(app, username="pr-u1")
+        u2 = await _make_user(app, username="pr-u2")
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": str(team_id), "name": "partial-c"},
+            headers=auth_headers,
+        )
+        chain_id = chain.json()["id"]
+        for idx, uid in enumerate([u1, u2]):
+            await client.post(
+                f"/escalation-chains/{chain_id}/steps",
+                json={
+                    "step_index": idx,
+                    "target_type": "user",
+                    "target_id": str(uid),
+                    "timeout_seconds": 60,
+                },
+                headers=auth_headers,
+            )
+
+        # Try to reorder with a single id — must reject.
+        bad = await client.post(
+            f"/escalation-chains/{chain_id}/reorder-steps",
+            json={"step_ids": [str(uuid.uuid4())]},
+            headers=auth_headers,
+        )
+        assert bad.status_code == 400
+
+    async def test_chain_where_used(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """Sprint 49 — GET /escalation-chains/{id}/services."""
+        team_id = await _make_team(app, name="whereused-team")
+        async with app.state.session_factory() as db:
+            svc_a = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team_id,
+                name="Service A",
+                slug=f"svc-a-{uuid.uuid4().hex[:6]}",
+            )
+            svc_b = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team_id,
+                name="Service B",
+                slug=f"svc-b-{uuid.uuid4().hex[:6]}",
+            )
+            await db.commit()
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": str(team_id), "name": "shared-c"},
+            headers=auth_headers,
+        )
+        chain_id = chain.json()["id"]
+        # Link the chain to both services.
+        for svc in (svc_a, svc_b):
+            await client.post(
+                f"/services/{svc.id}/escalation-chains",
+                json={"chain_id": chain_id},
+                headers=auth_headers,
+            )
+
+        resp = await client.get(
+            f"/escalation-chains/{chain_id}/services",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 2
+        names = {item["service_name"] for item in body["items"]}
+        assert names == {"Service A", "Service B"}
+        # Team name is enriched too.
+        assert all(item["team_name"] is not None for item in body["items"])
+
     async def test_incident_creation_kicks_off_chain(
         self, client: AsyncClient, app, auth_headers
     ):

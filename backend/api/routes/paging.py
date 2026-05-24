@@ -849,13 +849,17 @@ async def delete_priority_rule(
 # ---------------------------------------------------------------------------
 
 from backend.api.schemas import (
+    ChainWhereUsedItem,
+    ChainWhereUsedResponse,
     EscalationChainCreate,
     EscalationChainListResponse,
     EscalationChainResponse,
     EscalationChainUpdate,
     EscalationStepCreate,
     EscalationStepListResponse,
+    EscalationStepReorderRequest,
     EscalationStepResponse,
+    EscalationStepUpdate,
     ServiceEscalationChainCreate,
     ServiceEscalationChainResponse,
 )
@@ -1031,6 +1035,111 @@ async def delete_escalation_step(
         raise HTTPException(status_code=404, detail="Step not found")
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch(
+    "/escalation-chains/{chain_id}/steps/{step_id}",
+    response_model=EscalationStepResponse,
+    summary="Update fields on an escalation step (inline timeout/channel edit)",
+)
+async def update_escalation_step(
+    chain_id: uuid.UUID,
+    step_id: uuid.UUID,
+    body: EscalationStepUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await EscalationChainRepo.get_by_id(db, org_id, chain_id) is None:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    updated = await EscalationStepRepo.update_fields(
+        db,
+        org_id,
+        step_id,
+        timeout_seconds=body.timeout_seconds,
+        notify_channels=body.notify_channels,
+        notify_channels_set=body.notify_channels_set,
+    )
+    if updated is None or updated.chain_id != chain_id:
+        raise HTTPException(status_code=404, detail="Step not found")
+    await db.commit()
+    await db.refresh(updated)
+    return EscalationStepResponse.model_validate(updated)
+
+
+@router.post(
+    "/escalation-chains/{chain_id}/reorder-steps",
+    response_model=EscalationStepListResponse,
+    summary="Bulk reorder an escalation chain's steps",
+)
+async def reorder_escalation_steps(
+    chain_id: uuid.UUID,
+    body: EscalationStepReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    if await EscalationChainRepo.get_by_id(db, org_id, chain_id) is None:
+        raise HTTPException(status_code=404, detail="Chain not found")
+
+    # Validate every id belongs to this chain and the set is exhaustive.
+    existing = await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
+    existing_ids = {s.id for s in existing}
+    requested = set(body.step_ids)
+    if requested != existing_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="step_ids must be a permutation of the chain's existing steps",
+        )
+
+    items = await EscalationStepRepo.reorder(
+        db, org_id, chain_id, body.step_ids
+    )
+    await db.commit()
+    return EscalationStepListResponse(
+        items=[EscalationStepResponse.model_validate(i) for i in items],
+        total=len(items),
+    )
+
+
+@router.get(
+    "/escalation-chains/{chain_id}/services",
+    response_model=ChainWhereUsedResponse,
+    summary="List services that use this escalation chain",
+)
+async def chain_where_used(
+    chain_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    if await EscalationChainRepo.get_by_id(db, org_id, chain_id) is None:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    links = await ServiceEscalationChainRepo.list_for_chain(
+        db, org_id, chain_id
+    )
+
+    # Enrich each link with service + team names so the UI doesn't have to
+    # round-trip per row.
+    items: list[ChainWhereUsedItem] = []
+    for link in links:
+        svc = await ServiceRepo.get_by_id(db, org_id, link.service_id)
+        if svc is None:
+            # Service was deleted but the link wasn't — skip rather than leak.
+            continue
+        team = await TeamRepo.get_by_id(db, org_id, svc.team_id)
+        items.append(
+            ChainWhereUsedItem(
+                service_id=svc.id,
+                service_name=svc.name,
+                team_id=team.id if team else None,
+                team_name=team.name if team else None,
+                applies_when=link.applies_when,
+            )
+        )
+    return ChainWhereUsedResponse(
+        chain_id=chain_id, items=items, total=len(items)
+    )
 
 
 @router.post(

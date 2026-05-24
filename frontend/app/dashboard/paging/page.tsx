@@ -38,6 +38,7 @@ import {
   deleteService,
   deleteTeam,
   getMyNotificationPreferences,
+  listChainServices,
   listEscalationChains,
   listEscalationSteps,
   listIncidents,
@@ -46,10 +47,13 @@ import {
   listServices,
   listTeams,
   listUsers,
+  reorderEscalationSteps,
   resolveOnCall,
+  updateEscalationStep,
   updateMyNotificationPreferences,
 } from "@/lib/api";
 import type {
+  ChainWhereUsedItem,
   EscalationChainResponse,
   EscalationStepResponse,
   EscalationTargetType,
@@ -1335,6 +1339,30 @@ function StepsEditor({
     target_id: "",
     timeout_seconds: 300,
   });
+  const [whereUsed, setWhereUsed] = useState<ChainWhereUsedItem[]>([]);
+  const [whereLoading, setWhereLoading] = useState(false);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // Load "Where used" once on mount + after onChange callbacks at the chain
+  // level (link/unlink ops aren't done in this editor, but staying defensive).
+  useEffect(() => {
+    let cancelled = false;
+    setWhereLoading(true);
+    listChainServices(chainId)
+      .then((res) => {
+        if (!cancelled) setWhereUsed(res.items);
+      })
+      .catch(() => {
+        // Non-fatal — operators don't have to see where-used; keep silent.
+      })
+      .finally(() => {
+        if (!cancelled) setWhereLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chainId]);
 
   const addStep = async () => {
     if (!stepForm.target_id) {
@@ -1342,9 +1370,10 @@ function StepsEditor({
       return;
     }
     try {
-      const nextIndex = steps.length === 0
-        ? 0
-        : Math.max(...steps.map((s) => s.step_index)) + 1;
+      const nextIndex =
+        steps.length === 0
+          ? 0
+          : Math.max(...steps.map((s) => s.step_index)) + 1;
       await addEscalationStep(chainId, {
         step_index: nextIndex,
         target_type: stepForm.target_type,
@@ -1367,13 +1396,91 @@ function StepsEditor({
     }
   };
 
+  const patchTimeout = async (id: string, seconds: number) => {
+    const clamped = Math.max(10, Math.min(86400, Math.round(seconds)));
+    const existing = steps.find((s) => s.id === id);
+    if (existing && existing.timeout_seconds === clamped) return;
+    try {
+      await updateEscalationStep(chainId, id, { timeout_seconds: clamped });
+      await onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const reorder = async (orderedIds: string[]) => {
+    // Optimistic: caller already shows the new order via local state; just
+    // persist.
+    try {
+      await reorderEscalationSteps(chainId, orderedIds);
+      await onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+      await onChange(); // reset to server state on failure
+    }
+  };
+
+  const handleDrop = async (targetId: string) => {
+    if (!draggedId || draggedId === targetId) {
+      setDraggedId(null);
+      setDragOverId(null);
+      return;
+    }
+    const ordered = steps.map((s) => s.id);
+    const from = ordered.indexOf(draggedId);
+    const to = ordered.indexOf(targetId);
+    if (from < 0 || to < 0) {
+      setDraggedId(null);
+      setDragOverId(null);
+      return;
+    }
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    setDraggedId(null);
+    setDragOverId(null);
+    await reorder(ordered);
+  };
+
   const targetOptions =
-    stepForm.target_type === "roster" ? rosters :
-    stepForm.target_type === "team" ? teams :
-    [];
+    stepForm.target_type === "roster"
+      ? rosters
+      : stepForm.target_type === "team"
+        ? teams
+        : [];
 
   return (
-    <div className="mt-3 space-y-2 rounded border border-border-default bg-bg-elevated p-3">
+    <div className="mt-3 space-y-3 rounded border border-border-default bg-bg-elevated p-3">
+      {/* Where used */}
+      <div className="space-y-1">
+        <div className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+          Where this chain is used
+        </div>
+        {whereLoading ? (
+          <div className="text-xs text-fg-tertiary">Loading…</div>
+        ) : whereUsed.length === 0 ? (
+          <div className="text-xs text-fg-tertiary">
+            Not attached to any service yet. Link this chain to a service from
+            the Services tab → service detail.
+          </div>
+        ) : (
+          <ul className="flex flex-wrap gap-1.5">
+            {whereUsed.map((w) => (
+              <li
+                key={w.service_id}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border-default bg-bg-surface px-2.5 py-0.5 text-xs"
+              >
+                <span className="font-medium text-fg-primary">
+                  {w.service_name}
+                </span>
+                {w.team_name && (
+                  <span className="text-fg-muted">· {w.team_name}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       <div className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
         Steps (additive — once paged, stay paged)
       </div>
@@ -1386,29 +1493,89 @@ function StepsEditor({
               s.target_type === "roster"
                 ? rosters.find((r) => r.id === s.target_id)?.name
                 : s.target_type === "team"
-                ? teams.find((t) => t.id === s.target_id)?.name
-                : s.target_id;
+                  ? teams.find((t) => t.id === s.target_id)?.name
+                  : s.target_id;
+            const isDragging = draggedId === s.id;
+            const isOver = dragOverId === s.id && draggedId !== s.id;
             return (
               <li
                 key={s.id}
-                className="flex items-center justify-between text-sm"
+                draggable
+                onDragStart={(e) => {
+                  setDraggedId(s.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragOverId !== s.id) setDragOverId(s.id);
+                }}
+                onDragLeave={() => {
+                  if (dragOverId === s.id) setDragOverId(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void handleDrop(s.id);
+                }}
+                onDragEnd={() => {
+                  setDraggedId(null);
+                  setDragOverId(null);
+                }}
+                className={`flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-sm transition ${
+                  isDragging
+                    ? "border-accent bg-bg-surface opacity-60"
+                    : isOver
+                      ? "border-accent bg-accent-bg"
+                      : "border-border-subtle bg-bg-surface"
+                }`}
               >
-                <span>
-                  <Badge variant="default">#{s.step_index}</Badge>{" "}
-                  <span className="text-fg-secondary">{s.target_type}</span>{" "}
-                  <span className="text-fg-primary">{label}</span>{" "}
-                  <span className="text-fg-tertiary">
-                    · {s.timeout_seconds}s
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="cursor-grab select-none text-fg-muted active:cursor-grabbing"
+                    aria-label="Drag to reorder"
+                    title="Drag to reorder"
+                  >
+                    ⋮⋮
                   </span>
-                </span>
-                <Button variant="ghost" onClick={() => removeStep(s.id)}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
+                  <Badge variant="default">#{s.step_index}</Badge>
+                  <span className="text-fg-secondary">{s.target_type}</span>
+                  <span className="truncate font-medium text-fg-primary">
+                    {label}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <label className="flex items-center gap-1 text-[11px] text-fg-tertiary">
+                    timeout
+                    <Input
+                      type="number"
+                      min={10}
+                      max={86400}
+                      defaultValue={s.timeout_seconds}
+                      onBlur={(e) =>
+                        patchTimeout(s.id, Number(e.target.value) || 300)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      }}
+                      className="w-20"
+                    />
+                    s
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeStep(s.id)}
+                    title="Delete step"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
               </li>
             );
           })}
         </ol>
       )}
+
       <div className="grid grid-cols-1 items-end gap-2 pt-2 sm:grid-cols-[120px_1fr_120px_auto]">
         <div>
           <Label>Type</Label>

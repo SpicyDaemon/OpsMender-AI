@@ -102,6 +102,9 @@ export const api = {
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
 
+  patch: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
@@ -1196,6 +1199,7 @@ export async function releaseIncident(incidentId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 import type {
+  ChainWhereUsedResponse,
   EscalationChainCreate,
   EscalationChainListResponse,
   EscalationChainResponse,
@@ -1252,6 +1256,39 @@ export async function deleteEscalationStep(
   stepId: string,
 ): Promise<void> {
   return api.del<void>(`/escalation-chains/${chainId}/steps/${stepId}`);
+}
+
+export async function updateEscalationStep(
+  chainId: string,
+  stepId: string,
+  body: {
+    timeout_seconds?: number;
+    notify_channels?: Record<string, unknown> | null;
+    notify_channels_set?: boolean;
+  },
+): Promise<EscalationStepResponse> {
+  return api.patch<EscalationStepResponse>(
+    `/escalation-chains/${chainId}/steps/${stepId}`,
+    body,
+  );
+}
+
+export async function reorderEscalationSteps(
+  chainId: string,
+  stepIds: string[],
+): Promise<EscalationStepListResponse> {
+  return api.post<EscalationStepListResponse>(
+    `/escalation-chains/${chainId}/reorder-steps`,
+    { step_ids: stepIds },
+  );
+}
+
+export async function listChainServices(
+  chainId: string,
+): Promise<ChainWhereUsedResponse> {
+  return api.get<ChainWhereUsedResponse>(
+    `/escalation-chains/${chainId}/services`,
+  );
 }
 
 export async function linkServiceEscalationChain(

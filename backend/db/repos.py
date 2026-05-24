@@ -4486,6 +4486,92 @@ class EscalationStepRepo:
         await db.flush()
         return result.rowcount > 0
 
+    @staticmethod
+    async def update_fields(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        step_id: uuid.UUID,
+        *,
+        timeout_seconds: int | None = None,
+        notify_channels: dict | None = None,
+        notify_channels_set: bool = False,
+    ) -> EscalationStep | None:
+        """Partial update of an escalation step. Sprint 49.
+
+        ``notify_channels_set`` lets a caller explicitly null the channels
+        map (otherwise omitting the field leaves it untouched).
+        """
+        from sqlalchemy import update as sql_update
+
+        values: dict = {}
+        if timeout_seconds is not None:
+            values["timeout_seconds"] = timeout_seconds
+        if notify_channels_set:
+            values["notify_channels"] = notify_channels
+        if not values:
+            stmt = select(EscalationStep).where(
+                EscalationStep.org_id == org_id,
+                EscalationStep.id == step_id,
+            )
+            return (await db.execute(stmt)).scalar_one_or_none()
+        stmt = (
+            sql_update(EscalationStep)
+            .where(
+                EscalationStep.org_id == org_id,
+                EscalationStep.id == step_id,
+            )
+            .values(**values)
+            .returning(EscalationStep)
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def reorder(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        chain_id: uuid.UUID,
+        ordered_step_ids: list[uuid.UUID],
+    ) -> Sequence[EscalationStep]:
+        """Bulk reindex steps in a chain. Sprint 49.
+
+        Two-pass write to avoid the (chain_id, step_index) unique-index
+        collision when reordering: first bump every targeted step into a
+        scratch range (negative indices), then assign the final indices.
+        """
+        from sqlalchemy import update as sql_update
+
+        if not ordered_step_ids:
+            return []
+
+        # Phase 1 — park all targeted steps in negative indices keyed by the
+        # incoming order, so any subsequent index assignment is collision-free.
+        for offset, step_id in enumerate(ordered_step_ids):
+            await db.execute(
+                sql_update(EscalationStep)
+                .where(
+                    EscalationStep.org_id == org_id,
+                    EscalationStep.chain_id == chain_id,
+                    EscalationStep.id == step_id,
+                )
+                .values(step_index=-1 - offset)
+            )
+
+        # Phase 2 — assign final indices.
+        for index, step_id in enumerate(ordered_step_ids):
+            await db.execute(
+                sql_update(EscalationStep)
+                .where(
+                    EscalationStep.org_id == org_id,
+                    EscalationStep.chain_id == chain_id,
+                    EscalationStep.id == step_id,
+                )
+                .values(step_index=index)
+            )
+        await db.flush()
+        return await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
+
 
 class ServiceEscalationChainRepo:
     @staticmethod
@@ -4514,6 +4600,17 @@ class ServiceEscalationChainRepo:
         stmt = select(ServiceEscalationChain).where(
             ServiceEscalationChain.org_id == org_id,
             ServiceEscalationChain.service_id == service_id,
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def list_for_chain(
+        db: AsyncSession, org_id: uuid.UUID, chain_id: uuid.UUID
+    ) -> Sequence[ServiceEscalationChain]:
+        """Sprint 49 — power the chain editor's "Where used" panel."""
+        stmt = select(ServiceEscalationChain).where(
+            ServiceEscalationChain.org_id == org_id,
+            ServiceEscalationChain.chain_id == chain_id,
         )
         return (await db.execute(stmt)).scalars().all()
 

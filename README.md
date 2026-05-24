@@ -534,6 +534,8 @@ MCP servers are resolved through a dynamic pool (`backend/mcp/pool.py`) that re-
 
 The Config → MCP Servers modal now includes curated templates for common server shapes (Kubernetes, Postgres, GitHub Copilot MCP, and generic HTTP/bearer/stdio starting points). OAuth-shaped templates can go straight into the Connect flow after creation.
 
+The Config → MCP Servers list uses the shared dashboard table controls for search, sort, transport/auth/runtime filters, created-date ranges, column preferences, and the same Test / Connect / Edit / Delete row actions.
+
 The `mcp.json` mirror (Sprint 42 Step 6) uses the Claude Code-compatible shape:
 
 ```json

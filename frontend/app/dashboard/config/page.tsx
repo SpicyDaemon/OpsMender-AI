@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ComponentProps } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/auth";
 import {
   Bell,
@@ -113,6 +113,7 @@ import type {
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { StatusDot } from "@/components/ui/StatusDot";
@@ -1655,7 +1656,198 @@ function MCPSection({
   const [notice, setNotice] = useState("");
   const [testStates, setTestStates] = useState<Record<string, TestState>>({});
   const [oauthStartingId, setOauthStartingId] = useState<string | null>(null);
-  const statusByServerId = new Map(statuses.map((status) => [status.server_id, status]));
+  const statusByServerId = useMemo(
+    () => new Map(statuses.map((status) => [status.server_id, status])),
+    [statuses],
+  );
+
+  const getServerTarget = useCallback((server: MCPServerResponse): string => {
+    if (server.transport === "stdio") {
+      return [server.command, ...(server.args ?? [])].filter(Boolean).join(" ");
+    }
+    return server.url ?? "";
+  }, []);
+
+  const getAuthState = useCallback((server: MCPServerResponse): string => {
+    if (server.transport === "stdio") return "env";
+    if (server.oauth_status === "connected") return "oauth_connected";
+    if (server.oauth_status === "reconnect_needed") return "reconnect_needed";
+    if (server.has_token) return "bearer";
+    return "not_authorized";
+  }, []);
+
+  const getRuntimeState = useCallback(
+    (server: MCPServerResponse): string =>
+      statusByServerId.get(server.id)?.status ?? "unknown",
+    [statusByServerId],
+  );
+
+  const mcpColumns = useMemo<DataTableColumn<MCPServerResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Server",
+        accessor: (server) => server.name,
+        sortable: true,
+        searchable: true,
+        cell: (server) => (
+          <div className="min-w-[12rem]">
+            <div className="flex items-center gap-2 font-medium text-fg-primary">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  server.is_active ? "bg-status-low" : "bg-status-neutral"
+                }`}
+                title={server.is_active ? "Active" : "Inactive"}
+              />
+              <span>{server.name}</span>
+            </div>
+            <p className="mt-1 text-xs text-fg-muted">
+              Created {new Date(server.created_at).toLocaleDateString()}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "transport",
+        label: "Transport",
+        accessor: (server) => server.transport,
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "stdio", label: "stdio" },
+            { value: "sse", label: "SSE" },
+            { value: "http", label: "HTTP" },
+          ],
+          valueOf: (server) => server.transport,
+        },
+        cell: (server) => <Badge>{server.transport}</Badge>,
+      },
+      {
+        id: "target",
+        label: "Target",
+        accessor: (server) => {
+          const envKeys = Object.keys(server.env_vars ?? {}).join(" ");
+          return `${getServerTarget(server)} ${envKeys}`.trim();
+        },
+        searchable: true,
+        cell: (server) => {
+          const target = getServerTarget(server);
+          const argsCount = server.args?.length ?? 0;
+          const envCount = Object.keys(server.env_vars ?? {}).length;
+          return (
+            <div className="max-w-[28rem]">
+              <span className="line-clamp-2 break-all font-mono text-xs text-fg-secondary">
+                {target || "—"}
+              </span>
+              {(argsCount > 0 || envCount > 0) && (
+                <p className="mt-1 text-xs text-fg-muted">
+                  {argsCount > 0 ? `${argsCount} arg${argsCount === 1 ? "" : "s"}` : null}
+                  {argsCount > 0 && envCount > 0 ? " · " : null}
+                  {envCount > 0 ? `${envCount} env var${envCount === 1 ? "" : "s"}` : null}
+                </p>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        id: "auth",
+        label: "Auth",
+        accessor: (server) => getAuthState(server),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "oauth_connected", label: "OAuth" },
+            { value: "reconnect_needed", label: "Reconnect" },
+            { value: "bearer", label: "Bearer" },
+            { value: "not_authorized", label: "No auth" },
+            { value: "env", label: "Env" },
+          ],
+          valueOf: (server) => getAuthState(server),
+        },
+        cell: (server) => {
+          const authState = getAuthState(server);
+          if (authState === "oauth_connected") {
+            return <Badge variant="resolved">OAuth Connected</Badge>;
+          }
+          if (authState === "reconnect_needed") {
+            return <Badge variant="high">Reconnect needed</Badge>;
+          }
+          if (authState === "bearer") return <Badge>Bearer</Badge>;
+          if (authState === "not_authorized") {
+            return <Badge variant="medium">Not authorized</Badge>;
+          }
+          return <Badge variant="info">Env</Badge>;
+        },
+      },
+      {
+        id: "runtime",
+        label: "Runtime",
+        accessor: (server) => getRuntimeState(server),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "healthy", label: "Healthy" },
+            { value: "stale", label: "Stale" },
+            { value: "error", label: "Error" },
+            { value: "unknown", label: "Unknown" },
+          ],
+          valueOf: (server) => getRuntimeState(server),
+        },
+        cell: (server) => {
+          const runtimeStatus = describeMCPStatus(statusByServerId.get(server.id));
+          const testState: TestState = testStates[server.id] ?? { status: "idle" };
+          return (
+            <div className="flex flex-col items-start gap-1.5">
+              <StatusDot
+                tone={runtimeStatus.tone}
+                label={runtimeStatus.label}
+                title={runtimeStatus.title}
+              />
+              <TestPill state={testState} />
+            </div>
+          );
+        },
+      },
+      {
+        id: "active",
+        label: "State",
+        accessor: (server) => (server.is_active ? "active" : "inactive"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ],
+          valueOf: (server) => (server.is_active ? "active" : "inactive"),
+        },
+        cell: (server) => (
+          <Badge variant={server.is_active ? "resolved" : "closed"}>
+            {server.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+      {
+        id: "created",
+        label: "Created",
+        accessor: (server) => server.created_at,
+        sortable: true,
+        hiddenByDefault: true,
+        cell: (server) => (
+          <span className="whitespace-nowrap text-xs text-fg-secondary">
+            {new Date(server.created_at).toLocaleString()}
+          </span>
+        ),
+      },
+    ],
+    [
+      getAuthState,
+      getRuntimeState,
+      getServerTarget,
+      statusByServerId,
+      testStates,
+    ],
+  );
 
   function openCreateModal() {
     setEditing(null);
@@ -1813,15 +2005,6 @@ function MCPSection({
       title="MCP Servers"
       description="Saved MCP servers are resolved dynamically. New servers are immediately available to running sessions."
     >
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-fg-secondary">
-          {servers.length} saved server{servers.length === 1 ? "" : "s"}
-        </p>
-        <Button onClick={openCreateModal} disabled={!canEdit}>
-          <Plus size={14} /> Add MCP Server
-        </Button>
-      </div>
-
       {!canEdit && (
         <p className="text-sm text-fg-secondary">
           Admin role required to add, edit, or test MCP servers.
@@ -1831,126 +2014,81 @@ function MCPSection({
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
 
-      {servers.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No MCP servers yet. Add one so agents can reach your infrastructure.
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle">
-          <table className="min-w-full divide-y divide-border-subtle text-sm">
-            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-              <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Transport</th>
-                <th className="px-4 py-3">Target</th>
-                <th className="px-4 py-3">State</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle bg-bg-panel">
-              {servers.map((server) => {
-                const target =
-                  server.transport === "stdio"
-                    ? [server.command, ...(server.args ?? [])]
-                        .filter(Boolean)
-                        .join(" ")
-                    : server.url ?? "";
-                const testState: TestState =
-                  testStates[server.id] ?? { status: "idle" };
-                const runtimeStatus = describeMCPStatus(statusByServerId.get(server.id));
-                return (
-                  <tr key={server.id}>
-                    <td className="px-4 py-3 align-top">
-                      <div className="font-medium text-fg-primary">
-                        {server.name}
-                      </div>
-                      {server.has_token && (
-                        <p className="mt-1 text-xs text-fg-muted">
-                          Bearer token stored
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <Badge>{server.transport}</Badge>
-                    </td>
-                    <td className="px-4 py-3 align-top font-mono text-xs text-fg-secondary">
-                      <span className="line-clamp-2 break-all">{target}</span>
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex flex-col gap-1.5">
-                        <StatusDot
-                          tone={runtimeStatus.tone}
-                          label={runtimeStatus.label}
-                          title={runtimeStatus.title}
-                        />
-                        <Badge variant={server.is_active ? "resolved" : "closed"}>
-                          {server.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                        <TestPill state={testState} />
-                        {server.oauth_status === "connected" && (
-                          <Badge variant="resolved">OAuth Connected</Badge>
-                        )}
-                        {server.oauth_status === "reconnect_needed" && (
-                          <Badge variant="high">Reconnect needed</Badge>
-                        )}
-                        {server.transport !== "stdio" &&
-                          server.oauth_status === null &&
-                          server.has_token && <Badge>Bearer</Badge>}
-                        {server.transport !== "stdio" &&
-                          server.oauth_status === null &&
-                          !server.has_token && (
-                            <Badge variant="medium">Not authorized</Badge>
-                          )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleTest(server)}
-                          loading={testState.status === "running"}
-                          disabled={!canEdit}
-                        >
-                          <Plug size={13} /> Test
-                        </Button>
-                        {server.transport !== "stdio" && (
-                          <Button
-                            variant={server.oauth_status === "reconnect_needed" ? "danger" : "secondary"}
-                            size="sm"
-                            onClick={() => handleConnectOAuth(server)}
-                            loading={oauthStartingId === server.id}
-                            disabled={!canEdit}
-                          >
-                            <ExternalLink size={13} />
-                            {server.oauth_status === "connected" ? "Reconnect" : "Connect"}
-                          </Button>
-                        )}
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => openEditModal(server)}
-                          disabled={!canEdit}
-                        >
-                          <Pencil size={13} /> Edit
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDelete(server)}
-                          disabled={!canEdit}
-                        >
-                          <Trash2 size={13} /> Delete
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        rows={servers}
+        columns={mcpColumns}
+        rowKey={(server) => server.id}
+        storageKey="opsmender:mcp-servers-table"
+        searchPlaceholder="Search MCP servers…"
+        dateRangeColumn={{
+          id: "created",
+          label: "Created",
+          valueOf: (server) => server.created_at,
+        }}
+        toolbarRight={
+          <>
+            <span className="text-sm text-fg-secondary">
+              {servers.length} saved server{servers.length === 1 ? "" : "s"}
+            </span>
+            <Button onClick={openCreateModal} disabled={!canEdit}>
+              <Plus size={14} /> Add MCP Server
+            </Button>
+          </>
+        }
+        empty={
+          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+            No MCP servers yet. Add one so agents can reach your infrastructure.
+          </div>
+        }
+        rowActions={(server) => {
+          const testState: TestState = testStates[server.id] ?? { status: "idle" };
+          return (
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleTest(server)}
+                loading={testState.status === "running"}
+                disabled={!canEdit}
+              >
+                <Plug size={13} /> Test
+              </Button>
+              {server.transport !== "stdio" && (
+                <Button
+                  variant={
+                    server.oauth_status === "reconnect_needed"
+                      ? "danger"
+                      : "secondary"
+                  }
+                  size="sm"
+                  onClick={() => handleConnectOAuth(server)}
+                  loading={oauthStartingId === server.id}
+                  disabled={!canEdit}
+                >
+                  <ExternalLink size={13} />
+                  {server.oauth_status === "connected" ? "Reconnect" : "Connect"}
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openEditModal(server)}
+                disabled={!canEdit}
+              >
+                <Pencil size={13} /> Edit
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => handleDelete(server)}
+                disabled={!canEdit}
+              >
+                <Trash2 size={13} /> Delete
+              </Button>
+            </div>
+          );
+        }}
+      />
 
       <MCPServerModal
         open={modalOpen}

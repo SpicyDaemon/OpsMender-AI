@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Bell,
   Calendar,
+  CalendarDays,
   GitBranch,
   Info,
   ListOrdered,
@@ -15,6 +16,8 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+
+import { RosterCalendarModal } from "@/components/RosterCalendarModal";
 
 import {
   createMaintenanceWindow,
@@ -541,6 +544,7 @@ function RostersPanel({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [calendarFor, setCalendarFor] = useState<RosterResponse | null>(null);
   const [form, setForm] = useState({
     name: "",
     team_id: "",
@@ -624,9 +628,19 @@ function RostersPanel({
                     {r.handoff_time}
                   </div>
                 </div>
-                <Button variant="ghost" onClick={() => remove(r.id)} title="Delete">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCalendarFor(r)}
+                    title="Open calendar view"
+                  >
+                    <CalendarDays className="h-4 w-4" /> Calendar
+                  </Button>
+                  <Button variant="ghost" onClick={() => remove(r.id)} title="Delete">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </li>
             );
           })}
@@ -723,6 +737,14 @@ function RostersPanel({
           </div>
         </div>
       </Modal>
+
+      {calendarFor && (
+        <RosterCalendarModal
+          roster={calendarFor}
+          onClose={() => setCalendarFor(null)}
+          onChange={onChange}
+        />
+      )}
     </section>
   );
 }

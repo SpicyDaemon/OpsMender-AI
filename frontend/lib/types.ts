@@ -1308,6 +1308,21 @@ export interface OnCallResolveResponse {
   user_id: string | null;
 }
 
+export interface OnCallRangeItem {
+  at: string;
+  user_id: string | null;
+  is_override: boolean;
+  override_id: string | null;
+}
+
+export interface OnCallRangeResponse {
+  roster_id: string;
+  from_at: string;
+  to_at: string;
+  step_hours: number;
+  items: OnCallRangeItem[];
+}
+
 // ---------------------------------------------------------------------------
 // Escalation chains (Sprint 34)
 // ---------------------------------------------------------------------------

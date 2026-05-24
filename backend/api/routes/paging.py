@@ -10,7 +10,7 @@ incident operations together.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +23,8 @@ from backend.api.auth import (
 )
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    OnCallRangeItem,
+    OnCallRangeResponse,
     OnCallResolveResponse,
     UserNotificationPrefResponse,
     UserNotificationPrefUpdate,
@@ -655,6 +657,103 @@ async def resolve_on_call(
     user_id = on_call_at(ctx, when)
     return OnCallResolveResponse(
         roster_id=roster_id, at=when, user_id=user_id
+    )
+
+
+@router.get(
+    "/rosters/{roster_id}/on-call/range",
+    response_model=OnCallRangeResponse,
+    summary="Resolve on-call assignments across a time range (calendar view)",
+)
+async def resolve_on_call_range(
+    roster_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+    from_at: datetime = Query(..., alias="from"),
+    to_at: datetime = Query(..., alias="to"),
+    step_hours: int = Query(default=24, ge=1, le=168),
+):
+    """Bulk on-call resolution. Powers the Rosters calendar view.
+
+    Returns one item per ``step_hours``-aligned sample point between
+    ``from`` and ``to``. Each item flags whether an active override is
+    the source so the calendar UI can mark override days distinctly.
+
+    Capped at 200 samples to keep the response bounded; an operator can
+    always page the range if they need finer granularity.
+    """
+    if to_at <= from_at:
+        raise HTTPException(status_code=400, detail="`to` must be > `from`")
+    span = to_at - from_at
+    total_steps = int(span.total_seconds() // (step_hours * 3600)) + 1
+    if total_steps > 200:
+        raise HTTPException(
+            status_code=400,
+            detail="Requested range produces too many samples; narrow it or increase step_hours",
+        )
+
+    def _aware(dt: datetime) -> datetime:
+        # SQLite drops tzinfo on persisted aware datetimes. Normalize to
+        # UTC-aware so comparisons against the query-param cursor (which is
+        # always aware) succeed on both Postgres and SQLite.
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+    roster = await RosterRepo.get_by_id(db, org_id, roster_id)
+    if roster is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
+    members = await RosterRepo.list_members(db, org_id, roster_id)
+    overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
+    ctx = OnCallContext(
+        members=[
+            OnCallMember(user_id=m.user_id, position_index=m.position_index)
+            for m in members
+        ],
+        overrides=[
+            OnCallOverride(
+                covering_user_id=o.covering_user_id,
+                starts_at=_aware(o.starts_at),
+                ends_at=_aware(o.ends_at),
+            )
+            for o in overrides
+        ],
+        time_zone=roster.time_zone,
+        pattern=roster.pattern,
+        pattern_length=roster.pattern_length,
+        handoff_time=roster.handoff_time,
+        anchor_date=roster.anchor_date,
+    )
+
+    items: list[OnCallRangeItem] = []
+    cursor = from_at if from_at.tzinfo is not None else from_at.replace(tzinfo=timezone.utc)
+    end_cursor = to_at if to_at.tzinfo is not None else to_at.replace(tzinfo=timezone.utc)
+    step = timedelta(hours=step_hours)
+    while cursor <= end_cursor:
+        user_id = on_call_at(ctx, cursor)
+        active = next(
+            (
+                o
+                for o in overrides
+                if _aware(o.starts_at) <= cursor < _aware(o.ends_at)
+            ),
+            None,
+        )
+        items.append(
+            OnCallRangeItem(
+                at=cursor,
+                user_id=user_id,
+                is_override=active is not None,
+                override_id=active.id if active is not None else None,
+            )
+        )
+        cursor = cursor + step
+
+    return OnCallRangeResponse(
+        roster_id=roster_id,
+        from_at=from_at,
+        to_at=to_at,
+        step_hours=step_hours,
+        items=items,
     )
 
 

@@ -1449,6 +1449,21 @@ class OnCallResolveResponse(BaseModel):
     user_id: Optional[uuid.UUID]
 
 
+class OnCallRangeItem(BaseModel):
+    at: datetime
+    user_id: Optional[uuid.UUID]
+    is_override: bool = False
+    override_id: Optional[uuid.UUID] = None
+
+
+class OnCallRangeResponse(BaseModel):
+    roster_id: uuid.UUID
+    from_at: datetime
+    to_at: datetime
+    step_hours: int
+    items: list[OnCallRangeItem]
+
+
 class PriorityRuleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     rule_index: int = Field(default=0, ge=0)

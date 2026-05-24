@@ -662,6 +662,158 @@ class TestPagingAPI:
         assert resp.status_code == 200
         assert resp.json()["user_id"] == str(u1.id)
 
+    async def test_on_call_range_powers_calendar(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """Sprint 47 — /rosters/{id}/on-call/range returns one item per step
+        and flags override days distinctly."""
+        # Seed a team + roster + two users.
+        team = await client.post(
+            "/teams",
+            json={"name": "RangeTeam", "slug": f"range-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        team_id = team.json()["id"]
+        roster_resp = await client.post(
+            "/rosters",
+            json={
+                "team_id": team_id,
+                "name": "Primary",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-05-20",
+                "handoff_time": "00:00",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        assert roster_resp.status_code == 201
+        roster_id = roster_resp.json()["id"]
+
+        from backend.db.repos import UserRepo
+
+        async with app.state.session_factory() as db:
+            u1 = await UserRepo.create(
+                db,
+                username=f"rng1-{uuid.uuid4().hex[:6]}",
+                email=f"rng1-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="viewer",
+                primary_org_id=TEST_ORG_ID,
+            )
+            u2 = await UserRepo.create(
+                db,
+                username=f"rng2-{uuid.uuid4().hex[:6]}",
+                email=f"rng2-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="viewer",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+        await client.post(
+            f"/rosters/{roster_id}/members",
+            json={"user_id": str(u1.id), "position_index": 0},
+            headers=auth_headers,
+        )
+
+        # Create an override that covers 2026-05-22.
+        override_resp = await client.post(
+            f"/rosters/{roster_id}/overrides",
+            json={
+                "covering_user_id": str(u2.id),
+                "starts_at": "2026-05-22T00:00:00+00:00",
+                "ends_at": "2026-05-23T00:00:00+00:00",
+                "reason": "vacation cover",
+            },
+            headers=auth_headers,
+        )
+        assert override_resp.status_code == 201
+
+        from urllib.parse import quote
+
+        frm = quote("2026-05-20T12:00:00+00:00", safe="")
+        to = quote("2026-05-24T12:00:00+00:00", safe="")
+        resp = await client.get(
+            f"/rosters/{roster_id}/on-call/range?from={frm}&to={to}&step_hours=24",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        # 5 sample points: 5/20 12:00, 5/21 12:00, 5/22 12:00, 5/23 12:00, 5/24 12:00
+        assert len(body["items"]) == 5
+        # 5/22 falls inside the override.
+        override_items = [i for i in body["items"] if i["is_override"]]
+        assert len(override_items) == 1
+        assert override_items[0]["user_id"] == str(u2.id)
+        # All non-override items resolve to u1.
+        for item in body["items"]:
+            if not item["is_override"]:
+                assert item["user_id"] == str(u1.id)
+
+    async def test_on_call_range_rejects_oversize_request(
+        self, client: AsyncClient, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Oversize", "slug": f"os-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        roster_resp = await client.post(
+            "/rosters",
+            json={
+                "team_id": team.json()["id"],
+                "name": "P",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-01-01",
+                "handoff_time": "00:00",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        roster_id = roster_resp.json()["id"]
+        # 5000 hours / 1-hour step = 5001 samples, exceeds the 200 cap.
+        from urllib.parse import quote
+
+        frm = quote("2026-01-01T00:00:00+00:00", safe="")
+        to = quote("2026-07-30T00:00:00+00:00", safe="")
+        resp = await client.get(
+            f"/rosters/{roster_id}/on-call/range?from={frm}&to={to}&step_hours=1",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_on_call_range_rejects_inverted_range(
+        self, client: AsyncClient, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Inv", "slug": f"inv-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        roster_resp = await client.post(
+            "/rosters",
+            json={
+                "team_id": team.json()["id"],
+                "name": "P",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-01-01",
+                "handoff_time": "00:00",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        from urllib.parse import quote
+
+        frm = quote("2026-05-10T00:00:00+00:00", safe="")
+        to = quote("2026-05-01T00:00:00+00:00", safe="")
+        resp = await client.get(
+            f"/rosters/{roster_resp.json()['id']}/on-call/range?from={frm}&to={to}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
     async def test_priority_rule_crud(self, client: AsyncClient, auth_headers):
         resp = await client.post(
             "/priority-rules",

@@ -1012,6 +1012,7 @@ import type {
   IncidentAssignmentResponse,
   IncidentPagingPanelResponse,
   OnCallResolveResponse,
+  OnCallRangeResponse,
   PriorityRuleCreate,
   PriorityRuleListResponse,
   PriorityRuleResponse,
@@ -1141,6 +1142,21 @@ export async function resolveOnCall(
   const qs = at ? `?at=${encodeURIComponent(at)}` : "";
   return api.get<OnCallResolveResponse>(`/rosters/${id}/on-call${qs}`);
 }
+
+export async function resolveOnCallRange(
+  id: string,
+  params: { from: string; to: string; step_hours?: number },
+): Promise<OnCallRangeResponse> {
+  const qs = new URLSearchParams({
+    from: params.from,
+    to: params.to,
+  });
+  if (params.step_hours) qs.set("step_hours", String(params.step_hours));
+  return api.get<OnCallRangeResponse>(
+    `/rosters/${id}/on-call/range?${qs.toString()}`,
+  );
+}
+
 
 export async function listPriorityRules(): Promise<PriorityRuleListResponse> {
   return api.get<PriorityRuleListResponse>("/priority-rules");

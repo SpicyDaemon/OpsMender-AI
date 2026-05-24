@@ -338,6 +338,19 @@ function ConfigPageLinkCard({
   );
 }
 
+const LOG_LEVEL_DETAILS = {
+  DEBUG:
+    "Highest verbosity. Captures every node transition, every prompt, every tool argument. Useful when debugging an agent loop; can grow logs fast on busy clusters.",
+  INFO:
+    "Recommended default. Captures session lifecycle, tool calls, approvals, and notable runtime events without the per-step noise.",
+  WARNING:
+    "Drops INFO chatter; keeps anything the backend marked as a soft error (retries, degraded fallbacks, suppressed deliveries).",
+  ERROR:
+    "Drops WARNINGs too. Only real failures land in logs — failed tool calls, dispatcher exceptions, broken integrations.",
+  CRITICAL:
+    "Quietest. Only fatal events the operator must see (startup failures, irrecoverable state). Use sparingly; troubleshooting becomes harder.",
+} as const;
+
 function TierSection({
   config,
   onSaved,
@@ -402,11 +415,16 @@ function TierSection({
             onChange={(e) => setLogLevel(e.target.value)}
             disabled={!canEdit}
           >
-            <option value="DEBUG">DEBUG</option>
-            <option value="INFO">INFO</option>
-            <option value="WARNING">WARNING</option>
-            <option value="ERROR">ERROR</option>
+            <option value="DEBUG">DEBUG — capture everything (loudest)</option>
+            <option value="INFO">INFO — normal operation + above (default)</option>
+            <option value="WARNING">WARNING — soft errors + above</option>
+            <option value="ERROR">ERROR — real failures + above</option>
+            <option value="CRITICAL">CRITICAL — fatal events only (quietest)</option>
           </Select>
+          <p className="mt-1.5 text-xs text-fg-muted">
+            {LOG_LEVEL_DETAILS[logLevel as keyof typeof LOG_LEVEL_DETAILS] ??
+              "Sets the minimum severity the backend writes to stdout/the audit log."}
+          </p>
         </div>
       </div>
 

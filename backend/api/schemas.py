@@ -245,7 +245,12 @@ class SetupChecklistResponse(BaseModel):
 class ConfigUpdate(BaseModel):
     tier: Optional[int] = Field(default=None, ge=0, le=3)
     logging_level: Optional[str] = Field(
-        default=None, pattern="^(DEBUG|INFO|WARNING|ERROR)$"
+        default=None,
+        pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
+        description=(
+            "Python logging level. Higher levels suppress lower-priority records. "
+            "DEBUG keeps everything; CRITICAL only keeps fatal events."
+        ),
     )
     ingest_auto_start_enabled: Optional[bool] = None
     ingest_auto_start_min_severity: Optional[str] = Field(

@@ -898,6 +898,12 @@ export async function resolveTenant(): Promise<TenantContextResponse> {
   return request<TenantContextResponse>("/tenant/resolve", {}, true);
 }
 
+export async function getRegistrationOpen(): Promise<{ open: boolean }> {
+  // Public — no auth required. Sprint 56 Step 2: login page calls this
+  // to decide whether to render the register link.
+  return request<{ open: boolean }>("/auth/registration-open", {}, true);
+}
+
 
 export async function getOrgSSOConfig(
   orgId: string,

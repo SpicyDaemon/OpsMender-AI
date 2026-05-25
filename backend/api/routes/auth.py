@@ -7,9 +7,11 @@ GET  /auth/me       — return the current user profile
 
 from __future__ import annotations
 
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import (
@@ -35,6 +37,58 @@ from backend.db.repos import OrganizationRepo, UserRepo
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _is_development_mode() -> bool:
+    """Sprint 56: self-registration is gated on deployment mode.
+
+    Same env var the production safety guard uses
+    (``backend/config_loader.py::check_production_safety``). Test
+    fixtures + the ``scripts/dev_server.py`` launcher both set this to
+    ``development`` so existing register-based bootstrap keeps working
+    without changes.
+    """
+
+    mode = (os.environ.get("OPSMENDER_DEPLOYMENT_MODE") or "").strip().lower()
+    return mode == "development"
+
+
+async def _self_registration_open(db: AsyncSession) -> bool:
+    """Return True iff ``POST /auth/register`` will accept an anonymous caller.
+
+    Open when:
+    - deployment mode is ``development`` (covers tests + local dev), OR
+    - no users exist (covers a fresh production install that hasn't
+      run the bootstrap-admin env vars).
+    """
+
+    if _is_development_mode():
+        return True
+    existing = await UserRepo.list_all(db, limit=1)
+    return not existing
+
+
+class RegistrationOpenResponse(BaseModel):
+    open: bool
+
+
+@router.get(
+    "/registration-open",
+    response_model=RegistrationOpenResponse,
+    summary="Whether anonymous /auth/register will succeed",
+)
+async def registration_open(
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint so the login page can hide the register link
+    when self-signup is closed.
+
+    Sprint 56: in production with at least one user present,
+    self-registration returns 403 — admins must use the Admin → People
+    invite flow instead.
+    """
+
+    return RegistrationOpenResponse(open=await _self_registration_open(db))
+
+
 @router.post(
     "/register",
     response_model=UserResponse,
@@ -45,6 +99,18 @@ async def register(
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    # Sprint 56: self-registration is closed in production once any
+    # user exists. The bootstrap-admin env vars + admin invite flow
+    # are the supported paths.
+    if not await _self_registration_open(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Self-registration is closed. Ask an admin to send you an "
+                "invite from the People page."
+            ),
+        )
+
     # Check for existing username / email
     if await UserRepo.get_by_username(db, body.username):
         raise HTTPException(

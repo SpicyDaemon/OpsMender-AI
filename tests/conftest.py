@@ -1,6 +1,16 @@
 """Shared pytest configuration and fixtures."""
 
+import os
+
 import pytest
+
+
+# Sprint 56: the API now refuses anonymous /auth/register in production
+# mode once any user exists. Test fixtures rely on register-based user
+# bootstrap, so default the suite to development mode. Tests that
+# specifically exercise production-safety branches monkeypatch the env
+# var themselves (see tests/test_production_safety_guard.py).
+os.environ.setdefault("OPSMENDER_DEPLOYMENT_MODE", "development")
 
 
 def pytest_addoption(parser):

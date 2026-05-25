@@ -8,7 +8,7 @@ import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 import { FormError, Input, Label } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
-import { getMe, resolveTenant, setOrgId, setToken } from "@/lib/api";
+import { getMe, getRegistrationOpen, resolveTenant, setOrgId, setToken } from "@/lib/api";
 import type { TenantContextResponse } from "@/lib/types";
 
 export default function LoginPage() {
@@ -19,12 +19,18 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [tenant, setTenant] = useState<TenantContextResponse | null>(null);
+  // Sprint 56: hide the register link when self-signup is closed. Null
+  // while loading so we don't briefly flash the link.
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     resolveTenant()
       .then((t) => { if (!cancelled) setTenant(t); })
       .catch(() => { if (!cancelled) setTenant(null); });
+    getRegistrationOpen()
+      .then((r) => { if (!cancelled) setRegistrationOpen(r.open); })
+      .catch(() => { if (!cancelled) setRegistrationOpen(false); });
     return () => { cancelled = true; };
   }, []);
 
@@ -68,14 +74,20 @@ export default function LoginPage() {
       title="Sign in to OpsMender"
       description="Open the operator console and pick up the next incident with full session context."
       eyebrow=""
-      footer={(
-        <>
-          No account?{" "}
-          <Link href="/register" className="font-medium text-accent hover:underline">
-            Register
-          </Link>
-        </>
-      )}
+      footer={
+        registrationOpen ? (
+          <>
+            No account?{" "}
+            <Link href="/register" className="font-medium text-accent hover:underline">
+              Register
+            </Link>
+          </>
+        ) : registrationOpen === false ? (
+          <span className="text-fg-muted">
+            Self-signup is closed. Ask an admin for an invite.
+          </span>
+        ) : null
+      }
     >
       {((tenant?.sso_enabled && tenant.sso_login_path) ||
         (tenant?.saml_enabled && tenant.saml_login_path)) && (

@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { IncidentCommandStrip } from "@/components/incidents/IncidentCommandStrip";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -137,55 +138,51 @@ function IncidentDetailContent() {
   const [activeSessionId, setActiveSessionId] = useState("");
   const toast = useToast();
 
-  useEffect(() => {
+  const reload = useCallback(async () => {
     if (!id) {
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setSessionsError("");
-      try {
-        const incidentRes = await getIncident(id);
-        if (cancelled) return;
-        setIncident(incidentRes);
-        getIncidentPaging(id)
-          .then((p) => {
-            if (!cancelled) setPagingPanel(p);
-          })
-          .catch(() => {
-            if (!cancelled) setPagingPanel(null);
-          });
-      } catch (err) {
-        if (!cancelled) {
-          setIncident(null);
-          setSessions([]);
-          toast.error(err instanceof Error ? err.message : "Failed to load incident");
-          setLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const sessionsRes = await listIncidentSessions(id);
-        if (cancelled) return;
-        setSessions(sessionsRes.items);
-      } catch (err) {
-        if (!cancelled) {
-          setSessions([]);
-          const message =
-            err instanceof Error ? err.message : "Failed to load session history";
-          setSessionsError(message);
-          toast.warning(`Session history is temporarily unavailable: ${message}`);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    setLoading(true);
+    setSessionsError("");
+    try {
+      const incidentRes = await getIncident(id);
+      setIncident(incidentRes);
+      getIncidentPaging(id)
+        .then((p) => setPagingPanel(p))
+        .catch(() => setPagingPanel(null));
+    } catch (err) {
+      setIncident(null);
+      setSessions([]);
+      toast.error(err instanceof Error ? err.message : "Failed to load incident");
+      setLoading(false);
+      return;
     }
-    load();
-    return () => { cancelled = true; };
+
+    try {
+      const sessionsRes = await listIncidentSessions(id);
+      setSessions(sessionsRes.items);
+    } catch (err) {
+      setSessions([]);
+      const message =
+        err instanceof Error ? err.message : "Failed to load session history";
+      setSessionsError(message);
+      toast.warning(`Session history is temporarily unavailable: ${message}`);
+    } finally {
+      setLoading(false);
+    }
   }, [id, toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (cancelled) return;
+      await reload();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reload]);
 
   const source = useMemo(() => (incident ? sourceMeta(incident) : null), [incident]);
   const sessionSummary = useMemo(() => sessionStatusSummary(sessions), [sessions]);
@@ -196,6 +193,16 @@ function IncidentDetailContent() {
 
   return (
     <div className="mx-auto max-w-7xl">
+      {/* Sprint A Step 1: sticky command strip surfaces the lifecycle actions
+          (Acknowledge / Take / Start session / Resolve / Postmortem) at the
+          top of the screen, independent of the body scroll position. */}
+      <IncidentCommandStrip
+        incident={incident}
+        assignment={pagingPanel?.assignment ?? null}
+        onStartSession={() => setShowSession(true)}
+        onChanged={reload}
+      />
+
       <div className={`grid gap-6 ${activeSessionId ? "xl:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.95fr)]" : ""}`}>
         <div className="min-w-0">
           {/* Back */}
@@ -280,10 +287,8 @@ function IncidentDetailContent() {
                 </div>
 
                 <div className="flex w-full flex-col gap-3 lg:min-w-[240px] lg:w-auto">
-                  <Button size="lg" className="justify-center" onClick={() => setShowSession(true)}>
-                    <Play size={16} />
-                    Start Session
-                  </Button>
+                  {/* "Start Session" lives on the command strip above so the
+                      action stays one click away regardless of scroll. */}
                   <div className="rounded-lg border border-border-subtle bg-bg-elevated p-4">
                     <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
                       Quick View

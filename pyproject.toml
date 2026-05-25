@@ -75,6 +75,9 @@ dev = [
     "mypy",
     "aiosqlite",
     "httpx",
+    # Used by scripts/combine_screenshots.py to build the composite
+    # review images from the per-route captures.
+    "Pillow",
 ]
 build = [
     "pyinstaller>=6.11",

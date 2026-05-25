@@ -205,8 +205,8 @@ function buildIncidentColumns(
       sortable: true,
       filterChips: {
         options: [
-          { value: "open", label: "Open (Triggered)" },
-          { value: "in_progress", label: "In progress (Acknowledged)" },
+          { value: "open", label: "Open" },
+          { value: "in_progress", label: "In progress" },
           { value: "resolved", label: "Resolved" },
           { value: "closed", label: "Closed" },
         ],

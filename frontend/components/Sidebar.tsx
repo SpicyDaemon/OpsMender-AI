@@ -28,6 +28,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  UserCog,
   Users,
   Workflow,
   Wrench,
@@ -105,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "admin",
     label: "Admin",
     items: [
+      { href: "/dashboard/people", label: "People", icon: UserCog, reqRole: "admin" },
       { href: "/dashboard/organizations", label: "Organizations", icon: Building2, reqRole: "admin" },
       { href: "/dashboard/config", label: "Config", icon: Settings },
     ],

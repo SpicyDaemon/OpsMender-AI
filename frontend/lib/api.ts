@@ -905,6 +905,12 @@ export async function getRegistrationOpen(): Promise<{ open: boolean }> {
 }
 
 // Sprint 56 — admin People-surface helpers
+export async function getUser(
+  id: string,
+): Promise<import("./types").UserResponse> {
+  return api.get<import("./types").UserResponse>(`/auth/users/${id}`);
+}
+
 export async function updateUser(
   id: string,
   body: import("./types").UserUpdateRequest,

@@ -247,6 +247,24 @@ def _resolve_public_base_url(request: Request) -> str:
     return f"{scheme}://{host}"
 
 
+@router.get(
+    "/users/{user_id}",
+    response_model=UserResponse,
+    dependencies=[Depends(require_role("admin", "operator"))],
+    summary="Get a single user (admin/operator only)",
+)
+async def get_user(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    target = await UserRepo.get_by_id(db, user_id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    return target
+
+
 @router.patch(
     "/users/{user_id}",
     response_model=UserResponse,

@@ -11,7 +11,6 @@ import {
   Brain,
   Building2,
   CheckSquare,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -39,18 +38,24 @@ type NavGroup = {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    id: "respond",
-    label: "Respond",
+    id: "incident-management",
+    label: "Incident Management",
     items: [
       { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
       { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
     ],
   },
   {
-    id: "configure",
-    label: "Configure",
+    id: "paging",
+    label: "Paging & On-call",
     items: [
       { href: "/dashboard/paging", label: "Paging", icon: Phone },
+    ],
+  },
+  {
+    id: "ai-agent",
+    label: "AI Agent",
+    items: [
       { href: "/dashboard/skills", label: "Skills", icon: FileText },
       { href: "/dashboard/memories", label: "Memories", icon: Brain },
     ],
@@ -75,7 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 const COLLAPSE_KEY = "opsmender:sidebar-collapsed";
-const GROUP_COLLAPSE_KEY = "opsmender:sidebar-groups-collapsed";
+const LEGACY_GROUP_COLLAPSE_KEY = "opsmender:sidebar-groups-collapsed";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-status-info-bg text-status-info border-status-info-border",
@@ -137,25 +142,12 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [tier, setTier] = useState<number | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    () => new Set(),
-  );
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored === "1") setCollapsed(true);
-    try {
-      const rawGroups = localStorage.getItem(GROUP_COLLAPSE_KEY);
-      if (rawGroups) {
-        const parsed = JSON.parse(rawGroups);
-        if (Array.isArray(parsed)) {
-          setCollapsedGroups(new Set(parsed.map(String)));
-        }
-      }
-    } catch {
-      // ignore malformed value
-    }
+    localStorage.removeItem(LEGACY_GROUP_COLLAPSE_KEY);
     setHydrated(true);
   }, []);
 
@@ -171,27 +163,6 @@ export function Sidebar() {
   useEffect(() => {
     if (hydrated) localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
   }, [collapsed, hydrated]);
-
-  useEffect(() => {
-    if (hydrated) {
-      localStorage.setItem(
-        GROUP_COLLAPSE_KEY,
-        JSON.stringify(Array.from(collapsedGroups)),
-      );
-    }
-  }, [collapsedGroups, hydrated]);
-
-  const toggleGroup = (id: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
 
   const width = collapsed ? "w-16" : "w-60";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
@@ -274,39 +245,25 @@ export function Sidebar() {
                 collapsed: true,
               }),
             )
-          : visibleGroups.map((group) => {
-              const isCollapsed = collapsedGroups.has(group.id);
-              return (
-                <div key={group.id} className="mb-2">
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.id)}
-                    className="flex w-full items-center gap-1 px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-muted hover:text-fg-secondary transition-colors"
-                    aria-expanded={!isCollapsed}
-                  >
-                    <ChevronDown
-                      size={10}
-                      className={`shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
-                    />
-                    <span>{group.label}</span>
-                  </button>
-                  {!isCollapsed && (
-                    <div className="space-y-0.5">
-                      {group.items.map(({ href, label, icon: Icon, badge }) =>
-                        renderNavLink({
-                          href,
-                          label,
-                          Icon,
-                          badge,
-                          active: pathname.startsWith(href),
-                          collapsed: false,
-                        }),
-                      )}
-                    </div>
+          : visibleGroups.map((group) => (
+              <div key={group.id} className="mb-2">
+                <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                  {group.label}
+                </div>
+                <div className="space-y-0.5">
+                  {group.items.map(({ href, label, icon: Icon, badge }) =>
+                    renderNavLink({
+                      href,
+                      label,
+                      Icon,
+                      badge,
+                      active: pathname.startsWith(href),
+                      collapsed: false,
+                    }),
                   )}
                 </div>
-              );
-            })}
+              </div>
+            ))}
       </nav>
 
       {/* Collapse toggle */}

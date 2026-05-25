@@ -3,13 +3,12 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { IncidentCommandStrip } from "@/components/incidents/IncidentCommandStrip";
 import { IncidentContextRail } from "@/components/incidents/IncidentContextRail";
+import { IncidentTimeline } from "@/components/incidents/IncidentTimeline";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
   CalendarClock,
-  ChevronRight,
-  CircleDot,
   CalendarX,
   MessageSquare,
   Play,
@@ -21,6 +20,7 @@ import {
   createSession,
   getIncident,
   getIncidentPaging,
+  getIncidentTimeline,
   listAgentTeamProfiles,
   listIncidentSessions,
   listProviders,
@@ -30,6 +30,7 @@ import type {
   AgentTeamProfileResponse,
   IncidentPagingPanelResponse,
   IncidentResponse,
+  IncidentTimelineItemResponse,
   ProviderModelsResponse,
   SessionCreate,
   SessionResponse,
@@ -37,7 +38,6 @@ import type {
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
@@ -134,6 +134,8 @@ function IncidentDetailContent() {
     useState<IncidentPagingPanelResponse | null>(null);
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [sessionsError, setSessionsError] = useState("");
+  const [timeline, setTimeline] = useState<IncidentTimelineItemResponse[]>([]);
+  const [timelineError, setTimelineError] = useState("");
   const [loading, setLoading] = useState(true);
   const [showSession, setShowSession] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState("");
@@ -146,6 +148,7 @@ function IncidentDetailContent() {
     }
     setLoading(true);
     setSessionsError("");
+    setTimelineError("");
     try {
       const incidentRes = await getIncident(id);
       setIncident(incidentRes);
@@ -161,14 +164,19 @@ function IncidentDetailContent() {
     }
 
     try {
-      const sessionsRes = await listIncidentSessions(id);
+      const [sessionsRes, timelineRes] = await Promise.all([
+        listIncidentSessions(id),
+        getIncidentTimeline(id),
+      ]);
       setSessions(sessionsRes.items);
+      setTimeline(timelineRes.items);
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load incident activity";
       setSessions([]);
-      const message =
-        err instanceof Error ? err.message : "Failed to load session history";
+      setTimeline([]);
       setSessionsError(message);
-      toast.warning(`Session history is temporarily unavailable: ${message}`);
+      setTimelineError(message);
+      toast.warning(`Incident activity is temporarily unavailable: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -336,111 +344,13 @@ function IncidentDetailContent() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-            <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-              <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">
-                    Session Timeline
-                  </p>
-                  <h2 className="mt-1 text-base font-semibold text-fg-primary sm:text-lg">
-                    Response history
-                  </h2>
-                </div>
-                <Button size="sm" variant="secondary" onClick={() => setShowSession(true)}>
-                  <Play size={14} />
-                  <span className="hidden sm:inline">New Session</span>
-                  <span className="sm:hidden">New</span>
-                </Button>
-              </div>
-
-              <div className="p-3 sm:p-5">
-                {sessionsError ? (
-                  <div className="rounded-lg border border-status-high-border bg-status-high-bg px-4 py-4 text-sm text-fg-secondary">
-                    We couldn&apos;t load session history for this incident right now. You can still review the incident details and start a new session in the sidecar.
-                  </div>
-                ) : sessions.length === 0 ? (
-                  <EmptyState
-                    icon={CircleDot}
-                    title="No sessions for this incident yet"
-                    description="Start the first session to capture triage, approvals, execution, and chat history in one place."
-                    action={(
-                      <Button size="sm" onClick={() => setShowSession(true)}>
-                        <Play size={14} />
-                        Start Session
-                      </Button>
-                    )}
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    {sessions.map((session, index) => (
-                      <div
-                        key={session.id}
-                        className={`rounded-lg border px-4 py-4 transition-colors ${
-                          activeSessionId === session.id
-                            ? "border-accent bg-accent-bg/40"
-                            : "border-border-subtle bg-bg-elevated"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="flex flex-col items-center">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle bg-bg-panel text-[11px] font-semibold text-fg-secondary">
-                              S{sessions.length - index}
-                            </span>
-                            {index < sessions.length - 1 && (
-                              <span className="mt-2 h-10 w-px bg-border-subtle" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-semibold text-fg-primary">
-                                Session {session.id.slice(0, 8)}…
-                              </p>
-                              <Badge variant={session.status as Parameters<typeof Badge>[0]["variant"]}>
-                                {session.status.replace("_", " ")}
-                              </Badge>
-                              <span className="rounded-md border border-border-subtle bg-bg-panel px-2 py-0.5 font-mono text-[11px] text-fg-secondary">
-                                Tier {session.tier}
-                              </span>
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-muted">
-                              <span>Started {fmtDate(session.started_at)}</span>
-                              <span>
-                                {session.ended_at ? `Ended ${fmtDate(session.ended_at)}` : "Still active"}
-                              </span>
-                              {session.model_provider && (
-                                <span className="font-mono">
-                                  {session.model_provider}/{session.model_id ?? "default"}
-                                </span>
-                              )}
-                            </div>
-                            {session.summary && (
-                              <p className="mt-3 line-clamp-2 text-sm text-fg-secondary">
-                                {session.summary}
-                              </p>
-                            )}
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <Button
-                                size="sm"
-                                variant={activeSessionId === session.id ? "secondary" : "primary"}
-                                onClick={() => setActiveSessionId(session.id)}
-                              >
-                                {activeSessionId === session.id ? "Viewing in sidecar" : "Open in sidecar"}
-                              </Button>
-                              <Link
-                                href={`/dashboard/sessions/detail?id=${session.id}`}
-                                className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-panel px-3 py-1 text-xs font-medium text-fg-primary transition-colors hover:bg-bg-hover"
-                              >
-                                Full session <ChevronRight size={13} />
-                              </Link>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <IncidentTimeline
+              items={timeline}
+              error={timelineError || sessionsError}
+              activeSessionId={activeSessionId}
+              onSelectSession={setActiveSessionId}
+              onStartSession={() => setShowSession(true)}
+            />
 
             {/* Sprint 57 Step 2: unified right-rail panel surfaces severity,
                 status, service, team, owner, escalation step, AI tier, and

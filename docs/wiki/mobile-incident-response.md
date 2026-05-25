@@ -10,7 +10,7 @@ Sprint 38 makes the OpsMender web UI usable on a phone for the most time-sensiti
 
 1. Your phone gets a Slack DM (or Teams card) from OpsMender pinging you about an incident.
 2. You tap **Acknowledge** in the chat surface, or tap **View in OpsMender** to open the web UI.
-3. The incident detail page loads in your mobile browser with a vertical layout: the header card stacks above the action button, sessions stack below, and the paging panel collapses cleanly into the same column.
+3. The incident detail page loads in your mobile browser with a vertical layout: the sticky command strip stays reachable near the top, the incident timeline stacks below the header card, and the context rail collapses cleanly into the same column.
 4. If the AI agent needs a Tier-1 approval, the pending-approval card on the session detail page shows the action context above the **Approve** / **Reject** buttons (instead of beside them on desktop) so one-tap decisions stay easy.
 
 ---
@@ -21,7 +21,7 @@ Sprint 38 reworked three surfaces. Everything else degrades gracefully but isn't
 
 | Surface | Mobile behavior |
 |---------|-----------------|
-| `/dashboard/incidents/detail` | Smaller heading on phones (`text-xl` vs. `text-3xl`). Header padding tightens (`px-4 py-4` vs. `px-6 py-6`). The "Quick View" sidebar drops its 240-px min-width and stacks below the title on screens < lg. The "New Session" button shortens its label to "New" to save bar space. |
+| `/dashboard/incidents/detail` | Smaller heading on phones (`text-xl` vs. `text-3xl`). Header padding tightens (`px-4 py-4` vs. `px-6 py-6`). The sticky command strip keeps the top actions reachable during scroll, the incident timeline becomes one vertical feed instead of separate session cards, and the timeline header shortens the "New Session" label to "New" on small screens. |
 | Pending-approval card on `/dashboard/sessions/detail` | Approve / Reject buttons move from a right-hand column to a 2-column grid below the JSON action context on phones, so each button gets ~50% of the screen width and is comfortable to thumb-tap. |
 | Escalation chain step editor on `/dashboard/paging/escalation-chains` | The fixed `120px / 1fr / 120px / auto` 4-column grid collapses to a single column on phones — every field gets the full width. |
 

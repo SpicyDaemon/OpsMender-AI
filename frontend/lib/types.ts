@@ -57,6 +57,32 @@ export interface IncidentCreate {
   external_source?: string;
 }
 
+export interface IncidentTimelineItemResponse {
+  id: string;
+  happened_at: string;
+  lane: "response" | "tool" | "evidence" | string;
+  event_type: string;
+  title: string;
+  body: string | null;
+  actor_user_id: string | null;
+  actor_label: string | null;
+  status: string | null;
+  session_id: string | null;
+  session_label: string | null;
+  session_tier: number | null;
+  tool_name: string | null;
+  safety_class: string | null;
+  tier_decision: string | null;
+  duration_ms: number | null;
+  metadata: Record<string, unknown> | null;
+  json_payload: Record<string, unknown> | null;
+}
+
+export interface IncidentTimelineResponse {
+  items: IncidentTimelineItemResponse[];
+  total: number;
+}
+
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------

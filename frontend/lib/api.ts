@@ -150,6 +150,7 @@ import type {
   IncidentCreate,
   IncidentListResponse,
   IncidentResponse,
+  IncidentTimelineResponse,
 } from "./types";
 
 export async function listIncidents(params?: {
@@ -173,6 +174,12 @@ export async function getIncident(id: string): Promise<IncidentResponse> {
 
 export async function createIncident(body: IncidentCreate): Promise<IncidentResponse> {
   return api.post<IncidentResponse>("/incidents", body);
+}
+
+export async function getIncidentTimeline(
+  id: string,
+): Promise<IncidentTimelineResponse> {
+  return api.get<IncidentTimelineResponse>(`/incidents/${id}/timeline`);
 }
 
 // ---------------------------------------------------------------------------

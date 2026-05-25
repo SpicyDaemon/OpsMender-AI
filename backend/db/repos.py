@@ -2402,6 +2402,19 @@ class IngestLogRepo:
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    @staticmethod
+    async def list_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> Sequence[IngestLog]:
+        stmt = (
+            select(IngestLog)
+            .where(IngestLog.org_id == org_id)
+            .where(IngestLog.incident_id == incident_id)
+            .order_by(IngestLog.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
 
 class SLATargetRepo:
     @staticmethod

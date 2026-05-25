@@ -27,11 +27,16 @@ from backend.db.repos import (
     ApprovalRequestRepo,
     AuditEntryRepo,
     BotConnectorRepo,
+    IncidentAssignmentRepo,
+    IncidentPageRepo,
     IncidentRepo,
+    IngestLogRepo,
+    IngestTokenRepo,
     MCPServerRepo,
     ModelConfigRepo,
     ServiceRepo,
     SessionRepo,
+    SkillRepo,
     TeamRepo,
     UserRepo,
     WebhookTriggerRepo,
@@ -45,6 +50,15 @@ from backend.mcp.oauth import (
     TokenResponse,
     sign_state,
 )
+
+SKILL_MD = """---
+version: "1"
+environment: api-test
+operations:
+  - tool: kubectl_get_pods
+    classification: safe
+---
+"""
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -990,6 +1004,115 @@ class TestIncidents:
             f"/incidents/{uuid.uuid4()}/sessions", headers=auth_headers
         )
         assert resp.status_code == 404
+
+    async def test_get_incident_timeline_interleaves_response_tool_and_evidence(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        incident_resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Timeline target",
+                "description": "CPU burn on api",
+                "external_source": "cloudwatch",
+                "external_id": "alarm-123",
+            },
+            headers=auth_headers,
+        )
+        assert incident_resp.status_code == 201
+        incident_id = uuid.UUID(incident_resp.json()["id"])
+
+        async with app.state.session_factory() as db:
+            user = await UserRepo.get_by_username(db, "testadmin")
+            assert user is not None
+
+            session = await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident_id,
+                tier=2,
+                model_provider="openai",
+                model_id="gpt-test",
+            )
+            await AuditEntryRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                tier=2,
+                entry_type="tool_call_start",
+                tool_name="kubectl_get_pods",
+                tool_parameters={"namespace": "prod"},
+            )
+            await AuditEntryRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                tier=2,
+                entry_type="tool_call_end",
+                tool_name="kubectl_get_pods",
+                result={"content": [{"type": "text", "text": "ok"}], "isError": False},
+                duration_ms=42,
+            )
+            await SkillRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="timeline-skill",
+                content_md=SKILL_MD,
+            )
+            await IncidentAssignmentRepo.assign(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident_id,
+                user_id=user.id,
+                assigned_by="self_ack",
+            )
+            await IncidentPageRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident_id,
+                user_id=user.id,
+                step_index=0,
+                channel="slack",
+                delivery_status="sent",
+            )
+            token = await IngestTokenRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="timeline-token",
+                provider="cloudwatch",
+                token_hash="abc123",
+            )
+            await IngestLogRepo.create(
+                db,
+                TEST_ORG_ID,
+                ingest_token_id=token.id,
+                provider="cloudwatch",
+                raw_payload={"alarmName": "HighCPU", "state": "ALARM"},
+                incident_id=incident_id,
+                dedup_action="created",
+            )
+            await db.commit()
+
+        resp = await client.get(
+            f"/incidents/{incident_id}/timeline",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 5
+        event_types = {item["event_type"] for item in data["items"]}
+        assert "incident_opened" in event_types
+        assert "session_started" in event_types
+        assert "tool_completed" in event_types
+        assert "ownership_assigned" in event_types
+        assert "escalation_step_fired" in event_types
+        assert "alert_evidence" in event_types
+        tool_row = next(
+            item for item in data["items"] if item["event_type"] == "tool_completed"
+        )
+        assert tool_row["tool_name"] == "kubectl_get_pods"
+        assert tool_row["safety_class"] == "safe"
+        assert tool_row["tier_decision"] == "permitted"
+        assert tool_row["metadata"] == {"namespace": "prod"}
 
     async def test_get_incident_not_found(self, client: AsyncClient, auth_headers):
         fake_id = uuid.uuid4()

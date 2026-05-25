@@ -1684,6 +1684,32 @@ class IncidentPagingPanelResponse(BaseModel):
     suppressed_by_maintenance_window: Optional[SuppressedByMaintenanceWindow] = None
 
 
+class IncidentTimelineItemResponse(BaseModel):
+    id: str
+    happened_at: datetime
+    lane: str
+    event_type: str
+    title: str
+    body: Optional[str] = None
+    actor_user_id: Optional[uuid.UUID] = None
+    actor_label: Optional[str] = None
+    status: Optional[str] = None
+    session_id: Optional[uuid.UUID] = None
+    session_label: Optional[str] = None
+    session_tier: Optional[int] = None
+    tool_name: Optional[str] = None
+    safety_class: Optional[str] = None
+    tier_decision: Optional[str] = None
+    duration_ms: Optional[int] = None
+    metadata: Optional[dict[str, Any]] = None
+    json_payload: Optional[dict[str, Any]] = None
+
+
+class IncidentTimelineResponse(BaseModel):
+    items: list[IncidentTimelineItemResponse]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # Escalation chains (Sprint 34)
 # ---------------------------------------------------------------------------

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections import defaultdict, deque
+from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,17 +21,25 @@ from backend.api.schemas import (
     IncidentCreate,
     IncidentListResponse,
     IncidentResponse,
+    IncidentTimelineItemResponse,
+    IncidentTimelineResponse,
     SessionListResponse,
     SessionResponse,
 )
 from backend.config_loader import Config
 from backend.db.models import User
 from backend.db.repos import (
+    AuditEntryRepo,
     IncidentAssignmentRepo,
+    IncidentChainStateRepo,
+    IncidentPageRepo,
     IncidentRepo,
+    IngestLogRepo,
     MaintenanceWindowRepo,
     SessionRepo,
     ServiceRepo,
+    SkillRepo,
+    UserRepo,
 )
 from backend.api.schemas import (
     IncidentAssignmentResponse,
@@ -42,6 +52,7 @@ from backend.api.schemas import (
 )
 from backend.paging.service import compute_priority_for_payload
 from backend.paging import escalation as _esc_kickoff
+from backend.skills.parser import loads as load_skill_def_text
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
@@ -51,6 +62,14 @@ def _tier0_max_session_seconds() -> int:
         return Config.load().tier0.max_session_seconds
     except (FileNotFoundError, ValueError):
         return 600
+
+
+def _aware(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _to_session_response(session) -> SessionResponse:
@@ -70,6 +89,28 @@ def _to_session_response(session) -> SessionResponse:
         if int(session.tier) == 0
         else None,
     )
+
+
+def _assignment_title(assigned_by: str) -> str:
+    if assigned_by == "self_ack":
+        return "Ownership acknowledged"
+    if assigned_by == "admin_force":
+        return "Ownership force-taken"
+    if assigned_by == "manual":
+        return "Ownership reassigned"
+    return "Ownership updated"
+
+
+def _assignment_body(assigned_by: str, actor_label: str | None) -> str | None:
+    if actor_label is None:
+        return None
+    if assigned_by == "self_ack":
+        return f"{actor_label} acknowledged the page and became the current owner."
+    if assigned_by == "admin_force":
+        return f"{actor_label} force-took the incident from the command surface."
+    if assigned_by == "manual":
+        return f"{actor_label} was assigned as the current owner."
+    return f"{actor_label} became the current owner."
 
 
 @router.post(
@@ -221,8 +262,295 @@ async def get_incident(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
-        )
+    )
     return incident
+
+
+@router.get(
+    "/{incident_id}/timeline",
+    response_model=IncidentTimelineResponse,
+    summary="Interleaved timeline for an incident command center",
+)
+async def get_incident_timeline(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+
+    sessions = list(await SessionRepo.list_by_incident(db, org_id, incident_id))
+    assignments = list(await IncidentAssignmentRepo.list_for_incident(db, org_id, incident_id))
+    pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))
+    ingest_logs = list(await IngestLogRepo.list_for_incident(db, org_id, incident_id))
+    chain_state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
+
+    session_labels: dict[uuid.UUID, str] = {}
+    session_by_id: dict[uuid.UUID, object] = {}
+    for index, session in enumerate(
+        sorted(sessions, key=lambda row: _aware(row.started_at) or row.started_at)
+    ):
+        session_labels[session.id] = f"S{index + 1}"
+        session_by_id[session.id] = session
+
+    user_ids = {
+        assignment.assigned_to for assignment in assignments
+    } | {page.user_id for page in pages}
+    user_lookup: dict[uuid.UUID, str] = {}
+    for user_id in user_ids:
+        person = await UserRepo.get_by_id(db, user_id)
+        if person is not None:
+            user_lookup[user_id] = person.username
+
+    skill = await SkillRepo.get_for_mcp_server(db, org_id, None)
+    skill_def = load_skill_def_text(skill.content_md) if skill is not None else None
+
+    items: list[IncidentTimelineItemResponse] = [
+        IncidentTimelineItemResponse(
+            id=f"incident:{incident.id}:opened",
+            happened_at=_aware(incident.created_at) or incident.created_at,
+            lane="response",
+            event_type="incident_opened",
+            title=(
+                "Synthetic alert opened"
+                if incident.external_source == "opsmender-test"
+                else "Inbound alert opened"
+                if incident.external_source
+                else "Incident opened manually"
+            ),
+            body=incident.title,
+            status=incident.status,
+            metadata={
+                "source": incident.external_source or "manual",
+                "external_id": incident.external_id,
+            },
+        )
+    ]
+
+    for session in sessions:
+        session_label = session_labels.get(session.id)
+        provider = (
+            f"{session.model_provider}/{session.model_id}"
+            if session.model_provider and session.model_id
+            else session.model_provider or session.model_id
+        )
+        items.append(
+            IncidentTimelineItemResponse(
+                id=f"session:{session.id}:started",
+                happened_at=_aware(session.started_at) or session.started_at,
+                lane="response",
+                event_type="session_started",
+                title=f"{session_label or 'Session'} started",
+                body=provider,
+                session_id=session.id,
+                session_label=session_label,
+                session_tier=session.tier,
+                status=session.status,
+                metadata={
+                    "model_provider": session.model_provider,
+                    "model_id": session.model_id,
+                },
+            )
+        )
+        if session.ended_at is not None:
+            items.append(
+                IncidentTimelineItemResponse(
+                    id=f"session:{session.id}:ended",
+                    happened_at=_aware(session.ended_at) or session.ended_at,
+                    lane="response",
+                    event_type="session_ended",
+                    title=f"{session_label or 'Session'} {session.status.replace('_', ' ')}",
+                    body=session.summary,
+                    session_id=session.id,
+                    session_label=session_label,
+                    session_tier=session.tier,
+                    status=session.status,
+                )
+            )
+
+        audit_entries = list(await AuditEntryRepo.list_by_session(db, org_id, session.id))
+        pending_starts: dict[str, deque] = defaultdict(deque)
+        for entry in audit_entries:
+            if entry.entry_type == "tool_call_start" and entry.tool_name:
+                pending_starts[entry.tool_name].append(entry)
+                continue
+            if entry.entry_type == "tool_call_blocked" and entry.tool_name:
+                items.append(
+                    IncidentTimelineItemResponse(
+                        id=f"audit:{entry.id}",
+                        happened_at=_aware(entry.timestamp) or entry.timestamp,
+                        lane="tool",
+                        event_type="tool_blocked",
+                        title=entry.tool_name,
+                        body=entry.block_reason,
+                        session_id=session.id,
+                        session_label=session_label,
+                        session_tier=entry.tier,
+                        tool_name=entry.tool_name,
+                        safety_class=(
+                            skill_def.classify(entry.tool_name) if skill_def else "unknown"
+                        ),
+                        tier_decision="blocked",
+                        status="blocked",
+                        metadata=entry.tool_parameters or {},
+                        json_payload=entry.result or entry.tool_parameters or {},
+                    )
+                )
+                continue
+            if entry.entry_type == "tool_call_end" and entry.tool_name:
+                start_entry = None
+                if pending_starts[entry.tool_name]:
+                    start_entry = pending_starts[entry.tool_name].popleft()
+                body = None
+                if entry.result and entry.result.get("error"):
+                    body = str(entry.result.get("error"))
+                elif entry.result and entry.result.get("isError"):
+                    body = "Tool returned an error result."
+                elif entry.duration_ms is not None:
+                    body = f"Completed in {entry.duration_ms} ms."
+                items.append(
+                    IncidentTimelineItemResponse(
+                        id=f"audit:{entry.id}",
+                        happened_at=_aware(entry.timestamp) or entry.timestamp,
+                        lane="tool",
+                        event_type="tool_completed",
+                        title=entry.tool_name,
+                        body=body,
+                        session_id=session.id,
+                        session_label=session_label,
+                        session_tier=entry.tier,
+                        tool_name=entry.tool_name,
+                        safety_class=(
+                            skill_def.classify(entry.tool_name) if skill_def else "unknown"
+                        ),
+                        tier_decision="permitted",
+                        duration_ms=entry.duration_ms,
+                        status=(
+                            "error"
+                            if entry.result and (entry.result.get("error") or entry.result.get("isError"))
+                            else "completed"
+                        ),
+                        metadata=start_entry.tool_parameters if start_entry is not None else {},
+                        json_payload=entry.result or {},
+                    )
+                )
+
+    for assignment in assignments:
+        actor_label = user_lookup.get(assignment.assigned_to)
+        items.append(
+            IncidentTimelineItemResponse(
+                id=f"assignment:{assignment.id}:assigned",
+                happened_at=_aware(assignment.assigned_at) or assignment.assigned_at,
+                lane="response",
+                event_type="ownership_assigned",
+                title=_assignment_title(assignment.assigned_by),
+                body=_assignment_body(assignment.assigned_by, actor_label),
+                actor_user_id=assignment.assigned_to,
+                actor_label=actor_label,
+                metadata={"assigned_by": assignment.assigned_by},
+            )
+        )
+        if assignment.released_at is not None:
+            items.append(
+                IncidentTimelineItemResponse(
+                    id=f"assignment:{assignment.id}:released",
+                    happened_at=_aware(assignment.released_at) or assignment.released_at,
+                    lane="response",
+                    event_type="ownership_released",
+                    title="Ownership released",
+                    body=(
+                        f"{actor_label} was removed as the active owner."
+                        if actor_label
+                        else "The active owner was released."
+                    ),
+                    actor_user_id=assignment.assigned_to,
+                    actor_label=actor_label,
+                )
+            )
+
+    for page in pages:
+        actor_label = user_lookup.get(page.user_id)
+        items.append(
+            IncidentTimelineItemResponse(
+                id=f"page:{page.id}:sent",
+                happened_at=_aware(page.sent_at) or page.sent_at,
+                lane="response",
+                event_type="escalation_step_fired",
+                title=f"Escalation step {(page.step_index or 0) + 1} fired",
+                body=(
+                    f"Paged {actor_label or str(page.user_id)[:8]} via {page.channel}."
+                ),
+                actor_user_id=page.user_id,
+                actor_label=actor_label,
+                status=page.delivery_status,
+                metadata={
+                    "step_index": page.step_index,
+                    "channel": page.channel,
+                    "delivery_error": page.delivery_error,
+                },
+            )
+        )
+        if page.ack_at is not None:
+            items.append(
+                IncidentTimelineItemResponse(
+                    id=f"page:{page.id}:ack",
+                    happened_at=_aware(page.ack_at) or page.ack_at,
+                    lane="response",
+                    event_type="page_acknowledged",
+                    title="Page acknowledged",
+                    body=(
+                        f"{actor_label or str(page.user_id)[:8]} acknowledged via {page.ack_via or 'chat'}."
+                    ),
+                    actor_user_id=page.user_id,
+                    actor_label=actor_label,
+                    status="acknowledged",
+                    metadata={"ack_via": page.ack_via},
+                )
+            )
+
+    for log in ingest_logs:
+        items.append(
+            IncidentTimelineItemResponse(
+                id=f"ingest:{log.id}",
+                happened_at=_aware(log.created_at) or log.created_at,
+                lane="evidence",
+                event_type="alert_evidence",
+                title=f"{log.provider} payload received",
+                body=(
+                    f"Dedup action: {log.dedup_action}."
+                    if log.dedup_action
+                    else "Inbound payload captured."
+                ),
+                status=log.error and "error" or log.dedup_action,
+                metadata={"error": log.error},
+                json_payload=log.raw_payload,
+            )
+        )
+
+    if incident.status in ("resolved", "closed"):
+        items.append(
+            IncidentTimelineItemResponse(
+                id=f"incident:{incident.id}:final",
+                happened_at=_aware(incident.updated_at) or incident.updated_at,
+                lane="response",
+                event_type="incident_status_changed",
+                title=f"Incident {incident.status.replace('_', ' ')}",
+                body=(
+                    "Escalation chain finished."
+                    if chain_state is not None and chain_state.finished_at is not None
+                    else None
+                ),
+                status=incident.status,
+            )
+        )
+
+    items.sort(key=lambda item: item.happened_at, reverse=True)
+    return IncidentTimelineResponse(items=items, total=len(items))
 
 
 # ---------------------------------------------------------------------------

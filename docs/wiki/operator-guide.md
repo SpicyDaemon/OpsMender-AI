@@ -9,9 +9,9 @@ When an incident is ingested (either manually or via an external alert), it appe
 
 1. **Triage the list:** Use the table search, status/severity/source chips, Last activity date range, sorting, and column controls to narrow the incident set.
 2. **Bulk-handle obvious rows:** Select one or more rows to bulk **Acknowledge** or **Resolve** without opening each incident.
-3. **Review:** Click on an incident to view its details, including title, description, severity, paging state, and linked service context.
-4. **Start Session:** If an AI session hasn't auto-started, click **Start Session**. This provisions a dedicated AI agent context for the incident.
-5. **Investigation:** Open the **Session Details** view to interact with the AI.
+3. **Review:** Click on an incident to open the command surface. The detail page now keeps the main response controls in a sticky command strip, a right-side context rail for service/team/owner/escalation state, and a single timeline that interleaves AI actions with paging events and inbound alert evidence.
+4. **Start Session:** If an AI session hasn't auto-started, click **Start Session** from the command strip or the timeline header. This provisions a dedicated AI agent context for the incident.
+5. **Investigation:** Use the timeline rows to jump straight into the session sidecar or open the full **Session Details** view when you need the richer chat surface.
 
 ## 2. Interacting with Session Chat
 

@@ -325,6 +325,89 @@ class PasswordResetTokenRepo:
         await db.flush()
 
 
+class OrgInviteRepo:
+    """Sprint 56: admin-minted invites to join an organization."""
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        org_id: uuid.UUID,
+        email: str,
+        role: str,
+        token_hash: str,
+        expires_at: datetime,
+        invited_by_user_id: uuid.UUID | None,
+    ) -> OrgInvite:
+        row = OrgInvite(
+            org_id=org_id,
+            email=email.lower().strip(),
+            role=role,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            invited_by_user_id=invited_by_user_id,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_hash(
+        db: AsyncSession, token_hash: str
+    ) -> OrgInvite | None:
+        stmt = select(OrgInvite).where(OrgInvite.token_hash == token_hash)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, invite_id: uuid.UUID
+    ) -> OrgInvite | None:
+        return await db.get(OrgInvite, invite_id)
+
+    @staticmethod
+    async def list_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[OrgInvite]:
+        stmt = (
+            select(OrgInvite)
+            .where(OrgInvite.org_id == org_id)
+            .order_by(OrgInvite.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def mark_accepted(
+        db: AsyncSession,
+        invite_id: uuid.UUID,
+        *,
+        accepted_by_user_id: uuid.UUID,
+    ) -> None:
+        stmt = (
+            update(OrgInvite)
+            .where(OrgInvite.id == invite_id)
+            .values(
+                accepted_at=datetime.now(timezone.utc),
+                accepted_by_user_id=accepted_by_user_id,
+            )
+        )
+        await db.execute(stmt)
+        await db.flush()
+
+    @staticmethod
+    async def mark_revoked(
+        db: AsyncSession, invite_id: uuid.UUID
+    ) -> None:
+        stmt = (
+            update(OrgInvite)
+            .where(OrgInvite.id == invite_id)
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
+        await db.execute(stmt)
+        await db.flush()
+
+
 class IncidentRepo:
     @staticmethod
     async def create(

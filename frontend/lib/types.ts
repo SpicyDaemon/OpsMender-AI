@@ -215,6 +215,51 @@ export interface SoftDeletePreconditions {
   can_delete: boolean;
 }
 
+// --- Invites (Sprint 56 Step 4) ---
+export type InviteStatus = "pending" | "accepted" | "expired" | "revoked";
+
+export interface InviteResponse {
+  id: string;
+  org_id: string;
+  email: string;
+  role: "admin" | "operator" | "viewer";
+  invited_by_user_id: string | null;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  status: InviteStatus;
+}
+
+export interface InviteListResponse {
+  items: InviteResponse[];
+  total: number;
+}
+
+export interface InviteCreateRequest {
+  email: string;
+  role: "admin" | "operator" | "viewer";
+}
+
+export interface InviteCreatedResponse {
+  invite: InviteResponse;
+  url: string;
+  email_sent: boolean;
+  email_error: string | null;
+}
+
+export interface InvitePublicResponse {
+  email: string;
+  role: "admin" | "operator" | "viewer";
+  org_name: string;
+  expires_at: string;
+}
+
+export interface InviteAcceptRequest {
+  username: string;
+  password: string;
+}
+
 export interface ConfigResponse {
   tier: number;
   mcp_servers: Record<string, unknown>[];

@@ -95,6 +95,72 @@ class SoftDeletePreconditions(BaseModel):
     can_delete: bool
 
 
+# --- Invites (Sprint 56 Step 4) ---
+
+
+class InviteCreateRequest(BaseModel):
+    """Admin mints a new org invite."""
+
+    email: str = Field(..., max_length=255)
+    role: str = Field(..., pattern="^(admin|operator|viewer)$")
+
+
+class InviteResponse(BaseModel):
+    id: uuid.UUID
+    org_id: uuid.UUID
+    email: str
+    role: str
+    invited_by_user_id: Optional[uuid.UUID] = None
+    expires_at: datetime
+    accepted_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+    created_at: datetime
+    # Derived status the UI groups by: pending | accepted | expired | revoked.
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
+class InviteListResponse(BaseModel):
+    items: list[InviteResponse]
+    total: int
+
+
+class InviteCreatedResponse(BaseModel):
+    """Admin-facing response after minting a new invite.
+
+    ``url`` is the one-time accept link — shown once. ``email_sent`` is
+    True only when SMTP is configured AND the message was successfully
+    handed to the server.
+    """
+
+    invite: InviteResponse
+    url: str
+    email_sent: bool = False
+    email_error: Optional[str] = None
+
+
+class InvitePublicResponse(BaseModel):
+    """Returned to the recipient when they GET /invites/{token}.
+
+    Deliberately limited: only the fields the accept page needs to
+    render (org name, email the invite was sent to, role they'll get,
+    expiry). No internal IDs or token data.
+    """
+
+    email: str
+    role: str
+    org_name: str
+    expires_at: datetime
+
+
+class InviteAcceptRequest(BaseModel):
+    """Recipient consumes the token by setting username + password."""
+
+    username: str = Field(..., min_length=3, max_length=150)
+    password: str = Field(..., min_length=8)
+
+
 # ---------------------------------------------------------------------------
 # Incidents
 # ---------------------------------------------------------------------------

@@ -228,6 +228,10 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         sessions_memory_router,
     )
     from backend.api.routes.retention import router as retention_router
+    from backend.api.routes.invites import (
+        admin_router as invites_admin_router,
+        public_router as invites_public_router,
+    )
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -258,6 +262,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(memories_router)
     app.include_router(sessions_memory_router)
     app.include_router(retention_router)
+    app.include_router(invites_admin_router)
+    app.include_router(invites_public_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

@@ -949,6 +949,61 @@ export async function consumePasswordReset(
   }, true);
 }
 
+// --- Invites (Sprint 56 Step 4) ---
+
+export async function createInvite(
+  orgId: string,
+  body: import("./types").InviteCreateRequest,
+): Promise<import("./types").InviteCreatedResponse> {
+  return api.post<import("./types").InviteCreatedResponse>(
+    `/organizations/${orgId}/invites`,
+    body,
+  );
+}
+
+export async function listInvites(
+  orgId: string,
+): Promise<import("./types").InviteListResponse> {
+  return api.get<import("./types").InviteListResponse>(
+    `/organizations/${orgId}/invites`,
+  );
+}
+
+export async function revokeInvite(
+  orgId: string,
+  inviteId: string,
+): Promise<import("./types").InviteResponse> {
+  return api.post<import("./types").InviteResponse>(
+    `/organizations/${orgId}/invites/${inviteId}/revoke`,
+    {},
+  );
+}
+
+export async function getInviteByToken(
+  token: string,
+): Promise<import("./types").InvitePublicResponse> {
+  return request<import("./types").InvitePublicResponse>(
+    `/invites/${encodeURIComponent(token)}`,
+    {},
+    true,
+  );
+}
+
+export async function acceptInvite(
+  token: string,
+  body: import("./types").InviteAcceptRequest,
+): Promise<import("./types").TokenResponse> {
+  return request<import("./types").TokenResponse>(
+    `/invites/${encodeURIComponent(token)}/accept`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    true,
+  );
+}
+
 
 export async function getOrgSSOConfig(
   orgId: string,

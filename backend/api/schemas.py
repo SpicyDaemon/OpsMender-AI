@@ -223,6 +223,11 @@ class ConfigResponse(BaseModel):
     ingest_auto_start_enabled: bool
     ingest_auto_start_min_severity: str
     ingest_auto_start_source: Optional[str] = None
+    # Sprint 56: surface the deployment-level booleans the UI needs to
+    # render the People surface correctly. Read from env at process
+    # start; not editable from the UI.
+    multi_org_enabled: bool = False
+    smtp_configured: bool = False
 
 
 class SetupChecklistResponse(BaseModel):

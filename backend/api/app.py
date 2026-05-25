@@ -46,6 +46,12 @@ async def _lifespan(app: FastAPI):
     app.state.database_url = database_url
     app.state.session_factory = factory
 
+    # Sprint 56: bootstrap admin from env vars if the users table is empty.
+    # No-op when bootstrap env vars are unset or users already exist.
+    from backend.people.bootstrap import bootstrap_admin
+
+    await bootstrap_admin(factory, config.people)
+
     pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
     set_mcp_pool(pool)
     app.state.mcp_pool = pool

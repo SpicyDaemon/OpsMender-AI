@@ -201,6 +201,11 @@ export interface ConfigResponse {
   ingest_auto_start_enabled: boolean;
   ingest_auto_start_min_severity: Severity;
   ingest_auto_start_source: string | null;
+  // Sprint 56: deployment-level flags the People surface reads to decide
+  // whether to show the multi-org affordances and whether to advertise
+  // SMTP delivery alongside the copy-paste invite URLs.
+  multi_org_enabled?: boolean;
+  smtp_configured?: boolean;
 }
 
 export interface ConfigUpdate {

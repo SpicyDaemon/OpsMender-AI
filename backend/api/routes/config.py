@@ -70,6 +70,8 @@ def _config_to_response(
         ingest_auto_start_enabled=ingest_auto_start_enabled,
         ingest_auto_start_min_severity=ingest_auto_start_min_severity,
         ingest_auto_start_source=ingest_auto_start_source,
+        multi_org_enabled=cfg.people.multi_org_enabled,
+        smtp_configured=cfg.smtp.configured,
     )
 
 

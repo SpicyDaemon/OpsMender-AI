@@ -288,6 +288,55 @@ class CorsConfig:
 
 
 @dataclasses.dataclass
+class PeopleConfig:
+    """Sprint 56 — user-management surface.
+
+    `bootstrap_admin_email` + `bootstrap_admin_password` create the first
+    admin when the users table is empty. Both must be set together; if
+    either is missing or the table already has rows, bootstrap is a no-op.
+
+    `multi_org_enabled` gates multi-tenant UI affordances (org switcher,
+    "create another organization", per-invite org picker). The
+    multi-tenant schema + SSO/SAML-per-tenant work from Sprints 29-30
+    stays intact regardless — only the UI changes.
+
+    `public_base_url` is the absolute URL the dashboard is reachable at;
+    invite + password-reset URLs use it. Falls back to the request's
+    derived base when unset, but should be set for production.
+    """
+
+    bootstrap_admin_email: str | None = None
+    bootstrap_admin_password: str | None = None
+    multi_org_enabled: bool = False
+    public_base_url: str | None = None
+
+    @property
+    def bootstrap_configured(self) -> bool:
+        return bool(self.bootstrap_admin_email) and bool(self.bootstrap_admin_password)
+
+
+@dataclasses.dataclass
+class SMTPConfig:
+    """Best-effort outbound email for invites + password resets (Sprint 56).
+
+    SMTP is treated as **configured** when `host` and `from_address` are
+    both set. Failures during send are logged but never raise — the
+    copy-paste URL returned by the route is always the source of truth.
+    """
+
+    host: str | None = None
+    port: int = 587
+    user: str | None = None
+    password: str | None = None
+    from_address: str | None = None
+    use_tls: bool = True
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.host) and bool(self.from_address)
+
+
+@dataclasses.dataclass
 class ProviderConfig:
     """Default provider and provider-specific settings."""
 
@@ -348,6 +397,8 @@ class AppConfig:
     bot_oauth: BotOAuthConfig
     cors: CorsConfig
     providers: ProviderConfig
+    people: PeopleConfig
+    smtp: SMTPConfig
     env_file: str
 
     @classmethod
@@ -460,6 +511,22 @@ class AppConfig:
                 azure_openai_endpoint=_env_str(env, "AZURE_OPENAI_ENDPOINT"),
                 azure_openai_api_version=_env_str(env, "AZURE_OPENAI_API_VERSION"),
                 azure_openai_deployment=_env_str(env, "AZURE_OPENAI_DEPLOYMENT"),
+            ),
+            people=PeopleConfig(
+                bootstrap_admin_email=_env_str(env, "OPSMENDER_BOOTSTRAP_ADMIN_EMAIL"),
+                bootstrap_admin_password=_env_str(
+                    env, "OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD"
+                ),
+                multi_org_enabled=_env_bool(env, "OPSMENDER_MULTI_ORG_ENABLED", False),
+                public_base_url=_env_str(env, "OPSMENDER_PUBLIC_BASE_URL"),
+            ),
+            smtp=SMTPConfig(
+                host=_env_str(env, "OPSMENDER_SMTP_HOST"),
+                port=_env_int(env, "OPSMENDER_SMTP_PORT", 587),
+                user=_env_str(env, "OPSMENDER_SMTP_USER"),
+                password=_env_str(env, "OPSMENDER_SMTP_PASSWORD"),
+                from_address=_env_str(env, "OPSMENDER_SMTP_FROM"),
+                use_tls=_env_bool(env, "OPSMENDER_SMTP_USE_TLS", True),
             ),
             env_file=str(env_path),
         )

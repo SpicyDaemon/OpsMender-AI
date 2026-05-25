@@ -904,6 +904,51 @@ export async function getRegistrationOpen(): Promise<{ open: boolean }> {
   return request<{ open: boolean }>("/auth/registration-open", {}, true);
 }
 
+// Sprint 56 — admin People-surface helpers
+export async function updateUser(
+  id: string,
+  body: import("./types").UserUpdateRequest,
+): Promise<import("./types").UserResponse> {
+  return api.patch<import("./types").UserResponse>(`/auth/users/${id}`, body);
+}
+
+export async function getUserDeletePreconditions(
+  id: string,
+): Promise<import("./types").SoftDeletePreconditions> {
+  return api.get<import("./types").SoftDeletePreconditions>(
+    `/auth/users/${id}/delete-preconditions`,
+  );
+}
+
+export async function softDeleteUser(
+  id: string,
+): Promise<import("./types").UserResponse> {
+  return api.post<import("./types").UserResponse>(
+    `/auth/users/${id}/soft-delete`,
+    {},
+  );
+}
+
+export async function mintPasswordReset(
+  id: string,
+): Promise<import("./types").PasswordResetMintResponse> {
+  return api.post<import("./types").PasswordResetMintResponse>(
+    `/auth/users/${id}/reset-password`,
+    {},
+  );
+}
+
+export async function consumePasswordReset(
+  token: string,
+  password: string,
+): Promise<void> {
+  await request<void>(`/auth/password-reset/${encodeURIComponent(token)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  }, true);
+}
+
 
 export async function getOrgSSOConfig(
   orgId: string,

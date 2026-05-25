@@ -65,8 +65,10 @@ from backend.db.models import (
     MaintenanceWindow,
     Organization,
     OrganizationDomain,
+    OrgInvite,
     OrgSAMLConfig,
     OrgSSOConfig,
+    PasswordResetToken,
     UserOrganization,
 )
 
@@ -212,6 +214,115 @@ class UserRepo:
         stmt = select(User).order_by(User.created_at).limit(limit).offset(offset)
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    @staticmethod
+    async def update_fields(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        *,
+        role: str | None = None,
+        is_active: bool | None = None,
+    ) -> User | None:
+        """Sprint 56: admin patch — change role and/or active state."""
+
+        values: dict[str, Any] = {}
+        if role is not None:
+            values["role"] = role
+        if is_active is not None:
+            values["is_active"] = is_active
+        if not values:
+            return await db.get(User, user_id)
+        stmt = update(User).where(User.id == user_id).values(**values)
+        await db.execute(stmt)
+        await db.flush()
+        return await db.get(User, user_id)
+
+    @staticmethod
+    async def count_roster_memberships(
+        db: AsyncSession, user_id: uuid.UUID
+    ) -> int:
+        """Sprint 56: gate for soft-delete. The user must be off every
+        roster before deletion is allowed."""
+
+        stmt = select(func.count(RosterMember.id)).where(
+            RosterMember.user_id == user_id
+        )
+        result = await db.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def soft_delete(
+        db: AsyncSession, user_id: uuid.UUID
+    ) -> User | None:
+        """Set ``deleted_at`` and scrub sensitive fields.
+
+        Per owner direction (Session 135), the row is kept so past
+        incidents continue to render the historical username. Email is
+        replaced with a sentinel value to free the unique constraint
+        for a future re-invite of the same address. Password hash is
+        replaced with an empty string so the user cannot authenticate.
+        """
+
+        now = datetime.now(timezone.utc)
+        scrubbed_email = f"deleted-{user_id}@deleted.opsmender.local"
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(
+                deleted_at=now,
+                is_active=False,
+                email=scrubbed_email,
+                password_hash="",
+            )
+        )
+        await db.execute(stmt)
+        await db.flush()
+        return await db.get(User, user_id)
+
+
+class PasswordResetTokenRepo:
+    """Sprint 56: admin-minted one-time password reset tokens."""
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        token_hash: str,
+        expires_at: datetime,
+        issued_by_user_id: uuid.UUID | None,
+    ) -> PasswordResetToken:
+        row = PasswordResetToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            issued_by_user_id=issued_by_user_id,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_hash(
+        db: AsyncSession, token_hash: str
+    ) -> PasswordResetToken | None:
+        stmt = select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == token_hash
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def mark_used(
+        db: AsyncSession, token_id: uuid.UUID
+    ) -> None:
+        stmt = (
+            update(PasswordResetToken)
+            .where(PasswordResetToken.id == token_id)
+            .values(used_at=datetime.now(timezone.utc))
+        )
+        await db.execute(stmt)
+        await db.flush()
 
 
 class IncidentRepo:

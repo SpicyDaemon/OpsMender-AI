@@ -42,6 +42,10 @@ class UserResponse(BaseModel):
     is_active: bool
     primary_org_id: Optional[uuid.UUID] = None
     created_at: datetime
+    # Sprint 56: soft-delete marker. When set, the user is hidden from
+    # active lists; clicking through to a per-user page should render
+    # the deleted-state placeholder rather than the editable detail.
+    deleted_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -49,6 +53,46 @@ class UserResponse(BaseModel):
 class UserListResponse(BaseModel):
     items: list[UserResponse]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Sprint 56 — People surface
+# ---------------------------------------------------------------------------
+
+
+class UserUpdateRequest(BaseModel):
+    """Admin-only patch of a user's role and/or active state."""
+
+    role: Optional[str] = Field(default=None, pattern="^(admin|operator|viewer)$")
+    is_active: Optional[bool] = None
+
+
+class PasswordResetMintResponse(BaseModel):
+    """Returned to the admin when minting a reset URL.
+
+    The raw URL is shown exactly once. ``email_sent`` is True only when
+    SMTP is configured AND the message was successfully handed to the
+    server; on any failure the admin still has the copy-paste URL.
+    """
+
+    url: str
+    expires_at: datetime
+    email_sent: bool = False
+    email_error: Optional[str] = None
+
+
+class PasswordResetConsumeRequest(BaseModel):
+    """Public — recipient consumes the token by setting a new password."""
+
+    password: str = Field(..., min_length=8)
+
+
+class SoftDeletePreconditions(BaseModel):
+    """Surfaces blockers before the admin commits to the delete."""
+
+    is_active: bool
+    roster_memberships: int
+    can_delete: bool
 
 
 # ---------------------------------------------------------------------------

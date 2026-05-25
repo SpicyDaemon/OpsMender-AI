@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,13 +28,24 @@ from backend.api.schemas import (
     LoginRequest,
     MyOrganizationListResponse,
     MyOrganizationResponse,
+    PasswordResetConsumeRequest,
+    PasswordResetMintResponse,
     RegisterRequest,
+    SoftDeletePreconditions,
     TokenResponse,
     UserListResponse,
     UserResponse,
+    UserUpdateRequest,
 )
+from backend.config_loader import AppConfig
 from backend.db.models import User
-from backend.db.repos import OrganizationRepo, UserRepo
+from backend.db.repos import (
+    OrganizationRepo,
+    PasswordResetTokenRepo,
+    UserRepo,
+)
+from backend.people import smtp as smtp_helper
+from backend.people import tokens as people_tokens
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -163,7 +176,15 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     user = await UserRepo.get_by_username(db, body.username)
-    if user is None or not verify_password(body.password, user.password_hash):
+    # Sprint 56: soft-deleted users have a scrubbed (empty) password_hash;
+    # short-circuit before verify_password to avoid the bcrypt empty-hash
+    # exception, and to return the same generic 401 to avoid enumeration.
+    if (
+        user is None
+        or user.deleted_at is not None
+        or not user.password_hash
+        or not verify_password(body.password, user.password_hash)
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -200,6 +221,234 @@ async def list_users(
 ):
     users = await UserRepo.list_all(db, limit=limit, offset=offset)
     return UserListResponse(items=list(users), total=len(users))
+
+
+# ---------------------------------------------------------------------------
+# Sprint 56 — admin People-surface routes
+# ---------------------------------------------------------------------------
+
+
+PASSWORD_RESET_TTL = timedelta(hours=24)
+
+
+def _resolve_public_base_url(request: Request) -> str:
+    """Prefer the explicit `OPSMENDER_PUBLIC_BASE_URL` env when set so
+    invite + reset links are correct under any proxy chain. Falls back
+    to the request's derived base URL otherwise."""
+
+    cfg: AppConfig = request.app.state.config
+    explicit = cfg.people.public_base_url
+    if explicit:
+        return explicit.rstrip("/")
+    fwd_proto = request.headers.get("x-forwarded-proto")
+    fwd_host = request.headers.get("x-forwarded-host")
+    scheme = fwd_proto or request.url.scheme
+    host = fwd_host or request.headers.get("host") or request.url.netloc
+    return f"{scheme}://{host}"
+
+
+@router.patch(
+    "/users/{user_id}",
+    response_model=UserResponse,
+    dependencies=[Depends(require_role("admin"))],
+    summary="Update a user's role or active state (admin only)",
+)
+async def update_user(
+    user_id: uuid.UUID,
+    body: UserUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    target = await UserRepo.get_by_id(db, user_id)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if body.role is None and body.is_active is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide at least one of: role, is_active",
+        )
+    updated = await UserRepo.update_fields(
+        db, user_id, role=body.role, is_active=body.is_active
+    )
+    await db.commit()
+    return updated
+
+
+@router.get(
+    "/users/{user_id}/delete-preconditions",
+    response_model=SoftDeletePreconditions,
+    dependencies=[Depends(require_role("admin"))],
+    summary="Check whether a user can be soft-deleted",
+)
+async def get_delete_preconditions(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    target = await UserRepo.get_by_id(db, user_id)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    rosters = await UserRepo.count_roster_memberships(db, user_id)
+    return SoftDeletePreconditions(
+        is_active=target.is_active,
+        roster_memberships=rosters,
+        can_delete=(not target.is_active) and rosters == 0,
+    )
+
+
+@router.post(
+    "/users/{user_id}/soft-delete",
+    response_model=UserResponse,
+    dependencies=[Depends(require_role("admin"))],
+    summary="Soft-delete a user (admin only)",
+)
+async def soft_delete_user(
+    user_id: uuid.UUID,
+    actor: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target = await UserRepo.get_by_id(db, user_id)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if target.id == actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete your own account.",
+        )
+    if target.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Deactivate the user first (set is_active=false).",
+        )
+    rosters = await UserRepo.count_roster_memberships(db, user_id)
+    if rosters > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Remove the user from {rosters} roster"
+                f"{'s' if rosters != 1 else ''} before deletion."
+            ),
+        )
+    updated = await UserRepo.soft_delete(db, user_id)
+    await db.commit()
+    return updated
+
+
+@router.post(
+    "/users/{user_id}/reset-password",
+    response_model=PasswordResetMintResponse,
+    dependencies=[Depends(require_role("admin"))],
+    summary="Mint a one-time password reset URL (admin only)",
+)
+async def mint_password_reset(
+    user_id: uuid.UUID,
+    request: Request,
+    actor: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target = await UserRepo.get_by_id(db, user_id)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    raw, token_hash = people_tokens.mint()
+    expires_at = datetime.now(timezone.utc) + PASSWORD_RESET_TTL
+    await PasswordResetTokenRepo.create(
+        db,
+        user_id=user_id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        issued_by_user_id=actor.id,
+    )
+    await db.commit()
+
+    base = _resolve_public_base_url(request)
+    url = f"{base}/password-reset/{raw}"
+
+    # Best-effort SMTP delivery alongside the copy-paste URL.
+    cfg: AppConfig = request.app.state.config
+    email_sent = False
+    email_error: str | None = None
+    if cfg.smtp.configured:
+        body = (
+            f"Hi {target.username},\n\n"
+            f"An OpsMender administrator initiated a password reset for your "
+            f"account. Click the link below within 24 hours to set a new "
+            f"password:\n\n"
+            f"{url}\n\n"
+            f"If you didn't expect this, ignore this email — your existing "
+            f"password remains active until the token is used.\n"
+        )
+        email_sent, email_error = smtp_helper.send_email(
+            cfg.smtp,
+            to=target.email,
+            subject="OpsMender password reset",
+            body=body,
+        )
+
+    return PasswordResetMintResponse(
+        url=url,
+        expires_at=expires_at,
+        email_sent=email_sent,
+        email_error=email_error,
+    )
+
+
+@router.post(
+    "/password-reset/{token}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Consume a password reset token (public)",
+)
+async def consume_password_reset(
+    token: str,
+    body: PasswordResetConsumeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint — the recipient of the one-time URL POSTs their
+    new password here. The token is consumed on first successful use.
+
+    Note: this route intentionally does not return user information
+    (no enumeration) and is rate-limit-friendly (token lookup is by
+    sha256 hash, constant work)."""
+
+    token_hash = people_tokens.hash_token(token)
+    row = await PasswordResetTokenRepo.get_by_hash(db, token_hash)
+    now = datetime.now(timezone.utc)
+    if (
+        row is None
+        or row.used_at is not None
+        or _ensure_aware(row.expires_at) < now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired token.",
+        )
+
+    user = await UserRepo.get_by_id(db, row.user_id)
+    if user is None or user.deleted_at is not None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account is unavailable.",
+        )
+
+    user.password_hash = hash_password(body.password)
+    await PasswordResetTokenRepo.mark_used(db, row.id)
+    await db.commit()
+
+
+def _ensure_aware(dt: datetime) -> datetime:
+    """SQLite drops tzinfo on persisted aware datetimes. Treat naive
+    values as UTC so comparisons against ``datetime.now(timezone.utc)``
+    are correct."""
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 @router.get(

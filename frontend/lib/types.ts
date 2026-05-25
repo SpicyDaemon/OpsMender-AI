@@ -13,6 +13,9 @@ export interface UserResponse {
   is_active: boolean;
   primary_org_id: string | null;
   created_at: string;
+  // Sprint 56: soft-delete marker. When set, the user is hidden from
+  // active lists; per-user pages render the deleted-state placeholder.
+  deleted_at?: string | null;
 }
 
 export interface UserListResponse {
@@ -192,6 +195,25 @@ export interface ApprovalListResponse {
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
+
+// Sprint 56 — admin People-surface request/response types
+export interface UserUpdateRequest {
+  role?: "admin" | "operator" | "viewer";
+  is_active?: boolean;
+}
+
+export interface PasswordResetMintResponse {
+  url: string;
+  expires_at: string;
+  email_sent: boolean;
+  email_error: string | null;
+}
+
+export interface SoftDeletePreconditions {
+  is_active: boolean;
+  roster_memberships: number;
+  can_delete: boolean;
+}
 
 export interface ConfigResponse {
   tier: number;

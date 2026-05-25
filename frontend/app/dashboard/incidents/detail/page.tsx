@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { IncidentCommandStrip } from "@/components/incidents/IncidentCommandStrip";
+import { IncidentContextRail } from "@/components/incidents/IncidentContextRail";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -441,53 +442,15 @@ function IncidentDetailContent() {
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-                <div className="border-b border-border-subtle px-5 py-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">
-                    Incident Details
-                  </p>
-                  <h2 className="mt-1 text-lg font-semibold text-fg-primary">Context</h2>
-                </div>
-                <div className="space-y-4 p-5 text-sm">
-                  <DetailRow label="Status">
-                    <Badge variant={incident.status as Parameters<typeof Badge>[0]["variant"]}>
-                      {incident.status.replace("_", " ")}
-                    </Badge>
-                  </DetailRow>
-                  <DetailRow label="Severity">
-                    {incident.severity ? (
-                      <Badge variant={incident.severity}>{incident.severity}</Badge>
-                    ) : (
-                      <span className="text-fg-muted">Not set</span>
-                    )}
-                  </DetailRow>
-                  <DetailRow label="Source">
-                    <span className="text-fg-primary">{source?.label}</span>
-                  </DetailRow>
-                  <DetailRow label="Source detail">
-                    <span className="break-all text-fg-primary">{source?.detail}</span>
-                  </DetailRow>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-                <div className="border-b border-border-subtle px-5 py-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">
-                    Suggested Next Step
-                  </p>
-                </div>
-                <div className="p-5">
-                  <p className="text-sm leading-6 text-fg-secondary">
-                    Use the sidecar for quick collaboration and live triage. When you need the full event stream and the complete operating surface, open the dedicated session page.
-                  </p>
-                  <Button className="mt-4 w-full justify-center" onClick={() => setShowSession(true)}>
-                    <Play size={14} />
-                    Start Session
-                  </Button>
-                </div>
-              </div>
-            </div>
+            {/* Sprint 57 Step 2: unified right-rail panel surfaces severity,
+                status, service, team, owner, escalation step, AI tier, and
+                pending approvals in one place. Replaces the previous
+                Context + Suggested-Next-Step cards. */}
+            <IncidentContextRail
+              incident={incident}
+              pagingPanel={pagingPanel}
+              sessions={sessions}
+            />
           </div>
         </div>
         {activeSessionId ? (

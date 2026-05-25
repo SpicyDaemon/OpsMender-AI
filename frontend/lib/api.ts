@@ -253,10 +253,12 @@ import type { ApprovalListResponse, ApprovalRequestResponse } from "./types";
 
 export async function listApprovals(params?: {
   status?: string;
+  session_id?: string;
   limit?: number;
 }): Promise<ApprovalListResponse> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
+  if (params?.session_id) qs.set("session_id", params.session_id);
   if (params?.limit !== undefined) qs.set("limit", String(params.limit));
   const q = qs.toString();
   return api.get<ApprovalListResponse>(`/approvals${q ? `?${q}` : ""}`);

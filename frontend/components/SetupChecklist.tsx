@@ -41,7 +41,7 @@ const ROWS: Row[] = [
   {
     key: "paging_service_added",
     label: "Add a paging service (optional)",
-    href: "/dashboard/paging",
+    href: "/dashboard/paging/services",
     hint: "Services own incidents and route them through escalation chains.",
   },
 ];

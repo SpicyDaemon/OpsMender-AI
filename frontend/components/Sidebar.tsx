@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  Bell,
   BookOpen,
   Brain,
   Building2,
@@ -14,10 +15,15 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  GitBranch,
+  ListOrdered,
   LogOut,
-  Phone,
+  Repeat,
+  Server,
   Settings,
   ShieldCheck,
+  Users,
+  Wrench,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
 import { getConfig } from "@/lib/api";
@@ -49,7 +55,13 @@ const NAV_GROUPS: NavGroup[] = [
     id: "paging",
     label: "Paging & On-call",
     items: [
-      { href: "/dashboard/paging", label: "Paging", icon: Phone },
+      { href: "/dashboard/paging/teams", label: "Teams", icon: Users },
+      { href: "/dashboard/paging/services", label: "Services", icon: Server },
+      { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat },
+      { href: "/dashboard/paging/priority-rules", label: "Priority Rules", icon: ListOrdered },
+      { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch },
+      { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench },
+      { href: "/dashboard/paging/my-notifications", label: "My Notifications", icon: Bell },
     ],
   },
   {

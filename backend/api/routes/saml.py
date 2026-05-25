@@ -235,6 +235,7 @@ async def saml_acs(slug: str, request: Request, db: AsyncSession = Depends(get_d
     )
 
     # JIT-provision (mirrors OIDC flow exactly).
+    auth_source = f"saml:{org.slug}"
     user = await UserRepo.get_by_email(db, email)
     if user is None:
         base_username = email.split("@")[0]
@@ -249,9 +250,12 @@ async def saml_acs(slug: str, request: Request, db: AsyncSession = Depends(get_d
             username=username,
             email=email,
             password_hash=hash_password(random_pw),
+            auth_source=auth_source,
             role=saml_row.default_role,
             primary_org_id=org.id,
         )
+    elif user.auth_source != auth_source:
+        user = await UserRepo.update_fields(db, user.id, auth_source=auth_source) or user
 
     if not await UserRepo.is_member(db, user.id, org.id):
         await UserRepo.add_to_organization(

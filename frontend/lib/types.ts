@@ -9,6 +9,7 @@ export interface UserResponse {
   id: string;
   username: string;
   email: string;
+  auth_source: string;
   role: "admin" | "operator" | "viewer";
   is_active: boolean;
   primary_org_id: string | null;

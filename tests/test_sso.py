@@ -326,6 +326,7 @@ class TestSSOLoginFlow:
         async with app.state.session_factory() as db:
             user = await UserRepo.get_by_email(db, "alice@acme.com")
             assert user is not None
+            assert user.auth_source == "oidc:test-org"
             assert user.role == "operator"
             assert user.primary_org_id == TEST_ORG_ID
             assert await UserRepo.is_member(db, user.id, TEST_ORG_ID)

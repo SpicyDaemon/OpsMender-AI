@@ -56,6 +56,42 @@ function fmtDate(iso: string): string {
   });
 }
 
+function authMethodMeta(user: UserResponse) {
+  const value = user.auth_source || "local";
+  if (value.startsWith("oidc:")) {
+    const slug = value.slice("oidc:".length) || "org";
+    return {
+      label: `oidc:${slug}`,
+      variant: "medium" as const,
+      href: user.primary_org_id
+        ? `/dashboard/organizations?org=${user.primary_org_id}&auth=oidc`
+        : "/dashboard/organizations",
+    };
+  }
+  if (value.startsWith("saml:")) {
+    const slug = value.slice("saml:".length) || "org";
+    return {
+      label: `saml:${slug}`,
+      variant: "default" as const,
+      href: user.primary_org_id
+        ? `/dashboard/organizations?org=${user.primary_org_id}&auth=saml`
+        : "/dashboard/organizations",
+    };
+  }
+  return { label: "local", variant: "low" as const, href: null };
+}
+
+function AuthMethodBadge({ user }: { user: UserResponse }) {
+  const meta = authMethodMeta(user);
+  const badge = <Badge variant={meta.variant as never}>{meta.label}</Badge>;
+  if (!meta.href) return badge;
+  return (
+    <Link href={meta.href} className="hover:opacity-80">
+      {badge}
+    </Link>
+  );
+}
+
 
 export default function PeoplePage() {
   const { user } = useAuth();
@@ -296,6 +332,29 @@ function UsersTab({
         },
       },
       {
+        id: "auth_source",
+        label: "Auth method",
+        accessor: (u) => {
+          if (u.auth_source.startsWith("oidc:")) return "oidc";
+          if (u.auth_source.startsWith("saml:")) return "saml";
+          return "local";
+        },
+        cell: (u) => <AuthMethodBadge user={u} />,
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "local", label: "Local" },
+            { value: "oidc", label: "OIDC" },
+            { value: "saml", label: "SAML" },
+          ],
+          valueOf: (u) => {
+            if (u.auth_source.startsWith("oidc:")) return "oidc";
+            if (u.auth_source.startsWith("saml:")) return "saml";
+            return "local";
+          },
+        },
+      },
+      {
         id: "created_at",
         label: "Joined",
         accessor: (u) => u.created_at,
@@ -310,7 +369,7 @@ function UsersTab({
     [],
   );
 
-  if (loading && users.length === 0) return <TableSkeleton rows={6} columns={4} />;
+  if (loading && users.length === 0) return <TableSkeleton rows={6} columns={5} />;
   if (users.length === 0) {
     return (
       <EmptyState

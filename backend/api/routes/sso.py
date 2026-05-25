@@ -158,6 +158,7 @@ async def sso_callback(
     name = claims.get(sso.name_claim) or claims.get("name") or email.split("@")[0]
 
     # JIT-provision: find existing user by email, otherwise create one.
+    auth_source = f"oidc:{org.slug}"
     user = await UserRepo.get_by_email(db, email)
     if user is None:
         # Username defaults to local-part of email (uniquified if needed).
@@ -174,9 +175,12 @@ async def sso_callback(
             username=username,
             email=email,
             password_hash=hash_password(random_pw),
+            auth_source=auth_source,
             role=sso.default_role,
             primary_org_id=org.id,
         )
+    elif user.auth_source != auth_source:
+        user = await UserRepo.update_fields(db, user.id, auth_source=auth_source) or user
 
     # Ensure user is linked to this org.
     if not await UserRepo.is_member(db, user.id, org.id):

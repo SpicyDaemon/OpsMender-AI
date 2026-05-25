@@ -243,6 +243,61 @@ class TestTenantResolveExposesSAML:
         assert body["saml_login_path"] == "/auth/saml/saml-org/login"
 
 
+class TestSAMLACS:
+    async def test_acs_jit_provisions_user_with_auth_source(
+        self, client, app, auth_headers, monkeypatch
+    ):
+        monkeypatch.setenv("OPSMENDER_SAML_SP_CERT", "cert")
+        monkeypatch.setenv("OPSMENDER_SAML_SP_KEY", "key")
+
+        await client.put(
+            f"/organizations/{TEST_ORG_ID}/saml",
+            json={
+                "idp_metadata_xml": SAMPLE_IDP_METADATA,
+                "default_role": "operator",
+            },
+            headers=auth_headers,
+        )
+
+        from backend.api.routes import saml as saml_route_mod
+
+        async def fake_fetch_idp_metadata(_org_cfg):
+            return {"entityId": "https://idp.example.com/saml"}
+
+        def fake_build_settings(**_kwargs):
+            return object()
+
+        def fake_process_acs(**_kwargs):
+            return (
+                {
+                    "email": ["sammy@acme.com"],
+                    "name": ["Sammy SAML"],
+                },
+                "name-id",
+            )
+
+        monkeypatch.setattr(saml_route_mod, "fetch_idp_metadata", fake_fetch_idp_metadata)
+        monkeypatch.setattr(saml_route_mod, "build_settings", fake_build_settings)
+        monkeypatch.setattr(saml_route_mod, "process_acs", fake_process_acs)
+
+        resp = await client.post(
+            "/auth/saml/saml-org/acs",
+            data={"SAMLResponse": "stub"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert "/login#sso_token=" in resp.headers["location"]
+
+        from backend.db.repos import UserRepo
+
+        async with app.state.session_factory() as db:
+            user = await UserRepo.get_by_email(db, "sammy@acme.com")
+            assert user is not None
+            assert user.auth_source == "saml:saml-org"
+            assert user.role == "operator"
+            assert user.primary_org_id == TEST_ORG_ID
+
+
 # ---------------------------------------------------------------------------
 # Route guards
 # ---------------------------------------------------------------------------

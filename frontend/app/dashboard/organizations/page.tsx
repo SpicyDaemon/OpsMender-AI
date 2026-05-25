@@ -1187,6 +1187,26 @@ export default function OrganizationsPage() {
     load();
   }, [isSuperAdmin, load]);
 
+  useEffect(() => {
+    if (!isSuperAdmin || orgs.length === 0 || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const orgId = params.get("org");
+    const auth = params.get("auth");
+    if (!orgId || !auth) return;
+    const target = orgs.find((item) => item.id === orgId);
+    if (!target) return;
+    if (auth === "oidc") {
+      setManagingSSOOrg(target);
+      setShowSSOModal(true);
+    } else if (auth === "saml") {
+      setManagingSAMLOrg(target);
+      setShowSAMLModal(true);
+    } else {
+      return;
+    }
+    window.history.replaceState({}, "", "/dashboard/organizations");
+  }, [isSuperAdmin, orgs]);
+
   if (!isSuperAdmin) {
     return (
       <EmptyState

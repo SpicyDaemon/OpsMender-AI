@@ -38,6 +38,7 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     username: str
     email: str
+    auth_source: str = "local"
     role: str
     is_active: bool
     primary_org_id: Optional[uuid.UUID] = None

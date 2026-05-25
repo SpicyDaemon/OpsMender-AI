@@ -81,6 +81,7 @@ class UserRepo:
         username: str,
         email: str,
         password_hash: str,
+        auth_source: str = "local",
         role: str = "viewer",
         primary_org_id: uuid.UUID | None = None,
     ) -> User:
@@ -88,6 +89,7 @@ class UserRepo:
             username=username,
             email=email,
             password_hash=password_hash,
+            auth_source=auth_source,
             role=role,
             primary_org_id=primary_org_id,
         )
@@ -222,6 +224,7 @@ class UserRepo:
         *,
         role: str | None = None,
         is_active: bool | None = None,
+        auth_source: str | None = None,
     ) -> User | None:
         """Sprint 56: admin patch — change role and/or active state."""
 
@@ -230,6 +233,8 @@ class UserRepo:
             values["role"] = role
         if is_active is not None:
             values["is_active"] = is_active
+        if auth_source is not None:
+            values["auth_source"] = auth_source
         if not values:
             return await db.get(User, user_id)
         stmt = update(User).where(User.id == user_id).values(**values)

@@ -45,6 +45,29 @@ function fmtDate(iso: string): string {
   });
 }
 
+function authMethodMeta(user: UserResponse) {
+  const value = user.auth_source || "local";
+  if (value.startsWith("oidc:")) {
+    return {
+      label: value,
+      variant: "medium" as const,
+      href: user.primary_org_id
+        ? `/dashboard/organizations?org=${user.primary_org_id}&auth=oidc`
+        : "/dashboard/organizations",
+    };
+  }
+  if (value.startsWith("saml:")) {
+    return {
+      label: value,
+      variant: "default" as const,
+      href: user.primary_org_id
+        ? `/dashboard/organizations?org=${user.primary_org_id}&auth=saml`
+        : "/dashboard/organizations",
+    };
+  }
+  return { label: "local", variant: "low" as const, href: null };
+}
+
 
 export default function PersonDetailPage() {
   return (
@@ -203,6 +226,7 @@ function DeletedUserView({ user }: { user: UserResponse }) {
 
 
 function SummaryCard({ user }: { user: UserResponse }) {
+  const authMethod = authMethodMeta(user);
   return (
     <section className="rounded-lg border border-border-default bg-bg-panel p-5">
       <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
@@ -218,6 +242,12 @@ function SummaryCard({ user }: { user: UserResponse }) {
           value={user.is_active ? "Active" : "Inactive"}
           badge={user.is_active ? "low" : "default"}
         />
+        <Field
+          label="Auth method"
+          value={authMethod.label}
+          badge={authMethod.variant}
+          href={authMethod.href}
+        />
         <Field label="Joined" value={fmtDate(user.created_at)} />
         <Field label="User ID" value={user.id} mono small />
       </div>
@@ -232,28 +262,37 @@ function Field({
   mono,
   small,
   badge,
+  href,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   small?: boolean;
   badge?: string;
+  href?: string | null;
 }) {
+  const body = badge ? (
+    <Badge variant={badge as never}>{value}</Badge>
+  ) : (
+    <p
+      className={`${mono ? "font-mono" : "font-medium"} ${
+        small ? "text-xs" : "text-sm"
+      } text-fg-primary`}
+    >
+      {value}
+    </p>
+  );
   return (
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
         {label}
       </p>
-      {badge ? (
-        <Badge variant={badge as never}>{value}</Badge>
+      {href ? (
+        <Link href={href} className="inline-flex hover:opacity-80">
+          {body}
+        </Link>
       ) : (
-        <p
-          className={`${mono ? "font-mono" : "font-medium"} ${
-            small ? "text-xs" : "text-sm"
-          } text-fg-primary`}
-        >
-          {value}
-        </p>
+        body
       )}
     </div>
   );

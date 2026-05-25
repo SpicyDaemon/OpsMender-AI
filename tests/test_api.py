@@ -266,6 +266,7 @@ class TestAuth:
         assert resp.status_code == 201
         data = resp.json()
         assert data["username"] == "first"
+        assert data["auth_source"] == "local"
         assert data["role"] == "admin"  # first user auto-admin
 
     async def test_register_second_user_uses_given_role(self, client: AsyncClient):
@@ -367,6 +368,7 @@ class TestAuth:
         assert len(data["items"]) == 2
         usernames = {u["username"] for u in data["items"]}
         assert "other" in usernames
+        assert all(item["auth_source"] == "local" for item in data["items"])
 
     async def test_login_wrong_password(self, client: AsyncClient):
         await client.post(

@@ -11,7 +11,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <TopBar />
-          <main className="flex-1 overflow-y-auto p-8 text-fg-primary">
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 text-fg-primary">
             {children}
           </main>
         </div>

@@ -10,6 +10,7 @@ import {
   getConfig,
   listIncidents,
   listServices,
+  listTeams,
 } from "@/lib/api";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import type {
@@ -21,6 +22,7 @@ import type {
   ServiceResponse,
   SessionResponse,
   Severity,
+  TeamResponse,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -110,119 +112,147 @@ const SOURCE_OPTIONS = [
   { value: "ingested", label: "Ingested" },
 ];
 
-const INCIDENT_COLUMNS: DataTableColumn<IncidentResponse>[] = [
-  {
-    id: "title",
-    label: "Incident",
-    accessor: (inc) => inc.title,
-    cell: (inc) => (
-      <div>
-        <Link
-          href={`/dashboard/incidents/detail?id=${inc.id}`}
-          className="font-medium text-fg-primary hover:text-accent"
-        >
-          {inc.title}
-        </Link>
-        <p className="mt-0.5 max-w-md truncate text-xs text-fg-muted">
-          {inc.description}
-        </p>
-        <p className="mt-1 font-mono text-[11px] text-fg-muted">
-          {inc.id.slice(0, 8)}… • created {fmtDate(inc.created_at)}
-        </p>
-      </div>
-    ),
-    sortable: true,
-    searchable: true,
-  },
-  {
-    id: "source",
-    label: "Source",
-    accessor: (inc) => sourceMeta(inc).key,
-    cell: (inc) => {
-      const source = sourceMeta(inc);
-      return (
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md border px-1 text-[10px] font-semibold uppercase tracking-wide ${source.className}`}
+function buildIncidentColumns(
+  serviceTeamName: Map<string, string>,
+  teamNames: string[],
+): DataTableColumn<IncidentResponse>[] {
+  return [
+    {
+      id: "title",
+      label: "Incident",
+      accessor: (inc) => inc.title,
+      cell: (inc) => (
+        <div>
+          <Link
+            href={`/dashboard/incidents/detail?id=${inc.id}`}
+            className="font-medium text-fg-primary hover:text-accent"
           >
-            {source.icon}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm text-fg-primary">{source.label}</p>
-            <p className="truncate text-[11px] text-fg-muted">
-              {inc.external_id ?? "Operator-created"}
-            </p>
-          </div>
+            {inc.title}
+          </Link>
+          <p className="mt-0.5 max-w-md truncate text-xs text-fg-muted">
+            {inc.description}
+          </p>
+          <p className="mt-1 font-mono text-[11px] text-fg-muted">
+            {inc.id.slice(0, 8)}… • created {fmtDate(inc.created_at)}
+          </p>
         </div>
-      );
-    },
-    sortable: true,
-    searchable: true,
-    filterChips: {
-      options: [
-        { value: "manual", label: "Manual" },
-        { value: "ingested", label: "Ingested" },
-      ],
-      valueOf: (inc) => sourceMeta(inc).key,
-    },
-  },
-  {
-    id: "status",
-    label: "Status",
-    accessor: (inc) => inc.status,
-    cell: (inc) => (
-      <Badge variant={inc.status as Parameters<typeof Badge>[0]["variant"]}>
-        {inc.status.replace("_", " ")}
-      </Badge>
-    ),
-    sortable: true,
-    filterChips: {
-      options: [
-        { value: "open", label: "Open" },
-        { value: "in_progress", label: "In progress" },
-        { value: "resolved", label: "Resolved" },
-        { value: "closed", label: "Closed" },
-      ],
-      valueOf: (inc) => inc.status,
-    },
-  },
-  {
-    id: "severity",
-    label: "Severity",
-    accessor: (inc) => inc.severity ?? "",
-    cell: (inc) =>
-      inc.severity ? (
-        <Badge variant={inc.severity}>{inc.severity}</Badge>
-      ) : (
-        <span className="text-fg-muted">—</span>
       ),
-    sortable: true,
-    filterChips: {
-      options: [
-        { value: "critical", label: "Critical" },
-        { value: "high", label: "High" },
-        { value: "medium", label: "Medium" },
-        { value: "low", label: "Low" },
-      ],
-      valueOf: (inc) => inc.severity,
+      sortable: true,
+      searchable: true,
     },
-  },
-  {
-    id: "updated_at",
-    label: "Last activity",
-    accessor: (inc) => inc.updated_at,
-    cell: (inc) => (
-      <div className="whitespace-nowrap">
-        <p className="text-sm text-fg-primary">{fmtRelative(inc.updated_at)}</p>
-        <p className="mt-0.5 text-[11px] text-fg-muted">{fmtDate(inc.updated_at)}</p>
-      </div>
-    ),
-    sortable: true,
-  },
-];
+    {
+      id: "team",
+      label: "Team",
+      accessor: (inc) =>
+        (inc.service_id && serviceTeamName.get(inc.service_id)) || "",
+      cell: (inc) => {
+        const name = inc.service_id && serviceTeamName.get(inc.service_id);
+        return name ? (
+          <span className="text-sm text-fg-primary">{name}</span>
+        ) : (
+          <span className="text-fg-muted">—</span>
+        );
+      },
+      sortable: true,
+      searchable: true,
+      filterChips: {
+        options: teamNames.map((n) => ({ value: n, label: n })),
+        valueOf: (inc) =>
+          (inc.service_id && serviceTeamName.get(inc.service_id)) || null,
+      },
+    },
+    {
+      id: "source",
+      label: "Source",
+      accessor: (inc) => sourceMeta(inc).key,
+      cell: (inc) => {
+        const source = sourceMeta(inc);
+        return (
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md border px-1 text-[10px] font-semibold uppercase tracking-wide ${source.className}`}
+            >
+              {source.icon}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm text-fg-primary">{source.label}</p>
+              <p className="truncate text-[11px] text-fg-muted">
+                {inc.external_id ?? "Operator-created"}
+              </p>
+            </div>
+          </div>
+        );
+      },
+      sortable: true,
+      searchable: true,
+      filterChips: {
+        options: [
+          { value: "manual", label: "Manual" },
+          { value: "ingested", label: "Ingested" },
+        ],
+        valueOf: (inc) => sourceMeta(inc).key,
+      },
+    },
+    {
+      id: "status",
+      label: "Status",
+      accessor: (inc) => inc.status,
+      cell: (inc) => (
+        <Badge variant={inc.status as Parameters<typeof Badge>[0]["variant"]}>
+          {inc.status.replace("_", " ")}
+        </Badge>
+      ),
+      sortable: true,
+      filterChips: {
+        options: [
+          { value: "open", label: "Open (Triggered)" },
+          { value: "in_progress", label: "In progress (Acknowledged)" },
+          { value: "resolved", label: "Resolved" },
+          { value: "closed", label: "Closed" },
+        ],
+        valueOf: (inc) => inc.status,
+      },
+    },
+    {
+      id: "severity",
+      label: "Severity",
+      accessor: (inc) => inc.severity ?? "",
+      cell: (inc) =>
+        inc.severity ? (
+          <Badge variant={inc.severity}>{inc.severity}</Badge>
+        ) : (
+          <span className="text-fg-muted">—</span>
+        ),
+      sortable: true,
+      filterChips: {
+        options: [
+          { value: "critical", label: "Critical" },
+          { value: "high", label: "High" },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" },
+        ],
+        valueOf: (inc) => inc.severity,
+      },
+    },
+    {
+      id: "updated_at",
+      label: "Last activity",
+      accessor: (inc) => inc.updated_at,
+      cell: (inc) => (
+        <div className="whitespace-nowrap">
+          <p className="text-sm text-fg-primary">{fmtRelative(inc.updated_at)}</p>
+          <p className="mt-0.5 text-[11px] text-fg-muted">{fmtDate(inc.updated_at)}</p>
+        </div>
+      ),
+      sortable: true,
+    },
+  ];
+}
 
 export default function IncidentsPage() {
   const [data, setData] = useState<IncidentListResponse | null>(null);
+  const [services, setServices] = useState<ServiceResponse[]>([]);
+  const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showTest, setShowTest] = useState(false);
@@ -234,8 +264,14 @@ export default function IncidentsPage() {
     setLoading(true);
     try {
       // Fetch a generous page; DataTable handles the rest client-side.
-      const res = await listIncidents({ limit: 200 });
-      setData(res);
+      const [inc, svc, tms] = await Promise.all([
+        listIncidents({ limit: 200 }),
+        listServices().catch(() => ({ items: [], total: 0 })),
+        listTeams().catch(() => ({ items: [], total: 0 })),
+      ]);
+      setData(inc);
+      setServices(svc.items);
+      setTeams(tms.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load incidents");
     } finally {
@@ -246,6 +282,30 @@ export default function IncidentsPage() {
   useEffect(() => { load(); }, [load]);
 
   const items = data?.items ?? [];
+
+  const serviceTeamName = useMemo(() => {
+    const teamById = new Map(teams.map((t) => [t.id, t.name]));
+    const m = new Map<string, string>();
+    for (const svc of services) {
+      const name = teamById.get(svc.team_id);
+      if (name) m.set(svc.id, name);
+    }
+    return m;
+  }, [services, teams]);
+
+  const teamNamesInData = useMemo(() => {
+    const names = new Set<string>();
+    for (const inc of items) {
+      const name = inc.service_id && serviceTeamName.get(inc.service_id);
+      if (name) names.add(name);
+    }
+    return Array.from(names).sort();
+  }, [items, serviceTeamName]);
+
+  const columns = useMemo(
+    () => buildIncidentColumns(serviceTeamName, teamNamesInData),
+    [serviceTeamName, teamNamesInData],
+  );
 
   const runBulk = useCallback(
     async (
@@ -361,10 +421,10 @@ export default function IncidentsPage() {
       ) : (
         <DataTable
           rows={items}
-          columns={INCIDENT_COLUMNS}
+          columns={columns}
           rowKey={(inc) => inc.id}
           storageKey="opsmender:incidents-table"
-          searchPlaceholder="Search title or description…"
+          searchPlaceholder="Search by title, description, team, or source…"
           selectable
           selectedKeys={selectedIds}
           onSelectionChange={setSelectedIds}

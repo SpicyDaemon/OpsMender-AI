@@ -326,45 +326,97 @@ function TeamsPanel({
     }
   };
 
+  const teamColumns = useMemo<DataTableColumn<TeamResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Team",
+        accessor: (t) => t.name,
+        cell: (t) => (
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-fg-secondary" />
+            <span className="font-medium text-fg-primary">{t.name}</span>
+          </div>
+        ),
+        sortable: true,
+        searchable: true,
+      },
+      {
+        id: "slug",
+        label: "Slug",
+        accessor: (t) => t.slug,
+        cell: (t) => <Badge variant="default">{t.slug}</Badge>,
+        sortable: true,
+        searchable: true,
+      },
+      {
+        id: "description",
+        label: "Description",
+        accessor: (t) => t.description ?? "",
+        cell: (t) =>
+          t.description ? (
+            <span className="line-clamp-2 text-sm text-fg-secondary">
+              {t.description}
+            </span>
+          ) : (
+            <span className="text-fg-muted">—</span>
+          ),
+        searchable: true,
+      },
+      {
+        id: "created_at",
+        label: "Created",
+        accessor: (t) => t.created_at,
+        cell: (t) => (
+          <span className="whitespace-nowrap text-sm text-fg-secondary">
+            {new Date(t.created_at).toLocaleDateString()}
+          </span>
+        ),
+        sortable: true,
+      },
+    ],
+    [],
+  );
+
   return (
     <section className="space-y-3">
-      <div className="flex justify-end">
-        <Button onClick={() => setOpen(true)}>
-          <PlusCircle className="h-4 w-4" /> New team
-        </Button>
-      </div>
       {teams.length === 0 ? (
-        <EmptyState
-          title="No teams yet"
-          description="Create your first team to start grouping services and rosters."
-          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
-          learnMoreLabel="Paging guide"
-        />
+        <>
+          <div className="flex justify-end">
+            <Button onClick={() => setOpen(true)}>
+              <PlusCircle className="h-4 w-4" /> New team
+            </Button>
+          </div>
+          <EmptyState
+            title="No teams yet"
+            description="Create your first team to start grouping services and rosters."
+            learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+            learnMoreLabel="Paging guide"
+          />
+        </>
       ) : (
-        <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
-          {teams.map((t) => (
-            <li
-              key={t.id}
-              className="flex items-center justify-between px-4 py-3"
-            >
-              <div>
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-fg-secondary" />
-                  <span className="font-medium text-fg-primary">{t.name}</span>
-                  <Badge variant="default">{t.slug}</Badge>
-                </div>
-                {t.description && (
-                  <div className="text-xs text-fg-secondary">
-                    {t.description}
-                  </div>
-                )}
-              </div>
-              <Button variant="ghost" onClick={() => remove(t.id)} title="Delete">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          rows={teams}
+          columns={teamColumns}
+          rowKey={(t) => t.id}
+          storageKey="opsmender:teams-table"
+          searchPlaceholder="Search by name, slug, or description…"
+          dateRangeColumn={{
+            id: "created_at",
+            label: "Created",
+            valueOf: (t) => t.created_at,
+          }}
+          toolbarRight={
+            <Button onClick={() => setOpen(true)}>
+              <PlusCircle className="h-4 w-4" /> New team
+            </Button>
+          }
+          rowActions={(t) => (
+            <Button variant="ghost" onClick={() => remove(t.id)} title="Delete">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        />
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="New team">
@@ -1132,49 +1184,120 @@ function RulesPanel({
     }
   };
 
+  const ruleColumns = useMemo<DataTableColumn<PriorityRuleResponse>[]>(
+    () => [
+      {
+        id: "rule_index",
+        label: "#",
+        accessor: (r) => r.rule_index,
+        cell: (r) => (
+          <span className="font-mono text-xs text-fg-tertiary">{r.rule_index}</span>
+        ),
+        sortable: true,
+      },
+      {
+        id: "name",
+        label: "Rule",
+        accessor: (r) => r.name,
+        cell: (r) => (
+          <div className="flex items-center gap-2">
+            <ListOrdered className="h-4 w-4 text-fg-secondary" />
+            <span className="font-medium text-fg-primary">{r.name}</span>
+          </div>
+        ),
+        sortable: true,
+        searchable: true,
+      },
+      {
+        id: "priority",
+        label: "Priority",
+        accessor: (r) => r.priority,
+        cell: (r) => (
+          <Badge variant={PRIORITY_VARIANT[r.priority] as never}>
+            {r.priority}
+          </Badge>
+        ),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "P0", label: "P0" },
+            { value: "P1", label: "P1" },
+            { value: "P2", label: "P2" },
+            { value: "P3", label: "P3" },
+          ],
+          valueOf: (r) => r.priority,
+        },
+      },
+      {
+        id: "response_mode",
+        label: "Response",
+        accessor: (r) => r.response_mode ?? "",
+        cell: (r) =>
+          r.response_mode ? (
+            <Badge variant="default">{r.response_mode}</Badge>
+          ) : (
+            <span className="text-fg-muted">default</span>
+          ),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "auto_resolve", label: "auto_resolve" },
+            { value: "notify", label: "notify" },
+            { value: "page", label: "page" },
+            { value: "escalate_immediate", label: "escalate_immediate" },
+          ],
+          valueOf: (r) => r.response_mode,
+        },
+      },
+      {
+        id: "condition",
+        label: "Match condition",
+        accessor: (r) => JSON.stringify(r.condition ?? {}),
+        cell: (r) => (
+          <pre className="max-w-md overflow-x-auto rounded bg-bg-elevated p-2 text-xs text-fg-secondary">
+            {JSON.stringify(r.condition, null, 0)}
+          </pre>
+        ),
+        searchable: true,
+      },
+    ],
+    [],
+  );
+
   return (
     <section className="space-y-3">
-      <div className="flex justify-end">
-        <Button onClick={() => setOpen(true)}>
-          <PlusCircle className="h-4 w-4" /> New rule
-        </Button>
-      </div>
       {rules.length === 0 ? (
-        <EmptyState
-          title="No priority rules"
-          description="Without rules every incident lands at P3. Add a rule to surface real urgencies."
-          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
-          learnMoreLabel="Paging guide"
-        />
+        <>
+          <div className="flex justify-end">
+            <Button onClick={() => setOpen(true)}>
+              <PlusCircle className="h-4 w-4" /> New rule
+            </Button>
+          </div>
+          <EmptyState
+            title="No priority rules"
+            description="Without rules every incident lands at P3. Add a rule to surface real urgencies."
+            learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+            learnMoreLabel="Paging guide"
+          />
+        </>
       ) : (
-        <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
-          {rules.map((r) => (
-            <li
-              key={r.id}
-              className="flex items-center justify-between px-4 py-3"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <ListOrdered className="h-4 w-4 text-fg-secondary" />
-                  <span className="font-medium text-fg-primary">{r.name}</span>
-                  <Badge variant={PRIORITY_VARIANT[r.priority] as never}>
-                    {r.priority}
-                  </Badge>
-                  {r.response_mode && (
-                    <Badge variant="default">{r.response_mode}</Badge>
-                  )}
-                  <span className="text-xs text-fg-tertiary">#{r.rule_index}</span>
-                </div>
-                <pre className="overflow-x-auto rounded bg-bg-elevated p-2 text-xs text-fg-secondary">
-                  {JSON.stringify(r.condition, null, 0)}
-                </pre>
-              </div>
-              <Button variant="ghost" onClick={() => remove(r.id)} title="Delete">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          rows={rules}
+          columns={ruleColumns}
+          rowKey={(r) => r.id}
+          storageKey="opsmender:priority-rules-table"
+          searchPlaceholder="Search by name or condition JSON…"
+          toolbarRight={
+            <Button onClick={() => setOpen(true)}>
+              <PlusCircle className="h-4 w-4" /> New rule
+            </Button>
+          }
+          rowActions={(r) => (
+            <Button variant="ghost" onClick={() => remove(r.id)} title="Delete">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        />
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="New priority rule">

@@ -87,7 +87,7 @@ OpsMender's core job is to take alerts your existing monitoring already fires an
 
 ### Paging — *deciding who gets pinged (stage 3 of the loop)*
 
-OpsMender owns paging end-to-end — you don't bolt LegacyAlertVendor on top. Configure **services**, **teams**, **rosters** (with deterministic on-call rotation in IANA time zones), **escalation chains** (additive — once paged, stay paged, with a hard 15-minute inactivity timeout), and **priority rules** (first-match-wins on the alert payload) under `/dashboard/paging`. Operators set per-user **notification preferences** (which channels, priority routing matrix, quiet hours) under `/dashboard/paging` → My Notifications. **Maintenance windows** suppress paging in a time range (scoped global / service / roster / team). The chain engine and notification dispatcher run as background loops with restart-safe watermarks.
+OpsMender owns paging end-to-end — you don't bolt LegacyAlertVendor on top. Configure **services**, **teams**, **rosters** (with deterministic on-call rotation in IANA time zones), **escalation chains** (additive — once paged, stay paged, with a hard 15-minute inactivity timeout), and **priority rules** (first-match-wins on the alert payload) under the **Paging & On-call** sidebar group (`/dashboard/paging/*`). Operators set per-user **notification preferences** (which channels, priority routing matrix, quiet hours) under `/dashboard/paging/my-notifications`. **Maintenance windows** suppress paging in a time range (scoped global / service / roster / team). The chain engine and notification dispatcher run as background loops with restart-safe watermarks.
 
 > **Wire this once per service.** Walkthrough lives in [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md).
 
@@ -128,20 +128,20 @@ Guarantees that hold by design:
 
 ### Where each concept lives in the dashboard
 
-The Config page groups settings by how often you'll touch them:
+The sidebar groups settings by what they configure:
 
-| Group | Frequency | What's in it |
-|-------|-----------|--------------|
-| **Day-1 setup** (must do once) | Always | Models, MCP servers, Skills |
-| **Inbound** (alerts → OpsMender) | Most operators | Ingest tokens |
-| **Outbound** (OpsMender → people/systems) | Most operators | Webhook triggers, Bot connectors |
-| **Advanced** (defaults work for 95%) | Rarely | Workflows, Agent teams |
+| Sidebar group | Frequency | What's in it |
+|---|---|---|
+| **AI Agent** (Day-1 setup) | Always | Skills, Memories, MCP Servers, Models, Workflows, Agent Teams |
+| **Integrations** (Day-1 setup) | Most operators | Bot Connectors, Webhook Triggers, Ingest Tokens |
+| **Paging & On-call** | Most operators | Teams, Services, Rosters, Priority Rules, Escalation Chains, Maintenance Windows, My Notifications |
+| **Admin → Config** | Rarely | Runtime defaults (tier, log level), Storage & Retention |
 
-If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (Day-1), then wire your monitoring to Ingest, then configure one paging service + roster + chain (`/dashboard/paging` — see the [Paging Guide](docs/wiki/paging-guide.md)) so on-call operators actually get pinged. Workflows and Agent teams can wait until you have a concrete reason to touch them.
+If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/skills`), then wire your monitoring to Ingest (`/dashboard/ingest-tokens`), then configure one paging service + roster + chain under the **Paging & On-call** sidebar group — see the [Paging Guide](docs/wiki/paging-guide.md) — so on-call operators actually get pinged. Workflows and Agent teams can wait until you have a concrete reason to touch them.
 
 > **Scheduled environment checks:** The legacy Detector surface has been retired. Use **Environment Scans** (`/dashboard/scans`) for on-demand sweeps, `POST /audits/schedules` for recurring read-only scans, and `opsmender detectors-migrate --apply` before running the detector-drop migration if an older deployment still has `detector_rules` rows.
 
-Sprint 43 also adds contextual empty states across the dashboard and live Config-page health dots: when a page is blank, OpsMender links straight to the relevant wiki guide instead of leaving the operator at a dead end, and `/dashboard/config` now shows inline green/amber/red status dots for model-provider availability and MCP runtime health.
+Sprint 43 also adds contextual empty states across the dashboard and live health dots: when a page is blank, OpsMender links straight to the relevant wiki guide instead of leaving the operator at a dead end, and `/dashboard/models` + `/dashboard/mcp-servers` show inline green/amber/red status dots for provider availability and MCP runtime health.
 
 The incidents page also includes a one-click **Fire Test Incident** flow for operator drills: it creates a synthetic high-severity incident, optionally binds it to a service, auto-starts a session, and marks the resulting session as `TEST · synthetic alert` so it never blends in with a real outage.
 
@@ -764,7 +764,7 @@ OPSMENDER_INGEST_RATE_LIMIT=60     # max requests per window per token (0 = disa
 OPSMENDER_INGEST_RATE_WINDOW=60    # window size in seconds
 ```
 
-**Optional ingest auto-start** (env defaults, also editable in `/dashboard/config`):
+**Optional ingest auto-start** (env defaults, also editable in `/dashboard/ingest-tokens`):
 ```dotenv
 OPSMENDER_INGEST_AUTO_START_ENABLED=false
 OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=critical
@@ -859,7 +859,7 @@ OpsMender also supports outbound collaboration notifications for session lifecyc
 - **Inbound**: external tools create incidents in OpsMender through `POST /incidents/ingest`
 - **Outbound**: OpsMender notifies downstream systems when a session is created, awaits approval, becomes active, completes, fails, or times out
 
-Outbound notifications are managed through saved **webhook triggers** in `/dashboard/config` or via the `/webhook-triggers` API. Each trigger subscribes to one or more session events and uses one of three payload formats:
+Outbound notifications are managed through saved **webhook triggers** at `/dashboard/webhooks` or via the `/webhook-triggers` API. Each trigger subscribes to one or more session events and uses one of three payload formats:
 
 | Format | Purpose | Payload |
 |--------|---------|---------|
@@ -911,7 +911,7 @@ Safety constraints stay enforced:
 - `execute` requires `tier_gate` immediately before it
 - custom workflows cannot introduce arbitrary user-defined code or bypass tier enforcement
 
-Workflow profiles are managed from `/dashboard/config` and via the `/workflow-profiles` API.
+Workflow profiles are managed from `/dashboard/workflows` and via the `/workflow-profiles` API.
 
 ## Multi-Agent Teams
 
@@ -934,7 +934,7 @@ Sessions can use:
 - the default saved agent team profile
 - an explicitly selected agent team profile at session start
 
-Agent team profiles are managed from `/dashboard/config` and via the
+Agent team profiles are managed from `/dashboard/agent-teams` and via the
 `/agent-team-profiles` API.
 
 ## Project Structure

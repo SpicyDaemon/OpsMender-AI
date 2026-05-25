@@ -23,7 +23,7 @@ Sprint 38 reworked three surfaces. Everything else degrades gracefully but isn't
 |---------|-----------------|
 | `/dashboard/incidents/detail` | Smaller heading on phones (`text-xl` vs. `text-3xl`). Header padding tightens (`px-4 py-4` vs. `px-6 py-6`). The "Quick View" sidebar drops its 240-px min-width and stacks below the title on screens < lg. The "New Session" button shortens its label to "New" to save bar space. |
 | Pending-approval card on `/dashboard/sessions/detail` | Approve / Reject buttons move from a right-hand column to a 2-column grid below the JSON action context on phones, so each button gets ~50% of the screen width and is comfortable to thumb-tap. |
-| Escalation chain step editor on `/dashboard/paging` | The fixed `120px / 1fr / 120px / auto` 4-column grid collapses to a single column on phones — every field gets the full width. |
+| Escalation chain step editor on `/dashboard/paging/escalation-chains` | The fixed `120px / 1fr / 120px / auto` 4-column grid collapses to a single column on phones — every field gets the full width. |
 
 ---
 
@@ -55,7 +55,7 @@ If any of these fail, file an issue with a screenshot — most of the remaining 
 
 These surfaces still target tablet+ and may show overflow on phones:
 
-- `/dashboard/config` (operator setup, not a runtime path).
+- `/dashboard/config` and the AI Agent / Integrations setup pages (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/workflows`, `/dashboard/agent-teams`, `/dashboard/bot-connectors`, `/dashboard/webhooks`, `/dashboard/ingest-tokens`) — operator setup, not a runtime path.
 - `/dashboard/organizations` (super-admin only).
 - `/dashboard/skills`, `/dashboard/scans` (authoring surfaces).
 - The full session-detail split view (event stream + co-pilot chat) is usable but cramped on phones. Use the incident-detail page's "Open in sidecar" surface on tablet+ for the rich view.

@@ -5,13 +5,13 @@ When an incident reaches OpsMender's paging engine, it has to know **how** to re
 - **My Notifications** — your personal channels, per-priority routing, and quiet hours. Each user owns this.
 - **Maintenance Windows** — planned downtime that suppresses paging org-wide or per service / roster / team. Admins own this.
 
-Both live under `/dashboard/paging`.
+Both live under the **Paging & On-call** sidebar group — My Notifications at `/dashboard/paging/my-notifications`, Maintenance Windows at `/dashboard/paging/maintenance-windows`.
 
 ---
 
 ## 1. Channels
 
-Open `Paging → My Notifications`. Pick which channels OpsMender can reach you on:
+Open `/dashboard/paging/my-notifications`. Pick which channels OpsMender can reach you on:
 
 | Channel | Destination field | Notes |
 |---------|-------------------|-------|

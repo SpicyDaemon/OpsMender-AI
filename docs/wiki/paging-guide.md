@@ -134,20 +134,20 @@ Force-takeover by an admin (`POST /incidents/{id}/take {force: true}`) swaps the
 
 Concrete order to wire your first paging service:
 
-1. **Pick a team and create it** under `/dashboard/paging` → Teams tab. A team is the org-chart slice that owns one or more services.
-2. **Create the service** under the Services tab. Bind it to the team you just created. A service is the "thing being monitored" — `checkout-api`, `payment-gateway`, `aws-rds-prod`. One service per alert source is the usual pattern.
-3. **Build the roster** under the Rosters tab. Add members in shift order. Pick a pattern (`weekly` is the default), an anchor date (when the first member's first shift starts), and a handoff time (e.g. `09:00` local). Bind the roster to the service.
-4. **Build the escalation chain** under the Escalation Chains tab. Add step 0 with a target of `roster` and your roster id, timeout 300 seconds. Add step 1 with a higher-up target (the team lead, or a backup roster). Bind the chain to the service via the Services tab's "Escalation chain" picker.
-5. **Add a priority rule** under the Priority Rules tab. The simplest rule is `{ "severity": "critical" }` → P1 → `page`. First-match-wins, so order rules from most-specific to most-generic.
-6. **Each operator sets their notification preferences** under `/dashboard/paging` → My Notifications. Enable the channel they want paged on, paste the destination (Slack user id, Teams chat id, email, phone), and configure the priority-routing matrix and quiet hours.
-7. **Wire the alert source.** Create an ingest token bound to the service (Config → Ingest), copy the raw token, and point your alerting system (Prometheus Alertmanager, Datadog, CloudWatch, etc.) at `https://<your-opsmender>/incidents/ingest` with the token in the `X-OpsMender-Token` header.
+1. **Pick a team and create it** under `/dashboard/paging/teams`. A team is the org-chart slice that owns one or more services.
+2. **Create the service** under `/dashboard/paging/services`. Bind it to the team you just created. A service is the "thing being monitored" — `checkout-api`, `payment-gateway`, `aws-rds-prod`. One service per alert source is the usual pattern.
+3. **Build the roster** under `/dashboard/paging/rosters`. Add members in shift order. Pick a pattern (`weekly` is the default), an anchor date (when the first member's first shift starts), and a handoff time (e.g. `09:00` local). Bind the roster to the service.
+4. **Build the escalation chain** under `/dashboard/paging/escalation-chains`. Add step 0 with a target of `roster` and your roster id, timeout 300 seconds. Add step 1 with a higher-up target (the team lead, or a backup roster). Bind the chain to the service via the Services page's "Escalation chain" picker.
+5. **Add a priority rule** under `/dashboard/paging/priority-rules`. The simplest rule is `{ "severity": "critical" }` → P1 → `page`. First-match-wins, so order rules from most-specific to most-generic.
+6. **Each operator sets their notification preferences** under `/dashboard/paging/my-notifications`. Enable the channel they want paged on, paste the destination (Slack user id, Teams chat id, email, phone), and configure the priority-routing matrix and quiet hours.
+7. **Wire the alert source.** Create an ingest token bound to the service at `/dashboard/ingest-tokens`, copy the raw token, and point your alerting system (Prometheus Alertmanager, Datadog, CloudWatch, etc.) at `https://<your-opsmender>/incidents/ingest` with the token in the `X-OpsMender-Token` header.
 8. **Verify.** POST a synthetic alert with `severity: critical`. The priority rule should fire, the chain should kick off, and the on-call operator should see a Slack/Teams DM (or Email/SMS) within seconds. The end-to-end test `tests/test_e2e_paging_flow.py::TestIncidentResponseLoop` walks the same flow programmatically — useful as a reference for what to assert against.
 
 ### One-off maintenance window
 
 When a planned change is about to happen and you want to silence pages for a service:
 
-1. Go to `/dashboard/paging` → Maintenance Windows tab.
+1. Go to `/dashboard/paging/maintenance-windows`.
 2. Click "New maintenance window". Pick scope `service`, the service id, start/end timestamps, and an optional description.
 3. Any incident that lands inside the window for that service is suppressed automatically. The incident detail page shows a "Paging suppressed by maintenance window" banner so the audit trail is intact.
 
@@ -157,12 +157,12 @@ When a planned change is about to happen and you want to silence pages for a ser
 
 | Concept | UI tab | API surface | Wiki page |
 |---|---|---|---|
-| Services / Teams / Rosters / Priority Rules | `/dashboard/paging` (Sprint 33) | `/teams`, `/services`, `/rosters`, `/priority-rules` | [paging-model.md](../paging-model.md) |
-| Escalation Chains | `/dashboard/paging` (Sprint 34) | `/escalation-chains`, `/services/{id}/escalation-chains` | [paging-model.md](../paging-model.md) |
-| Maintenance Windows + Notification Preferences | `/dashboard/paging` (Sprint 35) | `/maintenance-windows`, `/users/me/notification-preferences`, `/organizations/{id}/notification-settings` | [Notification Preferences](notification-preferences.md) |
+| Teams / Services / Rosters / Priority Rules | `/dashboard/paging/{teams,services,rosters,priority-rules}` | `/teams`, `/services`, `/rosters`, `/priority-rules` | [paging-model.md](../paging-model.md) |
+| Escalation Chains | `/dashboard/paging/escalation-chains` | `/escalation-chains`, `/services/{id}/escalation-chains` | [paging-model.md](../paging-model.md) |
+| Maintenance Windows + Notification Preferences | `/dashboard/paging/{maintenance-windows,my-notifications}` | `/maintenance-windows`, `/users/me/notification-preferences`, `/organizations/{id}/notification-settings` | [Notification Preferences](notification-preferences.md) |
 | Slack page card + slash commands + channel mirror | (chat) | `/bot/slack/interactions`, `/bot/slack/commands` | [Slack as your paging surface](slack-paging-surface.md) |
 | Teams adaptive card + bot activity | (chat) | `/bot/teams/activity` | [Teams as your paging surface](teams-paging-surface.md) |
-| Mobile-friendly response | `/dashboard/incidents/detail`, `/dashboard/sessions/detail`, `/dashboard/paging` | n/a | [Responding from your phone](mobile-incident-response.md) |
+| Mobile-friendly response | `/dashboard/incidents/detail`, `/dashboard/sessions/detail`, `/dashboard/paging/*` | n/a | [Responding from your phone](mobile-incident-response.md) |
 | Incident ack / take / release / chain panel | `/dashboard/incidents/detail` | `/incidents/{id}/ack`, `/take`, `/release`, `/chain`, `/paging` | this page |
 
 ---

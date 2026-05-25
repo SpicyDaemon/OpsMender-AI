@@ -17,13 +17,13 @@ const ROWS: Row[] = [
   {
     key: "model_configured",
     label: "Configure an AI model",
-    href: "/dashboard/config?section=models",
+    href: "/dashboard/models",
     hint: "OpsMender needs at least one LLM provider key to drive sessions.",
   },
   {
     key: "mcp_server_added",
     label: "Add an MCP server",
-    href: "/dashboard/config?section=mcp-servers",
+    href: "/dashboard/mcp-servers",
     hint: "MCP servers are how OpsMender reaches your infrastructure.",
   },
   {
@@ -35,7 +35,7 @@ const ROWS: Row[] = [
   {
     key: "ingest_token_created",
     label: "Create an ingest token",
-    href: "/dashboard/config?section=ingest",
+    href: "/dashboard/ingest-tokens",
     hint: "Tokens let Alertmanager / your monitoring tool kick off an incident.",
   },
   {

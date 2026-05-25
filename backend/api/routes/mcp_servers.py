@@ -71,7 +71,7 @@ def _oauth_redirect_uri(request: Request) -> str:
 
 
 def _redirect_with(request: Request, params: dict[str, str]) -> RedirectResponse:
-    target = f"{_public_base_url(request)}/dashboard/config?{urlencode(params)}"
+    target = f"{_public_base_url(request)}/dashboard/mcp-servers?{urlencode(params)}"
     return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
 
 

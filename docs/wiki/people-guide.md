@@ -71,6 +71,7 @@ Invite behavior:
 - Invites expire after **7 days**.
 - Revoked, expired, and already-used tokens are all rejected on consume.
 - The invite list shows the derived state so admins can tell pending vs accepted vs expired vs revoked at a glance.
+- If the recipient loses the original URL, use the **resend** action on the pending invite row. OpsMender revokes the old link and mints a fresh one in one step.
 
 ### SMTP vs manual delivery
 
@@ -228,7 +229,7 @@ That keeps day-to-day identity in your IdP while preserving an OpsMender-native 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Invite created, but recipient never got an email | SMTP not configured or SMTP delivery failed | Copy the one-time URL from the modal and send it manually. Then verify `OPSMENDER_SMTP_*`. |
-| Invite link opens but cannot be consumed | Token expired, was revoked, or was already used | Revoke the old invite and create a fresh one. |
+| Invite link opens but cannot be consumed | Token expired, was revoked, or was already used | Use the resend action for a still-pending invite, or create a new invite if the old one is no longer pending. |
 | Password reset email failed | Same SMTP path as invites | Use the returned reset URL directly and then fix SMTP. |
 | Delete button stays disabled | User is still active or still appears on one or more rosters | Deactivate the user first, then remove them from all roster memberships. |
 | User should be SSO-backed, but shows Local | They were created locally and have not yet come through a successful OIDC/SAML login | Have them sign in through the IdP once; OpsMender updates the recorded auth source on success. |

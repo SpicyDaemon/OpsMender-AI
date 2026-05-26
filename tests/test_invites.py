@@ -196,6 +196,69 @@ async def test_revoke_invite_unknown_returns_404(env):
     assert resp.status_code == 404
 
 
+async def test_resend_invite_reissues_pending_invite(env):
+    client = env["client"]
+    headers, org_id = await _admin_setup(env)
+    created = await client.post(
+        f"/organizations/{org_id}/invites",
+        json={"email": "a@b.com", "role": "viewer"},
+        headers=headers,
+    )
+    invite_id = created.json()["invite"]["id"]
+    old_url = created.json()["url"]
+    old_raw = old_url.rsplit("/", 1)[-1]
+
+    resent = await client.post(
+        f"/organizations/{org_id}/invites/{invite_id}/resend", headers=headers
+    )
+    assert resent.status_code == 200, resent.text
+    body = resent.json()
+    assert body["invite"]["email"] == "a@b.com"
+    assert body["invite"]["role"] == "viewer"
+    assert body["invite"]["status"] == "pending"
+    assert body["invite"]["id"] != invite_id
+    assert body["url"].startswith("http://test/invite/")
+    assert body["url"] != old_url
+
+    listing = await client.get(
+        f"/organizations/{org_id}/invites", headers=headers
+    )
+    items = listing.json()["items"]
+    states = {item["id"]: item["status"] for item in items}
+    assert states[invite_id] == "revoked"
+    assert states[body["invite"]["id"]] == "pending"
+
+    old_validate = await client.get(f"/invites/{old_raw}")
+    assert old_validate.status_code == 400
+
+    new_raw = body["url"].rsplit("/", 1)[-1]
+    new_validate = await client.get(f"/invites/{new_raw}")
+    assert new_validate.status_code == 200
+
+
+async def test_resend_invite_rejects_non_pending(env):
+    client = env["client"]
+    headers, org_id = await _admin_setup(env)
+    created = await client.post(
+        f"/organizations/{org_id}/invites",
+        json={"email": "accepted@example.com", "role": "viewer"},
+        headers=headers,
+    )
+    raw = created.json()["url"].rsplit("/", 1)[-1]
+    invite_id = created.json()["invite"]["id"]
+
+    accepted = await client.post(
+        f"/invites/{raw}/accept",
+        json={"username": "accepteduser", "password": "accept-pass-123"},
+    )
+    assert accepted.status_code == 200
+
+    resent = await client.post(
+        f"/organizations/{org_id}/invites/{invite_id}/resend", headers=headers
+    )
+    assert resent.status_code == 409
+
+
 # ---------------------------------------------------------------------------
 # Public: validate + accept
 # ---------------------------------------------------------------------------

@@ -2,12 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Copy, Mail, PlusCircle, Trash2, UserPlus, Users } from "lucide-react";
+import {
+  Copy,
+  Mail,
+  PlusCircle,
+  RotateCcw,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-react";
 
 import {
   createInvite,
   listInvites,
   listUsers,
+  resendInvite,
   revokeInvite,
 } from "@/lib/api";
 import type {
@@ -30,6 +39,7 @@ import { useToast } from "@/components/ui/Toast";
 
 
 type Tab = "users" | "invites";
+type MintedInviteMode = "created" | "resent";
 
 
 const ROLE_VARIANT: Record<UserResponse["role"], string> = {
@@ -124,8 +134,10 @@ function PeopleSurface() {
   const [usersLoading, setUsersLoading] = useState(true);
   const [invitesLoading, setInvitesLoading] = useState(true);
   const [newInviteOpen, setNewInviteOpen] = useState(false);
-  const [mintedInvite, setMintedInvite] =
-    useState<InviteCreatedResponse | null>(null);
+  const [mintedInvite, setMintedInvite] = useState<{
+    mode: MintedInviteMode;
+    payload: InviteCreatedResponse;
+  } | null>(null);
 
   const reloadUsers = useCallback(async () => {
     setUsersLoading(true);
@@ -164,8 +176,8 @@ function PeopleSurface() {
   }, [reloadInvites]);
 
   const onInviteCreated = useCallback(
-    (resp: InviteCreatedResponse) => {
-      setMintedInvite(resp);
+    (resp: InviteCreatedResponse, mode: MintedInviteMode = "created") => {
+      setMintedInvite({ mode, payload: resp });
       setNewInviteOpen(false);
       void reloadInvites();
     },
@@ -185,6 +197,27 @@ function PeopleSurface() {
       }
     },
     [orgId, reloadInvites, toast],
+  );
+
+  const onResend = useCallback(
+    async (invite: InviteResponse) => {
+      if (!orgId) return;
+      if (!confirm(`Resend invite for ${invite.email}? The old link will stop working.`)) {
+        return;
+      }
+      try {
+        const resp = await resendInvite(orgId, invite.id);
+        toast.success(
+          resp.email_sent
+            ? "Invite resent — new link also available below"
+            : "Invite reissued — copy the new link below",
+        );
+        onInviteCreated(resp, "resent");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [onInviteCreated, orgId, toast],
   );
 
   return (
@@ -244,6 +277,7 @@ function PeopleSurface() {
           loading={invitesLoading}
           onNew={() => setNewInviteOpen(true)}
           onRevoke={onRevoke}
+          onResend={onResend}
         />
       )}
 
@@ -415,11 +449,13 @@ function InvitesTab({
   loading,
   onNew,
   onRevoke,
+  onResend,
 }: {
   invites: InviteResponse[];
   loading: boolean;
   onNew: () => void;
   onRevoke: (invite: InviteResponse) => void;
+  onResend: (invite: InviteResponse) => void;
 }) {
   const columns = useMemo<DataTableColumn<InviteResponse>[]>(
     () => [
@@ -535,14 +571,24 @@ function InvitesTab({
       }
       rowActions={(invite) =>
         invite.status === "pending" ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onRevoke(invite)}
-            title="Revoke"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onResend(invite)}
+              title="Resend"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onRevoke(invite)}
+              title="Revoke"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         ) : null
       }
     />
@@ -564,7 +610,7 @@ function NewInviteModal({
   open: boolean;
   onClose: () => void;
   orgId: string | null;
-  onCreated: (resp: InviteCreatedResponse) => void;
+  onCreated: (resp: InviteCreatedResponse, mode?: MintedInviteMode) => void;
 }) {
   const toast = useToast();
   const [form, setForm] = useState<InviteCreateRequest>({
@@ -661,33 +707,44 @@ function MintedInviteModal({
   invite,
   onClose,
 }: {
-  invite: InviteCreatedResponse | null;
+  invite:
+    | {
+        mode: MintedInviteMode;
+        payload: InviteCreatedResponse;
+      }
+    | null;
   onClose: () => void;
 }) {
   const toast = useToast();
   const open = invite !== null;
+  const payload = invite?.payload ?? null;
+  const mode = invite?.mode ?? "created";
 
   const copy = useCallback(async () => {
-    if (!invite) return;
+    if (!payload) return;
     try {
-      await navigator.clipboard.writeText(invite.url);
+      await navigator.clipboard.writeText(payload.url);
       toast.success("Invite link copied");
     } catch {
       toast.error("Copy failed — select and copy manually.");
     }
-  }, [invite, toast]);
+  }, [payload, toast]);
 
-  if (!invite) return null;
+  if (!payload) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title="Invite created">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={mode === "resent" ? "Invite resent" : "Invite created"}
+    >
       <div className="space-y-4">
         <p className="text-sm text-fg-secondary">
-          Share this link with{" "}
+          {mode === "resent" ? "Share the new link with " : "Share this link with "}
           <span className="font-medium text-fg-primary">
-            {invite.invite.email}
+            {payload.invite.email}
           </span>{" "}
-          — it expires {fmtDate(invite.invite.expires_at)}.
+          — it expires {fmtDate(payload.invite.expires_at)}.
         </p>
 
         <div className="space-y-2 rounded-md border border-border-default bg-bg-elevated p-3">
@@ -696,7 +753,7 @@ function MintedInviteModal({
           </Label>
           <div className="flex items-center gap-2">
             <code className="flex-1 truncate font-mono text-xs text-fg-primary">
-              {invite.url}
+              {payload.url}
             </code>
             <Button variant="ghost" size="sm" onClick={copy}>
               <Copy className="h-4 w-4" /> Copy
@@ -704,13 +761,13 @@ function MintedInviteModal({
           </div>
         </div>
 
-        {invite.email_sent ? (
+        {payload.email_sent ? (
           <p className="text-sm text-status-low">
-            ✓ An invite email was also sent to {invite.invite.email}.
+            ✓ An invite email was also sent to {payload.invite.email}.
           </p>
-        ) : invite.email_error ? (
+        ) : payload.email_error ? (
           <p className="text-sm text-status-high">
-            Email delivery failed: {invite.email_error}. The copy-paste link above still works.
+            Email delivery failed: {payload.email_error}. The copy-paste link above still works.
           </p>
         ) : (
           <p className="text-sm text-fg-muted">

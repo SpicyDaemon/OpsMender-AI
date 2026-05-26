@@ -105,6 +105,37 @@ def _to_response(invite: OrgInvite) -> InviteResponse:
     )
 
 
+def _build_invite_url(request: Request, raw_token: str) -> str:
+    base = _resolve_public_base_url(request)
+    return f"{base}/invite/{raw_token}"
+
+
+def _invite_email_body(*, org_name: str, role: str, url: str) -> str:
+    return (
+        f"Hi,\n\n"
+        f"You've been invited to join {org_name} on OpsMender as a "
+        f"{role}. Click the link below within 7 days to accept "
+        f"the invite and set up your account:\n\n"
+        f"{url}\n\n"
+        f"If you didn't expect this invite, you can safely ignore "
+        f"this email.\n"
+    )
+
+
+def _send_invite_email(
+    request: Request, *, to: str, org_name: str, role: str, url: str
+) -> tuple[bool, str | None]:
+    cfg: AppConfig = request.app.state.config
+    if not cfg.smtp.configured:
+        return False, None
+    return smtp_helper.send_email(
+        cfg.smtp,
+        to=to,
+        subject=f"You're invited to {org_name} on OpsMender",
+        body=_invite_email_body(org_name=org_name, role=role, url=url),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Admin routes
 # ---------------------------------------------------------------------------
@@ -157,32 +188,74 @@ async def create_invite(
     )
     await db.commit()
 
-    base = _resolve_public_base_url(request)
-    url = f"{base}/invite/{raw}"
-
-    # Best-effort SMTP delivery.
-    cfg: AppConfig = request.app.state.config
-    email_sent = False
-    email_error: str | None = None
-    if cfg.smtp.configured:
-        body_text = (
-            f"Hi,\n\n"
-            f"You've been invited to join {org.name} on OpsMender as a "
-            f"{body.role}. Click the link below within 7 days to accept "
-            f"the invite and set up your account:\n\n"
-            f"{url}\n\n"
-            f"If you didn't expect this invite, you can safely ignore "
-            f"this email.\n"
-        )
-        email_sent, email_error = smtp_helper.send_email(
-            cfg.smtp,
-            to=email_lc,
-            subject=f"You're invited to {org.name} on OpsMender",
-            body=body_text,
-        )
+    url = _build_invite_url(request, raw)
+    email_sent, email_error = _send_invite_email(
+        request, to=email_lc, org_name=org.name, role=body.role, url=url
+    )
 
     return InviteCreatedResponse(
         invite=_to_response(invite),
+        url=url,
+        email_sent=email_sent,
+        email_error=email_error,
+    )
+
+
+@admin_router.post(
+    "/{org_id}/invites/{invite_id}/resend",
+    response_model=InviteCreatedResponse,
+    dependencies=[Depends(require_role("admin"))],
+    summary="Resend a pending invite with a fresh token (admin only)",
+)
+async def resend_invite(
+    org_id: uuid.UUID,
+    invite_id: uuid.UUID,
+    request: Request,
+    actor: User = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    org = await OrganizationRepo.get_by_id(db, org_id)
+    if org is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found"
+        )
+
+    invite = await OrgInviteRepo.get_by_id(db, invite_id)
+    if invite is None or invite.org_id != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found"
+        )
+    if _derive_status(invite) != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only pending invites can be resent.",
+        )
+
+    await OrgInviteRepo.mark_revoked(db, invite_id)
+
+    raw, token_hash = people_tokens.mint()
+    expires_at = datetime.now(timezone.utc) + INVITE_TTL
+    replacement = await OrgInviteRepo.create(
+        db,
+        org_id=org_id,
+        email=invite.email,
+        role=invite.role,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        invited_by_user_id=actor.id,
+    )
+    await db.commit()
+
+    url = _build_invite_url(request, raw)
+    email_sent, email_error = _send_invite_email(
+        request,
+        to=invite.email,
+        org_name=org.name,
+        role=invite.role,
+        url=url,
+    )
+    return InviteCreatedResponse(
+        invite=_to_response(replacement),
         url=url,
         email_sent=email_sent,
         email_error=email_error,

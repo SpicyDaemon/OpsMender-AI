@@ -994,6 +994,16 @@ export async function revokeInvite(
   );
 }
 
+export async function resendInvite(
+  orgId: string,
+  inviteId: string,
+): Promise<import("./types").InviteCreatedResponse> {
+  return api.post<import("./types").InviteCreatedResponse>(
+    `/organizations/${orgId}/invites/${inviteId}/resend`,
+    {},
+  );
+}
+
 export async function getInviteByToken(
   token: string,
 ): Promise<import("./types").InvitePublicResponse> {

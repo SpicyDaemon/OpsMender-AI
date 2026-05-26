@@ -48,6 +48,7 @@ import { Label, Select } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { SessionDetailSkeleton } from "@/components/ui/Skeleton";
 import { SessionMemoriesPanel } from "@/components/SessionMemoriesPanel";
+import { SessionWorkflowState } from "@/components/sessions/SessionWorkflowState";
 import { useAuth } from "@/context/auth";
 
 // ---------------------------------------------------------------------------
@@ -657,6 +658,15 @@ function SessionPageContent() {
           )}
         </div>
       </div>
+
+      {/* Sprint 58 Step 1: operator-facing workflow state pipeline. Sits
+          between the context strip and the body so it stays visible as
+          the agent transitions through states. */}
+      <SessionWorkflowState
+        sessionStatus={session.status}
+        events={events}
+        tier={session.tier}
+      />
 
       {/* Pending approvals (above the split so they're always visible) */}
       {pendingApprovals.length > 0 && (

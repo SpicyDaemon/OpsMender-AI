@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Copy,
+  FileSpreadsheet,
   Mail,
   PlusCircle,
   RotateCcw,
@@ -40,6 +41,16 @@ import { useToast } from "@/components/ui/Toast";
 
 type Tab = "users" | "invites";
 type MintedInviteMode = "created" | "resent";
+type ParsedBulkInviteLine = InviteCreateRequest & { lineNumber: number };
+type BulkInviteFailure = {
+  lineNumber: number;
+  raw: string;
+  error: string;
+};
+type BulkInviteResult = {
+  successes: InviteCreatedResponse[];
+  failures: BulkInviteFailure[];
+};
 
 
 const ROLE_VARIANT: Record<UserResponse["role"], string> = {
@@ -64,6 +75,59 @@ function fmtDate(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function parseBulkInviteLines(input: string): {
+  entries: ParsedBulkInviteLine[];
+  failures: BulkInviteFailure[];
+} {
+  const entries: ParsedBulkInviteLine[] = [];
+  const failures: BulkInviteFailure[] = [];
+  const allowedRoles = new Set(["admin", "operator", "viewer"]);
+
+  input.split(/\r?\n/).forEach((rawLine, index) => {
+    const lineNumber = index + 1;
+    const line = rawLine.trim();
+    if (!line) return;
+
+    const parts = line.split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length !== 2) {
+      failures.push({
+        lineNumber,
+        raw: rawLine,
+        error: "Use exactly: email, role",
+      });
+      return;
+    }
+
+    const [email, roleRaw] = parts;
+    const role = roleRaw.toLowerCase();
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!emailOk) {
+      failures.push({
+        lineNumber,
+        raw: rawLine,
+        error: "Invalid email address",
+      });
+      return;
+    }
+    if (!allowedRoles.has(role)) {
+      failures.push({
+        lineNumber,
+        raw: rawLine,
+        error: "Role must be admin, operator, or viewer",
+      });
+      return;
+    }
+
+    entries.push({
+      lineNumber,
+      email,
+      role: role as InviteCreateRequest["role"],
+    });
+  });
+
+  return { entries, failures };
 }
 
 function authMethodMeta(user: UserResponse) {
@@ -134,10 +198,14 @@ function PeopleSurface() {
   const [usersLoading, setUsersLoading] = useState(true);
   const [invitesLoading, setInvitesLoading] = useState(true);
   const [newInviteOpen, setNewInviteOpen] = useState(false);
+  const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
   const [mintedInvite, setMintedInvite] = useState<{
     mode: MintedInviteMode;
     payload: InviteCreatedResponse;
   } | null>(null);
+  const [bulkInviteResult, setBulkInviteResult] = useState<BulkInviteResult | null>(
+    null,
+  );
 
   const reloadUsers = useCallback(async () => {
     setUsersLoading(true);
@@ -179,6 +247,15 @@ function PeopleSurface() {
     (resp: InviteCreatedResponse, mode: MintedInviteMode = "created") => {
       setMintedInvite({ mode, payload: resp });
       setNewInviteOpen(false);
+      void reloadInvites();
+    },
+    [reloadInvites],
+  );
+
+  const onBulkInviteCompleted = useCallback(
+    (result: BulkInviteResult) => {
+      setBulkInviteResult(result);
+      setBulkInviteOpen(false);
       void reloadInvites();
     },
     [reloadInvites],
@@ -276,6 +353,7 @@ function PeopleSurface() {
           invites={invites}
           loading={invitesLoading}
           onNew={() => setNewInviteOpen(true)}
+          onBulk={() => setBulkInviteOpen(true)}
           onRevoke={onRevoke}
           onResend={onResend}
         />
@@ -287,10 +365,20 @@ function PeopleSurface() {
         orgId={orgId}
         onCreated={onInviteCreated}
       />
+      <BulkInviteModal
+        open={bulkInviteOpen}
+        onClose={() => setBulkInviteOpen(false)}
+        orgId={orgId}
+        onCompleted={onBulkInviteCompleted}
+      />
 
       <MintedInviteModal
         invite={mintedInvite}
         onClose={() => setMintedInvite(null)}
+      />
+      <BulkInviteResultModal
+        result={bulkInviteResult}
+        onClose={() => setBulkInviteResult(null)}
       />
     </div>
   );
@@ -448,12 +536,14 @@ function InvitesTab({
   invites,
   loading,
   onNew,
+  onBulk,
   onRevoke,
   onResend,
 }: {
   invites: InviteResponse[];
   loading: boolean;
   onNew: () => void;
+  onBulk: () => void;
   onRevoke: (invite: InviteResponse) => void;
   onResend: (invite: InviteResponse) => void;
 }) {
@@ -538,7 +628,10 @@ function InvitesTab({
   if (invites.length === 0) {
     return (
       <div className="space-y-4">
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onBulk}>
+            <FileSpreadsheet className="h-4 w-4" /> Bulk import
+          </Button>
           <Button onClick={onNew}>
             <UserPlus className="h-4 w-4" /> New invite
           </Button>
@@ -565,9 +658,14 @@ function InvitesTab({
         valueOf: (i) => i.created_at,
       }}
       toolbarRight={
-        <Button onClick={onNew}>
-          <UserPlus className="h-4 w-4" /> New invite
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" onClick={onBulk}>
+            <FileSpreadsheet className="h-4 w-4" /> Bulk import
+          </Button>
+          <Button onClick={onNew}>
+            <UserPlus className="h-4 w-4" /> New invite
+          </Button>
+        </div>
       }
       rowActions={(invite) =>
         invite.status === "pending" ? (
@@ -699,6 +797,139 @@ function NewInviteModal({
 
 
 // ---------------------------------------------------------------------------
+// Bulk invite modal
+// ---------------------------------------------------------------------------
+
+
+function BulkInviteModal({
+  open,
+  onClose,
+  orgId,
+  onCompleted,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId: string | null;
+  onCompleted: (result: BulkInviteResult) => void;
+}) {
+  const toast = useToast();
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      setValue("");
+      setError("");
+    }
+  }, [open]);
+
+  const submit = useCallback(async () => {
+    if (!orgId) {
+      setError("No active organization — refresh and try again.");
+      return;
+    }
+    const parsed = parseBulkInviteLines(value);
+    if (parsed.entries.length === 0 && parsed.failures.length === 0) {
+      setError("Paste at least one line.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const successes: InviteCreatedResponse[] = [];
+      const failures = [...parsed.failures];
+
+      for (const entry of parsed.entries) {
+        try {
+          const resp = await createInvite(orgId, {
+            email: entry.email,
+            role: entry.role,
+          });
+          successes.push(resp);
+        } catch (err) {
+          failures.push({
+            lineNumber: entry.lineNumber,
+            raw: `${entry.email}, ${entry.role}`,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      if (successes.length === 0) {
+        setError("No invites were created. Fix the lines below and try again.");
+        return;
+      }
+
+      toast.success(
+        failures.length === 0
+          ? `Created ${successes.length} invite${successes.length === 1 ? "" : "s"}`
+          : `Created ${successes.length} invite${successes.length === 1 ? "" : "s"}; ${failures.length} line${failures.length === 1 ? "" : "s"} failed`,
+      );
+      onCompleted({ successes, failures });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [onCompleted, orgId, toast, value]);
+
+  const preview = useMemo(() => parseBulkInviteLines(value), [value]);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Bulk import invites">
+      <div className="space-y-4">
+        <div>
+          <Label>Paste one invite per line</Label>
+          <p className="mb-2 text-sm text-fg-muted">
+            Format: <code className="font-mono text-xs">email, role</code>
+          </p>
+          <textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="block min-h-48 w-full rounded-md border border-border-strong bg-bg-input px-3 py-2 font-mono text-sm text-fg-primary placeholder:text-fg-muted transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            placeholder={"alice@example.com, operator\nbob@example.com, viewer"}
+            autoFocus
+          />
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="rounded-md border border-border-default bg-bg-elevated p-3 text-sm">
+            <div className="font-medium text-fg-primary">Valid lines</div>
+            <div className="mt-1 text-fg-secondary">{preview.entries.length}</div>
+          </div>
+          <div className="rounded-md border border-border-default bg-bg-elevated p-3 text-sm">
+            <div className="font-medium text-fg-primary">Invalid lines</div>
+            <div className="mt-1 text-fg-secondary">{preview.failures.length}</div>
+          </div>
+        </div>
+
+        {preview.failures.length > 0 ? (
+          <div className="max-h-32 space-y-1 overflow-auto rounded-md border border-status-high-border bg-status-high-bg/40 p-3 text-sm">
+            {preview.failures.map((failure) => (
+              <div key={`${failure.lineNumber}-${failure.raw}`} className="text-status-high">
+                Line {failure.lineNumber}: {failure.error}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={submitting}>
+            <FileSpreadsheet className="h-4 w-4" />
+            {submitting ? "Importing…" : "Create invites"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
 // Minted-invite modal — shown once after a successful create
 // ---------------------------------------------------------------------------
 
@@ -774,6 +1005,129 @@ function MintedInviteModal({
             SMTP is not configured — share the link via Slack, email, or whatever channel you prefer.
           </p>
         )}
+
+        <div className="flex justify-end pt-2">
+          <Button onClick={onClose}>Done</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Bulk invite results
+// ---------------------------------------------------------------------------
+
+
+function BulkInviteResultModal({
+  result,
+  onClose,
+}: {
+  result: BulkInviteResult | null;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const open = result !== null;
+
+  const copy = useCallback(
+    async (value: string, label: string) => {
+      try {
+        await navigator.clipboard.writeText(value);
+        toast.success(`${label} copied`);
+      } catch {
+        toast.error("Copy failed — select and copy manually.");
+      }
+    },
+    [toast],
+  );
+
+  if (!result) return null;
+
+  return (
+    <Modal open={open} onClose={onClose} title="Bulk invite results">
+      <div className="space-y-4">
+        <p className="text-sm text-fg-secondary">
+          Created{" "}
+          <span className="font-medium text-fg-primary">{result.successes.length}</span>{" "}
+          invite{result.successes.length === 1 ? "" : "s"}
+          {result.failures.length > 0 ? (
+            <>
+              {" "}and{" "}
+              <span className="font-medium text-fg-primary">{result.failures.length}</span>{" "}
+              line{result.failures.length === 1 ? "" : "s"} failed.
+            </>
+          ) : null}
+        </p>
+
+        {result.successes.length > 0 ? (
+          <div className="space-y-2">
+            <Label className="mb-0">Created invites</Label>
+            <div className="max-h-72 space-y-3 overflow-auto rounded-md border border-border-default bg-bg-elevated p-3">
+              {result.successes.map((item) => (
+                <div
+                  key={item.invite.id}
+                  className="space-y-2 rounded-md border border-border-default bg-bg-surface p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-fg-primary">
+                        {item.invite.email}
+                      </div>
+                      <div className="text-sm text-fg-muted">
+                        {item.invite.role} · expires {fmtDate(item.invite.expires_at)}
+                      </div>
+                    </div>
+                    <Badge variant={ROLE_VARIANT[item.invite.role] as never}>
+                      {item.invite.role}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 truncate font-mono text-xs text-fg-primary">
+                      {item.url}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void copy(item.url, "Invite link")}
+                    >
+                      <Copy className="h-4 w-4" /> Copy
+                    </Button>
+                  </div>
+                  {item.email_sent ? (
+                    <p className="text-sm text-status-low">
+                      ✓ Invite email sent.
+                    </p>
+                  ) : item.email_error ? (
+                    <p className="text-sm text-status-high">
+                      Email delivery failed: {item.email_error}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-fg-muted">
+                      SMTP is not configured — share the link manually.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {result.failures.length > 0 ? (
+          <div className="space-y-2">
+            <Label className="mb-0">Failed lines</Label>
+            <div className="max-h-48 space-y-2 overflow-auto rounded-md border border-status-high-border bg-status-high-bg/40 p-3 text-sm">
+              {result.failures.map((failure) => (
+                <div key={`${failure.lineNumber}-${failure.raw}`}>
+                  <div className="font-medium text-status-high">
+                    Line {failure.lineNumber}: {failure.error}
+                  </div>
+                  <div className="font-mono text-fg-muted">{failure.raw}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex justify-end pt-2">
           <Button onClick={onClose}>Done</Button>

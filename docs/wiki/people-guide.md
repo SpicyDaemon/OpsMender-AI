@@ -58,10 +58,18 @@ Notes:
 Use the **Invites** tab instead of creating users directly.
 
 1. Open **Admin → People → Invites**.
-2. Click **New invite**.
-3. Enter the recipient email and the OpsMender role to grant on accept.
-4. Submit the form.
-5. OpsMender returns a one-time invite URL. Copy it immediately if you need to deliver it manually.
+2. Use **New invite** for one person, or **Bulk import** when you already have a list.
+3. For a single invite, enter the recipient email and the OpsMender role to grant on accept.
+4. For bulk import, paste one line per recipient in this format:
+
+```text
+alice@example.com, operator
+bob@example.com, viewer
+carol@example.com, admin
+```
+
+5. Submit the form.
+6. OpsMender returns one-time invite URLs. Copy them immediately if you need to deliver them manually.
 
 The invited user opens `/invite?token=...`, picks a username and password, and is then signed into OpsMender.
 
@@ -72,6 +80,7 @@ Invite behavior:
 - Revoked, expired, and already-used tokens are all rejected on consume.
 - The invite list shows the derived state so admins can tell pending vs accepted vs expired vs revoked at a glance.
 - If the recipient loses the original URL, use the **resend** action on the pending invite row. OpsMender revokes the old link and mints a fresh one in one step.
+- Bulk import is **best effort per line**. OpsMender creates the valid invites, reports any failed lines separately, and still shows every newly minted URL exactly once.
 
 ### SMTP vs manual delivery
 

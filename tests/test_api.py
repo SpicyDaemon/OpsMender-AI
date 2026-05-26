@@ -1342,6 +1342,62 @@ class TestSessions:
         resp = await client.get(f"/sessions/{uuid.uuid4()}", headers=auth_headers)
         assert resp.status_code == 404
 
+    # Sprint 59 Step 1 — GET /sessions powers the Operations Dashboard's
+    # Active sessions + Recent failures Attention Queue cards. Coverage
+    # for the new route lives here.
+    async def test_list_sessions_returns_all_for_org(
+        self, client: AsyncClient, auth_headers
+    ):
+        for tier in (1, 2, 3):
+            await client.post(
+                "/sessions",
+                json={"tier": tier},
+                headers=auth_headers,
+            )
+
+        resp = await client.get("/sessions", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data and "total" in data
+        assert data["total"] == len(data["items"])
+        assert data["total"] >= 3
+        # Most-recent-first: started_at descending.
+        starts = [item["started_at"] for item in data["items"]]
+        assert starts == sorted(starts, reverse=True)
+
+    async def test_list_sessions_filters_by_status(
+        self, client: AsyncClient, auth_headers
+    ):
+        # Two sessions; both start as "active".
+        await client.post(
+            "/sessions", json={"tier": 2}, headers=auth_headers,
+        )
+        await client.post(
+            "/sessions", json={"tier": 2}, headers=auth_headers,
+        )
+
+        # status_filter=active should return both.
+        active = await client.get(
+            "/sessions?status_filter=active", headers=auth_headers,
+        )
+        assert active.status_code == 200
+        assert active.json()["total"] >= 2
+        for item in active.json()["items"]:
+            assert item["status"] == "active"
+
+        # status_filter=failed should return none of them.
+        failed = await client.get(
+            "/sessions?status_filter=failed", headers=auth_headers,
+        )
+        assert failed.status_code == 200
+        for item in failed.json()["items"]:
+            assert item["status"] == "failed"
+
+    async def test_list_sessions_requires_auth(self, client: AsyncClient):
+        resp = await client.get("/sessions")
+        # Any 4xx is fine; the route must not be public.
+        assert resp.status_code in (401, 403)
+
     async def test_tier_0_session_includes_time_limit(
         self, client: AsyncClient, auth_headers
     ):

@@ -37,8 +37,10 @@ import {
 } from "lucide-react";
 import {
   listApprovals,
+  listAudit,
   listIncidents,
   listRosters,
+  listServices,
   listSessions,
   listTeams,
   listUsers,
@@ -46,8 +48,10 @@ import {
 } from "@/lib/api";
 import type {
   ApprovalRequestResponse,
+  AuditEntryResponse,
   IncidentResponse,
   RosterResponse,
+  ServiceResponse,
   SessionResponse,
   TeamResponse,
   UserResponse,
@@ -57,6 +61,54 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useToast } from "@/components/ui/Toast";
+
+/**
+ * Sprint 59 Step 5: format a millisecond duration into a short
+ * dashboard-friendly string (e.g. "12m", "1h 23m", "3d 4h").
+ */
+function fmtDuration(ms: number): string {
+  if (ms < 60_000) {
+    const s = Math.max(1, Math.round(ms / 1000));
+    return `${s}s`;
+  }
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
+/**
+ * Median millisecond resolution time for incidents that were
+ * resolved (or closed) within the last `windowMs` milliseconds.
+ * Returns null when the window has no resolved incidents.
+ */
+function medianResolveTime(
+  incidents: IncidentResponse[],
+  windowMs: number,
+): { medianMs: number; count: number } | null {
+  const cutoff = Date.now() - windowMs;
+  const durations: number[] = [];
+  for (const inc of incidents) {
+    if (inc.status !== "resolved" && inc.status !== "closed") continue;
+    const resolvedAt = new Date(inc.updated_at).getTime();
+    if (resolvedAt < cutoff) continue;
+    const createdAt = new Date(inc.created_at).getTime();
+    const dur = resolvedAt - createdAt;
+    if (dur >= 0) durations.push(dur);
+  }
+  if (durations.length === 0) return null;
+  durations.sort((a, b) => a - b);
+  const mid = durations.length >> 1;
+  const median =
+    durations.length % 2 === 1
+      ? durations[mid]
+      : (durations[mid - 1] + durations[mid]) / 2;
+  return { medianMs: median, count: durations.length };
+}
 
 function fmtRelative(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -79,6 +131,8 @@ export default function DashboardIndex() {
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [rosters, setRosters] = useState<RosterResponse[]>([]);
   const [users, setUsers] = useState<UserResponse[]>([]);
+  const [services, setServices] = useState<ServiceResponse[]>([]);
+  const [blockedAudits, setBlockedAudits] = useState<AuditEntryResponse[]>([]);
   // Map of rosterId -> resolved user_id (null when no one is on call).
   const [onCallByRoster, setOnCallByRoster] = useState<
     Map<string, string | null>
@@ -99,6 +153,8 @@ export default function DashboardIndex() {
         teamsRes,
         rostersRes,
         usersRes,
+        servicesRes,
+        blockedRes,
       ] = await Promise.all([
         listIncidents({ limit: 200 }),
         listApprovals({ status: "pending", limit: 50 }),
@@ -109,6 +165,11 @@ export default function DashboardIndex() {
         listTeams().catch(() => ({ items: [], total: 0 })),
         listRosters().catch(() => ({ items: [], total: 0 })),
         listUsers().catch(() => ({ items: [], total: 0 })),
+        listServices().catch(() => ({ items: [], total: 0 })),
+        listAudit({ permitted: false, limit: 25 }).catch(() => ({
+          items: [],
+          total: 0,
+        })),
       ]);
       setIncidents(incRes.items);
       setApprovals(apprRes.items);
@@ -125,6 +186,8 @@ export default function DashboardIndex() {
       setTeams(teamsRes.items);
       setRosters(rostersRes.items);
       setUsers(usersRes.items);
+      setServices(servicesRes.items);
+      setBlockedAudits(blockedRes.items);
 
       // Resolve on-call for every roster in parallel. Misses just
       // leave that roster as null in the map; the panel renders an
@@ -186,6 +249,126 @@ export default function DashboardIndex() {
     }
     return m;
   }, [rosters]);
+  // Sprint 59 Step 3: per-service health + noisy-services aggregations.
+  // Both panels source from the same loaded incidents list so there's
+  // no extra fetch. "Noisy" is incidents created in the last 24h
+  // (decision: incident count, not raw alert volume).
+  const teamById = useMemo(
+    () => new Map(teams.map((t) => [t.id, t])),
+    [teams],
+  );
+  const serviceStats = useMemo(() => {
+    const now = Date.now();
+    const window24h = now - 86_400_000;
+    return services.map((svc) => {
+      const own = incidents.filter((inc) => inc.service_id === svc.id);
+      const openCount = own.filter(
+        (inc) => inc.status === "open" || inc.status === "in_progress",
+      ).length;
+      const last = own.reduce<string | null>((acc, inc) => {
+        const candidate = inc.updated_at ?? inc.created_at;
+        if (!acc || candidate > acc) return candidate;
+        return acc;
+      }, null);
+      const last24hCount = own.filter(
+        (inc) => new Date(inc.created_at).getTime() >= window24h,
+      ).length;
+      return {
+        service: svc,
+        teamName: teamById.get(svc.team_id)?.name ?? null,
+        openCount,
+        lastIncidentAt: last,
+        last24hCount,
+      };
+    });
+  }, [services, incidents, teamById]);
+
+  // Top services by open-incident count (then by last activity).
+  // Hidden when no service has any open incidents — silence is good.
+  const serviceHealthRows = useMemo(() => {
+    return serviceStats
+      .filter((row) => row.openCount > 0)
+      .sort((a, b) => {
+        if (a.openCount !== b.openCount) return b.openCount - a.openCount;
+        return (b.lastIncidentAt ?? "").localeCompare(a.lastIncidentAt ?? "");
+      })
+      .slice(0, 5);
+  }, [serviceStats]);
+
+  // Top services by 24h incident count. Same hiding rule.
+  const noisyServiceRows = useMemo(() => {
+    return serviceStats
+      .filter((row) => row.last24hCount > 0)
+      .sort((a, b) => b.last24hCount - a.last24hCount)
+      .slice(0, 5);
+  }, [serviceStats]);
+
+  // Sprint 59 Step 5 — MTTR rolling-window medians. MTTA is deferred:
+  // we don't currently store a clean ack timestamp on the incident
+  // row, and computing it would mean joining IncidentAssignment +
+  // chain-ack events into a derived view. Tracked as a Sprint 59
+  // follow-up. MTTR uses `updated_at - created_at` for incidents that
+  // hit `resolved` or `closed` within each window.
+  const mttr = useMemo(() => {
+    return {
+      d1: medianResolveTime(incidents, 86_400_000), // 24h
+      d7: medianResolveTime(incidents, 7 * 86_400_000),
+      d30: medianResolveTime(incidents, 30 * 86_400_000),
+    };
+  }, [incidents]);
+
+  // Sprint 59 Step 4 — Recent activity feed. Scope per owner decision:
+  // incident lifecycle + tool-blocks only. We synthesize the lifecycle
+  // events from the incidents array (no dedicated events table) plus
+  // the blocked audit entries from the parallel /audit fetch. Merge,
+  // sort descending by timestamp, take the top N.
+  type ActivityItem = {
+    id: string;
+    ts: string;
+    kind: "incident_opened" | "incident_resolved" | "tool_blocked";
+    primary: string;
+    detail: string;
+    href: string;
+  };
+  const activityItems = useMemo<ActivityItem[]>(() => {
+    const items: ActivityItem[] = [];
+
+    for (const inc of incidents) {
+      items.push({
+        id: `inc-open-${inc.id}`,
+        ts: inc.created_at,
+        kind: "incident_opened",
+        primary: inc.title,
+        detail: inc.severity ? `Severity ${inc.severity}` : "Severity not set",
+        href: `/dashboard/incidents/detail?id=${inc.id}`,
+      });
+      if (inc.status === "resolved" || inc.status === "closed") {
+        items.push({
+          id: `inc-resolved-${inc.id}`,
+          ts: inc.updated_at,
+          kind: "incident_resolved",
+          primary: inc.title,
+          detail: `Incident ${inc.status.replace("_", " ")}`,
+          href: `/dashboard/incidents/detail?id=${inc.id}`,
+        });
+      }
+    }
+
+    for (const a of blockedAudits) {
+      items.push({
+        id: `audit-${a.id}`,
+        ts: a.timestamp,
+        kind: "tool_blocked",
+        primary: a.tool_name ?? "Blocked operation",
+        detail: a.block_reason ?? "Tier gate refused the action",
+        href: `/dashboard/sessions/detail?id=${a.session_id}`,
+      });
+    }
+
+    items.sort((a, b) => b.ts.localeCompare(a.ts));
+    return items.slice(0, 12);
+  }, [incidents, blockedAudits]);
+
   const coverageRows = useMemo(
     () =>
       teams
@@ -343,6 +526,47 @@ export default function DashboardIndex() {
         />
       </section>
 
+      {/* MTTR rolling-window tiles — Sprint 59 Step 5. Three tiles for
+          24h / 7d / 30d. MTTA is deferred — see the useMemo above. */}
+      <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+        <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-secondary">
+              MTTR · median time to resolve
+            </p>
+            <p className="text-[10px] text-fg-muted">
+              Time from `created_at` to `resolved` / `closed`, by resolution window.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-3 px-4 py-4 sm:grid-cols-3 sm:px-5 sm:py-5">
+          {(
+            [
+              { label: "Last 24h", stat: mttr.d1 },
+              { label: "Last 7 days", stat: mttr.d7 },
+              { label: "Last 30 days", stat: mttr.d30 },
+            ] as const
+          ).map(({ label, stat }) => (
+            <div
+              key={label}
+              className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3"
+            >
+              <p className="text-[10px] font-medium uppercase tracking-wide text-fg-muted">
+                {label}
+              </p>
+              <p className="mt-1.5 text-2xl font-semibold tabular-nums text-fg-primary">
+                {stat ? fmtDuration(stat.medianMs) : "—"}
+              </p>
+              <p className="mt-0.5 text-[11px] text-fg-muted">
+                {stat
+                  ? `${stat.count} incident${stat.count === 1 ? "" : "s"} resolved`
+                  : "No resolved incidents"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* On-call coverage — Sprint 59 Step 2. Per-team current on-call
           resolved via the team's roster(s). Teams without a roster
           surface as coverage gaps. */}
@@ -439,6 +663,214 @@ export default function DashboardIndex() {
           )}
         </div>
       </section>
+
+      {/* Service health + Noisy services — Sprint 59 Step 3. Two
+          side-by-side panels driven by the already-loaded incidents
+          list. Service health = services with open incidents, sorted
+          by open count then last activity. Noisy services = top 5
+          services by incidents created in the last 24h (decision:
+          incident count rather than raw alert volume). */}
+      <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        <ServicePanel
+          title="Service health"
+          subtitle="Services with open incidents."
+          icon={ShieldAlert}
+          loading={loading}
+          emptyMessage="No services have open incidents right now."
+          rows={serviceHealthRows.map((row) => ({
+            id: row.service.id,
+            primary: row.service.name,
+            secondary: row.teamName,
+            metricLabel: "Open",
+            metric: row.openCount,
+            metricTone: row.openCount >= 3 ? "critical" : "high",
+            footnote: row.lastIncidentAt
+              ? `Last activity ${fmtRelative(row.lastIncidentAt)}`
+              : "—",
+          }))}
+        />
+        <ServicePanel
+          title="Noisy services (24h)"
+          subtitle="Most incidents created in the last 24 hours."
+          icon={AlertTriangle}
+          loading={loading}
+          emptyMessage="No services produced incidents in the last 24h."
+          rows={noisyServiceRows.map((row) => ({
+            id: row.service.id,
+            primary: row.service.name,
+            secondary: row.teamName,
+            metricLabel: "24h",
+            metric: row.last24hCount,
+            metricTone: row.last24hCount >= 5 ? "critical" : "medium",
+            footnote: row.lastIncidentAt
+              ? `Last incident ${fmtRelative(row.lastIncidentAt)}`
+              : "—",
+          }))}
+        />
+      </section>
+
+      {/* Recent activity feed — Sprint 59 Step 4. Incident lifecycle
+          (open / resolve / close) synthesized from the incidents
+          array + tool blocks pulled from /audit?permitted=false. No
+          backend changes — just merge + sort + render. */}
+      <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+        <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex items-center gap-2">
+            <Clock size={14} className="text-fg-secondary" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-secondary">
+              Recent activity
+            </p>
+          </div>
+          <Link
+            href="/dashboard/activity"
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-fg-secondary hover:text-fg-primary"
+          >
+            Full audit log <ArrowRight size={11} />
+          </Link>
+        </div>
+        <div className="px-3 py-2 sm:px-4">
+          {loading ? (
+            <p className="px-2 py-2 text-xs text-fg-muted">Loading…</p>
+          ) : activityItems.length === 0 ? (
+            <p className="px-2 py-2 text-xs text-fg-muted">
+              Nothing to report yet. Incidents and blocked tool calls will
+              show up here as they happen.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border-subtle/60">
+              {activityItems.map((it) => {
+                const meta = ACTIVITY_KIND_META[it.kind];
+                const KindIcon = meta.icon;
+                return (
+                  <li key={it.id}>
+                    <Link
+                      href={it.href}
+                      className="group flex items-start gap-3 rounded-md px-2 py-2 hover:bg-bg-hover"
+                    >
+                      <KindIcon size={14} className={`mt-0.5 shrink-0 ${meta.color}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="truncate text-sm font-medium text-fg-primary group-hover:text-accent">
+                            {meta.label}: {it.primary}
+                          </p>
+                          <span className="shrink-0 text-[10px] tabular-nums text-fg-muted">
+                            {fmtRelative(it.ts)}
+                          </span>
+                        </div>
+                        <p className="truncate text-[11px] text-fg-muted">
+                          {it.detail}
+                        </p>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// Activity-feed kind metadata (Sprint 59 Step 4).
+const ACTIVITY_KIND_META: Record<
+  "incident_opened" | "incident_resolved" | "tool_blocked",
+  { label: string; icon: typeof AlertOctagon; color: string }
+> = {
+  incident_opened: {
+    label: "Incident opened",
+    icon: AlertOctagon,
+    color: "text-status-critical",
+  },
+  incident_resolved: {
+    label: "Incident resolved",
+    icon: CheckCircle2,
+    color: "text-status-low",
+  },
+  tool_blocked: {
+    label: "Tool blocked",
+    icon: ShieldAlert,
+    color: "text-status-high",
+  },
+};
+
+interface ServicePanelRow {
+  id: string;
+  primary: string;
+  secondary: string | null;
+  metricLabel: string;
+  metric: number;
+  metricTone: "critical" | "high" | "medium" | "low";
+  footnote: string;
+}
+
+function ServicePanel({
+  title,
+  subtitle,
+  icon: Icon,
+  loading,
+  emptyMessage,
+  rows,
+}: {
+  title: string;
+  subtitle: string;
+  icon: typeof ShieldAlert;
+  loading: boolean;
+  emptyMessage: string;
+  rows: ServicePanelRow[];
+}) {
+  return (
+    <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+      <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
+        <div className="flex items-center gap-2">
+          <Icon size={14} className="text-fg-secondary" />
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-secondary">
+              {title}
+            </p>
+            <p className="text-[10px] text-fg-muted">{subtitle}</p>
+          </div>
+        </div>
+        <Link
+          href="/dashboard/paging/services"
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-fg-secondary hover:text-fg-primary"
+        >
+          All services <ArrowRight size={11} />
+        </Link>
+      </div>
+      <div className="px-3 py-3 sm:px-4">
+        {loading ? (
+          <p className="px-2 py-2 text-xs text-fg-muted">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="px-2 py-2 text-xs text-fg-muted">{emptyMessage}</p>
+        ) : (
+          <ul className="space-y-1">
+            {rows.map((row) => (
+              <li
+                key={row.id}
+                className="flex items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-bg-hover"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-fg-primary">
+                    {row.primary}
+                  </p>
+                  <p className="truncate text-[11px] text-fg-muted">
+                    {row.secondary ? `${row.secondary} · ` : ""}
+                    {row.footnote}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <Badge variant={row.metricTone}>{row.metric}</Badge>
+                  <p className="mt-0.5 text-[10px] uppercase tracking-wide text-fg-muted">
+                    {row.metricLabel}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

@@ -1659,6 +1659,21 @@ function ChainsPanel({
   );
 }
 
+/**
+ * Sprint 60 — format a cumulative-seconds value as a short timeline
+ * label (e.g. `0` / `5m` / `15m` / `1h 5m` / `2h`). Used by the
+ * escalation chain preview timeline.
+ */
+function fmtCumulativeTime(seconds: number): string {
+  if (seconds === 0) return "0";
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+}
+
 function StepsEditor({
   chainId,
   steps,
@@ -1819,6 +1834,71 @@ function StepsEditor({
           </ul>
         )}
       </div>
+
+      {/* Preview timeline — Sprint 60 (UX-direction Sprint D finish).
+          Renders the steps as cumulative T+X events so operators can
+          tell at a glance who gets paged and when. Pure presentation
+          on top of the steps array; no extra fetches. */}
+      {steps.length > 0 && (
+        <div className="rounded-lg border border-border-subtle bg-bg-elevated/60 px-3 py-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+              Preview timeline
+            </p>
+            <span className="text-[10px] text-fg-muted">
+              Cumulative time from incident open
+            </span>
+          </div>
+          <ol className="space-y-1">
+            {steps
+              .slice()
+              .sort((a, b) => a.step_index - b.step_index)
+              .map((s, idx, sorted) => {
+                // Cumulative time: step 0 fires at T+0; each subsequent
+                // step fires after the prior step's timeout. The doc's
+                // model is "additive — once paged, stay paged."
+                const cumulativeSec = sorted
+                  .slice(0, idx)
+                  .reduce((sum, prev) => sum + prev.timeout_seconds, 0);
+                const targetLabel =
+                  s.target_type === "roster"
+                    ? rosters.find((r) => r.id === s.target_id)?.name
+                    : s.target_type === "team"
+                      ? teams.find((t) => t.id === s.target_id)?.name
+                      : s.target_id;
+                return (
+                  <li
+                    key={`preview-${s.id}`}
+                    className="flex items-center gap-3 text-xs"
+                  >
+                    <span className="inline-flex w-16 shrink-0 justify-end font-mono tabular-nums text-fg-secondary">
+                      T+{fmtCumulativeTime(cumulativeSec)}
+                    </span>
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+                    <span className="text-fg-secondary">
+                      Page <span className="font-medium text-fg-primary">{targetLabel}</span>{" "}
+                      <span className="text-fg-muted">({s.target_type})</span>
+                    </span>
+                  </li>
+                );
+              })}
+            {/* Exhaustion row — shows the last step's timeout as the
+                "no more steps fire after this" cutoff. */}
+            <li className="flex items-center gap-3 pt-1 text-xs">
+              <span className="inline-flex w-16 shrink-0 justify-end font-mono tabular-nums text-fg-muted">
+                T+
+                {fmtCumulativeTime(
+                  steps.reduce((sum, s) => sum + s.timeout_seconds, 0),
+                )}
+              </span>
+              <span className="h-2 w-2 shrink-0 rounded-full border border-border-subtle bg-transparent" />
+              <span className="text-fg-muted">
+                Escalation exhausted (no further steps)
+              </span>
+            </li>
+          </ol>
+        </div>
+      )}
 
       <div className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
         Steps (additive — once paged, stay paged)

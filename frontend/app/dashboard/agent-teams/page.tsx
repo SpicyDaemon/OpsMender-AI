@@ -27,9 +27,9 @@ export default function AgentTeamsPage() {
   if (loading) return <ConfigPageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-fg-primary">Agent teams</h1>
+        <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Agent teams</h1>
         <p className="mt-1 text-sm text-fg-secondary">
           Saved OpsMender role profiles for multi-agent workflows.
         </p>

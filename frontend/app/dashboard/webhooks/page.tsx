@@ -27,9 +27,9 @@ export default function WebhooksPage() {
   if (loading) return <ConfigPageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-fg-primary">Webhook triggers</h1>
+        <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Webhook triggers</h1>
         <p className="mt-1 text-sm text-fg-secondary">
           Outbound notifications fired on incident/session lifecycle events.
         </p>

@@ -341,7 +341,7 @@ function RoleEditor({
         Admin — full access. Operator — drive sessions + approve. Viewer — read-only.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-[200px]">
+        <div className="min-w-0 flex-1 sm:min-w-[200px]">
           <Label>Global role</Label>
           <Select
             value={role}
@@ -678,7 +678,7 @@ function DeleteUserModal({
           </>
         ) : null}
         {error && <FormError message={error} />}
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>

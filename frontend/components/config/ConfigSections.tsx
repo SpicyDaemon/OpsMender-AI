@@ -135,14 +135,14 @@ export function ConfigCard({
   className?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-border-subtle bg-bg-panel shadow-sm overflow-hidden ${className}`}>
-      <div className="border-b border-border-subtle bg-bg-elevated px-6 py-4">
+    <div className={`overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm ${className}`}>
+      <div className="border-b border-border-subtle bg-bg-elevated px-4 py-4 sm:px-6">
         <h3 className="text-sm font-semibold text-fg-primary">{title}</h3>
         {description && (
           <p className="mt-0.5 text-sm text-fg-secondary">{description}</p>
         )}
       </div>
-      <div className="space-y-4 px-6 py-5">{children}</div>
+      <div className="space-y-4 px-4 py-5 sm:px-6">{children}</div>
     </div>
   );
 }
@@ -216,10 +216,10 @@ export function Section({
 export function ConfigPageSkeleton() {
   return (
     <div className="animate-pulse space-y-8">
-      <div className="flex h-12 items-center justify-between border-b border-border-subtle bg-bg-panel px-6">
+      <div className="flex h-12 items-center justify-between border-b border-border-subtle bg-bg-panel px-4 sm:px-6">
         <div className="h-4 w-32 rounded bg-bg-elevated" />
       </div>
-      <div className="px-6">
+      <div className="px-4 sm:px-6">
         <div className="h-64 rounded-xl bg-bg-panel" />
       </div>
     </div>
@@ -849,7 +849,7 @@ export function ModelSection({
         sortable: true,
         searchable: true,
         cell: (config) => (
-          <div className="min-w-[12rem]">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-medium text-fg-primary">{config.name}</span>
               {config.is_default && <Badge>Default</Badge>}
@@ -1680,7 +1680,7 @@ export function MCPSection({
         sortable: true,
         searchable: true,
         cell: (server) => (
-          <div className="min-w-[12rem]">
+          <div className="min-w-0">
             <div className="flex items-center gap-2 font-medium text-fg-primary">
               <span
                 className={`h-2 w-2 rounded-full ${
@@ -1724,7 +1724,7 @@ export function MCPSection({
           const argsCount = server.args?.length ?? 0;
           const envCount = Object.keys(server.env_vars ?? {}).length;
           return (
-            <div className="max-w-[28rem]">
+            <div className="max-w-full sm:max-w-[28rem]">
               <span className="line-clamp-2 break-all font-mono text-xs text-fg-secondary">
                 {target || "—"}
               </span>
@@ -3019,7 +3019,7 @@ function BotUserLinksModal({
               No identity links configured yet.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border-subtle">
+            <div className="overflow-x-auto rounded-lg border border-border-subtle">
               <table className="min-w-full divide-y divide-border-subtle text-sm">
                 <thead className="bg-bg-elevated text-left text-xs font-semibold text-fg-secondary">
                   <tr>
@@ -3268,7 +3268,7 @@ export function BotConnectorSection({
       title="Chat Bot Connectors"
       description="Configure external chat channels for incident lookup, session status, approvals, co-pilot relay, and notifications."
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-fg-secondary">
             {connectors.length} saved connector{connectors.length === 1 ? "" : "s"}
@@ -3292,7 +3292,7 @@ export function BotConnectorSection({
           No chat bot connectors yet. Add one to prepare Telegram, Signal, WhatsApp, or custom chat surfaces.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle">
+        <div className="overflow-x-auto rounded-xl border border-border-subtle">
           <table className="min-w-full divide-y divide-border-subtle text-sm">
             <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
@@ -3363,7 +3363,7 @@ export function BotConnectorSection({
                       </div>
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-wrap justify-end gap-2">
                         <Button
                           variant="secondary"
                           size="sm"
@@ -4202,7 +4202,7 @@ export function AgentTeamProfileSection({
       title="Agent Teams"
       description="Saved agent teams run multiple specialist reasoning passes inside the same OpsMender workflow, while execution still flows through the normal tier gate and execute path."
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-fg-secondary">
             {profiles.length} saved team{profiles.length === 1 ? "" : "s"}
@@ -4226,7 +4226,7 @@ export function AgentTeamProfileSection({
           No agent teams yet. Sessions will use OpsMender&apos;s default single-agent reasoning.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle">
+        <div className="overflow-x-auto rounded-xl border border-border-subtle">
           <table className="min-w-full divide-y divide-border-subtle text-sm">
             <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
@@ -4262,7 +4262,7 @@ export function AgentTeamProfileSection({
                     </Badge>
                   </td>
                   <td className="px-4 py-3 align-top">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <Button
                         variant="secondary"
                         size="sm"
@@ -4590,7 +4590,7 @@ export function WorkflowProfileSection({
       title="Workflow Profiles"
       description="Saved workflow profiles let operators choose which built-in OpsMender nodes run, and in what order, while preserving the tier-gate safety rules."
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-fg-secondary">
             {profiles.length} saved profile{profiles.length === 1 ? "" : "s"}
@@ -4614,7 +4614,7 @@ export function WorkflowProfileSection({
           No workflow profiles yet. Sessions will use OpsMender&apos;s built-in default flow.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle">
+        <div className="overflow-x-auto rounded-xl border border-border-subtle">
           <table className="min-w-full divide-y divide-border-subtle text-sm">
             <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
@@ -4649,7 +4649,7 @@ export function WorkflowProfileSection({
                     </Badge>
                   </td>
                   <td className="px-4 py-3 align-top">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <Button
                         variant="secondary"
                         size="sm"
@@ -5262,7 +5262,7 @@ export function WebhookTriggerSection({
         sortable: true,
         searchable: true,
         cell: (trigger) => (
-          <div className="min-w-[14rem]">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Bell size={14} className="text-fg-muted" />
               <span className="font-medium text-fg-primary">{trigger.name}</span>
@@ -5401,7 +5401,7 @@ export function WebhookTriggerSection({
         rowActions={(trigger) => {
           const testState = testStates[trigger.id] ?? { status: "idle" };
           return (
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button
                 variant="secondary"
                 size="sm"
@@ -5652,7 +5652,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
 
-      <div className="overflow-hidden rounded-xl border border-border-subtle">
+      <div className="overflow-x-auto rounded-xl border border-border-subtle">
         <table className="min-w-full divide-y divide-border-subtle text-sm">
           <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
             <tr>
@@ -5801,7 +5801,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
         </table>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-fg-muted">
           Estimated sizes use conservative per-row averages — exact sizes
           require Postgres-only system tables. Use the trend over time, not the

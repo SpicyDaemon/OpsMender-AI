@@ -25,22 +25,32 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
+  CalendarOff,
   CheckCircle2,
   ChevronRight,
   Clock,
   RefreshCw,
   ShieldAlert,
+  UserCircle2,
+  Users,
   XCircle,
 } from "lucide-react";
 import {
   listApprovals,
   listIncidents,
+  listRosters,
   listSessions,
+  listTeams,
+  listUsers,
+  resolveOnCall,
 } from "@/lib/api";
 import type {
   ApprovalRequestResponse,
   IncidentResponse,
+  RosterResponse,
   SessionResponse,
+  TeamResponse,
+  UserResponse,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -66,21 +76,40 @@ export default function DashboardIndex() {
   const [approvals, setApprovals] = useState<ApprovalRequestResponse[]>([]);
   const [activeSessions, setActiveSessions] = useState<SessionResponse[]>([]);
   const [failedSessions, setFailedSessions] = useState<SessionResponse[]>([]);
+  const [teams, setTeams] = useState<TeamResponse[]>([]);
+  const [rosters, setRosters] = useState<RosterResponse[]>([]);
+  const [users, setUsers] = useState<UserResponse[]>([]);
+  // Map of rosterId -> resolved user_id (null when no one is on call).
+  const [onCallByRoster, setOnCallByRoster] = useState<
+    Map<string, string | null>
+  >(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [incRes, apprRes, activeRes, awaitingRes, failedRes, timedOutRes] =
-        await Promise.all([
-          listIncidents({ limit: 200 }),
-          listApprovals({ status: "pending", limit: 50 }),
-          listSessions({ status: "active", limit: 25 }),
-          listSessions({ status: "awaiting_approval", limit: 25 }),
-          listSessions({ status: "failed", limit: 10 }),
-          listSessions({ status: "timed_out", limit: 10 }),
-        ]);
+      const [
+        incRes,
+        apprRes,
+        activeRes,
+        awaitingRes,
+        failedRes,
+        timedOutRes,
+        teamsRes,
+        rostersRes,
+        usersRes,
+      ] = await Promise.all([
+        listIncidents({ limit: 200 }),
+        listApprovals({ status: "pending", limit: 50 }),
+        listSessions({ status: "active", limit: 25 }),
+        listSessions({ status: "awaiting_approval", limit: 25 }),
+        listSessions({ status: "failed", limit: 10 }),
+        listSessions({ status: "timed_out", limit: 10 }),
+        listTeams().catch(() => ({ items: [], total: 0 })),
+        listRosters().catch(() => ({ items: [], total: 0 })),
+        listUsers().catch(() => ({ items: [], total: 0 })),
+      ]);
       setIncidents(incRes.items);
       setApprovals(apprRes.items);
       setActiveSessions(
@@ -93,6 +122,24 @@ export default function DashboardIndex() {
           b.started_at.localeCompare(a.started_at),
         ),
       );
+      setTeams(teamsRes.items);
+      setRosters(rostersRes.items);
+      setUsers(usersRes.items);
+
+      // Resolve on-call for every roster in parallel. Misses just
+      // leave that roster as null in the map; the panel renders an
+      // "uncovered" badge instead of breaking.
+      const resolved = await Promise.all(
+        rostersRes.items.map(async (r) => {
+          try {
+            const oc = await resolveOnCall(r.id);
+            return [r.id, oc.user_id] as const;
+          } catch {
+            return [r.id, null] as const;
+          }
+        }),
+      );
+      setOnCallByRoster(new Map(resolved));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
@@ -121,6 +168,40 @@ export default function DashboardIndex() {
         (inc) => inc.status === "open" || inc.status === "in_progress",
       ),
     [incidents],
+  );
+
+  // Group rosters by team for the On-call coverage panel. Teams without
+  // a roster still show — operators need to know they have a coverage
+  // gap. Username lookups use the loaded users list (best-effort; a
+  // miss shows the short uuid instead so the row never collapses).
+  const userById = useMemo(
+    () => new Map(users.map((u) => [u.id, u])),
+    [users],
+  );
+  const rostersByTeam = useMemo(() => {
+    const m = new Map<string, RosterResponse[]>();
+    for (const r of rosters) {
+      if (!m.has(r.team_id)) m.set(r.team_id, []);
+      m.get(r.team_id)!.push(r);
+    }
+    return m;
+  }, [rosters]);
+  const coverageRows = useMemo(
+    () =>
+      teams
+        .map((team) => ({
+          team,
+          rosters: rostersByTeam.get(team.id) ?? [],
+        }))
+        // Show teams with rosters first so coverage gaps don't dominate
+        // the panel at the top.
+        .sort((a, b) => {
+          const ar = a.rosters.length > 0 ? 0 : 1;
+          const br = b.rosters.length > 0 ? 0 : 1;
+          if (ar !== br) return ar - br;
+          return a.team.name.localeCompare(b.team.name);
+        }),
+    [teams, rostersByTeam],
   );
 
   return (
@@ -260,6 +341,103 @@ export default function DashboardIndex() {
           icon={CheckCircle2}
           tone="low"
         />
+      </section>
+
+      {/* On-call coverage — Sprint 59 Step 2. Per-team current on-call
+          resolved via the team's roster(s). Teams without a roster
+          surface as coverage gaps. */}
+      <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+        <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex items-center gap-2">
+            <Users size={14} className="text-fg-secondary" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-secondary">
+              On-call coverage
+            </p>
+          </div>
+          <Link
+            href="/dashboard/paging/rosters"
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-fg-secondary hover:text-fg-primary"
+          >
+            Manage rosters <ArrowRight size={11} />
+          </Link>
+        </div>
+        <div className="px-3 py-3 sm:px-4">
+          {loading ? (
+            <p className="px-2 py-2 text-xs text-fg-muted">Loading…</p>
+          ) : coverageRows.length === 0 ? (
+            <p className="px-2 py-2 text-xs text-fg-muted">
+              No teams yet.{" "}
+              <Link
+                href="/dashboard/paging/teams"
+                className="font-medium text-accent hover:underline"
+              >
+                Create your first team
+              </Link>
+              .
+            </p>
+          ) : (
+            <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {coverageRows.map(({ team, rosters: tr }) => (
+                <li
+                  key={team.id}
+                  className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5"
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <Link
+                      href="/dashboard/paging/teams"
+                      className="truncate text-sm font-medium text-fg-primary hover:text-accent"
+                    >
+                      {team.name}
+                    </Link>
+                  </div>
+                  {tr.length === 0 ? (
+                    <p className="flex items-center gap-1.5 text-[11px] text-status-medium">
+                      <CalendarOff size={11} />
+                      No roster — coverage gap
+                    </p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {tr.map((r) => {
+                        const userId = onCallByRoster.get(r.id) ?? null;
+                        const user = userId ? userById.get(userId) : null;
+                        return (
+                          <li
+                            key={r.id}
+                            className="flex items-center justify-between gap-2 text-[11px]"
+                          >
+                            <span className="truncate text-fg-secondary">
+                              {r.name}
+                            </span>
+                            {user ? (
+                              <span className="inline-flex items-center gap-1 text-fg-primary">
+                                <UserCircle2
+                                  size={11}
+                                  className="text-fg-muted"
+                                />
+                                <span className="truncate font-medium">
+                                  {user.username}
+                                </span>
+                              </span>
+                            ) : userId ? (
+                              <span className="font-mono text-fg-muted">
+                                {userId.slice(0, 8)}…
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-status-medium">
+                                <CalendarOff size={11} />
+                                Uncovered
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
     </div>
   );

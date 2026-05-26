@@ -49,6 +49,8 @@ import { Modal } from "@/components/ui/Modal";
 import { SessionDetailSkeleton } from "@/components/ui/Skeleton";
 import { SessionMemoriesPanel } from "@/components/SessionMemoriesPanel";
 import { SessionWorkflowState } from "@/components/sessions/SessionWorkflowState";
+import { TierCapabilitySummary } from "@/components/sessions/TierCapabilitySummary";
+import { ToolCallCard } from "@/components/sessions/ToolCallCard";
 import { useAuth } from "@/context/auth";
 
 // ---------------------------------------------------------------------------
@@ -367,6 +369,9 @@ function SessionPageContent() {
   const [sendError, setSendError] = useState("");
   const [timerTick, setTimerTick] = useState(0);
   const [showRollback, setShowRollback] = useState(false);
+  // Sprint 58 Step 3: loaded once for ToolCallCard's best-effort
+  // tool-name → MCP-server-name lookup. A miss just renders "—".
+  const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
 
   const counterRef = useRef(0);
   const eventsBottomRef = useRef<HTMLDivElement>(null);
@@ -390,7 +395,23 @@ function SessionPageContent() {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
   }, []);
 
-  // Initial load — session + incident + chat history
+  // Initial load — session + incident + chat history. MCP servers fetched
+  // alongside for ToolCallCard's best-effort name lookup; failures don't
+  // block the page.
+  useEffect(() => {
+    let cancelled = false;
+    listMCPServers()
+      .then((res) => {
+        if (!cancelled) setMcpServers(res.items);
+      })
+      .catch(() => {
+        if (!cancelled) setMcpServers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     if (!id) {
       setLoading(false);
@@ -668,6 +689,12 @@ function SessionPageContent() {
         tier={session.tier}
       />
 
+      {/* Sprint 58 Step 2: tier capability summary. Always-visible
+          headline ("what this tier permits") with an expandable matrix
+          comparing all four tiers; collapsed by default to keep the
+          page lean. */}
+      <TierCapabilitySummary tier={session.tier} defaultCollapsed />
+
       {/* Pending approvals (above the split so they're always visible) */}
       {pendingApprovals.length > 0 && (
         <div className="rounded-xl border border-status-medium-border bg-status-medium-bg/40 p-4 space-y-3">
@@ -747,6 +774,22 @@ function SessionPageContent() {
             ) : (
               <div className="divide-y divide-border-subtle/50">
                 {events.map((ev) => {
+                  // Sprint 58 Step 3+4: tool events get a richer card
+                  // with phase pill, MCP-server lookup, parameters /
+                  // result disclosure, and a blocked-action callout
+                  // when the tier gate refused the action.
+                  if (ev.kind === "tool") {
+                    return (
+                      <ToolCallCard
+                        key={ev.id}
+                        raw={ev.raw as Parameters<typeof ToolCallCard>[0]["raw"]}
+                        fallbackName={ev.label}
+                        mcpServers={mcpServers}
+                        ts={ev.ts}
+                        durationMs={ev.durationMs}
+                      />
+                    );
+                  }
                   const style = KIND_STYLES[ev.kind];
                   const customIcon = ev.kind === "node" ? nodeIcon(ev.label) : null;
                   return (

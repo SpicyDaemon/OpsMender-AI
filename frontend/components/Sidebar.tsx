@@ -35,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
+import { useTheme } from "@/context/theme";
 import { getConfig } from "@/lib/api";
 
 type NavItem = {
@@ -218,12 +219,21 @@ function SidebarContent({
   onMobileClose,
 }: SidebarContentProps) {
   const tierInfo = tier !== null ? TIER_STYLES[tier] : null;
+  const { resolvedTheme } = useTheme();
+  const iconSrc =
+    resolvedTheme === "light"
+      ? "/opsmender_icon_light_transparent.png"
+      : "/opsmender_icon_dark_transparent.png";
+  const wordmarkSrc =
+    resolvedTheme === "light"
+      ? "/opsmender_wordmark_light_transparent_clean.png"
+      : "/opsmender_wordmark_dark_transparent_clean.png";
 
   return (
     <>
       <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-4 h-16">
         <Image
-          src="/opsmender_icon_dark_transparent.png"
+          src={iconSrc}
           alt="OpsMender"
           width={32}
           height={32}
@@ -231,7 +241,7 @@ function SidebarContent({
         />
         {!collapsed && (
           <Image
-            src="/opsmender_wordmark_dark_transparent_clean.png"
+            src={wordmarkSrc}
             alt="OpsMender"
             width={577}
             height={117}
@@ -243,7 +253,7 @@ function SidebarContent({
           <button
             type="button"
             onClick={onMobileClose}
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-bg-hover hover:text-fg-primary transition-colors"
+            className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-primary"
             title="Close navigation"
           >
             <X size={16} />

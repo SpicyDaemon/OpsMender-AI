@@ -60,6 +60,46 @@
   --radius-pill: 9999px;
 }
 
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg-base: #f3f6fb;
+  --color-bg-elevated: #ffffff;
+  --color-bg-panel: #ffffff;
+  --color-bg-hover: #e8eef7;
+  --color-bg-input: #f7f9fc;
+
+  --color-border-subtle: #d6dee9;
+  --color-border-strong: #b5c1d1;
+  --color-border-focus: #2563eb;
+
+  --color-fg-primary: #0f172a;
+  --color-fg-secondary: #475569;
+  --color-fg-muted: #64748b;
+  --color-fg-inverse: #f8fafc;
+
+  --color-status-critical-bg: rgba(239, 68, 68, 0.10);
+  --color-status-critical-border: rgba(239, 68, 68, 0.28);
+  --color-status-high-bg: rgba(245, 158, 11, 0.10);
+  --color-status-high-border: rgba(245, 158, 11, 0.28);
+  --color-status-medium-bg: rgba(234, 179, 8, 0.10);
+  --color-status-medium-border: rgba(234, 179, 8, 0.28);
+  --color-status-low-bg: rgba(16, 185, 129, 0.10);
+  --color-status-low-border: rgba(16, 185, 129, 0.28);
+  --color-status-info-bg: rgba(59, 130, 246, 0.10);
+  --color-status-info-border: rgba(59, 130, 246, 0.28);
+  --color-status-neutral-bg: rgba(100, 116, 139, 0.10);
+  --color-status-neutral-border: rgba(100, 116, 139, 0.22);
+
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-bg: rgba(37, 99, 235, 0.12);
+}
+
 html,
 body {
   background: var(--color-bg-base);
@@ -68,11 +108,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-}
-
-/* Force dark color scheme — light mode is intentionally not supported in v1 */
-:root {
-  color-scheme: dark;
 }
 
 /* Tabular numbers for timestamps, durations, IDs */

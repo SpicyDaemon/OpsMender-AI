@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/auth";
 import { BrandingProvider } from "@/context/branding";
+import { ThemeProvider } from "@/context/theme";
 import { ToastProvider } from "@/components/ui/Toast";
 
 const inter = Inter({
@@ -44,6 +45,27 @@ export const metadata: Metadata = {
   },
 };
 
+const THEME_INIT_SCRIPT = `
+(() => {
+  try {
+    const stored = localStorage.getItem("opsmender:theme");
+    const mode =
+      stored === "light" || stored === "dark" || stored === "system"
+        ? stored
+        : "system";
+    const resolved =
+      mode === "system"
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : mode;
+    document.documentElement.dataset.theme = resolved;
+    document.documentElement.style.colorScheme = resolved;
+  } catch {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.style.colorScheme = "dark";
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -53,13 +75,17 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${inter.variable} ${jetbrainsMono.variable} h-full`}
+      suppressHydrationWarning
     >
       <body className="h-full">
-        <AuthProvider>
-          <BrandingProvider>
-            <ToastProvider>{children}</ToastProvider>
-          </BrandingProvider>
-        </AuthProvider>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <ThemeProvider>
+          <AuthProvider>
+            <BrandingProvider>
+              <ToastProvider>{children}</ToastProvider>
+            </BrandingProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

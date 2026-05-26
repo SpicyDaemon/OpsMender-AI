@@ -12,6 +12,7 @@ import {
   Menu,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import {
   getOrgId,
   listApprovals,
@@ -303,6 +304,12 @@ export function TopBar({
                       </div>
                     </div>
                   )}
+                </div>
+                <div className="border-b border-border-subtle px-3 py-2.5">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                    Theme
+                  </p>
+                  <ThemeToggle />
                 </div>
                 <button
                   onClick={() => { setMenuOpen(false); logout(); }}

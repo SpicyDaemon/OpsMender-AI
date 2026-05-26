@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -32,6 +32,7 @@ import {
   Users,
   Workflow,
   Wrench,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
 import { getConfig } from "@/lib/api";
@@ -136,13 +137,23 @@ type NavLinkArgs = {
   badge?: NavItem["badge"];
   active: boolean;
   collapsed: boolean;
+  onClick?: () => void;
 };
 
-function renderNavLink({ href, label, Icon, badge, active, collapsed }: NavLinkArgs) {
+function renderNavLink({
+  href,
+  label,
+  Icon,
+  badge,
+  active,
+  collapsed,
+  onClick,
+}: NavLinkArgs) {
   return (
     <Link
       key={href}
       href={href}
+      onClick={onClick}
       title={collapsed ? label : undefined}
       className={`group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
         active
@@ -170,62 +181,46 @@ function renderNavLink({ href, label, Icon, badge, active, collapsed }: NavLinkA
   );
 }
 
-export function Sidebar() {
-  const pathname = usePathname();
-  const { user, logout } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
-  const [tier, setTier] = useState<number | null>(null);
+type SidebarProps = {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+};
 
-  useEffect(() => {
-    const stored = localStorage.getItem(COLLAPSE_KEY);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (stored === "1") {
-      setCollapsed(true);
-    } else if (stored === null && window.matchMedia("(max-width: 768px)").matches) {
-      // First visit on a narrow viewport: default to icon-only so the content
-      // area isn't squeezed. Operator can still expand manually.
-      setCollapsed(true);
-    }
-    localStorage.removeItem(LEGACY_GROUP_COLLAPSE_KEY);
-    setHydrated(true);
-  }, []);
+type SidebarContentProps = {
+  collapsed: boolean;
+  pathname: string;
+  roleClass: string;
+  tier: number | null;
+  visibleGroups: NavGroup[];
+  flatVisibleItems: NavItem[];
+  user: ReturnType<typeof useAuth>["user"];
+  logout: () => void;
+  onToggleCollapse?: () => void;
+  onNavigate?: () => void;
+  showCollapseToggle?: boolean;
+  mobile?: boolean;
+  onMobileClose?: () => void;
+};
 
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    getConfig()
-      .then((c) => { if (!cancelled) setTier(c.tier); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [user, pathname]);
-
-  useEffect(() => {
-    if (hydrated) localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
-  }, [collapsed, hydrated]);
-
-  const width = collapsed ? "w-16" : "w-60";
-  const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
+function SidebarContent({
+  collapsed,
+  pathname,
+  roleClass,
+  tier,
+  visibleGroups,
+  flatVisibleItems,
+  user,
+  logout,
+  onToggleCollapse,
+  onNavigate,
+  showCollapseToggle = true,
+  mobile = false,
+  onMobileClose,
+}: SidebarContentProps) {
   const tierInfo = tier !== null ? TIER_STYLES[tier] : null;
 
-  // Filter items by role and drop any group that ends up empty.
-  const visibleGroups: NavGroup[] = NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter(
-      (item) => !item.reqRole || (user && user.role === item.reqRole),
-    ),
-  })).filter((group) => group.items.length > 0);
-
-  // When the sidebar is fully collapsed (icon-only), groups don't render
-  // their headers — we just stream the items as a flat icon list because
-  // there's no room for the labels.
-  const flatVisibleItems = visibleGroups.flatMap((g) => g.items);
-
   return (
-    <aside
-      className={`${width} flex h-full shrink-0 flex-col border-r border-border-subtle bg-bg-elevated transition-[width] duration-200`}
-    >
-      {/* Brand */}
+    <>
       <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-4 h-16">
         <Image
           src="/opsmender_icon_dark_transparent.png"
@@ -244,9 +239,18 @@ export function Sidebar() {
             priority
           />
         )}
+        {mobile && onMobileClose && (
+          <button
+            type="button"
+            onClick={onMobileClose}
+            className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-bg-hover hover:text-fg-primary transition-colors"
+            title="Close navigation"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
-      {/* Tier indicator */}
       {tierInfo && (
         <div className="border-b border-border-subtle px-3 py-2">
           {collapsed ? (
@@ -272,7 +276,6 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Nav */}
       <nav className="flex-1 space-y-1 px-2 py-3 overflow-y-auto">
         {collapsed
           ? flatVisibleItems.map(({ href, label, icon: Icon, badge }) =>
@@ -283,6 +286,7 @@ export function Sidebar() {
                 badge,
                 active: pathname.startsWith(href),
                 collapsed: true,
+                onClick: onNavigate,
               }),
             )
           : visibleGroups.map((group) => (
@@ -299,6 +303,7 @@ export function Sidebar() {
                       badge,
                       active: pathname.startsWith(href),
                       collapsed: false,
+                      onClick: onNavigate,
                     }),
                   )}
                 </div>
@@ -306,21 +311,21 @@ export function Sidebar() {
             ))}
       </nav>
 
-      {/* Collapse toggle */}
-      <button
-        onClick={() => setCollapsed((c) => !c)}
-        className="mx-2 mb-2 flex items-center justify-center gap-2 rounded-md border border-border-subtle py-1.5 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-secondary transition-colors"
-        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-      >
-        {collapsed ? <ChevronRight size={14} /> : (
-          <>
-            <ChevronLeft size={14} />
-            <span>Collapse</span>
-          </>
-        )}
-      </button>
+      {showCollapseToggle && onToggleCollapse && (
+        <button
+          onClick={onToggleCollapse}
+          className="mx-2 mb-2 flex items-center justify-center gap-2 rounded-md border border-border-subtle py-1.5 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-secondary transition-colors"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <ChevronRight size={14} /> : (
+            <>
+              <ChevronLeft size={14} />
+              <span>Collapse</span>
+            </>
+          )}
+        </button>
+      )}
 
-      {/* User */}
       <div className="border-t border-border-subtle px-3 py-3">
         {user && (
           <div className="flex items-center gap-2">
@@ -351,6 +356,121 @@ export function Sidebar() {
           </div>
         )}
       </div>
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
+  const pathname = usePathname();
+  const { user, logout } = useAuth();
+  const [collapsed, setCollapsed] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [tier, setTier] = useState<number | null>(null);
+  const previousPathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(COLLAPSE_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (stored === "1") {
+      setCollapsed(true);
+    } else if (stored === null && window.matchMedia("(max-width: 768px)").matches) {
+      // First visit on a narrow viewport: default to icon-only so the content
+      // area isn't squeezed. Operator can still expand manually.
+      setCollapsed(true);
+    }
+    localStorage.removeItem(LEGACY_GROUP_COLLAPSE_KEY);
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    getConfig()
+      .then((c) => { if (!cancelled) setTier(c.tier); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user, pathname]);
+
+  useEffect(() => {
+    if (hydrated) localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+  }, [collapsed, hydrated]);
+
+  useEffect(() => {
+    if (previousPathnameRef.current !== pathname && mobileOpen) {
+      onMobileClose?.();
+    }
+    previousPathnameRef.current = pathname;
+  }, [mobileOpen, onMobileClose, pathname]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
+
+  const width = collapsed ? "w-16" : "w-60";
+  const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
+
+  // Filter items by role and drop any group that ends up empty.
+  const visibleGroups: NavGroup[] = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => !item.reqRole || (user && user.role === item.reqRole),
+    ),
+  })).filter((group) => group.items.length > 0);
+
+  // When the sidebar is fully collapsed (icon-only), groups don't render
+  // their headers — we just stream the items as a flat icon list because
+  // there's no room for the labels.
+  const flatVisibleItems = visibleGroups.flatMap((g) => g.items);
+
+  return (
+    <>
+      <aside
+        className={`${width} hidden h-full shrink-0 flex-col border-r border-border-subtle bg-bg-elevated transition-[width] duration-200 sm:flex`}
+      >
+        <SidebarContent
+          collapsed={collapsed}
+          pathname={pathname}
+          roleClass={roleClass}
+          tier={tier}
+          visibleGroups={visibleGroups}
+          flatVisibleItems={flatVisibleItems}
+          user={user}
+          logout={logout}
+          onToggleCollapse={() => setCollapsed((c) => !c)}
+        />
+      </aside>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 sm:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/60"
+            aria-label="Close navigation"
+            onClick={onMobileClose}
+          />
+          <aside className="relative z-10 flex h-full w-full max-w-full flex-col border-r border-border-subtle bg-bg-elevated shadow-2xl">
+            <SidebarContent
+              collapsed={false}
+              pathname={pathname}
+              roleClass={roleClass}
+              tier={tier}
+              visibleGroups={visibleGroups}
+              flatVisibleItems={flatVisibleItems}
+              user={user}
+              logout={logout}
+              mobile
+              onMobileClose={onMobileClose}
+              onNavigate={onMobileClose}
+              showCollapseToggle={false}
+            />
+          </aside>
+        </div>
+      )}
+    </>
   );
 }

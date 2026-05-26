@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Bell, Building2, Check, ChevronDown, Keyboard, LogOut } from "lucide-react";
+import {
+  Bell,
+  Building2,
+  Check,
+  ChevronDown,
+  Keyboard,
+  LogOut,
+  Menu,
+} from "lucide-react";
 import { useAuth } from "@/context/auth";
 import {
   getOrgId,
@@ -22,7 +30,11 @@ const ROLE_STYLES: Record<string, string> = {
 
 const POLL_MS = 30_000;
 
-export function TopBar() {
+export function TopBar({
+  onOpenMobileNav,
+}: {
+  onOpenMobileNav?: () => void;
+}) {
   const { user, logout } = useAuth();
   const [pending, setPending] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -124,7 +136,18 @@ export function TopBar() {
   const pendingLabel = pending === null ? "?" : pending > 99 ? "99+" : String(pending);
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-end gap-3 border-b border-border-subtle bg-bg-elevated px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-elevated px-4">
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={onOpenMobileNav}
+          className="flex h-9 w-9 items-center justify-center rounded-md text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors sm:hidden"
+          title="Open navigation"
+          aria-label="Open navigation"
+        >
+          <Menu size={18} />
+        </button>
+      </div>
       <div className="flex min-w-0 items-center gap-1.5">
         {user && tenant?.pinned && (
           <div

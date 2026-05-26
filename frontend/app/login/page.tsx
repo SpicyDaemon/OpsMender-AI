@@ -48,7 +48,7 @@ export default function LoginPage() {
       try {
         const me = await getMe();
         if (me.primary_org_id) setOrgId(me.primary_org_id);
-        router.push("/dashboard/incidents");
+        router.push("/dashboard");
       } catch (err) {
         setError(err instanceof Error ? err.message : "SSO login failed");
       }
@@ -61,7 +61,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
-      router.push("/dashboard/incidents");
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

@@ -91,7 +91,7 @@ function InviteAcceptContent() {
       setToken(resp.access_token);
       // Drop straight into the dashboard. We don't have primary_org_id
       // in the response, but /auth/me on the next page load will set it.
-      router.push("/dashboard/incidents");
+      router.push("/dashboard");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
     } finally {

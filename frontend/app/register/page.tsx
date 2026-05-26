@@ -34,7 +34,7 @@ export default function RegisterPage() {
       await register(form.username, form.email, form.password, form.role);
       // Auto-login after registration
       await login(form.username, form.password);
-      router.push("/dashboard/incidents");
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

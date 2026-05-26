@@ -22,6 +22,7 @@ from backend.api.session_runner import schedule_session_workflow
 from backend.api.schemas import (
     RollbackStepResponse,
     SessionCreate,
+    SessionListResponse,
     SessionMessageCreate,
     SessionMessageListResponse,
     SessionMessageResponse,
@@ -203,6 +204,35 @@ async def create_session(
         schedule_session_workflow(request.app, session_id=session.id)
 
     return _to_session_response(session)
+
+
+@router.get(
+    "",
+    response_model=SessionListResponse,
+    summary="List sessions for the active organization",
+)
+async def list_sessions(
+    status_filter: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    """Sprint 59 / UX-direction Sprint C: powers the dashboard
+    Attention Queue's "active sessions" + "failed sessions" panels.
+
+    Optional ``status_filter`` accepts any value the ``Session.status``
+    column carries: ``active`` / ``awaiting_approval`` / ``completed``
+    / ``failed`` / ``timed_out``. When unset, returns the most-recent
+    sessions across all statuses.
+    """
+
+    items = await SessionRepo.list_all(
+        db, org_id, status=status_filter, limit=limit, offset=offset
+    )
+    rows = [_to_session_response(s) for s in items]
+    return SessionListResponse(items=rows, total=len(rows))
 
 
 @router.get(

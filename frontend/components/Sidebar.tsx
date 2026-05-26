@@ -8,6 +8,7 @@ import {
   Activity,
   AlertTriangle,
   Bell,
+  LayoutDashboard,
   Bot,
   BookOpen,
   Brain,
@@ -44,6 +45,13 @@ type NavItem = {
   icon: typeof AlertTriangle;
   reqRole?: string;
   badge?: { label: string; tone: "neutral" | "warn" };
+  /**
+   * When true, the active-state match requires `pathname === href`
+   * (not `startsWith`). Use this for href values that are prefixes
+   * of other routes — e.g. `/dashboard` would otherwise light up on
+   * every child page.
+   */
+  exact?: boolean;
 };
 
 type NavGroup = {
@@ -57,6 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "incident-management",
     label: "Incident Management",
     items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
       { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
       { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
     ],
@@ -288,13 +297,13 @@ function SidebarContent({
 
       <nav className="flex-1 space-y-1 px-2 py-3 overflow-y-auto">
         {collapsed
-          ? flatVisibleItems.map(({ href, label, icon: Icon, badge }) =>
+          ? flatVisibleItems.map(({ href, label, icon: Icon, badge, exact }) =>
               renderNavLink({
                 href,
                 label,
                 Icon,
                 badge,
-                active: pathname.startsWith(href),
+                active: exact ? pathname === href : pathname.startsWith(href),
                 collapsed: true,
                 onClick: onNavigate,
               }),
@@ -305,13 +314,13 @@ function SidebarContent({
                   {group.label}
                 </div>
                 <div className="space-y-0.5">
-                  {group.items.map(({ href, label, icon: Icon, badge }) =>
+                  {group.items.map(({ href, label, icon: Icon, badge, exact }) =>
                     renderNavLink({
                       href,
                       label,
                       Icon,
                       badge,
-                      active: pathname.startsWith(href),
+                      active: exact ? pathname === href : pathname.startsWith(href),
                       collapsed: false,
                       onClick: onNavigate,
                     }),

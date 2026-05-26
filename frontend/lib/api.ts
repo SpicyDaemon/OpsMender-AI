@@ -205,6 +205,19 @@ export async function createSession(body: SessionCreate): Promise<SessionRespons
   return api.post<SessionResponse>("/sessions", body);
 }
 
+export async function listSessions(params?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SessionListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status_filter", params.status);
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return api.get<SessionListResponse>(`/sessions${q ? `?${q}` : ""}`);
+}
+
 export async function listIncidentSessions(id: string): Promise<SessionListResponse> {
   return api.get<SessionListResponse>(`/incidents/${id}/sessions`);
 }

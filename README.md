@@ -29,6 +29,8 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Multi-tenant** — strict per-org isolation across every entity. Optional host-based routing pins each tenant to its own URL (`acme.opsmender.example.com`, `globex.opsmender.example.com`) with custom branding.
 - **Per-tenant SSO** — each org can wire its own **OIDC** identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak) **or SAML 2.0** IdP (older Okta, ADFS, classic Azure AD enterprise apps). Users are JIT-provisioned on first login; OIDC client secrets are encrypted at rest, SAML uses a global SP keypair from env. Local login stays available as a break-glass path.
 
+The admin workflow around those users — invites, password resets, auth-method badges, bootstrap admins, SMTP delivery, and soft delete — is documented in [docs/wiki/people-guide.md](docs/wiki/people-guide.md).
+
 ## The full incident-response loop
 
 OpsMender's job is one cohesive loop: **alert → AI → ack → fix → resolve.** Every paged incident walks the same five stages.
@@ -74,6 +76,8 @@ OpsMender's job is one cohesive loop: **alert → AI → ack → fix → resolve
 The end-to-end loop is exercised by `tests/test_e2e_paging_flow.py::TestIncidentResponseLoop` — that test walks the entire flow through real HTTP routes (ingest → priority → page → chain → Slack ack → web force-takeover → Slack resolve) and ships as the canonical regression guard for the paging surface.
 
 For the operator-facing walkthrough — services / teams / rosters / escalation chains / priority rules / response modes / maintenance windows / notification preferences — see [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md). For platform-specific chat-surface details, see the [Slack](docs/wiki/slack-paging-surface.md) and [Teams](docs/wiki/teams-paging-surface.md) guides.
+
+For admin-facing user lifecycle work, see [docs/wiki/people-guide.md](docs/wiki/people-guide.md).
 
 ## How OpsMender thinks (concepts in 60 seconds)
 

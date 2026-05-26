@@ -1,5 +1,7 @@
 This guide covers the core configuration and integration points for administrators managing the OpsMender AI (OpsMender) platform.
 
+For day-to-day user lifecycle operations — invites, password resets, deactivation, soft delete, bootstrap admins, and auth-method badges — see the [People Guide](people-guide.md).
+
 ## 0. Multi-tenancy
 
 OpsMender supports multiple isolated organizations on a single deployment. This allows MSPs or large enterprises to host different teams or clients with strict data isolation.
@@ -35,10 +37,11 @@ If you run OpsMender on a single hostname, you can skip Domain Isolation entirel
 
 ## 1. Authentication
 
-OpsMender supports two auth paths:
+OpsMender supports three auth paths:
 
 - **Local username/password.** First user registered automatically becomes the global `admin`. Use this for the initial bootstrap and as a break-glass account.
 - **Per-tenant SSO (OIDC).** Each org can wire its own identity provider — Okta, Azure AD, Google Workspace, Auth0, or Keycloak. OpsMender redirects users to the IdP and JIT-provisions accounts on first login.
+- **Per-tenant SSO (SAML 2.0).** Each org can wire a SAML IdP such as Okta classic apps, Azure AD enterprise apps, or ADFS. OpsMender acts as the SP and JIT-provisions users on first successful assertion.
 
 ### 1.1 Configuring SSO for an org (OIDC)
 
@@ -60,9 +63,33 @@ When SSO is enabled, the login page on a host-pinned domain shows a "Sign in wit
 
 The client secret is encrypted at rest with Fernet (AES-128-CBC + HMAC-SHA256). The encryption key derives from `OPSMENDER_SECRET_KEY` (preferred) or falls back to `OPSMENDER_JWT_SECRET`. Set a dedicated `OPSMENDER_SECRET_KEY` in production so rotating the JWT secret doesn't invalidate every stored SSO secret.
 
-### 1.2 SAML
+### 1.2 Configuring SAML for an org
 
-SAML 2.0 is on the roadmap but not in v1 — the storage column accommodates it (`provider = 'saml'`) but only `oidc` is wired today. If you need SAML for a specific deployment, file an issue.
+Open **Organizations** as a global admin, click **SAML** on the target org, then fill in:
+
+- **Metadata URL** or **Raw metadata XML** — exactly one is required. Use the URL when your IdP exposes stable metadata; paste XML when it does not.
+- **Default role** — role assigned to new JIT-provisioned users.
+- **Allowed email domains** — optional comma-separated allowlist enforced after the assertion is validated.
+- **Enabled** — uncheck to temporarily disable SAML without losing the config.
+
+OpsMender's SP-side keypair is global and comes from env:
+
+- `OPSMENDER_SAML_SP_CERT`
+- `OPSMENDER_SAML_SP_KEY`
+- optional `OPSMENDER_SAML_SP_ENTITY_ID`
+
+Generate a self-signed keypair with:
+
+```bash
+opsmender saml gen-sp-keys --cn opsmender-sp --days 3650
+```
+
+The IdP admin will usually need these two URLs:
+
+- **ACS / Reply URL:** `https://{your-tenant-host}/auth/saml/{org-slug}/acs`
+- **SP metadata:** `https://{your-tenant-host}/auth/saml/{org-slug}/metadata`
+
+On successful login, OpsMender validates the signed SAML response, extracts the email/name attributes, JIT-provisions the user if needed, and redirects back through the same `#sso_token=...` handoff used by OIDC.
 
 ## 2. Runtime Configuration
 

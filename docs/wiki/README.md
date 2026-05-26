@@ -15,6 +15,7 @@ If you are a developer looking for internal architecture documentation, API deta
 
 ### 2. Administrator Guide
 * [Administrator Guide](admin-guide.md) — User authentication, runtime configurations, LLM providers, setting up MCP servers, chat bot connectors, webhooks, and ingest tokens.
+* [People Guide](people-guide.md) — Invites, password resets, auth-method badges, deactivation vs soft delete, bootstrap admins, SMTP, and multi-org user management.
 * [Integrations Guide](integrations-guide.md) — Incident ingest adapters, chat bot connectors, outbound webhooks, and Docker deployment basics.
 * [Skills Guide](skills-guide.md) — Managing MCP servers, enforcement tiers, and capability examples.
 

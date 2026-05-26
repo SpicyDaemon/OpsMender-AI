@@ -9,7 +9,7 @@ OpsMender supports multiple isolated organizations on a single deployment. This 
 *   **Organizations:** The top-level entity. Every incident, session, and configuration is bound to an organization.
 *   **User-Org Mapping:** Users can be members of multiple organizations. Each user has a `primary_org_id` which determines their default context for API requests. The dashboard topbar shows an org switcher when a user belongs to more than one org.
 *   **Isolation:** Data is strictly isolated at the database repository layer. Background services and chat bots are organization-aware and only interact with data belonging to their resolved tenant.
-*   **Custom Branding:** Each organization can define its own primary/secondary colors, company name, and logo/favicon. These are applied dynamically when a user logs in.
+*   **Custom Branding:** Each organization can define its own primary/secondary colors, company name, and favicon/logo metadata. Today the runtime branding effect is intentionally narrow: the browser title/favicon can change per tenant, and host-based tenant resolution can carry that identity onto unauthenticated entry points. The shared app accent, dark/light mode, and core dashboard theme remain product-level tokens owned by OpsMender rather than per-org overrides.
 
 ### 0.1 Tenant resolution order
 

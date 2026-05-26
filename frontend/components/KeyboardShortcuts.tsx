@@ -24,7 +24,13 @@ const NAV_SHORTCUTS: Shortcut[] = [
   { keys: [ALT_LABEL, "C"], label: "Config", target: "/dashboard/config" },
 ];
 
+const CMD_LABEL =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform)
+    ? "⌘"
+    : "Ctrl";
+
 const OTHER_SHORTCUTS: Shortcut[] = [
+  { keys: [CMD_LABEL, "K"], label: "Open command palette" },
   { keys: [ALT_LABEL, "/"], label: "Show this shortcut help" },
   { keys: ["?"], label: "Show this shortcut help (alt)" },
   { keys: ["Esc"], label: "Close modal / dismiss dialog" },

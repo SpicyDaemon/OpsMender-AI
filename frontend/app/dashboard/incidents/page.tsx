@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Plus, RefreshCw, Search, X } from "lucide-react";
 import {
   bulkIncidentAction,
@@ -316,6 +317,27 @@ export default function IncidentsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const toast = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Sprint 61 (Sprint E) — command-palette deep-links.
+  // /dashboard/incidents?new=1 opens the create-incident modal on
+  // arrival; ?test=1 opens the fire-test modal. The param is
+  // consumed once and stripped from the URL so a refresh doesn't
+  // re-open the modal.
+  useEffect(() => {
+    const wantNew = searchParams.get("new");
+    const wantTest = searchParams.get("test");
+    if (wantNew === "1") setShowCreate(true);
+    if (wantTest === "1") setShowTest(true);
+    if (wantNew === "1" || wantTest === "1") {
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("new");
+      next.delete("test");
+      const qs = next.toString();
+      router.replace(`/dashboard/incidents${qs ? `?${qs}` : ""}`);
+    }
+  }, [searchParams, router]);
 
   const load = useCallback(async () => {
     setLoading(true);

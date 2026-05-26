@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AuthGuard } from "@/components/AuthGuard";
+import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
@@ -24,6 +25,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </main>
         </div>
         <KeyboardShortcuts />
+        <CommandPalette />
       </div>
     </AuthGuard>
   );

@@ -507,6 +507,43 @@ function UsersTab({
       rows={users}
       columns={columns}
       rowKey={(u) => u.id}
+      phoneLayout={(u) => (
+        <div className="space-y-3">
+          <div className="min-w-0">
+            <Link
+              href={`/dashboard/people/detail?id=${u.id}`}
+              className="font-medium text-fg-primary hover:text-accent"
+            >
+              {u.username}
+            </Link>
+            <p className="mt-1 text-sm text-fg-muted">{u.email}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant={ROLE_VARIANT[u.role] as never}>{u.role}</Badge>
+            {u.is_active ? (
+              <Badge variant="low">Active</Badge>
+            ) : (
+              <Badge variant="default">Inactive</Badge>
+            )}
+          </div>
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                Auth method
+              </p>
+              <div className="mt-1">
+                <AuthMethodBadge user={u} />
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                Joined
+              </p>
+              <p className="mt-1 text-fg-secondary">{fmtDate(u.created_at)}</p>
+            </div>
+          </div>
+        </div>
+      )}
       storageKey="opsmender:people-users-table"
       searchPlaceholder="Search by username or email…"
       dateRangeColumn={{
@@ -650,6 +687,30 @@ function InvitesTab({
       rows={invites}
       columns={columns}
       rowKey={(i) => i.id}
+      phoneLayout={(invite) => (
+        <div className="space-y-3">
+          <div className="min-w-0">
+            <p className="font-medium text-fg-primary">{invite.email}</p>
+            <p className="mt-1 text-sm text-fg-muted">
+              Sent {fmtDate(invite.created_at)}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant={ROLE_VARIANT[invite.role] as never}>{invite.role}</Badge>
+            <Badge variant={INVITE_STATUS_VARIANT[invite.status] as never}>
+              {invite.status}
+            </Badge>
+          </div>
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                Expires
+              </p>
+              <p className="mt-1 text-fg-secondary">{fmtDate(invite.expires_at)}</p>
+            </div>
+          </div>
+        </div>
+      )}
       storageKey="opsmender:people-invites-table"
       searchPlaceholder="Search by email…"
       dateRangeColumn={{

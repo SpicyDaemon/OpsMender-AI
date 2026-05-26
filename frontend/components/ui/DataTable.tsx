@@ -70,6 +70,8 @@ export interface DataTableProps<T> {
   rows: T[];
   columns: DataTableColumn<T>[];
   rowKey: (row: T) => string;
+  /** Optional custom phone card layout rendered below `md`. */
+  phoneLayout?: (row: T) => ReactNode;
   /** Optional date-range picker driven by one column. */
   dateRangeColumn?: DateRangeColumnConfig<T>;
   /** Optional row-action slot rendered in a trailing cell. */
@@ -148,6 +150,7 @@ export function DataTable<T>({
   rows,
   columns,
   rowKey,
+  phoneLayout,
   dateRangeColumn,
   rowActions,
   expandedRow,
@@ -387,6 +390,12 @@ export function DataTable<T>({
 
   const leadingColumnCount = (selectable ? 1 : 0) + (expandedRow ? 1 : 0);
 
+  const renderCellContent = (col: DataTableColumn<T>, row: T) => {
+    if (col.cell) return col.cell(row);
+    const v = col.accessor(row);
+    return v == null ? "—" : String(v);
+  };
+
   // ----- Render ---------------------------------------------------------------
   return (
     <div className={`space-y-3 ${className}`}>
@@ -571,173 +580,277 @@ export function DataTable<T>({
           </div>
         )
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border-default bg-bg-panel shadow-sm">
-          <table className="min-w-full divide-y divide-border-subtle text-sm">
-            <thead className="bg-bg-elevated text-left">
-              <tr>
-                {expandedRow && (
-                  <th
-                    scope="col"
-                    className="w-0 whitespace-nowrap px-3 py-2 text-left"
-                  >
-                    <span className="sr-only">
-                      {expandedRow.label ?? "Expand row"}
-                    </span>
-                  </th>
-                )}
-                {selectable && (
-                  <th
-                    scope="col"
-                    className="w-0 whitespace-nowrap px-3 py-2 text-left"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={allOnPageSelected}
-                      ref={(el) => {
-                        if (el) el.indeterminate = someOnPageSelected;
-                      }}
-                      onChange={togglePage}
-                      aria-label="Select all rows on this page"
-                    />
-                  </th>
-                )}
-                {visibleColumns.map((col) => {
-                  const isSorted = sortState.columnId === col.id;
-                  const align =
-                    col.align === "right"
-                      ? "text-right"
-                      : col.align === "center"
-                        ? "text-center"
-                        : "text-left";
-                  return (
-                    <th
-                      key={col.id}
-                      scope="col"
-                      className={`whitespace-nowrap px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-fg-secondary ${align}`}
-                    >
-                      {col.sortable ? (
-                        <button
-                          type="button"
-                          onClick={() => cycleSort(col.id)}
-                          className="inline-flex items-center gap-1 hover:text-fg-primary"
-                        >
-                          <span>{col.label}</span>
-                          {isSorted && sortState.dir === "asc" && (
-                            <ArrowUp size={11} />
-                          )}
-                          {isSorted && sortState.dir === "desc" && (
-                            <ArrowDown size={11} />
-                          )}
-                          {!isSorted && (
-                            <ArrowUpDown size={11} className="opacity-40" />
-                          )}
-                        </button>
-                      ) : (
-                        <span>{col.label}</span>
+        <>
+          <div className="space-y-3 md:hidden">
+            {selectable && (
+              <div className="flex items-center justify-between rounded-lg border border-border-default bg-bg-panel px-3 py-2 text-sm shadow-sm">
+                <label className="inline-flex items-center gap-2 text-fg-primary">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someOnPageSelected;
+                    }}
+                    onChange={togglePage}
+                    aria-label="Select all rows on this page"
+                  />
+                  <span>Select page</span>
+                </label>
+                <span className="text-xs text-fg-muted">
+                  {pageRows.length} row{pageRows.length === 1 ? "" : "s"}
+                </span>
+              </div>
+            )}
+
+            {pageRows.map((row) => {
+              const k = rowKey(row);
+              const isSelected = selection.has(k);
+              const isExpanded = Boolean(expandedRow?.expandedKeys.has(k));
+              const primaryColumn = visibleColumns[0] ?? null;
+              const remainingColumns = visibleColumns.slice(1);
+              return (
+                <div
+                  key={k}
+                  className={`rounded-lg border border-border-default bg-bg-panel p-4 shadow-sm ${
+                    isSelected ? "border-accent bg-accent-bg/20" : ""
+                  } ${isExpanded ? "bg-bg-elevated/60" : ""}`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      {selectable && (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleRow(k)}
+                          aria-label="Select row"
+                          className="mt-1 shrink-0"
+                        />
                       )}
-                    </th>
-                  );
-                })}
-                {rowActions && (
-                  <th
-                    scope="col"
-                    className="w-0 whitespace-nowrap px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-fg-secondary text-right"
-                  >
-                    {/* row actions header */}
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {pageRows.map((row) => {
-                const k = rowKey(row);
-                const isSelected = selection.has(k);
-                const isExpanded = Boolean(expandedRow?.expandedKeys.has(k));
-                return (
-                  <Fragment key={k}>
-                    <tr
-                      className={`hover:bg-bg-hover/40 transition-colors ${
-                        isSelected ? "bg-accent-bg/30" : ""
-                      } ${isExpanded ? "bg-bg-elevated/60" : ""}`}
-                    >
-                      {expandedRow && (
-                        <td className="w-0 whitespace-nowrap px-3 py-2 align-middle">
-                          <button
-                            type="button"
+                      <div className="min-w-0 flex-1">
+                        {phoneLayout ? (
+                          phoneLayout(row)
+                        ) : (
+                          <div className="space-y-3">
+                            {primaryColumn && (
+                              <div className="min-w-0">
+                                {renderCellContent(primaryColumn, row)}
+                              </div>
+                            )}
+                            {remainingColumns.length > 0 && (
+                              <div className="grid gap-3">
+                                {remainingColumns.map((col) => (
+                                  <div key={col.id} className="min-w-0">
+                                    <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                                      {col.label}
+                                    </p>
+                                    <div className="mt-1 text-sm text-fg-primary">
+                                      {renderCellContent(col, row)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {(expandedRow || rowActions) && (
+                      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle pt-3">
+                        {expandedRow && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => expandedRow.onToggle(k, row)}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded text-fg-muted hover:bg-bg-hover hover:text-fg-primary"
-                            aria-label={
-                              isExpanded
-                                ? "Collapse row details"
-                                : "Expand row details"
-                            }
                           >
                             {isExpanded ? (
-                              <ChevronDown size={14} />
+                              <>
+                                <ChevronDown size={14} /> Hide details
+                              </>
                             ) : (
-                              <ChevronRight size={14} />
+                              <>
+                                <ChevronRight size={14} /> Details
+                              </>
+                            )}
+                          </Button>
+                        )}
+                        {rowActions?.(row)}
+                      </div>
+                    )}
+
+                    {expandedRow && isExpanded && (
+                      <div className="border-t border-border-subtle pt-3">
+                        {expandedRow.render(row)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-lg border border-border-default bg-bg-panel shadow-sm md:block">
+            <table className="min-w-full divide-y divide-border-subtle text-sm">
+              <thead className="bg-bg-elevated text-left">
+                <tr>
+                  {expandedRow && (
+                    <th
+                      scope="col"
+                      className="w-0 whitespace-nowrap px-3 py-2 text-left"
+                    >
+                      <span className="sr-only">
+                        {expandedRow.label ?? "Expand row"}
+                      </span>
+                    </th>
+                  )}
+                  {selectable && (
+                    <th
+                      scope="col"
+                      className="w-0 whitespace-nowrap px-3 py-2 text-left"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allOnPageSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someOnPageSelected;
+                        }}
+                        onChange={togglePage}
+                        aria-label="Select all rows on this page"
+                      />
+                    </th>
+                  )}
+                  {visibleColumns.map((col) => {
+                    const isSorted = sortState.columnId === col.id;
+                    const align =
+                      col.align === "right"
+                        ? "text-right"
+                        : col.align === "center"
+                          ? "text-center"
+                          : "text-left";
+                    return (
+                      <th
+                        key={col.id}
+                        scope="col"
+                        className={`whitespace-nowrap px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-fg-secondary ${align}`}
+                      >
+                        {col.sortable ? (
+                          <button
+                            type="button"
+                            onClick={() => cycleSort(col.id)}
+                            className="inline-flex items-center gap-1 hover:text-fg-primary"
+                          >
+                            <span>{col.label}</span>
+                            {isSorted && sortState.dir === "asc" && (
+                              <ArrowUp size={11} />
+                            )}
+                            {isSorted && sortState.dir === "desc" && (
+                              <ArrowDown size={11} />
+                            )}
+                            {!isSorted && (
+                              <ArrowUpDown size={11} className="opacity-40" />
                             )}
                           </button>
-                        </td>
-                      )}
-                      {selectable && (
-                        <td className="w-0 whitespace-nowrap px-3 py-2 align-middle">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleRow(k)}
-                            aria-label="Select row"
-                          />
-                        </td>
-                      )}
-                      {visibleColumns.map((col) => {
-                        const align =
-                          col.align === "right"
-                            ? "text-right"
-                            : col.align === "center"
-                              ? "text-center"
-                              : "text-left";
-                        const content = col.cell
-                          ? col.cell(row)
-                          : (() => {
-                              const v = col.accessor(row);
-                              return v == null ? "—" : String(v);
-                            })();
-                        return (
-                          <td
-                            key={col.id}
-                            className={`px-3 py-2 align-middle text-sm text-fg-primary ${align}`}
-                          >
-                            {content}
+                        ) : (
+                          <span>{col.label}</span>
+                        )}
+                      </th>
+                    );
+                  })}
+                  {rowActions && (
+                    <th
+                      scope="col"
+                      className="w-0 whitespace-nowrap px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-fg-secondary text-right"
+                    >
+                      {/* row actions header */}
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-subtle">
+                {pageRows.map((row) => {
+                  const k = rowKey(row);
+                  const isSelected = selection.has(k);
+                  const isExpanded = Boolean(expandedRow?.expandedKeys.has(k));
+                  return (
+                    <Fragment key={k}>
+                      <tr
+                        className={`hover:bg-bg-hover/40 transition-colors ${
+                          isSelected ? "bg-accent-bg/30" : ""
+                        } ${isExpanded ? "bg-bg-elevated/60" : ""}`}
+                      >
+                        {expandedRow && (
+                          <td className="w-0 whitespace-nowrap px-3 py-2 align-middle">
+                            <button
+                              type="button"
+                              onClick={() => expandedRow.onToggle(k, row)}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded text-fg-muted hover:bg-bg-hover hover:text-fg-primary"
+                              aria-label={
+                                isExpanded
+                                  ? "Collapse row details"
+                                  : "Expand row details"
+                              }
+                            >
+                              {isExpanded ? (
+                                <ChevronDown size={14} />
+                              ) : (
+                                <ChevronRight size={14} />
+                              )}
+                            </button>
                           </td>
-                        );
-                      })}
-                      {rowActions && (
-                        <td className="px-3 py-2 text-right align-middle">
-                          {rowActions(row)}
-                        </td>
-                      )}
-                    </tr>
-                    {expandedRow && isExpanded && (
-                      <tr key={`${k}:expanded`} className="bg-bg-elevated/60">
-                        <td
-                          colSpan={
-                            leadingColumnCount +
-                            visibleColumns.length +
-                            (rowActions ? 1 : 0)
-                          }
-                          className="px-4 py-4"
-                        >
-                          {expandedRow.render(row)}
-                        </td>
+                        )}
+                        {selectable && (
+                          <td className="w-0 whitespace-nowrap px-3 py-2 align-middle">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleRow(k)}
+                              aria-label="Select row"
+                            />
+                          </td>
+                        )}
+                        {visibleColumns.map((col) => {
+                          const align =
+                            col.align === "right"
+                              ? "text-right"
+                              : col.align === "center"
+                                ? "text-center"
+                                : "text-left";
+                          return (
+                            <td
+                              key={col.id}
+                              className={`px-3 py-2 align-middle text-sm text-fg-primary ${align}`}
+                            >
+                              {renderCellContent(col, row)}
+                            </td>
+                          );
+                        })}
+                        {rowActions && (
+                          <td className="px-3 py-2 text-right align-middle">
+                            {rowActions(row)}
+                          </td>
+                        )}
                       </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      {expandedRow && isExpanded && (
+                        <tr key={`${k}:expanded`} className="bg-bg-elevated/60">
+                          <td
+                            colSpan={
+                              leadingColumnCount +
+                              visibleColumns.length +
+                              (rowActions ? 1 : 0)
+                            }
+                            className="px-4 py-4"
+                          >
+                            {expandedRow.render(row)}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Pagination footer */}

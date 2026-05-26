@@ -249,6 +249,63 @@ function buildIncidentColumns(
   ];
 }
 
+function IncidentPhoneCard({
+  incident,
+  teamName,
+}: {
+  incident: IncidentResponse;
+  teamName: string | null;
+}) {
+  const source = sourceMeta(incident);
+  return (
+    <div className="space-y-3">
+      <div className="min-w-0">
+        <Link
+          href={`/dashboard/incidents/detail?id=${incident.id}`}
+          className="font-medium text-fg-primary hover:text-accent"
+        >
+          {incident.title}
+        </Link>
+        <p className="mt-1 text-sm text-fg-muted">{incident.description}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Badge variant={incident.status as Parameters<typeof Badge>[0]["variant"]}>
+          {incident.status.replace("_", " ")}
+        </Badge>
+        {incident.severity ? (
+          <Badge variant={incident.severity}>{incident.severity}</Badge>
+        ) : null}
+        {teamName ? <Badge>{teamName}</Badge> : null}
+      </div>
+      <div className="grid gap-3 text-sm sm:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+            Source
+          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <span
+              className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1 text-[10px] font-semibold uppercase tracking-wide ${source.className}`}
+            >
+              {source.icon}
+            </span>
+            <span className="text-fg-primary">{source.label}</span>
+          </div>
+        </div>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+            Last activity
+          </p>
+          <p className="mt-1 text-fg-primary">{fmtRelative(incident.updated_at)}</p>
+          <p className="text-xs text-fg-muted">{fmtDate(incident.updated_at)}</p>
+        </div>
+      </div>
+      <p className="font-mono text-[11px] text-fg-muted">
+        {incident.id.slice(0, 8)}… • created {fmtDate(incident.created_at)}
+      </p>
+    </div>
+  );
+}
+
 export default function IncidentsPage() {
   const [data, setData] = useState<IncidentListResponse | null>(null);
   const [services, setServices] = useState<ServiceResponse[]>([]);
@@ -423,6 +480,12 @@ export default function IncidentsPage() {
           rows={items}
           columns={columns}
           rowKey={(inc) => inc.id}
+          phoneLayout={(inc) => (
+            <IncidentPhoneCard
+              incident={inc}
+              teamName={(inc.service_id && serviceTeamName.get(inc.service_id)) || null}
+            />
+          )}
           storageKey="opsmender:incidents-table"
           searchPlaceholder="Search by title, description, team, or source…"
           selectable

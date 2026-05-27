@@ -31,7 +31,6 @@ htmlcov/
 
 # Tools
 .mypy_cache/
-uv.lock
 
 # Logs
 logs/

@@ -48,7 +48,7 @@ export default function IngestTokensPage() {
       <div>
         <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Ingest tokens</h1>
         <p className="mt-1 text-sm text-fg-secondary">
-          Inbound credentials for external monitors (CloudWatch, LegacyAlertVendor, Alertmanager, custom scripts) to POST incidents in.
+          Inbound credentials for external monitors (CloudWatch, Alertmanager, Datadog, custom scripts) to POST incidents in.
         </p>
       </div>
       <IngestAutoStartSection

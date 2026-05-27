@@ -837,7 +837,7 @@ class IngestToken(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # auto | cloudwatch | azure_monitor | gcp_monitoring | oci_monitoring | legacy_alert_vendor | legacy_alert_relay | generic
+    )  # auto | cloudwatch | azure_monitor | gcp_monitoring | oci_monitoring | generic
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     shape_cache: Mapped[dict | None] = mapped_column(JSON, nullable=True)

@@ -7,13 +7,11 @@ OpsMender is built to sit at the center of your incident response ecosystem. It 
 OpsMender provides a unified `/incidents/ingest` webhook endpoint. To secure and route incoming alerts, you generate **Ingest Tokens**.
 
 OpsMender natively supports several popular monitoring tools:
-- **LegacyAlertVendor:** Parses LegacyAlertVendor webhooks to extract incident details and severity.
 - **Datadog:** Parses Datadog monitor alerts.
 - **AWS CloudWatch (SNS):** Parses CloudWatch ALARM and OK states sent via SNS.
 - **Azure Monitor:** Parses the Common Alert Schema v2.
 - **GCP Cloud Monitoring:** Parses incident webhook v1.2.
 - **Oracle Cloud (OCI):** Parses CHRONOS_NOTIFICATION alarms.
-- **LegacyAlertRelay:** Parses LegacyAlertRelay alert webhooks.
 
 **Universal (Auto) Adapter:**
 If your tool is not listed above, OpsMender provides an `auto` provider option. The Universal Adapter uses an LLM to dynamically inspect the incoming JSON payload, learn its structure, and extract the title, description, and severity automatically. It caches the structural mapping for performance on subsequent alerts.

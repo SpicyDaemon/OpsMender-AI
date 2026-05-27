@@ -7,9 +7,7 @@ from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
 from backend.ingest.adapters.azure_monitor import AzureMonitorAdapter
 from backend.ingest.adapters.gcp_monitoring import GCPMonitoringAdapter
 from backend.ingest.adapters.oci_monitoring import OCIMonitoringAdapter
-from backend.ingest.adapters.legacy_alert_vendor import LegacyAlertVendorAdapter
 from backend.ingest.adapters.generic import GenericAdapter
-from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
 from backend.ingest.adapters.universal import UniversalAdapter
 
 _ADAPTERS: dict[str, type[IngestAdapter]] = {
@@ -18,8 +16,6 @@ _ADAPTERS: dict[str, type[IngestAdapter]] = {
     "azure_monitor": AzureMonitorAdapter,
     "gcp_monitoring": GCPMonitoringAdapter,
     "oci_monitoring": OCIMonitoringAdapter,
-    "legacy_alert_vendor": LegacyAlertVendorAdapter,
-    "legacy_alert_relay": LegacyAlertRelayAdapter,
     "generic": GenericAdapter,
 }
 

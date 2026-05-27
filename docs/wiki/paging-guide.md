@@ -2,7 +2,7 @@
 
 This is the top-level guide to OpsMender's paging surface — the system that decides who gets paged, when, on which channel, and what happens if they don't answer. It ties together the concepts that ship across Sprints 33–40 (services, teams, rosters, escalation chains, priority rules, response modes, maintenance windows, notification preferences, incident assignment) into a single operator-friendly story.
 
-If you only want a one-line summary: **OpsMender owns paging end-to-end. You don't bolt LegacyAlertVendor on top — you configure rosters, chains, and priority rules inside OpsMender, and OpsMender fans incidents out to your operators on Slack DM, Teams DM, Email, or SMS.**
+If you only want a one-line summary: **OpsMender owns paging end-to-end inside the product. You configure rosters, chains, and priority rules inside OpsMender, and OpsMender fans incidents out to your operators on Slack DM, Teams DM, Email, or SMS.**
 
 For the deep-dive data-model spec, see [`docs/paging-model.md`](../paging-model.md). For platform-specific chat-surface details, see [Slack as your paging surface](slack-paging-surface.md), [Teams as your paging surface](teams-paging-surface.md), or [Notification Preferences](notification-preferences.md). This page is the conceptual orientation that ties them together.
 

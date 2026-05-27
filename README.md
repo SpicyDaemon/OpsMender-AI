@@ -27,7 +27,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Full audit log** — every node transition, every tool call, every approval, every rollback step. Memory recall and writeback are audited too.
 - **Bounded storage** — logs auto-prune after 90 days by default (operator-overridable per category from Config → "Storage & retention"); memories are operator-curated and never auto-deleted. Avoids OOM and out-of-disk failure modes on long-running deployments.
 - **Bring your own model** — Anthropic, OpenAI, Azure OpenAI, or local Ollama.
-- **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
+- **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), Grafana, Datadog, Slack, or anything else that POSTs JSON.
 - **Outbound triggers** — fire session-lifecycle notifications to Slack, Teams, Sumo Logic, or any generic webhook endpoint.
 - **Advanced — Multi-tenant (opt-in).** Strict per-org isolation across every entity, fully tested. Hidden in single-workspace mode (the default); enable with `OPSMENDER_MULTI_ORG_ENABLED=true`. Optional host-based routing pins each tenant to its own URL (`acme.opsmender.example.com`, `globex.opsmender.example.com`) with custom branding.
 - **Advanced — Per-tenant SSO / SAML (opt-in).** Each org can wire its own **OIDC** identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak) **or SAML 2.0** IdP (older Okta, ADFS, classic Azure AD enterprise apps). SSO/SAML login buttons appear on the login page only when a provider is configured for the resolved tenant; settings screens stay hidden unless `OPSMENDER_ADVANCED_AUTH_ENABLED=true` or a provider already exists. Users are JIT-provisioned on first login; OIDC client secrets are encrypted at rest, SAML uses a global SP keypair from env. Email + password remains available as a break-glass path.
@@ -43,7 +43,7 @@ OpsMender's job is one cohesive loop: **alert → AI → ack → fix → resolve
    │                                                                │
    │  1. ALERT FIRES                                                │
    │     Prometheus / Datadog / CloudWatch / Azure Monitor /        │
-   │     LegacyAlertVendor / Slack alerts / anything-that-POSTs-JSON        │
+   │     Cloud / Slack alerts / anything-that-POSTs-JSON            │
    │     hits /incidents/ingest with a service-scoped token.        │
    │                                                                │
    │  2. AI STARTS WORKING                                          │
@@ -91,13 +91,13 @@ The loop above is the operator's view. Underneath, four configurable surfaces dr
 
 ### Ingest — *getting alerts in (stage 1 of the loop)*
 
-OpsMender's core job is to take alerts your existing monitoring already fires and respond to them intelligently. Your monitoring tools (Prometheus Alertmanager, Datadog, CloudWatch, Azure Monitor, Sumo Logic, Grafana, third-party automation suites, anything that can POST JSON) send to `/incidents/ingest`; OpsMender creates an incident from the payload and runs the tier-gated AI response workflow. The **universal adapter** accepts any shape and asks the LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Typed adapters exist for CloudWatch SNS, Azure Monitor, GCP Monitoring, OCI, LegacyAlertVendor, LegacyAlertRelay, and a Generic JSON adapter for stricter parsing.
+OpsMender's core job is to take alerts your existing monitoring already fires and respond to them intelligently. Your monitoring tools (Prometheus Alertmanager, Datadog, CloudWatch, Azure Monitor, Sumo Logic, Grafana, third-party automation suites, anything that can POST JSON) send to `/incidents/ingest`; OpsMender creates an incident from the payload and runs the tier-gated AI response workflow. The **universal adapter** accepts any shape and asks the LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Typed adapters exist for CloudWatch SNS, Azure Monitor, GCP Monitoring, OCI, and a Generic JSON adapter for stricter parsing.
 
 > **This is what 90% of operators set up first.** Bring your existing alerts; OpsMender responds. Incidents can also be created manually from the dashboard for the cases where monitoring missed something and an operator wants to attach a session + audit trail to an ad-hoc investigation.
 
 ### Paging — *deciding who gets pinged (stage 3 of the loop)*
 
-OpsMender owns paging end-to-end — you don't bolt LegacyAlertVendor on top. Configure **services**, **teams**, **rosters** (with deterministic on-call rotation in IANA time zones), **escalation chains** (additive — once paged, stay paged, with a hard 15-minute inactivity timeout), and **priority rules** (first-match-wins on the alert payload) under the **Paging & On-call** sidebar group (`/dashboard/paging/*`). Operators set per-user **notification preferences** (which channels, priority routing matrix, quiet hours) under `/dashboard/paging/my-notifications`. **Maintenance windows** suppress paging in a time range (scoped global / service / roster / team). The chain engine and notification dispatcher run as background loops with restart-safe watermarks.
+OpsMender owns paging end-to-end inside the product. Configure **services**, **teams**, **rosters** (with deterministic on-call rotation in IANA time zones), **escalation chains** (additive — once paged, stay paged, with a hard 15-minute inactivity timeout), and **priority rules** (first-match-wins on the alert payload) under the **Paging & On-call** sidebar group (`/dashboard/paging/*`). Operators set per-user **notification preferences** (which channels, priority routing matrix, quiet hours) under `/dashboard/paging/my-notifications`. **Maintenance windows** suppress paging in a time range (scoped global / service / roster / team). The chain engine and notification dispatcher run as background loops with restart-safe watermarks.
 
 > **Wire this once per service.** Walkthrough lives in [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md).
 
@@ -809,8 +809,6 @@ When enabled, OpsMender auto-creates a single session only for newly created inc
 | Azure Monitor | `azure_monitor` | Common alert schema v2 — maps severity (Sev0–4) and monitor condition |
 | GCP Cloud Monitoring | `gcp_monitoring` | GCP incident webhook v1.2 — maps `state` (open/closed/acknowledged) |
 | Oracle Cloud (OCI) | `oci_monitoring` | OCI alarm notifications — maps `status` (FIRING/OK/RESET) |
-| LegacyAlertVendor | `legacy_alert_vendor` | v2 webhooks — `incident.triggered`, `.acknowledged`, `.resolved` |
-| LegacyAlertRelay | `legacy_alert_relay` | Webhook integration payloads — `Create`, `Acknowledge`, `Close`, and update-style alert actions |
 | Generic JSON | `generic` | Configurable dot-path field mapping — works with tools needing strict, deterministic parsing |
 
 ### Prometheus + Alertmanager
@@ -846,7 +844,7 @@ Alertmanager has a generic [`webhook_configs`](https://prometheus.io/docs/alerti
 
 3. Reload Alertmanager (`kill -HUP` or `curl -X POST .../-/reload`). The next firing alert will create an OpsMender incident; `send_resolved: true` lets OpsMender close the incident automatically when the underlying alert resolves.
 
-The Alertmanager payload shape is well-known to the LLM, so the first webhook will train the per-token shape cache and subsequent payloads parse for free without an LLM call. The same pattern works for any monitoring tool that can POST JSON — Datadog (webhook actions), CloudWatch (SNS HTTPS subscription with `cloudwatch` adapter), Azure Monitor (action group webhook), Sumo Logic (webhook payload), Grafana (contact point: webhook), LegacyAlertVendor (webhook automations forwarding to OpsMender).
+The Alertmanager payload shape is well-known to the LLM, so the first webhook will train the per-token shape cache and subsequent payloads parse for free without an LLM call. The same pattern works for any monitoring tool that can POST JSON — Datadog (webhook actions), CloudWatch (SNS HTTPS subscription with `cloudwatch` adapter), Azure Monitor (action group webhook), Sumo Logic (webhook payload), and Grafana (contact point: webhook).
 
 ### Quick Test (curl)
 
@@ -877,7 +875,7 @@ curl -s http://localhost:8000/incidents/ingest \
 # → {"success":true,"dedup_action":"skipped",...}
 ```
 
-For full curl recipes covering all five providers (CloudWatch SNS, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, Generic), including lifecycle examples and severity mapping tables, see [`docs/REFERENCE.md`](docs/REFERENCE.md#external-incident-ingestion).
+For full curl recipes covering the supported strict providers (CloudWatch SNS, Azure Monitor, GCP Monitoring, OCI, Generic), including lifecycle examples and severity mapping tables, see [`docs/REFERENCE.md`](docs/REFERENCE.md#external-incident-ingestion).
 
 ## Outbound Notifications
 
@@ -978,7 +976,7 @@ ai-incident-manager/
 │   │   └── routes/         # Route modules (auth, incidents, sessions + chat, approvals, audit, config, models, mcp_servers, skills, ws, ingest)
 │   ├── chat/               # Async co-pilot chat responder (parallel LLM call + WS push)
 │   ├── ingest/             # External incident ingestion (Sprint 14)
-│   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, gcp_monitoring, oci_monitoring, legacy_alert_vendor, legacy_alert_relay, generic)
+│   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, gcp_monitoring, oci_monitoring, generic)
 │   │   ├── registry.py     # Adapter registry (provider key → adapter class)
 │   │   └── service.py      # Token auth, adapter dispatch, dedup, audit logging, availability signal → uptime_samples
 │   ├── approvals/          # Tier 1 approval service and wait/timeout logic

@@ -431,11 +431,11 @@ export function IngestAutoStartSection({
             id="ingest-auto-source"
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            placeholder="legacy_alert_vendor"
+            placeholder="cloudwatch"
             disabled={!canEdit}
           />
           <p className="mt-1 text-xs text-fg-muted">
-            Exact provider key such as `cloudwatch`, `azure_monitor`, `gcp_monitoring`, `oci_monitoring`, `legacy_alert_vendor`, `legacy_alert_relay`, or `generic`.
+            Exact provider key such as `cloudwatch`, `azure_monitor`, `gcp_monitoring`, `oci_monitoring`, or `generic`.
             Leave blank to match any source.
           </p>
         </div>
@@ -3596,8 +3596,8 @@ const PROVIDER_COLORS: Record<string, string> = {
   auto: "border-accent bg-accent-bg text-accent",
   cloudwatch: "border-status-high-border bg-status-high-bg text-status-high",
   azure_monitor: "border-status-info-border bg-status-info-bg text-status-info",
-  legacy_alert_vendor: "border-status-low-border bg-status-low-bg text-status-low",
-  legacy_alert_relay: "border-status-critical-border bg-status-critical-bg text-status-critical",
+  gcp_monitoring: "border-status-low-border bg-status-low-bg text-status-low",
+  oci_monitoring: "border-status-critical-border bg-status-critical-bg text-status-critical",
   generic: "border-border-subtle bg-bg-elevated text-fg-secondary",
 };
 
@@ -3867,7 +3867,7 @@ export function IngestTokenSection({
   return (
     <Section
       title="Ingest Tokens"
-      description="Manage webhook tokens for external alerting systems (CloudWatch, Azure Monitor, GCP Monitoring, OCI, LegacyAlertVendor, etc.)."
+      description="Manage webhook tokens for external alerting systems (CloudWatch, Azure Monitor, GCP Monitoring, OCI, and generic JSON sources)."
     >
       {!canEdit && (
         <p className="text-sm text-fg-secondary">

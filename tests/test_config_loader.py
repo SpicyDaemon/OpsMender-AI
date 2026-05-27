@@ -43,7 +43,7 @@ def valid_env(tmp_path):
         + "OPSMENDER_APPROVAL_TIMEOUT_SECONDS=120\n"
         + "OPSMENDER_INGEST_AUTO_START_ENABLED=true\n"
         + "OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=high\n"
-        + "OPSMENDER_INGEST_AUTO_START_SOURCE=legacy_alert_vendor\n"
+        + "OPSMENDER_INGEST_AUTO_START_SOURCE=cloudwatch\n"
     )
     return env_file
 
@@ -63,7 +63,7 @@ class TestConfigLoad:
         assert cfg.approvals.timeout_seconds == 120
         assert cfg.ingest.auto_start_enabled is True
         assert cfg.ingest.auto_start_min_severity == "high"
-        assert cfg.ingest.auto_start_source == "legacy_alert_vendor"
+        assert cfg.ingest.auto_start_source == "cloudwatch"
 
     def test_missing_explicit_env_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):

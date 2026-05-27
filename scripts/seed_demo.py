@@ -306,7 +306,7 @@ async def main():
         for name, provider, sid in [
             ("Alertmanager prod", "alertmanager", services["api-gateway"].id),
             ("CloudWatch payments", "cloudwatch", services["payments-db"].id),
-            ("LegacyAlertVendor bridge (legacy)", "legacy_alert_vendor", None),
+            ("Azure monitor bridge", "azure_monitor", None),
         ]:
             db.add(IngestToken(
                 org_id=oid, name=name, provider=provider,

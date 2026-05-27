@@ -33,7 +33,7 @@ FIELD_NAMES = ("title", "description", "severity", "external_id", "status")
 
 EXTRACT_PROMPT = """\
 You receive an unknown webhook payload from an alerting tool (CloudWatch, Datadog, \
-Grafana, LegacyAlertVendor, Sumo Logic, Slack, custom script, etc.). Identify the JSON \
+Grafana, Sumo Logic, Slack, custom script, etc.). Identify the JSON \
 dot-paths that hold each incident field.
 
 Return ONLY a JSON object with these keys (omit a key if nothing reasonable exists):

@@ -747,8 +747,8 @@ export type IngestProvider =
   | "auto"
   | "cloudwatch"
   | "azure_monitor"
-  | "legacy_alert_vendor"
-  | "legacy_alert_relay"
+  | "gcp_monitoring"
+  | "oci_monitoring"
   | "generic";
 
 export interface IngestTokenResponse {

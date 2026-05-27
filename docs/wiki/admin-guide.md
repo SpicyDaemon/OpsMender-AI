@@ -181,10 +181,10 @@ You can set up outbound webhooks to notify external systems (like Slack, Microso
 
 ## 7. Ingest Tokens
 
-To ingest incidents automatically from external tools (e.g., LegacyAlertVendor, Datadog), you must generate an Ingest Token.
+To ingest incidents automatically from external tools (e.g., Datadog, CloudWatch, or generic webhook senders), you must generate an Ingest Token.
 
 1. Go to **Config** > **Ingest**.
 2. Click **Generate Token**.
-3. Select the provider (e.g., `legacy_alert_vendor`, `datadog`, or `auto` for universal LLM-based parsing).
+3. Select the provider (e.g., `cloudwatch`, `azure_monitor`, or `auto` for universal LLM-based parsing).
 4. Copy the generated token securely. It will not be shown again.
 5. Configure your external tool to send a webhook POST request to `https://<your-opsmender-url>/incidents/ingest` with the header `X-OpsMender-Token: <your-token>`.

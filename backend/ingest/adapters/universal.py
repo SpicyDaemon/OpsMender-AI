@@ -270,7 +270,7 @@ def _find_first(
                 if actual is not None and inner[actual] not in (None, "", [], {}):
                     return f"{envelope}.{actual}", inner[actual]
         elif isinstance(inner, list) and inner and isinstance(inner[0], dict):
-            # Treat the first array element as the envelope (common in LegacyAlertVendor-like shapes)
+            # Treat the first array element as the envelope for list-wrapped payloads.
             first = inner[0]
             for key in keys:
                 if key in first and first[key] not in (None, "", [], {}):

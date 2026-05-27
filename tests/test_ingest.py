@@ -2,11 +2,11 @@
 
 Covers:
 - Ingest token CRUD (create, list, revoke, delete)
-- Webhook endpoint (POST /incidents/ingest) with all 5 adapters
+- Webhook endpoint (POST /incidents/ingest) with the supported adapters
 - Dedup by external fingerprint (create, update, skip)
 - Token auth (missing, invalid, revoked)
 - Rate limiting & audit log entries
-- Adapter parsing for CloudWatch, Azure Monitor, LegacyAlertVendor, LegacyAlertRelay, Generic JSON
+- Adapter parsing for CloudWatch, Azure Monitor, Generic JSON, and registry fallback
 """
 
 from __future__ import annotations
@@ -227,7 +227,7 @@ class TestIngestTokenCRUD:
             "/ingest-tokens",
             json={
                 "name": "tok2",
-                "provider": "legacy_alert_vendor",
+                "provider": "azure_monitor",
             },
             headers=admin_headers,
         )
@@ -295,8 +295,8 @@ class TestIngestProviders:
         keys = [p["key"] for p in data["items"]]
         assert "cloudwatch" in keys
         assert "azure_monitor" in keys
-        assert "legacy_alert_vendor" in keys
-        assert "legacy_alert_relay" in keys
+        assert "gcp_monitoring" in keys
+        assert "oci_monitoring" in keys
         assert "generic" in keys
 
 
@@ -490,7 +490,7 @@ class TestIngestGeneric:
             json={
                 "ingest_auto_start_enabled": True,
                 "ingest_auto_start_min_severity": "critical",
-                "ingest_auto_start_source": "legacy_alert_vendor",
+                "ingest_auto_start_source": "cloudwatch",
             },
             headers=admin_headers,
         )
@@ -710,142 +710,6 @@ class TestIngestAzureMonitor:
 
 
 # ===========================================================================
-# Webhook — LegacyAlertVendor adapter
-# ===========================================================================
-
-
-class TestIngestLegacyAlertVendor:
-    async def test_legacy_alert_vendor_triggered(self, client: AsyncClient, app):
-        raw, tok = await _create_token(
-            app,
-            provider="legacy_alert_vendor",
-            name="pd-trigger",
-        )
-        payload = {
-            "event": {
-                "event_type": "incident.triggered",
-                "data": {
-                    "id": "PD-INC-001",
-                    "title": "Database connection pool exhausted",
-                    "urgency": "high",
-                    "priority": {"summary": "P1"},
-                    "html_url": "https://pd.example.com/incidents/PD-INC-001",
-                    "service": {"summary": "api-backend"},
-                },
-            },
-        }
-        resp = await client.post(
-            "/incidents/ingest",
-            json=payload,
-            headers={"X-OpsMender-Token": raw},
-        )
-        data = resp.json()
-        assert data["success"] is True
-        assert data["dedup_action"] == "created"
-
-    async def test_legacy_alert_vendor_resolved(self, client: AsyncClient, app):
-        raw, tok = await _create_token(
-            app,
-            provider="legacy_alert_vendor",
-            name="pd-resolve",
-        )
-        base = {
-            "event": {
-                "event_type": "incident.triggered",
-                "data": {
-                    "id": "PD-INC-002",
-                    "title": "High error rate",
-                    "urgency": "high",
-                    "service": {"summary": "frontend"},
-                },
-            },
-        }
-
-        # Trigger
-        await client.post(
-            "/incidents/ingest",
-            json=base,
-            headers={"X-OpsMender-Token": raw},
-        )
-
-        # Resolve
-        base["event"]["event_type"] = "incident.resolved"
-        resp = await client.post(
-            "/incidents/ingest",
-            json=base,
-            headers={"X-OpsMender-Token": raw},
-        )
-        assert resp.json()["dedup_action"] == "updated"
-
-
-# ===========================================================================
-# Webhook — LegacyAlertRelay adapter
-# ===========================================================================
-
-
-class TestIngestLegacyAlertRelay:
-    async def test_legacy_alert_relay_create(self, client: AsyncClient, app):
-        raw, tok = await _create_token(
-            app,
-            provider="legacy_alert_relay",
-            name="legacy_alert_relay-create",
-        )
-        payload = {
-            "action": "Create",
-            "alert": {
-                "alertId": "OG-ALERT-001",
-                "message": "API latency above threshold",
-                "description": "P95 latency exceeded 800ms for 5m",
-                "priority": "P2",
-                "alias": "latency-prod-api",
-                "tinyId": "418",
-                "entity": "prod-api",
-                "source": "grafana",
-                "username": "alert-bot@example.com",
-                "tags": ["latency", "prod"],
-                "details": {"region": "us-east-1", "service": "api"},
-            },
-            "integrationName": "OpsMender webhook",
-        }
-        resp = await client.post(
-            "/incidents/ingest",
-            json=payload,
-            headers={"X-OpsMender-Token": raw},
-        )
-        data = resp.json()
-        assert data["success"] is True
-        assert data["dedup_action"] == "created"
-
-    async def test_legacy_alert_relay_close_updates_existing_incident(
-        self, client: AsyncClient, app
-    ):
-        raw, tok = await _create_token(
-            app,
-            provider="legacy_alert_relay",
-            name="legacy_alert_relay-close",
-        )
-        base_alert = {
-            "alertId": "OG-ALERT-002",
-            "message": "Checkout error spike",
-            "priority": "P1",
-            "alias": "checkout-errors",
-        }
-
-        await client.post(
-            "/incidents/ingest",
-            json={"action": "Create", "alert": base_alert},
-            headers={"X-OpsMender-Token": raw},
-        )
-
-        resp = await client.post(
-            "/incidents/ingest",
-            json={"action": "Close", "alert": base_alert},
-            headers={"X-OpsMender-Token": raw},
-        )
-        assert resp.json()["dedup_action"] == "updated"
-
-
-# ===========================================================================
 # Ingest audit log
 # ===========================================================================
 
@@ -958,61 +822,6 @@ class TestAdaptersUnit:
         adapter = AzureMonitorAdapter()
         with pytest.raises(ValueError, match="Missing"):
             adapter.parse({"data": {}})
-
-    def test_legacy_alert_vendor_missing_event(self):
-        from backend.ingest.adapters.legacy_alert_vendor import LegacyAlertVendorAdapter
-
-        adapter = LegacyAlertVendorAdapter()
-        with pytest.raises(ValueError, match="Missing"):
-            adapter.parse({})
-
-    def test_legacy_alert_relay_missing_alert(self):
-        from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
-
-        adapter = LegacyAlertRelayAdapter()
-        with pytest.raises(ValueError, match="Missing"):
-            adapter.parse({"action": "Create"})
-
-    def test_legacy_alert_relay_create_mapping(self):
-        from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
-
-        adapter = LegacyAlertRelayAdapter()
-        result = adapter.parse(
-            {
-                "action": "Create",
-                "alert": {
-                    "alertId": "OG-UNIT-001",
-                    "message": "API latency above threshold",
-                    "description": "P95 latency exceeded 800ms",
-                    "priority": "P2",
-                    "alias": "latency-prod-api",
-                    "tags": ["latency", "prod"],
-                },
-            }
-        )
-        assert result.title == "[LegacyAlertRelay] API latency above threshold"
-        assert result.status == "open"
-        assert result.severity == "high"
-        assert result.external_id == "OG-UNIT-001"
-        assert result.external_source == "legacy_alert_relay"
-
-    def test_legacy_alert_relay_close_mapping(self):
-        from backend.ingest.adapters.legacy_alert_relay import LegacyAlertRelayAdapter
-
-        adapter = LegacyAlertRelayAdapter()
-        result = adapter.parse(
-            {
-                "action": "Close",
-                "alert": {
-                    "alertId": "OG-UNIT-002",
-                    "message": "Checkout error spike",
-                    "priority": "P1",
-                },
-            }
-        )
-        assert result.status == "resolved"
-        assert result.severity == "critical"
-        assert result.external_id == "OG-UNIT-002"
 
     def test_registry_fallback_to_universal(self):
         from backend.ingest.registry import get_adapter

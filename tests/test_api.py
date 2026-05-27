@@ -2728,7 +2728,7 @@ class TestAgentTeamProfiles:
                 "logging_level": "DEBUG",
                 "ingest_auto_start_enabled": True,
                 "ingest_auto_start_min_severity": "high",
-                "ingest_auto_start_source": "legacy_alert_vendor",
+                "ingest_auto_start_source": "cloudwatch",
             },
             headers=auth_headers,
         )
@@ -2738,14 +2738,14 @@ class TestAgentTeamProfiles:
         assert data["logging_level"] == "DEBUG"
         assert data["ingest_auto_start_enabled"] is True
         assert data["ingest_auto_start_min_severity"] == "high"
-        assert data["ingest_auto_start_source"] == "legacy_alert_vendor"
+        assert data["ingest_auto_start_source"] == "cloudwatch"
 
     async def test_update_config_allows_clearing_ingest_auto_start_source(
         self, client: AsyncClient, auth_headers
     ):
         await client.put(
             "/config",
-            json={"ingest_auto_start_source": "legacy_alert_relay"},
+            json={"ingest_auto_start_source": "azure_monitor"},
             headers=auth_headers,
         )
         resp = await client.put(

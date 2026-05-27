@@ -18,7 +18,7 @@ param tags = {
 
 // Container ────────────────────────────────────────────────────────────────
 // Pin in production:
-// param containerImage = 'ghcr.io/shipitpirate/opsmender-ai:v1.0.0'
+// param containerImage = 'ghcr.io/spicydaemon/opsmender-ai:v1.0.0'
 // param containerCpu    = '1.0'
 // param containerMemory = '2Gi'
 // param minReplicas     = 1

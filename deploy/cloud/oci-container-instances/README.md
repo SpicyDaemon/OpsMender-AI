@@ -1,6 +1,6 @@
 # OpsMender on Oracle Cloud Infrastructure — Container Instances
 
-Reference Terraform recipe for deploying OpsMender as an OCI Container Instance with a public IP (or, optionally, fronted by an operator-provisioned Network Load Balancer). **Sprint 41 step 4** — closes the multi-cloud deployment recipes round (AWS ECS, Azure Container Apps, GCP Cloud Run, OCI Container Instances) layered on top of `ghcr.io/shipitpirate/opsmender-ai`.
+Reference Terraform recipe for deploying OpsMender as an OCI Container Instance with a public IP (or, optionally, fronted by an operator-provisioned Network Load Balancer). **Sprint 41 step 4** — closes the multi-cloud deployment recipes round (AWS ECS, Azure Container Apps, GCP Cloud Run, OCI Container Instances) layered on top of `ghcr.io/spicydaemon/opsmender-ai`.
 
 Per locked decision **D-023**, the OpsMender framework ships zero platform-specific knowledge. This recipe is operator-facing — it sets up the surrounding OCI resources (Container Instance, NSG, log group) that run the canonical Docker image.
 

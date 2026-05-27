@@ -25,7 +25,7 @@ allowed_ingress_cidrs = ["0.0.0.0/0"]
 # assign_public_ip = false   # set false when fronting with an NLB
 
 # Container ───────────────────────────────────────────────────────────────
-# container_image                = "ghcr.io/shipitpirate/opsmender-ai:v1.0.0"  # pin in prod
+# container_image                = "ghcr.io/spicydaemon/opsmender-ai:v1.0.0"  # pin in prod
 # shape                          = "CI.Standard.E5.Flex"
 # shape_ocpus                    = 2
 # shape_memory_in_gbs            = 16

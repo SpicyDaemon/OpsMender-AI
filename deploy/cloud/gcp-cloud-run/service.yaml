@@ -23,7 +23,7 @@ spec:
       containerConcurrency: 80
       timeoutSeconds: 300
       containers:
-        - image: ghcr.io/shipitpirate/opsmender-ai:latest
+        - image: ghcr.io/spicydaemon/opsmender-ai:latest
           ports:
             - name: http1
               containerPort: 8000

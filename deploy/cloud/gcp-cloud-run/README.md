@@ -1,6 +1,6 @@
 # OpsMender on GCP Cloud Run
 
-Reference YAML recipe for deploying OpsMender as a Cloud Run service with Secret Manager environment references, a dedicated service account, and a Cloud SQL connector. **Sprint 41 step 3** - sibling of the AWS ECS and Azure Container Apps recipes, still layered on top of the standard image at `ghcr.io/shipitpirate/opsmender-ai`.
+Reference YAML recipe for deploying OpsMender as a Cloud Run service with Secret Manager environment references, a dedicated service account, and a Cloud SQL connector. **Sprint 41 step 3** - sibling of the AWS ECS and Azure Container Apps recipes, still layered on top of the standard image at `ghcr.io/spicydaemon/opsmender-ai`.
 
 Per locked decision **D-023**, OpsMender ships zero platform-specific runtime knowledge. This recipe configures the surrounding Google Cloud resources that run the container: service identity, IAM grants, secrets, Cloud SQL connectivity, and Cloud Run service settings.
 
@@ -158,7 +158,7 @@ gcloud run services replace service.local.yaml --region "$REGION"
 # Or roll the image directly:
 gcloud run services update opsmender \
   --region "$REGION" \
-  --image ghcr.io/shipitpirate/opsmender-ai:v1.0.1
+  --image ghcr.io/spicydaemon/opsmender-ai:v1.0.1
 ```
 
 ### Mirroring to Artifact Registry
@@ -172,8 +172,8 @@ gcloud artifacts repositories create opsmender \
 
 gcloud auth configure-docker "$REGION-docker.pkg.dev"
 
-docker pull ghcr.io/shipitpirate/opsmender-ai:latest
-docker tag ghcr.io/shipitpirate/opsmender-ai:latest \
+docker pull ghcr.io/spicydaemon/opsmender-ai:latest
+docker tag ghcr.io/spicydaemon/opsmender-ai:latest \
   "$REGION-docker.pkg.dev/$PROJECT_ID/opsmender/opsmender-ai:latest"
 docker push "$REGION-docker.pkg.dev/$PROJECT_ID/opsmender/opsmender-ai:latest"
 ```

@@ -86,7 +86,7 @@ ingress:
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `image.repository` | Container image | `ghcr.io/shipitpirate/opsmender-ai` |
+| `image.repository` | Container image | `ghcr.io/spicydaemon/opsmender-ai` |
 | `image.tag` | Image tag | `.Chart.AppVersion` |
 | `replicaCount` | Replica count (ignored if `autoscaling.enabled`) | `1` |
 | `service.type` | Service type | `ClusterIP` |

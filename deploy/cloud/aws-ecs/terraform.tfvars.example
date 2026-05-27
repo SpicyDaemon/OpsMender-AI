@@ -24,7 +24,7 @@ allowed_ingress_cidrs = ["0.0.0.0/0"]
 # alb_internal = false  # set true for VPC-internal access only
 
 # Container ───────────────────────────────────────────────────────────────
-# container_image  = "ghcr.io/shipitpirate/opsmender-ai:v1.0.0"  # pin in prod
+# container_image  = "ghcr.io/spicydaemon/opsmender-ai:v1.0.0"  # pin in prod
 # container_cpu    = 1024
 # container_memory = 2048
 # desired_count    = 2

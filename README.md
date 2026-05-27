@@ -1047,7 +1047,10 @@ OpsMender ships as a self-hosted project with several supported paths:
 - **Docker Compose:** fastest full-stack local or single-host install.
 - **Single container:** backend + exported frontend served by `opsmender serve`.
 - **Helm:** Kubernetes deployment with optional bundled Postgres.
-- **PyInstaller binary:** standalone `opsmender` executable for operator-owned environments.
+- **PyInstaller binaries:** standalone `opsmender` executables published on every `v*` tag for Linux x64, Windows x64, and macOS (Darwin) x64, with matching `.sha256` checksums. Example release-asset names:
+  - `opsmender-v1.0.0-linux-x64.tar.gz`
+  - `opsmender-v1.0.0-darwin-x64.tar.gz`
+  - `opsmender-v1.0.0-windows-x64.zip`
 - **Cloud recipes:** AWS ECS, Azure Container Apps, GCP Cloud Run, and OCI Container Instances.
 
 The repo ships the PyInstaller spec/build script and the unified `opsmender serve` entrypoint; the full chain (auth → incident → session → approval → execute → audit, plus the static frontend mount) is covered by `tests/test_e2e.py` and `tests/test_frontend_mount.py`.

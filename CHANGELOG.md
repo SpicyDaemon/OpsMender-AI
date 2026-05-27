@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(none — all entries below are part of `v1.0.0`.)
+### Changed
+
+- **Release workflow now publishes Linux, Windows, and macOS (Darwin) executables.** `.github/workflows/release.yml` builds PyInstaller binaries on `ubuntu-latest`, `windows-latest`, and `macos-13` for every `v*` tag, each packaged as `opsmender-<tag>-<linux-x64|windows-x64|darwin-x64>.(tar.gz|zip)` with a matching `.sha256` checksum, and attached to the GitHub Release alongside the source tarball. The release job is decoupled from the Docker/GHCR job so a Docker publish failure no longer blocks shipping the binary release assets.
+- **Source archive renamed** from `ai-incident-manager-*` to `opsmender-ai-*` to match the current product name.
+- **`scripts/build_binary.sh`** reports the correct output path (`dist/opsmender` on Unix, `dist/opsmender.exe` on Windows).
+- **Repository, image, and author metadata refreshed** to the current `SpicyDaemon/OpsMender-AI` namespace and `ghcr.io/spicydaemon/opsmender-ai` container image across `pyproject.toml`, `LICENSE`, deployment recipes (Helm, AWS ECS, Azure Container Apps, GCP Cloud Run, OCI Container Instances), Helm chart metadata, frontend learn-more links, the wiki, and the GitHub issue-template config.
+- **Removed stale `opsmenderai.com` references** from the wiki landing page.
+- **README distribution section updated** to list the cross-platform release-asset names alongside Docker Compose, single-container `opsmender serve`, Helm, and the cloud recipes.
+- **REFERENCE.md / PROMPT_CONTEXT.md project structure** refreshed to match the current repo layout; D-014 binary-distribution wording now mentions Linux, Windows, and macOS executables explicitly.
 
 ## [1.0.0] — 2026-05-27
 
@@ -18,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Downstream verification deferred to the owner environment** (not blocking the tag):
 
 - Docker image build (`docker build -f docker/Dockerfile .`) — sandbox had no running daemon.
-- GHCR push (`docker push ghcr.io/shipitpirate/opsmender-ai:v1.0.0`) — requires `GHCR_TOKEN` with `write:packages` scope.
+- GHCR push (`docker push ghcr.io/spicydaemon/opsmender-ai:v1.0.0`) — requires `GHCR_TOKEN` with `write:packages` scope.
 - Cloud recipe live smoke (AWS ECS / Azure Container Apps / GCP Cloud Run / OCI Container Instances / Helm) — requires cloud credentials.
 
 Per the final-release policy, if any of those downstream steps fails for the v1.0.0 commit, cut a `v1.0.1` patch — don't relitigate the v1.0.0 tag.

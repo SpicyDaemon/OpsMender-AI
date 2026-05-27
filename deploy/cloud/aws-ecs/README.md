@@ -1,6 +1,6 @@
 # OpsMender on AWS ECS Fargate
 
-Reference Terraform recipe for deploying OpsMender as a Fargate service behind an Application Load Balancer. **Sprint 41 step 1** — the first of four cloud-specific recipes (ECS, Azure Container Apps, GCP Cloud Run, OCI Container Instances) layering on top of the canonical Docker image at `ghcr.io/shipitpirate/opsmender-ai`.
+Reference Terraform recipe for deploying OpsMender as a Fargate service behind an Application Load Balancer. **Sprint 41 step 1** — the first of four cloud-specific recipes (ECS, Azure Container Apps, GCP Cloud Run, OCI Container Instances) layering on top of the canonical Docker image at `ghcr.io/spicydaemon/opsmender-ai`.
 
 Per locked decision **D-023**, the OpsMender framework ships zero platform-specific knowledge. This recipe is operator-facing — it sets up the *surrounding* AWS infrastructure (cluster, task def, ALB, IAM roles, log group) that runs the standard image. Adapt and re-use as a starting point; don't expect to `terraform apply` it as-is for every environment.
 

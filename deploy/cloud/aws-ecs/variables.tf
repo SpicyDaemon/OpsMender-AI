@@ -55,7 +55,7 @@ variable "allowed_ingress_cidrs" {
 variable "container_image" {
   description = "Container image to run. Defaults to the public GHCR image published by the release workflow."
   type        = string
-  default     = "ghcr.io/shipitpirate/opsmender-ai:latest"
+  default     = "ghcr.io/spicydaemon/opsmender-ai:latest"
 }
 
 variable "container_cpu" {

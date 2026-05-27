@@ -28,6 +28,15 @@ echo "==> Running PyInstaller"
 rm -rf build dist
 uv run pyinstaller opsmender.spec
 
+case "${OS:-$(uname -s)}" in
+  Windows_NT|MINGW*|MSYS*|CYGWIN*)
+    BIN="dist/opsmender.exe"
+    ;;
+  *)
+    BIN="dist/opsmender"
+    ;;
+esac
+
 echo ""
-echo "==> Binary built at: dist/opsmender"
-echo "==> Test it with: ./dist/opsmender --version"
+echo "==> Binary built at: ${BIN}"
+echo "==> Test it with: ./${BIN} --version"

@@ -36,7 +36,7 @@ param tags object = {
 // ─────────────────────────────────────────────────────────────────────────
 
 @description('Container image. Defaults to the public GHCR image published by the release workflow.')
-param containerImage string = 'ghcr.io/shipitpirate/opsmender-ai:latest'
+param containerImage string = 'ghcr.io/spicydaemon/opsmender-ai:latest'
 
 @description('Port the OpsMender container listens on. Override only if you have changed the Dockerfile EXPOSE.')
 param containerPort int = 8000

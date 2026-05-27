@@ -121,7 +121,7 @@ az deployment group create -g opsmender-prod \
 
 # Option B — out-of-band image roll (faster, skips full template):
 az containerapp update -g opsmender-prod -n opsmender \
-  --image ghcr.io/shipitpirate/opsmender-ai:v1.0.1
+  --image ghcr.io/spicydaemon/opsmender-ai:v1.0.1
 ```
 
 ### Pulling from a private ACR

@@ -11,13 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] — 2026-05-27
 
-**First final release.** Promotion of `v1.0.0-rc.1` after the final-release verification pass. No source code changes between `v1.0.0-rc.1` and `v1.0.0` — same backend (1406 tests passing), same frontend (9 vitest passing, build clean), same Dockerfile, same deployment recipes. The only commits between the two tags are the final readiness audit (`OPSMENDER_V1_FINAL_READINESS.md`) and these CHANGELOG / docs updates.
+**First final release.** Promotion of `v1.0.0-rc.1` after the final-release verification pass. No source code changes between `v1.0.0-rc.1` and `v1.0.0` — same backend (1406 tests passing), same frontend (9 vitest passing, build clean), same Dockerfile, same deployment recipes. The only commits between the two tags were release-readiness docs and these CHANGELOG / docs updates.
 
-**What's in v1.0.0:** all of `[1.0.0-rc.1]` below. The product checklist is green, the simple-by-default install is the default experience, and the SSO/SAML/multi-org surfaces stay in the codebase behind explicit env-flag opt-ins. See `OPSMENDER_V1_FINAL_READINESS.md` at the repo root for the full final-release audit.
+**What's in v1.0.0:** all of `[1.0.0-rc.1]` below. The product checklist is green, the simple-by-default install is the default experience, and the SSO/SAML/multi-org surfaces stay in the codebase behind explicit env-flag opt-ins.
 
 **Downstream verification deferred to the owner environment** (not blocking the tag):
 
-- Docker image build (`docker build -f docker/Dockerfile .`) — sandbox had no running daemon. Exact build + smoke commands recorded in `OPSMENDER_V1_FINAL_READINESS.md` §2.
+- Docker image build (`docker build -f docker/Dockerfile .`) — sandbox had no running daemon.
 - GHCR push (`docker push ghcr.io/shipitpirate/opsmender-ai:v1.0.0`) — requires `GHCR_TOKEN` with `write:packages` scope.
 - Cloud recipe live smoke (AWS ECS / Azure Container Apps / GCP Cloud Run / OCI Container Instances / Helm) — requires cloud credentials.
 
@@ -27,7 +27,7 @@ Per the final-release policy, if any of those downstream steps fails for the v1.
 
 First release candidate for v1.0.0. All seven items on the v1 product definition checklist pass. Default install is simple-by-default (single workspace, email + admin invite, three roles); SSO / SAML / multi-org stay in the codebase behind explicit env-flag opt-ins. The release-blocker discovered during manual RC testing (Workspace Settings Manage Users / Domains crash) is fixed and locked down with regression tests.
 
-This is **not** the final v1.0.0 tag — that waits on downstream packaging verification. See `OPSMENDER_V1_RC_READINESS.md` at the repo root for the full readiness audit.
+This is **not** the final v1.0.0 tag — that waits on downstream packaging verification.
 
 ### Highlights since the last sprint cycle
 

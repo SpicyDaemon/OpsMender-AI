@@ -199,41 +199,13 @@ function UsersModal({
     }
   }, [open, loadData]);
 
-  if (!open || !org) return null;
-
-  async function handleAddUser() {
-    if (!selectedUser) return;
-    setAdding(true);
-    setError("");
-    try {
-      await addUserToOrganization(org!.id, {
-        user_id: selectedUser,
-        role: selectedRole,
-      });
-      setSelectedUser("");
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add user");
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function handleRemoveUser(userId: string) {
-    if (!confirm("Are you sure you want to remove this user from the organization?")) return;
-    setError("");
-    try {
-      await removeUserFromOrganization(org!.id, userId);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove user");
-    }
-  }
-
-  // Filter out users who are already members
-  const memberIds = new Set(members.map((m) => m.user_id));
-  const availableUsers = allUsers.filter((u) => !memberIds.has(u.id));
-
+  // ── Rules of Hooks ──────────────────────────────────────────────────
+  // Every hook in this component MUST be called above the early-return
+  // below. The previous shape had `useMemo` *after* the `if (!open || !org)
+  // return null` guard, which fires "Rendered more hooks than during the
+  // previous render" the moment the modal toggles from a null-org render
+  // to a real-org render and bubbles to the global error boundary as
+  // "Something went wrong / ERROR 500" (Sprint 64 regression).
   const memberColumns = useMemo<DataTableColumn<UserOrganizationResponse>[]>(
     () => [
       {
@@ -271,6 +243,41 @@ function UsersModal({
     ],
     [],
   );
+
+  if (!open || !org) return null;
+
+  async function handleAddUser() {
+    if (!selectedUser) return;
+    setAdding(true);
+    setError("");
+    try {
+      await addUserToOrganization(org!.id, {
+        user_id: selectedUser,
+        role: selectedRole,
+      });
+      setSelectedUser("");
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add user");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleRemoveUser(userId: string) {
+    if (!confirm("Are you sure you want to remove this user from the organization?")) return;
+    setError("");
+    try {
+      await removeUserFromOrganization(org!.id, userId);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove user");
+    }
+  }
+
+  // Filter out users who are already members
+  const memberIds = new Set(members.map((m) => m.user_id));
+  const availableUsers = allUsers.filter((u) => !memberIds.has(u.id));
 
   return (
     <Modal
@@ -401,46 +408,8 @@ function DomainsModal({
     }
   }, [open, load]);
 
-  if (!open || !org) return null;
-
-  async function handleAdd() {
-    if (!newDomain.trim()) return;
-    setAdding(true);
-    setError("");
-    try {
-      await createOrganizationDomain(org!.id, {
-        domain: newDomain.trim(),
-        is_primary: newPrimary,
-      });
-      setNewDomain("");
-      setNewPrimary(false);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add domain");
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function handleSetPrimary(d: OrganizationDomainResponse) {
-    try {
-      await setPrimaryOrganizationDomain(org!.id, d.id);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to set primary");
-    }
-  }
-
-  async function handleDelete(d: OrganizationDomainResponse) {
-    if (!confirm(`Remove domain "${d.domain}"? Requests on this host will stop being routed to this org.`)) return;
-    try {
-      await deleteOrganizationDomain(org!.id, d.id);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete domain");
-    }
-  }
-
+  // Same Rules-of-Hooks fix as UsersModal above: useMemo MUST be
+  // called before the conditional early return.
   const domainColumns = useMemo<DataTableColumn<OrganizationDomainResponse>[]>(
     () => [
       {
@@ -506,6 +475,46 @@ function DomainsModal({
     ],
     [],
   );
+
+  if (!open || !org) return null;
+
+  async function handleAdd() {
+    if (!newDomain.trim()) return;
+    setAdding(true);
+    setError("");
+    try {
+      await createOrganizationDomain(org!.id, {
+        domain: newDomain.trim(),
+        is_primary: newPrimary,
+      });
+      setNewDomain("");
+      setNewPrimary(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add domain");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleSetPrimary(d: OrganizationDomainResponse) {
+    try {
+      await setPrimaryOrganizationDomain(org!.id, d.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to set primary");
+    }
+  }
+
+  async function handleDelete(d: OrganizationDomainResponse) {
+    if (!confirm(`Remove domain "${d.domain}"? Requests on this host will stop being routed to this org.`)) return;
+    try {
+      await deleteOrganizationDomain(org!.id, d.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete domain");
+    }
+  }
 
   return (
     <Modal

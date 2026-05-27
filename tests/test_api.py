@@ -532,6 +532,49 @@ class TestOrganizationDeletionGuards:
             assert link is None
 
 
+class TestOrganizationUsersAndDomainsRouteSmoke:
+    """Sprint 64 regression — Workspace Settings 'Manage Users' /
+    'Domains' click crashed the dashboard with a 500. Both routes
+    should return 200 with the expected shape so the modals render."""
+
+    async def test_list_organization_users_returns_expected_shape(
+        self, client: AsyncClient, auth_headers
+    ):
+        # The test admin is already bound to TEST_ORG_ID by the fixture,
+        # so the join returns at least one row without extra setup.
+        resp = await client.get(
+            f"/organizations/{TEST_ORG_ID}/users", headers=auth_headers
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert "items" in data
+        assert "total" in data
+        assert data["total"] >= 1
+        for item in data["items"]:
+            # The shape the frontend modal reads: user_id, username,
+            # email, role, joined_at. Any missing field crashes the
+            # DataTable rowKey accessor and bubbles to the global
+            # error boundary.
+            assert "user_id" in item
+            assert "username" in item
+            assert "email" in item
+            assert "role" in item
+            assert "joined_at" in item
+
+    async def test_list_organization_domains_returns_expected_shape(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get(
+            f"/organizations/{TEST_ORG_ID}/domains", headers=auth_headers
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert "items" in data
+        assert "total" in data
+        # Empty by default; the route just needs to not 500.
+        assert isinstance(data["items"], list)
+
+
 class TestDomainIsolation:
     async def test_resolve_unknown_host(self, client: AsyncClient):
         resp = await client.get(

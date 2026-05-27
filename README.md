@@ -1,6 +1,5 @@
 # OpsMender AI
 
-[![Website](https://img.shields.io/badge/website-opsmenderai.com-blue)](https://opsmenderai.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Release](https://img.shields.io/github/v/release/SpicyDaemon/OpsMender-AI?include_prereleases&sort=semver)](https://github.com/SpicyDaemon/OpsMender-AI/releases)
@@ -11,7 +10,7 @@ An AI-powered incident response framework with tiered access controls. Connects 
 
 *Keywords: AI incident manager, AI incident management, AI incident response, AI SRE, AI on-call, agentic incident response, LangGraph incident response, MCP runbook automation.*
 
-🌐 **[opsmenderai.com](https://opsmenderai.com)** | 📚 **[Read the Documentation Wiki](docs/wiki/README.md)** | 🛠 **[Developer Architecture & API Reference](docs/REFERENCE.md)**
+📚 **[Read the Documentation Wiki](docs/wiki/README.md)** | 🛠 **[Developer Architecture & API Reference](docs/REFERENCE.md)**
 
 ## Why OpsMender
 
@@ -982,84 +981,74 @@ Agent team profiles are managed from `/dashboard/agent-teams` and via the
 ## Project Structure
 
 ```
-ai-incident-manager/
+OpsMender-AI/
 ├── backend/
-│   ├── agent/              # LangGraph workflow, nodes, state, LLM interface
-│   ├── api/                # FastAPI REST + WebSocket layer
-│   │   ├── app.py          # App factory (lifespan, CORS, routes)
-│   │   ├── auth.py         # JWT auth, bcrypt hashing, RBAC dependencies
-│   │   ├── deps.py         # DB session dependency injection
-│   │   ├── schemas.py      # Pydantic request/response models
-│   │   └── routes/         # Route modules (auth, incidents, sessions + chat, approvals, audit, config, models, mcp_servers, skills, ws, ingest)
-│   ├── chat/               # Async co-pilot chat responder (parallel LLM call + WS push)
-│   ├── ingest/             # External incident ingestion (Sprint 14)
-│   │   ├── adapters/       # Provider adapters (cloudwatch, azure_monitor, gcp_monitoring, oci_monitoring, generic)
-│   │   ├── registry.py     # Adapter registry (provider key → adapter class)
-│   │   └── service.py      # Token auth, adapter dispatch, dedup, audit logging, availability signal → uptime_samples
-│   ├── approvals/          # Tier 1 approval service and wait/timeout logic
-│   ├── audit/              # JSONL audit logger + PgAuditLogger + audited executor
-│   ├── config_loader.py    # .env/AppConfig loader + typed dataclasses
-│   ├── db/                 # SQLAlchemy models, async repos, Alembic migrations
-│   ├── llm/                # Provider abstraction, registry, and factories
-│   ├── mcp/                # MCP client wrapper (stdio/sse/http) + dynamic server pool
-│   ├── skills/             # Skill definition parser (SKILL.md) + startup auto-importer
-│   ├── webhooks/           # Outbound webhook trigger rendering + delivery
-│   ├── api/routes/bot_*    # Chat connector management + inbound bot webhooks
-│   └── tiers/              # Tier enforcement layer
-├── cli/
-│   └── opsmender.py              # CLI entry point (run, check, audit, config, approvals, migration helpers)
-├── examples/
-│   └── SKILL.md            # Reference Kubernetes skill definition
-├── skills/                 # Operator-owned environment skill files (auto-imported on startup)
-├── tests/                  # full unit + integration suite, plus tests/test_e2e.py + tests/test_frontend_mount.py for the single-container chain
-├── .env                    # Deployment defaults / secrets / local fallbacks
-└── docs/                   # Project documentation
+│   ├── agent/              # LangGraph workflow nodes, state, execution wiring
+│   ├── api/                # FastAPI app, schemas, auth dependencies, route modules
+│   ├── approvals/          # Tier 1 approval wait/timeout flow
+│   ├── audit/              # Audit logging and audited tool execution
+│   ├── auth/               # Local auth, OIDC, SAML, invites, bootstrap helpers
+│   ├── bots/               # Chat-ops connector models and webhook handlers
+│   ├── db/                 # SQLAlchemy models, repos, Alembic migrations
+│   ├── ingest/             # External incident ingestion and universal adapter
+│   ├── llm/                # BYOM provider abstraction, registry, factories
+│   ├── mcp/                # MCP clients, OAuth, mcp.json import/export/sync
+│   ├── memory/             # Incident memory retrieval, writeback, compaction
+│   ├── paging/             # Services, teams, rosters, escalation, notifications
+│   ├── retention/          # Storage retention config and pruning scheduler
+│   ├── skills/             # SKILL.md parser and startup auto-importer
+│   ├── sla/                # Reliability targets, uptime samples, SLA polling
+│   ├── tiers/              # Programmatic tier enforcement
+│   └── workflow/           # Saved workflow profile validation
+├── cli/                    # `opsmender` CLI entry point
+├── deploy/
+│   ├── cloud/              # AWS ECS, Azure Container Apps, GCP Cloud Run, OCI recipes
+│   └── helm/               # Kubernetes Helm chart
+├── docker/                 # Single-container image and compose recipe
+├── docs/
+│   ├── REFERENCE.md        # Architecture, APIs, data model, decisions
+│   ├── paging-model.md     # Paging/on-call model reference
+│   └── wiki/               # Operator and admin guides
+├── examples/               # Reference SKILL.md
+├── frontend/
+│   ├── app/dashboard/      # Next.js dashboard routes
+│   ├── components/         # Command Center, paging, config, tables, shell
+│   └── lib/                # API client, types, tenant helpers
+├── scripts/                # Build, seed, dev, and wiki helper scripts
+├── skills/                 # Operator-owned skill files auto-imported on startup
+├── tests/                  # Backend unit, API, integration, and E2E tests
+├── .env.example            # Documented self-hosted configuration template
+├── opsmender.spec          # PyInstaller binary spec
+└── pyproject.toml          # Python package, CLI, and dependency metadata
 ```
 
-## Progress
+## v1 Status
 
-- **Phase 1 (Sprints 1–6):** ✅ Complete — CLI, MCP, skills, tiers, audit, LangGraph workflow
-- **Phase 2 (Sprints 7–16):** ✅ Complete — persistence, REST/WebSocket API, approvals, BYOM, frontend, single-container distribution, external ingestion
-- **Phase 3 (Sprints 17–23):** ✅ Complete — Tier 0 sandbox + rollback, outbound webhook triggers (Slack/Teams/Sumo), custom workflow profiles, multi-agent team profiles
-- **Sprint 24:** ✅ Complete — UI polish + public release
-- **Sprint 25:** ✅ Complete — SLA / SLO dashboard + maintenance windows, downsampling, availability ingest, and SLO incident wiring
-- **Sprint 26:** ✅ Complete — repo-hosted user documentation wiki and operator/admin guides
-- **Sprint 27:** ✅ Complete — chat bot integrations: 15 platforms (Slack, Discord, MS Teams, etc.), persisted connector configs, Config/Integrations management UI, and full incident/session/approval webhook commands.
-- **Sprint 28:** ✅ Complete — multi-tenant transition: organization model, tenant data isolation, automated registration flow, and per-org custom branding (logo/colors).
+OpsMender v1 is complete when a self-hosted team can install the product, create the first admin, invite operators, connect a model, connect MCP servers, define skills, create services/on-call rules, ingest or create an incident, run a governed AI session, approve or reject risky actions, resolve the incident, and produce a postmortem and memory trail.
 
-### Sprint breakdown
-  - Sprint 7: ✅ Database layer (SQLAlchemy + Alembic + async repos)
-  - Sprint 8: ✅ FastAPI REST + WebSocket layer (JWT auth, RBAC, all CRUD endpoints)
-  - Sprint 9: ✅ Tier 1 approval flow
-  - Sprint 10: ✅ BYOM provider abstraction
-  - Sprint 11: ✅ Next.js frontend + Docker setup
-  - Sprint 12: ✅ Config consolidation + UI self-service (foundation, model manager, dynamic MCP pool, `/dashboard/config` MCP manager, Skill Manager `/dashboard/skills`, Co-pilot Chat)
-  - Sprint 13: ✅ Single-container app — `opsmender serve` + unified `docker/Dockerfile` + PyInstaller binary, E2E + frontend-mount verification green
-  - Sprint 14: ✅ External incident ingestion — core API + 5 provider adapters + dedup + ingest audit log + admin UI + curl recipes + rate limiting + auto-start
-  - Sprint 15: ✅ Universal ingestion — `auto` adapter with heuristics + LLM fallback + per-token shape cache
-  - Sprint 16: ✅ Bundle Node.js/npx in Docker + binary builds
-  - Sprint 17: ✅ Tier 0 sandbox + hard time limits + rollback
-  - Sprint 18: ✅ Outbound webhook triggers — persisted configs, async session event delivery, CRUD/test API
-  - Sprint 19: ✅ Outbound webhook trigger UI — dashboard management + safe edit semantics for headers/tokens
-  - Sprint 20: ✅ Slack + Teams outbound trigger formats on top of the generic webhook trigger system
-  - Sprint 21: ✅ Sumo Logic outbound trigger format on top of the generic webhook trigger system
-  - Sprint 22: ✅ Custom workflow builder — saved workflow profiles wired into sessions, API, graph builder, and config UI
-  - Sprint 23: ✅ Multi-agent support — saved agent team profiles wired into sessions, API, multi-agent node synthesis, and config UI
-  - Sprint 24: ✅ UI polish + public release prep
-  - Sprint 25: ✅ Reliability dashboard + SLA/SLO APIs + maintenance windows
-  - Sprint 26: ✅ User documentation wiki + operator guides
-  - Sprint 27: ✅ Chat bot integrations (15 platforms, interactive commands, identity mapping)
-  - Sprint 28: ✅ Multi-tenant transition (data isolation, custom branding, automated registration)
+The v1 release covers that loop:
+
+- **Setup:** bootstrap admin env vars, email/password login, invites, SMTP-optional user flows, and simple-by-default single-workspace mode.
+- **Operations:** Incident Command Center, sticky command strip, timeline, right-rail context, command palette, responsive phone/tablet/desktop surfaces.
+- **Governance:** Tier 0-3 enforcement, SKILL.md-derived MCP allowlists, Tier 1 approvals, audit logs, rollback, and memory recall/writeback auditability.
+- **Teams:** People page, invites, role assignment, password reset, soft delete, and admin/operator/viewer role model.
+- **Models:** Bring-your-own model support for Anthropic, OpenAI, Azure OpenAI, Ollama, OpenAI-compatible endpoints, AWS Bedrock, and GCP Vertex AI.
+- **MCP:** Stdio/SSE/HTTP MCP servers, OAuth for HTTP transports, `mcp.json` import/export/sync, CLI reload/export helpers.
+- **On-call:** teams, services, rosters, priority rules, escalation chains, maintenance windows, notification preferences, and paging surfaces.
+- **Post-incident:** postmortem editor plus incident memory retrieval, writeback, feedback, curation, and compaction.
+- **Self-hosting:** Docker Compose, single-container image, Helm, PyInstaller binary, and cloud recipes for AWS ECS, Azure Container Apps, GCP Cloud Run, and OCI Container Instances.
+
+Deferred beyond v1: full multi-org UX polish, heavy SSO/SAML onboarding, OCI Generative AI, Azure AI Foundry non-OpenAI provider, advanced role matrix, native mobile app, distributed deployment mode, SBOM/signing posture, deep analytics, and broad simulation coverage.
 
 ## Distribution Status
 
-The current target is a standalone binary plus operator-owned config/assets:
+OpsMender ships as a self-hosted project with several supported paths:
 
-```
-opsmender                  # standalone binary
-.env                 # deployment defaults, API keys, database URL, JWT secret
-skills/              # operator-owned skill definitions for each environment
-```
+- **Docker Compose:** fastest full-stack local or single-host install.
+- **Single container:** backend + exported frontend served by `opsmender serve`.
+- **Helm:** Kubernetes deployment with optional bundled Postgres.
+- **PyInstaller binary:** standalone `opsmender` executable for operator-owned environments.
+- **Cloud recipes:** AWS ECS, Azure Container Apps, GCP Cloud Run, and OCI Container Instances.
 
 The repo ships the PyInstaller spec/build script and the unified `opsmender serve` entrypoint; the full chain (auth → incident → session → approval → execute → audit, plus the static frontend mount) is covered by `tests/test_e2e.py` and `tests/test_frontend_mount.py`.
 

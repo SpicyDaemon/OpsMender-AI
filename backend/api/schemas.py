@@ -198,6 +198,47 @@ class IncidentListResponse(BaseModel):
     total: int
 
 
+# Sprint 61 Step 4 — postmortem authoring surface. The default template
+# is returned alongside the stored markdown so a fresh incident's editor
+# can prefill the section headings without the frontend hardcoding the
+# canonical structure.
+DEFAULT_POSTMORTEM_TEMPLATE = """## Summary
+Briefly describe what happened and the user-visible impact.
+
+## Impact
+Who was affected, for how long, and how badly.
+
+## Timeline
+- HH:MM UTC — first signal
+- HH:MM UTC — acknowledged
+- HH:MM UTC — mitigated
+- HH:MM UTC — fully resolved
+
+## Root cause
+What was the underlying technical cause.
+
+## Resolution
+What you changed to stop the bleeding, and what's still in flight.
+
+## Lessons learned
+What worked, what didn't, what to change for next time.
+
+## Memory candidates
+Short, durable lessons to save into OpsMender memory so future sessions benefit. One bullet per memory.
+"""
+
+
+class IncidentPostmortemResponse(BaseModel):
+    incident_id: uuid.UUID
+    postmortem_md: Optional[str]
+    postmortem_updated_at: Optional[datetime]
+    template: str = DEFAULT_POSTMORTEM_TEMPLATE
+
+
+class IncidentPostmortemUpdate(BaseModel):
+    postmortem_md: Optional[str] = Field(default=None, max_length=100_000)
+
+
 # ---------------------------------------------------------------------------
 # Sessions
 # ---------------------------------------------------------------------------

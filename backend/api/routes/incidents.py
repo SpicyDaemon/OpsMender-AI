@@ -18,8 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    DEFAULT_POSTMORTEM_TEMPLATE,
     IncidentCreate,
     IncidentListResponse,
+    IncidentPostmortemResponse,
+    IncidentPostmortemUpdate,
     IncidentResponse,
     IncidentTimelineItemResponse,
     IncidentTimelineResponse,
@@ -264,6 +267,72 @@ async def get_incident(
             detail="Incident not found",
     )
     return incident
+
+
+@router.get(
+    "/{incident_id}/postmortem",
+    response_model=IncidentPostmortemResponse,
+    summary="Get an incident's postmortem markdown",
+)
+async def get_incident_postmortem(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    """Sprint 61 Step 4 — return the operator-authored postmortem.
+
+    Returns the stored markdown (``null`` when none), the last edit
+    timestamp, and a canonical section template so a fresh editor can
+    prefill the recommended structure without the frontend hardcoding it.
+    """
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+    return IncidentPostmortemResponse(
+        incident_id=incident.id,
+        postmortem_md=incident.postmortem_md,
+        postmortem_updated_at=_aware(incident.postmortem_updated_at),
+        template=DEFAULT_POSTMORTEM_TEMPLATE,
+    )
+
+
+@router.put(
+    "/{incident_id}/postmortem",
+    response_model=IncidentPostmortemResponse,
+    summary="Set or clear an incident's postmortem markdown",
+)
+async def put_incident_postmortem(
+    incident_id: uuid.UUID,
+    body: IncidentPostmortemUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Sprint 61 Step 4 — write the postmortem markdown.
+
+    Passing an empty or whitespace-only string clears the postmortem.
+    Operator role required; viewers can read but not edit.
+    """
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+    await IncidentRepo.set_postmortem(db, org_id, incident_id, body.postmortem_md)
+    await db.commit()
+    refreshed = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    assert refreshed is not None
+    return IncidentPostmortemResponse(
+        incident_id=refreshed.id,
+        postmortem_md=refreshed.postmortem_md,
+        postmortem_updated_at=_aware(refreshed.postmortem_updated_at),
+        template=DEFAULT_POSTMORTEM_TEMPLATE,
+    )
 
 
 @router.get(

@@ -384,6 +384,13 @@ class Incident(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+    # Sprint 61 Step 4 — operator-authored postmortem markdown plus its
+    # own edit timestamp so the UI can show "last edited" without
+    # conflating with the incident's own lifecycle clock.
+    postmortem_md: Mapped[str | None] = mapped_column(Text, nullable=True)
+    postmortem_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     sessions: Mapped[list[Session]] = relationship(back_populates="incident")
 

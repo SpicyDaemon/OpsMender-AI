@@ -1138,6 +1138,100 @@ class TestIncidents:
         assert data["total"] == 5
 
 
+class TestIncidentPostmortem:
+    """Sprint 61 Step 4 — GET / PUT /incidents/{id}/postmortem."""
+
+    async def _create_incident(
+        self, client: AsyncClient, auth_headers
+    ) -> str:
+        resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Postmortem test incident",
+                "description": "Seeded for postmortem authoring tests.",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        return resp.json()["id"]
+
+    async def test_get_postmortem_returns_template_for_fresh_incident(
+        self, client: AsyncClient, auth_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        resp = await client.get(
+            f"/incidents/{incident_id}/postmortem", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["incident_id"] == incident_id
+        assert data["postmortem_md"] is None
+        assert data["postmortem_updated_at"] is None
+        # Template surfaces the doc's recommended section headings.
+        assert "## Summary" in data["template"]
+        assert "## Memory candidates" in data["template"]
+
+    async def test_put_postmortem_stores_markdown_and_stamps_updated_at(
+        self, client: AsyncClient, auth_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        body = "## Summary\nPostgres ran out of disk."
+        resp = await client.put(
+            f"/incidents/{incident_id}/postmortem",
+            json={"postmortem_md": body},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["postmortem_md"] == body
+        assert data["postmortem_updated_at"] is not None
+
+        # Re-fetch goes through the read path; same data should come back.
+        get_resp = await client.get(
+            f"/incidents/{incident_id}/postmortem", headers=auth_headers
+        )
+        assert get_resp.status_code == 200
+        assert get_resp.json()["postmortem_md"] == body
+
+    async def test_put_empty_postmortem_clears_stored_value(
+        self, client: AsyncClient, auth_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        await client.put(
+            f"/incidents/{incident_id}/postmortem",
+            json={"postmortem_md": "## Summary\nfoo"},
+            headers=auth_headers,
+        )
+        clear_resp = await client.put(
+            f"/incidents/{incident_id}/postmortem",
+            json={"postmortem_md": "   "},
+            headers=auth_headers,
+        )
+        assert clear_resp.status_code == 200
+        data = clear_resp.json()
+        assert data["postmortem_md"] is None
+        assert data["postmortem_updated_at"] is None
+
+    async def test_put_postmortem_viewer_forbidden(
+        self, client: AsyncClient, auth_headers, viewer_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        resp = await client.put(
+            f"/incidents/{incident_id}/postmortem",
+            json={"postmortem_md": "## Summary\nnope"},
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
+    async def test_get_postmortem_for_missing_incident_returns_404(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get(
+            f"/incidents/{uuid.uuid4()}/postmortem", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+
 class TestIncidentBulkActions:
     """Sprint 50 — POST /incidents/bulk."""
 

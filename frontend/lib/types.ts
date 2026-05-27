@@ -84,6 +84,18 @@ export interface IncidentTimelineResponse {
   total: number;
 }
 
+// Sprint 61 Step 4 — postmortem authoring.
+export interface IncidentPostmortemResponse {
+  incident_id: string;
+  postmortem_md: string | null;
+  postmortem_updated_at: string | null;
+  template: string;
+}
+
+export interface IncidentPostmortemUpdate {
+  postmortem_md: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@
  */
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Check,
   CheckCircle2,
@@ -71,6 +72,7 @@ export function IncidentCommandStrip({
   className,
 }: Props) {
   const toast = useToast();
+  const router = useRouter();
   const { user } = useAuth();
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -123,10 +125,7 @@ export function IncidentCommandStrip({
       "Incident resolved",
     );
   const handlePostmortem = () => {
-    // Sprint A step 3 / future sprint wires this to the postmortem
-    // surface. For now a soft acknowledgement so the button isn't a
-    // no-op visually.
-    toast.info("Postmortem authoring lands in a follow-up sprint.");
+    router.push(`/dashboard/incidents/postmortem?id=${incident.id}`);
   };
 
   // -- Status pill (replaces the existing badge row's status pill) -------

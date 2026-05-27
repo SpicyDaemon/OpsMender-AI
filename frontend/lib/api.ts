@@ -149,6 +149,8 @@ export async function listUsers(params?: {
 import type {
   IncidentCreate,
   IncidentListResponse,
+  IncidentPostmortemResponse,
+  IncidentPostmortemUpdate,
   IncidentResponse,
   IncidentTimelineResponse,
 } from "./types";
@@ -180,6 +182,22 @@ export async function getIncidentTimeline(
   id: string,
 ): Promise<IncidentTimelineResponse> {
   return api.get<IncidentTimelineResponse>(`/incidents/${id}/timeline`);
+}
+
+export async function getIncidentPostmortem(
+  id: string,
+): Promise<IncidentPostmortemResponse> {
+  return api.get<IncidentPostmortemResponse>(`/incidents/${id}/postmortem`);
+}
+
+export async function putIncidentPostmortem(
+  id: string,
+  body: IncidentPostmortemUpdate,
+): Promise<IncidentPostmortemResponse> {
+  return api.put<IncidentPostmortemResponse>(
+    `/incidents/${id}/postmortem`,
+    body,
+  );
 }
 
 // ---------------------------------------------------------------------------

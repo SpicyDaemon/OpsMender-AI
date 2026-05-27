@@ -503,6 +503,31 @@ class IncidentRepo:
         await db.execute(stmt)
 
     @staticmethod
+    async def set_postmortem(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+        postmortem_md: str | None,
+    ) -> None:
+        """Set or clear the postmortem markdown for an incident.
+
+        Sprint 61 Step 4. Passing ``None`` (or an empty/whitespace string)
+        clears the postmortem and its timestamp.
+        """
+        cleaned = postmortem_md.strip() if postmortem_md is not None else None
+        now = datetime.now(timezone.utc) if cleaned else None
+        stmt = (
+            update(Incident)
+            .where(Incident.org_id == org_id)
+            .where(Incident.id == incident_id)
+            .values(
+                postmortem_md=cleaned or None,
+                postmortem_updated_at=now,
+            )
+        )
+        await db.execute(stmt)
+
+    @staticmethod
     async def get_by_external_fingerprint(
         db: AsyncSession, org_id: uuid.UUID, *, external_source: str, external_id: str
     ) -> Incident | None:

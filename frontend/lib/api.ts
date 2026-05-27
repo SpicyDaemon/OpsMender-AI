@@ -346,7 +346,26 @@ import type {
 } from "./types";
 
 export async function listProviders(): Promise<ProviderModelsListResponse> {
-  return api.get<ProviderModelsListResponse>("/models");
+  return listProvidersWithParams();
+}
+
+export async function listProvidersWithParams(params?: {
+  provider?: string;
+  model_id?: string;
+  api_key_env_var?: string;
+  base_url?: string;
+  api_version?: string;
+  region?: string;
+  profile?: string;
+}): Promise<ProviderModelsListResponse> {
+  const query = new URLSearchParams();
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value) query.set(key, value);
+    }
+  }
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return api.get<ProviderModelsListResponse>(`/models${suffix}`);
 }
 
 export async function getModelBootstrapStatus(): Promise<ModelBootstrapStatusResponse> {

@@ -136,6 +136,7 @@ def _resolve_model_kwargs(config: AppConfig, model_cfg) -> dict[str, Any]:
             "api_key_env_var": model_cfg.api_key_env_var,
             "base_url": model_cfg.base_url,
             "api_version": model_cfg.api_version,
+            "provider_meta": model_cfg.provider_meta,
             "max_tokens": model_cfg.max_tokens,
         }
 

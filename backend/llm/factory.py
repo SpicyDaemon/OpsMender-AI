@@ -5,6 +5,7 @@ from __future__ import annotations
 from .base import LLM, LLMProvider
 from .providers import (
     AnthropicProvider,
+    BedrockProvider,
     OllamaProvider,
     OpenAICompatibleProvider,
     OpenAIProvider,
@@ -23,6 +24,7 @@ def create_provider(
     api_key_env_var: str | None = None,
     base_url: str | None = None,
     api_version: str | None = None,
+    provider_meta: dict[str, object] | None = None,
 ) -> LLMProvider:
     """Build a provider instance by provider name."""
     if provider == "anthropic":
@@ -48,6 +50,14 @@ def create_provider(
             base_url=base_url,
             api_version=api_version,
             azure=True,
+        )
+    if provider == "bedrock":
+        provider_meta = provider_meta or {}
+        return BedrockProvider(
+            model=model_id or "anthropic.claude-sonnet-4-6",
+            region=str(provider_meta.get("region") or ""),
+            profile=str(provider_meta.get("profile") or "") or None,
+            max_tokens=max_tokens,
         )
     if provider == "openai_compatible":
         if not base_url:
@@ -83,6 +93,7 @@ def create_llm(
     api_key_env_var: str | None = None,
     base_url: str | None = None,
     api_version: str | None = None,
+    provider_meta: dict[str, object] | None = None,
 ) -> LLM:
     """Build a workflow-facing LLM client from a provider."""
     return ProviderLLMAdapter(
@@ -95,5 +106,6 @@ def create_llm(
             api_key_env_var=api_key_env_var,
             base_url=base_url,
             api_version=api_version,
+            provider_meta=provider_meta,
         )
     )

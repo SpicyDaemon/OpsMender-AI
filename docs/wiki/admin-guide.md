@@ -112,17 +112,19 @@ Supported providers as of Sprint 62:
 | **Anthropic** | Claude models. Set `ANTHROPIC_API_KEY` in `.env`. |
 | **OpenAI** | GPT models. Set `OPENAI_API_KEY` in `.env`. |
 | **Azure OpenAI** | Azure-hosted OpenAI deployments. Requires `base_url` (your resource endpoint) and `api_version`. |
+| **AWS Bedrock** | Uses the native AWS credential chain. Requires an AWS Region; optional AWS Profile name if you want a specific shared-config profile. No raw API key is stored in OpsMender. |
 | **Ollama** | Local runtime. Default `base_url` is `http://localhost:11434`. No API key required. |
 | **OpenAI-compatible** | Any OpenAI-API-shape endpoint: vLLM, LM Studio, OpenRouter, Together, Groq, Fireworks, Anyscale, and most local OpenAI-shape runtimes. **Requires** `base_url`; API key is optional (some local endpoints accept any string or none). |
 
-Per Sprint 62 design, OpsMender stores only the **environment variable name** for each provider's secret, never the raw value. Set the actual key in `.env` and reference it from the dashboard. Cloud providers added in later Sprint 62 phases (AWS Bedrock, GCP Vertex AI) will use native credential discovery (AWS credential chain, GCP ADC) rather than asking you to paste secrets into the UI.
+Per Sprint 62 design, OpsMender stores only the **environment variable name** for each provider's secret, never the raw value. Set the actual key in `.env` and reference it from the dashboard. Cloud providers use native credential discovery instead of long-lived pasted secrets: AWS Bedrock uses the AWS credential chain now, and GCP Vertex AI will use ADC in the next step.
 
 To add a model config:
 
 1. Click **New model config**.
-2. Select your provider — only the fields that provider needs are shown (e.g. OpenAI-compatible shows Base URL; Azure OpenAI shows both Base URL and API Version).
-3. Pick a model from the discovered catalog, or click **Type manual model ID** if discovery is unavailable or the model isn't reported (e.g. a proxy that doesn't implement `/v1/models`).
-4. Save. Model discovery is cached for 60 seconds for local/proxy endpoints and 1 hour for cloud catalogs so the page stays snappy.
+2. Select your provider — only the fields that provider needs are shown (e.g. OpenAI-compatible shows Base URL; Azure OpenAI shows both Base URL and API Version; Bedrock shows AWS Region + optional AWS Profile).
+3. For Bedrock, enter the AWS Region first, then click **Refresh Catalog** if you want the live Bedrock model list for that region/profile.
+4. Pick a model from the discovered catalog, or click **Type manual model ID** if discovery is unavailable or the model isn't reported (e.g. a proxy that doesn't implement `/v1/models`).
+5. Save. Model discovery is cached for 60 seconds for local/proxy endpoints and 1 hour for cloud catalogs so the page stays snappy.
 
 ## 4. MCP Servers and Skills
 

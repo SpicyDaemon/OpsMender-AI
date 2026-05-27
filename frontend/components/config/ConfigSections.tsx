@@ -50,7 +50,7 @@ import {
   listIngestTokens,
   listMCPServers,
   listModelConfigs,
-  listProviders,
+  listProvidersWithParams,
   listWebhookTriggers,
   listWorkflowProfiles,
   revokeIngestToken,
@@ -470,6 +470,8 @@ type ModelFormState = {
   api_key_env_var: string;
   base_url: string;
   api_version: string;
+  region: string;
+  profile: string;
   max_tokens: number;
   temperature: number;
 };
@@ -495,6 +497,8 @@ function createModelFormState(
       "",
     base_url: current?.base_url ?? "",
     api_version: current?.api_version ?? "",
+    region: current?.provider_meta?.region ?? "",
+    profile: current?.provider_meta?.profile ?? "",
     max_tokens: current?.max_tokens ?? 4096,
     temperature: current?.temperature ?? 0,
   };
@@ -533,6 +537,8 @@ function ModelConfigModal({
   const [form, setForm] = useState<ModelFormState>(() =>
     createModelFormState(providers, initialConfig),
   );
+  const [providerCatalogs, setProviderCatalogs] = useState(providers);
+  const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [useManualModelId, setUseManualModelId] = useState(() =>
     shouldUseManualModelId(
       providers,
@@ -544,6 +550,8 @@ function ModelConfigModal({
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProviderCatalogs(providers);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(createModelFormState(providers, initialConfig));
     setUseManualModelId(
       shouldUseManualModelId(
@@ -554,7 +562,7 @@ function ModelConfigModal({
     );
   }, [open, providers, initialConfig]);
 
-  const selectedProvider = providers.find(
+  const selectedProvider = providerCatalogs.find(
     (provider) => provider.provider === form.provider,
   );
 
@@ -567,7 +575,9 @@ function ModelConfigModal({
   }
 
   function handleProviderChange(providerName: string) {
-    const nextProvider = providers.find((item) => item.provider === providerName);
+    const nextProvider = providerCatalogs.find(
+      (item) => item.provider === providerName,
+    );
     if (error) onErrorChange("");
     setForm((current) => ({
       ...current,
@@ -576,8 +586,49 @@ function ModelConfigModal({
       api_key_env_var: nextProvider?.default_api_key_env_var ?? "",
       base_url: "",
       api_version: "",
+      region: "",
+      profile: "",
     }));
     setUseManualModelId(!nextProvider || nextProvider.models.length === 0);
+  }
+
+  async function refreshProviderCatalog() {
+    if (!selectedProvider) return;
+    setRefreshingCatalog(true);
+    if (error) onErrorChange("");
+    try {
+      const response = await listProvidersWithParams({
+        provider: form.provider,
+        model_id: form.model_id || undefined,
+        api_key_env_var: form.api_key_env_var || undefined,
+        base_url: form.base_url || undefined,
+        api_version: form.api_version || undefined,
+        region: form.region || undefined,
+        profile: form.profile || undefined,
+      });
+      const refreshed = response.items[0];
+      if (!refreshed) return;
+      setProviderCatalogs((current) =>
+        current.map((provider) =>
+          provider.provider === refreshed.provider ? refreshed : provider,
+        ),
+      );
+      if (refreshed.models.length > 0) {
+        setUseManualModelId(false);
+        setForm((current) => ({
+          ...current,
+          model_id: refreshed.models.includes(current.model_id)
+            ? current.model_id
+            : refreshed.models[0] ?? current.model_id,
+        }));
+      } else {
+        setUseManualModelId(true);
+      }
+    } catch (err) {
+      onErrorChange(err instanceof Error ? err.message : "Provider refresh failed");
+    } finally {
+      setRefreshingCatalog(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -711,6 +762,46 @@ function ModelConfigModal({
           </div>
         )}
 
+        {(form.provider === "bedrock" || form.region || form.profile) && (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="model-region">AWS Region</Label>
+              <Input
+                id="model-region"
+                value={form.region}
+                onChange={(e) => setField("region", e.target.value)}
+                placeholder="us-east-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="model-profile">AWS Profile</Label>
+              <Input
+                id="model-profile"
+                value={form.profile}
+                onChange={(e) => setField("profile", e.target.value)}
+                placeholder="opsmender-prod"
+              />
+            </div>
+          </div>
+        )}
+
+        {form.provider === "bedrock" && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+            <p>
+              Bedrock discovery uses your AWS credential chain plus the selected region. Save a manual model ID, or refresh the catalog after entering region/profile.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={refreshProviderCatalog}
+              loading={refreshingCatalog}
+              disabled={!form.region}
+            >
+              Refresh Catalog
+            </Button>
+          </div>
+        )}
+
         <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
           Secrets are stored as environment-variable references only. Enter the variable name OpsMender should read at runtime, not the raw provider secret.
         </div>
@@ -812,6 +903,13 @@ export function ModelSection({
         api_key_env_var: form.api_key_env_var || undefined,
         base_url: form.base_url || undefined,
         api_version: form.api_version || undefined,
+        provider_meta:
+          form.region || form.profile
+            ? {
+                ...(form.region ? { region: form.region } : {}),
+                ...(form.profile ? { profile: form.profile } : {}),
+              }
+            : undefined,
         max_tokens: form.max_tokens,
         temperature: form.temperature,
       };

@@ -3924,6 +3924,31 @@ class TestModelConfigAPI:
         assert data["items"][0]["provider"] == "openai"
         assert data["items"][0]["models"] == ["gpt-4o", "gpt-4o-mini"]
 
+    async def test_list_models_passes_bedrock_region_and_profile(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        captured_kwargs: dict[str, object] = {}
+
+        def _discover(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return []
+
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.discover_models",
+            _discover,
+        )
+
+        resp = await client.get(
+            "/models?provider=bedrock&region=us-east-1&profile=prod",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert captured_kwargs["provider"] == "bedrock"
+        assert captured_kwargs["provider_meta"] == {
+            "region": "us-east-1",
+            "profile": "prod",
+        }
+
     async def test_viewer_can_list_models(
         self, client: AsyncClient, viewer_headers, monkeypatch
     ):
@@ -4012,6 +4037,36 @@ class TestModelConfigAPI:
         assert data["config"]["is_default"] is True
         assert len(data["warnings"]) == 1
         assert data["warnings"][0]["code"] == "model_not_reported"
+
+    async def test_update_model_config_persists_provider_meta(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.config.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type("_Validation", (), {"warnings": []})(),
+        )
+
+        resp = await client.put(
+            "/config/model",
+            json={
+                "name": "bedrock-primary",
+                "provider": "bedrock",
+                "model_id": "anthropic.claude-sonnet-4-6",
+                "provider_meta": {"region": "us-east-1", "profile": "prod"},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["config"]
+        assert data["provider_meta"] == {"region": "us-east-1", "profile": "prod"}
+
+        async with app.state.session_factory() as db:
+            default = await ModelConfigRepo.get_default(db, TEST_ORG_ID)
+            assert default is not None
+            assert default.provider_meta == {
+                "region": "us-east-1",
+                "profile": "prod",
+            }
 
     async def test_update_model_config_validation_error(
         self, client: AsyncClient, auth_headers, monkeypatch
@@ -4160,6 +4215,29 @@ class TestModelConfigAPI:
         data = resp.json()["config"]
         assert data["name"] == "ollama-local"
         assert data["provider"] == "ollama"
+
+    async def test_create_saved_model_config_bedrock_round_trips_provider_meta(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type("_Validation", (), {"warnings": []})(),
+        )
+
+        resp = await client.post(
+            "/models/configs",
+            json={
+                "name": "bedrock-shared",
+                "provider": "bedrock",
+                "model_id": "anthropic.claude-sonnet-4-6",
+                "provider_meta": {"region": "us-east-1"},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()["config"]
+        assert data["provider"] == "bedrock"
+        assert data["provider_meta"] == {"region": "us-east-1"}
 
     async def test_create_saved_model_config_duplicate_name_conflict(
         self, client: AsyncClient, auth_headers, monkeypatch

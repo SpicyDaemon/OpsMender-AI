@@ -147,7 +147,14 @@ def _build_parser() -> argparse.ArgumentParser:
     model_list = model_sub.add_parser("list", help="List available provider models")
     model_list.add_argument(
         "--provider",
-        choices=["anthropic", "openai", "azure_openai", "ollama"],
+        choices=[
+            "anthropic",
+            "openai",
+            "azure_openai",
+            "bedrock",
+            "ollama",
+            "openai_compatible",
+        ],
         default=None,
         help="Filter to one provider",
     )
@@ -172,6 +179,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Override the provider API version",
     )
     model_list.add_argument(
+        "--region",
+        default=None,
+        help="Provider region override (required for AWS Bedrock discovery)",
+    )
+    model_list.add_argument(
+        "--profile",
+        default=None,
+        help="Optional shared AWS profile name for Bedrock discovery",
+    )
+    model_list.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
@@ -190,7 +207,14 @@ def _build_parser() -> argparse.ArgumentParser:
     model_set.add_argument(
         "--provider",
         required=True,
-        choices=["anthropic", "openai", "azure_openai", "ollama"],
+        choices=[
+            "anthropic",
+            "openai",
+            "azure_openai",
+            "bedrock",
+            "ollama",
+            "openai_compatible",
+        ],
         help="LLM provider to configure",
     )
     model_set.add_argument(
@@ -212,6 +236,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--api-version",
         default=None,
         help="Azure/OpenAI API version override",
+    )
+    model_set.add_argument(
+        "--region",
+        default=None,
+        help="Provider region (required for AWS Bedrock)",
+    )
+    model_set.add_argument(
+        "--profile",
+        default=None,
+        help="Optional shared AWS profile name for Bedrock",
     )
     model_set.add_argument(
         "--max-tokens",
@@ -243,7 +277,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     model_bootstrap.add_argument(
         "--provider",
-        choices=["anthropic", "openai", "azure_openai", "ollama"],
+        choices=[
+            "anthropic",
+            "openai",
+            "azure_openai",
+            "bedrock",
+            "ollama",
+            "openai_compatible",
+        ],
         default=None,
         help="LLM provider to configure",
     )
@@ -266,6 +307,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--api-version",
         default=None,
         help="Azure/OpenAI API version override",
+    )
+    model_bootstrap.add_argument(
+        "--region",
+        default=None,
+        help="Provider region (required for AWS Bedrock)",
+    )
+    model_bootstrap.add_argument(
+        "--profile",
+        default=None,
+        help="Optional shared AWS profile name for Bedrock",
     )
     model_bootstrap.add_argument(
         "--max-tokens",
@@ -614,6 +665,7 @@ def _model_config_to_dict(config) -> dict[str, object]:
         "api_key_env_var": config.api_key_env_var,
         "base_url": config.base_url,
         "api_version": config.api_version,
+        "provider_meta": config.provider_meta,
         "max_tokens": config.max_tokens,
         "temperature": config.temperature,
         "is_default": config.is_default,
@@ -633,8 +685,18 @@ def _format_provider_models(item: dict[str, object]) -> str:
 
 def _format_model_config(config) -> str:
     default = " default" if config.is_default else ""
+    provider_meta = config.provider_meta or {}
+    detail = ""
+    if config.provider == "bedrock":
+        region = provider_meta.get("region")
+        profile = provider_meta.get("profile")
+        if region:
+            detail += f"  region={region}"
+        if profile:
+            detail += f"  profile={profile}"
     return (
         f"{config.name}  provider={config.provider}  model={config.model_id}"
+        f"{detail}"
         f"{default}"
     )
 
@@ -659,12 +721,24 @@ def _prompt_value(prompt: str, *, default: str | None = None) -> str:
     return default or ""
 
 
+def _provider_meta_from_args(args: argparse.Namespace) -> dict[str, str] | None:
+    meta = {
+        key: value
+        for key, value in {
+            "region": getattr(args, "region", None),
+            "profile": getattr(args, "profile", None),
+        }.items()
+        if isinstance(value, str) and value.strip()
+    }
+    return meta or None
+
+
 def _bootstrap_model_args(
     args: argparse.Namespace,
     registry: ProviderRegistry,
 ) -> argparse.Namespace:
     provider = args.provider or _prompt_value(
-        "Provider (anthropic/openai/azure_openai/ollama)",
+        "Provider (anthropic/openai/azure_openai/bedrock/ollama/openai_compatible)",
         default="openai",
     )
     spec = registry.get_spec(provider)
@@ -685,12 +759,20 @@ def _bootstrap_model_args(
     api_version = args.api_version
     if spec.requires_api_version:
         api_version = api_version or _prompt_value("API version")
+    region = args.region
+    if provider == "bedrock":
+        region = region or _prompt_value("AWS region", default="us-east-1")
+    profile = args.profile
+    if provider == "bedrock" and profile is None:
+        profile = _prompt_value("AWS profile name (optional)", default="")
 
     args.provider = provider
     args.model_id = model_id
     args.api_key_env_var = api_key_env_var or None
     args.base_url = base_url or None
     args.api_version = api_version or None
+    args.region = region or None
+    args.profile = profile or None
     args.name = args.name or f"{provider}:{model_id}"
     return args
 
@@ -711,6 +793,7 @@ async def _persist_model_config(cfg: Config, args: argparse.Namespace):
         api_key_env_var=args.api_key_env_var,
         base_url=args.base_url,
         api_version=args.api_version,
+        provider_meta=_provider_meta_from_args(args),
         allow_unverified=True,
     )
 
@@ -729,6 +812,7 @@ async def _persist_model_config(cfg: Config, args: argparse.Namespace):
                 api_key_env_var=args.api_key_env_var,
                 base_url=args.base_url,
                 api_version=args.api_version,
+                provider_meta=_provider_meta_from_args(args),
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
             )
@@ -958,6 +1042,7 @@ async def _run_config_model(cfg: Config, args: argparse.Namespace) -> int:
                 api_key_env_var=args.api_key_env_var,
                 base_url=args.base_url,
                 api_version=args.api_version,
+                provider_meta=_provider_meta_from_args(args),
             )
         except ValueError as exc:
             print(f"Model discovery failed: {exc}", file=sys.stderr)

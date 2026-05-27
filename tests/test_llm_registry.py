@@ -32,6 +32,7 @@ class TestProviderRegistry:
         assert providers == [
             "anthropic",
             "azure_openai",
+            "bedrock",
             "ollama",
             "openai",
             "openai_compatible",
@@ -74,6 +75,35 @@ class TestProviderRegistry:
         assert spec.requires_base_url is True
         assert spec.requires_api_key is False
         assert spec.default_api_key_env_var is None
+
+    def test_bedrock_spec_is_registered(self):
+        registry = ProviderRegistry()
+        spec = registry.get_spec("bedrock")
+        assert spec.label == "AWS Bedrock"
+        assert spec.requires_api_key is False
+        assert spec.default_model_id == "anthropic.claude-sonnet-4-6"
+
+    def test_validate_bedrock_requires_region(self):
+        registry = ProviderRegistry()
+        with pytest.raises(ValueError, match="provider_meta.region"):
+            registry.validate_model_config(
+                provider="bedrock",
+                model_id="anthropic.claude-sonnet-4-6",
+            )
+
+    def test_validate_bedrock_accepts_region_and_optional_profile(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["anthropic.claude-sonnet-4-6"]),
+        )
+        registry = ProviderRegistry()
+        result = registry.validate_model_config(
+            provider="bedrock",
+            model_id="anthropic.claude-sonnet-4-6",
+            provider_meta={"region": "us-east-1", "profile": "prod"},
+        )
+        assert result.warnings == []
+        assert result.discovered_models == ["anthropic.claude-sonnet-4-6"]
 
     def test_validate_openai_compatible_requires_base_url(self):
         registry = ProviderRegistry()
@@ -242,6 +272,7 @@ class TestProviderRegistry:
         assert providers == [
             "anthropic",
             "azure_openai",
+            "bedrock",
             "ollama",
             "openai",
             "openai_compatible",

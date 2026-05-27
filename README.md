@@ -641,13 +641,16 @@ Sprint 10 added a provider abstraction layer for:
 - Anthropic
 - OpenAI
 - Azure OpenAI
+- AWS Bedrock
 - Ollama
+- OpenAI-compatible endpoints
 
 You can inspect provider availability from the CLI:
 
 ```bash
 opsmender config model list
 opsmender config model list --provider ollama --base-url http://localhost:11434
+opsmender config model list --provider bedrock --region us-east-1 --profile opsmender-prod
 ```
 
 You can persist the default model config into the database:
@@ -658,7 +661,12 @@ opsmender config model set --provider azure_openai --model-id my-deployment \
   --base-url https://example-resource.openai.azure.com/ \
   --api-version 2024-10-21 \
   --api-key-env-var AZURE_OPENAI_API_KEY
+opsmender config model set --provider bedrock --model-id anthropic.claude-sonnet-4-6 \
+  --region us-east-1 \
+  --profile opsmender-prod
 opsmender config model set --provider ollama --model-id llama3.2 --base-url http://localhost:11434
+opsmender config model set --provider openai_compatible --model-id llama-3.1-8b-instruct \
+  --base-url http://localhost:1234/v1
 ```
 
 For first-run setup, OpsMender also ships a bootstrap path that prompts for missing fields:
@@ -666,6 +674,7 @@ For first-run setup, OpsMender also ships a bootstrap path that prompts for miss
 ```bash
 opsmender config model bootstrap
 opsmender config model bootstrap --provider openai --model-id gpt-4.1 --api-key-env-var OPENAI_API_KEY
+opsmender config model bootstrap --provider bedrock --model-id anthropic.claude-sonnet-4-6 --region us-east-1
 ```
 
 Notes:
@@ -674,7 +683,8 @@ Notes:
 - `opsmender config model set` and `opsmender config model bootstrap` store the config in `model_configs` and mark it as default.
 - Provider-discovered model lists are suggestions, not a hard requirement. OpsMender allows explicit manual model IDs and returns warnings when discovery is stale, unavailable, or incomplete.
 - Secrets are stored as **environment-variable references only**. The database stores values like `OPENAI_API_KEY`, not the raw provider secret itself.
-- The dashboard supports the same first-run bootstrap flow from **Config → Models**, including provider, model ID, env-var reference, base URL, API version, max tokens, and temperature.
+- AWS Bedrock uses the native AWS credential chain rather than an API-key env var. Persisted provider metadata stores only non-secret fields such as `region` and optional `profile`.
+- The dashboard supports the same first-run bootstrap flow from **Config → Models**, including provider, model ID, env-var reference, base URL, API version, Bedrock region/profile, max tokens, and temperature. For Bedrock, enter the region first and use **Refresh Catalog** to load that region's model suggestions.
 - If you want to run a local Hugging Face model with OpsMender, the clean path is to serve it through a local runtime such as Ollama or another OpenAI-compatible endpoint rather than loading raw checkpoints directly inside OpsMender.
 
 ## Workflow

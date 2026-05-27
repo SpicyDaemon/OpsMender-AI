@@ -235,11 +235,12 @@ async def _resolve_llm(factory, session) -> LLM:  # type: ignore[no-untyped-def]
                 return create_llm(
                     provider=default_cfg.provider,
                     model_id=default_cfg.model_id,
-                    max_tokens=default_cfg.max_tokens,
-                    api_key_env_var=default_cfg.api_key_env_var,
-                    base_url=default_cfg.base_url,
-                    api_version=default_cfg.api_version,
-                )
+                max_tokens=default_cfg.max_tokens,
+                api_key_env_var=default_cfg.api_key_env_var,
+                base_url=default_cfg.base_url,
+                api_version=default_cfg.api_version,
+                provider_meta=default_cfg.provider_meta,
+            )
             return create_llm(
                 provider="stub",
                 response="[workflow offline: no model configured]",

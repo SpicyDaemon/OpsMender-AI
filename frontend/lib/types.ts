@@ -343,6 +343,7 @@ export interface ModelConfigResponse {
   api_key_env_var: string | null;
   base_url: string | null;
   api_version: string | null;
+  provider_meta: Record<string, string> | null;
   max_tokens: number;
   temperature: number;
   is_default: boolean;
@@ -378,6 +379,7 @@ export interface ModelConfigUpdate {
   api_key_env_var?: string;
   base_url?: string;
   api_version?: string;
+  provider_meta?: Record<string, string>;
   max_tokens?: number;
   temperature?: number;
 }

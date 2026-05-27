@@ -16,7 +16,7 @@ from .factory import create_provider
 # repeat loads. The cache key carries every discovery param so distinct
 # queries don't collide.
 _DISCOVERY_CACHE: dict[
-    tuple[str | None, str | None, str | None, str | None, str | None],
+    tuple[str | None, str | None, str | None, str | None, str | None, tuple[tuple[str, str], ...]],
     tuple[float, list[dict[str, object]]],
 ] = {}
 _DISCOVERY_CACHE_DEFAULT_TTL_SECONDS = 60.0
@@ -90,6 +90,12 @@ class ProviderRegistry:
             requires_base_url=True,
             requires_api_version=True,
         ),
+        "bedrock": ProviderSpec(
+            provider="bedrock",
+            label="AWS Bedrock",
+            default_model_id="anthropic.claude-sonnet-4-6",
+            requires_api_key=False,
+        ),
         "ollama": ProviderSpec(
             provider="ollama",
             label="Ollama",
@@ -134,9 +140,19 @@ class ProviderRegistry:
         api_key_env_var: str | None = None,
         base_url: str | None = None,
         api_version: str | None = None,
+        provider_meta: dict[str, str] | None = None,
         use_cache: bool = True,
     ) -> list[dict[str, object]]:
-        cache_key = (provider, model_id, api_key_env_var, base_url, api_version)
+        provider_meta = provider_meta or {}
+        provider_meta_key = tuple(sorted(provider_meta.items()))
+        cache_key = (
+            provider,
+            model_id,
+            api_key_env_var,
+            base_url,
+            api_version,
+            provider_meta_key,
+        )
         ttl = _ttl_for(provider)
         if use_cache:
             hit = _DISCOVERY_CACHE.get(cache_key)
@@ -156,6 +172,7 @@ class ProviderRegistry:
                     api_key_env_var=selected_api_key,
                     base_url=base_url,
                     api_version=api_version,
+                    provider_meta=provider_meta,
                 )
                 models = client.list_models()
                 results.append({
@@ -195,14 +212,18 @@ class ProviderRegistry:
         api_key_env_var: str | None = None,
         base_url: str | None = None,
         api_version: str | None = None,
+        provider_meta: dict[str, str] | None = None,
         allow_unverified: bool = False,
     ) -> ValidationResult:
         spec = self.get_spec(provider)
+        provider_meta = provider_meta or {}
 
         if spec.requires_base_url and not base_url:
             raise ValueError(f"Provider '{provider}' requires a base_url")
         if spec.requires_api_version and not api_version:
             raise ValueError(f"Provider '{provider}' requires an api_version")
+        if provider == "bedrock" and not provider_meta.get("region"):
+            raise ValueError("Provider 'bedrock' requires provider_meta.region")
 
         warnings: list[ValidationIssue] = []
         discovery_error: str | None = None
@@ -216,6 +237,7 @@ class ProviderRegistry:
                 api_key_env_var=selected_api_key,
                 base_url=base_url,
                 api_version=api_version,
+                provider_meta=provider_meta,
             )
             discovered_models = client.list_models()
         except Exception as exc:

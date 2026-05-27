@@ -284,6 +284,7 @@ async def update_model_config(
             api_key_env_var=body.api_key_env_var,
             base_url=body.base_url,
             api_version=body.api_version,
+            provider_meta=body.provider_meta,
             allow_unverified=True,
         )
     except ValueError as exc:
@@ -302,6 +303,7 @@ async def update_model_config(
         api_key_env_var=body.api_key_env_var,
         base_url=body.base_url,
         api_version=body.api_version,
+        provider_meta=body.provider_meta,
         max_tokens=body.max_tokens,
         temperature=body.temperature,
     )

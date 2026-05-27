@@ -425,6 +425,7 @@ class ModelConfigResponse(BaseModel):
     api_key_env_var: Optional[str]
     base_url: Optional[str]
     api_version: Optional[str]
+    provider_meta: Optional[dict[str, str]]
     max_tokens: int
     temperature: float
     is_default: bool
@@ -457,11 +458,14 @@ class ModelBootstrapStatusResponse(BaseModel):
 
 class ModelConfigUpdate(BaseModel):
     name: Optional[str] = None
-    provider: str = Field(pattern="^(anthropic|openai|azure_openai|ollama)$")
+    provider: str = Field(
+        pattern="^(anthropic|openai|azure_openai|bedrock|ollama|openai_compatible)$"
+    )
     model_id: str = Field(..., min_length=1, max_length=200)
     api_key_env_var: Optional[str] = Field(default=None, max_length=100)
     base_url: Optional[str] = Field(default=None, max_length=500)
     api_version: Optional[str] = Field(default=None, max_length=50)
+    provider_meta: Optional[dict[str, str]] = None
     max_tokens: int = Field(default=4096, ge=1, le=200000)
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
 

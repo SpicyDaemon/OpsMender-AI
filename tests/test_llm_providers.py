@@ -11,6 +11,7 @@ import pytest
 from backend.agent.llm import AnthropicLLM, LLM, StubLLM, create_llm, create_provider
 from backend.llm import (
     AnthropicProvider,
+    BedrockProvider,
     LLMProvider,
     OllamaProvider,
     OpenAICompatibleProvider,
@@ -94,6 +95,17 @@ class TestFactory:
         assert isinstance(provider, OllamaProvider)
         assert provider.model == "llama3.1"
 
+    def test_create_bedrock_provider(self, monkeypatch):
+        _install_fake_boto3(monkeypatch)
+        provider = create_provider(
+            provider="bedrock",
+            model_id="anthropic.claude-sonnet-4-6",
+            provider_meta={"region": "us-east-1", "profile": "prod"},
+        )
+        assert isinstance(provider, BedrockProvider)
+        assert provider.region == "us-east-1"
+        assert provider.profile == "prod"
+
     def test_unsupported_provider_raises(self):
         with pytest.raises(ValueError, match="Unsupported LLM provider"):
             create_provider(provider="unknown")
@@ -176,6 +188,58 @@ def _install_fake_openai(monkeypatch):
     monkeypatch.setitem(sys.modules, "openai", fake_module)
 
 
+def _install_fake_boto3(monkeypatch):
+    class _FakeBody:
+        def read(self):
+            return b"{}"
+
+    class _FakeBedrockRuntimeClient:
+        def converse(self, **kwargs):
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {"text": f"reply:{kwargs['modelId']}"},
+                        ]
+                    }
+                },
+                "body": _FakeBody(),
+            }
+
+    class _FakeBedrockClient:
+        def list_foundation_models(self, **kwargs):
+            return {
+                "modelSummaries": [
+                    {
+                        "modelId": "anthropic.claude-sonnet-4-6",
+                        "modelLifecycle": {"status": "ACTIVE"},
+                    },
+                    {
+                        "modelId": "amazon.nova-lite-v1:0",
+                        "modelLifecycle": {"status": "ACTIVE"},
+                    },
+                    {
+                        "modelId": "legacy.model",
+                        "modelLifecycle": {"status": "LEGACY"},
+                    },
+                ]
+            }
+
+    class _FakeSession:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def client(self, service_name, **kwargs):
+            if service_name == "bedrock":
+                return _FakeBedrockClient()
+            if service_name == "bedrock-runtime":
+                return _FakeBedrockRuntimeClient()
+            raise AssertionError(f"unexpected boto3 service: {service_name}")
+
+    fake_module = types.SimpleNamespace(Session=_FakeSession)
+    monkeypatch.setitem(sys.modules, "boto3", fake_module)
+
+
 class TestOpenAIProvider:
     def test_missing_package_raises(self, monkeypatch):
         real_import = builtins.__import__
@@ -242,6 +306,41 @@ class TestOpenAIProvider:
         )
         assert provider.complete("hello") == "reply:deploy-gpt4"
         assert provider.list_models() == ["deploy-gpt4"]
+
+
+class TestBedrockProvider:
+    def test_requires_region(self, monkeypatch):
+        _install_fake_boto3(monkeypatch)
+        with pytest.raises(ValueError, match="region"):
+            BedrockProvider(model="anthropic.claude-sonnet-4-6")
+
+    def test_complete_uses_converse_api(self, monkeypatch):
+        _install_fake_boto3(monkeypatch)
+        provider = BedrockProvider(
+            model="anthropic.claude-sonnet-4-6",
+            region="us-east-1",
+        )
+        assert provider.complete("hello") == "reply:anthropic.claude-sonnet-4-6"
+
+    def test_list_models_returns_active_text_models(self, monkeypatch):
+        _install_fake_boto3(monkeypatch)
+        provider = BedrockProvider(
+            model="anthropic.claude-sonnet-4-6",
+            region="us-east-1",
+        )
+        assert provider.list_models() == [
+            "amazon.nova-lite-v1:0",
+            "anthropic.claude-sonnet-4-6",
+        ]
+
+    def test_uses_optional_profile_name(self, monkeypatch):
+        _install_fake_boto3(monkeypatch)
+        provider = BedrockProvider(
+            model="anthropic.claude-sonnet-4-6",
+            region="us-east-1",
+            profile="opsmender-prod",
+        )
+        assert provider._control_client is not None
 
 
 class TestOpenAICompatibleProvider:

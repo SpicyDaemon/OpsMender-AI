@@ -289,6 +289,88 @@ class OpenAICompatibleProvider:
 
 
 @dataclasses.dataclass
+class BedrockProvider:
+    """Provider backed by Amazon Bedrock via boto3.
+
+    Uses the native AWS credential chain through ``boto3.Session``:
+    env vars, shared credentials/config, IAM role, or ECS/EKS task role.
+    Operators only need to supply a region plus an optional shared-config
+    profile name.
+    """
+
+    model: str = "anthropic.claude-sonnet-4-6"
+    region: str = ""
+    profile: str | None = None
+    max_tokens: int = 4096
+
+    def __post_init__(self) -> None:
+        if not self.region:
+            raise ValueError("Bedrock provider requires a region")
+
+        try:
+            import boto3  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "The 'boto3' package is required for BedrockProvider. "
+                "Install it with: uv add boto3"
+            ) from exc
+
+        import boto3
+
+        session_kwargs: dict[str, Any] = {"region_name": self.region}
+        if self.profile:
+            session_kwargs["profile_name"] = self.profile
+
+        session = boto3.Session(**session_kwargs)
+        self._control_client = session.client("bedrock", region_name=self.region)
+        self._runtime_client = session.client(
+            "bedrock-runtime", region_name=self.region
+        )
+
+    def complete(self, prompt: str) -> str:
+        response = self._runtime_client.converse(
+            modelId=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ],
+            inferenceConfig={"maxTokens": self.max_tokens},
+        )
+        content = (
+            response.get("output", {})
+            .get("message", {})
+            .get("content", [])
+        )
+        text_parts = [
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+        ]
+        return "".join(text_parts).strip()
+
+    def stream(self, prompt: str) -> Iterator[str]:
+        yield self.complete(prompt)
+
+    def list_models(self) -> list[str]:
+        response = self._control_client.list_foundation_models(
+            byOutputModality="TEXT"
+        )
+        ids: list[str] = []
+        for summary in response.get("modelSummaries", []):
+            if not isinstance(summary, dict):
+                continue
+            lifecycle = summary.get("modelLifecycle") or {}
+            if isinstance(lifecycle, dict) and lifecycle.get("status") == "LEGACY":
+                continue
+            model_id = summary.get("modelId")
+            if isinstance(model_id, str) and model_id:
+                ids.append(model_id)
+        return sorted(set(ids)) or [self.model]
+
+
+@dataclasses.dataclass
 class OllamaProvider:
     """Provider backed by the native Ollama HTTP API."""
 

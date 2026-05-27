@@ -47,15 +47,23 @@ async def list_models(
     api_key_env_var: str | None = None,
     base_url: str | None = None,
     api_version: str | None = None,
+    region: str | None = None,
+    profile: str | None = None,
     user: User = Depends(get_current_user),
 ):
     registry = ProviderRegistry()
+    provider_meta = {
+        key: value
+        for key, value in {"region": region, "profile": profile}.items()
+        if value
+    }
     items = registry.discover_models(
         provider=provider,
         model_id=model_id,
         api_key_env_var=api_key_env_var,
         base_url=base_url,
         api_version=api_version,
+        provider_meta=provider_meta or None,
     )
     return ProviderModelsListResponse(items=items, total=len(items))
 
@@ -118,6 +126,7 @@ async def create_model_config(
             api_key_env_var=body.api_key_env_var,
             base_url=body.base_url,
             api_version=body.api_version,
+            provider_meta=body.provider_meta,
             allow_unverified=True,
         )
         cfg = await ModelConfigRepo.create(
@@ -129,6 +138,7 @@ async def create_model_config(
             api_key_env_var=body.api_key_env_var,
             base_url=body.base_url,
             api_version=body.api_version,
+            provider_meta=body.provider_meta,
             max_tokens=body.max_tokens,
             temperature=body.temperature,
         )
@@ -172,6 +182,7 @@ async def update_model_config(
             api_key_env_var=body.api_key_env_var,
             base_url=body.base_url,
             api_version=body.api_version,
+            provider_meta=body.provider_meta,
             allow_unverified=True,
         )
         updated = await ModelConfigRepo.update(
@@ -184,6 +195,7 @@ async def update_model_config(
             api_key_env_var=body.api_key_env_var,
             base_url=body.base_url,
             api_version=body.api_version,
+            provider_meta=body.provider_meta,
             max_tokens=body.max_tokens,
             temperature=body.temperature,
         )

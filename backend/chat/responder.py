@@ -102,6 +102,7 @@ async def _resolve_llm(db, org_id: uuid.UUID, session) -> LLM:
                 api_key_env_var=default_cfg.api_key_env_var,
                 base_url=default_cfg.base_url,
                 api_version=default_cfg.api_version,
+                provider_meta=default_cfg.provider_meta,
             )
         return create_llm(
             provider="stub",

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+(none — all entries below are part of `v1.0.0-rc.1`.)
+
+## [1.0.0-rc.1] — 2026-05-27
+
+First release candidate for v1.0.0. All seven items on the v1 product definition checklist pass. Default install is simple-by-default (single workspace, email + admin invite, three roles); SSO / SAML / multi-org stay in the codebase behind explicit env-flag opt-ins. The release-blocker discovered during manual RC testing (Workspace Settings Manage Users / Domains crash) is fixed and locked down with regression tests.
+
+This is **not** the final v1.0.0 tag — that waits on downstream packaging verification. See `OPSMENDER_V1_RC_READINESS.md` at the repo root for the full readiness audit.
+
+### Highlights since the last sprint cycle
+
+**Sprint A (Incident Command Center)** — the incident detail page evolved from a passive read surface into a real command center across three sub-steps (Sprint 57 Steps 1-3, also tagged "Sprint A" in the post-review framing):
+- **Sticky Incident Command Strip** at the top of `/dashboard/incidents/detail` surfaces lifecycle actions (Acknowledge / Take / Release / Start session / Resolve / Create postmortem) as the operator scrolls.
+- **Right-side Incident Context Rail** consolidates severity / status / service / team / owner / escalation step / pending approvals / AI tier in one panel.
+- **Unified Incident Timeline** interleaves response events, AI tool activity, and alert evidence into a single chronological feed via new `GET /incidents/{id}/timeline`.
+- Sprint 63 follow-up (Sessions 161-162) cleaned up the strip's drift items (stale postmortem-placeholder JSDoc, owner UUID display → resolved `ownerLabel`, `aria-busy` + `aria-live`, unused imports), added vitest smoke tests for the action-visibility matrix, and verified responsive behavior at 320 / 375 / tablet / desktop with a repeatable Playwright verifier.
+
+**Sprint 64 (Default-auth / single-workspace UX simplification)** — fully implements D-027 "Simple by Default, Enterprise-Ready Underneath". Default install lands on a single-workspace + email + admin-invite + three-role flow with no SSO buttons and no org switcher visible. Two new env flags gate the optional surfaces; the disjunction `advanced_auth_enabled || sso_configured || saml_configured` decides whether SSO/SAML admin surfaces render so settings never silently disappear from tenants with an already-configured provider. Backend org-scoping (D-008) untouched, SSO/SAML runtime routes work regardless of the flags. Docs split into [Auth Guide](docs/wiki/auth-guide.md) (default) and [Advanced Auth Guide](docs/wiki/advanced-auth-guide.md) (opt-in surfaces). See per-step entries below.
+
+**Session 167 v1 RC hotfix** — Workspace Settings Manage Users / Domains crash fixed (Rules-of-Hooks violation in `UsersModal` + `DomainsModal`). 2 backend smoke tests + 4 frontend vitest tests added.
+
+### Verification (at the RC tag)
+- `uv run python -m pytest -q` → **1406 passed, 2 skipped** (full backend suite, ~10 min).
+- `npx vitest run` → **9/9 passed** (frontend smoke + regression suite).
+- `cd frontend && npm run build` → clean (existing `metadataBase` warning unchanged; 35 static pages).
+
+### Known non-blocking follow-ups (deferred to v1.1+)
+- **Workspace Settings single-card polish** — when `multi_org_enabled=false && orgs.length === 1`, collapse the page to a single Workspace Settings card. Tenants with multiple existing orgs keep the row list. Deliberately deferred from the Session 167 hotfix to avoid an RC-window regression.
+- **eslint quality hints** — 31 errors + 51 warnings in the `react-hooks/immutability`, `react-hooks/set-state-in-effect`, `react-hooks/exhaustive-deps` families. None are crash sources; defer to a dedicated cleanup sprint.
+- **Sprint 62 Phase 2** — OCI Generative AI provider, Azure AI Foundry non-OpenAI provider, explicit local-runtime presets. Deferred unless an operator asks.
+- **MTTA tile family** on the Operations Dashboard — needs a clean ack timestamp on the incident row. Sprint 59 ships MTTR only.
+- **Safety-class chip per tool call** on the session detail surface — needs SKILL.md schema work to expose per-tool classification. Sprint 58 follow-up.
+
 ### Fixed
 - **v1 RC blocker — Workspace Settings "Manage Users" / "Domains" crashed the dashboard** (Session 167). Clicking either button on `/dashboard/organizations` triggered the Next.js global error boundary ("ERROR 500 / Something went wrong"). Root cause: classic React Rules-of-Hooks violation in `UsersModal` and `DomainsModal` — `useMemo(...)` was declared *after* the `if (!open || !org) return null` early return. The first render with `org=null` ran 9 hooks; the second render with `org=set` skipped past the early return and added a 10th `useMemo` hook, which React refuses ("Rendered more hooks than during the previous render"). The error bubbled through the modal and got caught by `global-error.tsx` which displays a hardcoded "ERROR 500" label regardless of the actual cause. Fix: hoist the `useMemo` calls above the early returns in both modals so every render path calls the same hook sequence. No behavior change beyond not crashing — modal contents, click handlers, and backend routes are unchanged. SSO / SAML modals audited at the same time; both already had the early return as their last hook position. **Tests:** 2 new backend smoke tests in `tests/test_api.py::TestOrganizationUsersAndDomainsRouteSmoke` confirming `GET /organizations/{org_id}/users` and `GET /organizations/{org_id}/domains` return the expected payload shape. 4 new frontend vitest tests in `frontend/app/dashboard/organizations/page.test.tsx`: page renders with the "Workspace Settings" label in single-workspace mode; multi-org-only affordances are hidden; clicking Manage Users does not crash; clicking Domains does not crash. Verification: `cd frontend && npm run build` → clean; `npx vitest run` → 9/9 passed; `uv run python -m pytest -q` → **1406 passed, 2 skipped** (+2 vs baseline).
 

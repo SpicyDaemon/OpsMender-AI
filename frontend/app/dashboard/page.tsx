@@ -59,8 +59,61 @@ import type {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useToast } from "@/components/ui/Toast";
+
+/**
+ * Sprint 61 Step 3 — layout-specific skeleton rows shared by the
+ * dashboard panels. Each block matches the eventual row geometry so the
+ * panel doesn't shift when content arrives.
+ */
+function PanelRowSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <ul className="space-y-2 px-1 py-1.5" aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <li
+          key={i}
+          className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5"
+        >
+          <div className="min-w-0 flex-1">
+            <Skeleton height={12} width={i % 2 === 0 ? "72%" : "58%"} className="mb-1.5" />
+            <Skeleton height={10} width="44%" />
+          </div>
+          <Skeleton height={18} width={36} className="shrink-0 rounded-full" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CoverageGridSkeleton() {
+  return (
+    <div
+      className="grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+      aria-hidden
+    >
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5"
+        >
+          <Skeleton height={12} width="58%" className="mb-2" />
+          <Skeleton height={10} width="80%" className="mb-1.5" />
+          <Skeleton height={10} width="68%" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LoadingHint({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-2 pb-1 pt-2 text-[11px] text-fg-muted" role="status">
+      {children}
+    </p>
+  );
+}
 
 /**
  * Sprint 59 Step 5: format a millisecond duration into a short
@@ -421,6 +474,7 @@ export default function DashboardIndex() {
           label="Critical, open"
           count={criticalOpen.length}
           loading={loading}
+          loadingHint="Scanning incidents…"
           emptyMessage="Nothing critical is open."
           href="/dashboard/incidents"
         >
@@ -441,6 +495,7 @@ export default function DashboardIndex() {
           label="Awaiting approval"
           count={approvals.length}
           loading={loading}
+          loadingHint="Checking approval inbox…"
           emptyMessage="No pending approvals."
           href="/dashboard/approvals"
         >
@@ -461,6 +516,7 @@ export default function DashboardIndex() {
           label="Active AI sessions"
           count={activeSessions.length}
           loading={loading}
+          loadingHint="Polling agent sessions…"
           emptyMessage="No active sessions."
           href="/dashboard/incidents"
         >
@@ -481,6 +537,7 @@ export default function DashboardIndex() {
           label="Recent failures"
           count={failedSessions.length}
           loading={loading}
+          loadingHint="Looking for failed sessions…"
           emptyMessage="No recent failed or timed-out sessions."
           href="/dashboard/activity"
         >
@@ -587,7 +644,10 @@ export default function DashboardIndex() {
         </div>
         <div className="px-3 py-3 sm:px-4">
           {loading ? (
-            <p className="px-2 py-2 text-xs text-fg-muted">Loading…</p>
+            <div>
+              <LoadingHint>Resolving on-call rotations…</LoadingHint>
+              <CoverageGridSkeleton />
+            </div>
           ) : coverageRows.length === 0 ? (
             <p className="px-2 py-2 text-xs text-fg-muted">
               No teams yet.{" "}
@@ -730,7 +790,10 @@ export default function DashboardIndex() {
         </div>
         <div className="px-3 py-2 sm:px-4">
           {loading ? (
-            <p className="px-2 py-2 text-xs text-fg-muted">Loading…</p>
+            <div>
+              <LoadingHint>Building activity feed…</LoadingHint>
+              <PanelRowSkeleton rows={4} />
+            </div>
           ) : activityItems.length === 0 ? (
             <p className="px-2 py-2 text-xs text-fg-muted">
               Nothing to report yet. Incidents and blocked tool calls will
@@ -841,7 +904,10 @@ function ServicePanel({
       </div>
       <div className="px-3 py-3 sm:px-4">
         {loading ? (
-          <p className="px-2 py-2 text-xs text-fg-muted">Loading…</p>
+          <div>
+            <LoadingHint>Loading service health…</LoadingHint>
+            <PanelRowSkeleton rows={3} />
+          </div>
         ) : rows.length === 0 ? (
           <p className="px-2 py-2 text-xs text-fg-muted">{emptyMessage}</p>
         ) : (
@@ -885,6 +951,7 @@ interface AttentionCardProps {
   label: string;
   count: number;
   loading: boolean;
+  loadingHint: string;
   emptyMessage: string;
   href: string;
   children: React.ReactNode;
@@ -896,6 +963,7 @@ function AttentionCard({
   label,
   count,
   loading,
+  loadingHint,
   emptyMessage,
   href,
   children,
@@ -928,7 +996,10 @@ function AttentionCard({
       </div>
       <div className="flex-1 px-2 py-2">
         {loading ? (
-          <p className="px-2 py-3 text-xs text-fg-muted">Loading…</p>
+          <div>
+            <LoadingHint>{loadingHint}</LoadingHint>
+            <PanelRowSkeleton rows={3} />
+          </div>
         ) : count === 0 ? (
           <p className="px-2 py-3 text-xs text-fg-muted">{emptyMessage}</p>
         ) : (

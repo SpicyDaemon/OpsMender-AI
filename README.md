@@ -642,6 +642,7 @@ Sprint 10 added a provider abstraction layer for:
 - OpenAI
 - Azure OpenAI
 - AWS Bedrock
+- GCP Vertex AI
 - Ollama
 - OpenAI-compatible endpoints
 
@@ -651,6 +652,7 @@ You can inspect provider availability from the CLI:
 opsmender config model list
 opsmender config model list --provider ollama --base-url http://localhost:11434
 opsmender config model list --provider bedrock --region us-east-1 --profile opsmender-prod
+opsmender config model list --provider vertex_ai --project opsmender-prod --location us-central1
 ```
 
 You can persist the default model config into the database:
@@ -664,6 +666,9 @@ opsmender config model set --provider azure_openai --model-id my-deployment \
 opsmender config model set --provider bedrock --model-id anthropic.claude-sonnet-4-6 \
   --region us-east-1 \
   --profile opsmender-prod
+opsmender config model set --provider vertex_ai --model-id google/gemini-2.5-flash \
+  --project opsmender-prod \
+  --location us-central1
 opsmender config model set --provider ollama --model-id llama3.2 --base-url http://localhost:11434
 opsmender config model set --provider openai_compatible --model-id llama-3.1-8b-instruct \
   --base-url http://localhost:1234/v1
@@ -675,6 +680,7 @@ For first-run setup, OpsMender also ships a bootstrap path that prompts for miss
 opsmender config model bootstrap
 opsmender config model bootstrap --provider openai --model-id gpt-4.1 --api-key-env-var OPENAI_API_KEY
 opsmender config model bootstrap --provider bedrock --model-id anthropic.claude-sonnet-4-6 --region us-east-1
+opsmender config model bootstrap --provider vertex_ai --model-id google/gemini-2.5-flash --project opsmender-prod --location us-central1
 ```
 
 Notes:
@@ -684,7 +690,8 @@ Notes:
 - Provider-discovered model lists are suggestions, not a hard requirement. OpsMender allows explicit manual model IDs and returns warnings when discovery is stale, unavailable, or incomplete.
 - Secrets are stored as **environment-variable references only**. The database stores values like `OPENAI_API_KEY`, not the raw provider secret itself.
 - AWS Bedrock uses the native AWS credential chain rather than an API-key env var. Persisted provider metadata stores only non-secret fields such as `region` and optional `profile`.
-- The dashboard supports the same first-run bootstrap flow from **Config → Models**, including provider, model ID, env-var reference, base URL, API version, Bedrock region/profile, max tokens, and temperature. For Bedrock, enter the region first and use **Refresh Catalog** to load that region's model suggestions.
+- GCP Vertex AI uses ADC rather than an API-key env var. Persisted provider metadata stores only non-secret fields such as `project` and `location`, and discovery returns explicit `publisher/model` IDs like `google/gemini-2.5-flash` or `anthropic/claude-sonnet-4@20250514`.
+- The dashboard supports the same first-run bootstrap flow from **Config → Models**, including provider, model ID, env-var reference, base URL, API version, Bedrock region/profile, Vertex project/location, max tokens, and temperature. For Bedrock and Vertex, enter the routing fields first and use **Refresh Catalog** to load live model suggestions.
 - If you want to run a local Hugging Face model with OpsMender, the clean path is to serve it through a local runtime such as Ollama or another OpenAI-compatible endpoint rather than loading raw checkpoints directly inside OpsMender.
 
 ## Workflow

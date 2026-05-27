@@ -11,6 +11,7 @@ from .providers import (
     OpenAIProvider,
     ProviderLLMAdapter,
     StubProvider,
+    VertexAIProvider,
 )
 
 
@@ -57,6 +58,14 @@ def create_provider(
             model=model_id or "anthropic.claude-sonnet-4-6",
             region=str(provider_meta.get("region") or ""),
             profile=str(provider_meta.get("profile") or "") or None,
+            max_tokens=max_tokens,
+        )
+    if provider == "vertex_ai":
+        provider_meta = provider_meta or {}
+        return VertexAIProvider(
+            model=model_id or "google/gemini-2.5-flash",
+            project=str(provider_meta.get("project") or ""),
+            location=str(provider_meta.get("location") or ""),
             max_tokens=max_tokens,
         )
     if provider == "openai_compatible":

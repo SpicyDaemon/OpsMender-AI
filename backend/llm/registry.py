@@ -96,6 +96,12 @@ class ProviderRegistry:
             default_model_id="anthropic.claude-sonnet-4-6",
             requires_api_key=False,
         ),
+        "vertex_ai": ProviderSpec(
+            provider="vertex_ai",
+            label="GCP Vertex AI",
+            default_model_id="google/gemini-2.5-flash",
+            requires_api_key=False,
+        ),
         "ollama": ProviderSpec(
             provider="ollama",
             label="Ollama",
@@ -224,6 +230,10 @@ class ProviderRegistry:
             raise ValueError(f"Provider '{provider}' requires an api_version")
         if provider == "bedrock" and not provider_meta.get("region"):
             raise ValueError("Provider 'bedrock' requires provider_meta.region")
+        if provider == "vertex_ai" and not provider_meta.get("project"):
+            raise ValueError("Provider 'vertex_ai' requires provider_meta.project")
+        if provider == "vertex_ai" and not provider_meta.get("location"):
+            raise ValueError("Provider 'vertex_ai' requires provider_meta.location")
 
         warnings: list[ValidationIssue] = []
         discovery_error: str | None = None

@@ -152,6 +152,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "openai",
             "azure_openai",
             "bedrock",
+            "vertex_ai",
             "ollama",
             "openai_compatible",
         ],
@@ -189,6 +190,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional shared AWS profile name for Bedrock discovery",
     )
     model_list.add_argument(
+        "--project",
+        default=None,
+        help="GCP project override (required for Vertex AI discovery)",
+    )
+    model_list.add_argument(
+        "--location",
+        default=None,
+        help="GCP location override (required for Vertex AI discovery)",
+    )
+    model_list.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
@@ -212,6 +223,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "openai",
             "azure_openai",
             "bedrock",
+            "vertex_ai",
             "ollama",
             "openai_compatible",
         ],
@@ -246,6 +258,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--profile",
         default=None,
         help="Optional shared AWS profile name for Bedrock",
+    )
+    model_set.add_argument(
+        "--project",
+        default=None,
+        help="GCP project (required for Vertex AI)",
+    )
+    model_set.add_argument(
+        "--location",
+        default=None,
+        help="GCP location (required for Vertex AI)",
     )
     model_set.add_argument(
         "--max-tokens",
@@ -282,6 +304,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "openai",
             "azure_openai",
             "bedrock",
+            "vertex_ai",
             "ollama",
             "openai_compatible",
         ],
@@ -317,6 +340,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--profile",
         default=None,
         help="Optional shared AWS profile name for Bedrock",
+    )
+    model_bootstrap.add_argument(
+        "--project",
+        default=None,
+        help="GCP project (required for Vertex AI)",
+    )
+    model_bootstrap.add_argument(
+        "--location",
+        default=None,
+        help="GCP location (required for Vertex AI)",
     )
     model_bootstrap.add_argument(
         "--max-tokens",
@@ -694,6 +727,13 @@ def _format_model_config(config) -> str:
             detail += f"  region={region}"
         if profile:
             detail += f"  profile={profile}"
+    if config.provider == "vertex_ai":
+        project = provider_meta.get("project")
+        location = provider_meta.get("location")
+        if project:
+            detail += f"  project={project}"
+        if location:
+            detail += f"  location={location}"
     return (
         f"{config.name}  provider={config.provider}  model={config.model_id}"
         f"{detail}"
@@ -727,6 +767,8 @@ def _provider_meta_from_args(args: argparse.Namespace) -> dict[str, str] | None:
         for key, value in {
             "region": getattr(args, "region", None),
             "profile": getattr(args, "profile", None),
+            "project": getattr(args, "project", None),
+            "location": getattr(args, "location", None),
         }.items()
         if isinstance(value, str) and value.strip()
     }
@@ -738,7 +780,7 @@ def _bootstrap_model_args(
     registry: ProviderRegistry,
 ) -> argparse.Namespace:
     provider = args.provider or _prompt_value(
-        "Provider (anthropic/openai/azure_openai/bedrock/ollama/openai_compatible)",
+        "Provider (anthropic/openai/azure_openai/bedrock/vertex_ai/ollama/openai_compatible)",
         default="openai",
     )
     spec = registry.get_spec(provider)
@@ -765,6 +807,12 @@ def _bootstrap_model_args(
     profile = args.profile
     if provider == "bedrock" and profile is None:
         profile = _prompt_value("AWS profile name (optional)", default="")
+    project = args.project
+    if provider == "vertex_ai":
+        project = project or _prompt_value("GCP project ID")
+    location = args.location
+    if provider == "vertex_ai":
+        location = location or _prompt_value("GCP location", default="us-central1")
 
     args.provider = provider
     args.model_id = model_id
@@ -773,6 +821,8 @@ def _bootstrap_model_args(
     args.api_version = api_version or None
     args.region = region or None
     args.profile = profile or None
+    args.project = project or None
+    args.location = location or None
     args.name = args.name or f"{provider}:{model_id}"
     return args
 

@@ -472,6 +472,8 @@ type ModelFormState = {
   api_version: string;
   region: string;
   profile: string;
+  project: string;
+  location: string;
   max_tokens: number;
   temperature: number;
 };
@@ -499,6 +501,8 @@ function createModelFormState(
     api_version: current?.api_version ?? "",
     region: current?.provider_meta?.region ?? "",
     profile: current?.provider_meta?.profile ?? "",
+    project: current?.provider_meta?.project ?? "",
+    location: current?.provider_meta?.location ?? "",
     max_tokens: current?.max_tokens ?? 4096,
     temperature: current?.temperature ?? 0,
   };
@@ -588,6 +592,8 @@ function ModelConfigModal({
       api_version: "",
       region: "",
       profile: "",
+      project: "",
+      location: "",
     }));
     setUseManualModelId(!nextProvider || nextProvider.models.length === 0);
   }
@@ -605,6 +611,8 @@ function ModelConfigModal({
         api_version: form.api_version || undefined,
         region: form.region || undefined,
         profile: form.profile || undefined,
+        project: form.project || undefined,
+        location: form.location || undefined,
       });
       const refreshed = response.items[0];
       if (!refreshed) return;
@@ -802,6 +810,46 @@ function ModelConfigModal({
           </div>
         )}
 
+        {(form.provider === "vertex_ai" || form.project || form.location) && (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="model-project">GCP Project</Label>
+              <Input
+                id="model-project"
+                value={form.project}
+                onChange={(e) => setField("project", e.target.value)}
+                placeholder="my-prod-project"
+              />
+            </div>
+            <div>
+              <Label htmlFor="model-location">GCP Location</Label>
+              <Input
+                id="model-location"
+                value={form.location}
+                onChange={(e) => setField("location", e.target.value)}
+                placeholder="us-central1"
+              />
+            </div>
+          </div>
+        )}
+
+        {form.provider === "vertex_ai" && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+            <p>
+              Vertex AI discovery uses ADC plus the selected project and location. Save a manual model ID, or refresh the catalog after entering both fields.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={refreshProviderCatalog}
+              loading={refreshingCatalog}
+              disabled={!form.project || !form.location}
+            >
+              Refresh Catalog
+            </Button>
+          </div>
+        )}
+
         <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
           Secrets are stored as environment-variable references only. Enter the variable name OpsMender should read at runtime, not the raw provider secret.
         </div>
@@ -904,10 +952,12 @@ export function ModelSection({
         base_url: form.base_url || undefined,
         api_version: form.api_version || undefined,
         provider_meta:
-          form.region || form.profile
+          form.region || form.profile || form.project || form.location
             ? {
                 ...(form.region ? { region: form.region } : {}),
                 ...(form.profile ? { profile: form.profile } : {}),
+                ...(form.project ? { project: form.project } : {}),
+                ...(form.location ? { location: form.location } : {}),
               }
             : undefined,
         max_tokens: form.max_tokens,

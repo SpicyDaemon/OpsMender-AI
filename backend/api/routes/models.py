@@ -49,12 +49,19 @@ async def list_models(
     api_version: str | None = None,
     region: str | None = None,
     profile: str | None = None,
+    project: str | None = None,
+    location: str | None = None,
     user: User = Depends(get_current_user),
 ):
     registry = ProviderRegistry()
     provider_meta = {
         key: value
-        for key, value in {"region": region, "profile": profile}.items()
+        for key, value in {
+            "region": region,
+            "profile": profile,
+            "project": project,
+            "location": location,
+        }.items()
         if value
     }
     items = registry.discover_models(

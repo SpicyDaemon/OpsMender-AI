@@ -357,6 +357,8 @@ export async function listProvidersWithParams(params?: {
   api_version?: string;
   region?: string;
   profile?: string;
+  project?: string;
+  location?: string;
 }): Promise<ProviderModelsListResponse> {
   const query = new URLSearchParams();
   if (params) {

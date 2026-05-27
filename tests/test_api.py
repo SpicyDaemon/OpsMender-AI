@@ -3949,6 +3949,31 @@ class TestModelConfigAPI:
             "profile": "prod",
         }
 
+    async def test_list_models_passes_vertex_project_and_location(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        captured_kwargs: dict[str, object] = {}
+
+        def _discover(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return []
+
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.discover_models",
+            _discover,
+        )
+
+        resp = await client.get(
+            "/models?provider=vertex_ai&project=opsmender-prod&location=us-central1",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert captured_kwargs["provider"] == "vertex_ai"
+        assert captured_kwargs["provider_meta"] == {
+            "project": "opsmender-prod",
+            "location": "us-central1",
+        }
+
     async def test_viewer_can_list_models(
         self, client: AsyncClient, viewer_headers, monkeypatch
     ):
@@ -4066,6 +4091,42 @@ class TestModelConfigAPI:
             assert default.provider_meta == {
                 "region": "us-east-1",
                 "profile": "prod",
+            }
+
+    async def test_update_model_config_persists_vertex_provider_meta(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.config.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type("_Validation", (), {"warnings": []})(),
+        )
+
+        resp = await client.put(
+            "/config/model",
+            json={
+                "name": "vertex-primary",
+                "provider": "vertex_ai",
+                "model_id": "google/gemini-2.5-flash",
+                "provider_meta": {
+                    "project": "opsmender-prod",
+                    "location": "us-central1",
+                },
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["config"]
+        assert data["provider_meta"] == {
+            "project": "opsmender-prod",
+            "location": "us-central1",
+        }
+
+        async with app.state.session_factory() as db:
+            default = await ModelConfigRepo.get_default(db, TEST_ORG_ID)
+            assert default is not None
+            assert default.provider_meta == {
+                "project": "opsmender-prod",
+                "location": "us-central1",
             }
 
     async def test_update_model_config_validation_error(
@@ -4238,6 +4299,35 @@ class TestModelConfigAPI:
         data = resp.json()["config"]
         assert data["provider"] == "bedrock"
         assert data["provider_meta"] == {"region": "us-east-1"}
+
+    async def test_create_saved_model_config_vertex_round_trips_provider_meta(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type("_Validation", (), {"warnings": []})(),
+        )
+
+        resp = await client.post(
+            "/models/configs",
+            json={
+                "name": "vertex-shared",
+                "provider": "vertex_ai",
+                "model_id": "google/gemini-2.5-flash",
+                "provider_meta": {
+                    "project": "opsmender-prod",
+                    "location": "us-central1",
+                },
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()["config"]
+        assert data["provider"] == "vertex_ai"
+        assert data["provider_meta"] == {
+            "project": "opsmender-prod",
+            "location": "us-central1",
+        }
 
     async def test_create_saved_model_config_duplicate_name_conflict(
         self, client: AsyncClient, auth_headers, monkeypatch

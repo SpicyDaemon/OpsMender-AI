@@ -13,6 +13,7 @@ from .providers import (
     ProviderLLMAdapter,
     StubLLM,
     StubProvider,
+    VertexAIProvider,
 )
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "ProviderSpec",
     "StubLLM",
     "StubProvider",
+    "VertexAIProvider",
     "create_llm",
     "create_provider",
 ]

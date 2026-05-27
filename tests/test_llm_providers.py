@@ -18,6 +18,7 @@ from backend.llm import (
     OpenAIProvider,
     ProviderLLMAdapter,
     StubProvider,
+    VertexAIProvider,
 )
 
 
@@ -105,6 +106,17 @@ class TestFactory:
         assert isinstance(provider, BedrockProvider)
         assert provider.region == "us-east-1"
         assert provider.profile == "prod"
+
+    def test_create_vertex_ai_provider(self, monkeypatch):
+        _install_fake_vertex_ai(monkeypatch)
+        provider = create_provider(
+            provider="vertex_ai",
+            model_id="google/gemini-2.5-flash",
+            provider_meta={"project": "opsmender-prod", "location": "us-central1"},
+        )
+        assert isinstance(provider, VertexAIProvider)
+        assert provider.project == "opsmender-prod"
+        assert provider.location == "us-central1"
 
     def test_unsupported_provider_raises(self):
         with pytest.raises(ValueError, match="Unsupported LLM provider"):
@@ -240,6 +252,87 @@ def _install_fake_boto3(monkeypatch):
     monkeypatch.setitem(sys.modules, "boto3", fake_module)
 
 
+def _install_fake_vertex_ai(monkeypatch):
+    class _FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class _FakeAuthorizedSession:
+        def __init__(self, credentials):
+            self.credentials = credentials
+
+        def get(self, url, params=None, timeout=None):
+            if "publishers/google/models" in url:
+                return _FakeResponse(
+                    {
+                        "publisherModels": [
+                            {"name": "publishers/google/models/gemini-2.5-flash"},
+                        ]
+                    }
+                )
+            if "publishers/anthropic/models" in url:
+                return _FakeResponse(
+                    {
+                        "publisherModels": [
+                            {
+                                "name": "publishers/anthropic/models/claude-sonnet-4@20250514"
+                            },
+                        ]
+                    }
+                )
+            if "publishers/meta/models" in url:
+                return _FakeResponse(
+                    {
+                        "publisherModels": [
+                            {"name": "publishers/meta/models/llama-4-maverick"},
+                        ]
+                    }
+                )
+            raise AssertionError(f"unexpected GET url: {url}")
+
+        def post(self, url, json=None, timeout=None):
+            return _FakeResponse(
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [{"text": f"reply:{url}"}],
+                            }
+                        }
+                    ]
+                }
+            )
+
+    fake_google_auth = types.SimpleNamespace(
+        default=lambda scopes=None: ("fake-credentials", "opsmender-prod")
+    )
+    fake_google_auth_transport_requests = types.SimpleNamespace(
+        AuthorizedSession=_FakeAuthorizedSession
+    )
+    fake_google_auth_transport = types.SimpleNamespace(
+        requests=fake_google_auth_transport_requests
+    )
+    fake_google = types.SimpleNamespace(
+        auth=fake_google_auth,
+    )
+    fake_vertexai = types.SimpleNamespace(init=lambda **kwargs: kwargs)
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.auth", fake_google_auth)
+    monkeypatch.setitem(sys.modules, "google.auth.transport", fake_google_auth_transport)
+    monkeypatch.setitem(
+        sys.modules,
+        "google.auth.transport.requests",
+        fake_google_auth_transport_requests,
+    )
+    monkeypatch.setitem(sys.modules, "vertexai", fake_vertexai)
+
+
 class TestOpenAIProvider:
     def test_missing_package_raises(self, monkeypatch):
         real_import = builtins.__import__
@@ -341,6 +434,40 @@ class TestBedrockProvider:
             profile="opsmender-prod",
         )
         assert provider._control_client is not None
+
+
+class TestVertexAIProvider:
+    def test_requires_project(self, monkeypatch):
+        _install_fake_vertex_ai(monkeypatch)
+        with pytest.raises(ValueError, match="project"):
+            VertexAIProvider(model="google/gemini-2.5-flash", location="us-central1")
+
+    def test_requires_location(self, monkeypatch):
+        _install_fake_vertex_ai(monkeypatch)
+        with pytest.raises(ValueError, match="location"):
+            VertexAIProvider(model="google/gemini-2.5-flash", project="opsmender-prod")
+
+    def test_complete_uses_generate_content(self, monkeypatch):
+        _install_fake_vertex_ai(monkeypatch)
+        provider = VertexAIProvider(
+            model="google/gemini-2.5-flash",
+            project="opsmender-prod",
+            location="us-central1",
+        )
+        assert "generateContent" in provider.complete("hello")
+
+    def test_list_models_covers_google_anthropic_and_meta(self, monkeypatch):
+        _install_fake_vertex_ai(monkeypatch)
+        provider = VertexAIProvider(
+            model="google/gemini-2.5-flash",
+            project="opsmender-prod",
+            location="us-central1",
+        )
+        assert provider.list_models() == [
+            "anthropic/claude-sonnet-4@20250514",
+            "google/gemini-2.5-flash",
+            "meta/llama-4-maverick",
+        ]
 
 
 class TestOpenAICompatibleProvider:

@@ -8,6 +8,7 @@ import os
 from collections.abc import Iterator
 from typing import Any
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from .base import LLM, LLMProvider
@@ -368,6 +369,149 @@ class BedrockProvider:
             if isinstance(model_id, str) and model_id:
                 ids.append(model_id)
         return sorted(set(ids)) or [self.model]
+
+
+@dataclasses.dataclass
+class VertexAIProvider:
+    """Provider backed by Vertex AI publisher models.
+
+    Uses ADC for credentials and stores only non-secret routing metadata
+    (project + location) in the saved model config.
+    """
+
+    model: str = "google/gemini-2.5-flash"
+    project: str = ""
+    location: str = ""
+    max_tokens: int = 4096
+
+    def __post_init__(self) -> None:
+        if not self.project:
+            raise ValueError("Vertex AI provider requires a project")
+        if not self.location:
+            raise ValueError("Vertex AI provider requires a location")
+
+        try:
+            import vertexai  # noqa: F401
+            import google.auth  # noqa: F401
+            from google.auth.transport.requests import AuthorizedSession  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "The 'google-cloud-aiplatform' package is required for VertexAIProvider. "
+                "Install it with: uv add google-cloud-aiplatform"
+            ) from exc
+
+        import google.auth
+        from google.auth.transport.requests import AuthorizedSession
+        import vertexai
+
+        vertexai.init(project=self.project, location=self.location)
+        credentials, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        self._session = AuthorizedSession(credentials)
+        self._base_url = f"https://{self.location}-aiplatform.googleapis.com"
+
+    def _publisher_and_model(self) -> tuple[str, str]:
+        if self.model.startswith("projects/"):
+            parts = self.model.split("/")
+            try:
+                publisher = parts[5]
+                model_id = parts[7]
+                return publisher, model_id
+            except IndexError as exc:
+                raise ValueError(f"Unsupported Vertex AI model path: {self.model}") from exc
+        if self.model.startswith("publishers/"):
+            parts = self.model.split("/")
+            try:
+                return parts[1], parts[3]
+            except IndexError as exc:
+                raise ValueError(f"Unsupported Vertex AI model path: {self.model}") from exc
+        if "/" in self.model:
+            publisher, model_id = self.model.split("/", 1)
+            return publisher, model_id
+        lowered = self.model.lower()
+        if lowered.startswith("gemini"):
+            return "google", self.model
+        if lowered.startswith("claude"):
+            return "anthropic", self.model
+        if lowered.startswith("llama"):
+            return "meta", self.model
+        return "google", self.model
+
+    def _qualified_model_name(self) -> str:
+        if self.model.startswith("projects/"):
+            return self.model
+        if self.model.startswith("publishers/"):
+            return (
+                f"projects/{self.project}/locations/{self.location}/{self.model}"
+            )
+        publisher, model_id = self._publisher_and_model()
+        return (
+            "projects/"
+            f"{self.project}/locations/{self.location}/publishers/{publisher}/models/{model_id}"
+        )
+
+    def complete(self, prompt: str) -> str:
+        model_name = self._qualified_model_name()
+        encoded_model = urllib.parse.quote(model_name, safe="/")
+        response = self._session.post(
+            f"{self._base_url}/v1/{encoded_model}:generateContent",
+            json={
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": prompt}],
+                    }
+                ],
+                "generationConfig": {"maxOutputTokens": self.max_tokens},
+            },
+            timeout=30,
+        )
+        if hasattr(response, "raise_for_status"):
+            response.raise_for_status()
+        payload = response.json()
+        candidates = payload.get("candidates", [])
+        if not candidates:
+            return ""
+        parts = (
+            candidates[0]
+            .get("content", {})
+            .get("parts", [])
+        )
+        text_parts = [
+            part.get("text", "")
+            for part in parts
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+        ]
+        return "".join(text_parts).strip()
+
+    def stream(self, prompt: str) -> Iterator[str]:
+        yield self.complete(prompt)
+
+    def list_models(self) -> list[str]:
+        ids: set[str] = set()
+        for publisher in ("google", "anthropic", "meta"):
+            response = self._session.get(
+                f"{self._base_url}/v1beta1/publishers/{publisher}/models",
+                params={
+                    "listAllVersions": "true",
+                    "view": "PUBLISHER_MODEL_VIEW_BASIC",
+                },
+                timeout=15,
+            )
+            if hasattr(response, "raise_for_status"):
+                response.raise_for_status()
+            payload = response.json()
+            for model in payload.get("publisherModels", []):
+                if not isinstance(model, dict):
+                    continue
+                name = model.get("name")
+                if not isinstance(name, str):
+                    continue
+                parts = name.split("/")
+                if len(parts) >= 4:
+                    ids.add(f"{publisher}/{parts[-1]}")
+        return sorted(ids) or [self.model]
 
 
 @dataclasses.dataclass

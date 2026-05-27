@@ -36,6 +36,7 @@ class TestProviderRegistry:
             "ollama",
             "openai",
             "openai_compatible",
+            "vertex_ai",
         ]
 
     def test_discover_models_returns_available_provider(self, monkeypatch):
@@ -104,6 +105,45 @@ class TestProviderRegistry:
         )
         assert result.warnings == []
         assert result.discovered_models == ["anthropic.claude-sonnet-4-6"]
+
+    def test_vertex_ai_spec_is_registered(self):
+        registry = ProviderRegistry()
+        spec = registry.get_spec("vertex_ai")
+        assert spec.label == "GCP Vertex AI"
+        assert spec.requires_api_key is False
+        assert spec.default_model_id == "google/gemini-2.5-flash"
+
+    def test_validate_vertex_ai_requires_project(self):
+        registry = ProviderRegistry()
+        with pytest.raises(ValueError, match="provider_meta.project"):
+            registry.validate_model_config(
+                provider="vertex_ai",
+                model_id="google/gemini-2.5-flash",
+                provider_meta={"location": "us-central1"},
+            )
+
+    def test_validate_vertex_ai_requires_location(self):
+        registry = ProviderRegistry()
+        with pytest.raises(ValueError, match="provider_meta.location"):
+            registry.validate_model_config(
+                provider="vertex_ai",
+                model_id="google/gemini-2.5-flash",
+                provider_meta={"project": "opsmender-prod"},
+            )
+
+    def test_validate_vertex_ai_accepts_project_and_location(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["google/gemini-2.5-flash"]),
+        )
+        registry = ProviderRegistry()
+        result = registry.validate_model_config(
+            provider="vertex_ai",
+            model_id="google/gemini-2.5-flash",
+            provider_meta={"project": "opsmender-prod", "location": "us-central1"},
+        )
+        assert result.warnings == []
+        assert result.discovered_models == ["google/gemini-2.5-flash"]
 
     def test_validate_openai_compatible_requires_base_url(self):
         registry = ProviderRegistry()
@@ -276,6 +316,7 @@ class TestProviderRegistry:
             "ollama",
             "openai",
             "openai_compatible",
+            "vertex_ai",
         ]
         assert all(item["available"] for item in items)
 

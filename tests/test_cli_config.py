@@ -116,6 +116,26 @@ class TestConfigArgParsing:
         assert args.region == "us-east-1"
         assert args.profile == "prod"
 
+    def test_config_model_set_vertex_project_location_flags(self):
+        args = _parse_args(
+            [
+                "config",
+                "model",
+                "set",
+                "--provider",
+                "vertex_ai",
+                "--model-id",
+                "google/gemini-2.5-flash",
+                "--project",
+                "opsmender-prod",
+                "--location",
+                "us-central1",
+            ]
+        )
+        assert args.provider == "vertex_ai"
+        assert args.project == "opsmender-prod"
+        assert args.location == "us-central1"
+
 
 # ---------------------------------------------------------------------------
 # Default display
@@ -392,6 +412,55 @@ class TestConfigModel:
             "profile": "prod",
         }
 
+    def test_model_set_vertex_persists_provider_meta(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        cfg_path = _write_cfg(tmp_path)
+        db_path = tmp_path / "opsmender.db"
+        database_url = f"sqlite+aiosqlite:///{db_path}"
+        _create_sqlite_schema(database_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", database_url)
+        captured_kwargs: dict[str, object] = {}
+
+        def _validate(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return type("_Validation", (), {"warnings": []})()
+
+        monkeypatch.setattr(
+            "cli.opsmender.ProviderRegistry.validate_model_config",
+            _validate,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "model",
+                    "set",
+                    "--provider",
+                    "vertex_ai",
+                    "--model-id",
+                    "google/gemini-2.5-flash",
+                    "--project",
+                    "opsmender-prod",
+                    "--location",
+                    "us-central1",
+                    "--json",
+                ]
+            )
+        assert exc_info.value.code == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["config"]["provider_meta"] == {
+            "project": "opsmender-prod",
+            "location": "us-central1",
+        }
+        assert captured_kwargs["provider_meta"] == {
+            "project": "opsmender-prod",
+            "location": "us-central1",
+        }
+
     def test_model_set_validation_error_returns_nonzero(
         self, tmp_path, capsys, monkeypatch
     ):
@@ -636,6 +705,57 @@ class TestConfigModel:
         prompt_blob = " ".join(prompts_seen)
         assert "AWS region" in prompt_blob
         assert "AWS profile name" in prompt_blob
+
+    def test_model_bootstrap_vertex_prompts_project_and_location(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        cfg_path = _write_cfg(tmp_path)
+        db_path = tmp_path / "opsmender.db"
+        database_url = f"sqlite+aiosqlite:///{db_path}"
+        _create_sqlite_schema(database_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", database_url)
+        captured_kwargs: dict[str, object] = {}
+
+        def _validate(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return type("_Validation", (), {"warnings": []})()
+
+        monkeypatch.setattr(
+            "cli.opsmender.ProviderRegistry.validate_model_config",
+            _validate,
+        )
+        prompts_seen: list[str] = []
+        answers = iter(["opsmender-prod", "us-central1"])
+
+        def _fake_input(prompt=""):
+            prompts_seen.append(prompt)
+            return next(answers)
+
+        monkeypatch.setattr("builtins.input", _fake_input)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    cfg_path,
+                    "config",
+                    "model",
+                    "bootstrap",
+                    "--provider",
+                    "vertex_ai",
+                    "--model-id",
+                    "google/gemini-2.5-flash",
+                ]
+            )
+
+        assert exc_info.value.code == 0
+        assert captured_kwargs["provider_meta"] == {
+            "project": "opsmender-prod",
+            "location": "us-central1",
+        }
+        prompt_blob = " ".join(prompts_seen)
+        assert "GCP project ID" in prompt_blob
+        assert "GCP location" in prompt_blob
 
     def test_model_bootstrap_json_output(self, tmp_path, capsys, monkeypatch):
         cfg_path = _write_cfg(tmp_path)

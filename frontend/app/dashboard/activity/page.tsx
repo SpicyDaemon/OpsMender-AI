@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   BookOpen,
   ClipboardCopy,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { listAudit } from "@/lib/api";
 import type { AuditEntryResponse, AuditListResponse } from "@/lib/types";
@@ -272,9 +274,18 @@ export default function ActivityPage() {
         <EmptyState
           icon={BookOpen}
           title="No audit entries yet"
-          description="Every MCP tool call — permitted or blocked — is recorded here once sessions start running."
+          description="Every MCP tool call — permitted or blocked — is recorded here once sessions start running. Fire a test incident to generate a first session and watch tool calls land here."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
+          action={
+            <Link
+              href="/dashboard/incidents?test=1"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-panel px-2.5 py-1 text-xs font-medium text-fg-primary transition-colors hover:bg-bg-hover"
+            >
+              <Sparkles size={14} />
+              Fire test incident
+            </Link>
+          }
         />
       ) : (
         <DataTable

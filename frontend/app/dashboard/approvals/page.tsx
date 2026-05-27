@@ -8,6 +8,7 @@ import {
   Clock,
   RefreshCw,
   Shield,
+  Sparkles,
   XCircle,
 } from "lucide-react";
 import { approveRequest, listApprovals, rejectRequest } from "@/lib/api";
@@ -161,6 +162,17 @@ export default function ApprovalsPage() {
           }
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
+          action={
+            !statusFilter ? (
+              <Link
+                href="/dashboard/incidents?test=1"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-panel px-2.5 py-1 text-xs font-medium text-fg-primary transition-colors hover:bg-bg-hover"
+              >
+                <Sparkles size={14} />
+                Fire test incident
+              </Link>
+            ) : undefined
+          }
         />
       ) : (
         <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">

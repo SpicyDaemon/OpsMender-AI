@@ -487,14 +487,19 @@ export default function IncidentsPage() {
         <EmptyState
           icon={AlertTriangle}
           title="No incidents yet"
-          description="Incidents you create or receive from integrations will appear here."
+          description="Incidents you create or receive from integrations will appear here. Try a synthetic test incident to walk through the full response loop without touching production."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
           action={
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={14} />
-              New Incident
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setShowTest(true)}>
+                Fire Test Incident
+              </Button>
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                <Plus size={14} />
+                New Incident
+              </Button>
+            </div>
           }
         />
       ) : (

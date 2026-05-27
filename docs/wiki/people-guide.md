@@ -39,13 +39,15 @@ The People surface is organization-scoped. If your account belongs to more than 
 
 Each user row shows an **Auth method** badge:
 
-- **Local** — the user signs in with a username and password managed by OpsMender.
-- **OIDC** — the user was provisioned through the org's OpenID Connect provider and is shown as `oidc:<org-slug>`.
-- **SAML** — the user was provisioned through the org's SAML provider and is shown as `saml:<org-slug>`.
+- **Local** — the user signs in with a username and password managed by OpsMender. This is the default in single-workspace installs.
+- **OIDC** — the user was provisioned through the org's OpenID Connect provider, shown as `oidc:<org-slug>`. Only appears when OIDC is configured for the tenant.
+- **SAML** — the user was provisioned through the org's SAML 2.0 provider, shown as `saml:<org-slug>`. Only appears when SAML is configured for the tenant.
 
-Clicking an **OIDC** or **SAML** badge deep-links you into **Organizations** and opens the matching auth configuration modal for that org. That is the fastest way to answer "which IdP owns this user?"
+Clicking an **OIDC** or **SAML** badge deep-links into **Workspace Settings** (or **Organizations** in multi-org mode) and opens the matching auth configuration modal for that org. That is the fastest way to answer "which IdP owns this user?"
 
-Notes:
+For the default install (local auth only), every row reads **Local** and no IdP setup is required. See [Auth Guide](auth-guide.md) for the default model.
+
+If you want OIDC or SAML, see [Advanced Auth Guide](advanced-auth-guide.md). Notes that apply once it's wired up:
 
 - OIDC and SAML users are **JIT-provisioned** on first successful login.
 - Existing users keep their current role when they come back through SSO/SAML; the login path only updates the recorded auth source.
@@ -175,17 +177,10 @@ This is the preferred path for production automation because it removes the need
 
 ## 8. Multi-org behavior
 
-The People surface is aware of multi-tenancy.
+**Default install:** OpsMender runs as a single workspace and `OPSMENDER_MULTI_ORG_ENABLED=false`. The People surface targets the one workspace; no org context to think about. This section is only relevant if you've explicitly opted in to multi-tenancy. Full multi-tenancy details live in [Advanced Auth Guide](advanced-auth-guide.md).
 
-Relevant settings:
+When `OPSMENDER_MULTI_ORG_ENABLED=true`:
 
-```dotenv
-OPSMENDER_MULTI_ORG_ENABLED=false
-```
-
-What this changes:
-
-- With one org, invites naturally target that org.
 - With multiple orgs enabled, the current org context matters. An invite created while you are switched into Org A belongs to Org A.
 - The same human can exist in multiple organizations through separate membership rows.
 - Auth-method badges still show the source that actually provisioned the user (`local`, `oidc:<slug>`, or `saml:<slug>`).
@@ -248,6 +243,8 @@ That keeps day-to-day identity in your IdP while preserving an OpsMender-native 
 
 ## 12. Related guides
 
-- [Administrator Guide](admin-guide.md) — OIDC, SAML, runtime config, MCP, and integrations
-- [Getting Started](getting-started.md) — first local boot and first login
-- [Notification Preferences](notification-preferences.md) — channel routing for a specific operator
+- [Auth Guide](auth-guide.md) — the default auth model: single workspace, email + admin invite, three roles.
+- [Advanced Auth Guide](advanced-auth-guide.md) — optional OIDC + SAML + multi-tenancy + host-based domain isolation.
+- [Administrator Guide](admin-guide.md) — runtime config, MCP, integrations, models.
+- [Getting Started](getting-started.md) — first local boot and first login.
+- [Notification Preferences](notification-preferences.md) — channel routing for a specific operator.

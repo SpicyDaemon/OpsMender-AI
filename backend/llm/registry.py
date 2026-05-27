@@ -19,7 +19,25 @@ _DISCOVERY_CACHE: dict[
     tuple[str | None, str | None, str | None, str | None, str | None],
     tuple[float, list[dict[str, object]]],
 ] = {}
-_DISCOVERY_CACHE_TTL_SECONDS = 60.0
+_DISCOVERY_CACHE_DEFAULT_TTL_SECONDS = 60.0
+# Sprint 62 — per-provider TTL overrides. Cloud catalogs (Bedrock,
+# Vertex, OCI) change rarely, so a 1-hour cache trades little freshness
+# for much faster repeat loads. Local + OpenAI-compatible endpoints can
+# change during development; keep them at the default short TTL.
+_DISCOVERY_CACHE_TTL_OVERRIDES: dict[str | None, float] = {
+    "bedrock": 3600.0,
+    "vertex_ai": 3600.0,
+    "oci_genai": 3600.0,
+    "azure_ai_foundry": 3600.0,
+}
+
+
+def _ttl_for(provider: str | None) -> float:
+    if provider is None:
+        return _DISCOVERY_CACHE_DEFAULT_TTL_SECONDS
+    return _DISCOVERY_CACHE_TTL_OVERRIDES.get(
+        provider, _DISCOVERY_CACHE_DEFAULT_TTL_SECONDS
+    )
 
 
 @dataclass(frozen=True)
@@ -78,6 +96,20 @@ class ProviderRegistry:
             default_model_id="llama3.2",
             requires_api_key=False,
         ),
+        # Sprint 62 Step 1 — generic OpenAI-API-compatible endpoint.
+        # Covers vLLM, LM Studio, OpenRouter, Together, Groq, Fireworks,
+        # Anyscale, and most local OpenAI-shape runtimes. base_url is
+        # required (that's what distinguishes it from the plain
+        # ``openai`` provider); api_key is optional because some local
+        # endpoints don't enforce auth.
+        "openai_compatible": ProviderSpec(
+            provider="openai_compatible",
+            label="OpenAI-compatible",
+            default_model_id="gpt-4o",
+            default_api_key_env_var=None,
+            requires_api_key=False,
+            requires_base_url=True,
+        ),
     }
 
     def list_specs(self) -> list[ProviderSpec]:
@@ -105,9 +137,10 @@ class ProviderRegistry:
         use_cache: bool = True,
     ) -> list[dict[str, object]]:
         cache_key = (provider, model_id, api_key_env_var, base_url, api_version)
+        ttl = _ttl_for(provider)
         if use_cache:
             hit = _DISCOVERY_CACHE.get(cache_key)
-            if hit is not None and time.monotonic() - hit[0] < _DISCOVERY_CACHE_TTL_SECONDS:
+            if hit is not None and time.monotonic() - hit[0] < ttl:
                 return hit[1]
 
         providers = [provider] if provider else [spec.provider for spec in self.list_specs()]
@@ -207,7 +240,7 @@ class ProviderRegistry:
                 discovery_error=discovery_error,
             )
 
-        if provider in {"openai", "ollama"} and discovered_models and model_id not in discovered_models:
+        if provider in {"openai", "ollama", "openai_compatible"} and discovered_models and model_id not in discovered_models:
             message = (
                 f"Model '{model_id}' is not currently reported by provider '{provider}'. "
                 f"Discovered models: {', '.join(discovered_models)}"

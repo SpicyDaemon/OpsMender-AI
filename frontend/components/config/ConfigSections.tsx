@@ -660,15 +660,29 @@ function ModelConfigModal({
             </p>
           </div>
           <div>
-            <Label htmlFor="model-key">API Key Env Var</Label>
+            <Label htmlFor="model-key">
+              API Key Env Var
+              {selectedProvider && !selectedProvider.requires_api_key && (
+                <span className="ml-1 text-[10px] font-normal uppercase tracking-wide text-fg-muted">
+                  (optional)
+                </span>
+              )}
+            </Label>
             <Input
               id="model-key"
               value={form.api_key_env_var}
               onChange={(e) => setField("api_key_env_var", e.target.value)}
-              placeholder={selectedProvider?.default_api_key_env_var ?? "OPENAI_API_KEY"}
+              placeholder={
+                selectedProvider?.default_api_key_env_var ??
+                (selectedProvider && !selectedProvider.requires_api_key
+                  ? "Leave blank for keyless endpoints"
+                  : "OPENAI_API_KEY")
+              }
             />
             <p className="mt-1 text-xs text-fg-muted">
-              Store the secret in `.env`; this field saves the variable name only.
+              {selectedProvider && !selectedProvider.requires_api_key
+                ? "Store the secret in `.env`; this field saves the variable name only. Leave blank for endpoints that don't require auth (e.g. local LM Studio, vLLM)."
+                : "Store the secret in `.env`; this field saves the variable name only."}
             </p>
           </div>
         </div>

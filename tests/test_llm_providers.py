@@ -13,6 +13,7 @@ from backend.llm import (
     AnthropicProvider,
     LLMProvider,
     OllamaProvider,
+    OpenAICompatibleProvider,
     OpenAIProvider,
     ProviderLLMAdapter,
     StubProvider,
@@ -241,6 +242,74 @@ class TestOpenAIProvider:
         )
         assert provider.complete("hello") == "reply:deploy-gpt4"
         assert provider.list_models() == ["deploy-gpt4"]
+
+
+class TestOpenAICompatibleProvider:
+    """Sprint 62 Step 1 — generic OpenAI-API-compatible endpoint."""
+
+    def test_requires_base_url(self, monkeypatch):
+        _install_fake_openai(monkeypatch)
+        with pytest.raises(ValueError, match="base_url"):
+            OpenAICompatibleProvider(model="gpt-4o", base_url="")
+
+    def test_works_without_api_key(self, monkeypatch):
+        # Local endpoints (LM Studio, vLLM) often have no auth at all.
+        _install_fake_openai(monkeypatch)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        provider = OpenAICompatibleProvider(
+            model="local-llama",
+            base_url="http://localhost:1234/v1",
+        )
+        assert provider.complete("hello") == "reply:local-llama"
+
+    def test_uses_api_key_when_env_var_configured(self, monkeypatch):
+        _install_fake_openai(monkeypatch)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+        provider = OpenAICompatibleProvider(
+            model="anthropic/claude-3.5-sonnet",
+            base_url="https://openrouter.ai/api/v1",
+            api_key_env_var="OPENROUTER_API_KEY",
+        )
+        assert provider.complete("hi") == "reply:anthropic/claude-3.5-sonnet"
+
+    def test_missing_api_key_env_var_raises_when_configured(self, monkeypatch):
+        # If the operator names an env var, we treat it as required —
+        # silently sending no auth would surprise them.
+        _install_fake_openai(monkeypatch)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        with pytest.raises(EnvironmentError, match="OPENROUTER_API_KEY"):
+            OpenAICompatibleProvider(
+                model="x",
+                base_url="https://openrouter.ai/api/v1",
+                api_key_env_var="OPENROUTER_API_KEY",
+            )
+
+    def test_list_models_returns_endpoint_catalog(self, monkeypatch):
+        _install_fake_openai(monkeypatch)
+        provider = OpenAICompatibleProvider(
+            model="gpt-4o",
+            base_url="http://localhost:1234/v1",
+        )
+        assert provider.list_models() == ["gpt-4o", "gpt-4o-mini"]
+
+    def test_list_models_falls_back_to_configured_model_on_error(self, monkeypatch):
+        # Local endpoints often don't implement /v1/models. The sprint
+        # acceptance criterion says manual model entry must keep working
+        # — so list_models must gracefully fall back instead of raising.
+        _install_fake_openai(monkeypatch)
+        provider = OpenAICompatibleProvider(
+            model="my-custom-model",
+            base_url="http://localhost:1234/v1",
+        )
+
+        def _raise():
+            raise RuntimeError("404 Not Found")
+
+        # Patch the underlying client's models.list to raise. The fake
+        # ``_FakeOpenAIClient.with_options`` returns self, so this
+        # patch is what the discovery path sees.
+        provider._client.models.list = _raise  # type: ignore[assignment]
+        assert provider.list_models() == ["my-custom-model"]
 
 
 class _FakeURLResponse:

@@ -29,7 +29,13 @@ class TestProviderRegistry:
         registry = ProviderRegistry()
 
         providers = [spec.provider for spec in registry.list_specs()]
-        assert providers == ["anthropic", "azure_openai", "ollama", "openai"]
+        assert providers == [
+            "anthropic",
+            "azure_openai",
+            "ollama",
+            "openai",
+            "openai_compatible",
+        ]
 
     def test_discover_models_returns_available_provider(self, monkeypatch):
         monkeypatch.setattr(
@@ -58,6 +64,72 @@ class TestProviderRegistry:
         assert items[0]["provider"] == "anthropic"
         assert items[0]["available"] is False
         assert "missing key" in items[0]["error"]
+
+    def test_openai_compatible_spec_is_registered(self):
+        registry = ProviderRegistry()
+        providers = [spec.provider for spec in registry.list_specs()]
+        assert "openai_compatible" in providers
+
+        spec = registry.get_spec("openai_compatible")
+        assert spec.requires_base_url is True
+        assert spec.requires_api_key is False
+        assert spec.default_api_key_env_var is None
+
+    def test_validate_openai_compatible_requires_base_url(self):
+        registry = ProviderRegistry()
+        with pytest.raises(ValueError, match="base_url"):
+            registry.validate_model_config(
+                provider="openai_compatible",
+                model_id="local-llama",
+            )
+
+    def test_validate_openai_compatible_allows_no_api_key(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["gpt-4o"]),
+        )
+        registry = ProviderRegistry()
+        # api_key_env_var omitted → still valid because requires_api_key=False.
+        result = registry.validate_model_config(
+            provider="openai_compatible",
+            model_id="gpt-4o",
+            base_url="http://localhost:1234/v1",
+        )
+        assert result.discovered_models == ["gpt-4o"]
+        assert result.warnings == []
+
+    def test_validate_openai_compatible_unknown_model_warns_when_allowed(
+        self, monkeypatch
+    ):
+        # The endpoint reports a specific catalog; a manual model id that
+        # isn't in it should be allowed under allow_unverified=True with
+        # a warning (sprint acceptance criterion: manual entry works).
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["gpt-4o", "gpt-4o-mini"]),
+        )
+        registry = ProviderRegistry()
+        result = registry.validate_model_config(
+            provider="openai_compatible",
+            model_id="anthropic/claude-3.5-sonnet",
+            base_url="https://openrouter.ai/api/v1",
+            allow_unverified=True,
+        )
+        assert any(w.code == "model_not_reported" for w in result.warnings)
+
+    def test_discover_cache_ttl_overrides_for_cloud_providers(self, monkeypatch):
+        from backend.llm import registry as registry_mod
+
+        # Sprint 62 plan: cloud catalogs change rarely → 1h TTL. Local /
+        # openai_compatible keep the default 60s. Confirm the lookup
+        # helper returns the right values without instantiating any
+        # cloud SDKs.
+        assert registry_mod._ttl_for("bedrock") == 3600.0
+        assert registry_mod._ttl_for("vertex_ai") == 3600.0
+        assert registry_mod._ttl_for("oci_genai") == 3600.0
+        assert registry_mod._ttl_for("openai_compatible") == 60.0
+        assert registry_mod._ttl_for("ollama") == 60.0
+        assert registry_mod._ttl_for(None) == 60.0
 
     def test_discover_models_caches_within_ttl(self, monkeypatch):
         """Sprint 61 follow-up — repeat calls should not hit the live
@@ -167,7 +239,13 @@ class TestProviderRegistry:
         items = registry.discover_models()
 
         providers = sorted(item["provider"] for item in items)
-        assert providers == ["anthropic", "azure_openai", "ollama", "openai"]
+        assert providers == [
+            "anthropic",
+            "azure_openai",
+            "ollama",
+            "openai",
+            "openai_compatible",
+        ]
         assert all(item["available"] for item in items)
 
     def test_validate_model_config_azure_missing_base_url_is_hard_error(

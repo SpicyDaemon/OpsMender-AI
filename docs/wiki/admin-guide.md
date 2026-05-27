@@ -103,11 +103,26 @@ Key configurations include:
 
 ## 3. Model Configuration
 
-OpsMender supports multiple LLM providers. Navigate to **Config** > **Models** to configure them.
+OpsMender supports multiple LLM providers. Navigate to **Models** in the sidebar (`/dashboard/models`) to configure them.
 
-1. Select your preferred provider (e.g., OpenAI, Anthropic, GCP Vertex).
-2. Input the necessary API Keys or Service Account JSONs.
-3. Choose the specific default models for different tasks (e.g., GPT-4o for complex reasoning, Claude 3.5 Sonnet for rapid triage).
+Supported providers as of Sprint 62:
+
+| Provider | Notes |
+|----------|-------|
+| **Anthropic** | Claude models. Set `ANTHROPIC_API_KEY` in `.env`. |
+| **OpenAI** | GPT models. Set `OPENAI_API_KEY` in `.env`. |
+| **Azure OpenAI** | Azure-hosted OpenAI deployments. Requires `base_url` (your resource endpoint) and `api_version`. |
+| **Ollama** | Local runtime. Default `base_url` is `http://localhost:11434`. No API key required. |
+| **OpenAI-compatible** | Any OpenAI-API-shape endpoint: vLLM, LM Studio, OpenRouter, Together, Groq, Fireworks, Anyscale, and most local OpenAI-shape runtimes. **Requires** `base_url`; API key is optional (some local endpoints accept any string or none). |
+
+Per Sprint 62 design, OpsMender stores only the **environment variable name** for each provider's secret, never the raw value. Set the actual key in `.env` and reference it from the dashboard. Cloud providers added in later Sprint 62 phases (AWS Bedrock, GCP Vertex AI) will use native credential discovery (AWS credential chain, GCP ADC) rather than asking you to paste secrets into the UI.
+
+To add a model config:
+
+1. Click **New model config**.
+2. Select your provider — only the fields that provider needs are shown (e.g. OpenAI-compatible shows Base URL; Azure OpenAI shows both Base URL and API Version).
+3. Pick a model from the discovered catalog, or click **Type manual model ID** if discovery is unavailable or the model isn't reported (e.g. a proxy that doesn't implement `/v1/models`).
+4. Save. Model discovery is cached for 60 seconds for local/proxy endpoints and 1 hour for cloud catalogs so the page stays snappy.
 
 ## 4. MCP Servers and Skills
 

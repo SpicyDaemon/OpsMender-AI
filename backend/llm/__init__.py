@@ -6,6 +6,7 @@ from .registry import ProviderRegistry, ProviderSpec
 from .providers import (
     AnthropicLLM,
     AnthropicProvider,
+    OpenAICompatibleProvider,
     OpenAIProvider,
     OllamaProvider,
     ProviderLLMAdapter,
@@ -18,6 +19,7 @@ __all__ = [
     "AnthropicProvider",
     "LLM",
     "LLMProvider",
+    "OpenAICompatibleProvider",
     "OpenAIProvider",
     "OllamaProvider",
     "ProviderLLMAdapter",

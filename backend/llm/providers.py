@@ -199,6 +199,96 @@ class OpenAIProvider:
 
 
 @dataclasses.dataclass
+class OpenAICompatibleProvider:
+    """Provider for any OpenAI-API-compatible endpoint.
+
+    Sprint 62 Step 1 — covers vLLM, LM Studio, OpenRouter, Together,
+    Groq, Fireworks, Anyscale, and most local OpenAI-shape runtimes
+    with one provider shape. The OpenAI SDK is reused; only the
+    construction constraints differ:
+
+      * ``base_url`` is required (this is what makes the endpoint
+        "custom" — without it the operator should use the plain
+        ``openai`` provider).
+      * ``api_key_env_var`` is optional. Some local endpoints
+        (vLLM behind a private network, LM Studio's default
+        ``http://localhost:1234/v1``) accept any string or no key at
+        all; we send a placeholder when none is configured so the SDK
+        doesn't raise.
+      * ``list_models`` falls back to ``[self.model]`` if the endpoint
+        does not implement ``/v1/models`` — manual model entry must
+        keep working per the sprint acceptance criteria.
+    """
+
+    model: str
+    base_url: str
+    max_tokens: int = 4096
+    api_key_env_var: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.base_url:
+            raise ValueError("OpenAI-compatible provider requires a base_url")
+
+        try:
+            import openai  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "The 'openai' package is required for OpenAICompatibleProvider. "
+                "Install it with: uv add openai"
+            ) from exc
+
+        api_key: str | None = None
+        if self.api_key_env_var:
+            api_key = os.environ.get(self.api_key_env_var)
+            if not api_key:
+                raise EnvironmentError(
+                    f"{self.api_key_env_var} environment variable is not set. "
+                    "Either set it to the endpoint's API key, or clear the "
+                    "api_key_env_var field if the endpoint does not require one."
+                )
+
+        import openai
+
+        # The OpenAI SDK requires _some_ truthy api_key string even for
+        # keyless endpoints. Send a placeholder when the operator hasn't
+        # configured one — local runtimes ignore it.
+        self._client = openai.OpenAI(
+            api_key=api_key or "no-key",
+            base_url=self.base_url,
+        )
+
+    def complete(self, prompt: str) -> str:
+        response = self._client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=self.max_tokens,
+        )
+        return response.choices[0].message.content or ""
+
+    def stream(self, prompt: str) -> Iterator[str]:
+        yield self.complete(prompt)
+
+    def list_models(self) -> list[str]:
+        # 2s discovery cap matches the OpenAI provider — discovery is on
+        # the page-load hot path. If the endpoint doesn't implement
+        # /v1/models, fall back to the configured model so manual entry
+        # keeps working.
+        try:
+            models = self._client.with_options(
+                timeout=2.0, max_retries=0
+            ).models.list()
+        except Exception:
+            return [self.model]
+        data = getattr(models, "data", models)
+        ids: list[str] = []
+        for item in data:
+            model_id = getattr(item, "id", None)
+            if model_id:
+                ids.append(model_id)
+        return ids or [self.model]
+
+
+@dataclasses.dataclass
 class OllamaProvider:
     """Provider backed by the native Ollama HTTP API."""
 

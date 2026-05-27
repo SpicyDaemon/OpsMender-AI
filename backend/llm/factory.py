@@ -6,6 +6,7 @@ from .base import LLM, LLMProvider
 from .providers import (
     AnthropicProvider,
     OllamaProvider,
+    OpenAICompatibleProvider,
     OpenAIProvider,
     ProviderLLMAdapter,
     StubProvider,
@@ -47,6 +48,15 @@ def create_provider(
             base_url=base_url,
             api_version=api_version,
             azure=True,
+        )
+    if provider == "openai_compatible":
+        if not base_url:
+            raise ValueError("openai_compatible provider requires a base_url")
+        return OpenAICompatibleProvider(
+            model=model_id or "gpt-4o",
+            base_url=base_url,
+            max_tokens=max_tokens,
+            api_key_env_var=api_key_env_var,
         )
     if provider == "ollama":
         return OllamaProvider(

@@ -736,7 +736,7 @@ Organizations define what's safe, cautious, or destructive in a `SKILL.md` file.
 
 That means users can bring their own skills to match their environment. For example, deleting a pod in production might be classified as `destructive`, while the same action in a sandbox environment might be treated differently.
 
-See `examples/SKILL.md` for a Kubernetes reference template.
+See [`examples/SKILL.md`](examples/SKILL.md) for a Kubernetes (infra-layer) reference template, and [`examples/SKILL.app-incident.md`](examples/SKILL.app-incident.md) for an application-layer template that wires up GitHub/GitLab + Jira + observability MCPs so the agent can diagnose app bugs, file Jira tickets, and propose code fixes as pull requests / merge requests (humans still review and merge).
 
 ```yaml
 operations:

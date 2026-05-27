@@ -99,3 +99,10 @@ with the active tier to decide what it can do autonomously.
 
 Copy this file and modify it for your environment. Add or remove tools to
 match the MCP server you're using. Wildcard patterns (`*`, `?`) are supported.
+
+## Related examples
+
+- [`SKILL.app-incident.md`](SKILL.app-incident.md) — application-layer
+  incident response: diagnose with logs/metrics/traces, file Jira
+  tickets, and propose code fixes as GitHub PRs / GitLab MRs (never
+  direct merges).

@@ -15,6 +15,8 @@ An AI-powered incident response framework with tiered access controls. Connects 
 
 ## Why OpsMender
 
+> **Simple by default. Enterprise-ready underneath.** Spin OpsMender up as a single-workspace self-hosted tool with email + admin invites — multi-tenant, SSO, SAML, and host-based domain isolation stay in the codebase and turn on when you need them, not before.
+
 - **MCP-first** — every infrastructure action goes through an MCP server the operator provides. No native integrations locked to one cloud or tool.
 - **Tiered autonomy** — four tiers from advice-only (Tier 3) to fully autonomous (Tier 0). Tier 0 has a sandbox, hard time limits, and automatic rollback.
 - **Human in the loop** — Tier 1 pauses the workflow on destructive actions and requires explicit approval from an operator or admin.
@@ -27,8 +29,8 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Bring your own model** — Anthropic, OpenAI, Azure OpenAI, or local Ollama.
 - **Universal ingest** — accept webhooks from CloudWatch, Azure Monitor, GCP Cloud Monitoring, Oracle Cloud (OCI), LegacyAlertVendor, LegacyAlertRelay, Grafana, Datadog, Slack, or anything else that POSTs JSON.
 - **Outbound triggers** — fire session-lifecycle notifications to Slack, Teams, Sumo Logic, or any generic webhook endpoint.
-- **Multi-tenant** — strict per-org isolation across every entity. Optional host-based routing pins each tenant to its own URL (`acme.opsmender.example.com`, `globex.opsmender.example.com`) with custom branding.
-- **Per-tenant SSO** — each org can wire its own **OIDC** identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak) **or SAML 2.0** IdP (older Okta, ADFS, classic Azure AD enterprise apps). Users are JIT-provisioned on first login; OIDC client secrets are encrypted at rest, SAML uses a global SP keypair from env. Local login stays available as a break-glass path.
+- **Advanced — Multi-tenant (opt-in).** Strict per-org isolation across every entity, fully tested. Hidden in single-workspace mode (the default); enable with `OPSMENDER_MULTI_ORG_ENABLED=true`. Optional host-based routing pins each tenant to its own URL (`acme.opsmender.example.com`, `globex.opsmender.example.com`) with custom branding.
+- **Advanced — Per-tenant SSO / SAML (opt-in).** Each org can wire its own **OIDC** identity provider (Okta, Azure AD, Google Workspace, Auth0, Keycloak) **or SAML 2.0** IdP (older Okta, ADFS, classic Azure AD enterprise apps). SSO/SAML login buttons appear on the login page only when a provider is configured for the resolved tenant; settings screens stay hidden unless `OPSMENDER_ADVANCED_AUTH_ENABLED=true` or a provider already exists. Users are JIT-provisioned on first login; OIDC client secrets are encrypted at rest, SAML uses a global SP keypair from env. Email + password remains available as a break-glass path.
 
 The admin workflow around those users — invites, password resets, auth-method badges, bootstrap admins, SMTP delivery, and soft delete — is documented in [docs/wiki/people-guide.md](docs/wiki/people-guide.md).
 

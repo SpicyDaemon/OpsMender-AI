@@ -1157,6 +1157,16 @@ export default function OrganizationsPage() {
   // Defaults to false so a slow /config call doesn't briefly flash the
   // multi-org chrome on a fresh paint.
   const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
+  // Sprint 64 Step 3: per D-027, the SSO + SAML row actions render only
+  // when the operator has explicitly opted in to advanced auth, or when
+  // a provider is already configured for the tenant. That second clause
+  // is what keeps an existing customer's settings visible after the
+  // flag has been off — settings never silently disappear.
+  const [advancedAuthEnabled, setAdvancedAuthEnabled] = useState(false);
+  const [ssoConfigured, setSsoConfigured] = useState(false);
+  const [samlConfigured, setSamlConfigured] = useState(false);
+  const advancedAuthUnlocked =
+    advancedAuthEnabled || ssoConfigured || samlConfigured;
   const toast = useToast();
 
   const [showOrgModal, setShowOrgModal] = useState(false);
@@ -1196,7 +1206,13 @@ export default function OrganizationsPage() {
   useEffect(() => {
     let cancelled = false;
     getConfig()
-      .then((c) => { if (!cancelled) setMultiOrgEnabled(c.multi_org_enabled ?? false); })
+      .then((c) => {
+        if (cancelled) return;
+        setMultiOrgEnabled(c.multi_org_enabled ?? false);
+        setAdvancedAuthEnabled(c.advanced_auth_enabled ?? false);
+        setSsoConfigured(c.sso_configured ?? false);
+        setSamlConfigured(c.saml_configured ?? false);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -1336,26 +1352,35 @@ export default function OrganizationsPage() {
                 >
                   <Globe size={14} /> Domains
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setManagingSSOOrg(org);
-                    setShowSSOModal(true);
-                  }}
-                >
-                  <KeyRound size={14} /> SSO
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setManagingSAMLOrg(org);
-                    setShowSAMLModal(true);
-                  }}
-                >
-                  <FileKey size={14} /> SAML
-                </Button>
+                {/* Sprint 64 Step 3 (D-027): SSO + SAML row actions
+                    render only when the operator has opted in to
+                    advanced auth OR a provider is already configured
+                    for the tenant. Existing providers keep their
+                    settings reachable regardless of the flag. */}
+                {advancedAuthUnlocked && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setManagingSSOOrg(org);
+                        setShowSSOModal(true);
+                      }}
+                    >
+                      <KeyRound size={14} /> SSO
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setManagingSAMLOrg(org);
+                        setShowSAMLModal(true);
+                      }}
+                    >
+                      <FileKey size={14} /> SAML
+                    </Button>
+                  </>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"

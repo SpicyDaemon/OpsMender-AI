@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/context/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import {
+  getConfig,
   getOrgId,
   listApprovals,
   listMyOrganizations,
@@ -46,6 +47,9 @@ export function TopBar({
   const [switching, setSwitching] = useState(false);
   const orgMenuRef = useRef<HTMLDivElement | null>(null);
   const [tenant, setTenant] = useState<TenantContextResponse | null>(null);
+  // Sprint 64 Step 2: gate the org switcher on multi_org_enabled.
+  // Default false = single-workspace mode (don't show the switcher).
+  const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -83,6 +87,15 @@ export function TopBar({
       .catch(() => { if (!cancelled) setTenant(null); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    getConfig()
+      .then((c) => { if (!cancelled) setMultiOrgEnabled(c.multi_org_enabled ?? false); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -176,7 +189,11 @@ export function TopBar({
             </span>
           </div>
         )}
-        {user && !tenant?.pinned && orgs.length > 0 && (
+        {/* Sprint 64 Step 2: org switcher only renders in multi-workspace
+            mode. In single-workspace mode (the default) the active org
+            is implicit and the switcher would be noise. Host-pinned
+            tenants always show the read-only badge above regardless. */}
+        {user && !tenant?.pinned && orgs.length > 0 && multiOrgEnabled && (
           <div ref={orgMenuRef} className="relative">
             <button
               type="button"

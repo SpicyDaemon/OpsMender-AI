@@ -21,6 +21,7 @@ import {
   deleteOrganizationDomain,
   deleteOrgSAMLConfig,
   deleteOrgSSOConfig,
+  getConfig,
   getOrgSAMLConfig,
   getOrgSSOConfig,
   listOrganizationDomains,
@@ -1151,6 +1152,11 @@ export default function OrganizationsPage() {
   
   const [orgs, setOrgs] = useState<OrganizationResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  // Sprint 64 Step 2: in single-workspace mode the page reads as
+  // "Workspace Settings" and the create-organization affordances hide.
+  // Defaults to false so a slow /config call doesn't briefly flash the
+  // multi-org chrome on a fresh paint.
+  const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
   const toast = useToast();
 
   const [showOrgModal, setShowOrgModal] = useState(false);
@@ -1186,6 +1192,14 @@ export default function OrganizationsPage() {
     }
     load();
   }, [isSuperAdmin, load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getConfig()
+      .then((c) => { if (!cancelled) setMultiOrgEnabled(c.multi_org_enabled ?? false); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!isSuperAdmin || orgs.length === 0 || typeof window === "undefined") return;
@@ -1244,35 +1258,50 @@ export default function OrganizationsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-fg-primary">Organizations</h1>
+          <h1 className="text-2xl font-semibold text-fg-primary">
+            {multiOrgEnabled ? "Organizations" : "Workspace Settings"}
+          </h1>
           <p className="mt-1 text-sm text-fg-secondary">
-            Manage multi-tenant organizations and their members.
+            {multiOrgEnabled
+              ? "Manage multi-tenant organizations and their members."
+              : "Manage this workspace's members, domains, and authentication."}
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditingOrg(null);
-            setShowOrgModal(true);
-          }}
-        >
-          <Plus size={14} /> New Organization
-        </Button>
+        {/* Sprint 64 Step 2: multi-org create only makes sense when
+            the flag is on. Hidden in single-workspace mode so operators
+            aren't nudged toward a tenant model they didn't ask for. */}
+        {multiOrgEnabled && (
+          <Button
+            onClick={() => {
+              setEditingOrg(null);
+              setShowOrgModal(true);
+            }}
+          >
+            <Plus size={14} /> New Organization
+          </Button>
+        )}
       </div>
 
       {orgs.length === 0 ? (
         <EmptyState
           icon={Building2}
-          title="No organizations"
-          description="Create an organization to get started."
+          title={multiOrgEnabled ? "No organizations" : "No workspace yet"}
+          description={
+            multiOrgEnabled
+              ? "Create an organization to get started."
+              : "Your workspace hasn't been initialized. Contact your administrator."
+          }
           action={
-            <Button
-              onClick={() => {
-                setEditingOrg(null);
-                setShowOrgModal(true);
-              }}
-            >
-              <Plus size={14} /> Create Organization
-            </Button>
+            multiOrgEnabled ? (
+              <Button
+                onClick={() => {
+                  setEditingOrg(null);
+                  setShowOrgModal(true);
+                }}
+              >
+                <Plus size={14} /> Create Organization
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -1337,13 +1366,18 @@ export default function OrganizationsPage() {
                 >
                   <Pencil size={14} /> Edit
                 </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => handleDelete(org)}
-                >
-                  <Trash2 size={14} />
-                </Button>
+                {/* Sprint 64 Step 2: deleting the sole workspace would
+                    leave the install with zero orgs. Hide the delete
+                    affordance in single-workspace mode. */}
+                {multiOrgEnabled && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDelete(org)}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                )}
               </div>
             </div>
           ))}

@@ -60,69 +60,86 @@ type NavGroup = {
   items: NavItem[];
 };
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    id: "incident-management",
-    label: "Incident Management",
-    items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
-      { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
-      { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
-    ],
-  },
-  {
-    id: "paging",
-    label: "Paging & On-call",
-    items: [
-      { href: "/dashboard/paging/teams", label: "Teams", icon: Users },
-      { href: "/dashboard/paging/services", label: "Services", icon: Server },
-      { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat },
-      { href: "/dashboard/paging/priority-rules", label: "Priority Rules", icon: ListOrdered },
-      { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch },
-      { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench },
-      { href: "/dashboard/paging/my-notifications", label: "My Notifications", icon: Bell },
-    ],
-  },
-  {
-    id: "ai-agent",
-    label: "AI Agent",
-    items: [
-      { href: "/dashboard/skills", label: "Skills", icon: FileText },
-      { href: "/dashboard/memories", label: "Memories", icon: Brain },
-      { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network },
-      { href: "/dashboard/models", label: "Models", icon: Cpu },
-      { href: "/dashboard/workflows", label: "Workflows", icon: Workflow },
-      { href: "/dashboard/agent-teams", label: "Agent Teams", icon: Bot },
-    ],
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    items: [
-      { href: "/dashboard/bot-connectors", label: "Bot Connectors", icon: Plug },
-      { href: "/dashboard/webhooks", label: "Webhook Triggers", icon: Send },
-      { href: "/dashboard/ingest-tokens", label: "Ingest Tokens", icon: Inbox },
-    ],
-  },
-  {
-    id: "observe",
-    label: "Observe",
-    items: [
-      { href: "/dashboard/scans", label: "Environment Scans", icon: ShieldCheck },
-      { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
-      { href: "/dashboard/activity", label: "Activity", icon: BookOpen },
-    ],
-  },
-  {
-    id: "admin",
-    label: "Admin",
-    items: [
-      { href: "/dashboard/people", label: "People", icon: UserCog, reqRole: "admin" },
-      { href: "/dashboard/organizations", label: "Organizations", icon: Building2, reqRole: "admin" },
-      { href: "/dashboard/config", label: "Config", icon: Settings },
-    ],
-  },
-];
+/**
+ * Sprint 64 Step 2 — single-workspace label policy (D-027).
+ *
+ * In single-workspace mode (``multi_org_enabled === false``), the
+ * "Organizations" admin entry renames to "Workspace Settings" so the
+ * sidebar reads naturally for self-hosted operators who never need to
+ * think in terms of a tenant boundary. The route stays put so existing
+ * deep-links keep working. When the flag flips on, the entry reverts
+ * to "Organizations" because the page is now genuinely multi-tenant.
+ */
+function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
+  return [
+    {
+      id: "incident-management",
+      label: "Incident Management",
+      items: [
+        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
+        { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
+        { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
+      ],
+    },
+    {
+      id: "paging",
+      label: "Paging & On-call",
+      items: [
+        { href: "/dashboard/paging/teams", label: "Teams", icon: Users },
+        { href: "/dashboard/paging/services", label: "Services", icon: Server },
+        { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat },
+        { href: "/dashboard/paging/priority-rules", label: "Priority Rules", icon: ListOrdered },
+        { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch },
+        { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench },
+        { href: "/dashboard/paging/my-notifications", label: "My Notifications", icon: Bell },
+      ],
+    },
+    {
+      id: "ai-agent",
+      label: "AI Agent",
+      items: [
+        { href: "/dashboard/skills", label: "Skills", icon: FileText },
+        { href: "/dashboard/memories", label: "Memories", icon: Brain },
+        { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network },
+        { href: "/dashboard/models", label: "Models", icon: Cpu },
+        { href: "/dashboard/workflows", label: "Workflows", icon: Workflow },
+        { href: "/dashboard/agent-teams", label: "Agent Teams", icon: Bot },
+      ],
+    },
+    {
+      id: "integrations",
+      label: "Integrations",
+      items: [
+        { href: "/dashboard/bot-connectors", label: "Bot Connectors", icon: Plug },
+        { href: "/dashboard/webhooks", label: "Webhook Triggers", icon: Send },
+        { href: "/dashboard/ingest-tokens", label: "Ingest Tokens", icon: Inbox },
+      ],
+    },
+    {
+      id: "observe",
+      label: "Observe",
+      items: [
+        { href: "/dashboard/scans", label: "Environment Scans", icon: ShieldCheck },
+        { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
+        { href: "/dashboard/activity", label: "Activity", icon: BookOpen },
+      ],
+    },
+    {
+      id: "admin",
+      label: "Admin",
+      items: [
+        { href: "/dashboard/people", label: "People", icon: UserCog, reqRole: "admin" },
+        {
+          href: "/dashboard/organizations",
+          label: multiOrgEnabled ? "Organizations" : "Workspace Settings",
+          icon: Building2,
+          reqRole: "admin",
+        },
+        { href: "/dashboard/config", label: "Config", icon: Settings },
+      ],
+    },
+  ];
+}
 
 const COLLAPSE_KEY = "opsmender:sidebar-collapsed";
 const LEGACY_GROUP_COLLAPSE_KEY = "opsmender:sidebar-groups-collapsed";
@@ -385,6 +402,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [tier, setTier] = useState<number | null>(null);
+  // Sprint 64 Step 2: read from /config so the Admin → Organizations
+  // entry can rename to "Workspace Settings" in single-workspace mode.
+  // Defaults to false (= single-workspace) until the first /config
+  // response lands, matching the simple-by-default posture.
+  const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
   const previousPathnameRef = useRef(pathname);
 
   useEffect(() => {
@@ -405,7 +427,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     if (!user) return;
     let cancelled = false;
     getConfig()
-      .then((c) => { if (!cancelled) setTier(c.tier); })
+      .then((c) => {
+        if (cancelled) return;
+        setTier(c.tier);
+        setMultiOrgEnabled(c.multi_org_enabled ?? false);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [user, pathname]);
@@ -433,8 +459,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const width = collapsed ? "w-16" : "w-60";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
 
-  // Filter items by role and drop any group that ends up empty.
-  const visibleGroups: NavGroup[] = NAV_GROUPS.map((group) => ({
+  // Filter items by role and drop any group that ends up empty. The
+  // nav-group list itself is rebuilt per render so the Admin entry
+  // label tracks `multiOrgEnabled` without an extra useMemo dance.
+  const navGroups = buildNavGroups(multiOrgEnabled);
+  const visibleGroups: NavGroup[] = navGroups.map((group) => ({
     ...group,
     items: group.items.filter(
       (item) => !item.reqRole || (user && user.role === item.reqRole),

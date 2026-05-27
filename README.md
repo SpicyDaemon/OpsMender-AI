@@ -327,6 +327,23 @@ Then open **http://localhost:3000**. The frontend calls the API on `:8000` using
 
 > **Why the `.env.local` step matters:** `frontend/lib/api.ts` defaults `BASE_URL` to same-origin so the production single-process build (`opsmender serve` on `:8000`) works out of the box. In dev with two separate processes, the frontend on `:3000` would otherwise call itself for `/auth/login` and 404. The env var routes calls to the backend. `frontend/.env.local` is gitignored, so each clone needs its own.
 
+### Responsive incident-detail verification
+
+Sprint 63 added a repeatable viewport sweep for the incident detail page and its sticky command strip. It drives a real browser against a live local stack, seeds a long-title synthetic incident, captures screenshots at `320`, `375`, `768`, and `1440` widths, and fails if the page introduces horizontal overflow or loses the primary action set.
+
+```bash
+# one-time on a machine that hasn't used Playwright before
+cd frontend && npx playwright install chromium
+
+# terminal 1
+uv run python scripts/dev_server.py
+
+# terminal 2
+cd frontend && npm run test:incident-responsive
+```
+
+The verifier assumes the dev-server defaults (`http://localhost:8000`, `admin` / `admin123`). Override with `OPSMENDER_BASE_URL`, `OPSMENDER_USERNAME`, `OPSMENDER_PASSWORD`, or `OPSMENDER_RESPONSIVE_OUTPUT_DIR` if your local setup differs. Screenshots and metrics are written to `frontend/artifacts/incident-detail-responsive/` and are gitignored.
+
 ### Common issues
 
 - **`GET / → 404 Not Found`** in the dev-server log: `frontend/out/` doesn't exist. Run `cd frontend && npm install && npm run build` first, then restart the dev server.

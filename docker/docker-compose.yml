@@ -1,3 +1,20 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OpsMender AI — Docker Compose
+#
+# One compose file, dev or production mode is selected via .env:
+#
+#   Dev (defaults work as-is):
+#     OPSMENDER_DEPLOYMENT_MODE=development
+#
+#   Production (refuses to start without strong values):
+#     OPSMENDER_DEPLOYMENT_MODE=production
+#     OPSMENDER_JWT_SECRET=<64+ random chars>
+#     OPSMENDER_BOOTSTRAP_ADMIN_EMAIL=you@example.com
+#     OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD=<strong password>
+#
+# Open http://localhost:8000 once `app` is healthy.
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
   # ── Postgres ───────────────────────────────────────────────────────────────
   db:
@@ -16,21 +33,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    # The Postgres port is exposed on the host for dev convenience
-    # (psql / pgAdmin / migration tooling without `docker exec`). For
-    # production deployments, comment this out so Postgres is only
-    # reachable from inside the compose network.
-    ports:
-      - "5432:5432"
+    # Postgres is reachable only inside the compose network by default.
+    # Uncomment to expose 5432 on the host for psql / pgAdmin / migrations.
+    # Do NOT enable this on a host reachable from the public internet.
+    # ports:
+    #   - "5432:5432"
 
-  # ── App (frontend + backend, single container) ────────────────────────────
+  # ── App (frontend + backend, single container, served on 8000) ────────────
   app:
     build:
       context: ..
       dockerfile: docker/Dockerfile
       args:
-        # Empty = frontend calls the backend same-origin. Override if the
-        # frontend is hosted separately from the backend.
+        # Empty = frontend calls the backend same-origin. Override only if
+        # the frontend is hosted on a different origin than the backend.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     restart: unless-stopped
     env_file:
@@ -41,6 +57,7 @@ services:
     environment:
       OPSMENDER_DATABASE_URL: postgresql+asyncpg://opsmender:${POSTGRES_PASSWORD:-opsmender}@db:5432/opsmender
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    # Canonical entry point — backend API + static frontend on the same port.
     ports:
       - "8000:8000"
     volumes:

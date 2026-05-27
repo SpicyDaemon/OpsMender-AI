@@ -134,11 +134,22 @@ config:
   OPSMENDER_INGEST_RATE_LIMIT: "60"
   OPSMENDER_INGEST_RATE_WINDOW: "60"
 
-## Sensitive values. Generate OPSMENDER_JWT_SECRET with:
-##   openssl rand -hex 32
-## Required: OPSMENDER_JWT_SECRET. Optional provider keys depending on OPSMENDER_MODEL_PROVIDER.
+## Sensitive values rendered into a Secret.
+##
+## OPSMENDER_JWT_SECRET behavior:
+##   - Leave empty (default) and the chart generates a fresh 64-char random
+##     value on first install and preserves it across `helm upgrade` runs by
+##     reading the existing Secret. No need to run `openssl rand -hex 32`.
+##   - Set a value here only if you want to pin a specific secret (e.g.
+##     mirroring another deployment). Once set, that pinned value wins on
+##     fresh installs and persists across upgrades.
+##   - For production rotation, set `existingSecret.name` and manage the
+##     value out-of-band.
+##
+## Provider API keys are optional and depend on the model providers you wire
+## up at runtime (Anthropic, OpenAI, Azure OpenAI, Bedrock, Vertex, etc).
 secrets:
-  OPSMENDER_JWT_SECRET: "change-me-in-production"
+  OPSMENDER_JWT_SECRET: ""
   ANTHROPIC_API_KEY: ""
   OPENAI_API_KEY: ""
   AZURE_OPENAI_API_KEY: ""

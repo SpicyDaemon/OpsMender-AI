@@ -5,7 +5,7 @@
  *
  * Sticky action bar at the top of the incident detail page. Surfaces
  * the lifecycle actions the operator needs at-a-glance: Acknowledge,
- * Take, Start session, Resolve, Create postmortem (placeholder).
+ * Take, Start session, Resolve, Create postmortem.
  *
  * Action visibility is driven by incident status + paging assignment
  * state so the operator never sees an action that would no-op:
@@ -32,7 +32,6 @@ import {
   HandMetal,
   Loader2,
   Play,
-  Radio,
   ScrollText,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
@@ -47,7 +46,6 @@ import {
 } from "@/lib/api";
 import type {
   IncidentAssignmentResponse,
-  IncidentPagingPanelResponse,
   IncidentResponse,
 } from "@/lib/types";
 
@@ -60,6 +58,8 @@ interface Props {
   onStartSession: () => void;
   /** Re-fetch parent state after an action mutates the incident. */
   onChanged: () => Promise<void> | void;
+  /** Resolved owner display label for "assigned to someone else" states. */
+  ownerLabel?: string | null;
   /** Optional: collapses extra status pills on narrow viewports. */
   className?: string;
 }
@@ -69,6 +69,7 @@ export function IncidentCommandStrip({
   assignment,
   onStartSession,
   onChanged,
+  ownerLabel,
   className,
 }: Props) {
   const toast = useToast();
@@ -78,7 +79,6 @@ export function IncidentCommandStrip({
 
   const status = incident.status as Status;
   const isOpen = status === "open";
-  const isInProgress = status === "in_progress";
   const isResolved = status === "resolved" || status === "closed";
 
   const isAssignedToMe =
@@ -144,6 +144,8 @@ export function IncidentCommandStrip({
         className ?? "",
       ].join(" ")}
       data-testid="incident-command-strip"
+      aria-busy={busy !== null}
+      aria-live="polite"
     >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
         {/* Left: status + severity + truncated title */}
@@ -163,7 +165,7 @@ export function IncidentCommandStrip({
           )}
           {isAssignedToSomeoneElse && assignment && (
             <Badge variant="default" className="hidden md:inline-flex">
-              Owner: {assignment.assigned_to.slice(0, 8)}…
+              Owner: {ownerLabel || "Assigned"}
             </Badge>
           )}
           <h2

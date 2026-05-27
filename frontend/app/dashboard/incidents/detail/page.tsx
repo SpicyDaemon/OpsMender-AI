@@ -24,6 +24,7 @@ import {
   listAgentTeamProfiles,
   listIncidentSessions,
   listProviders,
+  listUsers,
   listWorkflowProfiles,
 } from "@/lib/api";
 import type {
@@ -34,6 +35,7 @@ import type {
   ProviderModelsResponse,
   SessionCreate,
   SessionResponse,
+  UserResponse,
   WorkflowProfileResponse,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -133,6 +135,7 @@ function IncidentDetailContent() {
   const [pagingPanel, setPagingPanel] =
     useState<IncidentPagingPanelResponse | null>(null);
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
+  const [users, setUsers] = useState<UserResponse[]>([]);
   const [sessionsError, setSessionsError] = useState("");
   const [timeline, setTimeline] = useState<IncidentTimelineItemResponse[]>([]);
   const [timelineError, setTimelineError] = useState("");
@@ -152,12 +155,19 @@ function IncidentDetailContent() {
     try {
       const incidentRes = await getIncident(id);
       setIncident(incidentRes);
-      getIncidentPaging(id)
-        .then((p) => setPagingPanel(p))
+      Promise.all([
+        getIncidentPaging(id).catch(() => null),
+        listUsers().catch(() => ({ items: [], total: 0 })),
+      ])
+        .then(([p, userList]) => {
+          setPagingPanel(p);
+          setUsers(userList.items);
+        })
         .catch(() => setPagingPanel(null));
     } catch (err) {
       setIncident(null);
       setSessions([]);
+      setUsers([]);
       toast.error(err instanceof Error ? err.message : "Failed to load incident");
       setLoading(false);
       return;
@@ -195,6 +205,13 @@ function IncidentDetailContent() {
 
   const source = useMemo(() => (incident ? sourceMeta(incident) : null), [incident]);
   const sessionSummary = useMemo(() => sessionStatusSummary(sessions), [sessions]);
+  const ownerLabel = useMemo(() => {
+    const assignedTo = pagingPanel?.assignment?.assigned_to;
+    if (!assignedTo) return null;
+    const owner = users.find((candidate) => candidate.id === assignedTo);
+    if (!owner) return null;
+    return owner.username || owner.email;
+  }, [pagingPanel, users]);
 
   if (loading) return <DetailSkeleton />;
   if (!id) return <p className="text-status-critical">Missing incident id.</p>;
@@ -210,6 +227,7 @@ function IncidentDetailContent() {
         assignment={pagingPanel?.assignment ?? null}
         onStartSession={() => setShowSession(true)}
         onChanged={reload}
+        ownerLabel={ownerLabel}
       />
 
       <div className={`grid gap-6 ${activeSessionId ? "xl:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.95fr)]" : ""}`}>

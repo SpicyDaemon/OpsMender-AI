@@ -69,8 +69,11 @@ jobs:
             org.opencontainers.image.licenses=MIT
 
   # -------------------------------------------------------------------------
-  # Cross-platform PyInstaller binaries (Linux x64, Windows x64, macOS x64)
+  # Cross-platform PyInstaller binaries (Linux x64, Windows x64)
   # Each archive ships with a matching .sha256 file.
+  # macOS is intentionally skipped — GitHub-hosted macOS runners are slow
+  # and queue-prone; re-add a `macos-*` matrix entry when there's a real
+  # operator ask.
   # -------------------------------------------------------------------------
   binary:
     name: Build ${{ matrix.label }} binary
@@ -88,11 +91,6 @@ jobs:
             platform: windows
             ext: '.exe'
             archive_ext: zip
-          - os: macos-13
-            label: darwin-x64
-            platform: darwin
-            ext: ''
-            archive_ext: tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - name: Resolve ref

@@ -102,6 +102,26 @@ class TestConfigLoad:
         with pytest.raises(ValueError, match="OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY"):
             Config.load(env_file)
 
+    def test_people_visibility_flags_default_to_false(self, tmp_path):
+        """Sprint 64 — both visibility flags default to false so a fresh
+        install lands on the simple-by-default auth UX."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("")
+        cfg = Config.load(env_file)
+        assert cfg.people.multi_org_enabled is False
+        assert cfg.people.advanced_auth_enabled is False
+
+    def test_advanced_auth_enabled_reads_env_flag(self, tmp_path):
+        """Sprint 64 — operators opt in to SSO/SAML admin surfaces via
+        OPSMENDER_ADVANCED_AUTH_ENABLED. The flag is a visibility hint
+        only; SSO/SAML runtime routes keep working regardless."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("OPSMENDER_ADVANCED_AUTH_ENABLED=true\n")
+        cfg = Config.load(env_file)
+        assert cfg.people.advanced_auth_enabled is True
+        # multi_org stays off — flags are independent of each other.
+        assert cfg.people.multi_org_enabled is False
+
 
 class TestMCPServerConfig:
     def test_invalid_transport_raises(self):

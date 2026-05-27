@@ -28,6 +28,8 @@ from backend.db.repos import (
     IngestTokenRepo,
     MCPServerRepo,
     ModelConfigRepo,
+    OrgSAMLConfigRepo,
+    OrgSSOConfigRepo,
     RuntimeConfigRepo,
     ServiceRepo,
     SkillRepo,
@@ -50,6 +52,8 @@ def _config_to_response(
     ingest_auto_start_enabled: bool,
     ingest_auto_start_min_severity: str,
     ingest_auto_start_source: str | None,
+    sso_configured: bool = False,
+    saml_configured: bool = False,
 ) -> ConfigResponse:
     servers = []
     for server in cfg.mcp_servers:
@@ -72,6 +76,9 @@ def _config_to_response(
         ingest_auto_start_source=ingest_auto_start_source,
         multi_org_enabled=cfg.people.multi_org_enabled,
         smtp_configured=cfg.smtp.configured,
+        advanced_auth_enabled=cfg.people.advanced_auth_enabled,
+        sso_configured=sso_configured,
+        saml_configured=saml_configured,
     )
 
 
@@ -130,6 +137,12 @@ async def get_config(
         .lower()
         or None
     )
+    # Sprint 64: per-tenant lookup for the SSO/SAML "configured" booleans
+    # so the frontend can keep settings visible for orgs that already
+    # have a provider wired up, even when ``advanced_auth_enabled`` is
+    # off. Existing providers keep working regardless of the flag.
+    sso_row = await OrgSSOConfigRepo.get_for_org(db, org_id)
+    saml_row = await OrgSAMLConfigRepo.get_for_org(db, org_id)
     return _config_to_response(
         cfg,
         tier=tier,
@@ -137,6 +150,8 @@ async def get_config(
         ingest_auto_start_enabled=ingest_auto_start_enabled,
         ingest_auto_start_min_severity=ingest_auto_start_min_severity,
         ingest_auto_start_source=ingest_auto_start_source,
+        sso_configured=sso_row is not None,
+        saml_configured=saml_row is not None,
     )
 
 
@@ -255,6 +270,12 @@ async def update_config(
         .lower()
         or None
     )
+    # Sprint 64: per-tenant lookup for the SSO/SAML "configured" booleans
+    # so the frontend can keep settings visible for orgs that already
+    # have a provider wired up, even when ``advanced_auth_enabled`` is
+    # off. Existing providers keep working regardless of the flag.
+    sso_row = await OrgSSOConfigRepo.get_for_org(db, org_id)
+    saml_row = await OrgSAMLConfigRepo.get_for_org(db, org_id)
     return _config_to_response(
         cfg,
         tier=tier,
@@ -262,6 +283,8 @@ async def update_config(
         ingest_auto_start_enabled=ingest_auto_start_enabled,
         ingest_auto_start_min_severity=ingest_auto_start_min_severity,
         ingest_auto_start_source=ingest_auto_start_source,
+        sso_configured=sso_row is not None,
+        saml_configured=saml_row is not None,
     )
 
 

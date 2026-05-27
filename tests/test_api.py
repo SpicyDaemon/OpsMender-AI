@@ -1812,6 +1812,72 @@ class TestConfig:
         assert data["ingest_auto_start_min_severity"] == "critical"
         assert data["ingest_auto_start_source"] is None
 
+    async def test_get_config_exposes_simple_by_default_auth_flags(
+        self, client: AsyncClient, auth_headers
+    ):
+        """Sprint 64 Step 1 — surface the four auth visibility booleans.
+
+        Default install has no SSO/SAML configured and no env flags set,
+        so every value is False. The frontend's rule for showing
+        advanced auth settings is the disjunction of these three:
+        ``advanced_auth_enabled || sso_configured || saml_configured``.
+        """
+        resp = await client.get("/config", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["multi_org_enabled"] is False
+        assert data["advanced_auth_enabled"] is False
+        assert data["sso_configured"] is False
+        assert data["saml_configured"] is False
+
+    async def test_get_config_marks_sso_configured_when_org_row_exists(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """An org with a saved OIDC config keeps its settings visible
+        even when ``advanced_auth_enabled`` stays off — that's the
+        explicit Sprint 64 rule so existing providers keep working."""
+        from backend.db.repos import OrgSSOConfigRepo
+
+        async with app.state.session_factory() as db:
+            await OrgSSOConfigRepo.upsert(
+                db,
+                org_id=TEST_ORG_ID,
+                provider="oidc",
+                discovery_url="https://example.test/.well-known/openid-configuration",
+                client_id="client-abc",
+                client_secret_encrypted="ciphertext::placeholder",
+            )
+            await db.commit()
+
+        resp = await client.get("/config", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["sso_configured"] is True
+        assert data["saml_configured"] is False
+        # Env flag stays off — the existing provider is what unlocks
+        # the UI; advanced_auth_enabled doesn't flip just because a
+        # row exists.
+        assert data["advanced_auth_enabled"] is False
+
+    async def test_get_config_marks_saml_configured_when_org_row_exists(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.db.repos import OrgSAMLConfigRepo
+
+        async with app.state.session_factory() as db:
+            await OrgSAMLConfigRepo.upsert(
+                db,
+                org_id=TEST_ORG_ID,
+                idp_metadata_url="https://idp.example.test/metadata",
+            )
+            await db.commit()
+
+        resp = await client.get("/config", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["saml_configured"] is True
+        assert data["sso_configured"] is False
+
 
 class TestIncidentMemoryAPI:
     """Sprint 45 Step 6 — /memories CRUD + feedback + per-session memories-used."""

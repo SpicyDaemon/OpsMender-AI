@@ -300,6 +300,14 @@ class PeopleConfig:
     multi-tenant schema + SSO/SAML-per-tenant work from Sprints 29-30
     stays intact regardless — only the UI changes.
 
+    `advanced_auth_enabled` (Sprint 64) gates the SSO + SAML admin
+    settings UI. It is **purely a visibility flag** — the SSO/SAML
+    runtime routes (`/auth/sso/...`, `/auth/saml/...`) keep working
+    regardless, and an org with an already-configured provider still
+    surfaces its settings even when the flag is off. Frontend rule:
+    show advanced auth settings when
+    ``advanced_auth_enabled || sso_configured || saml_configured``.
+
     `public_base_url` is the absolute URL the dashboard is reachable at;
     invite + password-reset URLs use it. Falls back to the request's
     derived base when unset, but should be set for production.
@@ -308,6 +316,7 @@ class PeopleConfig:
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None
     multi_org_enabled: bool = False
+    advanced_auth_enabled: bool = False
     public_base_url: str | None = None
 
     @property
@@ -518,6 +527,9 @@ class AppConfig:
                     env, "OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD"
                 ),
                 multi_org_enabled=_env_bool(env, "OPSMENDER_MULTI_ORG_ENABLED", False),
+                advanced_auth_enabled=_env_bool(
+                    env, "OPSMENDER_ADVANCED_AUTH_ENABLED", False
+                ),
                 public_base_url=_env_str(env, "OPSMENDER_PUBLIC_BASE_URL"),
             ),
             smtp=SMTPConfig(

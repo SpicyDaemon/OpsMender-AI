@@ -380,6 +380,15 @@ class ConfigResponse(BaseModel):
     # start; not editable from the UI.
     multi_org_enabled: bool = False
     smtp_configured: bool = False
+    # Sprint 64: visibility flags for the simple-by-default auth UX.
+    # ``advanced_auth_enabled`` (env-driven) and the two
+    # ``*_configured`` booleans (per-tenant DB lookup) together let the
+    # frontend decide whether to render SSO/SAML admin surfaces.
+    # Frontend rule: show advanced auth settings when
+    # ``advanced_auth_enabled || sso_configured || saml_configured``.
+    advanced_auth_enabled: bool = False
+    sso_configured: bool = False
+    saml_configured: bool = False
 
 
 class SetupChecklistResponse(BaseModel):

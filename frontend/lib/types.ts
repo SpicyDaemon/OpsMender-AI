@@ -312,6 +312,14 @@ export interface ConfigResponse {
   // SMTP delivery alongside the copy-paste invite URLs.
   multi_org_enabled?: boolean;
   smtp_configured?: boolean;
+  // Sprint 64: simple-by-default auth visibility flags.
+  // `advanced_auth_enabled` is env-driven; the two `*_configured`
+  // booleans are per-tenant DB lookups. Frontend rule for surfacing
+  // SSO/SAML admin settings:
+  //   advanced_auth_enabled || sso_configured || saml_configured.
+  advanced_auth_enabled?: boolean;
+  sso_configured?: boolean;
+  saml_configured?: boolean;
 }
 
 export interface ConfigUpdate {

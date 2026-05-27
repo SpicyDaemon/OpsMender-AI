@@ -2,9 +2,24 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 from .factory import create_provider
+
+
+# Module-level cache for ``ProviderRegistry.discover_models`` results.
+# Discovery is invoked on every ``GET /models`` (page paint of
+# /dashboard/models) and walks every configured provider with a live
+# round-trip. Operators rarely change provider keys mid-session, so a
+# short TTL trades a little staleness for a huge wall-clock win on
+# repeat loads. The cache key carries every discovery param so distinct
+# queries don't collide.
+_DISCOVERY_CACHE: dict[
+    tuple[str | None, str | None, str | None, str | None, str | None],
+    tuple[float, list[dict[str, object]]],
+] = {}
+_DISCOVERY_CACHE_TTL_SECONDS = 60.0
 
 
 @dataclass(frozen=True)
@@ -74,6 +89,11 @@ class ProviderRegistry:
         except KeyError as exc:
             raise ValueError(f"Unsupported LLM provider: {provider}") from exc
 
+    @classmethod
+    def clear_discovery_cache(cls) -> None:
+        """Drop the discovery TTL cache. Test-only helper."""
+        _DISCOVERY_CACHE.clear()
+
     def discover_models(
         self,
         *,
@@ -82,7 +102,14 @@ class ProviderRegistry:
         api_key_env_var: str | None = None,
         base_url: str | None = None,
         api_version: str | None = None,
+        use_cache: bool = True,
     ) -> list[dict[str, object]]:
+        cache_key = (provider, model_id, api_key_env_var, base_url, api_version)
+        if use_cache:
+            hit = _DISCOVERY_CACHE.get(cache_key)
+            if hit is not None and time.monotonic() - hit[0] < _DISCOVERY_CACHE_TTL_SECONDS:
+                return hit[1]
+
         providers = [provider] if provider else [spec.provider for spec in self.list_specs()]
         results: list[dict[str, object]] = []
         for provider_name in providers:
@@ -123,6 +150,8 @@ class ProviderRegistry:
                     "models": [],
                     "error": str(exc),
                 })
+        if use_cache:
+            _DISCOVERY_CACHE[cache_key] = (time.monotonic(), results)
         return results
 
     def validate_model_config(

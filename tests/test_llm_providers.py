@@ -161,6 +161,13 @@ def _install_fake_openai(monkeypatch):
             self.chat = _FakeChat()
             self.models = _FakeModels()
 
+        def with_options(self, **_kwargs):
+            # Sprint 61 follow-up: list_models calls .with_options(timeout=...,
+            # max_retries=0) so a slow OpenAI endpoint doesn't stall the
+            # /dashboard/models page. The fake returns itself so the
+            # downstream .models.list() still resolves.
+            return self
+
     fake_module = types.SimpleNamespace(
         OpenAI=_FakeOpenAIClient,
         AzureOpenAI=_FakeOpenAIClient,
@@ -289,7 +296,10 @@ class TestOllamaProvider:
         assert list(provider.stream("test")) == ["hello ", "world"]
 
     def test_list_models_uses_tags_api(self, monkeypatch):
-        def _fake_urlopen(request):
+        # Sprint 61 follow-up: list_models now passes timeout=2.0 to urlopen
+        # so an unreachable Ollama host can't stall the page paint. Fake
+        # accepts and ignores the kwarg.
+        def _fake_urlopen(request, timeout=None):
             assert request.full_url == "http://localhost:11434/api/tags"
             return _FakeURLResponse(
                 b'{"models":[{"name":"llama3.2"},{"name":"mistral"}]}'

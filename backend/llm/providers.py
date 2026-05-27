@@ -182,7 +182,13 @@ class OpenAIProvider:
         if self.azure:
             return [self.model]
 
-        models = self._client.models.list()
+        # Discovery is on the page-load hot path (/dashboard/models).
+        # Cap each call and skip retries so a bad key or slow network
+        # fails fast instead of stalling on the SDK's default 10 min
+        # timeout x 2 retries.
+        models = self._client.with_options(
+            timeout=2.0, max_retries=0
+        ).models.list()
         data = getattr(models, "data", models)
         ids: list[str] = []
         for item in data:
@@ -238,7 +244,11 @@ class OllamaProvider:
             method="GET",
         )
         try:
-            with urllib.request.urlopen(request) as response:
+            # Hard 2s cap. Discovery runs on every /dashboard/models paint;
+            # without this, an unreachable Ollama host stalls the page on
+            # the OS TCP connect timeout (~75s on Linux behind a dropping
+            # firewall).
+            with urllib.request.urlopen(request, timeout=2.0) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"Ollama list_models failed: {exc}") from exc

@@ -7,6 +7,15 @@ import pytest
 from backend.llm.registry import ProviderRegistry
 
 
+@pytest.fixture(autouse=True)
+def _clear_discovery_cache():
+    """Discovery results are cached for 60s in production; tests must
+    start clean so monkeypatched providers actually take effect."""
+    ProviderRegistry.clear_discovery_cache()
+    yield
+    ProviderRegistry.clear_discovery_cache()
+
+
 class _FakeProvider:
     def __init__(self, models):
         self._models = models
@@ -49,6 +58,34 @@ class TestProviderRegistry:
         assert items[0]["provider"] == "anthropic"
         assert items[0]["available"] is False
         assert "missing key" in items[0]["error"]
+
+    def test_discover_models_caches_within_ttl(self, monkeypatch):
+        """Sprint 61 follow-up — repeat calls should not hit the live
+        provider. /dashboard/models was slow because every page paint
+        re-ran the OpenAI + Ollama list calls; the cache short-circuits
+        within the 60s TTL."""
+        call_count = {"n": 0}
+
+        def _factory(**kwargs):
+            call_count["n"] += 1
+            return _FakeProvider(["gpt-4o"])
+
+        monkeypatch.setattr("backend.llm.registry.create_provider", _factory)
+        registry = ProviderRegistry()
+
+        first = registry.discover_models(provider="openai")
+        second = registry.discover_models(provider="openai")
+
+        assert first == second
+        assert call_count["n"] == 1, "second call should hit the cache"
+
+        # Different cache key (different provider) should miss.
+        registry.discover_models(provider="anthropic")
+        assert call_count["n"] == 2
+
+        # use_cache=False forces a fresh discovery.
+        registry.discover_models(provider="openai", use_cache=False)
+        assert call_count["n"] == 3
 
     def test_validate_model_config_rejects_unknown_provider(self):
         registry = ProviderRegistry()

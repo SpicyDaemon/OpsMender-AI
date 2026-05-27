@@ -20,7 +20,8 @@ An AI-powered incident response framework with tiered access controls. Connects 
 - **Human in the loop** — Tier 1 pauses the workflow on destructive actions and requires explicit approval from an operator or admin.
 - **Programmatic tier gate** — enforced in code, not by prompt. The agent cannot reason its way past it.
 - **Org-owned skill definitions** — a single `SKILL.md` classifies every operation as `safe`, `caution`, or `destructive`. Your call, not ours.
-- **AI incident memory** — successful sessions leave behind short markdown lessons; the next similar incident gets them injected into the agent's prompt before the first observe call. Per-org, advisory only (never bypasses tier or skill gates), bounded by auto-compaction at 50 memories per service, and rankable by operator thumbs up/down via `/dashboard/memories`.
+- **AI incident memory** — successful sessions leave behind short markdown lessons; the next similar incident gets them injected into the agent's prompt before the first observe call. Per-org, advisory only (never bypasses tier or skill gates), bounded by auto-compaction at 50 memories per service, and rankable by operator thumbs up/down via `/dashboard/memories`. Postmortem authors curate the next batch of memories directly from the per-incident editor — see [docs/wiki/postmortem-guide.md](docs/wiki/postmortem-guide.md).
+- **Command Palette** — `Cmd+K` / `Ctrl+K` opens a type-to-filter palette from anywhere in the dashboard. Two categories — **Navigate** (every sidebar route, fuzzy-matched) and **Actions** (New incident, Fire test incident, Open pending approvals, Show on-call, Run environment scan). Action items deep-link via query params so a synthetic test incident is two keystrokes away on a fresh install.
 - **Full audit log** — every node transition, every tool call, every approval, every rollback step. Memory recall and writeback are audited too.
 - **Bounded storage** — logs auto-prune after 90 days by default (operator-overridable per category from Config → "Storage & retention"); memories are operator-curated and never auto-deleted. Avoids OOM and out-of-disk failure modes on long-running deployments.
 - **Bring your own model** — Anthropic, OpenAI, Azure OpenAI, or local Ollama.
@@ -68,7 +69,10 @@ OpsMender's job is one cohesive loop: **alert → AI → ack → fix → resolve
    │     Click Resolve (in chat or web UI). Chain cancels,          │
    │     incident.status → resolved, the full audit trail (every    │
    │     node transition, tool call, approval, rollback step) is    │
-   │     preserved for postmortem.                                  │
+   │     preserved for postmortem. Author the postmortem from the   │
+   │     Incident Command Strip — dedicated editor with the seven   │
+   │     recommended sections + memory-candidates handoff into AI   │
+   │     incident memory.                                           │
    │                                                                │
    └────────────────────────────────────────────────────────────────┘
 ```

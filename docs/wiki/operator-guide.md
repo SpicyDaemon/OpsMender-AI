@@ -36,9 +36,22 @@ Every action taken by the AI is immutably recorded in the **Audit Log**.
 
 - The Audit Log provides a chronological trace of all tool executions, approvals, and system state changes.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
-- It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it.
+- It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it. The Audit Log feeds the **Timeline** section of the dedicated postmortem editor — see [postmortem-guide.md](postmortem-guide.md).
 
-## 5. Rollback Behavior
+## 5. Writing Postmortems
+
+Once an incident reaches `resolved` or `closed`, the Incident Command Strip surfaces a **Create postmortem** action that opens a dedicated editor at `/dashboard/incidents/postmortem?id=<incident_id>`. The editor ships with an Edit/Preview toggle, the seven recommended sections (Summary · Impact · Timeline · Root cause · Resolution · Lessons learned · Memory candidates), Save / Clear / Reset-to-template actions, and a one-line tip for each section. Memory candidates are intended as the shortlist you'll later promote into `/dashboard/memories`. Admins and operators can edit; viewers see the editor read-only. The full walkthrough lives in [postmortem-guide.md](postmortem-guide.md).
+
+## 6. Keyboard quick access
+
+Press **Cmd+K** (Mac) / **Ctrl+K** (everywhere else) to open the **Command Palette** from anywhere in the dashboard. The palette has two categories:
+
+- **Navigate** — every sidebar route (Dashboard, Incidents, Approvals, Paging surfaces, AI Agent surfaces, Admin, etc.) with fuzzy keyword matching (e.g. type "audit log" to land on Activity, "schedule" for Rosters).
+- **Actions** — New incident · Fire test incident · Open pending approvals · Show who's on-call · Run environment scan.
+
+Keyboard model: `↑` / `↓` move the highlight, `Enter` executes, `Esc` closes. The shortcut is reserved — it works even when an input is focused, which is the point. The existing `?` overlay (keyboard shortcut help) lists `Cmd K` for discovery.
+
+## 7. Rollback Behavior
 
 If the AI takes an action that worsens the incident, or if you need to revert a configuration change made during triage:
 

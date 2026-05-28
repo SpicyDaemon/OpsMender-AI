@@ -1616,14 +1616,14 @@ function MCPServerModal({
                     placeholder="KEY"
                     value={pair.key}
                     onChange={(e) => updateEnvPair(idx, { key: e.target.value })}
-                    className="font-mono text-xs w-1/3"
+                    className="font-mono text-xs flex-1 min-w-0"
                     aria-label={`Env var key ${idx + 1}`}
                   />
                   <Input
                     placeholder="value"
                     value={pair.value}
                     onChange={(e) => updateEnvPair(idx, { value: e.target.value })}
-                    className="font-mono text-xs flex-1"
+                    className="font-mono text-xs flex-1 min-w-0"
                     aria-label={`Env var value ${idx + 1}`}
                   />
                   <Button

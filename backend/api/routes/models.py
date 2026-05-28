@@ -64,6 +64,7 @@ async def list_models(
         }.items()
         if value
     }
+
     items = registry.discover_models(
         provider=provider,
         model_id=model_id,

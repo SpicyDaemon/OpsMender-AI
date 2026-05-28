@@ -2,10 +2,46 @@
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 
 from .factory import create_provider
+
+
+def _env_provider_defaults() -> dict[str, dict[str, str | None]]:
+    """Read env-var fallbacks for the discovery probe.
+
+    Returns a per-provider map of {"base_url", "api_key_env_var",
+    "api_version"} drawn from process env. Used by discover_models so
+    the dashboard "is this provider reachable?" dot reflects what the
+    operator actually configured in .env, not just empty defaults.
+
+    Reads os.environ directly so the cache key in discover_models can
+    still be a pure function of caller args — the env state at process
+    start is captured in the env_defaults dict and stays stable for
+    the cache window.
+    """
+    return {
+        "openai_compatible": {
+            "base_url": os.environ.get("OPSMENDER_OPENAI_COMPATIBLE_BASE_URL") or None,
+            "api_key_env_var": os.environ.get(
+                "OPSMENDER_OPENAI_COMPATIBLE_API_KEY_ENV_VAR"
+            )
+            or None,
+            "api_version": None,
+        },
+        "azure_openai": {
+            "base_url": os.environ.get("AZURE_OPENAI_ENDPOINT") or None,
+            "api_key_env_var": None,
+            "api_version": os.environ.get("AZURE_OPENAI_API_VERSION") or None,
+        },
+        "ollama": {
+            "base_url": os.environ.get("OLLAMA_BASE_URL") or None,
+            "api_key_env_var": None,
+            "api_version": None,
+        },
+    }
 
 
 # Module-level cache for ``ProviderRegistry.discover_models`` results.
@@ -165,19 +201,30 @@ class ProviderRegistry:
             if hit is not None and time.monotonic() - hit[0] < ttl:
                 return hit[1]
 
+        # Lazy env-driven defaults so the multi-provider discovery call
+        # (no ?provider= filter — what the dashboard fires) picks up
+        # operator-set env vars without us routing per-provider state
+        # through the API surface. The caller's explicit values still
+        # win; this is purely a fallback for None.
+        env_defaults = _env_provider_defaults()
+
         providers = [provider] if provider else [spec.provider for spec in self.list_specs()]
         results: list[dict[str, object]] = []
         for provider_name in providers:
             spec = self.get_spec(provider_name)
             selected_model = model_id or spec.default_model_id
             selected_api_key = api_key_env_var or spec.default_api_key_env_var
+            per_provider_env = env_defaults.get(provider_name, {})
+            selected_base_url = base_url or per_provider_env.get("base_url")
+            selected_api_key = selected_api_key or per_provider_env.get("api_key_env_var")
+            selected_api_version = api_version or per_provider_env.get("api_version")
             try:
                 client = create_provider(
                     provider=provider_name,
                     model_id=selected_model,
                     api_key_env_var=selected_api_key,
-                    base_url=base_url,
-                    api_version=api_version,
+                    base_url=selected_base_url,
+                    api_version=selected_api_version,
                     provider_meta=provider_meta,
                 )
                 models = client.list_models()

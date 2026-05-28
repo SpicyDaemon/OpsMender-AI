@@ -44,6 +44,12 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "python-jose[cryptography]>=3.3",
     "passlib[bcrypt]>=1.7",
+    # passlib 1.7.4 is unmaintained and breaks on bcrypt >= 4.1 (its init
+    # probe sends a >72-byte test password that bcrypt 5.x rejects with
+    # a hard ValueError, so /auth/login silently returns 401 for valid
+    # credentials). Pin bcrypt to the last compatible major until passlib
+    # 1.8 ships or we migrate off passlib.
+    "bcrypt<4.1",
     "websockets>=15.0",
     "tzdata>=2025.2",
     # SAML 2.0 SP support (Sprint 30). Pulls in xmlsec / lxml — requires

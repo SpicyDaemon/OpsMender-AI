@@ -9,6 +9,83 @@ from dataclasses import dataclass, field
 from .factory import create_provider
 
 
+def _looks_like_placeholder(value: str | None) -> bool:
+    """True when a string looks like an unfilled .env.example placeholder.
+
+    Catches the shipped templates so providers like Anthropic / Azure
+    OpenAI (whose ``list_models`` returns a static list without round-
+    tripping credentials) don't show a misleading green dot when the
+    operator hasn't filled in real values yet.
+
+    Examples that should return True:
+      - "your_anthropic_key_here"
+      - "your_openai_key_here"
+      - "your_azure_key_here"
+      - "your_deployment_name"
+      - "https://your-resource.openai.azure.com"
+      - "" / None
+    """
+    if not value:
+        return True
+    lowered = value.strip().lower()
+    if not lowered:
+        return True
+    if lowered.startswith("your_") or lowered.startswith("your-"):
+        return True
+    if "your-resource" in lowered or "your-deployment" in lowered:
+        return True
+    if "your_deployment" in lowered or "your_resource" in lowered:
+        return True
+    if lowered == "change-me" or lowered.startswith("change-me-"):
+        return True
+    return False
+
+
+def _resolve_env_key_value(api_key_env_var: str | None) -> str | None:
+    """Read the API key from the env var its name points at."""
+    if not api_key_env_var:
+        return None
+    return os.environ.get(api_key_env_var)
+
+
+def _detect_placeholder_creds(
+    provider: str,
+    api_key_env_var: str | None,
+    base_url: str | None,
+) -> str | None:
+    """Return a clean 'unavailable' reason if creds look like placeholders.
+
+    Only fires when an env value is EXPLICITLY SET to a literal
+    .env.example placeholder string (the common "operator copied
+    .env.example and didn't fill it in" case). Unset env vars are NOT
+    treated as placeholders — we let create_provider raise its own
+    "env var not set" error so test fixtures that mock create_provider
+    keep working.
+
+    Targets providers whose ``list_models()`` does NOT round-trip
+    credentials (Anthropic returns the configured model; Azure
+    deployment returns the configured model), which would otherwise
+    show a misleading green dot in the dashboard.
+    """
+    if provider in {"anthropic", "openai", "azure_openai"} and api_key_env_var:
+        key_value = os.environ.get(api_key_env_var)
+        if key_value is not None and _looks_like_placeholder(key_value):
+            return (
+                f"{api_key_env_var} is set to the .env.example placeholder. "
+                "Replace it with a real key to enable this provider."
+            )
+    if (
+        provider == "azure_openai"
+        and base_url is not None
+        and _looks_like_placeholder(base_url)
+    ):
+        return (
+            "AZURE_OPENAI_ENDPOINT is set to the .env.example placeholder. "
+            "Set it to your real Azure resource URL."
+        )
+    return None
+
+
 def _env_provider_defaults() -> dict[str, dict[str, str | None]]:
     """Read env-var fallbacks for the discovery probe.
 
@@ -218,6 +295,25 @@ class ProviderRegistry:
             selected_base_url = base_url or per_provider_env.get("base_url")
             selected_api_key = selected_api_key or per_provider_env.get("api_key_env_var")
             selected_api_version = api_version or per_provider_env.get("api_version")
+
+            placeholder_reason = _detect_placeholder_creds(
+                provider_name, selected_api_key, selected_base_url
+            )
+            if placeholder_reason is not None:
+                results.append({
+                    "provider": provider_name,
+                    "label": spec.label,
+                    "default_model_id": spec.default_model_id,
+                    "default_api_key_env_var": spec.default_api_key_env_var,
+                    "requires_api_key": spec.requires_api_key,
+                    "requires_base_url": spec.requires_base_url,
+                    "requires_api_version": spec.requires_api_version,
+                    "available": False,
+                    "models": [],
+                    "error": placeholder_reason,
+                })
+                continue
+
             try:
                 client = create_provider(
                     provider=provider_name,

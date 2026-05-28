@@ -404,3 +404,71 @@ class TestProviderRegistry:
         assert result.warnings == []
         assert captured["provider"] == "ollama"
         assert captured["api_key_env_var"] is None
+
+
+class TestPlaceholderDetection:
+    """Discovery must not show a misleading green dot for unfilled .env vars."""
+
+    def test_looks_like_placeholder_catches_shipped_templates(self):
+        from backend.llm.registry import _looks_like_placeholder
+
+        # Real values are NOT placeholders
+        assert _looks_like_placeholder("sk-ant-abc123") is False
+        assert _looks_like_placeholder("https://opsmender.azure.com") is False
+
+        # Shipped .env.example placeholders
+        assert _looks_like_placeholder("your_anthropic_key_here") is True
+        assert _looks_like_placeholder("your_openai_key_here") is True
+        assert _looks_like_placeholder("your_azure_key_here") is True
+        assert _looks_like_placeholder("your_deployment_name") is True
+        assert _looks_like_placeholder("https://your-resource.openai.azure.com") is True
+
+        # Edge cases
+        assert _looks_like_placeholder("") is True
+        assert _looks_like_placeholder(None) is True
+        assert _looks_like_placeholder("  ") is True
+        assert _looks_like_placeholder("change-me-in-production") is True
+
+    def test_discovery_marks_anthropic_unavailable_when_key_is_placeholder(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "your_anthropic_key_here")
+        ProviderRegistry.clear_discovery_cache()
+        registry = ProviderRegistry()
+
+        results = registry.discover_models(provider="anthropic")
+
+        assert len(results) == 1
+        assert results[0]["available"] is False
+        assert "placeholder" in results[0]["error"].lower()
+
+    def test_discovery_marks_anthropic_available_with_real_key(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-key")
+
+        def _create_provider(**kwargs):
+            return _FakeProvider(["claude-sonnet-4"])
+
+        monkeypatch.setattr("backend.llm.registry.create_provider", _create_provider)
+        ProviderRegistry.clear_discovery_cache()
+        registry = ProviderRegistry()
+
+        results = registry.discover_models(provider="anthropic")
+
+        assert len(results) == 1
+        assert results[0]["available"] is True
+
+    def test_discovery_marks_azure_unavailable_when_endpoint_is_placeholder(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("AZURE_OPENAI_API_KEY", "real-azure-key")
+        monkeypatch.setenv(
+            "AZURE_OPENAI_ENDPOINT", "https://your-resource.openai.azure.com"
+        )
+        ProviderRegistry.clear_discovery_cache()
+        registry = ProviderRegistry()
+
+        results = registry.discover_models(provider="azure_openai")
+
+        assert len(results) == 1
+        assert results[0]["available"] is False
+        assert "azure" in results[0]["error"].lower()

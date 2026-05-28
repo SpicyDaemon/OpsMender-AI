@@ -1251,19 +1251,28 @@ export function ModelSection({
 // MCP Servers
 // ---------------------------------------------------------------------------
 
-type TokenMode = "keep" | "replace" | "clear";
+type EnvPair = { key: string; value: string };
 
 type MCPFormState = {
   name: string;
   transport: MCPTransport;
+  // Single command string (e.g. "npx -y @anthropic/mcp-server-k8s").
+  // Split client-side on whitespace into command + args before POST,
+  // so the backend contract (command + args) stays unchanged.
   command: string;
-  argsText: string;
   url: string;
-  token: string;
-  tokenMode: TokenMode;
-  envText: string;
+  envPairs: EnvPair[];
   is_active: boolean;
 };
+
+// Minimal shlex-like split that handles the common case (whitespace
+// separation). Quoted args with spaces are not supported — operators
+// needing those should use the Import from JSON path instead.
+function splitCommand(input: string): { command: string; args: string[] } {
+  const parts = input.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { command: "", args: [] };
+  return { command: parts[0], args: parts.slice(1) };
+}
 
 type MCPServerTemplate = {
   id: string;
@@ -1357,60 +1366,51 @@ const MCP_SERVER_TEMPLATES: MCPServerTemplate[] = [
   },
 ];
 
+function envObjectToPairs(env: Record<string, string> | null | undefined): EnvPair[] {
+  if (!env) return [];
+  return Object.entries(env).map(([key, value]) => ({ key, value }));
+}
+
+function envPairsToObject(pairs: EnvPair[]): Record<string, string> | null {
+  const cleaned = pairs.filter((p) => p.key.trim());
+  if (cleaned.length === 0) return null;
+  const out: Record<string, string> = {};
+  for (const pair of cleaned) {
+    out[pair.key.trim()] = pair.value;
+  }
+  return out;
+}
+
 function createMCPFormStateFromTemplate(template: MCPServerTemplate): MCPFormState {
+  const commandLine = template.command
+    ? template.args && template.args.length > 0
+      ? `${template.command} ${template.args.join(" ")}`
+      : template.command
+    : "";
   return {
     name: template.suggestedName,
     transport: template.transport,
-    command: template.command ?? "",
-    argsText: template.args?.join("\n") ?? "",
+    command: commandLine,
     url: template.url ?? "",
-    token: "",
-    tokenMode: template.tokenStrategy === "bearer" ? "replace" : "keep",
-    envText: "",
+    envPairs: [],
     is_active: true,
   };
 }
 
 function createMCPFormState(current?: MCPServerResponse | null): MCPFormState {
-  const envText = current?.env_vars
-    ? Object.entries(current.env_vars)
-        .map(([k, v]) => `${k}=${v}`)
-        .join("\n")
+  const commandLine = current?.command
+    ? current.args && current.args.length > 0
+      ? `${current.command} ${current.args.join(" ")}`
+      : current.command
     : "";
   return {
     name: current?.name ?? "",
     transport: current?.transport ?? "stdio",
-    command: current?.command ?? "",
-    argsText: current?.args?.join("\n") ?? "",
+    command: commandLine,
     url: current?.url ?? "",
-    token: "",
-    tokenMode: current?.has_token ? "keep" : "replace",
-    envText,
+    envPairs: envObjectToPairs(current?.env_vars),
     is_active: current?.is_active ?? true,
   };
-}
-
-function parseArgs(text: string): string[] | null {
-  const lines = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines.length ? lines : null;
-}
-
-function parseEnv(text: string): { env: Record<string, string> | null; error?: string } {
-  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
-  if (!lines.length) return { env: null };
-  const env: Record<string, string> = {};
-  for (const line of lines) {
-    const eq = line.indexOf("=");
-    if (eq <= 0) return { env: null, error: `Env var line "${line}" must be KEY=value.` };
-    const key = line.slice(0, eq).trim();
-    const value = line.slice(eq + 1);
-    if (!key) return { env: null, error: `Env var line "${line}" is missing a key.` };
-    env[key] = value;
-  }
-  return { env };
 }
 
 function buildMCPPayload(
@@ -1424,26 +1424,23 @@ function buildMCPPayload(
     return { error: `${form.transport} transport requires a URL.` };
   }
 
-  const { env, error: envError } = parseEnv(form.envText);
-  if (envError) return { error: envError };
+  const env = envPairsToObject(form.envPairs);
+  const { command, args } = splitCommand(form.command);
 
   const payload: MCPServerUpsert = {
     name: form.name.trim(),
     transport: form.transport,
-    command: form.transport === "stdio" ? form.command.trim() : null,
-    args: form.transport === "stdio" ? parseArgs(form.argsText) : null,
+    command: form.transport === "stdio" ? command : null,
+    args: form.transport === "stdio" && args.length > 0 ? args : null,
     url: form.transport === "stdio" ? null : form.url.trim(),
     env_vars: env,
     is_active: form.is_active,
+    // Bearer tokens + custom HTTP headers were removed from the new
+    // simplified form. Always clear token on save through this path;
+    // OAuth-configured rows keep their tokens via the per-row Connect
+    // action, which doesn't go through this payload.
+    clear_token: true,
   };
-
-  if (form.transport === "stdio") {
-    payload.clear_token = true;
-  } else if (form.tokenMode === "replace" && form.token.trim()) {
-    payload.token = form.token;
-  } else if (form.tokenMode === "clear") {
-    payload.clear_token = true;
-  }
 
   return { payload };
 }
@@ -1469,13 +1466,11 @@ function MCPServerModal({
   const [form, setForm] = useState<MCPFormState>(() =>
     createMCPFormState(initialServer),
   );
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(createMCPFormState(initialServer));
-    setSelectedTemplateId(null);
   }, [open, initialServer]);
 
   function setField<K extends keyof MCPFormState>(
@@ -1485,157 +1480,83 @@ function MCPServerModal({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const selectedTemplate = MCP_SERVER_TEMPLATES.find(
-      (template) => template.id === selectedTemplateId,
-    );
-    const intent =
-      !initialServer &&
-      selectedTemplate?.tokenStrategy === "oauth" &&
-      form.transport !== "stdio"
-        ? "connect"
-        : "save";
-    await onSubmit(form, intent);
+  function updateEnvPair(index: number, patch: Partial<EnvPair>) {
+    setForm((current) => ({
+      ...current,
+      envPairs: current.envPairs.map((pair, i) =>
+        i === index ? { ...pair, ...patch } : pair,
+      ),
+    }));
   }
 
-  const showTokenField = form.transport !== "stdio";
-  const hasExistingToken = Boolean(initialServer?.has_token);
-  const selectedTemplate = MCP_SERVER_TEMPLATES.find(
-    (template) => template.id === selectedTemplateId,
-  );
+  function addEnvPair() {
+    setForm((current) => ({
+      ...current,
+      envPairs: [...current.envPairs, { key: "", value: "" }],
+    }));
+  }
+
+  function removeEnvPair(index: number) {
+    setForm((current) => ({
+      ...current,
+      envPairs: current.envPairs.filter((_, i) => i !== index),
+    }));
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await onSubmit(form, "save");
+  }
 
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={initialServer ? "Edit MCP Server" : "Add MCP Server"}
-      maxWidth="max-w-2xl"
+      maxWidth="max-w-lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {!initialServer && (
-          <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-4">
-            <div className="flex items-center gap-2">
-              <Star size={14} className="text-accent" />
-              <div>
-                <p className="text-sm font-medium text-fg-primary">Templates</p>
-                <p className="text-xs text-fg-secondary">
-                  Start from a common MCP shape, then tweak the manual form before saving.
-                </p>
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {MCP_SERVER_TEMPLATES.map((template) => {
-                const isSelected = template.id === selectedTemplateId;
-                return (
-                  <div
-                    key={template.id}
-                    className={`rounded-lg border px-3 py-3 text-left transition ${
-                      isSelected
-                        ? "border-accent bg-accent-bg/40"
-                        : "border-border-subtle bg-bg-panel hover:border-border-strong"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-fg-primary">
-                          {template.name}
-                        </p>
-                        <p className="mt-1 text-xs text-fg-secondary">
-                          {template.description}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge>{template.transport}</Badge>
-                      {template.tokenStrategy === "oauth" && (
-                        <Badge variant="info">OAuth</Badge>
-                      )}
-                      {template.tokenStrategy === "bearer" && (
-                        <Badge variant="default">Bearer token</Badge>
-                      )}
-                      {template.tokenStrategy === "none" && (
-                        <Badge variant="resolved">No auth</Badge>
-                      )}
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <Link
-                        href={template.docsHref}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-primary"
-                      >
-                        {template.docsLabel}
-                        <ExternalLink size={11} aria-hidden />
-                      </Link>
-                      <Button
-                        type="button"
-                        variant={isSelected ? "primary" : "secondary"}
-                        size="sm"
-                        onClick={() => {
-                          setSelectedTemplateId(template.id);
-                          setForm(createMCPFormStateFromTemplate(template));
-                        }}
-                      >
-                        {isSelected ? "Selected" : "Use template"}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        <div>
+          <Label htmlFor="mcp-name">Name</Label>
+          <Input
+            id="mcp-name"
+            value={form.name}
+            onChange={(e) => setField("name", e.target.value)}
+            placeholder="kubernetes-prod"
+            required
+          />
+        </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="mcp-name">Name</Label>
-            <Input
-              id="mcp-name"
-              value={form.name}
-              onChange={(e) => setField("name", e.target.value)}
-              placeholder="kubernetes-prod"
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="mcp-transport">Transport</Label>
-            <Select
-              id="mcp-transport"
-              value={form.transport}
-              onChange={(e) => setField("transport", e.target.value as MCPTransport)}
-            >
-              <option value="stdio">stdio (local process)</option>
-              <option value="sse">sse (server-sent events)</option>
-              <option value="http">http</option>
-            </Select>
-          </div>
+        <div>
+          <Label htmlFor="mcp-transport">Transport</Label>
+          <Select
+            id="mcp-transport"
+            value={form.transport}
+            onChange={(e) => setField("transport", e.target.value as MCPTransport)}
+          >
+            <option value="stdio">stdio (local process)</option>
+            <option value="sse">sse (server-sent events)</option>
+            <option value="http">http</option>
+          </Select>
         </div>
 
         {form.transport === "stdio" ? (
-          <>
-            <div>
-              <Label htmlFor="mcp-command">Command</Label>
-              <Input
-                id="mcp-command"
-                value={form.command}
-                onChange={(e) => setField("command", e.target.value)}
-                placeholder="uvx"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="mcp-args">Args (one per line)</Label>
-              <Textarea
-                id="mcp-args"
-                rows={4}
-                value={form.argsText}
-                onChange={(e) => setField("argsText", e.target.value)}
-                placeholder="mcp-server-kubernetes"
-                className="font-mono text-xs"
-              />
-            </div>
-          </>
+          <div>
+            <Label htmlFor="mcp-command">Command</Label>
+            <Input
+              id="mcp-command"
+              value={form.command}
+              onChange={(e) => setField("command", e.target.value)}
+              placeholder="npx -y @anthropic/mcp-server-k8s"
+              className="font-mono text-xs"
+              required
+            />
+            <p className="mt-1 text-xs text-fg-muted">
+              Full command line. Split on whitespace into command + args at
+              runtime. For args containing spaces, use the Import from JSON
+              entry point instead.
+            </p>
+          </div>
         ) : (
           <div>
             <Label htmlFor="mcp-url">URL</Label>
@@ -1649,78 +1570,48 @@ function MCPServerModal({
           </div>
         )}
 
-        {showTokenField && (
-          <div>
-            <Label htmlFor="mcp-token">Bearer Token</Label>
-            {hasExistingToken && form.tokenMode === "keep" ? (
-              <div className="flex items-center gap-3 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-secondary">
-                <span className="font-mono tracking-widest">••••••••</span>
-                <span className="text-xs text-fg-muted">saved</span>
-                <div className="ml-auto flex gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setField("tokenMode", "replace")}
-                  >
-                    Replace
-                  </Button>
+        <div>
+          <div className="flex items-center justify-between">
+            <Label>Environment Variables</Label>
+            <Button type="button" variant="secondary" size="sm" onClick={addEnvPair}>
+              <Plus size={12} /> Variable
+            </Button>
+          </div>
+          {form.envPairs.length === 0 ? (
+            <p className="mt-2 text-xs text-fg-muted">
+              None. Click <em>+ Variable</em> to add KEY=value pairs.
+            </p>
+          ) : (
+            <div className="mt-2 space-y-2">
+              {form.envPairs.map((pair, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    placeholder="KEY"
+                    value={pair.key}
+                    onChange={(e) => updateEnvPair(idx, { key: e.target.value })}
+                    className="font-mono text-xs w-1/3"
+                    aria-label={`Env var key ${idx + 1}`}
+                  />
+                  <Input
+                    placeholder="value"
+                    value={pair.value}
+                    onChange={(e) => updateEnvPair(idx, { value: e.target.value })}
+                    className="font-mono text-xs flex-1"
+                    aria-label={`Env var value ${idx + 1}`}
+                  />
                   <Button
                     type="button"
                     variant="danger"
                     size="sm"
-                    onClick={() => setField("tokenMode", "clear")}
+                    onClick={() => removeEnvPair(idx)}
+                    aria-label={`Remove env var ${idx + 1}`}
                   >
-                    Remove
+                    <Trash2 size={12} />
                   </Button>
                 </div>
-              </div>
-            ) : form.tokenMode === "clear" ? (
-              <div className="flex items-center justify-between rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-sm text-status-critical">
-                <span>Token will be removed on save.</span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setField("tokenMode", "keep")}
-                >
-                  Undo
-                </Button>
-              </div>
-            ) : (
-              <>
-                <Input
-                  id="mcp-token"
-                  type="password"
-                  value={form.token}
-                  onChange={(e) => setField("token", e.target.value)}
-                  placeholder={hasExistingToken ? "Enter a new token" : "Optional"}
-                  autoComplete="off"
-                />
-                {hasExistingToken && (
-                  <button
-                    type="button"
-                    className="mt-1 text-xs text-fg-secondary hover:text-fg-primary underline-offset-2 hover:underline"
-                    onClick={() => setField("tokenMode", "keep")}
-                  >
-                    Keep existing token
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        <div>
-          <Label htmlFor="mcp-env">Env Vars (KEY=value, one per line)</Label>
-          <Textarea
-            id="mcp-env"
-            rows={3}
-            value={form.envText}
-            onChange={(e) => setField("envText", e.target.value)}
-            placeholder="KUBECONFIG=/etc/k8s/config"
-            className="font-mono text-xs"
-          />
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
@@ -1742,15 +1633,7 @@ function MCPServerModal({
             Cancel
           </Button>
           <Button type="submit" loading={saving} disabled={!form.name.trim()}>
-            {selectedTemplate?.tokenStrategy === "oauth" && !initialServer ? (
-              <>
-                <ExternalLink size={13} /> Create & Connect
-              </>
-            ) : (
-              <>
-                <Save size={13} /> {initialServer ? "Save Changes" : "Create Server"}
-              </>
-            )}
+            <Save size={13} /> {initialServer ? "Save Changes" : "Create Server"}
           </Button>
         </div>
       </form>
@@ -2028,8 +1911,13 @@ export function MCPSection({
 
   async function handleSubmit(
     form: MCPFormState,
-    intent: "save" | "connect",
+    _intent: "save" | "connect",
   ) {
+    // The "connect" intent (auto-redirect to OAuth after save) was driven
+    // by the inline template grid that picked an OAuth template. That UI
+    // is gone; OAuth-needing servers are saved first, then connected via
+    // the per-row Connect action, which is the existing well-tested path.
+    void _intent;
     const { payload, error: buildError } = buildMCPPayload(form);
     if (buildError || !payload) {
       setError(buildError ?? "Invalid form values.");
@@ -2042,29 +1930,13 @@ export function MCPSection({
       if (editing) {
         await updateMCPServer(editing.id, payload);
         setNotice("MCP server updated.");
-        setModalOpen(false);
-        setEditing(null);
-        await onReload();
       } else {
-        const created = await createMCPServer(payload);
+        await createMCPServer(payload);
         setNotice("MCP server created.");
-        setModalOpen(false);
-        setEditing(null);
-        if (intent === "connect" && created.transport !== "stdio") {
-          try {
-            const { authorize_url } = await startMCPOAuth(created.id);
-            window.location.assign(authorize_url);
-            return;
-          } catch (oauthErr) {
-            setError(
-              oauthErr instanceof Error
-                ? `${oauthErr.message} The server was created; use Connect from the row to retry.`
-                : "OAuth start failed. The server was created; use Connect from the row to retry.",
-            );
-          }
-        }
-        await onReload();
       }
+      setModalOpen(false);
+      setEditing(null);
+      await onReload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {

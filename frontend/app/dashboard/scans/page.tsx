@@ -451,7 +451,7 @@ export default function EnvironmentScansPage() {
                             )}
                             {f.status === "remediating" && f.session_id && (
                               <a
-                                href={`/dashboard/sessions/${f.session_id}`}
+                                href={`/dashboard/sessions/detail?id=${f.session_id}`}
                                 className="text-xs text-accent-default hover:underline"
                               >
                                 View session →

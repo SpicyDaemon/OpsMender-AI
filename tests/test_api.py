@@ -370,6 +370,45 @@ class TestAuth:
         assert "other" in usernames
         assert all(item["auth_source"] == "local" for item in data["items"])
 
+    async def test_login_with_email(self, client: AsyncClient):
+        """Login route accepts email in the username field."""
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "emaillogin",
+                "email": "emaillogin@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/auth/login",
+            json={
+                "username": "emaillogin@test.com",
+                "password": "password123",
+            },
+        )
+        assert resp.status_code == 200
+        assert "access_token" in resp.json()
+
+    async def test_login_with_uppercase_email(self, client: AsyncClient):
+        """Email lookup falls back to lowercase when as-is misses."""
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "caselogin",
+                "email": "caselogin@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/auth/login",
+            json={
+                "username": "CaseLogin@TEST.com",
+                "password": "password123",
+            },
+        )
+        assert resp.status_code == 200
+
     async def test_login_wrong_password(self, client: AsyncClient):
         await client.post(
             "/auth/register",

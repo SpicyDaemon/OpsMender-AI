@@ -175,7 +175,17 @@ async def login(
     body: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    user = await UserRepo.get_by_username(db, body.username)
+    # Accept either the username OR the email address in the "username"
+    # field. Most users reflexively type their email into a credentials
+    # form — failing in that case is a real onboarding cliff for no
+    # security benefit (username uniqueness is enforced separately, and
+    # the same 401 is returned for any miss either way).
+    identifier = (body.username or "").strip()
+    user = await UserRepo.get_by_username(db, identifier)
+    if user is None and "@" in identifier:
+        user = await UserRepo.get_by_email(db, identifier)
+        if user is None and identifier != identifier.lower():
+            user = await UserRepo.get_by_email(db, identifier.lower())
     # Sprint 56: soft-deleted users have a scrubbed (empty) password_hash;
     # short-circuit before verify_password to avoid the bcrypt empty-hash
     # exception, and to return the same generic 401 to avoid enumeration.

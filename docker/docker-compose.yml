@@ -55,7 +55,12 @@ services:
       db:
         condition: service_healthy
     environment:
-      OPSMENDER_DATABASE_URL: postgresql+asyncpg://opsmender:${POSTGRES_PASSWORD:-opsmender}@db:5432/opsmender
+      # OPSMENDER_DATABASE_URL is intentionally NOT set here so the value
+      # from .env (loaded via env_file above) wins. The shipped
+      # .env.example default points at the bundled `db` service so the
+      # "cp .env.example .env && docker compose up" path works; operators
+      # pointing at an external Postgres (RDS, Cloud SQL, on-prem) just
+      # edit OPSMENDER_DATABASE_URL in .env.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     # Canonical entry point — backend API + static frontend on the same port.
     ports:

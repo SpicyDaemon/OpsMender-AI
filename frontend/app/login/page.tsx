@@ -118,7 +118,7 @@ export default function LoginPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="username">Username</Label>
+          <Label htmlFor="username">Username or email</Label>
           <Input
             id="username"
             type="text"
@@ -127,7 +127,7 @@ export default function LoginPage() {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="admin"
+            placeholder="admin or you@example.com"
           />
         </div>
 

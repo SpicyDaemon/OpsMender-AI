@@ -1,7 +1,7 @@
 """Add format column to webhook_triggers.
 
 Revision ID: a7b9c1d2e3f4
-Revises: f1a2b3c4d5e6
+Revises: f1a2b3c4d5e7
 Create Date: 2026-04-19
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = "a7b9c1d2e3f4"
-down_revision: Union[str, Sequence[str], None] = "f1a2b3c4d5e6"
+down_revision: Union[str, Sequence[str], None] = "f1a2b3c4d5e7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

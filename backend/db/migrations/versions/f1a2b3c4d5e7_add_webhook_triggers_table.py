@@ -1,8 +1,15 @@
 """Add webhook_triggers table.
 
-Revision ID: f1a2b3c4d5e6
+Revision ID: f1a2b3c4d5e7
 Revises: e4a1d9f2b5c6
 Create Date: 2026-04-18
+
+Note: this revision was originally f1a2b3c4d5e6 and collided with
+backend/db/migrations/versions/f1a2b3c4d5e6_add_client_credentials_to_mcp_oauth_tokens.py
+(same revision ID), which caused Alembic to report multiple heads. The
+ID was bumped to f1a2b3c4d5e7 so each chain has a unique label; the
+client_credentials migration keeps the original f1a2b3c4d5e6 and its
+existing downstream child (f6b7c8d9e0f1).
 """
 
 from typing import Sequence, Union
@@ -12,7 +19,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision: str = "f1a2b3c4d5e6"
+revision: str = "f1a2b3c4d5e7"
 down_revision: Union[str, Sequence[str], None] = "e4a1d9f2b5c6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

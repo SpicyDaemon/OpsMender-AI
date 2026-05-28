@@ -1143,25 +1143,11 @@ export function ModelSection({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {providers.map((provider) => (
-          <span
-            key={provider.provider}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
-              provider.available
-                ? "border-status-low-border bg-status-low-bg text-status-low"
-                : "border-border-subtle bg-bg-elevated text-fg-muted"
-            }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                provider.available ? "bg-status-low" : "bg-bg-elevated"
-              }`}
-            />
-            {provider.label}
-          </span>
-        ))}
-      </div>
+      {/* Per-provider availability chips intentionally removed — the
+          per-row status dot in the saved-config table is the source of
+          truth for "is THIS configured model reachable?". The chip row
+          duplicated that signal at the abstract provider-type level,
+          which led to confusing greens when no model was configured. */}
 
       {!canEdit && (
         <p className="text-sm text-fg-secondary">

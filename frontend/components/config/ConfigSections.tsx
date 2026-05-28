@@ -1710,6 +1710,253 @@ function MCPServerModal({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Import from JSON modal
+// ---------------------------------------------------------------------------
+// Accepts a Claude Desktop / Cursor-style mcp.json shape:
+//
+//   { "mcpServers": {
+//       "<name>": {
+//         "command": "...", "args": ["..."], "env": { ... }
+//       } | {
+//         "url": "...", "transport": "http" | "sse"
+//       }
+//   } }
+//
+// Each entry is POSTed individually through the existing /mcp-servers
+// route so server-side validation, dedup, and audit logging stay on
+// the same well-tested path. Per-entry failures are surfaced without
+// aborting the whole batch.
+
+type ImportEntryResult = {
+  name: string;
+  ok: boolean;
+  message: string;
+};
+
+function parseMCPJsonImport(
+  raw: string,
+): { entries?: MCPServerUpsert[]; error?: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error
+          ? `Invalid JSON: ${err.message}`
+          : "Invalid JSON.",
+    };
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("mcpServers" in parsed)
+  ) {
+    return { error: "Expected top-level object with an `mcpServers` map." };
+  }
+  const mcpServers = (parsed as { mcpServers: unknown }).mcpServers;
+  if (typeof mcpServers !== "object" || mcpServers === null) {
+    return { error: "`mcpServers` must be an object keyed by server name." };
+  }
+
+  const entries: MCPServerUpsert[] = [];
+  for (const [name, raw_value] of Object.entries(
+    mcpServers as Record<string, unknown>,
+  )) {
+    if (typeof raw_value !== "object" || raw_value === null) {
+      return { error: `Entry "${name}" must be an object.` };
+    }
+    const value = raw_value as Record<string, unknown>;
+    const url = typeof value.url === "string" ? value.url : null;
+    const command = typeof value.command === "string" ? value.command : null;
+    const rawArgs = Array.isArray(value.args)
+      ? (value.args as unknown[]).filter((a): a is string => typeof a === "string")
+      : [];
+    const rawEnv =
+      value.env && typeof value.env === "object" && !Array.isArray(value.env)
+        ? (Object.fromEntries(
+            Object.entries(value.env as Record<string, unknown>).filter(
+              ([, v]) => typeof v === "string",
+            ),
+          ) as Record<string, string>)
+        : null;
+    const rawTransport =
+      typeof value.transport === "string" ? value.transport : null;
+
+    let transport: MCPTransport;
+    if (rawTransport === "stdio" || rawTransport === "http" || rawTransport === "sse") {
+      transport = rawTransport;
+    } else if (url) {
+      transport = "http";
+    } else {
+      transport = "stdio";
+    }
+
+    if (transport === "stdio" && !command) {
+      return { error: `Entry "${name}" needs a "command" for stdio transport.` };
+    }
+    if (transport !== "stdio" && !url) {
+      return { error: `Entry "${name}" needs a "url" for ${transport} transport.` };
+    }
+
+    entries.push({
+      name,
+      transport,
+      command: transport === "stdio" ? command : null,
+      args: transport === "stdio" && rawArgs.length > 0 ? rawArgs : null,
+      url: transport === "stdio" ? null : url,
+      env_vars: rawEnv && Object.keys(rawEnv).length > 0 ? rawEnv : null,
+      is_active: true,
+      clear_token: true,
+    });
+  }
+
+  if (entries.length === 0) {
+    return { error: "No servers found in `mcpServers`." };
+  }
+  return { entries };
+}
+
+function ImportMCPJsonModal({
+  open,
+  onClose,
+  onComplete,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onComplete: () => Promise<void>;
+}) {
+  const [raw, setRaw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [parseError, setParseError] = useState<string>("");
+  const [results, setResults] = useState<ImportEntryResult[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRaw("");
+    setParseError("");
+    setResults([]);
+  }, [open]);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setRaw(text);
+    setParseError("");
+    setResults([]);
+  }
+
+  async function handleImport() {
+    setParseError("");
+    setResults([]);
+    const { entries, error } = parseMCPJsonImport(raw);
+    if (error || !entries) {
+      setParseError(error ?? "Could not parse JSON.");
+      return;
+    }
+    setBusy(true);
+    const collected: ImportEntryResult[] = [];
+    for (const entry of entries) {
+      try {
+        await createMCPServer(entry);
+        collected.push({
+          name: entry.name,
+          ok: true,
+          message: "imported",
+        });
+      } catch (err) {
+        collected.push({
+          name: entry.name,
+          ok: false,
+          message: err instanceof Error ? err.message : "import failed",
+        });
+      }
+    }
+    setResults(collected);
+    setBusy(false);
+    if (collected.some((r) => r.ok)) {
+      await onComplete();
+    }
+  }
+
+  const allDone = results.length > 0 && results.every((r) => r.ok);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Import MCP Servers from JSON"
+      maxWidth="max-w-2xl"
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-fg-secondary">
+          Paste a Claude Desktop / Cursor-style <code>mcp.json</code>{" "}
+          (top-level <code>mcpServers</code> map). Each entry is created
+          through the standard MCP server API; per-entry failures are
+          reported without aborting the batch.
+        </p>
+
+        <div>
+          <Label htmlFor="mcp-import-file">JSON file (optional)</Label>
+          <input
+            id="mcp-import-file"
+            type="file"
+            accept=".json,application/json"
+            onChange={handleFile}
+            className="mt-1 block w-full text-xs text-fg-secondary file:mr-3 file:rounded-md file:border-0 file:bg-bg-elevated file:px-3 file:py-1.5 file:text-xs file:text-fg-primary hover:file:bg-bg-hover"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="mcp-import-textarea">Or paste JSON</Label>
+          <Textarea
+            id="mcp-import-textarea"
+            rows={10}
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            placeholder='{\n  "mcpServers": {\n    "k8s": {\n      "command": "npx",\n      "args": ["-y", "@anthropic/mcp-server-k8s"]\n    }\n  }\n}'
+            className="font-mono text-xs"
+          />
+        </div>
+
+        {parseError && <FormError message={parseError} />}
+
+        {results.length > 0 && (
+          <div className="space-y-1 rounded-md border border-border-subtle bg-bg-elevated p-3">
+            {results.map((r) => (
+              <div
+                key={r.name}
+                className={`text-xs ${r.ok ? "text-status-low" : "text-status-high"}`}
+              >
+                <span className="font-mono">{r.name}</span> — {r.message}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {allDone ? "Close" : "Cancel"}
+          </Button>
+          {!allDone && (
+            <Button
+              type="button"
+              onClick={handleImport}
+              loading={busy}
+              disabled={!raw.trim()}
+            >
+              <Save size={13} /> Import
+            </Button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 type TestState = {
   status: "idle" | "running" | "success" | "failure";
   result?: MCPServerTestResponse;
@@ -1760,6 +2007,7 @@ export function MCPSection({
   canEdit: boolean;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<MCPServerResponse | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -2129,8 +2377,15 @@ export function MCPSection({
             <span className="text-sm text-fg-secondary">
               {servers.length} saved server{servers.length === 1 ? "" : "s"}
             </span>
+            <Button
+              variant="secondary"
+              onClick={() => setImportOpen(true)}
+              disabled={!canEdit}
+            >
+              <Plus size={14} /> Import from JSON
+            </Button>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Add MCP Server
+              <Plus size={14} /> Add MCP
             </Button>
           </>
         }
@@ -2196,6 +2451,12 @@ export function MCPSection({
         saving={saving}
         error={error}
         initialServer={editing}
+      />
+
+      <ImportMCPJsonModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onComplete={onReload}
       />
     </Section>
   );

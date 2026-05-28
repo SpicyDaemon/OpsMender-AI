@@ -31,7 +31,7 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Config</h1>
         <p className="mt-1 text-sm text-fg-secondary">
-          Runtime defaults and storage retention. Models, MCP servers, workflows, agent teams, bot connectors, webhook triggers, and ingest tokens each have their own page in the sidebar.
+          Runtime defaults and storage retention. Models, MCP servers, workflows, and agent teams live under AI Agent; notification channels and outbound hooks live under Paging & On-call.
         </p>
       </div>
 

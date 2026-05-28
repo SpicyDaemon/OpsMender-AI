@@ -70,7 +70,7 @@ Sprint 37 step 4 needs a Bot Framework registration so Teams knows where to deli
 
 ### 3.4 OpsMender connector
 
-In OpsMender → **Bot Connectors** → New Teams connector:
+In OpsMender → **Notification Channels** → New Teams channel:
 
 | Field | Value |
 |-------|-------|

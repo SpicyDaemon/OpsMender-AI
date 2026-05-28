@@ -12,12 +12,12 @@ If you are a developer looking for internal architecture documentation, API deta
 * [Getting Started](getting-started.md) — Installation, your first login, and running your first AI-assisted incident session.
 
 ### 2. Administrator Guide
-* [Administrator Guide](admin-guide.md) — Runtime configurations, LLM providers, setting up MCP servers, chat bot connectors, webhooks, and ingest tokens.
+* [Administrator Guide](admin-guide.md) — Runtime configurations, LLM providers, setting up MCP servers, notification channels, outbound hooks, and alert intake.
 * **Authentication** — start here, then branch:
   * [Auth Guide](auth-guide.md) — **default model**: single workspace, email + password, admin-issued invites, three roles. What 95% of self-hosted installs use.
   * [People Guide](people-guide.md) — day-to-day People-page operations: invites, password resets, auth-method badges, deactivation vs soft delete, bootstrap admins, SMTP.
   * [Advanced Auth Guide](advanced-auth-guide.md) — optional surfaces: per-tenant OIDC, per-tenant SAML 2.0, multi-tenant organizations, host-based domain isolation, and the two env flags (`OPSMENDER_ADVANCED_AUTH_ENABLED`, `OPSMENDER_MULTI_ORG_ENABLED`) that gate them.
-* [Integrations Guide](integrations-guide.md) — Incident ingest adapters, chat bot connectors, outbound webhooks, and Docker deployment basics.
+* [Integrations Guide](integrations-guide.md) — Alert intake adapters, notification channels, outbound hooks, and Docker deployment basics.
 * [Skills Guide](skills-guide.md) — Managing MCP servers, enforcement tiers, and capability examples.
 
 ### 3. Operator Guide

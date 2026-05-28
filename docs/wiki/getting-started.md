@@ -33,7 +33,7 @@ OpsMender is composed of a FastAPI backend, a Next.js frontend, and a PostgreSQL
 
 ## 3. Creating Your First Incident
 
-Incidents can be ingested automatically via webhooks (e.g., Datadog, CloudWatch, or generic JSON senders) using Ingest Tokens, but you can also create them manually.
+Incidents can be ingested automatically via service alert intake webhooks (e.g., Datadog, CloudWatch, or generic JSON senders), but you can also create them manually.
 
 1. On the Incidents dashboard, click **New Incident**.
 2. Fill out the core details:

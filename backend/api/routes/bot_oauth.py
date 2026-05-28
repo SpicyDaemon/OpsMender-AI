@@ -8,7 +8,7 @@ Sprint 31 Steps 5–6. Two admin-only routes per supported platform:
 * ``GET /bot-connectors/oauth/{platform}/callback?code=…&state=…`` —
   verifies the state, exchanges the code for tokens, merges the bot
   token into the connector's ``credentials`` JSON, and redirects back
-  to ``/dashboard/bot-connectors``.
+  to ``/dashboard/paging/notification-channels``.
 
 Client credentials (``OPSMENDER_SLACK_OAUTH_CLIENT_ID`` etc) live in env, not
 in the DB. When unset, the routes return 503 and the UI falls back to
@@ -148,7 +148,7 @@ async def oauth_callback(
     base = _public_base_url(request)
 
     def _redirect_with(params: dict[str, str]) -> RedirectResponse:
-        target = f"{base}/dashboard/bot-connectors?{urlencode(params)}"
+        target = f"{base}/dashboard/paging/notification-channels?{urlencode(params)}"
         return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
 
     if error:

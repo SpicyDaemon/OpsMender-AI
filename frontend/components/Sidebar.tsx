@@ -19,7 +19,6 @@ import {
   Cpu,
   FileText,
   GitBranch,
-  Inbox,
   ListOrdered,
   LogOut,
   Network,
@@ -91,7 +90,9 @@ function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
         { href: "/dashboard/paging/priority-rules", label: "Priority Rules", icon: ListOrdered },
         { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch },
         { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench },
+        { href: "/dashboard/paging/notification-channels", label: "Notification Channels", icon: Plug },
         { href: "/dashboard/paging/my-notifications", label: "My Notifications", icon: Bell },
+        { href: "/dashboard/paging/outbound-hooks", label: "Outbound Hooks", icon: Send },
       ],
     },
     {
@@ -104,15 +105,6 @@ function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
         { href: "/dashboard/models", label: "Models", icon: Cpu },
         { href: "/dashboard/workflows", label: "Workflows", icon: Workflow },
         { href: "/dashboard/agent-teams", label: "Agent Teams", icon: Bot },
-      ],
-    },
-    {
-      id: "integrations",
-      label: "Integrations",
-      items: [
-        { href: "/dashboard/bot-connectors", label: "Bot Connectors", icon: Plug },
-        { href: "/dashboard/webhooks", label: "Webhook Triggers", icon: Send },
-        { href: "/dashboard/ingest-tokens", label: "Ingest Tokens", icon: Inbox },
       ],
     },
     {

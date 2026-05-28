@@ -85,7 +85,7 @@ In your Slack app's settings:
 
 In OpsMender:
 
-1. **Bot Connectors** → either create a new Slack connector or edit the existing one. Paste the bot token and signing secret. Save.
+1. **Notification Channels** → either create a new Slack channel or edit the existing one. Paste the bot token and signing secret. Save.
 2. **Bot User Links** → for every operator who should be allowed to click buttons or use slash commands, add a row mapping their Slack user id to their OpsMender user id (`POST /bot-connectors/{id}/user-links`).
 3. (Optional) Set `OPSMENDER_SLACK_BOT_TOKEN` in your environment. This is the same token used by the dispatcher for DMs and by the channel mirror for `conversations.create`.
 

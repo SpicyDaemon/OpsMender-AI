@@ -482,7 +482,7 @@ class TestCallbackRoute:
 
         assert resp.status_code == 302
         loc = resp.headers["location"]
-        assert loc.startswith("http://test/dashboard/bot-connectors?")
+        assert loc.startswith("http://test/dashboard/paging/notification-channels?")
         assert "bot_oauth=ok" in loc
         assert "Acme" in loc
 

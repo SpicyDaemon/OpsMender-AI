@@ -3510,7 +3510,7 @@ export function BotConnectorSection({
   }, []);
 
   // Surface OAuth-callback result. The backend redirects to
-  // /dashboard/bot-connectors?bot_oauth=ok|error&detail=…
+  // /dashboard/paging/notification-channels?bot_oauth=ok|error&detail=…
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -3636,8 +3636,8 @@ export function BotConnectorSection({
 
   return (
     <Section
-      title="Chat Bot Connectors"
-      description="Configure external chat channels for incident lookup, session status, approvals, co-pilot relay, and notifications."
+      title="Notification Channels"
+      description="Configure workspace-level communication channels such as Slack, Teams, Discord, Email, SMS, Telegram, WhatsApp, Signal, and custom adapters."
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -3646,12 +3646,12 @@ export function BotConnectorSection({
           </p>
           {!canEdit && (
             <p className="text-sm text-fg-secondary">
-              Admin role required to manage chat bot connectors.
+              Admin role required to manage notification channels.
             </p>
           )}
         </div>
         <Button onClick={openCreateModal} disabled={!canEdit}>
-          <Plus size={14} /> Add Connector
+          <Plus size={14} /> Add Channel
         </Button>
       </div>
 
@@ -3660,7 +3660,7 @@ export function BotConnectorSection({
 
       {connectors.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No chat bot connectors yet. Add one to prepare Telegram, Signal, WhatsApp, or custom chat surfaces.
+          No notification channels yet. Add one to prepare Slack, Teams, Discord, Email, SMS, Telegram, WhatsApp, Signal, or a custom adapter.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border-subtle">
@@ -4075,12 +4075,12 @@ export function IngestTokenSection({
 
   return (
     <Section
-      title="Ingest Tokens"
-      description="Manage webhook tokens for external alerting systems (CloudWatch, Azure Monitor, GCP Monitoring, OCI, and generic JSON sources)."
+      title="Alert Intake"
+      description="Manage the current inbound alert token backend for external alerting systems. In v1 this remains route-compatible; the product concept is moving toward per-service webhook URLs."
     >
       {!canEdit && (
         <p className="text-sm text-fg-secondary">
-          Admin role required to manage ingest tokens.
+          Admin role required to manage alert intake tokens.
         </p>
       )}
 
@@ -4106,13 +4106,13 @@ export function IngestTokenSection({
                 ` (${tokens.filter((t) => t.is_active).length} active)`}
             </span>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> New Token
+              <Plus size={14} /> New Intake Token
             </Button>
           </>
         }
         empty={
           <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No ingest tokens yet. Create one to start receiving incidents from external monitoring tools.
+            No alert intake tokens yet. Create one only if you need the legacy shared intake flow; the Services area is the preferred home for service-specific alert intake.
           </div>
         }
         rowActions={(token) => (
@@ -5736,12 +5736,12 @@ export function WebhookTriggerSection({
 
   return (
     <Section
-      title="Outbound Webhooks"
-      description="Saved triggers notify external systems when session state changes. This uses the existing generic webhook backend."
+      title="Outbound Hooks"
+      description="Send incident and session lifecycle updates to external systems or stakeholder workflows when state changes. These are not primary on-call notification preferences."
     >
       {!canEdit && (
         <p className="text-sm text-fg-secondary">
-          Admin role required to manage outbound webhook triggers.
+          Admin role required to manage outbound hooks.
         </p>
       )}
 
@@ -5760,13 +5760,13 @@ export function WebhookTriggerSection({
               {triggers.length} saved trigger{triggers.length === 1 ? "" : "s"}
             </span>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Add Trigger
+              <Plus size={14} /> Add Hook
             </Button>
           </>
         }
         empty={
           <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No outbound webhook triggers yet. Add one to deliver OpsMender session events to downstream systems.
+            No outbound hooks yet. Add one to deliver OpsMender lifecycle events to downstream systems.
           </div>
         }
         rowActions={(trigger) => {

@@ -96,7 +96,7 @@ For admin-facing user lifecycle work, see [docs/wiki/people-guide.md](docs/wiki/
 
 Four configurable surfaces drive the behavior under the loop above:
 
-**Ingest — getting alerts in (stage 1).** Your monitoring tools (Prometheus Alertmanager, Datadog, CloudWatch, Azure Monitor, Sumo Logic, Grafana, anything that POSTs JSON) send to `/incidents/ingest`; OpsMender creates an incident from the payload and runs the tier-gated AI response workflow. The **universal adapter** accepts any shape and uses an LLM to extract the title/severity/description on first sight, then caches the path mapping per token (so a Datadog payload only costs an LLM call once). Typed adapters exist for CloudWatch SNS, Azure Monitor, GCP Monitoring, OCI, and a Generic JSON adapter for stricter parsing.
+**Alert Intake — getting alerts in (stage 1).** Your monitoring tools (Prometheus Alertmanager, Datadog, CloudWatch, Azure Monitor, Sumo Logic, Grafana, anything that POSTs JSON) send alerts into OpsMender; OpsMender creates an incident from the payload and runs the tier-gated AI response workflow. For v1, the legacy `/incidents/ingest` token backend remains available. The product model is moving toward one unique Service Webhook per service: an embedded unguessable secret in the URL lets external monitors POST directly without separate API-key headers.
 
 **Paging — who gets pinged (stage 3).** OpsMender owns paging end-to-end inside the product. Configure **services**, **teams**, **rosters** (with deterministic on-call rotation in IANA time zones), **escalation chains** (additive — once paged, stay paged, with a hard 15-minute inactivity timeout), and **priority rules** (first-match-wins on the alert payload) under the **Paging & On-call** sidebar group. Operators set per-user **notification preferences**. **Maintenance windows** suppress paging in a time range. The chain engine and notification dispatcher run as background loops with restart-safe watermarks.
 
@@ -104,7 +104,7 @@ Four configurable surfaces drive the behavior under the loop above:
 
 **Agent teams — which specialist personas reason about the problem.** Inside the reasoning nodes (`diagnose`, `plan`), instead of one generic LLM pass, you can configure multiple specialist roles to each take a pass — `incident_commander`, `investigator`, `skeptic`, `remediator` — followed by a synthesis pass. Saved as **Agent team profiles**. Default is one generic persona.
 
-**Webhook triggers — getting events out.** Whenever a session changes state (`created`, `awaiting_approval`, `active`, `completed`, `failed`, `timed_out`), OpsMender POSTs a payload to whatever URLs you've configured. Format presets exist for **Slack** incoming webhooks, **Teams** workflow webhooks, **Sumo Logic**, or **generic JSON**.
+**Outbound Hooks — getting events out.** Whenever a session changes state (`created`, `awaiting_approval`, `active`, `completed`, `failed`, `timed_out`), OpsMender POSTs a payload to whatever URLs you've configured. Format presets exist for **Slack** incoming webhooks, **Teams** workflow webhooks, **Sumo Logic**, or **generic JSON**.
 
 **AI incident memory — carrying lessons forward.** Each successfully resolved session writes one short markdown lesson into the per-org `incident_memories` table, scoped to the service that owned the incident. On the next incident for that service, a `recall` node runs *before* `observe` — pure SQL match on service + tag overlap + keyword match, weighted by operator thumbs up/down. The top 5 matches get injected into the agent's system prompt as a `### Past lessons from similar incidents` block. Memory is per-org isolated, advisory only (cannot bypass tier gates), written via a strict JSON-schema-validated post-session `remember` node (no prompt-injection path from chat or tool output), skipped on failed sessions, bounded by auto-compaction at 50 memories per service, and operator-curated via `/dashboard/memories`. Postmortem authors curate the next batch of memories from the per-incident editor — see [docs/wiki/postmortem-guide.md](docs/wiki/postmortem-guide.md).
 
@@ -112,12 +112,13 @@ Four configurable surfaces drive the behavior under the loop above:
 
 | Sidebar group | Frequency | What's in it |
 |---|---|---|
+| **Incident Management** | Always | Dashboard, Incidents, Approvals |
+| **Paging & On-call** | Most operators | Teams, Services, Rosters, Priority Rules, Escalation Chains, Maintenance Windows, Notification Channels, My Notifications, Outbound Hooks |
 | **AI Agent** (Day-1 setup) | Always | Skills, Memories, MCP Servers, Models, Workflows, Agent Teams |
-| **Integrations** (Day-1 setup) | Most operators | Bot Connectors, Webhook Triggers, Ingest Tokens |
-| **Paging & On-call** | Most operators | Teams, Services, Rosters, Priority Rules, Escalation Chains, Maintenance Windows, My Notifications |
-| **Admin → Config** | Rarely | Runtime defaults (tier, log level), Storage & Retention |
+| **Observe** | Operators | Environment Scans, Reliability, Activity |
+| **Admin** | Admins | People, Workspace Settings, Config |
 
-If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/skills`), then wire your monitoring to Ingest (`/dashboard/ingest-tokens`), then configure one paging service + roster + chain under the **Paging & On-call** sidebar group so on-call operators actually get pinged.
+If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/skills`), then create a service under **Paging & On-call** and treat that service as the home for alert intake, roster, priority, and escalation setup.
 
 ---
 
@@ -201,9 +202,9 @@ All other configuration (tier, log level, ingest rate limits, SMTP, SAML SP keyp
 1. **Models** — open `/dashboard/models`, click **Add model**, pick a provider, fill in fields (`Refresh catalog` will list available IDs once credentials resolve). Set one as default.
 2. **MCP servers** — open `/dashboard/mcp-servers`, click **Add server**, point at a stdio/SSE/HTTP MCP endpoint. Use **Test** to confirm connectivity. The Config → MCP Servers modal ships curated templates for common server shapes (Kubernetes, Postgres, GitHub Copilot MCP, generic HTTP/bearer/stdio).
 3. **Skills** — open `/dashboard/skills`, click **Import** to upload a `SKILL.md` (start from [`examples/SKILL.md`](examples/SKILL.md) for infra ops or [`examples/SKILL.app-incident.md`](examples/SKILL.app-incident.md) for app-layer incident response). The file classifies each MCP tool as `safe` / `caution` / `destructive` — the tier gate enforces these at runtime. Skills dropped into the local `skills/` directory are auto-imported on backend startup.
-4. **Ingest tokens** — open `/dashboard/ingest-tokens`, click **Create token**, choose `auto` for the universal adapter. The token is shown **once** — save it. Wire your monitoring tool (Alertmanager, Datadog, CloudWatch, Grafana, …) to POST to `/incidents/ingest` with `X-OpsMender-Token: <token>`.
-5. **Paging** — open `/dashboard/paging/services`, create a service and a team, attach a roster (on-call rotation), then attach a priority rule + escalation chain so paged incidents actually notify someone. Walkthrough: [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md).
-6. **Notification channels** — set Slack/Teams/SMTP/Twilio credentials in `.env` (see *Optional features* below), then have each operator set their preferences at `/dashboard/paging/my-notifications`.
+4. **Services / Alert Intake** — open `/dashboard/paging/services`, create a service and a team, then use that service as the home for inbound alerts. v1 keeps the legacy `/dashboard/ingest-tokens` page working, but first-time setup should think in terms of a service-specific webhook URL with an embedded unguessable secret.
+5. **Paging** — attach a roster (on-call rotation), then attach a priority rule + escalation chain so paged incidents actually notify someone. Walkthrough: [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md).
+6. **Notification channels** — configure workspace-level channels at `/dashboard/paging/notification-channels`, then have each operator set their personal routing preferences at `/dashboard/paging/my-notifications`.
 7. **People** — invite the rest of the team from `/dashboard/people`. Three roles: admin / operator / viewer. The first registered user is automatically admin.
 8. **(Optional) Tier** — `/dashboard/config` sets the runtime tier. Default `2` (safe operations only). Move to `1` (approval-gated execution) once your operators are confident with the audit trail.
 
@@ -470,7 +471,7 @@ OpsMender also supports outbound collaboration notifications for session lifecyc
 - **Inbound**: external tools create incidents in OpsMender through `POST /incidents/ingest`
 - **Outbound**: OpsMender notifies downstream systems when a session is created, awaits approval, becomes active, completes, fails, or times out
 
-Outbound notifications are managed through saved **webhook triggers** at `/dashboard/webhooks` or via the `/webhook-triggers` API. Each trigger subscribes to one or more session events and uses one of four payload formats:
+Outbound notifications are managed through saved **Outbound Hooks** at `/dashboard/paging/outbound-hooks` or via the existing `/webhook-triggers` API. Each hook subscribes to one or more session events and uses one of four payload formats:
 
 | Format | Purpose | Payload |
 |--------|---------|---------|

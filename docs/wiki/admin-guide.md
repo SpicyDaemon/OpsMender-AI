@@ -62,11 +62,11 @@ OpsMender uses the Model Context Protocol (MCP) to interact with your infrastruc
 3. Go to **Skills** to import, edit, clone, or bind `SKILL.md` content to an MCP server.
 4. Use tiers and Skill classifications together to control what OpsMender can execute.
 
-## 5. Chat Bot Connectors
+## 5. Notification Channels
 
-External chat bot connectors are managed in **Config** > **Integrations**.
+Workspace-level notification channels are managed under **Paging & On-call** > **Notification Channels**.
 
-1. Click **Add Connector**.
+1. Click **Add Channel**.
 2. Choose the platform (e.g., `telegram`, `slack`, `discord`, `teams`, `mattermost`, `matrix`, `whatsapp`, `signal`, `lark`, `dingtalk`, `wecom`, `twilio`, `email`).
 3. Add platform-specific connector settings as JSON.
 4. Add credentials as `key=value` lines (e.g., `bot_token=...`).
@@ -91,12 +91,12 @@ Supported Telegram commands:
 - `/reject <approval-id>`
 - `/help`
 
-## 6. Webhooks & Triggers
+## 6. Outbound Hooks
 
 You can set up outbound webhooks to notify external systems (like Slack, Microsoft Teams, or Sumo Logic) when specific events occur.
 
-1. Go to **Config** > **Webhooks**.
-2. Click **New Trigger**.
+1. Go to **Paging & On-call** > **Outbound Hooks**.
+2. Click **Add Hook**.
 3. Select the event types to listen for:
    - `session.created`
    - `session.active`
@@ -104,12 +104,11 @@ You can set up outbound webhooks to notify external systems (like Slack, Microso
    - `slo.burn_rate_violated`
 4. Provide the target URL and optional authentication headers.
 
-## 7. Ingest Tokens
+## 7. Alert Intake
 
-To ingest incidents automatically from external tools (e.g., Datadog, CloudWatch, or generic webhook senders), you must generate an Ingest Token.
+To ingest incidents automatically from external tools (e.g., Datadog, CloudWatch, or generic webhook senders), create a service and use the Services area as the home for Alert Intake / Service Webhook setup.
 
-1. Go to **Config** > **Ingest**.
-2. Click **Generate Token**.
-3. Select the provider (e.g., `cloudwatch`, `azure_monitor`, or `auto` for universal LLM-based parsing).
-4. Copy the generated token securely. It will not be shown again.
-5. Configure your external tool to send a webhook POST request to `https://<your-opsmender-url>/incidents/ingest` with the header `X-OpsMender-Token: <your-token>`.
+1. Go to **Paging & On-call** > **Services**.
+2. Create or open the service that owns the alerts.
+3. Use the service-specific alert intake URL when available. The v1 security model is an embedded unguessable secret in the URL, so external monitors can POST directly without managing separate API-key headers.
+4. The legacy `/dashboard/ingest-tokens` route remains available for existing installs while service-level webhook UX matures.

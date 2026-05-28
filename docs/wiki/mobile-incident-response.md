@@ -55,7 +55,7 @@ If any of these fail, file an issue with a screenshot — most of the remaining 
 
 These surfaces still target tablet+ and may show overflow on phones:
 
-- `/dashboard/config` and the AI Agent / Integrations setup pages (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/workflows`, `/dashboard/agent-teams`, `/dashboard/bot-connectors`, `/dashboard/webhooks`, `/dashboard/ingest-tokens`) — operator setup, not a runtime path.
+- `/dashboard/config`, AI Agent setup pages (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/workflows`, `/dashboard/agent-teams`), and advanced setup aliases such as `/dashboard/ingest-tokens` — operator setup, not a runtime path.
 - `/dashboard/organizations` (super-admin only).
 - `/dashboard/skills`, `/dashboard/scans` (authoring surfaces).
 - The full session-detail split view (event stream + co-pilot chat) is usable but cramped on phones. Use the incident-detail page's "Open in sidecar" surface on tablet+ for the rich view.

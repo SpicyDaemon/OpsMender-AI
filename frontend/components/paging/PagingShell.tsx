@@ -115,7 +115,7 @@ const TABS: {
   {
     id: "services",
     label: "Services",
-    description: "Owned by one team in v1. Incidents page the owning team.",
+    description: "Owned by one team in v1. Service Webhook / Alert Intake setup belongs here.",
     icon: Server,
   },
   {
@@ -712,13 +712,19 @@ function ServicesPanel({
 
   return (
     <section className="space-y-3">
+      <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+        <span className="font-medium text-fg-primary">Alert Intake:</span>{" "}
+        each service is the natural home for a unique service webhook URL. The
+        legacy token backend still works today, but first-time setup should
+        think in terms of routing alerts to a service.
+      </div>
       {services.length === 0 ? (
         <EmptyState
           title="No services yet"
           description={
             teams.length === 0
               ? "Create a team first, then add services to it."
-              : "Add a service so incidents can be routed to its owning team."
+              : "Add a service so incidents and inbound alerts can be routed to its owning team."
           }
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"

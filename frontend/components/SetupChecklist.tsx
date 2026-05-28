@@ -34,9 +34,9 @@ const ROWS: Row[] = [
   },
   {
     key: "ingest_token_created",
-    label: "Create an ingest token",
-    href: "/dashboard/ingest-tokens",
-    hint: "Tokens let Alertmanager / your monitoring tool kick off an incident.",
+    label: "Set up alert intake",
+    href: "/dashboard/paging/services",
+    hint: "Services are where inbound alerts should land and route.",
   },
   {
     key: "paging_service_added",
@@ -90,7 +90,7 @@ export function SetupChecklist() {
           </h3>
           <p className="mt-0.5 text-xs text-fg-muted">
             {completedCount} of {ROWS.length} steps complete. Each link drops you on the
-            right Config tab.
+            right setup page.
           </p>
         </div>
         <button

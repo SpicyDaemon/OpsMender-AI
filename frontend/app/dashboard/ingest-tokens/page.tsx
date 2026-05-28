@@ -46,9 +46,9 @@ export default function IngestTokensPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Ingest tokens</h1>
+        <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Alert Intake</h1>
         <p className="mt-1 text-sm text-fg-secondary">
-          Inbound credentials for external monitors (CloudWatch, Alertmanager, Datadog, custom scripts) to POST incidents in.
+          Legacy inbound alert-token administration for external monitors. For new setup, think in terms of service-specific alert intake under Paging & On-call → Services.
         </p>
       </div>
       <IngestAutoStartSection

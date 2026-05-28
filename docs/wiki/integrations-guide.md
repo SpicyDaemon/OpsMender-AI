@@ -4,7 +4,7 @@ OpsMender is built to sit at the center of your incident response ecosystem. It 
 
 ## 1. Incident Ingest Adapters
 
-OpsMender provides a unified `/incidents/ingest` webhook endpoint. To secure and route incoming alerts, you generate **Ingest Tokens**.
+OpsMender provides inbound alert intake for monitoring tools. In v1, the legacy `/incidents/ingest` token backend remains available, but the product concept is moving toward **Service Webhooks**: each service exposes a unique alert URL with an embedded unguessable secret so external monitors can POST directly without separate API-key headers.
 
 OpsMender natively supports several popular monitoring tools:
 - **Datadog:** Parses Datadog monitor alerts.
@@ -16,9 +16,9 @@ OpsMender natively supports several popular monitoring tools:
 **Universal (Auto) Adapter:**
 If your tool is not listed above, OpsMender provides an `auto` provider option. The Universal Adapter uses an LLM to dynamically inspect the incoming JSON payload, learn its structure, and extract the title, description, and severity automatically. It caches the structural mapping for performance on subsequent alerts.
 
-## 2. Chat Bot Connectors
+## 2. Notification Channels
 
-OpsMender can expose selected incident workflows through external chat platforms. Connector setup lives in **Config** > **Integrations** and is also available through the `/bot-connectors` API.
+OpsMender can expose selected incident workflows through external chat platforms. Channel setup lives under **Paging & On-call** > **Notification Channels** and remains available through the existing `/bot-connectors` API.
 
 Credentials are write-only: OpsMender shows whether credentials exist and which keys are stored, but it never returns raw credential values.
 
@@ -96,7 +96,7 @@ Unlinked users see a "not linked" reply that includes their Telegram
 user ID for the admin to copy.
 
 Admins can manage these mappings directly in the dashboard under
-**Config** > **Integrations** by clicking the **"Links"** button on the
+**Paging & On-call** > **Notification Channels** by clicking the **"Links"** button on the
 Telegram connector. Alternatively, use the API:
 
 ```bash
@@ -447,11 +447,11 @@ https://<your-opsmender-url>/bot-connectors/<connector-id>/bluebubbles/webhook
 
 Identity mapping (RBAC): Use the sender's phone number or Apple ID (e.g., `+15550123`) as the platform user ID.
 
-## 3. Outbound Webhooks
+## 3. Outbound Hooks
 
 OpsMender can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.
 
-1. Navigate to **Config** > **Webhooks**.
+1. Navigate to **Paging & On-call** > **Outbound Hooks**.
 2. OpsMender supports formatted payloads for:
    - **Slack:** Sends beautifully formatted block-kit messages with incident details and links.
    - **Microsoft Teams:** Sends adaptive cards.

@@ -1,5 +1,5 @@
 import { OutboundHooksPage } from "@/components/OutboundHooksPage";
 
-export default function WebhooksPage() {
+export default function PagingOutboundHooksPage() {
   return <OutboundHooksPage />;
 }

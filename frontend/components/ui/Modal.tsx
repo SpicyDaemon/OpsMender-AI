@@ -9,9 +9,19 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   maxWidth?: string;
+  // Optional content rendered in the modal header to the left of the
+  // close button (e.g. a Templates toggle button on the MCP modal).
+  headerExtra?: ReactNode;
 }
 
-export function Modal({ open, onClose, title, children, maxWidth = "max-w-lg" }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  maxWidth = "max-w-lg",
+  headerExtra,
+}: ModalProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -33,12 +43,15 @@ export function Modal({ open, onClose, title, children, maxWidth = "max-w-lg" }:
       >
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3.5">
           <h2 className="text-sm font-semibold text-fg-primary">{title}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-fg-muted hover:bg-bg-hover hover:text-fg-primary transition-colors"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            {headerExtra}
+            <button
+              onClick={onClose}
+              className="rounded-md p-1 text-fg-muted hover:bg-bg-hover hover:text-fg-primary transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
         <div className="px-5 py-4">{children}</div>
       </div>

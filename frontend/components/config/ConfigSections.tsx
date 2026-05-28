@@ -1466,11 +1466,13 @@ function MCPServerModal({
   const [form, setForm] = useState<MCPFormState>(() =>
     createMCPFormState(initialServer),
   );
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(createMCPFormState(initialServer));
+    setTemplatesOpen(false);
   }, [open, initialServer]);
 
   function setField<K extends keyof MCPFormState>(
@@ -1508,13 +1510,38 @@ function MCPServerModal({
     await onSubmit(form, "save");
   }
 
+  // Templates are only offered when creating a new server. Hiding the
+  // button on Edit avoids the operator accidentally clobbering an
+  // existing config by clicking a template card.
+  const showTemplatesButton = !initialServer;
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={initialServer ? "Edit MCP Server" : "Add MCP Server"}
-      maxWidth="max-w-lg"
+      maxWidth={templatesOpen ? "max-w-4xl" : "max-w-lg"}
+      headerExtra={
+        showTemplatesButton ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setTemplatesOpen((current) => !current)}
+            aria-expanded={templatesOpen}
+          >
+            <Star size={12} /> {templatesOpen ? "Hide templates" : "Templates"}
+          </Button>
+        ) : undefined
+      }
     >
+      <div
+        className={
+          templatesOpen
+            ? "grid gap-6 md:grid-cols-[1fr_18rem]"
+            : "block"
+        }
+      >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="mcp-name">Name</Label>
@@ -1637,6 +1664,48 @@ function MCPServerModal({
           </Button>
         </div>
       </form>
+
+      {templatesOpen && (
+        <aside
+          className="space-y-3 rounded-lg border border-border-subtle bg-bg-elevated p-4 max-h-[60vh] overflow-y-auto"
+          aria-label="Templates"
+        >
+          <div>
+            <p className="text-sm font-medium text-fg-primary">Templates</p>
+            <p className="mt-1 text-xs text-fg-secondary">
+              Prefill the form with a common shape, then tweak.
+            </p>
+          </div>
+          {MCP_SERVER_TEMPLATES.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              onClick={() => {
+                setForm(createMCPFormStateFromTemplate(template));
+                setTemplatesOpen(false);
+              }}
+              className="w-full rounded-md border border-border-subtle bg-bg-panel px-3 py-2 text-left transition hover:border-border-strong"
+            >
+              <p className="text-sm font-medium text-fg-primary">
+                {template.name}
+              </p>
+              <p className="mt-0.5 text-xs text-fg-secondary line-clamp-2">
+                {template.description}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Badge>{template.transport}</Badge>
+                {template.tokenStrategy === "oauth" && (
+                  <Badge variant="info">OAuth</Badge>
+                )}
+                {template.tokenStrategy === "bearer" && (
+                  <Badge>Bearer</Badge>
+                )}
+              </div>
+            </button>
+          ))}
+        </aside>
+      )}
+      </div>
     </Modal>
   );
 }

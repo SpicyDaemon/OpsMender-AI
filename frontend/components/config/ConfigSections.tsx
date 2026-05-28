@@ -1086,21 +1086,42 @@ export function ModelSection({
       {
         id: "default_state",
         label: "State",
-        accessor: (config) => (config.is_default ? "default" : "alternate"),
+        // Filter chips for State reflect runtime reachability, not the
+        // default/alternate flag. Mapping:
+        //   - "available"      → provider.available === true   (green dot)
+        //   - "not_available"  → provider.available === false  (red dot)
+        //   - "disabled"       → reserved for v1.1; no rows match today
+        //     (an explicit per-model disable toggle is the planned
+        //     mechanism to populate this state)
+        accessor: (config) => {
+          const provider = providerById.get(config.provider);
+          if (provider?.available) return "available";
+          if (provider && provider.available === false) return "not_available";
+          return "disabled";
+        },
         sortable: true,
         filterChips: {
           options: [
-            { value: "default", label: "Default" },
-            { value: "alternate", label: "Alternate" },
+            { value: "available", label: "Available" },
+            { value: "not_available", label: "Not available" },
+            { value: "disabled", label: "Disabled" },
           ],
-          valueOf: (config) => (config.is_default ? "default" : "alternate"),
+          valueOf: (config) => {
+            const provider = providerById.get(config.provider);
+            if (provider?.available) return "available";
+            if (provider && provider.available === false)
+              return "not_available";
+            return "disabled";
+          },
         },
-        cell: (config) =>
-          config.is_default ? (
-            <Badge variant="resolved">default</Badge>
-          ) : (
-            <span className="text-fg-muted text-xs">alternate</span>
-          ),
+        cell: (config) => {
+          const provider = providerById.get(config.provider);
+          if (provider?.available)
+            return <Badge variant="resolved">available</Badge>;
+          if (provider && provider.available === false)
+            return <span className="text-status-high text-xs">not available</span>;
+          return <span className="text-fg-muted text-xs">disabled</span>;
+        },
         hiddenByDefault: true,
       },
     ],

@@ -129,25 +129,11 @@ def _parse_llm_json(text: str) -> dict[str, str] | None:
 
 
 def _resolve_model_kwargs(config: AppConfig, model_cfg) -> dict[str, Any]:
-    if model_cfg is not None:
-        return {
-            "provider": model_cfg.provider,
-            "model_id": model_cfg.model_id,
-            "api_key_env_var": model_cfg.api_key_env_var,
-            "base_url": model_cfg.base_url,
-            "api_version": model_cfg.api_version,
-            "provider_meta": model_cfg.provider_meta,
-            "max_tokens": model_cfg.max_tokens,
-        }
+    # Delegate to the canonical resolver so env-driven openai_compatible
+    # base_url (and any future provider additions) stay in one place.
+    from backend.auditor._helpers import resolve_provider_kwargs
 
-    return {
-        "provider": config.providers.active_provider,
-        "model_id": config.providers.active_model_id,
-        "base_url": config.providers.ollama_base_url
-        if config.providers.active_provider == "ollama"
-        else config.providers.azure_openai_endpoint,
-        "api_version": config.providers.azure_openai_api_version,
-    }
+    return resolve_provider_kwargs(config, model_cfg)
 
 
 async def extract_paths_via_llm(

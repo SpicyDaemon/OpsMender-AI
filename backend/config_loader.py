@@ -358,6 +358,12 @@ class ProviderConfig:
     azure_openai_endpoint: str | None = None
     azure_openai_api_version: str | None = None
     azure_openai_deployment: str | None = None
+    # openai_compatible (LM Studio, llama.cpp, vLLM, …). When the env-only
+    # fallback path resolves an openai_compatible model with no DB row,
+    # these values are used. The dashboard / CLI per-model-config DB row
+    # still wins when present.
+    openai_compatible_base_url: str | None = None
+    openai_compatible_api_key_env_var: str | None = None
 
 
 def _parse_mcp_servers(env: dict[str, str]) -> list[MCPServerConfig]:
@@ -520,6 +526,12 @@ class AppConfig:
                 azure_openai_endpoint=_env_str(env, "AZURE_OPENAI_ENDPOINT"),
                 azure_openai_api_version=_env_str(env, "AZURE_OPENAI_API_VERSION"),
                 azure_openai_deployment=_env_str(env, "AZURE_OPENAI_DEPLOYMENT"),
+                openai_compatible_base_url=_env_str(
+                    env, "OPSMENDER_OPENAI_COMPATIBLE_BASE_URL"
+                ),
+                openai_compatible_api_key_env_var=_env_str(
+                    env, "OPSMENDER_OPENAI_COMPATIBLE_API_KEY_ENV_VAR"
+                ),
             ),
             people=PeopleConfig(
                 bootstrap_admin_email=_env_str(env, "OPSMENDER_BOOTSTRAP_ADMIN_EMAIL"),

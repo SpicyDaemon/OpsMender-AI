@@ -52,6 +52,14 @@ async def _lifespan(app: FastAPI):
 
     await bootstrap_admin(factory, config.people)
 
+    # Bootstrap default model config from env vars (OPSMENDER_MODEL_PROVIDER
+    # + OPSMENDER_MODEL_ID + provider-specific base_url) so an operator can
+    # bring up a working agent loop on a fresh DB without clicking through
+    # /dashboard/models first. No-op if any model_configs row already exists.
+    from backend.llm.bootstrap import bootstrap_model_config
+
+    await bootstrap_model_config(factory, config.providers)
+
     pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
     set_mcp_pool(pool)
     app.state.mcp_pool = pool

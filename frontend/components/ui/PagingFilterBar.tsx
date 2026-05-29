@@ -49,7 +49,13 @@ export function PagingFilterBar({
         className="grid gap-3 xl:[grid-template-columns:var(--paging-filter-cols)]"
         style={
           {
-            "--paging-filter-cols": `minmax(16rem,1.25fr) repeat(${filters.length}, minmax(8rem,0.7fr)) auto`,
+            // Omit the repeat() when there are no filters — `repeat(0, …)`
+            // is invalid CSS and would drop the whole declaration, leaving
+            // search + action stacked (e.g. the Teams bar).
+            "--paging-filter-cols":
+              filters.length > 0
+                ? `minmax(16rem,1.25fr) repeat(${filters.length}, minmax(8rem,0.7fr)) auto`
+                : "minmax(16rem,1.25fr) auto",
           } as CSSProperties
         }
       >

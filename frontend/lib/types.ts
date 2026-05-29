@@ -38,6 +38,9 @@ export interface IncidentResponse {
   status: IncidentStatus;
   severity: Severity | null;
   service_id: string | null;
+  service_name?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
   external_id: string | null;
   external_source: string | null;
   created_at: string;
@@ -56,6 +59,14 @@ export interface IncidentCreate {
   service_id?: string;
   external_id?: string;
   external_source?: string;
+}
+
+export interface IncidentUpdate {
+  status?: IncidentStatus;
+  severity?: Severity;
+  service_id?: string | null;
+  service_id_set?: boolean;
+  handoff_reason?: string;
 }
 
 export interface IncidentTimelineItemResponse {

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -11,10 +18,12 @@ import {
   ListOrdered,
   PlusCircle,
   Repeat,
+  Search,
   Server,
   Trash2,
   Users,
   Wrench,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -150,6 +159,10 @@ const TABS: {
     icon: Bell,
   },
 ];
+
+function normalizeSlugInput(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
+}
 
 const PRIORITY_VARIANT: Record<Priority, string> = {
   P0: "critical",
@@ -345,7 +358,11 @@ function TeamsPanel({
         id: "slug",
         label: "Slug",
         accessor: (t) => t.slug,
-        cell: (t) => <Badge variant="default">{t.slug}</Badge>,
+        cell: (t) => (
+          <Badge variant="default" className="font-mono normal-case tracking-normal">
+            {t.slug.toLowerCase()}
+          </Badge>
+        ),
         sortable: true,
         searchable: true,
       },
@@ -432,7 +449,9 @@ function TeamsPanel({
             <Label>Slug (lowercase, hyphens)</Label>
             <Input
               value={form.slug}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, slug: normalizeSlugInput(e.target.value) })
+              }
               placeholder="payments-team"
             />
           </div>
@@ -467,6 +486,34 @@ interface ServiceRow {
   last_incident_at: string | null;
 }
 
+type ServiceStatusFilter = "" | "active" | "inactive";
+type ServiceCoverageFilter = "" | "covered" | "uncovered";
+type ServiceIncidentFilter = "" | "has_open" | "no_open";
+type ServiceTimeFilter = "" | "24h" | "7d" | "30d" | "never";
+
+const SERVICE_TIME_OPTIONS: { value: ServiceTimeFilter; label: string }[] = [
+  { value: "", label: "All time" },
+  { value: "24h", label: "Last 24 hours" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "never", label: "No incidents" },
+];
+
+function serviceRowMatchesTime(row: ServiceRow, value: ServiceTimeFilter) {
+  if (!value) return true;
+  if (value === "never") return row.last_incident_at === null;
+  if (!row.last_incident_at) return false;
+  const last = new Date(row.last_incident_at).getTime();
+  if (Number.isNaN(last)) return false;
+  const now = Date.now();
+  const windows: Record<Exclude<ServiceTimeFilter, "" | "never">, number> = {
+    "24h": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000,
+    "30d": 30 * 24 * 60 * 60 * 1000,
+  };
+  return now - last <= windows[value];
+}
+
 function ServicesPanel({
   services,
   teams,
@@ -486,11 +533,18 @@ function ServicesPanel({
     team_id: "",
     description: "",
   });
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>("");
+  const [coverageFilter, setCoverageFilter] = useState<ServiceCoverageFilter>("");
+  const [incidentFilter, setIncidentFilter] = useState<ServiceIncidentFilter>("");
+  const [timeFilter, setTimeFilter] = useState<ServiceTimeFilter>("");
   const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [onCallByTeam, setOnCallByTeam] = useState<Map<string, string | null>>(
     new Map(),
   );
+  const deferredServiceSearch = useDeferredValue(serviceSearch);
 
   useEffect(() => {
     if (teams.length > 0 && !form.team_id) {
@@ -615,12 +669,50 @@ function ServicesPanel({
     });
   }, [services, teams, onCallByTeam, incidentStatsByService, userById]);
 
-  const teamFilterOptions = useMemo(
-    () =>
-      Array.from(new Set(rows.map((r) => r.team_name).filter(Boolean))).map(
-        (name) => ({ value: name as string, label: name as string }),
-      ),
-    [rows],
+  const filteredRows = useMemo(() => {
+    const query = deferredServiceSearch.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (query) {
+        const haystack = [
+          row.service.name,
+          row.service.slug,
+          row.service.description ?? "",
+          row.team_name ?? "",
+          row.on_call_username ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      if (teamFilter && row.service.team_id !== teamFilter) return false;
+      if (statusFilter) {
+        const status = row.service.is_active ? "active" : "inactive";
+        if (status !== statusFilter) return false;
+      }
+      if (coverageFilter === "covered" && !row.on_call_username) return false;
+      if (coverageFilter === "uncovered" && row.on_call_username) return false;
+      if (incidentFilter === "has_open" && row.open_incidents <= 0) return false;
+      if (incidentFilter === "no_open" && row.open_incidents > 0) return false;
+      if (!serviceRowMatchesTime(row, timeFilter)) return false;
+      return true;
+    });
+  }, [
+    coverageFilter,
+    deferredServiceSearch,
+    incidentFilter,
+    rows,
+    statusFilter,
+    teamFilter,
+    timeFilter,
+  ]);
+
+  const hasServiceFilters = Boolean(
+    serviceSearch ||
+      teamFilter ||
+      statusFilter ||
+      coverageFilter ||
+      incidentFilter ||
+      timeFilter,
   );
 
   const columns: DataTableColumn<ServiceRow>[] = [
@@ -631,11 +723,12 @@ function ServicesPanel({
       cell: (r) => (
         <div>
           <div className="font-medium text-fg-primary">{r.service.name}</div>
-          <div className="text-[11px] text-fg-muted">{r.service.slug}</div>
+          <div className="text-[11px] text-fg-muted">
+            {r.service.slug.toLowerCase()}
+          </div>
         </div>
       ),
       sortable: true,
-      searchable: true,
     },
     {
       id: "team",
@@ -643,11 +736,6 @@ function ServicesPanel({
       accessor: (r) => r.team_name ?? "",
       cell: (r) => r.team_name ?? "—",
       sortable: true,
-      searchable: true,
-      filterChips: {
-        options: teamFilterOptions,
-        valueOf: (r) => r.team_name,
-      },
     },
     {
       id: "on_call_now",
@@ -700,13 +788,6 @@ function ServicesPanel({
           <Badge variant="closed">inactive</Badge>
         ),
       sortable: true,
-      filterChips: {
-        options: [
-          { value: "active", label: "Active" },
-          { value: "inactive", label: "Inactive" },
-        ],
-        valueOf: (r) => (r.service.is_active ? "active" : "inactive"),
-      },
     },
   ];
 
@@ -737,37 +818,58 @@ function ServicesPanel({
           }
         />
       ) : (
-        <DataTable
-          rows={rows}
-          columns={columns}
-          rowKey={(r) => r.service.id}
-          storageKey="opsmender:services-table"
-          searchPlaceholder="Search by service name or team…"
-          dateRangeColumn={{
-            id: "last_incident",
-            label: "Last incident",
-            valueOf: (r) => r.last_incident_at,
-          }}
-          toolbarRight={
-            <Button
-              size="sm"
-              onClick={() => setOpen(true)}
-              disabled={teams.length === 0}
-            >
-              <PlusCircle className="h-4 w-4" /> New service
-            </Button>
-          }
-          rowActions={(r) => (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => remove(r.service.id)}
-              title="Delete service"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-        />
+        <>
+          <ServiceFilterBar
+            search={serviceSearch}
+            onSearchChange={setServiceSearch}
+            teams={teams}
+            teamFilter={teamFilter}
+            onTeamFilterChange={setTeamFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            coverageFilter={coverageFilter}
+            onCoverageFilterChange={setCoverageFilter}
+            incidentFilter={incidentFilter}
+            onIncidentFilterChange={setIncidentFilter}
+            timeFilter={timeFilter}
+            onTimeFilterChange={setTimeFilter}
+            hasFilters={hasServiceFilters}
+            onClear={() => {
+              setServiceSearch("");
+              setTeamFilter("");
+              setStatusFilter("");
+              setCoverageFilter("");
+              setIncidentFilter("");
+              setTimeFilter("");
+            }}
+            action={
+              <Button
+                size="sm"
+                onClick={() => setOpen(true)}
+                disabled={teams.length === 0}
+              >
+                <PlusCircle className="h-4 w-4" /> New service
+              </Button>
+            }
+          />
+          <DataTable
+            rows={filteredRows}
+            columns={columns}
+            rowKey={(r) => r.service.id}
+            storageKey="opsmender:services-table"
+            hideToolbar
+            rowActions={(r) => (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => remove(r.service.id)}
+                title="Delete service"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          />
+        </>
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="New service">
@@ -796,7 +898,9 @@ function ServicesPanel({
             <Label>Slug</Label>
             <Input
               value={form.slug}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, slug: normalizeSlugInput(e.target.value) })
+              }
               placeholder="payments-api"
             />
           </div>
@@ -819,6 +923,130 @@ function ServicesPanel({
         </div>
       </Modal>
     </section>
+  );
+}
+
+function ServiceFilterBar({
+  search,
+  onSearchChange,
+  teams,
+  teamFilter,
+  onTeamFilterChange,
+  statusFilter,
+  onStatusFilterChange,
+  coverageFilter,
+  onCoverageFilterChange,
+  incidentFilter,
+  onIncidentFilterChange,
+  timeFilter,
+  onTimeFilterChange,
+  hasFilters,
+  onClear,
+  action,
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+  teams: TeamResponse[];
+  teamFilter: string;
+  onTeamFilterChange: (value: string) => void;
+  statusFilter: ServiceStatusFilter;
+  onStatusFilterChange: (value: ServiceStatusFilter) => void;
+  coverageFilter: ServiceCoverageFilter;
+  onCoverageFilterChange: (value: ServiceCoverageFilter) => void;
+  incidentFilter: ServiceIncidentFilter;
+  onIncidentFilterChange: (value: ServiceIncidentFilter) => void;
+  timeFilter: ServiceTimeFilter;
+  onTimeFilterChange: (value: ServiceTimeFilter) => void;
+  hasFilters: boolean;
+  onClear: () => void;
+  action: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-3 shadow-sm">
+      <div className="grid gap-3 xl:grid-cols-[minmax(16rem,1.25fr)_repeat(5,minmax(8rem,0.7fr))_auto]">
+        <div className="relative">
+          <Search
+            size={15}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
+          />
+          <Input
+            aria-label="Search services"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search services..."
+            className="h-11 pl-9"
+          />
+        </div>
+        <Select
+          aria-label="Filter services by team"
+          value={teamFilter}
+          onChange={(e) => onTeamFilterChange(e.target.value)}
+          className="h-11"
+        >
+          <option value="">All teams</option>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Filter services by status"
+          value={statusFilter}
+          onChange={(e) => onStatusFilterChange(e.target.value as ServiceStatusFilter)}
+          className="h-11"
+        >
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </Select>
+        <Select
+          aria-label="Filter services by on-call coverage"
+          value={coverageFilter}
+          onChange={(e) =>
+            onCoverageFilterChange(e.target.value as ServiceCoverageFilter)
+          }
+          className="h-11"
+        >
+          <option value="">All coverage</option>
+          <option value="covered">On-call covered</option>
+          <option value="uncovered">No on-call</option>
+        </Select>
+        <Select
+          aria-label="Filter services by open incidents"
+          value={incidentFilter}
+          onChange={(e) =>
+            onIncidentFilterChange(e.target.value as ServiceIncidentFilter)
+          }
+          className="h-11"
+        >
+          <option value="">All incident states</option>
+          <option value="has_open">Has open incidents</option>
+          <option value="no_open">No open incidents</option>
+        </Select>
+        <Select
+          aria-label="Filter services by last incident"
+          value={timeFilter}
+          onChange={(e) => onTimeFilterChange(e.target.value as ServiceTimeFilter)}
+          className="h-11"
+        >
+          {SERVICE_TIME_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <div className="flex items-center justify-end gap-2">
+          {hasFilters ? (
+            <Button variant="ghost" size="sm" onClick={onClear} className="h-11">
+              <X size={14} />
+              Clear
+            </Button>
+          ) : null}
+          {action}
+        </div>
+      </div>
+    </div>
   );
 }
 

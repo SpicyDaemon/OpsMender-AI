@@ -315,6 +315,88 @@ async def start_chain(
     return result
 
 
+async def restart_chain_for_handoff(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident_id: uuid.UUID,
+    chain_id: uuid.UUID,
+    mode: str = "page",
+    at: datetime | None = None,
+    channel_factory: ChannelFactory | None = None,
+) -> StepFireResult | None:
+    """Restart routing for an incident after its owning service changes.
+
+    Incident chain state is one-to-one with the incident, so handoff updates
+    the existing state instead of creating a second response loop.
+    """
+
+    now = at or _utcnow()
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id
+    )
+    if state is None:
+        return await start_chain(
+            db,
+            org_id,
+            incident_id=incident_id,
+            chain_id=chain_id,
+            mode=mode,
+            at=now,
+            channel_factory=channel_factory,
+        )
+
+    state.chain_id = chain_id
+    state.status = "running"
+    state.current_step_index = -1
+    state.next_step_due_at = None
+    state.pending_takeover_user_id = None
+    state.pending_takeover_expires_at = None
+    state.started_at = now
+    state.finished_at = None
+    state.hard_deadline_at = now + timedelta(seconds=HARD_INACTIVITY_TIMEOUT_SECONDS)
+
+    steps = await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
+    if not steps:
+        state.status = "exhausted"
+        state.finished_at = now
+        await db.flush()
+        return None
+
+    if mode == "escalate_immediate":
+        last_result: StepFireResult | None = None
+        for step in steps:
+            last_result = await _fire_step(
+                db,
+                org_id,
+                incident_id=incident_id,
+                chain_id=chain_id,
+                step=step,
+                at=now,
+                channel_factory=channel_factory,
+            )
+            state.current_step_index = step.step_index
+        await db.flush()
+        return last_result
+
+    step0 = steps[0]
+    result = await _fire_step(
+        db,
+        org_id,
+        incident_id=incident_id,
+        chain_id=chain_id,
+        step=step0,
+        at=now,
+        channel_factory=channel_factory,
+    )
+    state.current_step_index = step0.step_index
+    state.next_step_due_at = (
+        now + timedelta(seconds=step0.timeout_seconds) if len(steps) > 1 else None
+    )
+    await db.flush()
+    return result
+
+
 async def tick(
     db: AsyncSession,
     org_id: uuid.UUID,

@@ -27,7 +27,10 @@ from backend.db.repos import (
     ApprovalRequestRepo,
     AuditEntryRepo,
     BotConnectorRepo,
+    EscalationChainRepo,
+    EscalationStepRepo,
     IncidentAssignmentRepo,
+    IncidentChainStateRepo,
     IncidentPageRepo,
     IncidentRepo,
     IngestLogRepo,
@@ -35,6 +38,7 @@ from backend.db.repos import (
     MCPServerRepo,
     ModelConfigRepo,
     ServiceRepo,
+    ServiceEscalationChainRepo,
     SessionRepo,
     SkillRepo,
     TeamRepo,
@@ -860,6 +864,8 @@ class TestIncidents:
         data = resp.json()
         assert data["external_id"] == "test-123"
         assert data["external_source"] == "opsmender-test"
+        assert data["service_name"] == "checkout-api"
+        assert data["team_name"] == "Platform"
 
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.get_by_id(
@@ -869,6 +875,178 @@ class TestIncidents:
             assert incident.service_id == service_id
             assert incident.external_source == "opsmender-test"
             assert incident.external_id == "test-123"
+
+    async def test_update_incident_status_severity_and_service(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Payments",
+                slug="payments",
+                created_by=uuid.uuid4(),
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="billing-api",
+                slug="billing-api",
+            )
+            await db.commit()
+            service_id = service.id
+
+        create_resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Misclassified alert",
+                "description": "Needs handoff",
+                "severity": "medium",
+            },
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["id"]
+
+        resp = await client.patch(
+            f"/incidents/{incident_id}",
+            json={
+                "status": "in_progress",
+                "severity": "critical",
+                "service_id": str(service_id),
+                "service_id_set": True,
+                "handoff_reason": "Owned by Payments",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["status"] == "in_progress"
+        assert data["severity"] == "critical"
+        assert data["service_id"] == str(service_id)
+        assert data["service_name"] == "billing-api"
+        assert data["team_name"] == "Payments"
+
+    async def test_update_incident_service_restarts_handoff_chain(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            original_team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Original",
+                slug="original-handoff",
+                created_by=uuid.uuid4(),
+            )
+            target_team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Target",
+                slug="target-handoff",
+                created_by=uuid.uuid4(),
+            )
+            original_service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=original_team.id,
+                name="original-api",
+                slug="original-api-handoff",
+            )
+            target_service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=target_team.id,
+                name="target-api",
+                slug="target-api-handoff",
+            )
+            original_chain = await EscalationChainRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=original_team.id,
+                name="Original chain",
+            )
+            target_chain = await EscalationChainRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=target_team.id,
+                name="Target chain",
+            )
+            await EscalationStepRepo.create(
+                db,
+                TEST_ORG_ID,
+                chain_id=original_chain.id,
+                step_index=0,
+                target_type="user",
+                target_id=uuid.uuid4(),
+            )
+            await EscalationStepRepo.create(
+                db,
+                TEST_ORG_ID,
+                chain_id=target_chain.id,
+                step_index=0,
+                target_type="user",
+                target_id=uuid.uuid4(),
+            )
+            await ServiceEscalationChainRepo.link(
+                db,
+                TEST_ORG_ID,
+                service_id=original_service.id,
+                chain_id=original_chain.id,
+            )
+            await ServiceEscalationChainRepo.link(
+                db,
+                TEST_ORG_ID,
+                service_id=target_service.id,
+                chain_id=target_chain.id,
+            )
+            await db.commit()
+            original_service_id = original_service.id
+            target_service_id = target_service.id
+            target_chain_id = target_chain.id
+
+        create_resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Needs team handoff",
+                "description": "Created on original service",
+                "severity": "critical",
+                "service_id": str(original_service_id),
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        incident_id = uuid.UUID(create_resp.json()["id"])
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            assert incident is not None
+            incident.response_mode = "page"
+            incident.priority = "P1"
+            await db.commit()
+
+        resp = await client.patch(
+            f"/incidents/{incident_id}",
+            json={"service_id": str(target_service_id), "service_id_set": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+
+        async with app.state.session_factory() as db:
+            state = await IncidentChainStateRepo.get_for_incident(
+                db, TEST_ORG_ID, incident_id
+            )
+            assert state is not None
+            assert state.chain_id == target_chain_id
+            assert state.status == "running"
+
+    async def test_update_incident_viewer_forbidden(
+        self, client: AsyncClient, viewer_headers
+    ):
+        resp = await client.patch(
+            f"/incidents/{uuid.uuid4()}",
+            json={"status": "resolved"},
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
 
     async def test_create_incident_with_missing_service_returns_404(
         self, client: AsyncClient, auth_headers
@@ -1011,6 +1189,75 @@ class TestIncidents:
 
         resp = await client.get("/incidents?status=resolved", headers=auth_headers)
         assert resp.json()["total"] == 0
+
+    async def test_list_incidents_filters_by_team_severity_and_source(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            platform = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Platform",
+                slug="platform-list-filter",
+                created_by=uuid.uuid4(),
+            )
+            payments = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Payments",
+                slug="payments-list-filter",
+                created_by=uuid.uuid4(),
+            )
+            platform_service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=platform.id,
+                name="api",
+                slug="api-list-filter",
+            )
+            payments_service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=payments.id,
+                name="billing",
+                slug="billing-list-filter",
+            )
+            await db.commit()
+            platform_team_id = platform.id
+            platform_service_id = platform_service.id
+            payments_service_id = payments_service.id
+
+        await client.post(
+            "/incidents",
+            json={
+                "title": "Platform ingested critical",
+                "description": "d",
+                "severity": "critical",
+                "service_id": str(platform_service_id),
+                "external_source": "opsmender-test",
+                "external_id": "team-filter-1",
+            },
+            headers=auth_headers,
+        )
+        await client.post(
+            "/incidents",
+            json={
+                "title": "Payments manual low",
+                "description": "d",
+                "severity": "low",
+                "service_id": str(payments_service_id),
+            },
+            headers=auth_headers,
+        )
+
+        resp = await client.get(
+            f"/incidents?team_id={platform_team_id}&severity=critical&source=ingested",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["title"] == "Platform ingested critical"
 
     async def test_get_incident(self, client: AsyncClient, auth_headers):
         create_resp = await client.post(

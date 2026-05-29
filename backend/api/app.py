@@ -11,6 +11,8 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -24,6 +26,21 @@ from backend.mcp.pool import MCPServerPool
 from backend.sla.downsampler import UptimeDownsampler
 from backend.sla.poller import SLAPoller
 from backend.skills.importer import auto_import as auto_import_skills
+
+
+def _workflow_concurrency_from_env(default: int = 1) -> int:
+    raw = os.environ.get("OPSMENDER_INCIDENT_SESSION_CONCURRENCY")
+    if raw is None:
+        # Backwards-compatible aliases for early local installs.
+        raw = os.environ.get("OPSMENDER_SESSION_WORKFLOW_CONCURRENCY")
+    if raw is None:
+        raw = os.environ.get("OPSMENDER_AI_WORKER_CONCURRENCY")
+    if raw is None:
+        return default
+    try:
+        return max(1, min(5, int(raw)))
+    except ValueError:
+        return default
 
 
 @asynccontextmanager
@@ -179,6 +196,10 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.state.mcp_json_syncer = MCPJSONSyncer(None)
     app.state.session_tasks = set()
     app.state.background_tasks = set()
+    app.state.session_workflow_concurrency = _workflow_concurrency_from_env()
+    app.state.session_workflow_semaphore = asyncio.Semaphore(
+        app.state.session_workflow_concurrency
+    )
 
     # -- Ingest rate limiter ------------------------------------------------
     from backend.ingest.rate_limiter import IngestRateLimiter

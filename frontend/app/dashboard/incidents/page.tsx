@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Plus, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, Clock, Plus, RefreshCw, Search, X } from "lucide-react";
 import {
   bulkIncidentAction,
   createIncident,
@@ -12,8 +12,10 @@ import {
   listIncidents,
   listServices,
   listTeams,
+  updateIncident,
 } from "@/lib/api";
 import { SetupChecklist } from "@/components/SetupChecklist";
+import { useAuth } from "@/context/auth";
 import type {
   ConfigResponse,
   IncidentCreate,
@@ -113,10 +115,47 @@ const SOURCE_OPTIONS = [
   { value: "ingested", label: "Ingested" },
 ];
 
-function buildIncidentColumns(
-  serviceTeamName: Map<string, string>,
-  teamNames: string[],
-): DataTableColumn<IncidentResponse>[] {
+type TimePreset = "all" | "15m" | "60m" | "3h" | "6h" | "24h" | "today" | "yesterday" | "7d" | "30d" | "custom";
+
+const TIME_PRESETS: { value: TimePreset; label: string }[] = [
+  { value: "all", label: "All time" },
+  { value: "15m", label: "Last 15 minutes" },
+  { value: "60m", label: "Last 60 minutes" },
+  { value: "3h", label: "Last 3 hours" },
+  { value: "6h", label: "Last 6 hours" },
+  { value: "24h", label: "Last 24 hours" },
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+];
+
+function timeRangeForPreset(preset: TimePreset) {
+  const now = new Date();
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  if (preset === "all" || preset === "custom") return { from: "", to: "" };
+  if (preset === "today") return { from: startOfToday.toISOString(), to: now.toISOString() };
+  if (preset === "yesterday") {
+    const from = new Date(startOfToday);
+    from.setDate(from.getDate() - 1);
+    const to = new Date(startOfToday);
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
+  const minutesByPreset: Record<Exclude<TimePreset, "all" | "today" | "yesterday" | "custom">, number> = {
+    "15m": 15,
+    "60m": 60,
+    "3h": 180,
+    "6h": 360,
+    "24h": 1440,
+    "7d": 10080,
+    "30d": 43200,
+  };
+  const from = new Date(now.getTime() - minutesByPreset[preset] * 60_000);
+  return { from: from.toISOString(), to: now.toISOString() };
+}
+
+function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
   return [
     {
       id: "title",
@@ -139,28 +178,24 @@ function buildIncidentColumns(
         </div>
       ),
       sortable: true,
-      searchable: true,
     },
     {
       id: "team",
       label: "Team",
-      accessor: (inc) =>
-        (inc.service_id && serviceTeamName.get(inc.service_id)) || "",
+      accessor: (inc) => inc.team_name ?? "",
       cell: (inc) => {
-        const name = inc.service_id && serviceTeamName.get(inc.service_id);
-        return name ? (
-          <span className="text-sm text-fg-primary">{name}</span>
+        return inc.team_name ? (
+          <div>
+            <p className="text-sm text-fg-primary">{inc.team_name}</p>
+            {inc.service_name ? (
+              <p className="mt-0.5 text-[11px] text-fg-muted">{inc.service_name}</p>
+            ) : null}
+          </div>
         ) : (
           <span className="text-fg-muted">—</span>
         );
       },
       sortable: true,
-      searchable: true,
-      filterChips: {
-        options: teamNames.map((n) => ({ value: n, label: n })),
-        valueOf: (inc) =>
-          (inc.service_id && serviceTeamName.get(inc.service_id)) || null,
-      },
     },
     {
       id: "source",
@@ -185,14 +220,6 @@ function buildIncidentColumns(
         );
       },
       sortable: true,
-      searchable: true,
-      filterChips: {
-        options: [
-          { value: "manual", label: "Manual" },
-          { value: "ingested", label: "Ingested" },
-        ],
-        valueOf: (inc) => sourceMeta(inc).key,
-      },
     },
     {
       id: "status",
@@ -204,15 +231,6 @@ function buildIncidentColumns(
         </Badge>
       ),
       sortable: true,
-      filterChips: {
-        options: [
-          { value: "open", label: "Open" },
-          { value: "in_progress", label: "In progress" },
-          { value: "resolved", label: "Resolved" },
-          { value: "closed", label: "Closed" },
-        ],
-        valueOf: (inc) => inc.status,
-      },
     },
     {
       id: "severity",
@@ -225,15 +243,6 @@ function buildIncidentColumns(
           <span className="text-fg-muted">—</span>
         ),
       sortable: true,
-      filterChips: {
-        options: [
-          { value: "critical", label: "Critical" },
-          { value: "high", label: "High" },
-          { value: "medium", label: "Medium" },
-          { value: "low", label: "Low" },
-        ],
-        valueOf: (inc) => inc.severity,
-      },
     },
     {
       id: "updated_at",
@@ -314,11 +323,23 @@ export default function IncidentsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showTest, setShowTest] = useState(false);
+  const [managingIncident, setManagingIncident] = useState<IncidentResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<IncidentStatus | "">("");
+  const [severityFilter, setSeverityFilter] = useState<Severity | "">("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
+  const [timePreset, setTimePreset] = useState<TimePreset>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const toast = useToast();
+  const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const canManage = user?.role === "admin" || user?.role === "operator";
+  const deferredSearch = useDeferredValue(search);
 
   // Sprint 61 (Sprint E) — command-palette deep-links.
   // /dashboard/incidents?new=1 opens the create-incident modal on
@@ -339,52 +360,76 @@ export default function IncidentsPage() {
     }
   }, [searchParams, router]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadMetadata = useCallback(async () => {
     try {
-      // Fetch a generous page; DataTable handles the rest client-side.
-      const [inc, svc, tms] = await Promise.all([
-        listIncidents({ limit: 200 }),
+      const [svc, tms] = await Promise.all([
         listServices().catch(() => ({ items: [], total: 0 })),
         listTeams().catch(() => ({ items: [], total: 0 })),
       ]);
-      setData(inc);
       setServices(svc.items);
       setTeams(tms.items);
+    } catch {
+      setServices([]);
+      setTeams([]);
+    }
+  }, []);
+
+  const loadIncidents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const presetRange = timeRangeForPreset(timePreset);
+      const updatedFrom =
+        timePreset === "custom" && customFrom
+          ? new Date(customFrom).toISOString()
+          : presetRange.from;
+      const updatedTo =
+        timePreset === "custom" && customTo
+          ? new Date(customTo).toISOString()
+          : presetRange.to;
+      const inc = await listIncidents({
+        limit: 200,
+        q: deferredSearch.trim() || undefined,
+        status: statusFilter || undefined,
+        severity: severityFilter || undefined,
+        source: sourceFilter || undefined,
+        team_id: teamFilter || undefined,
+        updated_from: updatedFrom || undefined,
+        updated_to: updatedTo || undefined,
+      });
+      setData(inc);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load incidents");
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [
+    customFrom,
+    customTo,
+    deferredSearch,
+    severityFilter,
+    sourceFilter,
+    statusFilter,
+    teamFilter,
+    timePreset,
+    toast,
+  ]);
 
-  useEffect(() => { load(); }, [load]);
+  const refresh = useCallback(() => {
+    loadMetadata();
+    loadIncidents();
+  }, [loadIncidents, loadMetadata]);
+
+  useEffect(() => {
+    loadMetadata();
+  }, [loadMetadata]);
+
+  useEffect(() => {
+    loadIncidents();
+  }, [loadIncidents]);
 
   const items = data?.items ?? [];
 
-  const serviceTeamName = useMemo(() => {
-    const teamById = new Map(teams.map((t) => [t.id, t.name]));
-    const m = new Map<string, string>();
-    for (const svc of services) {
-      const name = teamById.get(svc.team_id);
-      if (name) m.set(svc.id, name);
-    }
-    return m;
-  }, [services, teams]);
-
-  const teamNamesInData = useMemo(() => {
-    const names = new Set<string>();
-    for (const inc of items) {
-      const name = inc.service_id && serviceTeamName.get(inc.service_id);
-      if (name) names.add(name);
-    }
-    return Array.from(names).sort();
-  }, [items, serviceTeamName]);
-
-  const columns = useMemo(
-    () => buildIncidentColumns(serviceTeamName, teamNamesInData),
-    [serviceTeamName, teamNamesInData],
-  );
+  const columns = useMemo(() => buildIncidentColumns(), []);
 
   const runBulk = useCallback(
     async (
@@ -404,14 +449,14 @@ export default function IncidentsPage() {
           toast.success(`${res.action}: ${res.succeeded} updated`);
         }
         setSelectedIds(new Set());
-        await load();
+        await loadIncidents();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         setBulkBusy(false);
       }
     },
-    [selectedIds, toast, load],
+    [selectedIds, toast, loadIncidents],
   );
 
   const overview = useMemo(() => {
@@ -440,7 +485,7 @@ export default function IncidentsPage() {
   }, [items]);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[96rem]">
       <SetupChecklist />
       <div className="mb-6">
         <PageHeader
@@ -448,7 +493,7 @@ export default function IncidentsPage() {
           subtitle={data ? `${data.total} incidents` : undefined}
           actions={
             <>
-              <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
+              <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
                 <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
                 Refresh
               </Button>
@@ -480,6 +525,36 @@ export default function IncidentsPage() {
         ))}
       </div>
 
+      <IncidentFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        teams={teams}
+        teamFilter={teamFilter}
+        onTeamFilterChange={setTeamFilter}
+        sourceFilter={sourceFilter}
+        onSourceFilterChange={setSourceFilter}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        severityFilter={severityFilter}
+        onSeverityFilterChange={setSeverityFilter}
+        timePreset={timePreset}
+        onTimePresetChange={setTimePreset}
+        customFrom={customFrom}
+        onCustomFromChange={setCustomFrom}
+        customTo={customTo}
+        onCustomToChange={setCustomTo}
+        onClear={() => {
+          setSearch("");
+          setTeamFilter("");
+          setSourceFilter("");
+          setStatusFilter("");
+          setSeverityFilter("");
+          setTimePreset("all");
+          setCustomFrom("");
+          setCustomTo("");
+        }}
+      />
+
       {/* Table */}
       {loading && !data ? (
         <TableSkeleton rows={6} columns={5} />
@@ -510,19 +585,19 @@ export default function IncidentsPage() {
           phoneLayout={(inc) => (
             <IncidentPhoneCard
               incident={inc}
-              teamName={(inc.service_id && serviceTeamName.get(inc.service_id)) || null}
+              teamName={inc.team_name ?? null}
             />
           )}
           storageKey="opsmender:incidents-table"
-          searchPlaceholder="Search by title, description, team, or source…"
+          hideToolbar
           selectable
           selectedKeys={selectedIds}
           onSelectionChange={setSelectedIds}
-          dateRangeColumn={{
-            id: "updated_at",
-            label: "Last activity",
-            valueOf: (inc) => inc.updated_at,
-          }}
+          rowActions={canManage ? (inc) => (
+            <Button size="sm" variant="secondary" onClick={() => setManagingIncident(inc)}>
+              Manage
+            </Button>
+          ) : undefined}
           bulkActions={() => (
             <>
               <Button
@@ -552,11 +627,23 @@ export default function IncidentsPage() {
         onClose={() => setShowCreate(false)}
         onCreated={() => {
           setShowCreate(false);
-          load();
+          loadIncidents();
+        }}
+      />
+      <ManageIncidentModal
+        open={Boolean(managingIncident)}
+        incident={managingIncident}
+        services={services}
+        teams={teams}
+        onClose={() => setManagingIncident(null)}
+        onUpdated={() => {
+          setManagingIncident(null);
+          loadIncidents();
         }}
       />
       <FireTestIncidentModal
         open={showTest}
+        services={services}
         onClose={() => setShowTest(false)}
         onCreated={(incident, session) => {
           setShowTest(false);
@@ -564,10 +651,400 @@ export default function IncidentsPage() {
             label: "Open session",
             href: `/dashboard/sessions/detail?id=${session.id}`,
           });
-          load();
+          loadIncidents();
         }}
       />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Compact filters + management modal
+// ---------------------------------------------------------------------------
+
+function IncidentFilterBar({
+  search,
+  onSearchChange,
+  teams,
+  teamFilter,
+  onTeamFilterChange,
+  sourceFilter,
+  onSourceFilterChange,
+  statusFilter,
+  onStatusFilterChange,
+  severityFilter,
+  onSeverityFilterChange,
+  timePreset,
+  onTimePresetChange,
+  customFrom,
+  onCustomFromChange,
+  customTo,
+  onCustomToChange,
+  onClear,
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+  teams: TeamResponse[];
+  teamFilter: string;
+  onTeamFilterChange: (value: string) => void;
+  sourceFilter: string;
+  onSourceFilterChange: (value: string) => void;
+  statusFilter: IncidentStatus | "";
+  onStatusFilterChange: (value: IncidentStatus | "") => void;
+  severityFilter: Severity | "";
+  onSeverityFilterChange: (value: Severity | "") => void;
+  timePreset: TimePreset;
+  onTimePresetChange: (value: TimePreset) => void;
+  customFrom: string;
+  onCustomFromChange: (value: string) => void;
+  customTo: string;
+  onCustomToChange: (value: string) => void;
+  onClear: () => void;
+}) {
+  const hasFilters = Boolean(
+    search ||
+      teamFilter ||
+      sourceFilter ||
+      statusFilter ||
+      severityFilter ||
+      timePreset !== "all" ||
+      customFrom ||
+      customTo,
+  );
+  return (
+    <div className="mb-4 rounded-xl border border-border-subtle bg-bg-panel/95 p-3 shadow-sm">
+      <div className="grid gap-3 lg:grid-cols-[minmax(15rem,1.35fr)_repeat(4,minmax(8rem,0.75fr))_minmax(12rem,0.8fr)_auto]">
+        <div className="relative">
+          <Search
+            size={15}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
+          />
+          <Input
+            aria-label="Search incidents"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search incidents..."
+            className="h-11 pl-9"
+          />
+        </div>
+        <Select
+          aria-label="Filter by team"
+          value={teamFilter}
+          onChange={(e) => onTeamFilterChange(e.target.value)}
+          className="h-11"
+        >
+          <option value="">All teams</option>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Filter by source"
+          value={sourceFilter}
+          onChange={(e) => onSourceFilterChange(e.target.value)}
+          className="h-11"
+        >
+          {SOURCE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Filter by status"
+          value={statusFilter}
+          onChange={(e) => onStatusFilterChange(e.target.value as IncidentStatus | "")}
+          className="h-11"
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Filter by severity"
+          value={severityFilter}
+          onChange={(e) => onSeverityFilterChange(e.target.value as Severity | "")}
+          className="h-11"
+        >
+          {SEVERITY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <IncidentTimeFilter
+          preset={timePreset}
+          onPresetChange={onTimePresetChange}
+          customFrom={customFrom}
+          onCustomFromChange={onCustomFromChange}
+          customTo={customTo}
+          onCustomToChange={onCustomToChange}
+        />
+        {hasFilters ? (
+          <Button variant="ghost" size="sm" onClick={onClear} className="h-11">
+            <X size={14} />
+            Clear
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function IncidentTimeFilter({
+  preset,
+  onPresetChange,
+  customFrom,
+  onCustomFromChange,
+  customTo,
+  onCustomToChange,
+}: {
+  preset: TimePreset;
+  onPresetChange: (value: TimePreset) => void;
+  customFrom: string;
+  onCustomFromChange: (value: string) => void;
+  customTo: string;
+  onCustomToChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"relative" | "custom">(
+    preset === "custom" ? "custom" : "relative",
+  );
+  const label =
+    preset === "custom"
+      ? customFrom || customTo
+        ? `${customFrom || "Start"} to ${customTo || "Now"}`
+        : "Custom time"
+      : TIME_PRESETS.find((option) => option.value === preset)?.label ?? "All time";
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-11 w-full items-center justify-between gap-3 rounded-md border border-border-default bg-bg-surface px-4 text-left text-sm text-fg-primary transition hover:border-border-strong focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+      >
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <Clock size={14} className="shrink-0 text-fg-muted" />
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+            Time
+          </span>
+          <span className="truncate">{label}</span>
+        </span>
+        <ChevronDown size={14} className="shrink-0 text-fg-muted" />
+      </button>
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-20 mt-2 w-[23rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border-default bg-bg-panel shadow-xl">
+            <div className="grid grid-cols-2 border-b border-border-subtle text-sm">
+              <button
+                type="button"
+                onClick={() => setTab("relative")}
+                className={`px-4 py-3 font-medium ${tab === "relative" ? "border-b-2 border-accent text-fg-primary" : "text-fg-muted"}`}
+              >
+                Relative
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("custom")}
+                className={`px-4 py-3 font-medium ${tab === "custom" ? "border-b-2 border-accent text-fg-primary" : "text-fg-muted"}`}
+              >
+                Custom
+              </button>
+            </div>
+            {tab === "relative" ? (
+              <div className="max-h-80 overflow-y-auto py-2">
+                {TIME_PRESETS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      onPresetChange(option.value);
+                      setOpen(false);
+                    }}
+                    className={`block w-full px-4 py-2.5 text-left text-sm hover:bg-bg-hover ${preset === option.value ? "text-accent" : "text-fg-primary"}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="grid gap-4 p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="incident-time-from">From</Label>
+                    <Input
+                      id="incident-time-from"
+                      type="datetime-local"
+                      value={customFrom}
+                      onChange={(e) => onCustomFromChange(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="incident-time-to">To</Label>
+                    <Input
+                      id="incident-time-to"
+                      type="datetime-local"
+                      value={customTo}
+                      onChange={(e) => onCustomToChange(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={() => {
+                    onPresetChange("custom");
+                    setOpen(false);
+                  }}
+                >
+                  Apply
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function ManageIncidentModal({
+  open,
+  incident,
+  services,
+  teams,
+  onClose,
+  onUpdated,
+}: {
+  open: boolean;
+  incident: IncidentResponse | null;
+  services: ServiceResponse[];
+  teams: TeamResponse[];
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [status, setStatus] = useState<IncidentStatus>("open");
+  const [severity, setSeverity] = useState<Severity>("high");
+  const [serviceId, setServiceId] = useState("");
+  const [handoffReason, setHandoffReason] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!incident) return;
+    setStatus(incident.status);
+    setSeverity(incident.severity ?? "high");
+    setServiceId(incident.service_id ?? "");
+    setHandoffReason("");
+    setError("");
+  }, [incident]);
+
+  const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team.name])), [teams]);
+  const serviceChanged = Boolean(incident && serviceId !== (incident.service_id ?? ""));
+
+  async function handleSubmit() {
+    if (!incident) return;
+    setError("");
+    setLoading(true);
+    try {
+      await updateIncident(incident.id, {
+        status,
+        severity,
+        service_id: serviceId || null,
+        service_id_set: true,
+        handoff_reason: handoffReason || undefined,
+      });
+      onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update incident");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Manage Incident">
+      <div className="space-y-4">
+        {incident ? (
+          <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3">
+            <p className="font-medium text-fg-primary">{incident.title}</p>
+            <p className="mt-1 text-sm text-fg-muted">
+              Updating the service moves ownership to that service's team and restarts paging for its escalation chain when one is configured.
+            </p>
+          </div>
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="incident-status">Status</Label>
+            <Select
+              id="incident-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as IncidentStatus)}
+            >
+              {STATUS_OPTIONS.filter((option) => option.value).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="incident-severity">Severity</Label>
+            <Select
+              id="incident-severity"
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value as Severity)}
+            >
+              {SEVERITY_OPTIONS.filter((option) => option.value).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+        <div>
+          <Label htmlFor="incident-service">Service / Team</Label>
+          <Select
+            id="incident-service"
+            value={serviceId}
+            onChange={(e) => setServiceId(e.target.value)}
+          >
+            <option value="">No linked service</option>
+            {services.map((service) => (
+              <option key={service.id} value={service.id}>
+                {service.name} {teamById.get(service.team_id) ? `- ${teamById.get(service.team_id)}` : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {serviceChanged ? (
+          <div>
+            <Label htmlFor="incident-handoff-reason">Handoff note (optional)</Label>
+            <Textarea
+              id="incident-handoff-reason"
+              rows={3}
+              value={handoffReason}
+              onChange={(e) => setHandoffReason(e.target.value)}
+              placeholder="Why is this moving to another service/team?"
+            />
+          </div>
+        ) : null}
+        {error ? <FormError message={error} /> : null}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} loading={loading} disabled={!incident}>
+            Save changes
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -688,14 +1165,15 @@ function createSyntheticPayload(serviceName?: string): Pick<
 
 function FireTestIncidentModal({
   open,
+  services,
   onClose,
   onCreated,
 }: {
   open: boolean;
+  services: ServiceResponse[];
   onClose: () => void;
   onCreated: (incident: IncidentResponse, session: SessionResponse) => void;
 }) {
-  const [services, setServices] = useState<ServiceResponse[]>([]);
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [serviceId, setServiceId] = useState("");
   const [form, setForm] = useState<IncidentCreate>(() => createSyntheticPayload());
@@ -704,9 +1182,6 @@ function FireTestIncidentModal({
 
   useEffect(() => {
     if (!open) return;
-    listServices()
-      .then((res) => setServices(res.items))
-      .catch(() => setServices([]));
     getConfig()
       .then((res) => setConfig(res))
       .catch(() => setConfig(null));

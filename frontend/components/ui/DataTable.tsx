@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select } from "@/components/ui/Input";
+import { Input, Label } from "@/components/ui/Input";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -99,6 +99,8 @@ export interface DataTableProps<T> {
   storageKey?: string;
   /** Top-right slot for additional controls (e.g. a "New …" button). */
   toolbarRight?: ReactNode;
+  /** Hide the built-in toolbar when a page provides its own controls. */
+  hideToolbar?: boolean;
   /** Optional placeholder for the search input. */
   searchPlaceholder?: string;
   /** Pass-through className for the outer wrapper. */
@@ -142,6 +144,41 @@ function fmtDateTimeLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function paginationItems(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
+  if (totalPages <= 6) {
+    return Array.from({ length: totalPages }, (_, index) => index);
+  }
+
+  const pages = new Set<number>([
+    0,
+    totalPages - 1,
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+  ]);
+  if (currentPage <= 2) {
+    pages.add(1);
+    pages.add(2);
+  }
+  if (currentPage >= totalPages - 3) {
+    pages.add(totalPages - 2);
+    pages.add(totalPages - 3);
+  }
+
+  const ordered = Array.from(pages)
+    .filter((page) => page >= 0 && page < totalPages)
+    .sort((a, b) => a - b);
+  const items: Array<number | "ellipsis"> = [];
+  for (const page of ordered) {
+    const previous = items[items.length - 1];
+    if (typeof previous === "number" && page - previous > 1) {
+      items.push("ellipsis");
+    }
+    items.push(page);
+  }
+  return items;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -163,6 +200,7 @@ export function DataTable<T>({
   empty,
   storageKey,
   toolbarRight,
+  hideToolbar = false,
   searchPlaceholder = "Search…",
   className = "",
 }: DataTableProps<T>) {
@@ -293,6 +331,12 @@ export function DataTable<T>({
     () => sortedRows.slice(safePage * pageSize, (safePage + 1) * pageSize),
     [sortedRows, safePage, pageSize],
   );
+  const pageItems = useMemo(
+    () => paginationItems(safePage, totalPages),
+    [safePage, totalPages],
+  );
+  const firstVisibleRow = sortedRows.length === 0 ? 0 : safePage * pageSize + 1;
+  const lastVisibleRow = Math.min((safePage + 1) * pageSize, sortedRows.length);
 
   // ----- Handlers -------------------------------------------------------------
   const cycleSort = (columnId: string) => {
@@ -400,6 +444,7 @@ export function DataTable<T>({
   return (
     <div className={`space-y-3 ${className}`}>
       {/* Toolbar */}
+      {!hideToolbar && (
       <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-panel p-3 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
           {searchableColumns.length > 0 && (
@@ -547,6 +592,7 @@ export function DataTable<T>({
           </div>
         )}
       </div>
+      )}
 
       {/* Bulk action bar (only when rows are selected) */}
       {selectable && selection.size > 0 && (
@@ -569,6 +615,85 @@ export function DataTable<T>({
           </Button>
         </div>
       )}
+
+      {/* Pagination + table controls */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border-subtle bg-bg-panel px-3 py-1 text-xs text-fg-muted shadow-sm">
+        <div className="inline-flex min-h-7 items-center font-medium text-fg-secondary">
+          {sortedRows.length === 0
+            ? "Showing 0 of 0"
+            : `Showing ${firstVisibleRow}-${lastVisibleRow} of ${sortedRows.length}${
+                rows.length !== sortedRows.length
+                  ? ` (filtered from ${rows.length})`
+                  : ""
+              }`}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <span className="whitespace-nowrap">Rows per page</span>
+          <select
+            value={String(pageSize)}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="h-7 w-14 rounded-md border border-border-default bg-bg-input px-2 py-0 text-xs font-medium text-fg-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            {pageSizeOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              className="h-7 px-2"
+            >
+              Previous
+            </Button>
+            {pageItems.map((item, index) =>
+              item === "ellipsis" ? (
+                <span
+                  key={`ellipsis-${index}`}
+                  className="px-1 text-fg-muted"
+                  aria-hidden="true"
+                >
+                  ...
+                </span>
+              ) : (
+                <Button
+                  key={item}
+                  variant={item === safePage ? "primary" : "ghost"}
+                  size="sm"
+                  onClick={() => setPage(item)}
+                  aria-current={item === safePage ? "page" : undefined}
+                  title={`Page ${item + 1}`}
+                  className="h-7 min-w-7 px-2"
+                >
+                  {item + 1}
+                </Button>
+              ),
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+              className="h-7 px-2"
+            >
+              Next
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage(totalPages - 1)}
+              disabled={safePage >= totalPages - 1}
+              className="h-7 px-2"
+            >
+              Last
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* Table */}
       {pageRows.length === 0 ? (
@@ -852,55 +977,6 @@ export function DataTable<T>({
           </div>
         </>
       )}
-
-      {/* Pagination footer */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-fg-muted">
-        <div>
-          {sortedRows.length === 0
-            ? "0 rows"
-            : `${safePage * pageSize + 1}–${Math.min(
-                (safePage + 1) * pageSize,
-                sortedRows.length,
-              )} of ${sortedRows.length}${
-                rows.length !== sortedRows.length
-                  ? ` (filtered from ${rows.length})`
-                  : ""
-              }`}
-        </div>
-        <div className="flex items-center gap-2">
-          <span>Rows per page</span>
-          <Select
-            value={String(pageSize)}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="w-20"
-          >
-            {pageSizeOptions.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </Select>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={safePage === 0}
-          >
-            Prev
-          </Button>
-          <span className="tabular-nums">
-            Page {safePage + 1} / {totalPages}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={safePage >= totalPages - 1}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

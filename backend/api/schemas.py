@@ -178,6 +178,18 @@ class IncidentCreate(BaseModel):
     external_source: Optional[str] = Field(default=None, max_length=100)
 
 
+class IncidentUpdate(BaseModel):
+    status: Optional[str] = Field(
+        default=None, pattern="^(open|in_progress|resolved|closed)$"
+    )
+    severity: Optional[str] = Field(
+        default=None, pattern="^(critical|high|medium|low)$"
+    )
+    service_id: Optional[uuid.UUID] = None
+    service_id_set: bool = False
+    handoff_reason: Optional[str] = Field(default=None, max_length=500)
+
+
 class IncidentResponse(BaseModel):
     id: uuid.UUID
     title: str
@@ -185,6 +197,9 @@ class IncidentResponse(BaseModel):
     status: str
     severity: Optional[str]
     service_id: Optional[uuid.UUID] = None
+    service_name: Optional[str] = None
+    team_id: Optional[uuid.UUID] = None
+    team_name: Optional[str] = None
     external_id: Optional[str] = None
     external_source: Optional[str] = None
     created_at: datetime

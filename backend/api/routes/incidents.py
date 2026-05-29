@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections import defaultdict, deque
-from datetime import timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,7 @@ from backend.api.schemas import (
     IncidentResponse,
     IncidentTimelineItemResponse,
     IncidentTimelineResponse,
+    IncidentUpdate,
     SessionListResponse,
     SessionResponse,
 )
@@ -42,6 +43,7 @@ from backend.db.repos import (
     SessionRepo,
     ServiceRepo,
     SkillRepo,
+    TeamRepo,
     UserRepo,
 )
 from backend.api.schemas import (
@@ -116,6 +118,41 @@ def _assignment_body(assigned_by: str, actor_label: str | None) -> str | None:
     return f"{actor_label} became the current owner."
 
 
+async def _to_incident_response(
+    db: AsyncSession, org_id: uuid.UUID, incident
+) -> IncidentResponse:
+    data = IncidentResponse.model_validate(incident).model_dump()
+    if incident.service_id is not None:
+        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        if service is not None:
+            data["service_name"] = service.name
+            data["team_id"] = service.team_id
+            team = await TeamRepo.get_by_id(db, org_id, service.team_id)
+            data["team_name"] = team.name if team is not None else None
+    return IncidentResponse(**data)
+
+
+async def _to_incident_list_response(
+    db: AsyncSession, org_id: uuid.UUID, incidents
+) -> list[IncidentResponse]:
+    services = await ServiceRepo.list_all(db, org_id)
+    teams = await TeamRepo.list_all(db, org_id)
+    service_by_id = {service.id: service for service in services}
+    team_by_id = {team.id: team for team in teams}
+    responses: list[IncidentResponse] = []
+    for incident in incidents:
+        data = IncidentResponse.model_validate(incident).model_dump()
+        if incident.service_id is not None:
+            service = service_by_id.get(incident.service_id)
+            if service is not None:
+                data["service_name"] = service.name
+                data["team_id"] = service.team_id
+                team = team_by_id.get(service.team_id)
+                data["team_name"] = team.name if team is not None else None
+        responses.append(IncidentResponse(**data))
+    return responses
+
+
 @router.post(
     "",
     response_model=IncidentResponse,
@@ -186,7 +223,7 @@ async def create_incident(
                 incident=incident,
                 base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
             )
-    return incident
+    return await _to_incident_response(db, org_id, incident)
 
 
 @router.get(
@@ -196,6 +233,12 @@ async def create_incident(
 )
 async def list_incidents(
     status_filter: str | None = Query(None, alias="status"),
+    severity: str | None = Query(None, pattern="^(critical|high|medium|low)$"),
+    service_id: uuid.UUID | None = Query(None),
+    team_id: uuid.UUID | None = Query(None),
+    source: str | None = Query(None, pattern="^(manual|ingested)$"),
+    updated_from: datetime | None = Query(None),
+    updated_to: datetime | None = Query(None),
     query: str | None = Query(None, alias="q"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -207,21 +250,32 @@ async def list_incidents(
         db,
         org_id,
         status=status_filter,
+        severity=severity,
+        service_id=service_id,
+        team_id=team_id,
+        source=source,
+        updated_from=updated_from,
+        updated_to=updated_to,
         query=query,
         limit=limit,
         offset=offset,
     )
-    # For total count we re-query without limit/offset.
-    # A lightweight approach — fine for now, can optimise later.
-    all_items = await IncidentRepo.list_all(
+    total = await IncidentRepo.count_all(
         db,
         org_id,
         status=status_filter,
+        severity=severity,
+        service_id=service_id,
+        team_id=team_id,
+        source=source,
+        updated_from=updated_from,
+        updated_to=updated_to,
         query=query,
-        limit=10_000,
-        offset=0,
     )
-    return IncidentListResponse(items=list(items), total=len(all_items))
+    return IncidentListResponse(
+        items=await _to_incident_list_response(db, org_id, items),
+        total=total,
+    )
 
 
 @router.get(
@@ -266,7 +320,77 @@ async def get_incident(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
     )
-    return incident
+    return await _to_incident_response(db, org_id, incident)
+
+
+@router.patch(
+    "/{incident_id}",
+    response_model=IncidentResponse,
+    summary="Update incident routing and lifecycle fields",
+)
+async def update_incident(
+    incident_id: uuid.UUID,
+    body: IncidentUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+
+    service_changed = body.service_id_set and body.service_id != incident.service_id
+    if body.service_id_set and body.service_id is not None:
+        service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
+        if service is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Service not found",
+            )
+
+    updated = await IncidentRepo.update_fields(
+        db,
+        org_id,
+        incident_id,
+        status=body.status,
+        severity=body.severity,
+        service_id=body.service_id,
+        service_id_set=body.service_id_set,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+
+    if service_changed:
+        await IncidentAssignmentRepo.release(db, org_id, incident_id)
+        if updated.response_mode in ("page", "escalate_immediate"):
+            link = await _esc_kickoff.select_chain_for_incident(
+                db,
+                org_id,
+                service_id=updated.service_id,
+                priority=updated.priority,
+            )
+            if link is not None:
+                from backend.paging.channel_factory import build_channel_factory
+
+                await _esc_kickoff.restart_chain_for_handoff(
+                    db,
+                    org_id,
+                    incident_id=updated.id,
+                    chain_id=link.chain_id,
+                    mode=updated.response_mode or "page",
+                    channel_factory=build_channel_factory(),
+                )
+
+    await db.commit()
+    refreshed = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    assert refreshed is not None
+    return await _to_incident_response(db, org_id, refreshed)
 
 
 @router.get(

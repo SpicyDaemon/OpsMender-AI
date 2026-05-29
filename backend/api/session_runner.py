@@ -402,6 +402,22 @@ async def run_session_workflow(
 ) -> None:
     """Execute one session workflow in the background."""
 
+    semaphore = getattr(app.state, "session_workflow_semaphore", None)
+    if semaphore is not None:
+        async with semaphore:
+            await _run_session_workflow_inner(app, session_id=session_id)
+        return
+
+    await _run_session_workflow_inner(app, session_id=session_id)
+
+
+async def _run_session_workflow_inner(
+    app: FastAPI,
+    *,
+    session_id: uuid.UUID,
+) -> None:
+    """Execute one session workflow after concurrency admission."""
+
     config: AppConfig = app.state.config
     factory = app.state.session_factory
     pool: MCPServerPool = app.state.mcp_pool

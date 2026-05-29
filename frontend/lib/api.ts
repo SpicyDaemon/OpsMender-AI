@@ -153,16 +153,29 @@ import type {
   IncidentPostmortemUpdate,
   IncidentResponse,
   IncidentTimelineResponse,
+  IncidentUpdate,
 } from "./types";
 
 export async function listIncidents(params?: {
   status?: string;
+  severity?: string;
+  service_id?: string;
+  team_id?: string;
+  source?: string;
+  updated_from?: string;
+  updated_to?: string;
   q?: string;
   limit?: number;
   offset?: number;
 }): Promise<IncidentListResponse> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
+  if (params?.severity) qs.set("severity", params.severity);
+  if (params?.service_id) qs.set("service_id", params.service_id);
+  if (params?.team_id) qs.set("team_id", params.team_id);
+  if (params?.source) qs.set("source", params.source);
+  if (params?.updated_from) qs.set("updated_from", params.updated_from);
+  if (params?.updated_to) qs.set("updated_to", params.updated_to);
   if (params?.q) qs.set("q", params.q);
   if (params?.limit !== undefined) qs.set("limit", String(params.limit));
   if (params?.offset !== undefined) qs.set("offset", String(params.offset));
@@ -176,6 +189,13 @@ export async function getIncident(id: string): Promise<IncidentResponse> {
 
 export async function createIncident(body: IncidentCreate): Promise<IncidentResponse> {
   return api.post<IncidentResponse>("/incidents", body);
+}
+
+export async function updateIncident(
+  id: string,
+  body: IncidentUpdate,
+): Promise<IncidentResponse> {
+  return api.patch<IncidentResponse>(`/incidents/${id}`, body);
 }
 
 export async function getIncidentTimeline(

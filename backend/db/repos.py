@@ -463,30 +463,136 @@ class IncidentRepo:
         org_id: uuid.UUID,
         *,
         status: str | None = None,
+        severity: str | None = None,
+        service_id: uuid.UUID | None = None,
+        team_id: uuid.UUID | None = None,
+        source: str | None = None,
+        updated_from: datetime | None = None,
+        updated_to: datetime | None = None,
         query: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> Sequence[Incident]:
-        stmt = (
-            select(Incident)
-            .where(Incident.org_id == org_id)
-            .where(Incident.org_id == org_id)
-            .where(Incident.org_id == org_id)
-            .order_by(Incident.created_at.desc())
-        )
+        stmt = IncidentRepo._filtered_select(
+            org_id,
+            status=status,
+            severity=severity,
+            service_id=service_id,
+            team_id=team_id,
+            source=source,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            query=query,
+        ).order_by(Incident.updated_at.desc(), Incident.created_at.desc())
+        stmt = stmt.limit(limit).offset(offset)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    def _filtered_select(
+        org_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        severity: str | None = None,
+        service_id: uuid.UUID | None = None,
+        team_id: uuid.UUID | None = None,
+        source: str | None = None,
+        updated_from: datetime | None = None,
+        updated_to: datetime | None = None,
+        query: str | None = None,
+    ):
+        stmt = select(Incident).where(Incident.org_id == org_id)
+        if team_id is not None:
+            stmt = stmt.join(Service, Service.id == Incident.service_id).where(
+                Service.org_id == org_id,
+                Service.team_id == team_id,
+            )
         if status:
             stmt = stmt.where(Incident.status == status)
+        if severity:
+            stmt = stmt.where(Incident.severity == severity)
+        if service_id is not None:
+            stmt = stmt.where(Incident.service_id == service_id)
+        if source == "manual":
+            stmt = stmt.where(Incident.external_source.is_(None))
+        elif source == "ingested":
+            stmt = stmt.where(Incident.external_source.is_not(None))
+        if updated_from is not None:
+            stmt = stmt.where(Incident.updated_at >= updated_from)
+        if updated_to is not None:
+            stmt = stmt.where(Incident.updated_at <= updated_to)
         if query:
             pattern = f"%{query.strip()}%"
             stmt = stmt.where(
                 or_(
                     Incident.title.ilike(pattern),
                     Incident.description.ilike(pattern),
+                    Incident.external_source.ilike(pattern),
+                    Incident.external_id.ilike(pattern),
                 )
             )
-        stmt = stmt.limit(limit).offset(offset)
+        return stmt
+
+    @staticmethod
+    async def count_all(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        severity: str | None = None,
+        service_id: uuid.UUID | None = None,
+        team_id: uuid.UUID | None = None,
+        source: str | None = None,
+        updated_from: datetime | None = None,
+        updated_to: datetime | None = None,
+        query: str | None = None,
+    ) -> int:
+        filtered = IncidentRepo._filtered_select(
+            org_id,
+            status=status,
+            severity=severity,
+            service_id=service_id,
+            team_id=team_id,
+            source=source,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            query=query,
+        ).subquery()
+        stmt = select(func.count()).select_from(filtered)
         result = await db.execute(stmt)
-        return result.scalars().all()
+        return int(result.scalar_one())
+
+    @staticmethod
+    async def update_fields(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        severity: str | None = None,
+        service_id: uuid.UUID | None = None,
+        service_id_set: bool = False,
+    ) -> Incident | None:
+        values: dict[str, Any] = {}
+        if status is not None:
+            values["status"] = status
+        if severity is not None:
+            values["severity"] = severity
+        if service_id_set:
+            values["service_id"] = service_id
+        if not values:
+            return await IncidentRepo.get_by_id(db, org_id, incident_id)
+        values["updated_at"] = datetime.now(timezone.utc)
+        stmt = (
+            update(Incident)
+            .where(Incident.org_id == org_id, Incident.id == incident_id)
+            .values(**values)
+        )
+        result = await db.execute(stmt)
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await IncidentRepo.get_by_id(db, org_id, incident_id)
 
     @staticmethod
     async def update_status(

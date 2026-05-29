@@ -329,6 +329,63 @@ class TestDispatchPipeline:
             # Original "recorded" row preserved as audit anchor.
             assert "recorded" in channels_seen
 
+    async def test_staged_routing_delegates_to_escalation_engine(
+        self, session_factory
+    ):
+        """New stage shape routes via the notification-escalation engine:
+        only stage 0 fires immediately and a NotificationEscalation row is
+        created with the next stage scheduled."""
+        from backend.db.repos import NotificationEscalationRepo
+
+        user = await _make_user(session_factory, username="carol")
+        inc = await _make_incident(session_factory, priority="P0")
+        page = await _record_page(
+            session_factory, incident_id=inc.id, user_id=user.id
+        )
+        async with session_factory() as db:
+            await UserNotificationPrefRepo.upsert(
+                db,
+                TEST_ORG_ID,
+                user.id,
+                channels={"email": "carol@test.com"},
+                routing={
+                    "P0": [
+                        {"channel_id": "email", "delay_seconds": 300},
+                        {"channel_id": "sms", "delay_seconds": 300},
+                    ]
+                },
+            )
+            await db.commit()
+
+        email = _StubChannel("email")
+        async with session_factory() as db:
+            inc_loaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)
+            user_loaded = await UserRepo.get_by_id(db, user.id)
+            page_loaded = (
+                await IncidentPageRepo.list_for_incident(db, TEST_ORG_ID, inc.id)
+            )[0]
+            result = await dispatch_page(
+                db,
+                TEST_ORG_ID,
+                incident=inc_loaded,
+                user=user_loaded,
+                page=page_loaded,
+                channel_factory=_factory_for({"email": email}),
+            )
+            await db.commit()
+
+        assert result.staged is True
+        async with session_factory() as db:
+            state = await NotificationEscalationRepo.get(
+                db, TEST_ORG_ID, incident_id=inc.id, user_id=user.id
+            )
+            assert state is not None
+            assert state.current_stage == 0
+            assert state.status == "running"
+            assert state.next_stage_due_at is not None
+        # Stage 0 (email) delivered immediately to carol's saved address.
+        assert email.calls and email.calls[0][0] == "carol@test.com"
+
     async def test_maintenance_window_suppresses_page(self, session_factory):
         user = await _make_user(session_factory, username="bob")
         inc = await _make_incident(

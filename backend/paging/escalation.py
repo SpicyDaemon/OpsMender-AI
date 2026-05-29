@@ -493,6 +493,11 @@ async def handle_ack(
             user_id=user_id,
             assigned_by="self_ack",
         )
+        from backend.paging import notification_escalation as _ne
+
+        await _ne.stop_escalation(
+            db, org_id, incident_id=incident_id, status="acked", at=now
+        )
         return False
 
     if state.status not in ("running", "paused"):
@@ -511,6 +516,12 @@ async def handle_ack(
     state.status = "acked"
     state.finished_at = now
     state.next_step_due_at = None
+    # Acknowledgement stops any staged notification escalation for this incident.
+    from backend.paging import notification_escalation as _ne
+
+    await _ne.stop_escalation(
+        db, org_id, incident_id=incident_id, status="acked", at=now
+    )
     await db.flush()
     return True
 

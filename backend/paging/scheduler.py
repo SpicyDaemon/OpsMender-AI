@@ -58,12 +58,19 @@ class EscalationScheduler:
 
     async def _tick(self) -> None:
         now = datetime.now(timezone.utc)
+        factory = build_channel_factory()
         async with self._session_factory() as db:
             try:
                 advanced = await tick_all_due(
-                    db, at=now, channel_factory=build_channel_factory()
+                    db, at=now, channel_factory=factory
                 )
-                if advanced:
+                # Advance staged per-priority notification escalations too.
+                from backend.paging import notification_escalation as _ne
+
+                fired = await _ne.tick_all_due(
+                    db, at=now, sender=_ne.build_notification_sender(factory)
+                )
+                if advanced or fired:
                     await db.commit()
             except Exception:
                 await db.rollback()

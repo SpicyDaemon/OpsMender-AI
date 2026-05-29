@@ -32,6 +32,7 @@ from backend.db.models import (
     Incident,
     IncidentAssignment,
     IncidentChainState,
+    NotificationEscalation,
     IncidentMemory,
     IncidentMemoryRecallLog,
     IncidentPage,
@@ -607,6 +608,14 @@ class IncidentRepo:
             .values(status=status, updated_at=datetime.now(timezone.utc))
         )
         await db.execute(stmt)
+        # Resolving/closing an incident stops any staged notification
+        # escalation still in flight (single chokepoint for every resolve path).
+        if status in ("resolved", "closed"):
+            from backend.paging import notification_escalation as _ne
+
+            await _ne.stop_escalation(
+                db, org_id, incident_id=incident_id, status="resolved"
+            )
 
     @staticmethod
     async def set_postmortem(
@@ -5181,6 +5190,74 @@ class IncidentChainStateRepo:
             .where(IncidentChainState.status == "running")
             .where(IncidentChainState.next_step_due_at.is_not(None))
             .where(IncidentChainState.next_step_due_at <= now)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+
+class NotificationEscalationRepo:
+    """Per-(incident, user) staged notification escalation state."""
+
+    @staticmethod
+    async def get(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> NotificationEscalation | None:
+        return (
+            await db.execute(
+                select(NotificationEscalation).where(
+                    NotificationEscalation.org_id == org_id,
+                    NotificationEscalation.incident_id == incident_id,
+                    NotificationEscalation.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+        priority: str | None,
+        stages: list,
+    ) -> NotificationEscalation:
+        state = NotificationEscalation(
+            org_id=org_id,
+            incident_id=incident_id,
+            user_id=user_id,
+            priority=priority,
+            stages=stages,
+        )
+        db.add(state)
+        await db.flush()
+        return state
+
+    @staticmethod
+    async def list_due(
+        db: AsyncSession, *, now: datetime
+    ) -> Sequence[NotificationEscalation]:
+        """Running escalations whose next stage is due (any org)."""
+        stmt = (
+            select(NotificationEscalation)
+            .where(NotificationEscalation.status == "running")
+            .where(NotificationEscalation.next_stage_due_at.is_not(None))
+            .where(NotificationEscalation.next_stage_due_at <= now)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def list_running_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> Sequence[NotificationEscalation]:
+        stmt = (
+            select(NotificationEscalation)
+            .where(NotificationEscalation.org_id == org_id)
+            .where(NotificationEscalation.incident_id == incident_id)
+            .where(NotificationEscalation.status == "running")
         )
         return (await db.execute(stmt)).scalars().all()
 

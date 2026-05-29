@@ -1751,6 +1751,51 @@ class IncidentChainState(Base):
     )
 
 
+class NotificationEscalation(Base):
+    """Per-(incident, user) staged notification escalation.
+
+    Drives the priority's ordered routing stages: stage 0 fires immediately,
+    each later stage fires after the prior stage's ``delay_seconds`` if the
+    incident is still unacknowledged. Acknowledgement or resolution stops it.
+    Independent of the chain engine (which escalates across people).
+    """
+
+    __tablename__ = "notification_escalations"
+    __table_args__ = (
+        UniqueConstraint(
+            "incident_id", "user_id", name="uq_notification_escalation_incident_user"
+        ),
+        Index("ix_notification_escalations_due", "org_id", "status", "next_stage_due_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    priority: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # Ordered stages: [{"channel_id": str, "delay_seconds": int}, ...]
+    stages: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default="running", nullable=False
+    )  # running | acked | resolved | exhausted | cancelled
+    current_stage: Mapped[int] = mapped_column(Integer, default=-1, nullable=False)
+    next_stage_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 # ---------------------------------------------------------------------------
 # AI incident memory (Sprint 45 — D-025)
 # ---------------------------------------------------------------------------

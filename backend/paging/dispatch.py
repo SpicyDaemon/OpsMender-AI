@@ -71,6 +71,9 @@ class DispatchResult:
     suppressed: bool = False
     suppression_reason: str | None = None
     suppressed_by_window_id: uuid.UUID | None = None
+    # True when delivery was handed to the staged notification-escalation
+    # engine instead of the immediate channel-factory fan-out.
+    staged: bool = False
     attempts: list[DeliveryAttempt] = dataclasses.field(default_factory=list)
 
 
@@ -270,6 +273,34 @@ async def dispatch_page(
         return result
 
     routing = prefs.routing if prefs is not None else None
+
+    # Staged routing (new shape: ordered {channel_id, delay_seconds} stages)
+    # delegates delivery to the notification-escalation engine, which fires
+    # stage 0 now and schedules the rest with delays + ack/resolve stop.
+    # Legacy routing (list of channel keys) keeps the immediate fan-out below.
+    from backend.paging.routing import parse_stages, routing_is_staged
+
+    priority_routing = (
+        routing.get(incident.priority)
+        if (routing and incident.priority)
+        else None
+    )
+    if routing_is_staged(priority_routing):
+        from backend.paging import notification_escalation as _ne
+
+        sender = _ne.build_notification_sender(channel_factory)
+        await _ne.start_escalation(
+            db,
+            org_id,
+            incident=incident,
+            user=user,
+            stages=parse_stages(priority_routing),
+            sender=sender,
+            at=now,
+        )
+        result.staged = True
+        return result
+
     channel_keys = resolve_channels(routing, priority=incident.priority)
     addresses: dict[str, str] = (
         dict(prefs.channels) if (prefs is not None and prefs.channels) else {}

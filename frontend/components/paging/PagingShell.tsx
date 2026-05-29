@@ -17,15 +17,12 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
-  ChevronRight,
+  ChevronUp,
   Copy,
   GitBranch,
   Info,
   ListOrdered,
-  Mail,
-  MessageSquare,
   Pencil,
-  Phone,
   PlusCircle,
   Repeat,
   Search,
@@ -106,6 +103,7 @@ import type {
   Priority,
   QuietHoursConfig,
   RosterResponse,
+  RoutingStage,
   ServiceResponse,
   TeamResponse,
   UserNotificationPrefResponse,
@@ -3400,62 +3398,6 @@ function MaintenanceWindowsPanel({
   );
 }
 
-const ALL_CHANNELS: {
-  key: NotificationChannelKey;
-  label: string;
-  helper: string;
-  fields: { name: string; label: string; placeholder: string }[];
-}[] = [
-  {
-    key: "slack_dm",
-    label: "Slack DM",
-    helper: "OpsMender DMs you via the org's Slack bot.",
-    fields: [
-      {
-        name: "user_id",
-        label: "Slack user ID",
-        placeholder: "U01ABC123",
-      },
-    ],
-  },
-  {
-    key: "teams_dm",
-    label: "Teams DM",
-    helper: "Posts to an incoming-webhook channel until Sprint 37 lands real DMs.",
-    fields: [
-      {
-        name: "webhook_url",
-        label: "Incoming webhook URL",
-        placeholder: "https://outlook.office.com/webhook/…",
-      },
-    ],
-  },
-  {
-    key: "email",
-    label: "Email",
-    helper: "SMTP delivery via the org's configured email settings.",
-    fields: [
-      {
-        name: "address",
-        label: "Email address",
-        placeholder: "you@example.com",
-      },
-    ],
-  },
-  {
-    key: "sms",
-    label: "SMS",
-    helper: "Twilio-delivered SMS to the number below.",
-    fields: [
-      {
-        name: "phone_number",
-        label: "Phone number (E.164)",
-        placeholder: "+15551234567",
-      },
-    ],
-  },
-];
-
 const ALL_PRIORITIES: Priority[] = ["P0", "P1", "P2", "P3"];
 
 type NotificationsTab = "my_routing" | "routing_summary" | "channels" | "outbound";
@@ -3707,10 +3649,43 @@ const QUIET_DAYS: { value: number; label: string }[] = [
   { value: 6, label: "Sun" },
 ];
 
-function channelIcon(key: NotificationChannelKey): LucideIcon {
-  if (key === "email") return Mail;
-  if (key === "sms") return Phone;
-  return MessageSquare; // slack_dm / teams_dm (chat-capable)
+// Friendly labels for legacy delivery keys still present in older prefs.
+const LEGACY_CHANNEL_LABELS: Record<string, string> = {
+  slack_dm: "Slack DM",
+  teams_dm: "Teams DM",
+  teams_dm_graph: "Teams DM",
+  email: "Email",
+  sms: "SMS",
+};
+
+// Stage delay options gating the next escalation stage.
+const STAGE_DELAY_OPTIONS: { value: number; label: string }[] = [
+  { value: 60, label: "1 min" },
+  { value: 120, label: "2 min" },
+  { value: 300, label: "5 min" },
+  { value: 600, label: "10 min" },
+  { value: 900, label: "15 min" },
+  { value: 1800, label: "30 min" },
+];
+
+/** Normalize a priority's routing into ordered stages (new + legacy shape). */
+function normalizeRoutingStages(raw: unknown): RoutingStage[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RoutingStage[] = [];
+  for (const entry of raw) {
+    if (typeof entry === "string") {
+      if (entry.trim()) out.push({ channel_id: entry, delay_seconds: 0 });
+    } else if (entry && typeof entry === "object") {
+      const channel_id = String(
+        (entry as RoutingStage).channel_id ?? "",
+      ).trim();
+      if (!channel_id) continue;
+      const delay = Number((entry as RoutingStage).delay_seconds ?? 300);
+      out.push({ channel_id, delay_seconds: Number.isFinite(delay) ? delay : 300 });
+    }
+    if (out.length >= 3) break;
+  }
+  return out;
 }
 
 /** Checkbox dropdown (popover) for selecting channels — no Ctrl/Cmd. */
@@ -3793,11 +3768,9 @@ export function NotificationPreferencesPanel({
   const [channels, setChannels] = useState<
     Record<string, Record<string, string>>
   >({});
-  const [routing, setRouting] = useState<
-    Record<string, NotificationChannelKey[]>
-  >({});
+  // Ordered escalation stages per priority.
+  const [routing, setRouting] = useState<Record<string, RoutingStage[]>>({});
   const [botConnectors, setBotConnectors] = useState<BotConnectorResponse[]>([]);
-  const [expanded, setExpanded] = useState<Priority | null>(null);
   const [quietEnabled, setQuietEnabled] = useState(false);
   const [quiet, setQuiet] = useState<{
     weekday_start: string;
@@ -3806,13 +3779,24 @@ export function NotificationPreferencesPanel({
   }>({ weekday_start: "22:00", weekday_end: "07:00", time_zone: "UTC" });
   const [quietDays, setQuietDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
 
-  // The channels the dispatcher can actually deliver to today. Data-driven
-  // (not an inline matrix) so the catalog extends as the backend supports
-  // more delivery channels. Workspace-configured Notification Channels drive
-  // the empty-state below.
+  // Routing channels are driven entirely by configured Notification Channels
+  // (enabled connectors). No hardcoded delivery list — a new connector becomes
+  // routable automatically. Friendly names only; provider lives in channel
+  // config.
   const channelOptions = useMemo(
-    () => ALL_CHANNELS.map((c) => ({ key: c.key, label: c.label })),
-    [],
+    () =>
+      botConnectors
+        .filter((c) => c.is_enabled)
+        .map((c) => ({ value: c.id, label: c.name })),
+    [botConnectors],
+  );
+
+  const channelLabel = useCallback(
+    (channelId: string) =>
+      botConnectors.find((c) => c.id === channelId)?.name ??
+      LEGACY_CHANNEL_LABELS[channelId] ??
+      channelId,
+    [botConnectors],
   );
 
   useEffect(() => {
@@ -3827,7 +3811,11 @@ export function NotificationPreferencesPanel({
         ]);
         setPref(data);
         setChannels(data.channels ?? {});
-        setRouting(data.routing ?? {});
+        const normalized: Record<string, RoutingStage[]> = {};
+        for (const [priority, raw] of Object.entries(data.routing ?? {})) {
+          normalized[priority] = normalizeRoutingStages(raw);
+        }
+        setRouting(normalized);
         setBotConnectors(connectors.items);
         const qh = data.quiet_hours;
         const start = qh?.weekday_start ?? qh?.weekday?.start;
@@ -3854,35 +3842,45 @@ export function NotificationPreferencesPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setChannelField = (
-    key: NotificationChannelKey,
-    field: string,
-    value: string,
+  const updateStages = (
+    priority: Priority,
+    fn: (stages: RoutingStage[]) => RoutingStage[],
   ) => {
-    setChannels({
-      ...channels,
-      [key]: { ...(channels[key] ?? {}), [field]: value },
+    setRouting((prev) => ({ ...prev, [priority]: fn(prev[priority] ?? []) }));
+  };
+
+  const addStage = (priority: Priority) => {
+    updateStages(priority, (stages) => {
+      if (stages.length >= 3) return stages;
+      const channel_id = channelOptions[0]?.value ?? "";
+      return [...stages, { channel_id, delay_seconds: 300 }];
     });
   };
 
-  const toggleRoute = (
-    priority: Priority,
-    channel: NotificationChannelKey,
-    on: boolean,
-  ) => {
-    const current = routing[priority] ?? [];
-    const next = on
-      ? Array.from(new Set([...current, channel]))
-      : current.filter((c) => c !== channel);
-    setRouting({ ...routing, [priority]: next });
-    // Seed a destination entry so the dispatcher knows where to deliver.
-    if (on && channels[channel] === undefined) {
-      const spec = ALL_CHANNELS.find((c) => c.key === channel);
-      const seed = spec
-        ? Object.fromEntries(spec.fields.map((f) => [f.name, ""]))
-        : {};
-      setChannels((prev) => ({ ...prev, [channel]: seed }));
-    }
+  const removeStage = (priority: Priority, idx: number) => {
+    updateStages(priority, (stages) => stages.filter((_, i) => i !== idx));
+  };
+
+  const moveStage = (priority: Priority, idx: number, dir: -1 | 1) => {
+    updateStages(priority, (stages) => {
+      const next = idx + dir;
+      if (next < 0 || next >= stages.length) return stages;
+      const copy = stages.slice();
+      [copy[idx], copy[next]] = [copy[next], copy[idx]];
+      return copy;
+    });
+  };
+
+  const setStageChannel = (priority: Priority, idx: number, channel_id: string) => {
+    updateStages(priority, (stages) =>
+      stages.map((s, i) => (i === idx ? { ...s, channel_id } : s)),
+    );
+  };
+
+  const setStageDelay = (priority: Priority, idx: number, delay_seconds: number) => {
+    updateStages(priority, (stages) =>
+      stages.map((s, i) => (i === idx ? { ...s, delay_seconds } : s)),
+    );
   };
 
   const toggleDay = (day: number) => {
@@ -3906,9 +3904,21 @@ export function NotificationPreferencesPanel({
             time_zone: quiet.time_zone || "UTC",
           }
         : null;
+      const routingPayload: Record<
+        string,
+        { channel_id: string; delay_seconds: number }[]
+      > = {};
+      for (const [priority, stages] of Object.entries(routing)) {
+        routingPayload[priority] = stages
+          .filter((s) => s.channel_id)
+          .map((s) => ({
+            channel_id: s.channel_id,
+            delay_seconds: s.delay_seconds,
+          }));
+      }
       const updated = await updateMyNotificationPreferences({
         channels,
-        routing,
+        routing: routingPayload,
         quiet_hours,
       });
       setPref(updated);
@@ -3991,101 +4001,129 @@ export function NotificationPreferencesPanel({
         </div>
       )}
 
-      {/* Priority rows */}
+      {/* Priority rows — ordered escalation stages */}
       <div className="space-y-3">
         {ALL_PRIORITIES.map((p) => {
           const meta = PRIORITY_META[p];
-          const selected = routing[p] ?? [];
-          const isOpen = expanded === p;
+          const stages = routing[p] ?? [];
           return (
             <div
               key={p}
-              className="rounded-lg border border-border-default bg-bg-surface"
+              className="space-y-3 rounded-lg border border-border-default bg-bg-surface p-4"
             >
-              <div className="flex flex-wrap items-center gap-3 p-4">
+              <div className="flex flex-wrap items-center gap-3">
                 <Badge variant={PRIORITY_VARIANT[p] as never}>{p}</Badge>
                 <div className="min-w-[8rem]">
                   <div className="font-medium text-fg-primary">{meta.label}</div>
                   <div className="text-xs text-fg-muted">{meta.description}</div>
                 </div>
-                <div className="ml-auto flex items-center gap-3">
-                  <ChannelMultiSelect
-                    options={channelOptions}
-                    selected={selected}
-                    onToggle={(key, on) => toggleRoute(p, key, on)}
-                  />
-                  <button
-                    type="button"
-                    aria-label={isOpen ? "Hide channel details" : "Show channel details"}
-                    title="Channel details"
-                    onClick={() => setExpanded(isOpen ? null : p)}
-                    className="rounded p-1 text-fg-muted hover:text-fg-primary"
-                  >
-                    {isOpen ? (
-                      <ChevronDown size={16} />
-                    ) : (
-                      <ChevronRight size={16} />
-                    )}
-                  </button>
-                </div>
+                <span className="ml-auto text-xs text-fg-muted">
+                  {stages.length}/3 stages
+                </span>
               </div>
 
-              {/* Selected channel chips */}
-              <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
-                {selected.length === 0 ? (
-                  <span className="inline-flex items-center gap-1 text-xs text-fg-muted">
-                    <BellOff size={12} /> No notifications
-                  </span>
-                ) : (
-                  selected.map((key) => {
-                    const Icon = channelIcon(key);
-                    const label =
-                      ALL_CHANNELS.find((c) => c.key === key)?.label ?? key;
-                    return (
-                      <span
-                        key={key}
-                        className="inline-flex items-center gap-1 rounded-full border border-border-default bg-bg-elevated px-2 py-0.5 text-xs text-fg-primary"
-                      >
-                        <Icon size={12} className="text-fg-secondary" />
-                        {label}
-                      </span>
+              {stages.length === 0 ? (
+                <div className="inline-flex items-center gap-1 text-xs text-fg-muted">
+                  <BellOff size={12} /> Do not notify
+                </div>
+              ) : (
+                <ol className="space-y-2">
+                  {stages.map((stage, idx) => {
+                    const inOptions = channelOptions.some(
+                      (o) => o.value === stage.channel_id,
                     );
-                  })
-                )}
-              </div>
-
-              {/* Expanded: destination details for the selected channels */}
-              {isOpen && (
-                <div className="border-t border-border-subtle px-4 py-3">
-                  {selected.length === 0 ? (
-                    <p className="text-xs text-fg-muted">
-                      Select one or more channels above to configure where this
-                      priority delivers.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {selected.map((key) => {
-                        const spec = ALL_CHANNELS.find((c) => c.key === key);
-                        if (!spec) return null;
-                        return spec.fields.map((f) => (
-                          <div key={`${key}-${f.name}`}>
-                            <Label className="text-xs">
-                              {spec.label} · {f.label}
-                            </Label>
-                            <Input
-                              value={channels[key]?.[f.name] ?? ""}
-                              placeholder={f.placeholder}
+                    return (
+                      <li
+                        key={idx}
+                        className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg-elevated p-2"
+                      >
+                        <span className="w-16 shrink-0 font-mono text-xs text-fg-muted">
+                          Stage {idx + 1}
+                        </span>
+                        <Select
+                          aria-label={`${p} stage ${idx + 1} channel`}
+                          value={stage.channel_id}
+                          onChange={(e) =>
+                            setStageChannel(p, idx, e.target.value)
+                          }
+                          className="h-9 min-w-[12rem] flex-1"
+                        >
+                          {/* Surface a legacy/removed channel so it stays visible. */}
+                          {!inOptions && stage.channel_id && (
+                            <option value={stage.channel_id}>
+                              {channelLabel(stage.channel_id)}
+                            </option>
+                          )}
+                          {channelOptions.length === 0 && !stage.channel_id && (
+                            <option value="">No channels configured</option>
+                          )}
+                          {channelOptions.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </Select>
+                        {idx < stages.length - 1 && (
+                          <label className="inline-flex items-center gap-1 text-xs text-fg-muted">
+                            Wait
+                            <Select
+                              aria-label={`${p} stage ${idx + 1} delay`}
+                              value={String(stage.delay_seconds)}
                               onChange={(e) =>
-                                setChannelField(key, f.name, e.target.value)
+                                setStageDelay(p, idx, Number(e.target.value))
                               }
-                            />
-                          </div>
-                        ));
-                      })}
-                    </div>
-                  )}
-                </div>
+                              className="h-9"
+                            >
+                              {STAGE_DELAY_OPTIONS.map((d) => (
+                                <option key={d.value} value={d.value}>
+                                  {d.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </label>
+                        )}
+                        <div className="ml-auto flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            aria-label={`Move ${p} stage ${idx + 1} up`}
+                            disabled={idx === 0}
+                            onClick={() => moveStage(p, idx, -1)}
+                            className="rounded p-1 text-fg-muted hover:text-fg-primary disabled:opacity-30"
+                          >
+                            <ChevronUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Move ${p} stage ${idx + 1} down`}
+                            disabled={idx === stages.length - 1}
+                            onClick={() => moveStage(p, idx, 1)}
+                            className="rounded p-1 text-fg-muted hover:text-fg-primary disabled:opacity-30"
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${p} stage ${idx + 1}`}
+                            onClick={() => removeStage(p, idx)}
+                            className="rounded p-1 text-fg-muted hover:text-status-critical"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
               )}
+
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={stages.length >= 3 || channelOptions.length === 0}
+                onClick={() => addStage(p)}
+              >
+                <PlusCircle className="h-4 w-4" /> Add stage
+              </Button>
             </div>
           );
         })}

@@ -1585,7 +1585,7 @@ export async function getMyNotificationPreferences(): Promise<UserNotificationPr
 export async function updateMyNotificationPreferences(
   body: Partial<{
     channels: Record<string, Record<string, string>>;
-    routing: Record<string, NotificationChannelKey[]>;
+    routing: Record<string, { channel_id: string; delay_seconds: number }[]>;
     quiet_hours: QuietHoursConfig | null;
   }>,
 ): Promise<UserNotificationPrefResponse> {

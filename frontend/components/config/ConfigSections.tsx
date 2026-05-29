@@ -3021,7 +3021,7 @@ function BotConnectorModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={initialConnector ? "Edit Bot Connector" : "Add Bot Connector"}
+      title={initialConnector ? "Edit Notification Channel" : "Add Notification Channel"}
       maxWidth="max-w-2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -3569,10 +3569,10 @@ export function BotConnectorSection({
     try {
       if (editing) {
         await updateBotConnector(editing.id, payload);
-        setNotice("Bot connector updated.");
+        setNotice("Notification channel updated.");
       } else {
         await createBotConnector(payload);
-        setNotice("Bot connector created.");
+        setNotice("Notification channel created.");
       }
       setModalOpen(false);
       setEditing(null);
@@ -3585,14 +3585,14 @@ export function BotConnectorSection({
   }
 
   async function handleDelete(connector: BotConnectorResponse) {
-    const confirmed = window.confirm(`Delete bot connector "${connector.name}"?`);
+    const confirmed = window.confirm(`Delete notification channel "${connector.name}"?`);
     if (!confirmed) return;
 
     setError("");
     setNotice("");
     try {
       await deleteBotConnector(connector.id);
-      setNotice("Bot connector deleted.");
+      setNotice("Notification channel deleted.");
       setTestStates((current) => {
         const next = { ...current };
         delete next[connector.id];
@@ -3642,7 +3642,7 @@ export function BotConnectorSection({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-fg-secondary">
-            {connectors.length} saved connector{connectors.length === 1 ? "" : "s"}
+            {connectors.length} saved channel{connectors.length === 1 ? "" : "s"}
           </p>
           {!canEdit && (
             <p className="text-sm text-fg-secondary">
@@ -3667,7 +3667,7 @@ export function BotConnectorSection({
           <table className="min-w-full divide-y divide-border-subtle text-sm">
             <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
-                <th className="px-4 py-3">Connector</th>
+                <th className="px-4 py-3">Channel</th>
                 <th className="px-4 py-3">Capabilities</th>
                 <th className="px-4 py-3">Credentials</th>
                 <th className="px-4 py-3">Health</th>

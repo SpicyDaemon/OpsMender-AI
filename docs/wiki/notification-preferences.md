@@ -22,20 +22,22 @@ Open the **My Routing** tab. Instead of a checkbox matrix, each incident priorit
 | **P2** | Medium | Notifies your selected channels. |
 | **P3** | Low | Often "Do not notify". |
 
-For each priority, use the **channel multi-select** (a checkbox dropdown — no Ctrl/Cmd) to pick which channels fire. Selected channels show as chips on the row. Expand a row (chevron) to set the **destination** for each selected channel:
+Each priority holds an **ordered notification escalation** of up to **3 stages**. Stage 1 fires immediately; if the incident is still unacknowledged after the stage's configured **wait** (default 5 minutes, per stage), the next stage fires, and so on:
 
-| Channel | Destination | Notes |
-|---------|-------------|-------|
-| **Slack DM** | Slack user ID (e.g. `U01ABC123`) | Chat-capable — can also host incident sessions. |
-| **Teams DM** | Incoming-webhook URL | Chat-capable. |
-| **Email** | Email address | Delivery-only. Defaults to your account email. |
-| **SMS** | E.164 phone number (e.g. `+15551234567`) | Delivery-only. |
+> **P0 example**
+> 1. Teams Executive Alerts → wait 5 min
+> 2. SMS Primary → wait 5 min
+> 3. Telegram Ops
 
-The available channels come from the workspace's configured **Notification Channels**. If none are configured, My Routing shows an empty-state with a link to the Notification Channels tab.
+Per stage you pick a **channel** and (for non-final stages) a **wait** before the next stage escalates. Reorder stages with the up/down controls and remove with the trash icon. **Add stage** is disabled at 3 stages.
 
-If a priority has **no** channels selected, the page is recorded in `incident_pages` as `skipped` and you won't be notified.
+**Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered.
 
-**Chat-capable vs delivery-only:** Slack and Teams are chat-capable, so they can host an interactive incident session. Email and SMS are delivery-only — they push a notification but can't run a session.
+**Channels are driven entirely by your configured Notification Channels.** Any enabled channel — Telegram, Slack, Discord, Microsoft Teams, Telegram, SMS, Email, WhatsApp, Signal, Mattermost, Matrix, and more — is selectable by its friendly name (e.g. "SMS Primary", "Slack NOC"). There is no hardcoded delivery list: add a channel in the **Notification Channels** tab and it becomes routable immediately. If no channels are configured, My Routing shows an empty state with a link to that tab.
+
+If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
+
+**Chat-capable vs delivery-only:** Slack, Teams, Discord, Telegram, Mattermost, Matrix, and WhatsApp are chat-capable and will (in a future release) host interactive incident actions. Email and SMS are delivery-only.
 
 Click **Test notification** (top-right) to send a one-off test to your routed channels. Channels without credentials or a destination are reported as skipped rather than failing.
 
@@ -93,9 +95,32 @@ After saving:
 | Endpoint | Who | What |
 |----------|-----|------|
 | `GET /users/me/notification-preferences` | Any user | Returns the caller's pref row; creates an empty one on first call. |
-| `PUT /users/me/notification-preferences` | Any user | Partial update — pass only the keys you want to change. Quiet hours use `weekday_start`/`weekday_end`, optional `days` (Mon=0..Sun=6), `time_zone`; `min_priority_to_break: "P0"` keeps P0 always paging. |
+| `PUT /users/me/notification-preferences` | Any user | Partial update — pass only the keys you want to change. `routing` is `{priority: [{channel_id, delay_seconds}, ...]}` (ordered stages, max 3); legacy `{priority: ["channel_key", ...]}` is still accepted and read as stages. Quiet hours use `weekday_start`/`weekday_end`, optional `days` (Mon=0..Sun=6), `time_zone`; `min_priority_to_break: "P0"` keeps P0 always paging. |
 | `POST /users/me/notification-preferences/test` | Any user | Sends a one-off test notification to the caller's routed channels; returns per-channel `{channel, status, detail}`. Never fails on per-channel delivery errors. |
 | `GET /organizations/{id}/notification-settings` | Admin | Returns `notification_dedup_window_minutes`. |
 | `PUT /organizations/{id}/notification-settings` | Admin | Updates `notification_dedup_window_minutes` (0–1440). |
 | `POST /maintenance-windows` | Admin | Accepts `description`, `scope_type` (`global`/`service`/`roster`/`team`), `scope_id`. |
 | `GET /incidents/{id}/paging` | Any user | Returns `suppressed_by_maintenance_window` when applicable. |
+
+---
+
+## Notification Channels (configured delivery adapters)
+
+The **Notification Channels** tab (Admin) is where every delivery adapter is configured: Telegram, Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Email, SMS, Home Assistant, BlueBubbles (iMessage), and a custom adapter. Each channel has a friendly **name** (what routing displays) and its **provider/transport details live here only** — e.g. *SMS (provider: Twilio)*, *Email (provider: SMTP)*, *WhatsApp (provider: Twilio)*. Routing screens never expose provider names; they show the channel name you chose (e.g. "SMS Primary", "SMS Executive Escalation").
+
+Adding a channel here makes it immediately routable in **My Routing** with no further changes — the routing layer routes to *configured channels*, not to platform types, so new providers never require routing changes.
+
+---
+
+## Future direction (not implemented yet)
+
+The staged-routing architecture is intentionally channel-agnostic so the following can be layered on without changing routing:
+
+- **Rich incident cards on chat-capable channels** (Slack, Teams, Discord, Telegram, Mattermost, Matrix, WhatsApp) with inline actions: **Acknowledge**, **Resolve**, **Escalate**, **Start Session**.
+- Pressing an action will post an incident comment automatically:
+  - Acknowledge → "Incident acknowledged by &lt;user&gt;"
+  - Resolve → "Incident resolved by &lt;user&gt;"
+  - Escalate → "Incident escalated by &lt;user&gt;"
+  - Start Session → "Session started. Session ID: &lt;id&gt;"
+
+These actions are **documented as direction only** and are not part of the current release. Acknowledge/resolve from the web UI already stop staged escalation today.

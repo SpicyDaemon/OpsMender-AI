@@ -905,6 +905,16 @@ export type MaintenanceWindowScopeType = "global" | "service" | "roster" | "team
 
 export type NotificationChannelKey = "slack_dm" | "teams_dm" | "email" | "sms";
 
+/**
+ * One ordered notification escalation stage for a priority. `channel_id` is a
+ * configured Notification Channel id (BotConnector) or a legacy delivery key.
+ * `delay_seconds` gates the *next* stage if the incident stays unacknowledged.
+ */
+export interface RoutingStage {
+  channel_id: string;
+  delay_seconds: number;
+}
+
 export interface QuietHoursWindow {
   start: string;
   end: string;
@@ -927,7 +937,9 @@ export interface UserNotificationPrefResponse {
   user_id: string;
   org_id: string;
   channels: Record<string, Record<string, string>>;
-  routing: Record<string, NotificationChannelKey[]>;
+  // New shape: ordered stages per priority. Legacy rows may still be a flat
+  // list of channel-key strings; the UI normalizes both on load.
+  routing: Record<string, (RoutingStage | string)[]>;
   quiet_hours: QuietHoursConfig | null;
   updated_at: string;
 }

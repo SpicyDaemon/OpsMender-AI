@@ -72,8 +72,10 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain(
       "Quiet hours apply to P1, P2, and P3 only.",
     );
-    // Channel popover, not a checkbox matrix.
-    expect(pagingShellSource).toContain("<ChannelMultiSelect");
+    // Ordered escalation stages (not a checkbox matrix), max 3 per priority.
+    expect(pagingShellSource).toContain("Add stage");
+    expect(pagingShellSource).toContain("stages.length >= 3");
+    expect(pagingShellSource).toContain("Stage {idx + 1}");
   });
 
   it("uses checkbox/chip multi-selects instead of native multi-select", () => {

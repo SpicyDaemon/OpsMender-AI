@@ -1389,3 +1389,75 @@ async def update_my_notification_preferences(
     await db.commit()
     await db.refresh(pref)
     return UserNotificationPrefResponse.model_validate(pref)
+
+
+@router.post(
+    "/users/me/notification-preferences/test",
+    summary="Send a test notification to the current user's routed channels",
+)
+async def test_my_notification_preferences(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    """Attempt a one-off test delivery to every channel the operator has
+    routed (across any priority), using their saved destinations and the
+    configured channel factory. Channels without a destination or without
+    workspace credentials are reported as skipped rather than failing the
+    request. Never raises on per-channel delivery errors.
+    """
+    from backend.paging.channel_factory import build_channel_factory
+    from backend.paging.dispatch import CHANNEL_KEYS
+
+    pref = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
+    routing = pref.routing if (pref is not None and pref.routing) else {}
+    keys: set[str] = set()
+    if isinstance(routing, dict):
+        for value in routing.values():
+            if isinstance(value, list):
+                keys.update(k for k in value if k in CHANNEL_KEYS)
+
+    addresses: dict[str, str] = (
+        dict(pref.channels) if (pref is not None and pref.channels) else {}
+    )
+    if not addresses.get("email") and getattr(user, "email", None):
+        addresses["email"] = user.email
+    if not keys and addresses.get("email"):
+        keys = {"email"}
+
+    factory = build_channel_factory()
+    subject = "OpsMender test notification"
+    body_text = (
+        "This is a test notification confirming your My Routing settings. "
+        "If you received this, the channel is configured correctly."
+    )
+
+    results: list[dict[str, str | None]] = []
+    for key in sorted(keys):
+        recipient = addresses.get(key)
+        if not recipient:
+            results.append(
+                {"channel": key, "status": "skipped", "detail": "no_recipient"}
+            )
+            continue
+        channel = factory(key)
+        if channel is None:
+            results.append(
+                {
+                    "channel": key,
+                    "status": "skipped",
+                    "detail": "channel_unconfigured",
+                }
+            )
+            continue
+        try:
+            attempt = await channel.send(
+                recipient=recipient, subject=subject, body=body_text
+            )
+            results.append(
+                {"channel": key, "status": attempt.status, "detail": attempt.error}
+            )
+        except Exception as exc:  # never fail the request on delivery error
+            results.append({"channel": key, "status": "failed", "detail": str(exc)})
+
+    return {"results": results, "tested": len(results)}

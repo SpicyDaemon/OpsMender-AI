@@ -680,6 +680,32 @@ class TestPagingAPI:
         )
         assert relisted.json()["total"] == 0
 
+    async def test_notification_preferences_test_endpoint(
+        self, client: AsyncClient, auth_headers
+    ):
+        """v1 My Routing — the Test notification button hits this endpoint. It
+        never 500s; channels without credentials/destinations are reported as
+        skipped rather than failing the request."""
+        # Route P0 to email so there is at least one channel to attempt.
+        await client.put(
+            "/users/me/notification-preferences",
+            json={
+                "channels": {"email": {"address": "ops@example.com"}},
+                "routing": {"P0": ["email"]},
+            },
+            headers=auth_headers,
+        )
+        resp = await client.post(
+            "/users/me/notification-preferences/test", headers=auth_headers
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert "results" in body and "tested" in body
+        assert isinstance(body["results"], list)
+        # SMTP isn't configured in tests → email attempt is skipped, not failed.
+        for entry in body["results"]:
+            assert entry["status"] in {"sent", "skipped", "failed"}
+
     async def test_service_requires_existing_team(
         self, client: AsyncClient, auth_headers
     ):

@@ -164,6 +164,28 @@ class TestQuietHours:
         }
         assert quiet_hours_block(quiet, priority="P2", at=at) is False
 
+    def test_p0_always_bypasses_without_min_priority(self):
+        # v1 My Routing guarantee: P0 pages through even when no
+        # min_priority_to_break is stored.
+        at = datetime(2026, 5, 15, 23, 0, tzinfo=timezone.utc)
+        quiet = {"weekday_start": "22:00", "weekday_end": "06:00"}
+        assert quiet_hours_block(quiet, priority="P0", at=at) is False
+        assert quiet_hours_block(quiet, priority="P2", at=at) is True
+
+    def test_days_of_week_restriction(self):
+        # 2026-05-15 is a Friday (weekday()==4). Window active only Mon-Thu
+        # (0-3) → Friday is NOT a quiet day, so P2 is not blocked.
+        at = datetime(2026, 5, 15, 23, 0, tzinfo=timezone.utc)
+        quiet = {
+            "weekday_start": "22:00",
+            "weekday_end": "06:00",
+            "days": [0, 1, 2, 3],
+        }
+        assert quiet_hours_block(quiet, priority="P2", at=at) is False
+        # Include Friday (4) → now blocked.
+        quiet_with_fri = {**quiet, "days": [0, 1, 2, 3, 4]}
+        assert quiet_hours_block(quiet_with_fri, priority="P2", at=at) is True
+
 
 # ---------------------------------------------------------------------------
 # Maintenance windows

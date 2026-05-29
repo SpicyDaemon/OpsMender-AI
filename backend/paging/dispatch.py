@@ -147,6 +147,11 @@ def quiet_hours_block(
 
     if not quiet_hours:
         return False
+    # P0 (Critical) always pages through quiet hours; only P1-P3 can be
+    # suppressed. This is an explicit guarantee independent of any stored
+    # ``min_priority_to_break`` value.
+    if priority == "P0":
+        return False
     start = quiet_hours.get("weekday_start")
     end = quiet_hours.get("weekday_end")
     if not start or not end:
@@ -165,6 +170,17 @@ def quiet_hours_block(
     except Exception:
         tz = timezone.utc
     local = at.astimezone(tz)
+    # Optional days-of-week restriction. ``days`` is a list of Python weekday
+    # integers (Mon=0 .. Sun=6); when present and non-empty, quiet hours only
+    # apply on those days. Absent/empty means every day (backward compatible).
+    days = quiet_hours.get("days")
+    if isinstance(days, list) and days:
+        try:
+            allowed = {int(d) for d in days}
+        except (TypeError, ValueError):
+            allowed = set()
+        if allowed and local.weekday() not in allowed:
+            return False
     try:
         s_h, s_m = (int(part) for part in start.split(":"))
         e_h, e_m = (int(part) for part in end.split(":"))

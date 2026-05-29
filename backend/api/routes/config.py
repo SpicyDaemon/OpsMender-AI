@@ -79,6 +79,7 @@ def _config_to_response(
         advanced_auth_enabled=cfg.people.advanced_auth_enabled,
         sso_configured=sso_configured,
         saml_configured=saml_configured,
+        public_base_url=cfg.people.public_base_url or None,
     )
 
 

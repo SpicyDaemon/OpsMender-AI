@@ -615,6 +615,71 @@ class TestPagingAPI:
         deleted = await client.delete(f"/teams/{team_id}", headers=auth_headers)
         assert deleted.status_code == 204
 
+    async def test_team_slug_must_be_lowercase(
+        self, client: AsyncClient, auth_headers
+    ):
+        """v1 — team slugs are lowercase-only; uppercase is rejected server-side
+        so the value can never persist."""
+        upper = await client.post(
+            "/teams",
+            json={"name": "Mixed", "slug": "Payments-Team"},
+            headers=auth_headers,
+        )
+        assert upper.status_code == 422
+
+        ok = await client.post(
+            "/teams",
+            json={"name": "Lower", "slug": "payments-team"},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 201
+        assert ok.json()["slug"] == "payments-team"
+
+    async def test_team_membership_add_list_remove(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """v1 — the team edit form assigns people via add/remove member routes."""
+        async with app.state.session_factory() as db:
+            member = await UserRepo.create(
+                db,
+                username="member-one",
+                email="member-one@example.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+            member_id = str(member.id)
+
+        team = await client.post(
+            "/teams",
+            json={"name": "Membership", "slug": f"mem-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        team_id = team.json()["id"]
+
+        added = await client.post(
+            f"/teams/{team_id}/members",
+            json={"user_id": member_id},
+            headers=auth_headers,
+        )
+        assert added.status_code == 201, added.text
+
+        listed = await client.get(
+            f"/teams/{team_id}/members", headers=auth_headers
+        )
+        assert listed.status_code == 200
+        assert any(m["user_id"] == member_id for m in listed.json()["items"])
+
+        removed = await client.delete(
+            f"/teams/{team_id}/members/{member_id}", headers=auth_headers
+        )
+        assert removed.status_code == 204
+        relisted = await client.get(
+            f"/teams/{team_id}/members", headers=auth_headers
+        )
+        assert relisted.json()["total"] == 0
+
     async def test_service_requires_existing_team(
         self, client: AsyncClient, auth_headers
     ):

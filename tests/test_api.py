@@ -2141,6 +2141,20 @@ class TestConfig:
         assert data["ingest_auto_start_min_severity"] == "critical"
         assert data["ingest_auto_start_source"] is None
 
+    async def test_get_config_exposes_public_base_url(
+        self, client: AsyncClient, auth_headers
+    ):
+        """v1 paging — /config surfaces the configured public base URL so the
+        frontend can render a service's full intake URL. The field is always
+        present; it is null when OPSMENDER_PUBLIC_BASE_URL is unset (the browser
+        then falls back to window.location.origin)."""
+        resp = await client.get("/config", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "public_base_url" in data
+        # No env override in the test harness → null fallback.
+        assert data["public_base_url"] is None
+
     async def test_get_config_exposes_simple_by_default_auth_flags(
         self, client: AsyncClient, auth_headers
     ):

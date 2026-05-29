@@ -615,6 +615,51 @@ class TestEscalationAPI:
         )
         assert link.status_code == 201
 
+        # v1 — the service form reads the linked chain back via the new GET.
+        listed = await client.get(
+            f"/services/{svc.id}/escalation-chains", headers=auth_headers
+        )
+        assert listed.status_code == 200
+        body = listed.json()
+        assert body["total"] == 1
+        assert body["items"][0]["chain_id"] == chain.json()["id"]
+
+    async def test_step_user_target_validation(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """v1 — escalation levels can target a user; a bogus user 400s."""
+        team_id = await _make_team(app, name="user-target-team")
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": str(team_id), "name": "ut-c"},
+            headers=auth_headers,
+        )
+        chain_id = chain.json()["id"]
+        bogus = await client.post(
+            f"/escalation-chains/{chain_id}/steps",
+            json={
+                "step_index": 0,
+                "target_type": "user",
+                "target_id": str(uuid.uuid4()),
+                "timeout_seconds": 60,
+            },
+            headers=auth_headers,
+        )
+        assert bogus.status_code == 400
+
+        real_user = await _make_user(app, username="ut-real")
+        ok = await client.post(
+            f"/escalation-chains/{chain_id}/steps",
+            json={
+                "step_index": 0,
+                "target_type": "user",
+                "target_id": str(real_user),
+                "timeout_seconds": 60,
+            },
+            headers=auth_headers,
+        )
+        assert ok.status_code == 201
+
     async def test_step_inline_patch(
         self, client: AsyncClient, app, auth_headers
     ):

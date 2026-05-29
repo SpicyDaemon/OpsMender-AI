@@ -971,6 +971,7 @@ from backend.api.schemas import (
     EscalationStepResponse,
     EscalationStepUpdate,
     ServiceEscalationChainCreate,
+    ServiceEscalationChainListResponse,
     ServiceEscalationChainResponse,
 )
 from backend.db.repos import (
@@ -1106,6 +1107,9 @@ async def add_escalation_step(
     elif body.target_type == "team":
         if await TeamRepo.get_by_id(db, org_id, body.target_id) is None:
             raise HTTPException(status_code=400, detail="Target team not found")
+    elif body.target_type == "user":
+        if await UserRepo.get_by_id(db, body.target_id) is None:
+            raise HTTPException(status_code=400, detail="Target user not found")
     try:
         step = await EscalationStepRepo.create(
             db,
@@ -1249,6 +1253,28 @@ async def chain_where_used(
         )
     return ChainWhereUsedResponse(
         chain_id=chain_id, items=items, total=len(items)
+    )
+
+
+@router.get(
+    "/services/{service_id}/escalation-chains",
+    response_model=ServiceEscalationChainListResponse,
+    summary="List escalation chains attached to a service",
+)
+async def list_service_escalation_chains(
+    service_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    if await ServiceRepo.get_by_id(db, org_id, service_id) is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    links = await ServiceEscalationChainRepo.list_for_service(
+        db, org_id, service_id
+    )
+    return ServiceEscalationChainListResponse(
+        items=[ServiceEscalationChainResponse.model_validate(l) for l in links],
+        total=len(links),
     )
 
 

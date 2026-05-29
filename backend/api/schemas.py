@@ -404,6 +404,11 @@ class ConfigResponse(BaseModel):
     advanced_auth_enabled: bool = False
     sso_configured: bool = False
     saml_configured: bool = False
+    # v1 paging: the absolute base URL the frontend uses to render a
+    # service's full alert intake URL. Sourced from
+    # ``OPSMENDER_PUBLIC_BASE_URL``; null when unset, in which case the
+    # browser falls back to ``window.location.origin``.
+    public_base_url: Optional[str] = None
 
 
 class SetupChecklistResponse(BaseModel):
@@ -1867,6 +1872,11 @@ class ServiceEscalationChainResponse(BaseModel):
     applies_when: Optional[dict[str, Any]]
 
     model_config = {"from_attributes": True}
+
+
+class ServiceEscalationChainListResponse(BaseModel):
+    items: list[ServiceEscalationChainResponse]
+    total: int
 
 
 class EscalationStepUpdate(BaseModel):

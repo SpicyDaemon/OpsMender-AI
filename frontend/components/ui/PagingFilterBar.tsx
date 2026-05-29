@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { Search, X } from "lucide-react";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -41,8 +41,19 @@ export function PagingFilterBar({
 }) {
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-3 shadow-sm">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[16rem] flex-1">
+      {/* Grid (not flex): grid tracks constrain each control so the shared
+          Select's `w-full` fills its track instead of forcing its own row.
+          Stacks on small screens, collapses to a single row at xl — matching
+          the Services filter bar. Column count is dynamic via a CSS var. */}
+      <div
+        className="grid gap-3 xl:[grid-template-columns:var(--paging-filter-cols)]"
+        style={
+          {
+            "--paging-filter-cols": `minmax(16rem,1.25fr) repeat(${filters.length}, minmax(8rem,0.7fr)) auto`,
+          } as CSSProperties
+        }
+      >
+        <div className="relative">
           <Search
             size={15}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
@@ -61,7 +72,7 @@ export function PagingFilterBar({
             aria-label={f.label}
             value={f.value}
             onChange={(e) => f.onChange(e.target.value)}
-            className="h-11 min-w-[8rem]"
+            className="h-11"
           >
             {f.options.map((o) => (
               <option key={o.value} value={o.value}>
@@ -70,7 +81,7 @@ export function PagingFilterBar({
             ))}
           </Select>
         ))}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2">
           {hasFilters ? (
             <Button variant="ghost" size="sm" onClick={onClear} className="h-11">
               <X size={14} />

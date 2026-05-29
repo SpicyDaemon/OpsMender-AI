@@ -1595,6 +1595,17 @@ export async function updateMyNotificationPreferences(
   );
 }
 
+export interface TestNotificationResult {
+  results: { channel: string; status: string; detail: string | null }[];
+  tested: number;
+}
+
+export async function testMyNotificationPreferences(): Promise<TestNotificationResult> {
+  return api.post<TestNotificationResult>(
+    "/users/me/notification-preferences/test",
+  );
+}
+
 export async function getOrgNotificationSettings(
   orgId: string,
 ): Promise<NotificationSettingsResponse> {

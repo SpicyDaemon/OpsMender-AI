@@ -911,10 +911,16 @@ export interface QuietHoursWindow {
 }
 
 export interface QuietHoursConfig {
-  weekday?: QuietHoursWindow | null;
-  weekend?: QuietHoursWindow | null;
+  // Flat window shape read by the dispatcher (backend/paging/dispatch.py).
+  weekday_start?: string | null;
+  weekday_end?: string | null;
+  // Optional days-of-week restriction; Python weekday ints (Mon=0 .. Sun=6).
+  days?: number[] | null;
   min_priority_to_break?: Priority | null;
   time_zone?: string | null;
+  // Legacy nested shape kept for backward-compatible reads.
+  weekday?: QuietHoursWindow | null;
+  weekend?: QuietHoursWindow | null;
 }
 
 export interface UserNotificationPrefResponse {

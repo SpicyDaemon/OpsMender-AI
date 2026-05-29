@@ -6,22 +6,30 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
+  BellOff,
   Calendar,
   CalendarDays,
   Check,
+  ChevronDown,
+  ChevronRight,
   Copy,
   GitBranch,
   Info,
   ListOrdered,
+  Mail,
+  MessageSquare,
   Pencil,
+  Phone,
   PlusCircle,
   Repeat,
   Search,
+  Send,
   Server,
   Trash2,
   Users,
@@ -56,6 +64,7 @@ import {
   getConfig,
   getMyNotificationPreferences,
   linkServiceEscalationChain,
+  listBotConnectors,
   listChainServices,
   listEscalationChains,
   listEscalationSteps,
@@ -74,6 +83,7 @@ import {
   reorderEscalationSteps,
   reorderRosterMembers,
   resolveOnCall,
+  testMyNotificationPreferences,
   unlinkServiceEscalationChain,
   updateEscalationChain,
   updateEscalationStep,
@@ -83,6 +93,7 @@ import {
   updateTeam,
 } from "@/lib/api";
 import type {
+  BotConnectorResponse,
   ChainWhereUsedItem,
   EscalationChainResponse,
   EscalationStepResponse,
@@ -3453,7 +3464,7 @@ const NOTIFICATIONS_TABS: { id: NotificationsTab; label: string }[] = [
   { id: "my_routing", label: "My Routing" },
   { id: "routing_summary", label: "Routing Summary" },
   { id: "channels", label: "Notification Channels" },
-  { id: "outbound", label: "Outbound Hooks" },
+  { id: "outbound", label: "Viewer Notifications" },
 ];
 
 function NotificationsPanel({
@@ -3488,14 +3499,9 @@ function NotificationsPanel({
       </div>
 
       {subTab === "my_routing" && (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
-            Your personal delivery channels, priority routing, and quiet hours.
-            Incident sessions are only available on chat-capable channels; email,
-            SMS, and generic webhooks remain delivery-only.
-          </div>
-          <NotificationPreferencesPanel />
-        </div>
+        <NotificationPreferencesPanel
+          onGoToChannels={() => setSubTab("channels")}
+        />
       )}
 
       {subTab === "routing_summary" && (
@@ -3526,7 +3532,7 @@ function NotificationsPanel({
       {subTab === "outbound" && (
         <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
           <h3 className="text-sm font-semibold text-fg-primary">
-            Outbound Hooks
+            Viewer Notifications
           </h3>
           <p className="mt-1 text-sm text-fg-secondary">
             Send read-only incident updates to Viewers and external/downstream
@@ -3675,7 +3681,7 @@ function RoutingSummaryPanel({
           {outboundCount === null
             ? "checking…"
             : outboundCount > 0
-              ? `${outboundCount} outbound hook${outboundCount === 1 ? "" : "s"} configured.`
+              ? `${outboundCount} Viewer Notification rule${outboundCount === 1 ? "" : "s"} configured.`
               : "Not configured."}
         </li>
       </ul>
@@ -3683,10 +3689,106 @@ function RoutingSummaryPanel({
   );
 }
 
-function NotificationPreferencesPanel() {
+const PRIORITY_META: Record<Priority, { label: string; description: string }> = {
+  P0: { label: "Critical", description: "Highest urgency" },
+  P1: { label: "High", description: "High priority" },
+  P2: { label: "Medium", description: "Medium priority" },
+  P3: { label: "Low", description: "Low priority" },
+};
+
+// Days of week for quiet hours, matching Python datetime.weekday() (Mon=0).
+const QUIET_DAYS: { value: number; label: string }[] = [
+  { value: 0, label: "Mon" },
+  { value: 1, label: "Tue" },
+  { value: 2, label: "Wed" },
+  { value: 3, label: "Thu" },
+  { value: 4, label: "Fri" },
+  { value: 5, label: "Sat" },
+  { value: 6, label: "Sun" },
+];
+
+function channelIcon(key: NotificationChannelKey): LucideIcon {
+  if (key === "email") return Mail;
+  if (key === "sms") return Phone;
+  return MessageSquare; // slack_dm / teams_dm (chat-capable)
+}
+
+/** Checkbox dropdown (popover) for selecting channels — no Ctrl/Cmd. */
+export function ChannelMultiSelect({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: { key: NotificationChannelKey; label: string }[];
+  selected: NotificationChannelKey[];
+  onToggle: (key: NotificationChannelKey, on: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const label =
+    selected.length > 0
+      ? `Selected channels (${selected.length})`
+      : "Do not notify";
+
+  return (
+    <div ref={ref} className="relative w-56">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-border-strong bg-bg-input px-3 text-sm text-fg-primary"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown size={15} className="shrink-0 text-fg-muted" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full rounded-md border border-border-strong bg-bg-elevated p-1 shadow-lg">
+          {options.length === 0 ? (
+            <p className="px-2 py-2 text-xs text-fg-muted">
+              No channels available.
+            </p>
+          ) : (
+            options.map((o) => (
+              <label
+                key={o.key}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(o.key)}
+                  onChange={(e) => onToggle(o.key, e.target.checked)}
+                />
+                <span>{o.label}</span>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function NotificationPreferencesPanel({
+  onGoToChannels,
+}: {
+  onGoToChannels?: () => void;
+}) {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [pref, setPref] = useState<UserNotificationPrefResponse | null>(null);
   const [channels, setChannels] = useState<
     Record<string, Record<string, string>>
@@ -3694,31 +3796,54 @@ function NotificationPreferencesPanel() {
   const [routing, setRouting] = useState<
     Record<string, NotificationChannelKey[]>
   >({});
+  const [botConnectors, setBotConnectors] = useState<BotConnectorResponse[]>([]);
+  const [expanded, setExpanded] = useState<Priority | null>(null);
   const [quietEnabled, setQuietEnabled] = useState(false);
-  const [quiet, setQuiet] = useState<QuietHoursConfig>({
-    weekday: { start: "22:00", end: "07:00" },
-    min_priority_to_break: "P1",
-    time_zone: "UTC",
-  });
+  const [quiet, setQuiet] = useState<{
+    weekday_start: string;
+    weekday_end: string;
+    time_zone: string;
+  }>({ weekday_start: "22:00", weekday_end: "07:00", time_zone: "UTC" });
+  const [quietDays, setQuietDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+
+  // The channels the dispatcher can actually deliver to today. Data-driven
+  // (not an inline matrix) so the catalog extends as the backend supports
+  // more delivery channels. Workspace-configured Notification Channels drive
+  // the empty-state below.
+  const channelOptions = useMemo(
+    () => ALL_CHANNELS.map((c) => ({ key: c.key, label: c.label })),
+    [],
+  );
 
   useEffect(() => {
     (async () => {
       try {
-        const data = await getMyNotificationPreferences();
+        const [data, connectors] = await Promise.all([
+          getMyNotificationPreferences(),
+          listBotConnectors().catch(() => ({
+            items: [] as BotConnectorResponse[],
+            total: 0,
+          })),
+        ]);
         setPref(data);
         setChannels(data.channels ?? {});
         setRouting(data.routing ?? {});
-        if (data.quiet_hours) {
+        setBotConnectors(connectors.items);
+        const qh = data.quiet_hours;
+        const start = qh?.weekday_start ?? qh?.weekday?.start;
+        const end = qh?.weekday_end ?? qh?.weekday?.end;
+        if (qh && start && end) {
           setQuietEnabled(true);
           setQuiet({
-            weekday: data.quiet_hours.weekday ?? {
-              start: "22:00",
-              end: "07:00",
-            },
-            min_priority_to_break:
-              data.quiet_hours.min_priority_to_break ?? "P1",
-            time_zone: data.quiet_hours.time_zone ?? "UTC",
+            weekday_start: start,
+            weekday_end: end,
+            time_zone: qh.time_zone ?? "UTC",
           });
+          setQuietDays(
+            Array.isArray(qh.days) && qh.days.length > 0
+              ? qh.days
+              : [0, 1, 2, 3, 4, 5, 6],
+          );
         }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
@@ -3728,25 +3853,6 @@ function NotificationPreferencesPanel() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const toggleChannel = (key: NotificationChannelKey, on: boolean) => {
-    if (on) {
-      const spec = ALL_CHANNELS.find((c) => c.key === key)!;
-      const seed = Object.fromEntries(spec.fields.map((f) => [f.name, ""]));
-      setChannels({ ...channels, [key]: seed });
-    } else {
-      const next = { ...channels };
-      delete next[key];
-      setChannels(next);
-      const nextRouting = { ...routing };
-      for (const p of ALL_PRIORITIES) {
-        if (nextRouting[p]) {
-          nextRouting[p] = nextRouting[p].filter((c) => c !== key);
-        }
-      }
-      setRouting(nextRouting);
-    }
-  };
 
   const setChannelField = (
     key: NotificationChannelKey,
@@ -3769,6 +3875,22 @@ function NotificationPreferencesPanel() {
       ? Array.from(new Set([...current, channel]))
       : current.filter((c) => c !== channel);
     setRouting({ ...routing, [priority]: next });
+    // Seed a destination entry so the dispatcher knows where to deliver.
+    if (on && channels[channel] === undefined) {
+      const spec = ALL_CHANNELS.find((c) => c.key === channel);
+      const seed = spec
+        ? Object.fromEntries(spec.fields.map((f) => [f.name, ""]))
+        : {};
+      setChannels((prev) => ({ ...prev, [channel]: seed }));
+    }
+  };
+
+  const toggleDay = (day: number) => {
+    setQuietDays((prev) =>
+      prev.includes(day)
+        ? prev.filter((d) => d !== day)
+        : [...prev, day].sort((a, b) => a - b),
+    );
   };
 
   const save = async () => {
@@ -3776,9 +3898,12 @@ function NotificationPreferencesPanel() {
     try {
       const quiet_hours: QuietHoursConfig | null = quietEnabled
         ? {
-            weekday: quiet.weekday ?? null,
-            min_priority_to_break: quiet.min_priority_to_break ?? null,
-            time_zone: quiet.time_zone ?? "UTC",
+            weekday_start: quiet.weekday_start,
+            weekday_end: quiet.weekday_end,
+            days: quietDays,
+            // P0 always pages through; only P1-P3 are subject to quiet hours.
+            min_priority_to_break: "P0",
+            time_zone: quiet.time_zone || "UTC",
           }
         : null;
       const updated = await updateMyNotificationPreferences({
@@ -3787,11 +3912,34 @@ function NotificationPreferencesPanel() {
         quiet_hours,
       });
       setPref(updated);
-      toast.success("Notification preferences saved");
+      toast.success("Routing saved");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const runTest = async () => {
+    setTesting(true);
+    try {
+      const res = await testMyNotificationPreferences();
+      if (res.tested === 0) {
+        toast.success(
+          "No channels to test yet — add a channel to a priority first.",
+        );
+      } else {
+        const sent = res.results.filter((r) => r.status === "sent").length;
+        const skipped = res.results.filter((r) => r.status === "skipped").length;
+        const failed = res.results.filter((r) => r.status === "failed").length;
+        toast.success(
+          `Test notification: ${sent} delivered, ${skipped} skipped, ${failed} failed.`,
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -3801,115 +3949,177 @@ function NotificationPreferencesPanel() {
     );
   }
 
+  const noChannels = botConnectors.length === 0;
+
   return (
     <section className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-fg-primary">Channels</h2>
-        <p className="text-sm text-fg-secondary">
-          Pick how OpsMender can reach you, then enter the destination for
-          each enabled channel.
-        </p>
-        <ul className="mt-3 space-y-3">
-          {ALL_CHANNELS.map((c) => {
-            const enabled = channels[c.key] !== undefined;
-            return (
-              <li
-                key={c.key}
-                className="rounded-lg border border-border-default bg-bg-surface p-4"
-              >
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={(e) => toggleChannel(c.key, e.target.checked)}
-                  />
-                  <span className="font-medium text-fg-primary">
-                    {c.label}
-                  </span>
-                  <span className="text-xs text-fg-tertiary">{c.helper}</span>
-                </label>
-                {enabled && (
-                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {c.fields.map((f) => (
-                      <div key={f.name}>
-                        <Label className="text-xs">{f.label}</Label>
-                        <Input
-                          value={channels[c.key]?.[f.name] ?? ""}
-                          placeholder={f.placeholder}
-                          onChange={(e) =>
-                            setChannelField(c.key, f.name, e.target.value)
-                          }
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-
-      <div>
-        <h2 className="text-lg font-semibold text-fg-primary">
-          Routing by priority
-        </h2>
-        <p className="text-sm text-fg-secondary">
-          Pick which enabled channels fire for each incident priority.
-          Unchecked channels are skipped even if globally enabled.
-        </p>
-        <div className="mt-3 overflow-x-auto rounded-lg border border-border-default bg-bg-surface">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-default text-xs text-fg-secondary">
-                <th className="px-3 py-2 text-left font-medium">Priority</th>
-                {ALL_CHANNELS.map((c) => (
-                  <th
-                    key={c.key}
-                    className="px-3 py-2 text-center font-medium"
-                  >
-                    {c.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {ALL_PRIORITIES.map((p) => (
-                <tr key={p} className="border-b border-border-default last:border-0">
-                  <td className="px-3 py-2 font-mono text-fg-primary">{p}</td>
-                  {ALL_CHANNELS.map((c) => {
-                    const enabled = channels[c.key] !== undefined;
-                    const selected = (routing[p] ?? []).includes(c.key);
-                    return (
-                      <td
-                        key={c.key}
-                        className="px-3 py-2 text-center"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          disabled={!enabled}
-                          onChange={(e) =>
-                            toggleRoute(p, c.key, e.target.checked)
-                          }
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Header + Test notification */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-fg-primary">
+            Routing by Priority
+          </h2>
+          <p className="text-sm text-fg-secondary">
+            Choose how you want to be notified for each incident priority.
+            Unselected priorities are skipped.
+          </p>
         </div>
+        <Button variant="secondary" onClick={runTest} loading={testing}>
+          <Send className="h-4 w-4" /> Test notification
+        </Button>
       </div>
 
-      <div>
-        <h2 className="text-lg font-semibold text-fg-primary">Quiet hours</h2>
-        <p className="text-sm text-fg-secondary">
-          During quiet hours, incidents below the break threshold are
-          suppressed for you. Higher priorities still page through.
+      {noChannels && (
+        <div className="rounded-lg border border-status-info-border bg-status-info-bg px-4 py-3">
+          <p className="text-sm font-medium text-fg-primary">
+            No notification channels are configured yet
+          </p>
+          <p className="mt-1 text-sm text-fg-secondary">
+            Connect a channel so OpsMender can deliver pages. Configure them in
+            the Notification Channels tab.
+          </p>
+          {onGoToChannels && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={onGoToChannels}
+            >
+              Go to Notification Channels
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Priority rows */}
+      <div className="space-y-3">
+        {ALL_PRIORITIES.map((p) => {
+          const meta = PRIORITY_META[p];
+          const selected = routing[p] ?? [];
+          const isOpen = expanded === p;
+          return (
+            <div
+              key={p}
+              className="rounded-lg border border-border-default bg-bg-surface"
+            >
+              <div className="flex flex-wrap items-center gap-3 p-4">
+                <Badge variant={PRIORITY_VARIANT[p] as never}>{p}</Badge>
+                <div className="min-w-[8rem]">
+                  <div className="font-medium text-fg-primary">{meta.label}</div>
+                  <div className="text-xs text-fg-muted">{meta.description}</div>
+                </div>
+                <div className="ml-auto flex items-center gap-3">
+                  <ChannelMultiSelect
+                    options={channelOptions}
+                    selected={selected}
+                    onToggle={(key, on) => toggleRoute(p, key, on)}
+                  />
+                  <button
+                    type="button"
+                    aria-label={isOpen ? "Hide channel details" : "Show channel details"}
+                    title="Channel details"
+                    onClick={() => setExpanded(isOpen ? null : p)}
+                    className="rounded p-1 text-fg-muted hover:text-fg-primary"
+                  >
+                    {isOpen ? (
+                      <ChevronDown size={16} />
+                    ) : (
+                      <ChevronRight size={16} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Selected channel chips */}
+              <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
+                {selected.length === 0 ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-fg-muted">
+                    <BellOff size={12} /> No notifications
+                  </span>
+                ) : (
+                  selected.map((key) => {
+                    const Icon = channelIcon(key);
+                    const label =
+                      ALL_CHANNELS.find((c) => c.key === key)?.label ?? key;
+                    return (
+                      <span
+                        key={key}
+                        className="inline-flex items-center gap-1 rounded-full border border-border-default bg-bg-elevated px-2 py-0.5 text-xs text-fg-primary"
+                      >
+                        <Icon size={12} className="text-fg-secondary" />
+                        {label}
+                      </span>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Expanded: destination details for the selected channels */}
+              {isOpen && (
+                <div className="border-t border-border-subtle px-4 py-3">
+                  {selected.length === 0 ? (
+                    <p className="text-xs text-fg-muted">
+                      Select one or more channels above to configure where this
+                      priority delivers.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {selected.map((key) => {
+                        const spec = ALL_CHANNELS.find((c) => c.key === key);
+                        if (!spec) return null;
+                        return spec.fields.map((f) => (
+                          <div key={`${key}-${f.name}`}>
+                            <Label className="text-xs">
+                              {spec.label} · {f.label}
+                            </Label>
+                            <Input
+                              value={channels[key]?.[f.name] ?? ""}
+                              placeholder={f.placeholder}
+                              onChange={(e) =>
+                                setChannelField(key, f.name, e.target.value)
+                              }
+                            />
+                          </div>
+                        ));
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
+        <span>
+          Only configured channels will be used for routing. You can configure
+          channels in{" "}
+          {onGoToChannels ? (
+            <button
+              type="button"
+              onClick={onGoToChannels}
+              className="text-accent underline"
+            >
+              Notification Channels
+            </button>
+          ) : (
+            "Notification Channels"
+          )}
+          . Chat-capable channels (Slack, Teams) can also host incident
+          sessions; Email and SMS are delivery-only.
+        </span>
+      </div>
+
+      {/* Quiet hours */}
+      <div className="rounded-lg border border-border-default bg-bg-surface p-4">
+        <h2 className="text-base font-semibold text-fg-primary">Quiet Hours</h2>
+        <p className="mt-1 text-sm text-fg-secondary">
+          During quiet hours, non-critical notifications are suppressed.
+          Critical (P0) will still page through.
         </p>
-        <label className="mt-3 flex items-center gap-2 text-sm">
+        <label className="mt-3 inline-flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={quietEnabled}
@@ -3918,69 +4128,66 @@ function NotificationPreferencesPanel() {
           Enable quiet hours
         </label>
         {quietEnabled && (
-          <div className="mt-3 grid grid-cols-1 gap-3 rounded-lg border border-border-default bg-bg-surface p-4 sm:grid-cols-4">
-            <div>
-              <Label className="text-xs">Start</Label>
-              <Input
-                type="time"
-                value={quiet.weekday?.start ?? ""}
-                onChange={(e) =>
-                  setQuiet({
-                    ...quiet,
-                    weekday: {
-                      start: e.target.value,
-                      end: quiet.weekday?.end ?? "07:00",
-                    },
-                  })
-                }
-              />
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <Label className="text-xs">Time zone (IANA)</Label>
+                <Input
+                  value={quiet.time_zone}
+                  onChange={(e) =>
+                    setQuiet({ ...quiet, time_zone: e.target.value })
+                  }
+                  placeholder="UTC"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Start time</Label>
+                <Input
+                  type="time"
+                  value={quiet.weekday_start}
+                  onChange={(e) =>
+                    setQuiet({ ...quiet, weekday_start: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <Label className="text-xs">End time</Label>
+                <Input
+                  type="time"
+                  value={quiet.weekday_end}
+                  onChange={(e) =>
+                    setQuiet({ ...quiet, weekday_end: e.target.value })
+                  }
+                />
+              </div>
             </div>
             <div>
-              <Label className="text-xs">End</Label>
-              <Input
-                type="time"
-                value={quiet.weekday?.end ?? ""}
-                onChange={(e) =>
-                  setQuiet({
-                    ...quiet,
-                    weekday: {
-                      start: quiet.weekday?.start ?? "22:00",
-                      end: e.target.value,
-                    },
-                  })
-                }
-              />
+              <Label className="text-xs">Days</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {QUIET_DAYS.map((d) => {
+                  const on = quietDays.includes(d.value);
+                  return (
+                    <button
+                      key={d.value}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleDay(d.value)}
+                      className={`rounded-md border px-3 py-1.5 text-xs transition ${
+                        on
+                          ? "border-accent bg-accent text-white"
+                          : "border-border-strong bg-bg-input text-fg-secondary hover:text-fg-primary"
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              <Label className="text-xs">Break for priority ≥</Label>
-              <Select
-                value={quiet.min_priority_to_break ?? ""}
-                onChange={(e) =>
-                  setQuiet({
-                    ...quiet,
-                    min_priority_to_break:
-                      (e.target.value || null) as Priority | null,
-                  })
-                }
-              >
-                <option value="">Never break</option>
-                {ALL_PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p} and higher
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Time zone</Label>
-              <Input
-                value={quiet.time_zone ?? "UTC"}
-                onChange={(e) =>
-                  setQuiet({ ...quiet, time_zone: e.target.value })
-                }
-                placeholder="UTC"
-              />
-            </div>
+            <p className="text-xs text-fg-muted">
+              Quiet hours apply to P1, P2, and P3 only. P0 (Critical) always
+              pages through.
+            </p>
           </div>
         )}
       </div>
@@ -3988,10 +4195,12 @@ function NotificationPreferencesPanel() {
       <div className="flex items-center justify-between">
         <div className="text-xs text-fg-tertiary">
           {pref &&
-            `Last updated ${new Date(pref.updated_at).toLocaleString()}`}
+            `Routing changes apply immediately. Last updated ${new Date(
+              pref.updated_at,
+            ).toLocaleString()}.`}
         </div>
         <Button onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save preferences"}
+          {saving ? "Saving…" : "Save routing"}
         </Button>
       </div>
     </section>

@@ -55,12 +55,25 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain("My Routing");
     expect(pagingShellSource).toContain("Routing Summary");
     expect(pagingShellSource).toContain("Notification Channels");
-    expect(pagingShellSource).toContain("Outbound Hooks");
+    // Outbound Hooks is renamed to Viewer Notifications.
+    expect(pagingShellSource).toContain("Viewer Notifications");
+    expect(pagingShellSource).not.toContain("Outbound Hooks");
     // Routing Summary is read-only and explains the derivation + defers
     // editable team routing to v1.1.
     expect(pagingShellSource).toContain(
       "Editable team-level routing defaults are planned",
     );
+  });
+
+  it("uses a priority-based routing editor with quiet hours", () => {
+    expect(pagingShellSource).toContain("Routing by Priority");
+    expect(pagingShellSource).toContain("Test notification");
+    // P0 always pages through quiet hours (single-line, line-wrap safe).
+    expect(pagingShellSource).toContain(
+      "Quiet hours apply to P1, P2, and P3 only.",
+    );
+    // Channel popover, not a checkbox matrix.
+    expect(pagingShellSource).toContain("<ChannelMultiSelect");
   });
 
   it("uses checkbox/chip multi-selects instead of native multi-select", () => {

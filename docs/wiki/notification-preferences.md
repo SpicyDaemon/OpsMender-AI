@@ -1,64 +1,59 @@
 # Set up your notification preferences
 
-When an incident reaches OpsMender's paging engine, it has to know **how** to reach operators and **when**. This page covers the v1 Notifications surface:
+When an incident reaches OpsMender's paging engine, it has to know **how** to reach operators and **when**. The Notifications surface lives under **Paging & On-call** at `/dashboard/paging/notifications` and has four tabs:
 
-- **Operator Delivery** — workspace channels admins/operators use for on-call paging.
-- **Viewer Updates** — read-only/status updates to viewer audiences and external workflows.
-- **Quiet Hours** — personal notification windows where appropriate.
-- **Routing by Priority** — channel routing for P0/P1/P2/P3.
-- **Sessions / Chat** — session behavior for chat-capable adapters only.
-- **Maintenance Windows** — planned downtime that drops matching alerts.
+- **My Routing** — your personal priority-based routing and quiet hours.
+- **Routing Summary** — a read-only view of how incidents are routed (derived from services → escalation chains → rosters → channels). Editable team-level routing defaults are planned for v1.1.
+- **Notification Channels** — the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Email, SMS, custom). Configure these once; operators route to them.
+- **Viewer Notifications** — read-only/status updates to Viewer audiences and external/downstream recipients (formerly "Outbound Hooks").
 
-Notifications lives under **Paging & On-call** at `/dashboard/paging/notifications`. Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
+Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
 ---
 
-## 1. Channels
+## 1. My Routing — routing by priority
 
-Open `/dashboard/paging/notifications`. Pick which channels OpsMender can reach operators on:
+Open the **My Routing** tab. Instead of a checkbox matrix, each incident priority is its own row:
 
-| Channel | Destination field | Notes |
-|---------|-------------------|-------|
-| **Slack DM** | Slack user ID (e.g. `U01ABC123`) | Sent via the org's Slack bot token. |
-| **Teams DM** | Incoming-webhook URL | Posts to a channel until full Graph DMs land in Sprint 37. |
-| **Email** | Email address | Delivered via the org's configured SMTP. |
-| **SMS** | E.164 phone number (e.g. `+15551234567`) | Twilio under the hood. |
+| Priority | Label | Default behavior |
+|----------|-------|------------------|
+| **P0** | Critical | Always pages — bypasses quiet hours. |
+| **P1** | High | Pages your selected channels. |
+| **P2** | Medium | Notifies your selected channels. |
+| **P3** | Low | Often "Do not notify". |
 
-Toggling a channel on reveals the destination input. Toggling it off removes it from every priority row in the routing matrix as well, so you can never page yourself on an unconfigured channel.
+For each priority, use the **channel multi-select** (a checkbox dropdown — no Ctrl/Cmd) to pick which channels fire. Selected channels show as chips on the row. Expand a row (chevron) to set the **destination** for each selected channel:
+
+| Channel | Destination | Notes |
+|---------|-------------|-------|
+| **Slack DM** | Slack user ID (e.g. `U01ABC123`) | Chat-capable — can also host incident sessions. |
+| **Teams DM** | Incoming-webhook URL | Chat-capable. |
+| **Email** | Email address | Delivery-only. Defaults to your account email. |
+| **SMS** | E.164 phone number (e.g. `+15551234567`) | Delivery-only. |
+
+The available channels come from the workspace's configured **Notification Channels**. If none are configured, My Routing shows an empty-state with a link to the Notification Channels tab.
+
+If a priority has **no** channels selected, the page is recorded in `incident_pages` as `skipped` and you won't be notified.
+
+**Chat-capable vs delivery-only:** Slack and Teams are chat-capable, so they can host an interactive incident session. Email and SMS are delivery-only — they push a notification but can't run a session.
+
+Click **Test notification** (top-right) to send a one-off test to your routed channels. Channels without credentials or a destination are reported as skipped rather than failing.
 
 ---
 
-## 2. Per-priority routing matrix
+## 2. Quiet hours
 
-Below the channels section, you'll see a 4×4 grid: priorities **P0 / P1 / P2 / P3** on the rows, your enabled channels on the columns. Tick the cells that should fire for each priority.
+Quiet hours suppress non-critical pages during a configured window. Enable the panel and fill in:
 
-The cells are **disabled** until the channel is enabled above — that's the only place destination addresses are stored.
-
-Typical setups:
-
-- **Heavy P0 / quiet P3** — P0 → Slack + SMS, P1 → Slack + Email, P2/P3 → Email only.
-- **All-hands paging** — Every priority routes to Slack DM. Useful for solo operators.
-- **Email-only** — Every priority routes to Email. Useful for triage backstops where SMS cost matters.
-
-If a priority has **no** channels checked, the page is recorded in `incident_pages` as `skipped` and you won't be notified.
-
----
-
-## 3. Quiet hours
-
-Quiet hours block low-priority pages during a configured window. Enable the panel and fill in:
-
-- **Start / End** — local times in the time zone below.
 - **Time zone** — any IANA name (`UTC`, `America/Los_Angeles`, `Europe/Berlin`).
-- **Break for priority ≥** — the threshold that still pages through. `P1` and higher means P0/P1 break through, P2/P3 are suppressed. **Never break** means even P0 waits until the window ends.
+- **Start / End** — local times. Windows wrap midnight correctly (`22:00 → 07:00`).
+- **Days** — the days of week the window applies (e.g. Mon–Fri). Leave all selected for every day.
 
-Windows wrap midnight correctly (`22:00 → 07:00` is the obvious one).
-
-When a page is suppressed by quiet hours, it's still recorded in `incident_pages` so the on-call audit log stays complete — you just won't see a Slack DM until quiet hours lift.
+**P0 (Critical) always pages through quiet hours.** Quiet hours apply to **P1, P2, and P3 only**. When a P1–P3 page is suppressed by quiet hours, it's still recorded in `incident_pages` so the on-call audit log stays complete.
 
 ---
 
-## 4. Dedup window
+## 3. Dedup window
 
 The org admin controls a `notification_dedup_window_minutes` setting under `GET/PUT /organizations/{id}/notification-settings` (default **10**). Within that window, OpsMender won't re-page the same person on the same channel for the same incident. This protects you from getting hammered by an alert that flaps.
 
@@ -66,7 +61,7 @@ If you find you're getting paged twice for the same thing, ask your admin to rai
 
 ---
 
-## 5. Maintenance windows
+## 4. Maintenance windows
 
 Admins can schedule maintenance windows under `Paging → Maintenance Windows`:
 
@@ -82,14 +77,14 @@ The Active / Scheduled / Past tabs let you audit what's happening now, what's co
 
 ---
 
-## 6. Verifying it works
+## 5. Verifying it works
 
 After saving:
 
-1. Trigger a low-stakes P3 page (e.g. via a test alert that maps to `page` mode). Confirm only the channels you ticked fire.
-2. Set the test incident's priority to P0. Confirm channels below the routing matrix's P0 row also fire.
-3. Toggle quiet hours on, set start/end to **right now**, and fire another P3. Confirm it's suppressed.
-4. As an admin, schedule a global maintenance window covering the next 5 minutes and fire a `page` incident. Confirm the amber banner shows on the incident detail and that no Slack DM lands. Then fire an `escalate_immediate` incident and confirm the page goes through anyway.
+1. Click **Test notification** and confirm the per-channel results match what you'd expect (delivered / skipped / failed).
+2. Trigger a low-stakes P3 page (e.g. via a test alert that maps to `page` mode). Confirm only the channels you selected for P3 fire.
+3. Toggle quiet hours on, set start/end to **right now** with today's weekday selected, and fire a P2. Confirm it's suppressed — then fire a P0 and confirm it pages through anyway.
+4. As an admin, schedule a global maintenance window covering the next 5 minutes and fire a `page` incident. Confirm no page lands. Then fire an `escalate_immediate` incident and confirm the page goes through anyway.
 
 ---
 
@@ -98,7 +93,8 @@ After saving:
 | Endpoint | Who | What |
 |----------|-----|------|
 | `GET /users/me/notification-preferences` | Any user | Returns the caller's pref row; creates an empty one on first call. |
-| `PUT /users/me/notification-preferences` | Any user | Partial update — pass only the keys you want to change. |
+| `PUT /users/me/notification-preferences` | Any user | Partial update — pass only the keys you want to change. Quiet hours use `weekday_start`/`weekday_end`, optional `days` (Mon=0..Sun=6), `time_zone`; `min_priority_to_break: "P0"` keeps P0 always paging. |
+| `POST /users/me/notification-preferences/test` | Any user | Sends a one-off test notification to the caller's routed channels; returns per-channel `{channel, status, detail}`. Never fails on per-channel delivery errors. |
 | `GET /organizations/{id}/notification-settings` | Admin | Returns `notification_dedup_window_minutes`. |
 | `PUT /organizations/{id}/notification-settings` | Admin | Updates `notification_dedup_window_minutes` (0–1440). |
 | `POST /maintenance-windows` | Admin | Accepts `description`, `scope_type` (`global`/`service`/`roster`/`team`), `scope_id`. |

@@ -104,6 +104,9 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
     [windowStart],
   );
 
+  // An overnight window wraps past midnight (end at or before start).
+  const isOvernight = roster.coverage_end_time <= roster.coverage_start_time;
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -162,15 +165,30 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
       open={true}
       onClose={onClose}
       title={`${roster.name} · calendar`}
+      maxWidth="max-w-4xl"
     >
       <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="info">
+              Coverage {roster.coverage_start_time} → {roster.coverage_end_time}
+            </Badge>
+            {isOvernight && <Badge variant="default">overnight</Badge>}
+            <span className="text-xs text-fg-muted">
+              {roster.time_zone} · {roster.pattern}
+              {roster.pattern === "custom_n_days"
+                ? ` (${roster.pattern_length}d)`
+                : ""}
+            </span>
+          </div>
+          <span className="text-xs text-fg-muted">
+            Each cell shows who holds the coverage window that day.
+          </span>
+        </div>
         <div className="flex items-center justify-between gap-2 text-sm text-fg-secondary">
           <div>
             <span className="font-medium text-fg-primary">
               {fmtDay(windowStart)} → {fmtDay(windowEnd)}
-            </span>
-            <span className="ml-2 text-xs text-fg-muted">
-              ({roster.time_zone} · {roster.pattern} · {roster.coverage_start_time} → {roster.coverage_end_time})
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -242,6 +260,9 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
                   </div>
                   <span className="truncate text-xs font-medium">
                     {userName}
+                  </span>
+                  <span className="text-[10px] tabular-nums opacity-70">
+                    {roster.coverage_start_time}–{roster.coverage_end_time}
                   </span>
                   {item.is_override && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-medium">

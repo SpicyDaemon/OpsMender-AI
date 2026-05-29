@@ -1519,6 +1519,13 @@ export async function listChainServices(
   );
 }
 
+export async function listServiceEscalationChains(serviceId: string): Promise<{
+  items: { id: string; service_id: string; chain_id: string; applies_when: Record<string, unknown> | null }[];
+  total: number;
+}> {
+  return api.get(`/services/${serviceId}/escalation-chains`);
+}
+
 export async function linkServiceEscalationChain(
   serviceId: string,
   chainId: string,

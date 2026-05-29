@@ -46,13 +46,40 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain("Start Date");
     expect(pagingShellSource).toContain("Coverage window");
     expect(pagingShellSource).toContain("Matching alerts are dropped");
+    // Ordered rotation members use a checkbox/chip multi-select, not native
+    // Ctrl/Cmd <select multiple>.
+    expect(pagingShellSource).toContain("Rotation members (ordered)");
   });
 
-  it("consolidates notification concepts into one Notifications page", () => {
-    expect(pagingShellSource).toContain("Operator Delivery");
-    expect(pagingShellSource).toContain("Viewer Updates");
-    expect(pagingShellSource).toContain("Quiet Hours");
-    expect(pagingShellSource).toContain("Routing by Priority");
-    expect(pagingShellSource).toContain("Sessions / Chat");
+  it("organizes Notifications into the four v1 tabs", () => {
+    expect(pagingShellSource).toContain("My Routing");
+    expect(pagingShellSource).toContain("Routing Summary");
+    expect(pagingShellSource).toContain("Notification Channels");
+    expect(pagingShellSource).toContain("Outbound Hooks");
+    // Routing Summary is read-only and explains the derivation + defers
+    // editable team routing to v1.1.
+    expect(pagingShellSource).toContain(
+      "Editable team-level routing defaults are planned",
+    );
+  });
+
+  it("uses checkbox/chip multi-selects instead of native multi-select", () => {
+    // No remaining native <select multiple> in the paging surface.
+    expect(pagingShellSource).not.toContain("multiple");
+    expect(pagingShellSource).toContain("<MultiSelect");
+  });
+
+  it("gives every paging table an edit action and a copyable intake URL", () => {
+    expect(pagingShellSource).toContain("Edit team");
+    expect(pagingShellSource).toContain("Edit chain");
+    expect(pagingShellSource).toContain("Edit roster");
+    expect(pagingShellSource).toContain("Edit window");
+    expect(pagingShellSource).toContain("Edit service");
+    expect(pagingShellSource).toContain("Alert intake URL");
+    expect(pagingShellSource).toContain("<CopyButton");
+  });
+
+  it("labels escalation steps as Levels", () => {
+    expect(pagingShellSource).toContain("Level {idx + 1}");
   });
 });

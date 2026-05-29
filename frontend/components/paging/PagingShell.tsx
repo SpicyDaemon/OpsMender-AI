@@ -13,9 +13,12 @@ import {
   Bell,
   Calendar,
   CalendarDays,
+  Check,
+  Copy,
   GitBranch,
   Info,
   ListOrdered,
+  Pencil,
   PlusCircle,
   Repeat,
   Search,
@@ -35,9 +38,12 @@ import {
   createMaintenanceWindow,
   deleteMaintenanceWindow,
   listMaintenanceWindows,
+  updateMaintenanceWindow,
 } from "@/lib/api_reliability";
 import {
   addEscalationStep,
+  addRosterMember,
+  addTeamMember,
   createEscalationChain,
   createRoster,
   createService,
@@ -47,22 +53,34 @@ import {
   deleteRoster,
   deleteService,
   deleteTeam,
+  getConfig,
   getMyNotificationPreferences,
+  linkServiceEscalationChain,
   listChainServices,
   listEscalationChains,
   listEscalationSteps,
   listIncidents,
   listMCPServers,
+  listRosterMembers,
   listRosters,
+  listServiceEscalationChains,
   listServices,
+  listTeamMembers,
   listTeams,
   listUsers,
+  listWebhookTriggers,
+  removeRosterMember,
+  removeTeamMember,
   reorderEscalationSteps,
+  reorderRosterMembers,
   resolveOnCall,
+  unlinkServiceEscalationChain,
+  updateEscalationChain,
   updateEscalationStep,
   updateMyNotificationPreferences,
   updateRoster,
   updateService,
+  updateTeam,
 } from "@/lib/api";
 import type {
   ChainWhereUsedItem,
@@ -88,8 +106,11 @@ import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { MultiSelect, type MultiSelectOption } from "@/components/ui/MultiSelect";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { PagingFilterBar } from "@/components/ui/PagingFilterBar";
 import { useToast } from "@/components/ui/Toast";
+import { fullIntakeUrl } from "@/lib/intake";
 
 export type Tab =
   | "teams"
@@ -154,6 +175,30 @@ export const TABS: {
 
 function normalizeSlugInput(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
+}
+
+/** Inline copy-to-clipboard button used beside intake URLs. */
+function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      title={`Copy ${label.toLowerCase()}`}
+      aria-label={`Copy ${label.toLowerCase()}`}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          /* clipboard unavailable — non-fatal */
+        }
+      }}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </Button>
+  );
 }
 
 const PRIORITY_VARIANT: Record<Priority, string> = {
@@ -263,6 +308,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
           services={services}
           teams={teams}
           rosters={rosters}
+          chains={chains}
           onChange={refresh}
         />
       )}
@@ -286,7 +332,13 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
           onChange={refresh}
         />
       )}
-      {tab === "notifications" && <NotificationsPanel />}
+      {tab === "notifications" && (
+        <NotificationsPanel
+          services={services}
+          teams={teams}
+          chains={chains}
+        />
+      )}
     </div>
   );
 }
@@ -300,23 +352,118 @@ function TeamsPanel({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", description: "" });
+  const [editing, setEditing] = useState<TeamResponse | null>(null);
+  const emptyForm = {
+    name: "",
+    slug: "",
+    description: "",
+    member_ids: [] as string[],
+  };
+  const [form, setForm] = useState(emptyForm);
+  const [users, setUsers] = useState<UserResponse[]>([]);
+  const [initialMemberIds, setInitialMemberIds] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+
+  useEffect(() => {
+    let cancelled = false;
+    listUsers()
+      .then((res) => {
+        if (!cancelled) setUsers(res.items);
+      })
+      .catch(() => {
+        /* membership picker degrades to empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const userOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      users
+        .filter((u) => u.is_active && !u.deleted_at)
+        .map((u) => ({
+          value: u.id,
+          label: u.username,
+          sublabel: `${u.email} · ${u.role}`,
+        })),
+    [users],
+  );
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setInitialMemberIds([]);
+    setOpen(true);
+  };
+
+  const openEdit = async (team: TeamResponse) => {
+    setEditing(team);
+    let memberIds: string[] = [];
+    try {
+      const res = await listTeamMembers(team.id);
+      memberIds = res.items.map((m) => m.user_id);
+    } catch {
+      /* non-fatal */
+    }
+    setInitialMemberIds(memberIds);
+    setForm({
+      name: team.name,
+      slug: team.slug,
+      description: team.description ?? "",
+      member_ids: memberIds,
+    });
+    setOpen(true);
+  };
+
+  const reconcileMembers = async (teamId: string) => {
+    const desired = new Set(form.member_ids);
+    const current = new Set(initialMemberIds);
+    try {
+      for (const id of form.member_ids) {
+        if (!current.has(id)) await addTeamMember(teamId, { user_id: id });
+      }
+      for (const id of initialMemberIds) {
+        if (!desired.has(id)) await removeTeamMember(teamId, id);
+      }
+    } catch (err) {
+      toast.error(
+        `Team saved, but membership update failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  };
 
   const submit = async () => {
-    if (!form.name || !form.slug) {
+    const slug = normalizeSlugInput(form.slug);
+    if (!form.name || (!editing && !slug)) {
       toast.error("Name and slug are required");
       return;
     }
     try {
-      await createTeam({
-        name: form.name,
-        slug: form.slug,
-        description: form.description || undefined,
-      });
+      let teamId: string;
+      if (editing) {
+        const updated = await updateTeam(editing.id, {
+          name: form.name,
+          description: form.description,
+        });
+        teamId = updated.id;
+      } else {
+        const created = await createTeam({
+          name: form.name,
+          slug,
+          description: form.description || undefined,
+        });
+        teamId = created.id;
+      }
+      await reconcileMembers(teamId);
       setOpen(false);
-      setForm({ name: "", slug: "", description: "" });
+      setEditing(null);
+      setForm(emptyForm);
       onChange();
-      toast.success("Team created");
+      toast.success(editing ? "Team updated" : "Team created");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -334,6 +481,14 @@ function TeamsPanel({
     }
   };
 
+  const filteredTeams = useMemo(() => {
+    const q = deferredSearch.trim().toLowerCase();
+    if (!q) return teams;
+    return teams.filter((t) =>
+      [t.name, t.slug, t.description ?? ""].join(" ").toLowerCase().includes(q),
+    );
+  }, [teams, deferredSearch]);
+
   const teamColumns = useMemo<DataTableColumn<TeamResponse>[]>(
     () => [
       {
@@ -347,7 +502,6 @@ function TeamsPanel({
           </div>
         ),
         sortable: true,
-        searchable: true,
       },
       {
         id: "slug",
@@ -359,7 +513,6 @@ function TeamsPanel({
           </Badge>
         ),
         sortable: true,
-        searchable: true,
       },
       {
         id: "description",
@@ -373,7 +526,6 @@ function TeamsPanel({
           ) : (
             <span className="text-fg-muted">—</span>
           ),
-        searchable: true,
       },
       {
         id: "created_at",
@@ -393,45 +545,65 @@ function TeamsPanel({
   return (
     <section className="space-y-3">
       {teams.length === 0 ? (
-        <>
-          <div className="flex justify-end">
-            <Button onClick={() => setOpen(true)}>
-              <PlusCircle className="h-4 w-4" /> New team
-            </Button>
-          </div>
-          <EmptyState
-            title="No teams yet"
-            description="Create your first team to start grouping services and rosters."
-            learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
-            learnMoreLabel="Paging guide"
-          />
-        </>
-      ) : (
-        <DataTable
-          rows={teams}
-          columns={teamColumns}
-          rowKey={(t) => t.id}
-          storageKey="opsmender:teams-table"
-          searchPlaceholder="Search by name, slug, or description…"
-          dateRangeColumn={{
-            id: "created_at",
-            label: "Created",
-            valueOf: (t) => t.created_at,
-          }}
-          toolbarRight={
-            <Button onClick={() => setOpen(true)}>
+        <EmptyState
+          title="No teams yet"
+          description="Create your first team to start grouping services and rosters."
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+          learnMoreLabel="Paging guide"
+          action={
+            <Button onClick={openCreate}>
               <PlusCircle className="h-4 w-4" /> New team
             </Button>
           }
-          rowActions={(t) => (
-            <Button variant="ghost" onClick={() => remove(t.id)} title="Delete">
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
         />
+      ) : (
+        <>
+          <PagingFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search teams..."
+            searchAriaLabel="Search teams"
+            hasFilters={Boolean(search)}
+            onClear={() => setSearch("")}
+            action={
+              <Button size="sm" onClick={openCreate}>
+                <PlusCircle className="h-4 w-4" /> New team
+              </Button>
+            }
+          />
+          <DataTable
+            rows={filteredTeams}
+            columns={teamColumns}
+            rowKey={(t) => t.id}
+            storageKey="opsmender:teams-table"
+            hideToolbar
+            rowActions={(t) => (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void openEdit(t)}
+                  title="Edit team"
+                >
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => remove(t.id)} title="Delete">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          />
+        </>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="New team">
+      <Modal
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
+        title={editing ? "Edit team" : "New team"}
+      >
         <div className="space-y-3">
           <div>
             <Label>Name</Label>
@@ -448,7 +620,13 @@ function TeamsPanel({
                 setForm({ ...form, slug: normalizeSlugInput(e.target.value) })
               }
               placeholder="payments-team"
+              disabled={Boolean(editing)}
             />
+            {editing && (
+              <p className="mt-1 text-xs text-fg-muted">
+                Slug is fixed after creation.
+              </p>
+            )}
           </div>
           <div>
             <Label>Description (optional)</Label>
@@ -460,11 +638,24 @@ function TeamsPanel({
               rows={2}
             />
           </div>
+          <div>
+            <Label>People on this team</Label>
+            <MultiSelect
+              ariaLabel="Team members"
+              options={userOptions}
+              selected={form.member_ids}
+              onChange={(next) => setForm({ ...form, member_ids: next })}
+              emptyLabel="No users available."
+            />
+            <p className="mt-1 text-xs text-fg-muted">
+              Select one or more people to assign to this team.
+            </p>
+          </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={submit}>Create</Button>
+            <Button onClick={submit}>{editing ? "Save" : "Create"}</Button>
           </div>
         </div>
       </Modal>
@@ -513,24 +704,30 @@ function ServicesPanel({
   services,
   teams,
   rosters,
+  chains,
   onChange,
 }: {
   services: ServiceResponse[];
   teams: TeamResponse[];
   rosters: RosterResponse[];
+  chains: EscalationChainResponse[];
   onChange: () => void;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ServiceResponse | null>(null);
-  const [form, setForm] = useState({
+  const [publicBaseUrl, setPublicBaseUrl] = useState<string | null>(null);
+  const emptyForm = {
     name: "",
     slug: "",
     team_id: "",
     description: "",
     priority: "P2" as Priority,
     preferred_mcp_server_ids: [] as string[],
-  });
+    escalation_chain_id: "",
+    is_active: true,
+  };
+  const [form, setForm] = useState(emptyForm);
   const [serviceSearch, setServiceSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>("");
@@ -550,6 +747,21 @@ function ServicesPanel({
       setForm((f) => ({ ...f, team_id: teams[0].id }));
     }
   }, [teams, form.team_id]);
+
+  // Resolve the public base URL once so intake URLs render absolute.
+  useEffect(() => {
+    let cancelled = false;
+    getConfig()
+      .then((cfg) => {
+        if (!cancelled) setPublicBaseUrl(cfg.public_base_url ?? null);
+      })
+      .catch(() => {
+        /* fall back to window.location.origin */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Enrich rows: load incidents + users + per-team on-call resolution.
   useEffect(() => {
@@ -597,6 +809,32 @@ function ServicesPanel({
     };
   }, [rosters, toast]);
 
+  // Reconcile the single primary escalation-chain link for a service:
+  // unlink any chains other than the chosen one, link the chosen one.
+  const reconcileChainLink = async (
+    serviceId: string,
+    desiredChainId: string,
+  ) => {
+    try {
+      const current = await listServiceEscalationChains(serviceId);
+      const linkedIds = current.items.map((l) => l.chain_id);
+      for (const linkedId of linkedIds) {
+        if (linkedId !== desiredChainId) {
+          await unlinkServiceEscalationChain(serviceId, linkedId);
+        }
+      }
+      if (desiredChainId && !linkedIds.includes(desiredChainId)) {
+        await linkServiceEscalationChain(serviceId, desiredChainId);
+      }
+    } catch (err) {
+      toast.error(
+        `Service saved, but escalation chain link failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  };
+
   const submit = async () => {
     if (!form.name || !form.slug || !form.team_id) {
       toast.error("Name, slug, and team are required");
@@ -609,25 +847,23 @@ function ServicesPanel({
         description: form.description || undefined,
         priority: form.priority,
         preferred_mcp_server_ids: form.preferred_mcp_server_ids,
+        is_active: form.is_active,
       };
+      let serviceId: string;
       if (editing) {
-        await updateService(editing.id, payload);
+        const updated = await updateService(editing.id, payload);
+        serviceId = updated.id;
       } else {
-        await createService({
+        const created = await createService({
           ...payload,
           slug: form.slug,
         });
+        serviceId = created.id;
       }
+      await reconcileChainLink(serviceId, form.escalation_chain_id);
       setOpen(false);
       setEditing(null);
-      setForm({
-        name: "",
-        slug: "",
-        team_id: teams[0]?.id ?? "",
-        description: "",
-        priority: "P2",
-        preferred_mcp_server_ids: [],
-      });
+      setForm({ ...emptyForm, team_id: teams[0]?.id ?? "" });
       onChange();
       toast.success(editing ? "Service updated" : "Service created");
     } catch (err) {
@@ -637,19 +873,19 @@ function ServicesPanel({
 
   const openCreate = () => {
     setEditing(null);
-    setForm({
-      name: "",
-      slug: "",
-      team_id: teams[0]?.id ?? "",
-      description: "",
-      priority: "P2",
-      preferred_mcp_server_ids: [],
-    });
+    setForm({ ...emptyForm, team_id: teams[0]?.id ?? "" });
     setOpen(true);
   };
 
-  const openEdit = (service: ServiceResponse) => {
+  const openEdit = async (service: ServiceResponse) => {
     setEditing(service);
+    let chainId = "";
+    try {
+      const links = await listServiceEscalationChains(service.id);
+      chainId = links.items[0]?.chain_id ?? "";
+    } catch {
+      /* non-fatal — leave unselected */
+    }
     setForm({
       name: service.name,
       slug: service.slug,
@@ -657,6 +893,8 @@ function ServicesPanel({
       description: service.description ?? "",
       priority: service.priority,
       preferred_mcp_server_ids: service.preferred_mcp_server_ids ?? [],
+      escalation_chain_id: chainId,
+      is_active: service.is_active,
     });
     setOpen(true);
   };
@@ -789,11 +1027,20 @@ function ServicesPanel({
       id: "intake",
       label: "Alert Intake",
       accessor: (r) => r.service.intake_url ?? "",
-      cell: (r) => (
-        <span className="font-mono text-[11px] text-fg-secondary">
-          {r.service.intake_url ?? "not generated"}
-        </span>
-      ),
+      cell: (r) => {
+        const full = fullIntakeUrl(r.service.intake_url, publicBaseUrl);
+        if (!full) {
+          return <span className="text-[11px] text-fg-muted">not generated</span>;
+        }
+        return (
+          <span className="inline-flex max-w-[22rem] items-center gap-1">
+            <span className="truncate font-mono text-[11px] text-fg-secondary" title={full}>
+              {full}
+            </span>
+            <CopyButton value={full} label="intake URL" />
+          </span>
+        );
+      },
     },
     {
       id: "team",
@@ -1007,27 +1254,39 @@ function ServicesPanel({
             </p>
           </div>
           <div>
-            <Label>Preferred MCP servers</Label>
-            <select
-              multiple
-              value={form.preferred_mcp_server_ids}
+            <Label>Escalation chain (optional)</Label>
+            <Select
+              value={form.escalation_chain_id}
               onChange={(e) =>
-                setForm({
-                  ...form,
-                  preferred_mcp_server_ids: Array.from(
-                    e.currentTarget.selectedOptions,
-                    (option) => option.value,
-                  ),
-                })
+                setForm({ ...form, escalation_chain_id: e.target.value })
               }
-              className="min-h-28 w-full rounded-md border border-border-subtle bg-bg-input px-3 py-2 text-sm text-fg-primary outline-none focus:border-accent"
             >
-              {mcpServers.map((server) => (
-                <option key={server.id} value={server.id}>
-                  {server.name}
-                </option>
-              ))}
-            </select>
+              <option value="">— none —</option>
+              {chains
+                .filter((c) => !form.team_id || c.team_id === form.team_id)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </Select>
+            <p className="mt-1 text-xs text-fg-muted">
+              P0/P1 incidents page through this chain. Chains belong to the
+              service&apos;s team.
+            </p>
+          </div>
+          <div>
+            <Label>Preferred MCP servers</Label>
+            <MultiSelect
+              ariaLabel="Preferred MCP servers"
+              ordered
+              options={mcpServers.map((s) => ({ value: s.id, label: s.name }))}
+              selected={form.preferred_mcp_server_ids}
+              onChange={(next) =>
+                setForm({ ...form, preferred_mcp_server_ids: next })
+              }
+              emptyLabel="No MCP servers configured yet."
+            />
             <p className="mt-1 text-xs text-fg-muted">
               Ordered preference list. OpsMender tries these first to reduce
               tool noise; operators can still ask for another configured MCP
@@ -1044,6 +1303,35 @@ function ServicesPanel({
               rows={2}
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-fg-secondary">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+            />
+            Active (inactive services keep their config but stop routing)
+          </label>
+          {editing &&
+            (() => {
+              const full = fullIntakeUrl(editing.intake_url, publicBaseUrl);
+              if (!full) return null;
+              return (
+                <div>
+                  <Label>Alert intake URL</Label>
+                  <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-secondary" title={full}>
+                      {full}
+                    </span>
+                    <CopyButton value={full} label="intake URL" />
+                  </div>
+                  <p className="mt-1 text-xs text-fg-muted">
+                    Point CloudWatch / Azure / GCP / OCI and other alerting
+                    systems here. POST alerts to associate them with this
+                    service.
+                  </p>
+                </div>
+              );
+            })()}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
@@ -1191,8 +1479,16 @@ function RostersPanel({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<RosterResponse | null>(null);
   const [calendarFor, setCalendarFor] = useState<RosterResponse | null>(null);
-  const [form, setForm] = useState({
+  const [users, setUsers] = useState<UserResponse[]>([]);
+  const [initialMemberIds, setInitialMemberIds] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
+  const [patternFilter, setPatternFilter] = useState("");
+  const [enabledFilter, setEnabledFilter] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const emptyForm = {
     name: "",
     team_id: "",
     description: "",
@@ -1203,7 +1499,9 @@ function RostersPanel({
     coverage_end_time: "18:00",
     anchor_date: new Date().toISOString().slice(0, 10),
     is_active: true,
-  });
+    member_ids: [] as string[],
+  };
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     if (teams.length > 0 && !form.team_id) {
@@ -1211,13 +1509,110 @@ function RostersPanel({
     }
   }, [teams, form.team_id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    listUsers()
+      .then((res) => {
+        if (!cancelled) setUsers(res.items);
+      })
+      .catch(() => {
+        /* member picker degrades to empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Rotation members must be Admin/Operator users (Viewers can't operate).
+  const memberOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      users
+        .filter(
+          (u) =>
+            u.is_active &&
+            !u.deleted_at &&
+            (u.role === "admin" || u.role === "operator"),
+        )
+        .map((u) => ({
+          value: u.id,
+          label: u.username,
+          sublabel: `${u.email} · ${u.role}`,
+        })),
+    [users],
+  );
+
+  const openCreate = () => {
+    setEditing(null);
+    setInitialMemberIds([]);
+    setForm({ ...emptyForm, team_id: teams[0]?.id ?? "" });
+    setOpen(true);
+  };
+
+  const openEdit = async (roster: RosterResponse) => {
+    setEditing(roster);
+    let memberIds: string[] = [];
+    try {
+      const res = await listRosterMembers(roster.id);
+      memberIds = res.items
+        .slice()
+        .sort((a, b) => a.position_index - b.position_index)
+        .map((m) => m.user_id);
+    } catch {
+      /* non-fatal */
+    }
+    setInitialMemberIds(memberIds);
+    setForm({
+      name: roster.name,
+      team_id: roster.team_id,
+      description: roster.description ?? "",
+      time_zone: roster.time_zone,
+      pattern: roster.pattern as "weekly" | "daily" | "custom_n_days",
+      pattern_length: roster.pattern_length,
+      coverage_start_time: roster.coverage_start_time,
+      coverage_end_time: roster.coverage_end_time,
+      anchor_date: roster.anchor_date,
+      is_active: roster.is_active,
+      member_ids: memberIds,
+    });
+    setOpen(true);
+  };
+
+  // Reconcile ordered rotation members: add new ones, remove dropped ones,
+  // then push the desired order so position_index matches the chips.
+  const reconcileMembers = async (rosterId: string) => {
+    const desired = form.member_ids;
+    const current = new Set(initialMemberIds);
+    try {
+      for (let i = 0; i < desired.length; i++) {
+        if (!current.has(desired[i])) {
+          await addRosterMember(rosterId, {
+            user_id: desired[i],
+            position_index: i,
+          });
+        }
+      }
+      for (const id of initialMemberIds) {
+        if (!desired.includes(id)) await removeRosterMember(rosterId, id);
+      }
+      if (desired.length > 0) {
+        await reorderRosterMembers(rosterId, desired);
+      }
+    } catch (err) {
+      toast.error(
+        `Roster saved, but rotation update failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  };
+
   const submit = async () => {
     if (!form.name || !form.team_id) {
       toast.error("Name and team required");
       return;
     }
     try {
-      await createRoster({
+      const payload = {
         team_id: form.team_id,
         name: form.name,
         description: form.description || undefined,
@@ -1229,10 +1624,21 @@ function RostersPanel({
         handoff_time: form.coverage_start_time,
         anchor_date: form.anchor_date,
         is_active: form.is_active,
-      });
+      };
+      let rosterId: string;
+      if (editing) {
+        const updated = await updateRoster(editing.id, payload);
+        rosterId = updated.id;
+      } else {
+        const created = await createRoster(payload);
+        rosterId = created.id;
+      }
+      await reconcileMembers(rosterId);
       setOpen(false);
+      setEditing(null);
+      setForm({ ...emptyForm, team_id: teams[0]?.id ?? "" });
       onChange();
-      toast.success("Roster created");
+      toast.success(editing ? "Roster updated" : "Roster created");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -1265,17 +1671,31 @@ function RostersPanel({
   }, [teams]);
 
   const teamFilterOptions = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          rosters
-            .map((r) => teamNameById.get(r.team_id))
-            .filter((n): n is string => Boolean(n))
-            .map((name) => [name, { value: name, label: name }]),
-        ).values(),
-      ),
-    [rosters, teamNameById],
+    () => [
+      { value: "", label: "All teams" },
+      ...teams.map((t) => ({ value: t.id, label: t.name })),
+    ],
+    [teams],
   );
+
+  const filteredRosters = useMemo(() => {
+    const q = deferredSearch.trim().toLowerCase();
+    return rosters.filter((r) => {
+      if (q) {
+        const haystack = [r.name, teamNameById.get(r.team_id) ?? ""]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (teamFilter && r.team_id !== teamFilter) return false;
+      if (patternFilter && r.pattern !== patternFilter) return false;
+      if (enabledFilter) {
+        const state = r.is_active ? "enabled" : "disabled";
+        if (state !== enabledFilter) return false;
+      }
+      return true;
+    });
+  }, [rosters, deferredSearch, teamFilter, patternFilter, enabledFilter, teamNameById]);
 
   const rosterColumns = useMemo<DataTableColumn<RosterResponse>[]>(
     () => [
@@ -1284,7 +1704,6 @@ function RostersPanel({
         label: "Roster",
         accessor: (r) => r.name,
         sortable: true,
-        searchable: true,
         cell: (r) => (
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-fg-secondary" />
@@ -1297,11 +1716,6 @@ function RostersPanel({
         label: "Team",
         accessor: (r) => teamNameById.get(r.team_id) ?? "",
         sortable: true,
-        searchable: true,
-        filterChips: {
-          options: teamFilterOptions,
-          valueOf: (r) => teamNameById.get(r.team_id) ?? null,
-        },
         cell: (r) => (
           <span className="text-fg-secondary">
             {teamNameById.get(r.team_id) ?? "—"}
@@ -1326,14 +1740,6 @@ function RostersPanel({
         label: "Pattern",
         accessor: (r) => r.pattern,
         sortable: true,
-        filterChips: {
-          options: [
-            { value: "weekly", label: "Weekly" },
-            { value: "daily", label: "Daily" },
-            { value: "custom_n_days", label: "Custom" },
-          ],
-          valueOf: (r) => r.pattern,
-        },
         cell: (r) => (
           <span className="inline-flex items-center gap-2">
             <Badge variant="default">{r.pattern}</Badge>
@@ -1368,7 +1774,11 @@ function RostersPanel({
         ),
       },
     ],
-    [teamNameById, teamFilterOptions],
+    [teamNameById],
+  );
+
+  const hasFilters = Boolean(
+    search || teamFilter || patternFilter || enabledFilter,
   );
 
   return (
@@ -1380,52 +1790,109 @@ function RostersPanel({
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
           action={
-            <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+            <Button onClick={openCreate} disabled={teams.length === 0}>
               <PlusCircle className="h-4 w-4" /> New roster
             </Button>
           }
         />
       ) : (
-        <DataTable
-          rows={rosters}
-          columns={rosterColumns}
-          rowKey={(r) => r.id}
-          storageKey="opsmender:rosters-table"
-          searchPlaceholder="Search by roster name or team…"
-          toolbarRight={
-            <>
-              <span className="text-sm text-fg-secondary">
-                {rosters.length} roster{rosters.length === 1 ? "" : "s"}
-              </span>
-              <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+        <>
+          <PagingFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search rosters..."
+            searchAriaLabel="Search rosters"
+            filters={[
+              {
+                id: "team",
+                label: "Filter rosters by team",
+                value: teamFilter,
+                onChange: setTeamFilter,
+                options: teamFilterOptions,
+              },
+              {
+                id: "pattern",
+                label: "Filter rosters by pattern",
+                value: patternFilter,
+                onChange: setPatternFilter,
+                options: [
+                  { value: "", label: "All patterns" },
+                  { value: "weekly", label: "Weekly" },
+                  { value: "daily", label: "Daily" },
+                  { value: "custom_n_days", label: "Custom" },
+                ],
+              },
+              {
+                id: "enabled",
+                label: "Filter rosters by state",
+                value: enabledFilter,
+                onChange: setEnabledFilter,
+                options: [
+                  { value: "", label: "All states" },
+                  { value: "enabled", label: "Enabled" },
+                  { value: "disabled", label: "Disabled" },
+                ],
+              },
+            ]}
+            hasFilters={hasFilters}
+            onClear={() => {
+              setSearch("");
+              setTeamFilter("");
+              setPatternFilter("");
+              setEnabledFilter("");
+            }}
+            action={
+              <Button size="sm" onClick={openCreate} disabled={teams.length === 0}>
                 <PlusCircle className="h-4 w-4" /> New roster
               </Button>
-            </>
-          }
-          empty={
-            <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-              No rosters match the current filters.
-            </div>
-          }
-          rowActions={(r) => (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setCalendarFor(r)}
-                title="Open calendar view"
-              >
-                <CalendarDays className="h-4 w-4" /> Calendar
-              </Button>
-              <Button variant="ghost" onClick={() => remove(r.id)} title="Delete">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        />
+            }
+          />
+          <DataTable
+            rows={filteredRosters}
+            columns={rosterColumns}
+            rowKey={(r) => r.id}
+            storageKey="opsmender:rosters-table"
+            hideToolbar
+            empty={
+              <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+                No rosters match the current filters.
+              </div>
+            }
+            rowActions={(r) => (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCalendarFor(r)}
+                  title="Open calendar view"
+                >
+                  <CalendarDays className="h-4 w-4" /> Calendar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void openEdit(r)}
+                  title="Edit roster"
+                >
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => remove(r.id)} title="Delete">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          />
+        </>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Create roster schedule">
+      <Modal
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
+        title={editing ? "Edit roster schedule" : "Create roster schedule"}
+      >
         <div className="space-y-3">
           <div>
             <Label>Team</Label>
@@ -1484,7 +1951,7 @@ function RostersPanel({
               </Select>
             </div>
             <div>
-              <Label>Pattern length (days)</Label>
+              <Label>Rotation length (days)</Label>
               <Input
                 type="number"
                 min={1}
@@ -1541,11 +2008,26 @@ function RostersPanel({
               />
             </div>
           </div>
+          <div>
+            <Label>Rotation members (ordered)</Label>
+            <MultiSelect
+              ariaLabel="Rotation members"
+              ordered
+              options={memberOptions}
+              selected={form.member_ids}
+              onChange={(next) => setForm({ ...form, member_ids: next })}
+              emptyLabel="No Admin/Operator users available."
+            />
+            <p className="mt-1 text-xs text-fg-muted">
+              Admin/Operator users only. Member 1 covers the first window, member
+              2 the next, and so on — then the cycle repeats.
+            </p>
+          </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={submit}>Create</Button>
+            <Button onClick={submit}>{editing ? "Save" : "Create"}</Button>
           </div>
         </div>
       </Modal>
@@ -1574,11 +2056,17 @@ function ChainsPanel({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<EscalationChainResponse | null>(null);
   const [form, setForm] = useState({ name: "", team_id: "", description: "" });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [stepsByChain, setStepsByChain] = useState<
     Record<string, EscalationStepResponse[]>
   >({});
+  const [users, setUsers] = useState<UserResponse[]>([]);
+  const [search, setSearch] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
     if (teams.length > 0 && !form.team_id) {
@@ -1586,21 +2074,60 @@ function ChainsPanel({
     }
   }, [teams, form.team_id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    listUsers()
+      .then((res) => {
+        if (!cancelled) setUsers(res.items);
+      })
+      .catch(() => {
+        /* user-target picker degrades to empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: "", team_id: teams[0]?.id ?? "", description: "" });
+    setOpen(true);
+  };
+
+  const openEdit = (chain: EscalationChainResponse) => {
+    setEditing(chain);
+    setForm({
+      name: chain.name,
+      team_id: chain.team_id,
+      description: chain.description ?? "",
+    });
+    setOpen(true);
+  };
+
   const submit = async () => {
     if (!form.name || !form.team_id) {
       toast.error("Name and team are required");
       return;
     }
     try {
-      await createEscalationChain({
-        team_id: form.team_id,
-        name: form.name,
-        description: form.description || undefined,
-      });
+      if (editing) {
+        await updateEscalationChain(editing.id, {
+          name: form.name,
+          team_id: form.team_id,
+          description: form.description || undefined,
+        });
+      } else {
+        await createEscalationChain({
+          team_id: form.team_id,
+          name: form.name,
+          description: form.description || undefined,
+        });
+      }
       setOpen(false);
+      setEditing(null);
       setForm({ name: "", team_id: teams[0]?.id ?? "", description: "" });
       onChange();
-      toast.success("Chain created");
+      toast.success(editing ? "Chain updated" : "Chain created");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -1652,17 +2179,30 @@ function ChainsPanel({
   }, [teams]);
 
   const teamFilterOptions = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          chains
-            .map((c) => teamNameById.get(c.team_id))
-            .filter((n): n is string => Boolean(n))
-            .map((name) => [name, { value: name, label: name }]),
-        ).values(),
-      ),
-    [chains, teamNameById],
+    () => [
+      { value: "", label: "All teams" },
+      ...teams.map((t) => ({ value: t.id, label: t.name })),
+    ],
+    [teams],
   );
+
+  const filteredChains = useMemo(() => {
+    const q = deferredSearch.trim().toLowerCase();
+    return chains.filter((c) => {
+      if (q) {
+        const haystack = [c.name, teamNameById.get(c.team_id) ?? "", c.description ?? ""]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (teamFilter && c.team_id !== teamFilter) return false;
+      if (statusFilter) {
+        const status = c.is_active ? "active" : "inactive";
+        if (status !== statusFilter) return false;
+      }
+      return true;
+    });
+  }, [chains, deferredSearch, teamFilter, statusFilter, teamNameById]);
 
   const chainColumns = useMemo<DataTableColumn<EscalationChainResponse>[]>(
     () => [
@@ -1671,7 +2211,6 @@ function ChainsPanel({
         label: "Chain",
         accessor: (c) => c.name,
         sortable: true,
-        searchable: true,
         cell: (c) => (
           <div className="flex items-center gap-2">
             <ListOrdered className="h-4 w-4 text-fg-secondary" />
@@ -1684,11 +2223,6 @@ function ChainsPanel({
         label: "Team",
         accessor: (c) => teamNameById.get(c.team_id) ?? "",
         sortable: true,
-        searchable: true,
-        filterChips: {
-          options: teamFilterOptions,
-          valueOf: (c) => teamNameById.get(c.team_id) ?? null,
-        },
         cell: (c) => (
           <span className="text-fg-secondary">
             {teamNameById.get(c.team_id) ?? "—"}
@@ -1699,7 +2233,6 @@ function ChainsPanel({
         id: "description",
         label: "Description",
         accessor: (c) => c.description ?? "",
-        searchable: true,
         cell: (c) =>
           c.description ? (
             <span className="line-clamp-2 max-w-[28rem] text-xs text-fg-secondary">
@@ -1714,13 +2247,6 @@ function ChainsPanel({
         label: "Status",
         accessor: (c) => (c.is_active ? "active" : "inactive"),
         sortable: true,
-        filterChips: {
-          options: [
-            { value: "active", label: "Active" },
-            { value: "inactive", label: "Inactive" },
-          ],
-          valueOf: (c) => (c.is_active ? "active" : "inactive"),
-        },
         cell: (c) =>
           c.is_active ? (
             <Badge variant="resolved">active</Badge>
@@ -1729,8 +2255,10 @@ function ChainsPanel({
           ),
       },
     ],
-    [teamNameById, teamFilterOptions],
+    [teamNameById],
   );
+
+  const hasFilters = Boolean(search || teamFilter || statusFilter);
 
   return (
     <section className="space-y-3">
@@ -1741,60 +2269,108 @@ function ChainsPanel({
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
           action={
-            <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+            <Button onClick={openCreate} disabled={teams.length === 0}>
               <PlusCircle className="h-4 w-4" /> New chain
             </Button>
           }
         />
       ) : (
-        <DataTable
-          rows={chains}
-          columns={chainColumns}
-          rowKey={(c) => c.id}
-          storageKey="opsmender:chains-table"
-          searchPlaceholder="Search by chain name, team, or description…"
-          toolbarRight={
-            <>
-              <span className="text-sm text-fg-secondary">
-                {chains.length} chain{chains.length === 1 ? "" : "s"}
-              </span>
-              <Button onClick={() => setOpen(true)} disabled={teams.length === 0}>
+        <>
+          <PagingFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search chains..."
+            searchAriaLabel="Search escalation chains"
+            filters={[
+              {
+                id: "team",
+                label: "Filter chains by team",
+                value: teamFilter,
+                onChange: setTeamFilter,
+                options: teamFilterOptions,
+              },
+              {
+                id: "status",
+                label: "Filter chains by status",
+                value: statusFilter,
+                onChange: setStatusFilter,
+                options: [
+                  { value: "", label: "All statuses" },
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                ],
+              },
+            ]}
+            hasFilters={hasFilters}
+            onClear={() => {
+              setSearch("");
+              setTeamFilter("");
+              setStatusFilter("");
+            }}
+            action={
+              <Button size="sm" onClick={openCreate} disabled={teams.length === 0}>
                 <PlusCircle className="h-4 w-4" /> New chain
               </Button>
-            </>
-          }
-          empty={
-            <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-              No chains match the current filters.
-            </div>
-          }
-          expandedRow={{
-            expandedKeys,
-            onToggle: (key) => void toggleExpand(key),
-            label: "Steps",
-            render: (c) => (
-              <StepsEditor
-                chainId={c.id}
-                steps={stepsByChain[c.id] ?? []}
-                rosters={rosters}
-                teams={teams}
-                onChange={() => loadStepsFor(c.id)}
-              />
-            ),
-          }}
-          rowActions={(c) => (
-            <Button
-              variant="ghost"
-              onClick={() => remove(c.id)}
-              title="Delete chain"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-        />
+            }
+          />
+          <DataTable
+            rows={filteredChains}
+            columns={chainColumns}
+            rowKey={(c) => c.id}
+            storageKey="opsmender:chains-table"
+            hideToolbar
+            empty={
+              <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+                No chains match the current filters.
+              </div>
+            }
+            expandedRow={{
+              expandedKeys,
+              onToggle: (key) => void toggleExpand(key),
+              label: "Levels",
+              render: (c) => (
+                <StepsEditor
+                  chainId={c.id}
+                  steps={stepsByChain[c.id] ?? []}
+                  rosters={rosters}
+                  teams={teams}
+                  users={users}
+                  onChange={() => loadStepsFor(c.id)}
+                />
+              ),
+            }}
+            rowActions={(c) => (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => openEdit(c)}
+                  title="Edit chain"
+                >
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => remove(c.id)}
+                  title="Delete chain"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          />
+        </>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="New escalation chain">
+      <Modal
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
+        title={editing ? "Edit escalation chain" : "New escalation chain"}
+      >
         <div className="space-y-3">
           <div>
             <Label>Team</Label>
@@ -1827,11 +2403,15 @@ function ChainsPanel({
               rows={2}
             />
           </div>
+          <p className="text-xs text-fg-muted">
+            Levels are added after saving from the chain&apos;s expanded row. A
+            chain with no levels pages no one — add at least Level 1.
+          </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={submit}>Create</Button>
+            <Button onClick={submit}>{editing ? "Save" : "Create"}</Button>
           </div>
         </div>
       </Modal>
@@ -1859,12 +2439,14 @@ function StepsEditor({
   steps,
   rosters,
   teams,
+  users,
   onChange,
 }: {
   chainId: string;
   steps: EscalationStepResponse[];
   rosters: RosterResponse[];
   teams: TeamResponse[];
+  users: UserResponse[];
   onChange: () => Promise<void>;
 }) {
   const toast = useToast();
@@ -1873,6 +2455,33 @@ function StepsEditor({
     target_id: "",
     timeout_seconds: 300,
   });
+  // v1 escalation targets a roster or a user. Team-level targets are
+  // deferred to v1.1, so the picker only offers roster + user here even
+  // though the backend type still allows "team".
+  const userTargets = useMemo(
+    () =>
+      users
+        .filter(
+          (u) =>
+            u.is_active &&
+            !u.deleted_at &&
+            (u.role === "admin" || u.role === "operator"),
+        )
+        .map((u) => ({ id: u.id, name: u.username })),
+    [users],
+  );
+  const labelForTarget = useCallback(
+    (targetType: EscalationTargetType, targetId: string): string => {
+      if (targetType === "roster") {
+        return rosters.find((r) => r.id === targetId)?.name ?? targetId;
+      }
+      if (targetType === "user") {
+        return users.find((u) => u.id === targetId)?.username ?? targetId;
+      }
+      return teams.find((t) => t.id === targetId)?.name ?? targetId;
+    },
+    [rosters, users, teams],
+  );
   const [whereUsed, setWhereUsed] = useState<ChainWhereUsedItem[]>([]);
   const [whereLoading, setWhereLoading] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -1975,11 +2584,11 @@ function StepsEditor({
     await reorder(ordered);
   };
 
-  const targetOptions =
+  const targetOptions: { id: string; name: string }[] =
     stepForm.target_type === "roster"
-      ? rosters
-      : stepForm.target_type === "team"
-        ? teams
+      ? rosters.map((r) => ({ id: r.id, name: r.name }))
+      : stepForm.target_type === "user"
+        ? userTargets
         : [];
 
   return (
@@ -2040,12 +2649,7 @@ function StepsEditor({
                 const cumulativeSec = sorted
                   .slice(0, idx)
                   .reduce((sum, prev) => sum + prev.timeout_seconds, 0);
-                const targetLabel =
-                  s.target_type === "roster"
-                    ? rosters.find((r) => r.id === s.target_id)?.name
-                    : s.target_type === "team"
-                      ? teams.find((t) => t.id === s.target_id)?.name
-                      : s.target_id;
+                const targetLabel = labelForTarget(s.target_type, s.target_id);
                 return (
                   <li
                     key={`preview-${s.id}`}
@@ -2056,7 +2660,11 @@ function StepsEditor({
                     </span>
                     <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
                     <span className="text-fg-secondary">
-                      Page <span className="font-medium text-fg-primary">{targetLabel}</span>{" "}
+                      <span className="font-medium text-fg-primary">
+                        Level {idx + 1}
+                      </span>{" "}
+                      · Page{" "}
+                      <span className="font-medium text-fg-primary">{targetLabel}</span>{" "}
                       <span className="text-fg-muted">({s.target_type})</span>
                     </span>
                   </li>
@@ -2081,19 +2689,16 @@ function StepsEditor({
       )}
 
       <div className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-        Steps (additive — once paged, stay paged)
+        Levels (additive — once paged, stay paged)
       </div>
       {steps.length === 0 ? (
-        <div className="text-xs text-fg-tertiary">No steps yet.</div>
+        <div className="rounded-md border border-status-medium-border bg-status-medium-bg px-3 py-2 text-xs text-status-medium">
+          No levels yet — this chain pages no one. Add at least Level 1 below.
+        </div>
       ) : (
         <ol className="space-y-1">
-          {steps.map((s) => {
-            const label =
-              s.target_type === "roster"
-                ? rosters.find((r) => r.id === s.target_id)?.name
-                : s.target_type === "team"
-                  ? teams.find((t) => t.id === s.target_id)?.name
-                  : s.target_id;
+          {steps.map((s, idx) => {
+            const label = labelForTarget(s.target_type, s.target_id);
             const isDragging = draggedId === s.id;
             const isOver = dragOverId === s.id && draggedId !== s.id;
             return (
@@ -2136,7 +2741,7 @@ function StepsEditor({
                   >
                     ⋮⋮
                   </span>
-                  <Badge variant="default">#{s.step_index}</Badge>
+                  <Badge variant="default">Level {idx + 1}</Badge>
                   <span className="text-fg-secondary">{s.target_type}</span>
                   <span className="truncate font-medium text-fg-primary">
                     {label}
@@ -2189,7 +2794,7 @@ function StepsEditor({
             }
           >
             <option value="roster">Roster</option>
-            <option value="team">Team</option>
+            <option value="user">User</option>
           </Select>
         </div>
         <div>
@@ -2222,7 +2827,7 @@ function StepsEditor({
             }
           />
         </div>
-        <Button onClick={addStep}>Add step</Button>
+        <Button onClick={addStep}>Add level</Button>
       </div>
     </div>
   );
@@ -2365,11 +2970,7 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function formatRange(starts: string, ends: string): string {
-  const s = new Date(starts);
-  const e = new Date(ends);
-  return `${s.toLocaleString()} → ${e.toLocaleString()}`;
-}
+type MaintenanceStatus = "active" | "scheduled" | "past";
 
 function MaintenanceWindowsPanel({
   windows,
@@ -2386,11 +2987,11 @@ function MaintenanceWindowsPanel({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"active" | "scheduled" | "past">(
-    "scheduled",
-  );
-  const [rangeFrom, setRangeFrom] = useState("");
-  const [rangeTo, setRangeTo] = useState("");
+  const [editing, setEditing] = useState<MaintenanceWindowResponse | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | MaintenanceStatus>("");
+  const [scopeFilter, setScopeFilter] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const nowMinusOne = () => {
     const d = new Date();
     d.setHours(d.getHours() + 1);
@@ -2401,50 +3002,23 @@ function MaintenanceWindowsPanel({
     d.setHours(d.getHours() + 2);
     return toLocalInput(d.toISOString());
   };
-  const [form, setForm] = useState<{
-    name: string;
-    description: string;
-    reason: string;
-    starts_at: string;
-    ends_at: string;
-    scope_type: MaintenanceWindowScopeType;
-    scope_ids: string[];
-  }>({
+  const blankForm = () => ({
     name: "",
     description: "",
     reason: "",
     starts_at: nowMinusOne(),
     ends_at: nowPlusTwo(),
-    scope_type: "global",
-    scope_ids: [],
+    scope_type: "global" as MaintenanceWindowScopeType,
+    scope_ids: [] as string[],
   });
+  const [form, setForm] = useState(blankForm);
 
-  const now = new Date();
-  const isActive = (w: MaintenanceWindowResponse) =>
-    new Date(w.starts_at) <= now && new Date(w.ends_at) > now;
-  const isScheduled = (w: MaintenanceWindowResponse) =>
-    new Date(w.starts_at) > now;
-  const isPast = (w: MaintenanceWindowResponse) =>
-    new Date(w.ends_at) <= now;
-
-  const inRange = (w: MaintenanceWindowResponse) => {
-    if (rangeFrom) {
-      const from = new Date(rangeFrom);
-      if (new Date(w.ends_at) < from) return false;
-    }
-    if (rangeTo) {
-      const to = new Date(rangeTo);
-      if (new Date(w.starts_at) > to) return false;
-    }
-    return true;
+  const statusOf = (w: MaintenanceWindowResponse): MaintenanceStatus => {
+    const now = new Date();
+    if (new Date(w.starts_at) > now) return "scheduled";
+    if (new Date(w.ends_at) <= now) return "past";
+    return "active";
   };
-
-  const filtered = windows.filter((w) => {
-    if (!inRange(w)) return false;
-    if (view === "active") return isActive(w);
-    if (view === "scheduled") return isScheduled(w);
-    return isPast(w);
-  });
 
   const scopeOptionsFor = (
     type: MaintenanceWindowScopeType,
@@ -2455,12 +3029,36 @@ function MaintenanceWindowsPanel({
     return [];
   };
 
+  const scopeIdsOf = (w: MaintenanceWindowResponse): string[] =>
+    w.scope_ids?.length ? w.scope_ids : w.scope_id ? [w.scope_id] : [];
+
   const scopeLabelFor = (w: MaintenanceWindowResponse): string => {
-    if (w.scope_type === "global") return "global";
+    if (w.scope_type === "global") return "Global · all paging";
     const opts = scopeOptionsFor(w.scope_type);
-    const ids = w.scope_ids?.length ? w.scope_ids : w.scope_id ? [w.scope_id] : [];
-    const names = ids.map((id) => opts.find((o) => o.id === id)?.name ?? id);
+    const names = scopeIdsOf(w).map(
+      (id) => opts.find((o) => o.id === id)?.name ?? id,
+    );
     return `${w.scope_type}: ${names.join(", ") || "?"}`;
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(blankForm());
+    setOpen(true);
+  };
+
+  const openEdit = (w: MaintenanceWindowResponse) => {
+    setEditing(w);
+    setForm({
+      name: w.name,
+      description: w.description ?? "",
+      reason: w.reason ?? "",
+      starts_at: toLocalInput(w.starts_at),
+      ends_at: toLocalInput(w.ends_at),
+      scope_type: w.scope_type,
+      scope_ids: scopeIdsOf(w),
+    });
+    setOpen(true);
   };
 
   const submit = async () => {
@@ -2480,29 +3078,27 @@ function MaintenanceWindowsPanel({
       toast.error("Pick at least one scope target");
       return;
     }
+    const payload = {
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      reason: form.reason.trim() || null,
+      starts_at: new Date(form.starts_at).toISOString(),
+      ends_at: new Date(form.ends_at).toISOString(),
+      scope_type: form.scope_type,
+      scope_id: form.scope_type === "global" ? null : form.scope_ids[0],
+      scope_ids: form.scope_type === "global" ? [] : form.scope_ids,
+    };
     try {
-      await createMaintenanceWindow({
-        name: form.name.trim(),
-        description: form.description.trim() || null,
-        reason: form.reason.trim() || null,
-        starts_at: new Date(form.starts_at).toISOString(),
-        ends_at: new Date(form.ends_at).toISOString(),
-        scope_type: form.scope_type,
-        scope_id: form.scope_type === "global" ? null : form.scope_ids[0],
-        scope_ids: form.scope_type === "global" ? [] : form.scope_ids,
-      });
+      if (editing) {
+        await updateMaintenanceWindow(editing.id, payload);
+      } else {
+        await createMaintenanceWindow(payload);
+      }
       setOpen(false);
-      setForm({
-        name: "",
-        description: "",
-        reason: "",
-        starts_at: nowMinusOne(),
-        ends_at: nowPlusTwo(),
-        scope_type: "global",
-        scope_ids: [],
-      });
+      setEditing(null);
+      setForm(blankForm());
       onChange();
-      toast.success("Maintenance window scheduled");
+      toast.success(editing ? "Maintenance window updated" : "Maintenance window scheduled");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -2518,115 +3114,189 @@ function MaintenanceWindowsPanel({
     }
   };
 
-  const counts = {
-    active: windows.filter(isActive).length,
-    scheduled: windows.filter(isScheduled).length,
-    past: windows.filter(isPast).length,
-  };
+  const filteredWindows = useMemo(() => {
+    const q = deferredSearch.trim().toLowerCase();
+    return windows.filter((w) => {
+      if (q) {
+        const haystack = [w.name, w.description ?? "", scopeLabelFor(w)]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (statusFilter && statusOf(w) !== statusFilter) return false;
+      if (scopeFilter && w.scope_type !== scopeFilter) return false;
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, deferredSearch, statusFilter, scopeFilter]);
+
+  const columns = useMemo<DataTableColumn<MaintenanceWindowResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Name",
+        accessor: (w) => w.name,
+        sortable: true,
+        cell: (w) => (
+          <div className="flex items-center gap-2">
+            <Wrench className="h-4 w-4 text-fg-secondary" />
+            <div>
+              <div className="font-medium text-fg-primary">{w.name}</div>
+              {w.description && (
+                <div className="line-clamp-1 text-[11px] text-fg-muted">
+                  {w.description}
+                </div>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "scope",
+        label: "Scope",
+        accessor: (w) => scopeLabelFor(w),
+        cell: (w) => <Badge variant="default">{scopeLabelFor(w)}</Badge>,
+      },
+      {
+        id: "starts_at",
+        label: "Starts at",
+        accessor: (w) => w.starts_at,
+        sortable: true,
+        cell: (w) => (
+          <span className="whitespace-nowrap text-xs text-fg-secondary">
+            {new Date(w.starts_at).toLocaleString()}
+          </span>
+        ),
+      },
+      {
+        id: "ends_at",
+        label: "Ends at",
+        accessor: (w) => w.ends_at,
+        sortable: true,
+        cell: (w) => (
+          <span className="whitespace-nowrap text-xs text-fg-secondary">
+            {new Date(w.ends_at).toLocaleString()}
+          </span>
+        ),
+      },
+      {
+        id: "status",
+        label: "Status",
+        accessor: (w) => statusOf(w),
+        sortable: true,
+        cell: (w) => {
+          const s = statusOf(w);
+          return (
+            <Badge variant={s === "active" ? "open" : s === "scheduled" ? "info" : "closed"}>
+              {s}
+            </Badge>
+          );
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [services, rosters, teams],
+  );
+
+  const hasFilters = Boolean(search || statusFilter || scopeFilter);
 
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap gap-1 rounded-md border border-border-default bg-bg-surface p-1">
-          {(["active", "scheduled", "past"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              className={`rounded px-3 py-1.5 text-sm capitalize transition ${
-                view === v
-                  ? "bg-bg-elevated text-fg-primary"
-                  : "text-fg-secondary hover:text-fg-primary"
-              }`}
-            >
-              {v} <span className="text-fg-tertiary">({counts[v]})</span>
-            </button>
-          ))}
-        </div>
-        <div className="flex items-end gap-2">
-          <div>
-            <Label className="text-xs">From</Label>
-            <Input
-              type="datetime-local"
-              value={rangeFrom}
-              onChange={(e) => setRangeFrom(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">To</Label>
-            <Input
-              type="datetime-local"
-              value={rangeTo}
-              onChange={(e) => setRangeTo(e.target.value)}
-            />
-          </div>
-          {(rangeFrom || rangeTo) && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setRangeFrom("");
-                setRangeTo("");
-              }}
-            >
-              Clear
-            </Button>
-          )}
-          <Button onClick={() => setOpen(true)}>
-            <PlusCircle className="h-4 w-4" /> New window
-          </Button>
-        </div>
-      </div>
-
-      {filtered.length === 0 ? (
+      {windows.length === 0 ? (
         <EmptyState
-          title={`No ${view} maintenance windows`}
-          description={
-            view === "scheduled"
-              ? "Schedule a window to drop matching alerts during planned work before they create visible incidents."
-              : view === "active"
-                ? "No windows are currently in effect."
-                : "No past windows match the current range filter."
-          }
-          learnMoreHref={
-            view === "scheduled" || view === "active"
-              ? "https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
-              : "https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/notification-preferences.md"
-          }
-          learnMoreLabel={
-            view === "scheduled" || view === "active"
-              ? "Paging guide"
-              : "Notification guide"
+          title="No maintenance windows"
+          description="Schedule a window to drop matching alerts during planned work before they create visible incidents."
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
+          learnMoreLabel="Paging guide"
+          action={
+            <Button onClick={openCreate}>
+              <PlusCircle className="h-4 w-4" /> New window
+            </Button>
           }
         />
       ) : (
-        <ul className="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface">
-          {filtered.map((w) => (
-            <li key={w.id} className="flex items-start justify-between px-4 py-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-fg-secondary" />
-                  <span className="font-medium text-fg-primary">{w.name}</span>
-                  <Badge variant="default">{scopeLabelFor(w)}</Badge>
-                </div>
-                <div className="text-xs text-fg-secondary">
-                  {formatRange(w.starts_at, w.ends_at)}
-                </div>
-                {w.description && (
-                  <div className="text-xs text-fg-tertiary">{w.description}</div>
-                )}
-              </div>
-              <Button variant="ghost" onClick={() => remove(w.id)} title="Delete">
-                <Trash2 className="h-4 w-4" />
+        <>
+          <PagingFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search maintenance windows..."
+            searchAriaLabel="Search maintenance windows"
+            filters={[
+              {
+                id: "status",
+                label: "Filter windows by status",
+                value: statusFilter,
+                onChange: (v) => setStatusFilter(v as "" | MaintenanceStatus),
+                options: [
+                  { value: "", label: "All statuses" },
+                  { value: "active", label: "Active" },
+                  { value: "scheduled", label: "Scheduled" },
+                  { value: "past", label: "Past" },
+                ],
+              },
+              {
+                id: "scope",
+                label: "Filter windows by scope",
+                value: scopeFilter,
+                onChange: setScopeFilter,
+                options: [
+                  { value: "", label: "All scopes" },
+                  { value: "global", label: "Global" },
+                  { value: "service", label: "Service" },
+                  { value: "team", label: "Team" },
+                  { value: "roster", label: "Roster" },
+                ],
+              },
+            ]}
+            hasFilters={hasFilters}
+            onClear={() => {
+              setSearch("");
+              setStatusFilter("");
+              setScopeFilter("");
+            }}
+            action={
+              <Button size="sm" onClick={openCreate}>
+                <PlusCircle className="h-4 w-4" /> New window
               </Button>
-            </li>
-          ))}
-        </ul>
+            }
+          />
+          <DataTable
+            rows={filteredWindows}
+            columns={columns}
+            rowKey={(w) => w.id}
+            storageKey="opsmender:maintenance-table"
+            hideToolbar
+            empty={
+              <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+                No maintenance windows match the current filters.
+              </div>
+            }
+            rowActions={(w) => (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => openEdit(w)}
+                  title="Edit window"
+                >
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => remove(w.id)} title="Delete">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          />
+        </>
       )}
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
-        title="Schedule maintenance window"
+        onClose={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
+        title={editing ? "Edit maintenance window" : "Schedule maintenance window"}
       >
         <div className="space-y-3">
           <div>
@@ -2670,51 +3340,39 @@ function MaintenanceWindowsPanel({
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Scope</Label>
-              <Select
-                value={form.scope_type}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    scope_type: e.target.value as MaintenanceWindowScopeType,
-                    scope_ids: [],
-                  })
-                }
-              >
-                <option value="global">Global (all paging)</option>
-                <option value="service">Service</option>
-                <option value="roster">Roster</option>
-                <option value="team">Team</option>
-              </Select>
-            </div>
-            {form.scope_type !== "global" && (
-              <div>
-                <Label>Targets</Label>
-                <select
-                  multiple
-                  value={form.scope_ids}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      scope_ids: Array.from(
-                        e.currentTarget.selectedOptions,
-                        (option) => option.value,
-                      ),
-                    })
-                  }
-                  className="min-h-28 w-full rounded-md border border-border-subtle bg-bg-input px-3 py-2 text-sm text-fg-primary outline-none focus:border-accent"
-                >
-                  {scopeOptionsFor(form.scope_type).map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+          <div>
+            <Label>Scope</Label>
+            <Select
+              value={form.scope_type}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  scope_type: e.target.value as MaintenanceWindowScopeType,
+                  scope_ids: [],
+                })
+              }
+            >
+              <option value="global">Global (all paging)</option>
+              <option value="service">Service</option>
+              <option value="team">Team</option>
+              <option value="roster">Roster</option>
+            </Select>
           </div>
+          {form.scope_type !== "global" && (
+            <div>
+              <Label>Targets ({form.scope_type})</Label>
+              <MultiSelect
+                ariaLabel={`Maintenance window ${form.scope_type} targets`}
+                options={scopeOptionsFor(form.scope_type).map((o) => ({
+                  value: o.id,
+                  label: o.name,
+                }))}
+                selected={form.scope_ids}
+                onChange={(next) => setForm({ ...form, scope_ids: next })}
+                emptyLabel={`No ${form.scope_type}s available.`}
+              />
+            </div>
+          )}
           <p className="text-xs text-fg-tertiary">
             Matching alerts are dropped during the window so planned work does
             not create noisy visible incidents. Non-matching alerts still flow.
@@ -2723,7 +3381,7 @@ function MaintenanceWindowsPanel({
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={submit}>Schedule</Button>
+            <Button onClick={submit}>{editing ? "Save" : "Schedule"}</Button>
           </div>
         </div>
       </Modal>
@@ -2789,62 +3447,239 @@ const ALL_CHANNELS: {
 
 const ALL_PRIORITIES: Priority[] = ["P0", "P1", "P2", "P3"];
 
-function NotificationsPanel() {
+type NotificationsTab = "my_routing" | "routing_summary" | "channels" | "outbound";
+
+const NOTIFICATIONS_TABS: { id: NotificationsTab; label: string }[] = [
+  { id: "my_routing", label: "My Routing" },
+  { id: "routing_summary", label: "Routing Summary" },
+  { id: "channels", label: "Notification Channels" },
+  { id: "outbound", label: "Outbound Hooks" },
+];
+
+function NotificationsPanel({
+  services,
+  teams,
+  chains,
+}: {
+  services: ServiceResponse[];
+  teams: TeamResponse[];
+  chains: EscalationChainResponse[];
+}) {
+  const [subTab, setSubTab] = useState<NotificationsTab>("my_routing");
+
   return (
     <section className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="flex flex-wrap gap-1 rounded-md border border-border-default bg-bg-surface p-1">
+        {NOTIFICATIONS_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setSubTab(t.id)}
+            aria-current={subTab === t.id ? "page" : undefined}
+            className={`rounded px-3 py-1.5 text-sm transition ${
+              subTab === t.id
+                ? "bg-bg-elevated text-fg-primary"
+                : "text-fg-secondary hover:text-fg-primary"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "my_routing" && (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+            Your personal delivery channels, priority routing, and quiet hours.
+            Incident sessions are only available on chat-capable channels; email,
+            SMS, and generic webhooks remain delivery-only.
+          </div>
+          <NotificationPreferencesPanel />
+        </div>
+      )}
+
+      {subTab === "routing_summary" && (
+        <RoutingSummaryPanel
+          services={services}
+          teams={teams}
+          chains={chains}
+        />
+      )}
+
+      {subTab === "channels" && (
         <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
           <h3 className="text-sm font-semibold text-fg-primary">
-            Operator Delivery
+            Notification Channels
           </h3>
           <p className="mt-1 text-sm text-fg-secondary">
-            Configure the workspace-level channels used to page admins and
-            operators. Chat-capable adapters can also host incident sessions.
+            Workspace-level channels OpsMender uses to reach people — Telegram,
+            Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost,
+            Matrix, Email, SMS, and custom adapters. Chat-capable adapters can
+            also host incident sessions.
           </p>
           <div className="mt-4">
             <NotificationChannelsPage embedded />
           </div>
         </div>
+      )}
+
+      {subTab === "outbound" && (
         <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
           <h3 className="text-sm font-semibold text-fg-primary">
-            Viewer Updates
+            Outbound Hooks
           </h3>
           <p className="mt-1 text-sm text-fg-secondary">
-            Send read-only status updates to viewers and downstream workflows
-            without making them on-call operators.
+            Send read-only incident updates to Viewers and external/downstream
+            recipients without making them on-call operators.
           </p>
           <div className="mt-4">
             <OutboundHooksPage embedded />
           </div>
         </div>
-      </div>
-      <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
-        <h3 className="text-sm font-semibold text-fg-primary">Quiet Hours</h3>
-        <p className="mt-1 text-sm text-fg-secondary">
-          Personal quiet-hours settings apply where appropriate while urgent
-          escalation behavior can still break through by priority.
-        </p>
-      </div>
-      <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
-        <h3 className="text-sm font-semibold text-fg-primary">
-          Routing by Priority
-        </h3>
-        <p className="mt-1 text-sm text-fg-secondary">
-          Choose which configured channels receive P0, P1, P2, and P3
-          notifications. The options come from configured delivery channels.
-        </p>
-      </div>
-      <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
-        <h3 className="text-sm font-semibold text-fg-primary">
-          Sessions / Chat
-        </h3>
-        <p className="mt-1 text-sm text-fg-secondary">
-          Incident sessions are only available on chat-capable notification
-          adapters. Email, SMS, and generic webhooks remain delivery-only.
-        </p>
-      </div>
-      <NotificationPreferencesPanel />
+      )}
     </section>
+  );
+}
+
+/**
+ * Read-only routing summary (v1). Derives "who gets paged" from existing
+ * services → escalation chains → rosters/users → channels rather than
+ * introducing an editable team-routing model. Editable team-level routing
+ * defaults are planned for v1.1.
+ */
+function RoutingSummaryPanel({
+  services,
+  teams,
+  chains,
+}: {
+  services: ServiceResponse[];
+  teams: TeamResponse[];
+  chains: EscalationChainResponse[];
+}) {
+  const [chainByService, setChainByService] = useState<Map<string, string>>(
+    new Map(),
+  );
+  const [outboundCount, setOutboundCount] = useState<number | null>(null);
+
+  const teamNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of teams) map.set(t.id, t.name);
+    return map;
+  }, [teams]);
+  const chainNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of chains) map.set(c.id, c.name);
+    return map;
+  }, [chains]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        services.map(async (s) => {
+          try {
+            const links = await listServiceEscalationChains(s.id);
+            return [s.id, links.items[0]?.chain_id ?? ""] as const;
+          } catch {
+            return [s.id, ""] as const;
+          }
+        }),
+      );
+      if (!cancelled) setChainByService(new Map(entries));
+    })();
+    listWebhookTriggers()
+      .then((r) => {
+        if (!cancelled) setOutboundCount(r.items.length);
+      })
+      .catch(() => {
+        if (!cancelled) setOutboundCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [services]);
+
+  const RESPONSE_BY_PRIORITY: Record<Priority, string> = {
+    P0: "Page on-call",
+    P1: "Page on-call",
+    P2: "Notify",
+    P3: "Auto-resolve",
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+        Routing is derived from services, escalation chains, rosters, and
+        notification channels. Editable team-level routing defaults are planned
+        for v1.1.
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-border-default bg-bg-surface">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="border-b border-border-default text-xs text-fg-secondary">
+              <th className="px-3 py-2 text-left font-medium">Service</th>
+              <th className="px-3 py-2 text-left font-medium">Priority</th>
+              <th className="px-3 py-2 text-left font-medium">Response</th>
+              <th className="px-3 py-2 text-left font-medium">Team</th>
+              <th className="px-3 py-2 text-left font-medium">Escalation chain</th>
+            </tr>
+          </thead>
+          <tbody>
+            {services.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-3 py-4 text-fg-muted">
+                  No services yet. Add a service to define routing.
+                </td>
+              </tr>
+            ) : (
+              services.map((s) => {
+                const chainId = chainByService.get(s.id) ?? "";
+                return (
+                  <tr key={s.id} className="border-b border-border-default last:border-0">
+                    <td className="px-3 py-2 font-medium text-fg-primary">
+                      {s.name}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant={PRIORITY_VARIANT[s.priority] as never}>
+                        {s.priority}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2 text-fg-secondary">
+                      {RESPONSE_BY_PRIORITY[s.priority]}
+                    </td>
+                    <td className="px-3 py-2 text-fg-secondary">
+                      {teamNameById.get(s.team_id) ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-fg-secondary">
+                      {chainId ? (
+                        chainNameById.get(chainId) ?? "linked chain"
+                      ) : (
+                        <span className="text-fg-muted">— none —</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="space-y-1 text-xs text-fg-tertiary">
+        <li>· P0/P1 page through the service&apos;s escalation chain.</li>
+        <li>· Each level targets a roster or user; the roster resolves the current Admin/Operator from its coverage window and rotation order.</li>
+        <li>· Delivery uses each recipient&apos;s configured notification channels.</li>
+        <li>
+          · Viewer/external updates:{" "}
+          {outboundCount === null
+            ? "checking…"
+            : outboundCount > 0
+              ? `${outboundCount} outbound hook${outboundCount === 1 ? "" : "s"} configured.`
+              : "Not configured."}
+        </li>
+      </ul>
+    </div>
   );
 }
 

@@ -331,6 +331,10 @@ export interface ConfigResponse {
   advanced_auth_enabled?: boolean;
   sso_configured?: boolean;
   saml_configured?: boolean;
+  // v1 paging: absolute base URL used to render a service's full alert
+  // intake URL. Null/undefined when unset; the browser then falls back to
+  // window.location.origin.
+  public_base_url?: string | null;
 }
 
 export interface ConfigUpdate {

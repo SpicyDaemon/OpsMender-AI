@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 
 import { RosterCalendarModal } from "@/components/RosterCalendarModal";
+import { NotificationChannelsPage } from "@/components/NotificationChannelsPage";
+import { OutboundHooksPage } from "@/components/OutboundHooksPage";
 
 import {
   createMaintenanceWindow,
@@ -37,13 +39,11 @@ import {
 import {
   addEscalationStep,
   createEscalationChain,
-  createPriorityRule,
   createRoster,
   createService,
   createTeam,
   deleteEscalationChain,
   deleteEscalationStep,
-  deletePriorityRule,
   deleteRoster,
   deleteService,
   deleteTeam,
@@ -52,7 +52,7 @@ import {
   listEscalationChains,
   listEscalationSteps,
   listIncidents,
-  listPriorityRules,
+  listMCPServers,
   listRosters,
   listServices,
   listTeams,
@@ -61,6 +61,8 @@ import {
   resolveOnCall,
   updateEscalationStep,
   updateMyNotificationPreferences,
+  updateRoster,
+  updateService,
 } from "@/lib/api";
 import type {
   ChainWhereUsedItem,
@@ -70,11 +72,10 @@ import type {
   IncidentResponse,
   MaintenanceWindowResponse,
   MaintenanceWindowScopeType,
+  MCPServerResponse,
   NotificationChannelKey,
   Priority,
-  PriorityRuleResponse,
   QuietHoursConfig,
-  ResponseMode,
   RosterResponse,
   ServiceResponse,
   TeamResponse,
@@ -92,24 +93,22 @@ import { useToast } from "@/components/ui/Toast";
 
 export type Tab =
   | "teams"
+  | "chains"
   | "services"
   | "rosters"
-  | "rules"
-  | "chains"
   | "maintenance"
-  | "preferences";
+  | "notifications";
 
 export const TAB_SLUGS: Record<Tab, string> = {
   teams: "teams",
+  chains: "escalation-chains",
   services: "services",
   rosters: "rosters",
-  rules: "priority-rules",
-  chains: "escalation-chains",
   maintenance: "maintenance-windows",
-  preferences: "my-notifications",
+  notifications: "notifications",
 };
 
-const TABS: {
+export const TABS: {
   id: Tab;
   label: string;
   description: string;
@@ -122,29 +121,22 @@ const TABS: {
     icon: Users,
   },
   {
+    id: "chains",
+    label: "Escalation Chains",
+    description: "Team-owned levels that page operators and backups.",
+    icon: GitBranch,
+  },
+  {
     id: "services",
     label: "Services",
-    description: "Owned by one team in v1. Service Webhook / Alert Intake setup belongs here.",
+    description: "Alert sources with fixed priority, intake URL, and preferred MCP servers.",
     icon: Server,
   },
   {
     id: "rosters",
     label: "Rosters",
-    description: "Deterministic on-call rotations resolved per-incident.",
+    description: "Schedules with coverage windows and ordered rotations.",
     icon: Repeat,
-  },
-  {
-    id: "rules",
-    label: "Priority Rules",
-    description:
-      "First-match-wins assignment of P0–P3 and the response mode.",
-    icon: ListOrdered,
-  },
-  {
-    id: "chains",
-    label: "Escalation Chains",
-    description: "Additive paging steps that fire on a timeout cadence.",
-    icon: GitBranch,
   },
   {
     id: "maintenance",
@@ -153,9 +145,9 @@ const TABS: {
     icon: Wrench,
   },
   {
-    id: "preferences",
-    label: "My Notifications",
-    description: "Channels, routing, and quiet hours for your account.",
+    id: "notifications",
+    label: "Notifications",
+    description: "Operator delivery, viewer updates, quiet hours, routing, and chat sessions.",
     icon: Bell,
   },
 ];
@@ -171,6 +163,13 @@ const PRIORITY_VARIANT: Record<Priority, string> = {
   P3: "low",
 };
 
+const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
+  { value: "P0", label: "P0 Critical" },
+  { value: "P1", label: "P1 High" },
+  { value: "P2", label: "P2 Medium" },
+  { value: "P3", label: "P3 Low" },
+];
+
 export function PagingShell({ initialTab }: { initialTab: Tab }) {
   const toast = useToast();
   const router = useRouter();
@@ -179,24 +178,21 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [services, setServices] = useState<ServiceResponse[]>([]);
   const [rosters, setRosters] = useState<RosterResponse[]>([]);
-  const [rules, setRules] = useState<PriorityRuleResponse[]>([]);
   const [chains, setChains] = useState<EscalationChainResponse[]>([]);
   const [windows, setWindows] = useState<MaintenanceWindowResponse[]>([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [t, s, r, p, c, mw] = await Promise.all([
+      const [t, s, r, c, mw] = await Promise.all([
         listTeams(),
         listServices(),
         listRosters(),
-        listPriorityRules(),
         listEscalationChains(),
         listMaintenanceWindows(),
       ]);
       setTeams(t.items);
       setServices(s.items);
       setRosters(r.items);
-      setRules(p.items);
       setChains(c.items);
       setWindows(mw.items);
     } catch (err) {
@@ -214,7 +210,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
     <div className="space-y-6 p-6">
       <PageHeader
         title="Paging"
-        subtitle="Teams, services, rosters, priority rules, and escalation chains — the OpsMender-owned paging surface."
+        subtitle="Teams, escalation chains, services, rosters, maintenance windows, and notifications — the OpsMender-owned paging surface."
         actions={
           <Button
             variant="ghost"
@@ -273,7 +269,6 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
       {tab === "rosters" && (
         <RostersPanel rosters={rosters} teams={teams} onChange={refresh} />
       )}
-      {tab === "rules" && <RulesPanel rules={rules} onChange={refresh} />}
       {tab === "chains" && (
         <ChainsPanel
           chains={chains}
@@ -291,7 +286,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
           onChange={refresh}
         />
       )}
-      {tab === "preferences" && <NotificationPreferencesPanel />}
+      {tab === "notifications" && <NotificationsPanel />}
     </div>
   );
 }
@@ -527,11 +522,14 @@ function ServicesPanel({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<ServiceResponse | null>(null);
   const [form, setForm] = useState({
     name: "",
     slug: "",
     team_id: "",
     description: "",
+    priority: "P2" as Priority,
+    preferred_mcp_server_ids: [] as string[],
   });
   const [serviceSearch, setServiceSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
@@ -541,6 +539,7 @@ function ServicesPanel({
   const [timeFilter, setTimeFilter] = useState<ServiceTimeFilter>("");
   const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [users, setUsers] = useState<UserResponse[]>([]);
+  const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
   const [onCallByTeam, setOnCallByTeam] = useState<Map<string, string | null>>(
     new Map(),
   );
@@ -557,16 +556,18 @@ function ServicesPanel({
     let cancelled = false;
     (async () => {
       try {
-        const [incList, uList] = await Promise.all([
+        const [incList, uList, mcpList] = await Promise.all([
           listIncidents({ limit: 200 }).catch(() => ({
             items: [] as IncidentResponse[],
             total: 0,
           })),
           listUsers().catch(() => ({ items: [] as UserResponse[], total: 0 })),
+          listMCPServers().catch(() => ({ items: [] as MCPServerResponse[], total: 0 })),
         ]);
         if (cancelled) return;
         setIncidents(incList.items);
         setUsers(uList.items);
+        setMcpServers(mcpList.items);
 
         // Resolve on-call once per team via the team's first roster.
         const teamRoster = new Map<string, string>(); // team_id → roster_id
@@ -602,19 +603,62 @@ function ServicesPanel({
       return;
     }
     try {
-      await createService({
+      const payload = {
         team_id: form.team_id,
         name: form.name,
-        slug: form.slug,
         description: form.description || undefined,
-      });
+        priority: form.priority,
+        preferred_mcp_server_ids: form.preferred_mcp_server_ids,
+      };
+      if (editing) {
+        await updateService(editing.id, payload);
+      } else {
+        await createService({
+          ...payload,
+          slug: form.slug,
+        });
+      }
       setOpen(false);
-      setForm({ name: "", slug: "", team_id: teams[0]?.id ?? "", description: "" });
+      setEditing(null);
+      setForm({
+        name: "",
+        slug: "",
+        team_id: teams[0]?.id ?? "",
+        description: "",
+        priority: "P2",
+        preferred_mcp_server_ids: [],
+      });
       onChange();
-      toast.success("Service created");
+      toast.success(editing ? "Service updated" : "Service created");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({
+      name: "",
+      slug: "",
+      team_id: teams[0]?.id ?? "",
+      description: "",
+      priority: "P2",
+      preferred_mcp_server_ids: [],
+    });
+    setOpen(true);
+  };
+
+  const openEdit = (service: ServiceResponse) => {
+    setEditing(service);
+    setForm({
+      name: service.name,
+      slug: service.slug,
+      team_id: service.team_id,
+      description: service.description ?? "",
+      priority: service.priority,
+      preferred_mcp_server_ids: service.preferred_mcp_server_ids ?? [],
+    });
+    setOpen(true);
   };
 
   const remove = async (id: string) => {
@@ -731,6 +775,27 @@ function ServicesPanel({
       sortable: true,
     },
     {
+      id: "priority",
+      label: "Priority",
+      accessor: (r) => r.service.priority,
+      cell: (r) => (
+        <Badge variant={PRIORITY_VARIANT[r.service.priority] as never}>
+          {r.service.priority}
+        </Badge>
+      ),
+      sortable: true,
+    },
+    {
+      id: "intake",
+      label: "Alert Intake",
+      accessor: (r) => r.service.intake_url ?? "",
+      cell: (r) => (
+        <span className="font-mono text-[11px] text-fg-secondary">
+          {r.service.intake_url ?? "not generated"}
+        </span>
+      ),
+    },
+    {
       id: "team",
       label: "Team",
       accessor: (r) => r.team_name ?? "",
@@ -811,7 +876,7 @@ function ServicesPanel({
           learnMoreLabel="Paging guide"
           action={
             teams.length > 0 ? (
-              <Button onClick={() => setOpen(true)}>
+              <Button onClick={openCreate}>
                 <PlusCircle className="h-4 w-4" /> New service
               </Button>
             ) : undefined
@@ -845,7 +910,7 @@ function ServicesPanel({
             action={
               <Button
                 size="sm"
-                onClick={() => setOpen(true)}
+                onClick={openCreate}
                 disabled={teams.length === 0}
               >
                 <PlusCircle className="h-4 w-4" /> New service
@@ -859,20 +924,37 @@ function ServicesPanel({
             storageKey="opsmender:services-table"
             hideToolbar
             rowActions={(r) => (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => remove(r.service.id)}
-                title="Delete service"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => openEdit(r.service)}
+                  title="Edit service"
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => remove(r.service.id)}
+                  title="Delete service"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             )}
           />
         </>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="New service">
+      <Modal
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
+        title={editing ? "Edit service" : "New service"}
+      >
         <div className="space-y-3">
           <div>
             <Label>Owning team</Label>
@@ -902,7 +984,55 @@ function ServicesPanel({
                 setForm({ ...form, slug: normalizeSlugInput(e.target.value) })
               }
               placeholder="payments-api"
+              disabled={Boolean(editing)}
             />
+          </div>
+          <div>
+            <Label>Priority</Label>
+            <Select
+              value={form.priority}
+              onChange={(e) =>
+                setForm({ ...form, priority: e.target.value as Priority })
+              }
+            >
+              {PRIORITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-fg-muted">
+              Incidents created through this service use this priority. AI does
+              not override it in v1.
+            </p>
+          </div>
+          <div>
+            <Label>Preferred MCP servers</Label>
+            <select
+              multiple
+              value={form.preferred_mcp_server_ids}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  preferred_mcp_server_ids: Array.from(
+                    e.currentTarget.selectedOptions,
+                    (option) => option.value,
+                  ),
+                })
+              }
+              className="min-h-28 w-full rounded-md border border-border-subtle bg-bg-input px-3 py-2 text-sm text-fg-primary outline-none focus:border-accent"
+            >
+              {mcpServers.map((server) => (
+                <option key={server.id} value={server.id}>
+                  {server.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-fg-muted">
+              Ordered preference list. OpsMender tries these first to reduce
+              tool noise; operators can still ask for another configured MCP
+              server manually.
+            </p>
           </div>
           <div>
             <Label>Description (optional)</Label>
@@ -918,7 +1048,7 @@ function ServicesPanel({
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={submit}>Create</Button>
+            <Button onClick={submit}>{editing ? "Save" : "Create"}</Button>
           </div>
         </div>
       </Modal>
@@ -1065,11 +1195,14 @@ function RostersPanel({
   const [form, setForm] = useState({
     name: "",
     team_id: "",
+    description: "",
     time_zone: "UTC",
     pattern: "weekly" as "weekly" | "daily" | "custom_n_days",
     pattern_length: 7,
-    handoff_time: "09:00",
+    coverage_start_time: "08:00",
+    coverage_end_time: "18:00",
     anchor_date: new Date().toISOString().slice(0, 10),
+    is_active: true,
   });
 
   useEffect(() => {
@@ -1087,15 +1220,29 @@ function RostersPanel({
       await createRoster({
         team_id: form.team_id,
         name: form.name,
+        description: form.description || undefined,
         time_zone: form.time_zone,
         pattern: form.pattern,
         pattern_length: form.pattern_length,
-        handoff_time: form.handoff_time,
+        coverage_start_time: form.coverage_start_time,
+        coverage_end_time: form.coverage_end_time,
+        handoff_time: form.coverage_start_time,
         anchor_date: form.anchor_date,
+        is_active: form.is_active,
       });
       setOpen(false);
       onChange();
       toast.success("Roster created");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const toggleRoster = async (roster: RosterResponse) => {
+    try {
+      await updateRoster(roster.id, { is_active: !roster.is_active });
+      onChange();
+      toast.success(roster.is_active ? "Roster disabled" : "Roster enabled");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -1162,6 +1309,19 @@ function RostersPanel({
         ),
       },
       {
+        id: "enabled",
+        label: "Enabled",
+        accessor: (r) => (r.is_active ? "enabled" : "disabled"),
+        sortable: true,
+        cell: (r) => (
+          <Button variant="ghost" size="sm" onClick={() => toggleRoster(r)}>
+            <Badge variant={r.is_active ? "resolved" : "closed"}>
+              {r.is_active ? "Enabled" : "Disabled"}
+            </Badge>
+          </Button>
+        ),
+      },
+      {
         id: "pattern",
         label: "Pattern",
         accessor: (r) => r.pattern,
@@ -1197,13 +1357,13 @@ function RostersPanel({
         ),
       },
       {
-        id: "handoff_time",
-        label: "Handoff",
-        accessor: (r) => r.handoff_time,
+        id: "coverage",
+        label: "Coverage window",
+        accessor: (r) => `${r.coverage_start_time}-${r.coverage_end_time}`,
         sortable: true,
         cell: (r) => (
           <span className="font-mono text-xs text-fg-secondary">
-            {r.handoff_time}
+            {r.coverage_start_time} → {r.coverage_end_time}
           </span>
         ),
       },
@@ -1265,7 +1425,7 @@ function RostersPanel({
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="New roster">
+      <Modal open={open} onClose={() => setOpen(false)} title="Create roster schedule">
         <div className="space-y-3">
           <div>
             <Label>Team</Label>
@@ -1288,6 +1448,27 @@ function RostersPanel({
               placeholder="Primary on-call"
             />
           </div>
+          <div>
+            <Label>Description (optional)</Label>
+            <Textarea
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+              rows={2}
+              placeholder="Morning coverage for the DevOps team"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-fg-secondary">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) =>
+                setForm({ ...form, is_active: e.target.checked })
+              }
+            />
+            Enabled
+          </label>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Pattern</Label>
@@ -1327,17 +1508,30 @@ function RostersPanel({
               />
             </div>
             <div>
-              <Label>Handoff time</Label>
+              <Label>Coverage start time</Label>
               <Input
-                value={form.handoff_time}
+                value={form.coverage_start_time}
                 onChange={(e) =>
-                  setForm({ ...form, handoff_time: e.target.value })
+                  setForm({ ...form, coverage_start_time: e.target.value })
                 }
-                placeholder="09:00"
+                placeholder="08:00"
               />
             </div>
+            <div>
+              <Label>Coverage end time</Label>
+              <Input
+                value={form.coverage_end_time}
+                onChange={(e) =>
+                  setForm({ ...form, coverage_end_time: e.target.value })
+                }
+                placeholder="18:00"
+              />
+              <p className="mt-1 text-xs text-fg-muted">
+                Overnight windows are supported, for example 18:00 → 08:00.
+              </p>
+            </div>
             <div className="col-span-2">
-              <Label>Anchor date</Label>
+              <Label>Start Date</Label>
               <Input
                 type="date"
                 value={form.anchor_date}
@@ -1363,254 +1557,6 @@ function RostersPanel({
           onChange={onChange}
         />
       )}
-    </section>
-  );
-}
-
-function RulesPanel({
-  rules,
-  onChange,
-}: {
-  rules: PriorityRuleResponse[];
-  onChange: () => void;
-}) {
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    rule_index: 0,
-    priority: "P2" as Priority,
-    response_mode: "" as ResponseMode | "",
-    condition_json: "{}",
-  });
-
-  const submit = async () => {
-    let condition: Record<string, unknown> = {};
-    try {
-      condition = JSON.parse(form.condition_json);
-    } catch {
-      toast.error("Condition must be valid JSON");
-      return;
-    }
-    try {
-      await createPriorityRule({
-        name: form.name,
-        rule_index: form.rule_index,
-        condition,
-        priority: form.priority,
-        response_mode: form.response_mode || undefined,
-      });
-      setOpen(false);
-      onChange();
-      toast.success("Rule created");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const remove = async (id: string) => {
-    if (!confirm("Delete this rule?")) return;
-    try {
-      await deletePriorityRule(id);
-      onChange();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const ruleColumns = useMemo<DataTableColumn<PriorityRuleResponse>[]>(
-    () => [
-      {
-        id: "rule_index",
-        label: "#",
-        accessor: (r) => r.rule_index,
-        cell: (r) => (
-          <span className="font-mono text-xs text-fg-tertiary">{r.rule_index}</span>
-        ),
-        sortable: true,
-      },
-      {
-        id: "name",
-        label: "Rule",
-        accessor: (r) => r.name,
-        cell: (r) => (
-          <div className="flex items-center gap-2">
-            <ListOrdered className="h-4 w-4 text-fg-secondary" />
-            <span className="font-medium text-fg-primary">{r.name}</span>
-          </div>
-        ),
-        sortable: true,
-        searchable: true,
-      },
-      {
-        id: "priority",
-        label: "Priority",
-        accessor: (r) => r.priority,
-        cell: (r) => (
-          <Badge variant={PRIORITY_VARIANT[r.priority] as never}>
-            {r.priority}
-          </Badge>
-        ),
-        sortable: true,
-        filterChips: {
-          options: [
-            { value: "P0", label: "P0" },
-            { value: "P1", label: "P1" },
-            { value: "P2", label: "P2" },
-            { value: "P3", label: "P3" },
-          ],
-          valueOf: (r) => r.priority,
-        },
-      },
-      {
-        id: "response_mode",
-        label: "Response",
-        accessor: (r) => r.response_mode ?? "",
-        cell: (r) =>
-          r.response_mode ? (
-            <Badge variant="default">{r.response_mode}</Badge>
-          ) : (
-            <span className="text-fg-muted">default</span>
-          ),
-        sortable: true,
-        filterChips: {
-          options: [
-            { value: "auto_resolve", label: "auto_resolve" },
-            { value: "notify", label: "notify" },
-            { value: "page", label: "page" },
-            { value: "escalate_immediate", label: "escalate_immediate" },
-          ],
-          valueOf: (r) => r.response_mode,
-        },
-      },
-      {
-        id: "condition",
-        label: "Match condition",
-        accessor: (r) => JSON.stringify(r.condition ?? {}),
-        cell: (r) => (
-          <pre className="max-w-md overflow-x-auto rounded bg-bg-elevated p-2 text-xs text-fg-secondary">
-            {JSON.stringify(r.condition, null, 0)}
-          </pre>
-        ),
-        searchable: true,
-      },
-    ],
-    [],
-  );
-
-  return (
-    <section className="space-y-3">
-      {rules.length === 0 ? (
-        <>
-          <div className="flex justify-end">
-            <Button onClick={() => setOpen(true)}>
-              <PlusCircle className="h-4 w-4" /> New rule
-            </Button>
-          </div>
-          <EmptyState
-            title="No priority rules"
-            description="Without rules every incident lands at P3. Add a rule to surface real urgencies."
-            learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
-            learnMoreLabel="Paging guide"
-          />
-        </>
-      ) : (
-        <DataTable
-          rows={rules}
-          columns={ruleColumns}
-          rowKey={(r) => r.id}
-          storageKey="opsmender:priority-rules-table"
-          searchPlaceholder="Search by name or condition JSON…"
-          toolbarRight={
-            <Button onClick={() => setOpen(true)}>
-              <PlusCircle className="h-4 w-4" /> New rule
-            </Button>
-          }
-          rowActions={(r) => (
-            <Button variant="ghost" onClick={() => remove(r.id)} title="Delete">
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-        />
-      )}
-
-      <Modal open={open} onClose={() => setOpen(false)} title="New priority rule">
-        <div className="space-y-3">
-          <div>
-            <Label>Name</Label>
-            <Input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Critical payments alerts"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Rule index (lower = first)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={form.rule_index}
-                onChange={(e) =>
-                  setForm({ ...form, rule_index: Number(e.target.value) || 0 })
-                }
-              />
-            </div>
-            <div>
-              <Label>Priority</Label>
-              <Select
-                value={form.priority}
-                onChange={(e) =>
-                  setForm({ ...form, priority: e.target.value as Priority })
-                }
-              >
-                <option value="P0">P0</option>
-                <option value="P1">P1</option>
-                <option value="P2">P2</option>
-                <option value="P3">P3</option>
-              </Select>
-            </div>
-            <div className="col-span-2">
-              <Label>Response mode (optional override)</Label>
-              <Select
-                value={form.response_mode}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    response_mode: e.target.value as ResponseMode | "",
-                  })
-                }
-              >
-                <option value="">Use default for priority</option>
-                <option value="auto_resolve">auto_resolve</option>
-                <option value="notify">notify</option>
-                <option value="page">page</option>
-                <option value="escalate_immediate">escalate_immediate</option>
-              </Select>
-            </div>
-            <div className="col-span-2">
-              <Label>Match condition (JSON)</Label>
-              <Textarea
-                value={form.condition_json}
-                onChange={(e) =>
-                  setForm({ ...form, condition_json: e.target.value })
-                }
-                rows={5}
-                placeholder='{"severity": ["critical"], "external_source": ["datadog"]}'
-              />
-              <p className="mt-1 text-xs text-fg-tertiary">
-                Keys are payload fields (severity, external_source, title, description…). Values are scalars or lists; list semantics is OR. Case-insensitive.
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={submit}>Create</Button>
-          </div>
-        </div>
-      </Modal>
     </section>
   );
 }
@@ -2296,8 +2242,8 @@ function PagingFlowModal({
       question: "How urgent is it?",
       tone: "info" as const,
       lines: [
-        "Priority Rule picks P0–P3 (first match wins)",
-        "Response Mode is locked: auto-resolve · notify · page",
+        "Service configuration sets P0–P3",
+        "Priority controls whether OpsMender resolves, notifies, or pages",
       ],
     },
     {
@@ -2387,15 +2333,15 @@ function PagingFlowModal({
           </div>
           <div className="rounded-md border border-border-subtle bg-bg-surface px-3 py-2">
             <span className="font-semibold text-fg-primary">
-              Response mode is locked.
+              Service priority is locked.
             </span>{" "}
-            AI can resolve, but never downgrade.
+            AI can assist, but it does not override priority in v1.
           </div>
           <div className="rounded-md border border-border-subtle bg-bg-surface px-3 py-2">
             <span className="font-semibold text-fg-primary">
-              Priority can only go up.
+              Operators stay in control.
             </span>{" "}
-            LLM escalation never lowers the assigned tier.
+            Admins choose priorities on services before alerts arrive.
           </div>
           <div className="rounded-md border border-border-subtle bg-bg-surface px-3 py-2">
             <span className="font-semibold text-fg-primary">
@@ -2462,7 +2408,7 @@ function MaintenanceWindowsPanel({
     starts_at: string;
     ends_at: string;
     scope_type: MaintenanceWindowScopeType;
-    scope_id: string;
+    scope_ids: string[];
   }>({
     name: "",
     description: "",
@@ -2470,7 +2416,7 @@ function MaintenanceWindowsPanel({
     starts_at: nowMinusOne(),
     ends_at: nowPlusTwo(),
     scope_type: "global",
-    scope_id: "",
+    scope_ids: [],
   });
 
   const now = new Date();
@@ -2512,8 +2458,9 @@ function MaintenanceWindowsPanel({
   const scopeLabelFor = (w: MaintenanceWindowResponse): string => {
     if (w.scope_type === "global") return "global";
     const opts = scopeOptionsFor(w.scope_type);
-    const match = opts.find((o) => o.id === w.scope_id);
-    return `${w.scope_type}: ${match?.name ?? w.scope_id ?? "?"}`;
+    const ids = w.scope_ids?.length ? w.scope_ids : w.scope_id ? [w.scope_id] : [];
+    const names = ids.map((id) => opts.find((o) => o.id === id)?.name ?? id);
+    return `${w.scope_type}: ${names.join(", ") || "?"}`;
   };
 
   const submit = async () => {
@@ -2529,8 +2476,8 @@ function MaintenanceWindowsPanel({
       toast.error("End must be after start");
       return;
     }
-    if (form.scope_type !== "global" && !form.scope_id) {
-      toast.error("Pick a scope target");
+    if (form.scope_type !== "global" && form.scope_ids.length === 0) {
+      toast.error("Pick at least one scope target");
       return;
     }
     try {
@@ -2541,7 +2488,8 @@ function MaintenanceWindowsPanel({
         starts_at: new Date(form.starts_at).toISOString(),
         ends_at: new Date(form.ends_at).toISOString(),
         scope_type: form.scope_type,
-        scope_id: form.scope_type === "global" ? null : form.scope_id,
+        scope_id: form.scope_type === "global" ? null : form.scope_ids[0],
+        scope_ids: form.scope_type === "global" ? [] : form.scope_ids,
       });
       setOpen(false);
       setForm({
@@ -2551,7 +2499,7 @@ function MaintenanceWindowsPanel({
         starts_at: nowMinusOne(),
         ends_at: nowPlusTwo(),
         scope_type: "global",
-        scope_id: "",
+        scope_ids: [],
       });
       onChange();
       toast.success("Maintenance window scheduled");
@@ -2634,7 +2582,7 @@ function MaintenanceWindowsPanel({
           title={`No ${view} maintenance windows`}
           description={
             view === "scheduled"
-              ? "Schedule a window to suppress paging during planned downtime. Page-mode incidents during the window are suppressed; escalate_immediate is never downgraded."
+              ? "Schedule a window to drop matching alerts during planned work before they create visible incidents."
               : view === "active"
                 ? "No windows are currently in effect."
                 : "No past windows match the current range filter."
@@ -2731,7 +2679,7 @@ function MaintenanceWindowsPanel({
                   setForm({
                     ...form,
                     scope_type: e.target.value as MaintenanceWindowScopeType,
-                    scope_id: "",
+                    scope_ids: [],
                   })
                 }
               >
@@ -2743,27 +2691,33 @@ function MaintenanceWindowsPanel({
             </div>
             {form.scope_type !== "global" && (
               <div>
-                <Label>Target {form.scope_type}</Label>
-                <Select
-                  value={form.scope_id}
+                <Label>Targets</Label>
+                <select
+                  multiple
+                  value={form.scope_ids}
                   onChange={(e) =>
-                    setForm({ ...form, scope_id: e.target.value })
+                    setForm({
+                      ...form,
+                      scope_ids: Array.from(
+                        e.currentTarget.selectedOptions,
+                        (option) => option.value,
+                      ),
+                    })
                   }
+                  className="min-h-28 w-full rounded-md border border-border-subtle bg-bg-input px-3 py-2 text-sm text-fg-primary outline-none focus:border-accent"
                 >
-                  <option value="">— pick one —</option>
                   {scopeOptionsFor(form.scope_type).map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.name}
                     </option>
                   ))}
-                </Select>
+                </select>
               </div>
             )}
           </div>
           <p className="text-xs text-fg-tertiary">
-            Page-mode incidents inside the window are suppressed.{" "}
-            <span className="font-medium">escalate_immediate</span> incidents
-            still page through.
+            Matching alerts are dropped during the window so planned work does
+            not create noisy visible incidents. Non-matching alerts still flow.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -2834,6 +2788,65 @@ const ALL_CHANNELS: {
 ];
 
 const ALL_PRIORITIES: Priority[] = ["P0", "P1", "P2", "P3"];
+
+function NotificationsPanel() {
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
+          <h3 className="text-sm font-semibold text-fg-primary">
+            Operator Delivery
+          </h3>
+          <p className="mt-1 text-sm text-fg-secondary">
+            Configure the workspace-level channels used to page admins and
+            operators. Chat-capable adapters can also host incident sessions.
+          </p>
+          <div className="mt-4">
+            <NotificationChannelsPage embedded />
+          </div>
+        </div>
+        <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
+          <h3 className="text-sm font-semibold text-fg-primary">
+            Viewer Updates
+          </h3>
+          <p className="mt-1 text-sm text-fg-secondary">
+            Send read-only status updates to viewers and downstream workflows
+            without making them on-call operators.
+          </p>
+          <div className="mt-4">
+            <OutboundHooksPage embedded />
+          </div>
+        </div>
+      </div>
+      <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
+        <h3 className="text-sm font-semibold text-fg-primary">Quiet Hours</h3>
+        <p className="mt-1 text-sm text-fg-secondary">
+          Personal quiet-hours settings apply where appropriate while urgent
+          escalation behavior can still break through by priority.
+        </p>
+      </div>
+      <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
+        <h3 className="text-sm font-semibold text-fg-primary">
+          Routing by Priority
+        </h3>
+        <p className="mt-1 text-sm text-fg-secondary">
+          Choose which configured channels receive P0, P1, P2, and P3
+          notifications. The options come from configured delivery channels.
+        </p>
+      </div>
+      <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
+        <h3 className="text-sm font-semibold text-fg-primary">
+          Sessions / Chat
+        </h3>
+        <p className="mt-1 text-sm text-fg-secondary">
+          Incident sessions are only available on chat-capable notification
+          adapters. Email, SMS, and generic webhooks remain delivery-only.
+        </p>
+      </div>
+      <NotificationPreferencesPanel />
+    </section>
+  );
+}
 
 function NotificationPreferencesPanel() {
   const toast = useToast();

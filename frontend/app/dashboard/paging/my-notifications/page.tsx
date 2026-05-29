@@ -1,7 +1,5 @@
-"use client";
-
-import { PagingShell } from "@/components/paging/PagingShell";
+import { redirect } from "next/navigation";
 
 export default function PagingMyNotificationsPage() {
-  return <PagingShell initialTab="preferences" />;
+  redirect("/dashboard/paging/notifications");
 }

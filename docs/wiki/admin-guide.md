@@ -91,12 +91,12 @@ Supported Telegram commands:
 - `/reject <approval-id>`
 - `/help`
 
-## 6. Outbound Hooks
+## 6. Viewer Updates
 
-You can set up outbound webhooks to notify external systems (like Slack, Microsoft Teams, or Sumo Logic) when specific events occur.
+You can set up viewer-update webhooks to notify external systems (like Slack, Microsoft Teams, or Sumo Logic) when specific events occur. Viewer updates are read-only/status notifications, not primary operator paging.
 
-1. Go to **Paging & On-call** > **Outbound Hooks**.
-2. Click **Add Hook**.
+1. Go to **Paging & On-call** > **Notifications**.
+2. Open **Viewer Updates** and click **Add Hook**.
 3. Select the event types to listen for:
    - `session.created`
    - `session.active`

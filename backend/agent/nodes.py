@@ -81,6 +81,9 @@ Diagnosis:
 Available tools (from skill definition):
 {available_tools}
 
+Preferred MCP servers for this incident:
+{preferred_mcp_servers}
+
 Current tier: {tier} (determines what actions are allowed)
 
 Propose a list of remediation actions.  For each action, provide:
@@ -434,6 +437,10 @@ def _build_plan(
         prompt = PLAN_PROMPT.format(
             diagnosis=diagnosis,
             available_tools=tools_list,
+            preferred_mcp_servers="\n".join(
+                f"- {name}" for name in state.get("preferred_mcp_servers", [])
+            )
+            or "(none configured)",
             tier=tier,
         )
         raw = _invoke_multi_agent(
@@ -482,6 +489,10 @@ def _build_plan_with_tool_names(
         prompt = PLAN_PROMPT.format(
             diagnosis=diagnosis,
             available_tools=tools_list,
+            preferred_mcp_servers="\n".join(
+                f"- {name}" for name in state.get("preferred_mcp_servers", [])
+            )
+            or "(none configured)",
             tier=tier,
         )
         raw = _invoke_multi_agent(

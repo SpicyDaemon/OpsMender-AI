@@ -10,6 +10,7 @@ incident operations together.
 from __future__ import annotations
 
 import uuid
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -57,13 +58,17 @@ from backend.api.schemas import (
 )
 from backend.db.models import User
 from backend.db.repos import (
+    IngestTokenRepo,
+    MCPServerRepo,
     PriorityRuleRepo,
     RosterOverrideRepo,
     RosterRepo,
     ServiceRepo,
     TeamRepo,
     UserNotificationPrefRepo,
+    UserRepo,
 )
+from backend.ingest.service import hash_token
 from backend.paging.on_call import (
     OnCallContext,
     OnCallMember,
@@ -73,6 +78,31 @@ from backend.paging.on_call import (
 
 
 router = APIRouter(tags=["paging"])
+
+
+def _new_service_intake_token() -> str:
+    return f"svc_{secrets.token_urlsafe(32)}"
+
+
+async def _validate_preferred_mcp_servers(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    ids: list[uuid.UUID],
+) -> list[str]:
+    seen: set[uuid.UUID] = set()
+    ordered: list[str] = []
+    for server_id in ids:
+        if server_id in seen:
+            continue
+        seen.add(server_id)
+        server = await MCPServerRepo.get_by_id(db, org_id, server_id)
+        if server is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Preferred MCP server not found",
+            )
+        ordered.append(str(server_id))
+    return ordered
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +290,28 @@ async def list_services(
     team_id: uuid.UUID | None = Query(default=None),
 ):
     items = await ServiceRepo.list_all(db, org_id, team_id=team_id)
+    changed = False
+    for svc in items:
+        if not svc.intake_token:
+            intake_token = _new_service_intake_token()
+            await ServiceRepo.update(
+                db,
+                org_id,
+                svc.id,
+                intake_token=intake_token,
+            )
+            await IngestTokenRepo.create(
+                db,
+                org_id,
+                name=f"service-intake:{svc.id}:{secrets.token_hex(4)}",
+                provider="auto",
+                token_hash=hash_token(intake_token),
+                service_id=svc.id,
+            )
+            changed = True
+    if changed:
+        await db.commit()
+        items = await ServiceRepo.list_all(db, org_id, team_id=team_id)
     return ServiceListResponse(
         items=[ServiceResponse.model_validate(s) for s in items],
         total=len(items),
@@ -280,6 +332,10 @@ async def create_service(
 ):
     if await TeamRepo.get_by_id(db, org_id, body.team_id) is None:
         raise HTTPException(status_code=400, detail="Owning team not found")
+    preferred_mcp_server_ids = await _validate_preferred_mcp_servers(
+        db, org_id, body.preferred_mcp_server_ids
+    )
+    intake_token = _new_service_intake_token()
     try:
         svc = await ServiceRepo.create(
             db,
@@ -288,8 +344,19 @@ async def create_service(
             name=body.name,
             slug=body.slug,
             description=body.description,
+            priority=body.priority,
+            intake_token=intake_token,
+            preferred_mcp_server_ids=preferred_mcp_server_ids,
             external_refs=body.external_refs,
             is_active=body.is_active,
+        )
+        await IngestTokenRepo.create(
+            db,
+            org_id,
+            name=f"service:{svc.id}",
+            provider="auto",
+            token_hash=hash_token(intake_token),
+            service_id=svc.id,
         )
         await db.commit()
         await db.refresh(svc)
@@ -318,6 +385,11 @@ async def update_service(
         db, org_id, body.team_id
     ) is None:
         raise HTTPException(status_code=400, detail="Owning team not found")
+    preferred_mcp_server_ids = None
+    if body.preferred_mcp_server_ids is not None:
+        preferred_mcp_server_ids = await _validate_preferred_mcp_servers(
+            db, org_id, body.preferred_mcp_server_ids
+        )
     updated = await ServiceRepo.update(
         db,
         org_id,
@@ -326,6 +398,11 @@ async def update_service(
         name=body.name,
         description=body.description,
         description_provided="description" in body.model_fields_set,
+        priority=body.priority,
+        preferred_mcp_server_ids=preferred_mcp_server_ids,
+        preferred_mcp_server_ids_provided=(
+            "preferred_mcp_server_ids" in body.model_fields_set
+        ),
         external_refs=body.external_refs,
         external_refs_provided="external_refs" in body.model_fields_set,
         is_active=body.is_active,
@@ -401,7 +478,9 @@ async def create_roster(
         time_zone=body.time_zone,
         pattern=body.pattern,
         pattern_length=body.pattern_length,
-        handoff_time=body.handoff_time,
+        coverage_start_time=body.coverage_start_time,
+        coverage_end_time=body.coverage_end_time,
+        handoff_time=body.coverage_start_time,
         handoff_day=body.handoff_day,
         is_active=body.is_active,
     )
@@ -483,6 +562,14 @@ async def add_roster_member(
 ):
     if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
         raise HTTPException(status_code=404, detail="Roster not found")
+    target_user = await UserRepo.get_by_id(db, body.user_id)
+    if target_user is None or target_user.primary_org_id != org_id:
+        raise HTTPException(status_code=400, detail="User not found")
+    if target_user.role == "viewer":
+        raise HTTPException(
+            status_code=400,
+            detail="Viewer users cannot be assigned to on-call rosters",
+        )
     try:
         member = await RosterRepo.add_member(
             db,
@@ -581,6 +668,14 @@ async def create_roster_override(
 ):
     if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
         raise HTTPException(status_code=404, detail="Roster not found")
+    target_user = await UserRepo.get_by_id(db, body.covering_user_id)
+    if target_user is None or target_user.primary_org_id != org_id:
+        raise HTTPException(status_code=400, detail="User not found")
+    if target_user.role == "viewer":
+        raise HTTPException(
+            status_code=400,
+            detail="Viewer users cannot cover on-call rosters",
+        )
     if body.ends_at <= body.starts_at:
         raise HTTPException(status_code=400, detail="ends_at must be > starts_at")
     ov = await RosterOverrideRepo.create(
@@ -632,6 +727,9 @@ async def resolve_on_call(
     roster = await RosterRepo.get_by_id(db, org_id, roster_id)
     if roster is None:
         raise HTTPException(status_code=404, detail="Roster not found")
+    if not roster.is_active:
+        when = at or datetime.now()
+        return OnCallResolveResponse(roster_id=roster_id, at=when, user_id=None)
     members = await RosterRepo.list_members(db, org_id, roster_id)
     overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
     ctx = OnCallContext(
@@ -650,6 +748,8 @@ async def resolve_on_call(
         time_zone=roster.time_zone,
         pattern=roster.pattern,
         pattern_length=roster.pattern_length,
+        coverage_start_time=roster.coverage_start_time,
+        coverage_end_time=roster.coverage_end_time,
         handoff_time=roster.handoff_time,
         anchor_date=roster.anchor_date,
     )
@@ -702,6 +802,14 @@ async def resolve_on_call_range(
     roster = await RosterRepo.get_by_id(db, org_id, roster_id)
     if roster is None:
         raise HTTPException(status_code=404, detail="Roster not found")
+    if not roster.is_active:
+        return OnCallRangeResponse(
+            roster_id=roster_id,
+            from_at=from_at,
+            to_at=to_at,
+            step_hours=step_hours,
+            items=[],
+        )
     members = await RosterRepo.list_members(db, org_id, roster_id)
     overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
     ctx = OnCallContext(
@@ -720,6 +828,8 @@ async def resolve_on_call_range(
         time_zone=roster.time_zone,
         pattern=roster.pattern,
         pattern_length=roster.pattern_length,
+        coverage_start_time=roster.coverage_start_time,
+        coverage_end_time=roster.coverage_end_time,
         handoff_time=roster.handoff_time,
         anchor_date=roster.anchor_date,
     )

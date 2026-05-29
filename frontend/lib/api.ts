@@ -476,7 +476,7 @@ export async function startMCPOAuth(id: string): Promise<MCPOAuthStartResponse> 
 }
 
 // ---------------------------------------------------------------------------
-// Bot Connectors
+// Legacy chat connector API
 // ---------------------------------------------------------------------------
 
 import type {
@@ -578,7 +578,7 @@ export async function deleteBotUserLink(
 }
 
 // ---------------------------------------------------------------------------
-// Webhook Triggers
+// Legacy viewer-update webhook API
 // ---------------------------------------------------------------------------
 
 import type {
@@ -764,7 +764,7 @@ export async function importSkill(params: {
 }
 
 // ---------------------------------------------------------------------------
-// Ingest Tokens (Sprint 14)
+// Legacy intake token API
 // ---------------------------------------------------------------------------
 
 import type {

@@ -31,7 +31,7 @@ Sprint 38 reworked three surfaces. Everything else degrades gracefully but isn't
 
 For mobile-first responders we recommend:
 
-1. **Enable Slack DM or Teams DM** in your `Paging → My Notifications` preferences. Each surface ships push to your phone — `Push notifications` already work without any extra OpsMender wiring.
+1. **Enable Slack DM or Teams DM** in `Paging → Notifications`. Each surface ships push to your phone — `Push notifications` already work without any extra OpsMender wiring.
 2. **Set quiet hours with a P0 breakthrough**. Page yourself only at night for true sev-0 pages so phone fatigue doesn't burn you out.
 3. **Use the chat surface for ack / take / resolve**. The web UI is for the long-tail tasks — reading logs, approving a Tier-1 action that needs more context, marking the post-mortem owner.
 

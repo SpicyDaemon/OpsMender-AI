@@ -1,7 +1,5 @@
-"use client";
-
-import { PagingShell } from "@/components/paging/PagingShell";
+import { redirect } from "next/navigation";
 
 export default function PagingPriorityRulesPage() {
-  return <PagingShell initialTab="rules" />;
+  redirect("/dashboard/paging/services");
 }

@@ -1,5 +1,5 @@
-import { OutboundHooksPage } from "@/components/OutboundHooksPage";
+import { redirect } from "next/navigation";
 
 export default function WebhooksPage() {
-  return <OutboundHooksPage />;
+  redirect("/dashboard/paging/notifications");
 }

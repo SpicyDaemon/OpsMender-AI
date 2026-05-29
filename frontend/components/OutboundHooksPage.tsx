@@ -9,7 +9,7 @@ import {
   WebhookTriggerSection,
 } from "@/components/config/ConfigSections";
 
-export function OutboundHooksPage() {
+export function OutboundHooksPage({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const canEdit = user?.role === "admin";
   const [triggers, setTriggers] = useState<WebhookTriggerResponse[]>([]);
@@ -27,17 +27,19 @@ export function OutboundHooksPage() {
   if (loading) return <ConfigPageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div>
+    <div className={embedded ? "space-y-4" : "mx-auto max-w-5xl space-y-6"}>
+      {!embedded && (
+        <div>
         <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">
-          Outbound Hooks
+          Viewer Updates
         </h1>
         <p className="mt-1 text-sm text-fg-secondary">
           Send incident and session lifecycle updates to external systems or
-          stakeholder workflows when state changes. Use My Notifications for
-          individual on-call delivery preferences.
+          viewer workflows when state changes. Use Notifications for operator
+          delivery preferences.
         </p>
-      </div>
+        </div>
+      )}
       <WebhookTriggerSection
         triggers={triggers}
         onReload={reload}

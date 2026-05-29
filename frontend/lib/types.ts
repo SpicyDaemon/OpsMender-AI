@@ -485,7 +485,7 @@ export interface MCPOAuthStartResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Bot Connectors
+// Legacy chat connector API
 // ---------------------------------------------------------------------------
 
 export type BotConnectorPlatform =
@@ -598,7 +598,7 @@ export interface BotConnectorPlatformListResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Webhook Triggers
+// Legacy viewer-update webhook API
 // ---------------------------------------------------------------------------
 
 export type WebhookTriggerEventType =
@@ -759,7 +759,7 @@ export interface SkillCloneRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Ingest Tokens (Sprint 14)
+// Legacy intake token API
 // ---------------------------------------------------------------------------
 
 export type IngestProvider =
@@ -938,6 +938,7 @@ export interface MaintenanceWindowResponse {
   target_ids: string[];
   scope_type: MaintenanceWindowScopeType;
   scope_id: string | null;
+  scope_ids: string[];
   created_by: string | null;
   created_at: string;
 }
@@ -1300,6 +1301,9 @@ export interface ServiceResponse {
   name: string;
   slug: string;
   description: string | null;
+  priority: Priority;
+  preferred_mcp_server_ids: string[];
+  intake_url: string | null;
   external_refs: Record<string, unknown> | null;
   is_active: boolean;
   created_at: string;
@@ -1315,6 +1319,8 @@ export interface ServiceCreate {
   name: string;
   slug: string;
   description?: string;
+  priority?: Priority;
+  preferred_mcp_server_ids?: string[];
   external_refs?: Record<string, unknown>;
   is_active?: boolean;
 }
@@ -1323,6 +1329,8 @@ export interface ServiceUpdate {
   team_id?: string;
   name?: string;
   description?: string;
+  priority?: Priority;
+  preferred_mcp_server_ids?: string[];
   external_refs?: Record<string, unknown>;
   is_active?: boolean;
 }
@@ -1335,6 +1343,8 @@ export interface RosterResponse {
   time_zone: string;
   pattern: RosterPattern;
   pattern_length: number;
+  coverage_start_time: string;
+  coverage_end_time: string;
   handoff_time: string;
   handoff_day: string | null;
   anchor_date: string;
@@ -1354,6 +1364,8 @@ export interface RosterCreate {
   time_zone?: string;
   pattern?: RosterPattern;
   pattern_length?: number;
+  coverage_start_time?: string;
+  coverage_end_time?: string;
   handoff_time?: string;
   handoff_day?: string;
   anchor_date: string;

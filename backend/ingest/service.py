@@ -20,8 +20,10 @@ from backend.db.repos import (
     IncidentRepo,
     IngestLogRepo,
     IngestTokenRepo,
+    MaintenanceWindowRepo,
     SLATargetRepo,
     SessionRepo,
+    ServiceRepo,
     UptimeSampleRepo,
 )
 from backend.ingest.autostart import (
@@ -156,6 +158,38 @@ async def ingest_incident(
     # external_id but coming through different tokens don't collide.
     if provider == "auto":
         parsed.external_source = f"auto:{token.name}"
+
+    # v1 maintenance behavior: matching active windows drop intake alerts
+    # before a visible incident is created. The raw payload is still logged
+    # for operator-owned audit/replay.
+    service_id = token.service_id
+    if service_id is not None:
+        now = datetime.now(timezone.utc)
+        service = await ServiceRepo.get_by_id(db, org_id, service_id)
+        active_windows = await MaintenanceWindowRepo.list_active_at(db, org_id, now)
+        for window in active_windows:
+            matches = window.scope_type == "global"
+            if window.scope_type == "service":
+                service_ids = set(str(v) for v in (window.target_ids or []))
+                if window.scope_id is not None:
+                    service_ids.add(str(window.scope_id))
+                matches = str(service_id) in service_ids
+            elif window.scope_type == "team" and service is not None:
+                team_ids = set(str(v) for v in (window.target_ids or []))
+                if window.scope_id is not None:
+                    team_ids.add(str(window.scope_id))
+                matches = str(service.team_id) in team_ids
+            if matches:
+                await IngestLogRepo.create(
+                    db,
+                    org_id,
+                    ingest_token_id=token.id,
+                    provider=provider,
+                    raw_payload=payload,
+                    dedup_action="skipped",
+                    error=f"Suppressed by maintenance window: {window.name}",
+                )
+                return IngestResult(success=True, dedup_action="skipped")
 
     # ── Dedup by external fingerprint ──────────────────────────────────
     dedup_action = "created"

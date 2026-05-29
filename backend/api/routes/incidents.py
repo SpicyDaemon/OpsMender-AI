@@ -173,15 +173,20 @@ async def create_incident(
                 detail="Service not found",
             )
 
-    # Run priority rules first so priority/response_mode go in with the INSERT
-    # rather than via a follow-up UPDATE (D-021: locked at creation).
+    # v1 priority comes from the selected service when one is present. For
+    # manual incidents without a service, fall back to severity mapping.
     payload = {
         "title": body.title,
         "description": body.description,
         "severity": body.severity,
         "source": body.external_source,
     }
-    priority_result = await compute_priority_for_payload(db, org_id, payload)
+    priority_result = await compute_priority_for_payload(
+        db,
+        org_id,
+        payload,
+        service_id=body.service_id,
+    )
     incident = await IncidentRepo.create(
         db,
         org_id,

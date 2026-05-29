@@ -32,7 +32,7 @@ from backend.api.schemas import (
     IngestTokenResponse,
 )
 from backend.db.models import IngestToken, User
-from backend.db.repos import IngestTokenRepo
+from backend.db.repos import IngestTokenRepo, ServiceRepo
 from backend.ingest.llm_extractor import (
     apply_shape_cache,
     compute_shape_hash,
@@ -67,6 +67,93 @@ def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
 # ---------------------------------------------------------------------------
 # Webhook endpoint — token-authed, NOT JWT
 # ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/api/v1/intake/{service_token}",
+    response_model=IngestResponse,
+    summary="Ingest an incident through a service intake endpoint",
+    status_code=status.HTTP_200_OK,
+)
+async def service_intake_webhook(
+    service_token: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Accept a JSON alert through the service-owned intake URL.
+
+    The unguessable token is embedded in the URL so external monitors can
+    POST directly without managing an extra auth header.
+    """
+
+    service = await ServiceRepo.get_by_intake_token(db, service_token)
+    if service is None or not service.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Service intake endpoint not found",
+        )
+
+    token = await IngestTokenRepo.get_active_for_service(db, service.org_id, service.id)
+    if token is None:
+        token = await IngestTokenRepo.create(
+            db,
+            service.org_id,
+            name=f"service:{service.id}",
+            provider="auto",
+            token_hash=hash_token(service_token),
+            service_id=service.id,
+        )
+        await db.flush()
+
+    limiter: IngestRateLimiter = request.app.state.ingest_limiter
+    rl = await limiter.check(token.id)
+    if not rl.allowed:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Rate limit exceeded",
+                "retry_after": round(rl.retry_after or 0, 1),
+            },
+            headers={
+                "Retry-After": str(int(rl.retry_after or 1)),
+                "X-RateLimit-Limit": str(rl.limit),
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+
+    try:
+        payload: dict[str, Any] = await request.json()
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Request body must be valid JSON",
+        )
+
+    result = await ingest_incident(
+        db,
+        token=token,
+        payload=payload,
+        config=request.app.state.config,
+    )
+
+    if not result.success:
+        await db.commit()
+        return JSONResponse(
+            status_code=422,
+            content=IngestResponse(
+                success=False,
+                incident_id=None,
+                dedup_action=None,
+                error=result.error or "Failed to parse payload",
+            ).model_dump(mode="json"),
+        )
+
+    return IngestResponse(
+        success=result.success,
+        incident_id=result.incident_id,
+        dedup_action=result.dedup_action,
+        error=result.error,
+    )
 
 
 @router.post(

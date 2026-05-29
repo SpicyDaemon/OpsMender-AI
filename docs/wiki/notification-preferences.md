@@ -1,17 +1,21 @@
 # Set up your notification preferences
 
-When an incident reaches OpsMender's paging engine, it has to know **how** to reach you and **when**. This page covers the two settings surfaces that control that:
+When an incident reaches OpsMender's paging engine, it has to know **how** to reach operators and **when**. This page covers the v1 Notifications surface:
 
-- **My Notifications** — your personal channels, per-priority routing, and quiet hours. Each user owns this.
-- **Maintenance Windows** — planned downtime that suppresses paging org-wide or per service / roster / team. Admins own this.
+- **Operator Delivery** — workspace channels admins/operators use for on-call paging.
+- **Viewer Updates** — read-only/status updates to viewer audiences and external workflows.
+- **Quiet Hours** — personal notification windows where appropriate.
+- **Routing by Priority** — channel routing for P0/P1/P2/P3.
+- **Sessions / Chat** — session behavior for chat-capable adapters only.
+- **Maintenance Windows** — planned downtime that drops matching alerts.
 
-Both live under the **Paging & On-call** sidebar group — My Notifications at `/dashboard/paging/my-notifications`, Maintenance Windows at `/dashboard/paging/maintenance-windows`.
+Notifications lives under **Paging & On-call** at `/dashboard/paging/notifications`. Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
 ---
 
 ## 1. Channels
 
-Open `/dashboard/paging/my-notifications`. Pick which channels OpsMender can reach you on:
+Open `/dashboard/paging/notifications`. Pick which channels OpsMender can reach operators on:
 
 | Channel | Destination field | Notes |
 |---------|-------------------|-------|
@@ -66,15 +70,13 @@ If you find you're getting paged twice for the same thing, ask your admin to rai
 
 Admins can schedule maintenance windows under `Paging → Maintenance Windows`:
 
-- **Global** windows suppress paging for **every** service.
-- **Service / Roster / Team** windows scope the suppression. Pick the target from the dropdown.
+- **Global** windows drop matching alerts for **every** service.
+- **Service / Team** windows scope the drop behavior. The v1 UI supports selecting multiple services.
 
 Inside the window:
 
-- `response_mode = page` incidents are suppressed entirely — no channels fire.
-- `response_mode = escalate_immediate` incidents **still page through**. Maintenance windows never silence critical alerts.
-
-When an incident is suppressed, you'll see an amber **"Paging suppressed by maintenance window"** banner at the top of the incident detail page, including the window name, scope, and time range.
+- Matching incoming alerts are dropped at intake.
+- Non-matching alerts still create incidents.
 
 The Active / Scheduled / Past tabs let you audit what's happening now, what's coming up, and what's already passed. The From / To range filter narrows all three.
 

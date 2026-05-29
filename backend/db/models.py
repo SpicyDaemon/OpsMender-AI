@@ -1078,6 +1078,20 @@ class MaintenanceWindow(Base):
         Index("ix_maintenance_windows_scope", "org_id", "scope_type", "scope_id"),
     )
 
+    @property
+    def scope_ids(self) -> list[uuid.UUID]:
+        ids: list[uuid.UUID] = []
+        if self.scope_id is not None:
+            ids.append(self.scope_id)
+        for raw in self.target_ids or []:
+            try:
+                value = raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw))
+            except (TypeError, ValueError):
+                continue
+            if value not in ids:
+                ids.append(value)
+        return ids
+
 
 class UserNotificationPref(Base):
     """Per-user, per-org paging delivery preferences."""
@@ -1382,6 +1396,11 @@ class Service(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    priority: Mapped[str] = mapped_column(String(8), default="P2", nullable=False)
+    intake_token: Mapped[str | None] = mapped_column(String(160), unique=True, nullable=True)
+    preferred_mcp_server_ids: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
     external_refs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -1389,6 +1408,12 @@ class Service(Base):
     )
 
     __table_args__ = (UniqueConstraint("org_id", "slug", name="uq_service_slug"),)
+
+    @property
+    def intake_url(self) -> str | None:
+        if not self.intake_token:
+            return None
+        return f"/api/v1/intake/{self.intake_token}"
 
 
 class Roster(Base):
@@ -1406,6 +1431,12 @@ class Roster(Base):
     time_zone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
     pattern: Mapped[str] = mapped_column(String(20), default="weekly", nullable=False)
     pattern_length: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
+    coverage_start_time: Mapped[str] = mapped_column(
+        String(8), default="09:00", nullable=False
+    )
+    coverage_end_time: Mapped[str] = mapped_column(
+        String(8), default="17:00", nullable=False
+    )
     handoff_time: Mapped[str] = mapped_column(
         String(8), default="09:00", nullable=False
     )

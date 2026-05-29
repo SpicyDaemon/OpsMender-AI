@@ -68,6 +68,7 @@ class IncidentState(TypedDict, total=False):
     # -- incident context (set by user / observe node) -----------------------
     incident_description: str     # kept for back-compat with existing nodes
     incident: IncidentContext     # full record fed into the system prompt
+    preferred_mcp_servers: list[str]  # service-ordered preference hints for tool context
 
     # -- memory (Sprint 45) --------------------------------------------------
     # Populated by the `recall` node when memory_factory is provided. The

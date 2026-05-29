@@ -88,7 +88,7 @@ Every paged incident walks the same five stages.
    └────────────────────────────────────────────────────────────────┘
 ```
 
-For the operator-facing walkthrough — services / teams / rosters / escalation chains / priority rules / response modes / maintenance windows / notification preferences — see [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md). For platform-specific chat-surface details, see the [Slack](docs/wiki/slack-paging-surface.md) and [Teams](docs/wiki/teams-paging-surface.md) guides.
+For the operator-facing walkthrough — services / teams / escalation chains / rosters / maintenance windows / notifications — see [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md). For platform-specific chat-surface details, see the [Slack](docs/wiki/slack-paging-surface.md) and [Teams](docs/wiki/teams-paging-surface.md) guides.
 
 For admin-facing user lifecycle work, see [docs/wiki/people-guide.md](docs/wiki/people-guide.md).
 
@@ -96,15 +96,15 @@ For admin-facing user lifecycle work, see [docs/wiki/people-guide.md](docs/wiki/
 
 Four configurable surfaces drive the behavior under the loop above:
 
-**Alert Intake — getting alerts in (stage 1).** Your monitoring tools (Prometheus Alertmanager, Datadog, CloudWatch, Azure Monitor, Sumo Logic, Grafana, anything that POSTs JSON) send alerts into OpsMender; OpsMender creates an incident from the payload and runs the tier-gated AI response workflow. For v1, the legacy `/incidents/ingest` token backend remains available. The product model is moving toward one unique Service Webhook per service: an embedded unguessable secret in the URL lets external monitors POST directly without separate API-key headers.
+**Alert Intake — getting alerts in (stage 1).** Your monitoring tools (Prometheus Alertmanager, Datadog, CloudWatch, Azure Monitor, Sumo Logic, Grafana, anything that POSTs JSON) send alerts into OpsMender; OpsMender creates an incident from the payload and runs the tier-gated AI response workflow. In v1, Services are the alert-intake surface: each service exposes `POST /api/v1/intake/{service_token}`, where the embedded unguessable token lets external monitors POST directly without separate API-key headers. The older `/incidents/ingest` token backend remains for compatibility.
 
-**Paging — who gets pinged (stage 3).** OpsMender owns paging end-to-end inside the product. Configure **services**, **teams**, **rosters** (with deterministic on-call rotation in IANA time zones), **escalation chains** (additive — once paged, stay paged, with a hard 15-minute inactivity timeout), and **priority rules** (first-match-wins on the alert payload) under the **Paging & On-call** sidebar group. Operators set per-user **notification preferences**. **Maintenance windows** suppress paging in a time range. The chain engine and notification dispatcher run as background loops with restart-safe watermarks.
+**Paging — who gets pinged (stage 3).** OpsMender owns paging end-to-end inside the product. Configure **teams**, **escalation chains**, **services**, **rosters** (with deterministic coverage windows in IANA time zones), **maintenance windows**, and **notifications** under the **Paging & On-call** sidebar group. Each service owns its fixed priority (`P0`–`P3`) and ordered **Preferred MCP servers**. Preferred MCPs guide the AI toward likely tools first; they are not a hard allowlist. **Maintenance windows** drop matching alerts during planned work so they do not create visible incidents.
 
 **Workflows — the order of the autonomous response steps (stage 2).** When a session runs, OpsMender walks a LangGraph: `observe → diagnose → plan → tier_gate → execute → verify → summarize`. A **Workflow profile** lets you save a different node order — same nodes, just rearranged or trimmed. The tier gate must always sit immediately before `execute` (programmatic safety floor; cannot be moved or removed). Most operators never touch this.
 
 **Agent teams — which specialist personas reason about the problem.** Inside the reasoning nodes (`diagnose`, `plan`), instead of one generic LLM pass, you can configure multiple specialist roles to each take a pass — `incident_commander`, `investigator`, `skeptic`, `remediator` — followed by a synthesis pass. Saved as **Agent team profiles**. Default is one generic persona.
 
-**Outbound Hooks — getting events out.** Whenever a session changes state (`created`, `awaiting_approval`, `active`, `completed`, `failed`, `timed_out`), OpsMender POSTs a payload to whatever URLs you've configured. Format presets exist for **Slack** incoming webhooks, **Teams** workflow webhooks, **Sumo Logic**, or **generic JSON**.
+**Viewer Updates — getting events out.** Whenever a session changes state (`created`, `awaiting_approval`, `active`, `completed`, `failed`, `timed_out`), OpsMender can POST viewer-facing updates to configured URLs. These live inside **Paging & On-call → Notifications**, separate from operator paging. Format presets exist for **Slack** incoming webhooks, **Teams** workflow webhooks, **Sumo Logic**, or **generic JSON**.
 
 **AI incident memory — carrying lessons forward.** Each successfully resolved session writes one short markdown lesson into the per-org `incident_memories` table, scoped to the service that owned the incident. On the next incident for that service, a `recall` node runs *before* `observe` — pure SQL match on service + tag overlap + keyword match, weighted by operator thumbs up/down. The top 5 matches get injected into the agent's system prompt as a `### Past lessons from similar incidents` block. Memory is per-org isolated, advisory only (cannot bypass tier gates), written via a strict JSON-schema-validated post-session `remember` node (no prompt-injection path from chat or tool output), skipped on failed sessions, bounded by auto-compaction at 50 memories per service, and operator-curated via `/dashboard/memories`. Postmortem authors curate the next batch of memories from the per-incident editor — see [docs/wiki/postmortem-guide.md](docs/wiki/postmortem-guide.md).
 
@@ -113,12 +113,12 @@ Four configurable surfaces drive the behavior under the loop above:
 | Sidebar group | Frequency | What's in it |
 |---|---|---|
 | **Incident Management** | Always | Dashboard, Incidents, Approvals |
-| **Paging & On-call** | Most operators | Teams, Services, Rosters, Priority Rules, Escalation Chains, Maintenance Windows, Notification Channels, My Notifications, Outbound Hooks |
+| **Paging & On-call** | Most operators | Teams, Escalation Chains, Services, Rosters, Maintenance Windows, Notifications |
 | **AI Agent** (Day-1 setup) | Always | Skills, Memories, MCP Servers, Models, Workflows, Agent Teams |
 | **Observe** | Operators | Environment Scans, Reliability, Activity |
 | **Admin** | Admins | People, Workspace Settings, Config |
 
-If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/skills`), then create a service under **Paging & On-call** and treat that service as the home for alert intake, roster, priority, and escalation setup.
+If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/skills`), then create a service under **Paging & On-call** and treat that service as the home for alert intake, priority, preferred MCP servers, and escalation setup.
 
 ---
 
@@ -452,11 +452,7 @@ route:
 receivers:
   - name: opsmender
     webhook_configs:
-      - url: "https://opsmender.example.com/incidents/ingest"
-        http_config:
-          authorization:
-            type: Bearer
-            credentials: "opsmender_ingest_..."   # token from POST /ingest-tokens
+      - url: "https://opsmender.example.com/api/v1/intake/svc_..."
         send_resolved: true
 ```
 
@@ -464,14 +460,15 @@ The same pattern works for any monitoring tool that can POST JSON: Datadog (webh
 
 Full curl recipes covering the supported strict providers (CloudWatch SNS, Azure Monitor, GCP Monitoring, OCI, Generic), including lifecycle examples and severity mapping tables, live in [`docs/REFERENCE.md`](docs/REFERENCE.md#external-incident-ingestion).
 
-## Outbound notifications
+## Notifications
 
-OpsMender also supports outbound collaboration notifications for session lifecycle events. This is separate from inbound alert ingestion:
+OpsMender also supports operator delivery and viewer updates. This is separate from inbound alert ingestion:
 
-- **Inbound**: external tools create incidents in OpsMender through `POST /incidents/ingest`
-- **Outbound**: OpsMender notifies downstream systems when a session is created, awaits approval, becomes active, completes, fails, or times out
+- **Inbound**: external tools create incidents in OpsMender through a service endpoint: `POST /api/v1/intake/{service_token}`
+- **Operator delivery**: OpsMender pages operators through configured channels and per-user routing
+- **Viewer updates**: OpsMender notifies read-only/status recipients when a session is created, awaits approval, becomes active, completes, fails, or times out
 
-Outbound notifications are managed through saved **Outbound Hooks** at `/dashboard/paging/outbound-hooks` or via the existing `/webhook-triggers` API. Each hook subscribes to one or more session events and uses one of four payload formats:
+Notification setup lives at `/dashboard/paging/notifications`. The legacy `/webhook-triggers` API remains available for viewer-update delivery. Each viewer update subscribes to one or more session events and uses one of four payload formats:
 
 | Format | Purpose | Payload |
 |--------|---------|---------|
@@ -495,6 +492,7 @@ The full REST + WebSocket surface is documented in [docs/REFERENCE.md](docs/REFE
 | `GET` | `/auth/me` | Bearer | Current user profile |
 | `POST` | `/incidents` | admin/operator | Create incident |
 | `GET` | `/incidents` | any | List incidents (pagination, status filter) |
+| `POST` | `/api/v1/intake/{service_token}` | URL token | Service Webhook — ingest incident from external source |
 | `POST` | `/incidents/ingest` | Ingest token | Webhook — ingest incident from external source |
 | `POST` | `/sessions` | admin/operator | Start a session |
 | `GET` | `/approvals` | any | List approval requests |

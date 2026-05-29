@@ -517,6 +517,12 @@ async def create_maintenance_window(
             "ends_at must be after starts_at",
         )
 
+    scope_ids = list(body.scope_ids or [])
+    if body.scope_id is not None and body.scope_id not in scope_ids:
+        scope_ids.insert(0, body.scope_id)
+    scope_id = scope_ids[0] if scope_ids else body.scope_id
+    target_ids = [str(v) for v in scope_ids] if scope_ids else body.target_ids
+
     mw = await MaintenanceWindowRepo.create(
         db,
         org_id,
@@ -526,9 +532,9 @@ async def create_maintenance_window(
         starts_at=body.starts_at,
         ends_at=body.ends_at,
         rrule=body.rrule,
-        target_ids=body.target_ids,
+        target_ids=target_ids,
         scope_type=body.scope_type,
-        scope_id=body.scope_id,
+        scope_id=scope_id,
         created_by=user.id,
     )
     await db.commit()
@@ -552,6 +558,16 @@ async def update_maintenance_window(
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
 
+    scope_ids = body.scope_ids
+    scope_id = body.scope_id
+    target_ids = body.target_ids
+    if scope_ids is not None:
+        ordered = list(scope_ids)
+        if scope_id is not None and scope_id not in ordered:
+            ordered.insert(0, scope_id)
+        scope_id = ordered[0] if ordered else None
+        target_ids = [str(v) for v in ordered]
+
     updated = await MaintenanceWindowRepo.update(
         db,
         org_id,
@@ -565,10 +581,12 @@ async def update_maintenance_window(
         ends_at=body.ends_at,
         rrule=body.rrule,
         rrule_provided="rrule" in body.model_fields_set,
-        target_ids=body.target_ids,
+        target_ids=target_ids,
         scope_type=body.scope_type,
-        scope_id=body.scope_id,
-        scope_id_provided="scope_id" in body.model_fields_set,
+        scope_id=scope_id,
+        scope_id_provided=(
+            "scope_id" in body.model_fields_set or "scope_ids" in body.model_fields_set
+        ),
     )
     await db.commit()
     if updated is None:

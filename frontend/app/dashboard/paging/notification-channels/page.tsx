@@ -1,5 +1,5 @@
-import { NotificationChannelsPage } from "@/components/NotificationChannelsPage";
+import { redirect } from "next/navigation";
 
 export default function PagingNotificationChannelsPage() {
-  return <NotificationChannelsPage />;
+  redirect("/dashboard/paging/notifications");
 }

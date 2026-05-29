@@ -170,7 +170,7 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
               {fmtDay(windowStart)} → {fmtDay(windowEnd)}
             </span>
             <span className="ml-2 text-xs text-fg-muted">
-              ({roster.time_zone} · {roster.pattern} · handoff {roster.handoff_time})
+              ({roster.time_zone} · {roster.pattern} · {roster.coverage_start_time} → {roster.coverage_end_time})
             </span>
           </div>
           <div className="flex items-center gap-1">

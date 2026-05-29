@@ -119,14 +119,17 @@ async def evaluate_maintenance_window(
     """
 
     service_id = incident.service_id
-    windows = await MaintenanceWindowRepo.list_active_at(
-        db,
-        org_id,
-        at,
-        scope_type="service" if service_id is not None else None,
-        scope_id=service_id,
-    )
-    return windows[0] if windows else None
+    windows = await MaintenanceWindowRepo.list_active_at(db, org_id, at)
+    for window in windows:
+        if window.scope_type == "global":
+            return window
+        if service_id is not None and window.scope_type == "service":
+            service_ids = set(str(v) for v in (window.target_ids or []))
+            if window.scope_id is not None:
+                service_ids.add(str(window.scope_id))
+            if str(service_id) in service_ids:
+                return window
+    return None
 
 
 # ---------------------------------------------------------------------------

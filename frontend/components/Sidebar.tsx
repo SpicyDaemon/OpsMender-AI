@@ -19,12 +19,9 @@ import {
   Cpu,
   FileText,
   GitBranch,
-  ListOrdered,
   LogOut,
   Network,
-  Plug,
   Repeat,
-  Send,
   Server,
   Settings,
   ShieldCheck,
@@ -69,7 +66,7 @@ type NavGroup = {
  * deep-links keep working. When the flag flips on, the entry reverts
  * to "Organizations" because the page is now genuinely multi-tenant.
  */
-function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
+export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
   return [
     {
       id: "incident-management",
@@ -85,14 +82,11 @@ function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
       label: "Paging & On-call",
       items: [
         { href: "/dashboard/paging/teams", label: "Teams", icon: Users },
+        { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch },
         { href: "/dashboard/paging/services", label: "Services", icon: Server },
         { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat },
-        { href: "/dashboard/paging/priority-rules", label: "Priority Rules", icon: ListOrdered },
-        { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch },
         { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench },
-        { href: "/dashboard/paging/notification-channels", label: "Notification Channels", icon: Plug },
-        { href: "/dashboard/paging/my-notifications", label: "My Notifications", icon: Bell },
-        { href: "/dashboard/paging/outbound-hooks", label: "Outbound Hooks", icon: Send },
+        { href: "/dashboard/paging/notifications", label: "Notifications", icon: Bell },
       ],
     },
     {

@@ -2463,7 +2463,7 @@ export function MCPSection({
 }
 
 // ---------------------------------------------------------------------------
-// Bot Connectors
+// Legacy chat connector configuration
 // ---------------------------------------------------------------------------
 
 const BOT_CAPABILITY_OPTIONS: Array<{
@@ -3798,7 +3798,7 @@ export function BotConnectorSection({
 }
 
 // ---------------------------------------------------------------------------
-// Ingest Tokens (Sprint 14)
+// Legacy intake token configuration
 // ---------------------------------------------------------------------------
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -5061,7 +5061,7 @@ export function WorkflowProfileSection({
 }
 
 // ---------------------------------------------------------------------------
-// Outbound Webhook Triggers
+// Legacy viewer-update webhook configuration
 // ---------------------------------------------------------------------------
 
 const WEBHOOK_EVENT_OPTIONS: Array<{
@@ -5736,12 +5736,12 @@ export function WebhookTriggerSection({
 
   return (
     <Section
-      title="Outbound Hooks"
-      description="Send incident and session lifecycle updates to external systems or stakeholder workflows when state changes. These are not primary on-call notification preferences."
+      title="Viewer Updates"
+      description="Send incident and session lifecycle updates to external systems or viewer workflows when state changes. These are separate from primary operator paging."
     >
       {!canEdit && (
         <p className="text-sm text-fg-secondary">
-          Admin role required to manage outbound hooks.
+          Admin role required to manage viewer updates.
         </p>
       )}
 
@@ -5766,7 +5766,7 @@ export function WebhookTriggerSection({
         }
         empty={
           <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No outbound hooks yet. Add one to deliver OpsMender lifecycle events to downstream systems.
+            No viewer updates yet. Add one to deliver OpsMender lifecycle events to downstream systems or read-only audiences.
           </div>
         }
         rowActions={(trigger) => {

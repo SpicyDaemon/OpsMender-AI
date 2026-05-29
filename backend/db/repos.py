@@ -2435,6 +2435,20 @@ class IngestTokenRepo:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def get_active_for_service(
+        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
+    ) -> IngestToken | None:
+        stmt = (
+            select(IngestToken)
+            .where(IngestToken.org_id == org_id)
+            .where(IngestToken.service_id == service_id)
+            .where(IngestToken.is_active == True)
+            .order_by(IngestToken.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    @staticmethod
     async def list_all(
         db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[IngestToken]:
@@ -4167,6 +4181,9 @@ class ServiceRepo:
         name: str,
         slug: str,
         description: str | None = None,
+        priority: str = "P2",
+        intake_token: str | None = None,
+        preferred_mcp_server_ids: list[str] | None = None,
         external_refs: dict | None = None,
         is_active: bool = True,
     ) -> Service:
@@ -4176,6 +4193,9 @@ class ServiceRepo:
             name=name,
             slug=slug,
             description=description,
+            priority=priority,
+            intake_token=intake_token,
+            preferred_mcp_server_ids=preferred_mcp_server_ids or [],
             external_refs=external_refs,
             is_active=is_active,
         )
@@ -4206,6 +4226,16 @@ class ServiceRepo:
         ).scalar_one_or_none()
 
     @staticmethod
+    async def get_by_intake_token(
+        db: AsyncSession, intake_token: str
+    ) -> Service | None:
+        return (
+            await db.execute(
+                select(Service).where(Service.intake_token == intake_token)
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
     async def list_all(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -4228,6 +4258,10 @@ class ServiceRepo:
         name: str | None = None,
         description: str | None = None,
         description_provided: bool = False,
+        priority: str | None = None,
+        intake_token: str | None = None,
+        preferred_mcp_server_ids: list[str] | None = None,
+        preferred_mcp_server_ids_provided: bool = False,
         external_refs: dict | None = None,
         external_refs_provided: bool = False,
         is_active: bool | None = None,
@@ -4239,6 +4273,12 @@ class ServiceRepo:
             values["name"] = name
         if description_provided:
             values["description"] = description
+        if priority is not None:
+            values["priority"] = priority
+        if intake_token is not None:
+            values["intake_token"] = intake_token
+        if preferred_mcp_server_ids_provided:
+            values["preferred_mcp_server_ids"] = preferred_mcp_server_ids or []
         if external_refs_provided:
             values["external_refs"] = external_refs
         if is_active is not None:
@@ -4333,6 +4373,8 @@ class RosterRepo:
         time_zone: str = "UTC",
         pattern: str = "weekly",
         pattern_length: int = 7,
+        coverage_start_time: str = "09:00",
+        coverage_end_time: str = "17:00",
         handoff_time: str = "09:00",
         handoff_day: str | None = None,
         is_active: bool = True,
@@ -4345,6 +4387,8 @@ class RosterRepo:
             time_zone=time_zone,
             pattern=pattern,
             pattern_length=pattern_length,
+            coverage_start_time=coverage_start_time,
+            coverage_end_time=coverage_end_time,
             handoff_time=handoff_time,
             handoff_day=handoff_day,
             anchor_date=anchor_date,

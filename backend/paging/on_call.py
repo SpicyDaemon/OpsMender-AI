@@ -9,11 +9,9 @@ Algorithm (see ``docs/paging-model.md`` for the spec):
 
 1. Active override wins. If any override covers T, its ``covering_user_id``
    is on call.
-2. Compute the shift index from ``(T.date() - anchor_date) // pattern_length``
+2. If T is outside the roster coverage window, nobody is on call.
+3. Compute the shift index from ``(coverage date - anchor_date) // pattern_length``
    modulo the number of members.
-3. Apply the ``handoff_time`` boundary: if T's local time is *before*
-   ``handoff_time`` on the first day of the computed shift, the previous
-   shift is still active.
 
 Time-zone math runs in the roster's configured IANA zone via ``zoneinfo``.
 """
@@ -52,6 +50,8 @@ class OnCallContext:
     time_zone: str = "UTC"
     pattern: str = "weekly"
     pattern_length: int = 7
+    coverage_start_time: str = "09:00"
+    coverage_end_time: str = "17:00"
     handoff_time: str = "09:00"
     anchor_date: date | None = None
 
@@ -69,6 +69,14 @@ def _parse_handoff(value: str) -> time:
     if len(parts) < 2:
         raise ValueError(f"Invalid handoff_time: {value!r}")
     return time(int(parts[0]), int(parts[1]))
+
+
+def _within_coverage(local_time: time, start: time, end: time) -> bool:
+    if start == end:
+        return True
+    if start < end:
+        return start <= local_time < end
+    return local_time >= start or local_time < end
 
 
 def _shift_length_days(ctx: OnCallContext) -> int:
@@ -108,30 +116,21 @@ def on_call_at(ctx: OnCallContext, t: datetime) -> uuid.UUID | None:
         return override.covering_user_id
 
     local = t.astimezone(tz)
+    coverage_start = _parse_handoff(ctx.coverage_start_time or ctx.handoff_time)
+    coverage_end = _parse_handoff(ctx.coverage_end_time or ctx.coverage_start_time)
+    if not _within_coverage(local.timetz().replace(tzinfo=None), coverage_start, coverage_end):
+        return None
+
+    rotation_date = local.date()
+    if coverage_start > coverage_end and local.timetz().replace(tzinfo=None) < coverage_end:
+        rotation_date = rotation_date - timedelta(days=1)
+
     shift_length = _shift_length_days(ctx)
-    days_elapsed = (local.date() - ctx.anchor_date).days
+    days_elapsed = (rotation_date - ctx.anchor_date).days
     if days_elapsed < 0:
         # Before the anchor date — fall back to position 0.
         shift_index = 0
     else:
         shift_index = (days_elapsed // shift_length) % len(members)
-
-    # Apply handoff-time boundary: figure out when the *current* shift began
-    # in local time. If T is earlier than that, the previous shift is active.
-    shift_start_day = ctx.anchor_date + timedelta(
-        days=shift_index * shift_length
-        + ((days_elapsed // shift_length) * shift_length - shift_index * shift_length),
-    )
-    # The above expression is intentionally written as
-    #   anchor + (days_elapsed - days_elapsed % shift_length)
-    # but split for clarity. Recompute directly to avoid arithmetic mistakes:
-    if days_elapsed >= 0:
-        shift_start_day = ctx.anchor_date + timedelta(
-            days=(days_elapsed // shift_length) * shift_length
-        )
-    handoff = _parse_handoff(ctx.handoff_time)
-    shift_start = datetime.combine(shift_start_day, handoff, tzinfo=tz)
-    if local < shift_start:
-        shift_index = (shift_index - 1) % len(members)
 
     return members[shift_index].user_id

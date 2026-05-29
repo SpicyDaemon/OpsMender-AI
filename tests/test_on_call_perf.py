@@ -38,6 +38,8 @@ def _build_context(seed: int, member_count: int = 50) -> OnCallContext:
         time_zone="America/New_York",
         pattern="weekly",
         pattern_length=7,
+        coverage_start_time="00:00",
+        coverage_end_time="00:00",
         handoff_time="09:00",
         anchor_date=date(2025, 1, 6),
     )

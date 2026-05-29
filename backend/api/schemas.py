@@ -935,6 +935,7 @@ class MaintenanceWindowCreate(BaseModel):
     target_ids: list[str] = Field(default_factory=list)
     scope_type: str = Field(default="global", pattern="^(global|service|roster|team)$")
     scope_id: Optional[uuid.UUID] = None
+    scope_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class MaintenanceWindowUpdate(BaseModel):
@@ -949,6 +950,7 @@ class MaintenanceWindowUpdate(BaseModel):
         None, pattern="^(global|service|roster|team)$"
     )
     scope_id: Optional[uuid.UUID] = None
+    scope_ids: Optional[list[uuid.UUID]] = None
 
 
 class MaintenanceWindowResponse(BaseModel):
@@ -962,6 +964,7 @@ class MaintenanceWindowResponse(BaseModel):
     target_ids: list[str]
     scope_type: str
     scope_id: Optional[uuid.UUID]
+    scope_ids: list[uuid.UUID] = Field(default_factory=list)
     created_by: Optional[uuid.UUID]
     created_at: datetime
 
@@ -1508,6 +1511,8 @@ class ServiceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
     description: Optional[str] = None
+    priority: str = Field(default="P2", pattern="^(P0|P1|P2|P3)$")
+    preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
     external_refs: Optional[dict[str, Any]] = None
     is_active: bool = True
 
@@ -1516,6 +1521,8 @@ class ServiceUpdate(BaseModel):
     team_id: Optional[uuid.UUID] = None
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
+    priority: Optional[str] = Field(None, pattern="^(P0|P1|P2|P3)$")
+    preferred_mcp_server_ids: Optional[list[uuid.UUID]] = None
     external_refs: Optional[dict[str, Any]] = None
     is_active: Optional[bool] = None
 
@@ -1526,6 +1533,9 @@ class ServiceResponse(BaseModel):
     name: str
     slug: str
     description: Optional[str]
+    priority: str
+    preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
+    intake_url: Optional[str] = None
     external_refs: Optional[dict[str, Any]]
     is_active: bool
     created_at: datetime
@@ -1545,6 +1555,8 @@ class RosterCreate(BaseModel):
     time_zone: str = Field(default="UTC", max_length=64)
     pattern: str = Field(default="weekly", pattern="^(weekly|daily|custom_n_days)$")
     pattern_length: int = Field(default=7, ge=1, le=365)
+    coverage_start_time: str = Field(default="09:00", pattern=r"^\d{2}:\d{2}$")
+    coverage_end_time: str = Field(default="17:00", pattern=r"^\d{2}:\d{2}$")
     handoff_time: str = Field(default="09:00", pattern=r"^\d{2}:\d{2}$")
     handoff_day: Optional[str] = None
     anchor_date: date
@@ -1557,6 +1569,8 @@ class RosterUpdate(BaseModel):
     time_zone: Optional[str] = Field(None, max_length=64)
     pattern: Optional[str] = Field(None, pattern="^(weekly|daily|custom_n_days)$")
     pattern_length: Optional[int] = Field(None, ge=1, le=365)
+    coverage_start_time: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
+    coverage_end_time: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
     handoff_time: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
     handoff_day: Optional[str] = None
     anchor_date: Optional[date] = None
@@ -1571,6 +1585,8 @@ class RosterResponse(BaseModel):
     time_zone: str
     pattern: str
     pattern_length: int
+    coverage_start_time: str
+    coverage_end_time: str
     handoff_time: str
     handoff_day: Optional[str]
     anchor_date: date

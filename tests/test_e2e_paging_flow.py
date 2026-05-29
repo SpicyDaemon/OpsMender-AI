@@ -2,8 +2,8 @@
 
 Walks the complete operator path through real HTTP routes:
 
-    POST /incidents (severity=critical)
-      → priority rule fires        (severity=critical → P1 + page)
+    POST /incidents/ingest through a service
+      → service priority applies   (service priority=P1 + page)
       → escalation chain starts    (step 0 targets the on-call operator)
       → incident_pages row persisted for that operator
     POST /bot/slack/interactions ACTION_ACK (signed Slack payload)
@@ -46,7 +46,6 @@ from backend.db.repos import (
     EscalationStepRepo,
     IncidentAssignmentRepo,
     IncidentRepo,
-    PriorityRuleRepo,
     ServiceEscalationChainRepo,
     ServiceRepo,
     TeamRepo,
@@ -183,6 +182,7 @@ async def _seed_paging_topology(app) -> dict:
             team_id=team.id,
             name="checkout-api",
             slug="checkout-api",
+            priority="P1",
         )
 
         chain = await EscalationChainRepo.create(
@@ -202,16 +202,6 @@ async def _seed_paging_topology(app) -> dict:
             TEST_ORG_ID,
             service_id=service.id,
             chain_id=chain.id,
-        )
-
-        await PriorityRuleRepo.create(
-            db,
-            TEST_ORG_ID,
-            name="critical → P1 page",
-            condition={"severity": "critical"},
-            priority="P1",
-            response_mode="page",
-            rule_index=0,
         )
 
         connector = await BotConnectorRepo.create(
@@ -322,7 +312,7 @@ class TestIncidentResponseLoop:
         assert body["success"], body
         incident_id = uuid.UUID(body["incident_id"])
 
-        # Verify the priority rule fired AND the chain kicked off.
+        # Verify the service priority applied AND the chain kicked off.
         async with app.state.session_factory() as db:
             inc = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
             assert inc is not None

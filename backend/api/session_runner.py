@@ -37,6 +37,7 @@ from backend.db.repos import (
     SessionMessageRepo,
     SessionRepo,
     SkillRepo,
+    ServiceRepo,
     WorkflowProfileRepo,
 )
 from backend.llm.base import LLM
@@ -276,9 +277,27 @@ async def _resolve_mcp_context(
     org_id: uuid.UUID,
     pool: MCPServerPool,
     config: AppConfig,
-) -> tuple[MCPServerConfig | None, SkillDefinition]:
+    *,
+    preferred_mcp_server_ids: list[uuid.UUID] | None = None,
+) -> tuple[MCPServerConfig | None, SkillDefinition, list[str]]:
     servers = await pool.list_servers(active_only=True)
-    selected_server = servers[0] if servers else None
+    server_by_name = {server.name: server for server in servers}
+    preferred_names: list[str] = []
+
+    async with factory() as db:
+        if preferred_mcp_server_ids:
+            from backend.db.repos import MCPServerRepo
+
+            for server_id in preferred_mcp_server_ids:
+                server_row = await MCPServerRepo.get_by_id(db, org_id, server_id)
+                if server_row is not None and server_row.name in server_by_name:
+                    preferred_names.append(server_row.name)
+
+    selected_server = (
+        server_by_name[preferred_names[0]]
+        if preferred_names
+        else (servers[0] if servers else None)
+    )
 
     async with factory() as db:
         server_id = None
@@ -290,12 +309,12 @@ async def _resolve_mcp_context(
         skill_row = await SkillRepo.get_for_mcp_server(db, org_id, server_id)
 
     if skill_row is not None:
-        return selected_server, load_skill_def_text(skill_row.content_md)
+        return selected_server, load_skill_def_text(skill_row.content_md), preferred_names
 
     skill_path = pathlib.Path(config.app.skill_definition_path)
     if skill_path.is_file():
-        return selected_server, load_skill_def(skill_path)
-    return selected_server, load_skill_def("examples/SKILL.md")
+        return selected_server, load_skill_def(skill_path), preferred_names
+    return selected_server, load_skill_def("examples/SKILL.md"), preferred_names
 
 
 def _build_incident_description(
@@ -328,6 +347,25 @@ def _incident_payload(incident) -> dict[str, Any]:  # type: ignore[no-untyped-de
         "status": incident.status,
         "severity": incident.severity,
     }
+
+
+async def _preferred_mcp_ids_for_incident(
+    factory,
+    org_id: uuid.UUID,
+    incident,
+) -> list[uuid.UUID]:
+    if incident is None or getattr(incident, "service_id", None) is None:
+        return []
+    async with factory() as db:
+        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        raw_ids = getattr(service, "preferred_mcp_server_ids", None) if service else None
+    ids: list[uuid.UUID] = []
+    for raw in raw_ids or []:
+        try:
+            ids.append(raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    return ids
 
 
 async def _set_session_terminal_state(
@@ -438,7 +476,18 @@ async def _run_session_workflow_inner(
         if pending_messages:
             await _mark_messages_consumed(factory, org_id, session_id, "workflow_start")
 
-        selected_server, skill_def = await _resolve_mcp_context(factory, org_id, pool, config)
+        preferred_mcp_server_ids = await _preferred_mcp_ids_for_incident(
+            factory,
+            org_id,
+            incident,
+        )
+        selected_server, skill_def, preferred_mcp_server_names = await _resolve_mcp_context(
+            factory,
+            org_id,
+            pool,
+            config,
+            preferred_mcp_server_ids=preferred_mcp_server_ids,
+        )
         audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
         approval_service = ApprovalService(
             factory,
@@ -469,6 +518,7 @@ async def _run_session_workflow_inner(
             "tier": int(session.tier),
             "incident_description": incident_description,
             "incident": _incident_payload(incident),
+            "preferred_mcp_servers": preferred_mcp_server_names,
             "message_history": [
                 {
                     "id": str(msg.id),

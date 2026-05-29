@@ -1,5 +1,5 @@
-import { NotificationChannelsPage } from "@/components/NotificationChannelsPage";
+import { redirect } from "next/navigation";
 
 export default function BotConnectorsPage() {
-  return <NotificationChannelsPage />;
+  redirect("/dashboard/paging/notifications");
 }

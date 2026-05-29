@@ -17,11 +17,16 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_mcp_pool, set_session_factory
-from backend.config_loader import set_env_path
+from backend.api.session_runner import (
+    _preferred_mcp_ids_for_incident,
+    _resolve_mcp_context,
+)
+from backend.config_loader import MCPServerConfig, set_env_path
 from backend.db.models import Base, Organization
 from backend.db.repos import (
     IncidentAssignmentRepo,
     IncidentRepo,
+    MCPServerRepo,
     MaintenanceWindowRepo,
     OrganizationRepo,
     PriorityRuleRepo,
@@ -144,6 +149,8 @@ class TestOnCallAt:
             anchor_date=kwargs.get("anchor_date", date(2026, 5, 4)),
             pattern=kwargs.get("pattern", "weekly"),
             pattern_length=kwargs.get("pattern_length", 7),
+            coverage_start_time=kwargs.get("coverage_start_time", "00:00"),
+            coverage_end_time=kwargs.get("coverage_end_time", "00:00"),
             handoff_time=kwargs.get("handoff_time", "09:00"),
             time_zone=kwargs.get("time_zone", "UTC"),
         )
@@ -171,14 +178,30 @@ class TestOnCallAt:
         assert on_call_at(ctx, datetime(2026, 5, 7, 12, tzinfo=timezone.utc)) == u2
         assert on_call_at(ctx, datetime(2026, 5, 10, 12, tzinfo=timezone.utc)) == u3
 
-    def test_handoff_boundary(self):
+    def test_coverage_start_boundary(self):
         u1, u2 = uuid.uuid4(), uuid.uuid4()
-        ctx = self._ctx([u1, u2], pattern="daily", pattern_length=1)
-        # 08:00 on day 1 is still the previous shift (anchor day = u1, day1 = u2 normally
-        # but 08:00 < 09:00 handoff so we stay on u1).
-        assert on_call_at(ctx, datetime(2026, 5, 5, 8, 0, tzinfo=timezone.utc)) == u1
-        # 10:00 same day flips.
+        ctx = self._ctx(
+            [u1, u2],
+            pattern="daily",
+            pattern_length=1,
+            coverage_start_time="09:00",
+            coverage_end_time="17:00",
+        )
+        assert on_call_at(ctx, datetime(2026, 5, 5, 8, 0, tzinfo=timezone.utc)) is None
         assert on_call_at(ctx, datetime(2026, 5, 5, 10, 0, tzinfo=timezone.utc)) == u2
+
+    def test_overnight_coverage_uses_previous_rotation_date(self):
+        u1, u2 = uuid.uuid4(), uuid.uuid4()
+        ctx = self._ctx(
+            [u1, u2],
+            pattern="daily",
+            pattern_length=1,
+            coverage_start_time="18:00",
+            coverage_end_time="08:00",
+        )
+        assert on_call_at(ctx, datetime(2026, 5, 4, 20, 0, tzinfo=timezone.utc)) == u1
+        assert on_call_at(ctx, datetime(2026, 5, 5, 6, 0, tzinfo=timezone.utc)) == u1
+        assert on_call_at(ctx, datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)) is None
 
     def test_override_wins(self):
         u1, u2, u3 = (uuid.uuid4() for _ in range(3))
@@ -607,6 +630,206 @@ class TestPagingAPI:
         )
         assert resp.status_code == 400
 
+    async def test_service_saves_priority_and_preferred_mcp_context(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            first = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="aws-prod",
+                transport="http",
+                url="http://aws-prod.local/mcp",
+            )
+            second = await MCPServerRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="gitlab-prod",
+                transport="http",
+                url="http://gitlab-prod.local/mcp",
+            )
+            await db.commit()
+
+        team = await client.post(
+            "/teams",
+            json={"name": "Service MCP", "slug": f"svc-mcp-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        service = await client.post(
+            "/services",
+            json={
+                "team_id": team.json()["id"],
+                "name": "AWS Prod Critical",
+                "slug": f"aws-prod-critical-{uuid.uuid4().hex[:6]}",
+                "priority": "P0",
+                "preferred_mcp_server_ids": [str(second.id), str(first.id)],
+            },
+            headers=auth_headers,
+        )
+        assert service.status_code == 201, service.text
+        data = service.json()
+        assert data["priority"] == "P0"
+        assert data["preferred_mcp_server_ids"] == [str(second.id), str(first.id)]
+        assert data["intake_url"].startswith("/api/v1/intake/svc_")
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="CPU high",
+                description="prod worker",
+                service_id=uuid.UUID(data["id"]),
+            )
+            await db.commit()
+
+        preferred_ids = await _preferred_mcp_ids_for_incident(
+            app.state.session_factory,
+            TEST_ORG_ID,
+            incident,
+        )
+        assert preferred_ids == [second.id, first.id]
+
+        class _Pool:
+            async def list_servers(self, active_only=True):
+                return [
+                    MCPServerConfig(
+                        name="aws-prod",
+                        transport="http",
+                        url="http://aws-prod.local/mcp",
+                    ),
+                    MCPServerConfig(
+                        name="gitlab-prod",
+                        transport="http",
+                        url="http://gitlab-prod.local/mcp",
+                    ),
+                ]
+
+        selected, _skill, preferred_names = await _resolve_mcp_context(
+            app.state.session_factory,
+            TEST_ORG_ID,
+            _Pool(),
+            app.state.config,
+            preferred_mcp_server_ids=preferred_ids,
+        )
+        assert preferred_names == ["gitlab-prod", "aws-prod"]
+        assert selected is not None
+        assert selected.name == "gitlab-prod"
+
+    async def test_service_intake_uses_service_priority_not_priority_rules(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        await client.post(
+            "/priority-rules",
+            json={
+                "name": "Low would be P3",
+                "condition": {"severity": ["low"]},
+                "priority": "P3",
+            },
+            headers=auth_headers,
+        )
+        team = await client.post(
+            "/teams",
+            json={"name": "Intake Priority", "slug": f"intake-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        service = await client.post(
+            "/services",
+            json={
+                "team_id": team.json()["id"],
+                "name": "Critical Intake",
+                "slug": f"critical-intake-{uuid.uuid4().hex[:6]}",
+                "priority": "P0",
+            },
+            headers=auth_headers,
+        )
+        assert service.status_code == 201, service.text
+        intake_url = service.json()["intake_url"]
+
+        ingest = await client.post(
+            intake_url,
+            json={
+                "title": "Synthetic low alert",
+                "description": "service owns priority",
+                "severity": "low",
+                "external_id": f"svc-priority-{uuid.uuid4()}",
+            },
+        )
+        assert ingest.status_code == 200, ingest.text
+        incident_id = uuid.UUID(ingest.json()["incident_id"])
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+        assert incident is not None
+        assert incident.priority == "P0"
+        assert incident.service_id == uuid.UUID(service.json()["id"])
+
+    async def test_service_intake_drops_matching_maintenance_windows(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Maintenance", "slug": f"mw-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        services = []
+        for name in ["API A", "API B", "API C"]:
+            resp = await client.post(
+                "/services",
+                json={
+                    "team_id": team.json()["id"],
+                    "name": name,
+                    "slug": f"{name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:6]}",
+                    "priority": "P1",
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 201, resp.text
+            services.append(resp.json())
+
+        now = datetime.now(timezone.utc)
+        mw = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "Multi-service work",
+                "starts_at": (now - timedelta(minutes=5)).isoformat(),
+                "ends_at": (now + timedelta(minutes=30)).isoformat(),
+                "scope_type": "service",
+                "scope_ids": [services[0]["id"], services[1]["id"]],
+            },
+            headers=auth_headers,
+        )
+        assert mw.status_code == 201, mw.text
+        assert set(mw.json()["scope_ids"]) == {services[0]["id"], services[1]["id"]}
+
+        suppressed = await client.post(
+            services[0]["intake_url"],
+            json={
+                "title": "Suppressed alert",
+                "description": "covered by maintenance",
+                "severity": "high",
+                "external_id": f"suppressed-{uuid.uuid4()}",
+            },
+        )
+        assert suppressed.status_code == 200, suppressed.text
+        assert suppressed.json()["dedup_action"] == "skipped"
+        assert suppressed.json()["incident_id"] is None
+
+        created = await client.post(
+            services[2]["intake_url"],
+            json={
+                "title": "Visible alert",
+                "description": "not covered",
+                "severity": "high",
+                "external_id": f"visible-{uuid.uuid4()}",
+            },
+        )
+        assert created.status_code == 200, created.text
+        assert created.json()["incident_id"] is not None
+
+        async with app.state.session_factory() as db:
+            incidents = await IncidentRepo.list_all(db, TEST_ORG_ID)
+        assert [incident.title for incident in incidents] == ["Visible alert"]
+
     async def test_roster_member_add_and_on_call(
         self, client: AsyncClient, app, auth_headers
     ):
@@ -641,7 +864,7 @@ class TestPagingAPI:
                 username="r1@test",
                 email="r1@test.com",
                 password_hash="x",
-                role="viewer",
+                role="operator",
                 primary_org_id=TEST_ORG_ID,
             )
             await db.commit()
@@ -661,6 +884,99 @@ class TestPagingAPI:
         )
         assert resp.status_code == 200
         assert resp.json()["user_id"] == str(u1.id)
+
+    async def test_disabled_roster_is_ignored_for_on_call(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Disabled", "slug": f"disabled-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        roster_resp = await client.post(
+            "/rosters",
+            json={
+                "team_id": team.json()["id"],
+                "name": "Disabled schedule",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-05-04",
+                "coverage_start_time": "00:00",
+                "coverage_end_time": "00:00",
+                "time_zone": "UTC",
+                "is_active": False,
+            },
+            headers=auth_headers,
+        )
+        assert roster_resp.status_code == 201
+        roster_id = roster_resp.json()["id"]
+
+        async with app.state.session_factory() as db:
+            operator = await UserRepo.create(
+                db,
+                username=f"disabled-op-{uuid.uuid4().hex[:6]}",
+                email=f"disabled-op-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+        add = await client.post(
+            f"/rosters/{roster_id}/members",
+            json={"user_id": str(operator.id), "position_index": 0},
+            headers=auth_headers,
+        )
+        assert add.status_code == 201
+
+        from urllib.parse import quote
+
+        at = quote("2026-05-05T12:00:00+00:00", safe="")
+        resp = await client.get(
+            f"/rosters/{roster_id}/on-call?at={at}", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["user_id"] is None
+
+    async def test_viewer_cannot_be_added_to_roster(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Viewer Roster", "slug": f"viewer-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        roster_resp = await client.post(
+            "/rosters",
+            json={
+                "team_id": team.json()["id"],
+                "name": "Primary",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-05-04",
+                "coverage_start_time": "00:00",
+                "coverage_end_time": "00:00",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        assert roster_resp.status_code == 201
+        async with app.state.session_factory() as db:
+            viewer = await UserRepo.create(
+                db,
+                username=f"viewer-roster-{uuid.uuid4().hex[:6]}",
+                email=f"viewer-roster-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="viewer",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+        add = await client.post(
+            f"/rosters/{roster_resp.json()['id']}/members",
+            json={"user_id": str(viewer.id), "position_index": 0},
+            headers=auth_headers,
+        )
+        assert add.status_code == 400
+        assert "Viewer users cannot be assigned" in add.json()["detail"]
 
     async def test_on_call_range_powers_calendar(
         self, client: AsyncClient, app, auth_headers
@@ -698,7 +1014,7 @@ class TestPagingAPI:
                 username=f"rng1-{uuid.uuid4().hex[:6]}",
                 email=f"rng1-{uuid.uuid4().hex[:6]}@test.com",
                 password_hash="x",
-                role="viewer",
+                role="operator",
                 primary_org_id=TEST_ORG_ID,
             )
             u2 = await UserRepo.create(
@@ -706,7 +1022,7 @@ class TestPagingAPI:
                 username=f"rng2-{uuid.uuid4().hex[:6]}",
                 email=f"rng2-{uuid.uuid4().hex[:6]}@test.com",
                 password_hash="x",
-                role="viewer",
+                role="operator",
                 primary_org_id=TEST_ORG_ID,
             )
             await db.commit()
@@ -836,16 +1152,17 @@ class TestPagingAPI:
         )
         assert deleted.status_code == 204
 
-    async def test_incident_create_applies_priority_rules(
+    async def test_incident_create_ignores_priority_rules_for_v1(
         self, client: AsyncClient, app, auth_headers
     ):
-        # Pre-seed a P0 rule for critical incidents.
+        # Legacy rules can remain internally, but v1 priority assignment uses
+        # service configuration or deterministic severity fallback.
         await client.post(
             "/priority-rules",
             json={
-                "name": "Critical",
+                "name": "Critical would be downgraded",
                 "condition": {"severity": ["critical"]},
-                "priority": "P0",
+                "priority": "P3",
             },
             headers=auth_headers,
         )
@@ -1058,7 +1375,7 @@ class TestMaintenanceWindowScopeFields:
         assert data["scope_type"] == "service"
         assert data["scope_id"] == str(scope_id)
         assert data["description"] == "DB migration window"
-        assert data["target_ids"] == []
+        assert data["target_ids"] == [str(scope_id)]
 
     async def test_global_scope_default(
         self, client: AsyncClient, auth_headers

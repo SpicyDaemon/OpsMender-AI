@@ -43,7 +43,7 @@ export default function ModelsPage() {
   if (loading || !bootstrap) return <ConfigPageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Models</h1>
         <p className="mt-1 text-sm text-fg-secondary">

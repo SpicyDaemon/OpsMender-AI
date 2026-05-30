@@ -237,11 +237,11 @@ async def create_incident(
     summary="List incidents",
 )
 async def list_incidents(
-    status_filter: str | None = Query(None, alias="status"),
-    severity: str | None = Query(None, pattern="^(critical|high|medium|low)$"),
+    status_filter: list[str] | None = Query(None, alias="status"),
+    severity: list[str] | None = Query(None),
     service_id: uuid.UUID | None = Query(None),
-    team_id: uuid.UUID | None = Query(None),
-    source: str | None = Query(None, pattern="^(manual|ingested)$"),
+    team_id: list[uuid.UUID] | None = Query(None),
+    source: list[str] | None = Query(None),
     updated_from: datetime | None = Query(None),
     updated_to: datetime | None = Query(None),
     query: str | None = Query(None, alias="q"),
@@ -251,6 +251,13 @@ async def list_incidents(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
+    # Multi-value OR filters: repeated query params (e.g. ?status=open&status=in_progress).
+    # Drop unknown values so a stray value can't make the result empty.
+    allowed_severities = {"critical", "high", "medium", "low"}
+    allowed_sources = {"manual", "ingested"}
+    severity = [s for s in (severity or []) if s in allowed_severities] or None
+    source = [s for s in (source or []) if s in allowed_sources] or None
+
     items = await IncidentRepo.list_all(
         db,
         org_id,

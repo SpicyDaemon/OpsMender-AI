@@ -463,11 +463,11 @@ class IncidentRepo:
         db: AsyncSession,
         org_id: uuid.UUID,
         *,
-        status: str | None = None,
-        severity: str | None = None,
+        status: "str | Sequence[str] | None" = None,
+        severity: "str | Sequence[str] | None" = None,
         service_id: uuid.UUID | None = None,
-        team_id: uuid.UUID | None = None,
-        source: str | None = None,
+        team_id: "uuid.UUID | Sequence[uuid.UUID] | None" = None,
+        source: "str | Sequence[str] | None" = None,
         updated_from: datetime | None = None,
         updated_to: datetime | None = None,
         query: str | None = None,
@@ -493,30 +493,46 @@ class IncidentRepo:
     def _filtered_select(
         org_id: uuid.UUID,
         *,
-        status: str | None = None,
-        severity: str | None = None,
+        status: "str | Sequence[str] | None" = None,
+        severity: "str | Sequence[str] | None" = None,
         service_id: uuid.UUID | None = None,
-        team_id: uuid.UUID | None = None,
-        source: str | None = None,
+        team_id: "uuid.UUID | Sequence[uuid.UUID] | None" = None,
+        source: "str | Sequence[str] | None" = None,
         updated_from: datetime | None = None,
         updated_to: datetime | None = None,
         query: str | None = None,
     ):
+        # Each categorical filter accepts a scalar (backward compatible) or a
+        # list — a list is an OR match (IN). An empty list means "no filter".
+        def _as_list(value):
+            if value is None:
+                return []
+            if isinstance(value, (list, tuple, set)):
+                return [v for v in value if v is not None]
+            return [value]
+
+        statuses = _as_list(status)
+        severities = _as_list(severity)
+        team_ids = _as_list(team_id)
+        sources = {str(s) for s in _as_list(source)}
+
         stmt = select(Incident).where(Incident.org_id == org_id)
-        if team_id is not None:
+        if team_ids:
             stmt = stmt.join(Service, Service.id == Incident.service_id).where(
                 Service.org_id == org_id,
-                Service.team_id == team_id,
+                Service.team_id.in_(team_ids),
             )
-        if status:
-            stmt = stmt.where(Incident.status == status)
-        if severity:
-            stmt = stmt.where(Incident.severity == severity)
+        if statuses:
+            stmt = stmt.where(Incident.status.in_(statuses))
+        if severities:
+            stmt = stmt.where(Incident.severity.in_(severities))
         if service_id is not None:
             stmt = stmt.where(Incident.service_id == service_id)
-        if source == "manual":
+        # source: manual = no external source; ingested = has external source.
+        # Selecting both (or neither) applies no source filter.
+        if "manual" in sources and "ingested" not in sources:
             stmt = stmt.where(Incident.external_source.is_(None))
-        elif source == "ingested":
+        elif "ingested" in sources and "manual" not in sources:
             stmt = stmt.where(Incident.external_source.is_not(None))
         if updated_from is not None:
             stmt = stmt.where(Incident.updated_at >= updated_from)
@@ -539,11 +555,11 @@ class IncidentRepo:
         db: AsyncSession,
         org_id: uuid.UUID,
         *,
-        status: str | None = None,
-        severity: str | None = None,
+        status: "str | Sequence[str] | None" = None,
+        severity: "str | Sequence[str] | None" = None,
         service_id: uuid.UUID | None = None,
-        team_id: uuid.UUID | None = None,
-        source: str | None = None,
+        team_id: "uuid.UUID | Sequence[uuid.UUID] | None" = None,
+        source: "str | Sequence[str] | None" = None,
         updated_from: datetime | None = None,
         updated_to: datetime | None = None,
         query: str | None = None,

@@ -1190,6 +1190,41 @@ class TestIncidents:
         resp = await client.get("/incidents?status=resolved", headers=auth_headers)
         assert resp.json()["total"] == 0
 
+    async def test_list_incidents_multi_value_status_is_or(
+        self, client: AsyncClient, auth_headers
+    ):
+        """Repeated ?status= params are an OR match (multi-select filter)."""
+        a = await client.post(
+            "/incidents",
+            json={"title": "Stays open", "description": "d"},
+            headers=auth_headers,
+        )
+        b = await client.post(
+            "/incidents",
+            json={"title": "Gets resolved", "description": "d"},
+            headers=auth_headers,
+        )
+        await client.post(
+            "/incidents/bulk",
+            json={"action": "resolve", "incident_ids": [b.json()["id"]]},
+            headers=auth_headers,
+        )
+
+        # Single-status filters still work.
+        assert (
+            await client.get("/incidents?status=open", headers=auth_headers)
+        ).json()["total"] == 1
+        assert (
+            await client.get("/incidents?status=resolved", headers=auth_headers)
+        ).json()["total"] == 1
+        # OR across both statuses returns both incidents.
+        both = await client.get(
+            "/incidents?status=open&status=resolved", headers=auth_headers
+        )
+        assert both.status_code == 200
+        assert both.json()["total"] == 2
+        assert a.json()["id"] in {i["id"] for i in both.json()["items"]}
+
     async def test_list_incidents_filters_by_team_severity_and_source(
         self, client: AsyncClient, app, auth_headers
     ):

@@ -101,6 +101,13 @@ export interface DataTableProps<T> {
   toolbarRight?: ReactNode;
   /** Hide the built-in toolbar when a page provides its own controls. */
   hideToolbar?: boolean;
+  /**
+   * Render the toolbar as a single Services-style filter row: search +
+   * multi-select checkbox filter dropdowns (from each column's `filterChips`)
+   * + `toolbarRight`, instead of the stacked search-row + inline chip rows.
+   * Filtering semantics are unchanged (OR within a dimension, AND across).
+   */
+  filterBar?: boolean;
   /** Optional placeholder for the search input. */
   searchPlaceholder?: string;
   /** Pass-through className for the outer wrapper. */
@@ -180,6 +187,72 @@ function paginationItems(currentPage: number, totalPages: number): Array<number 
 }
 
 // ---------------------------------------------------------------------------
+// Multi-select checkbox filter dropdown (Services-style filter bar)
+// ---------------------------------------------------------------------------
+
+function FilterDropdown({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  options: FilterChipOption[];
+  selected: Set<string>;
+  onToggle: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const count = selected.size;
+  const display = count === 0 ? `All ${label}` : `${label} · ${count}`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-11 min-w-[9rem] items-center justify-between gap-2 rounded-md border border-border-strong bg-bg-input px-3 text-sm text-fg-primary"
+      >
+        <span className="truncate">{display}</span>
+        <ChevronDown size={15} className="shrink-0 text-fg-muted" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 max-h-64 w-56 overflow-y-auto rounded-md border border-border-strong bg-bg-elevated p-1 shadow-lg">
+          {options.length === 0 ? (
+            <p className="px-2 py-2 text-xs text-fg-muted">No options.</p>
+          ) : (
+            options.map((o) => (
+              <label
+                key={o.value}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(o.value)}
+                  onChange={() => onToggle(o.value)}
+                />
+                <span className="truncate">{o.label}</span>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -201,6 +274,7 @@ export function DataTable<T>({
   storageKey,
   toolbarRight,
   hideToolbar = false,
+  filterBar = false,
   searchPlaceholder = "Search…",
   className = "",
 }: DataTableProps<T>) {
@@ -443,8 +517,123 @@ export function DataTable<T>({
   // ----- Render ---------------------------------------------------------------
   return (
     <div className={`space-y-3 ${className}`}>
-      {/* Toolbar */}
-      {!hideToolbar && (
+      {/* Services-style filter bar: one row of search + multi-select dropdowns. */}
+      {!hideToolbar && filterBar && (
+        <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            {searchableColumns.length > 0 && (
+              <div className="relative min-w-[16rem] flex-1">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
+                />
+                <Input
+                  aria-label="Search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className="h-11 pl-9"
+                />
+              </div>
+            )}
+            {chipColumns.map((col) => (
+              <FilterDropdown
+                key={col.id}
+                label={col.label}
+                options={col.filterChips!.options}
+                selected={chipFilters[col.id] ?? new Set<string>()}
+                onToggle={(value) => toggleChip(col.id, value)}
+              />
+            ))}
+            <div className="relative">
+              <Button
+                variant="secondary"
+                onClick={() => setColumnsMenuOpen((o) => !o)}
+                title="Show / hide columns"
+                className="h-11"
+              >
+                <Columns3 size={14} /> Columns
+              </Button>
+              {columnsMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setColumnsMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border-default bg-bg-panel py-1 shadow-lg">
+                    {columns.map((col) => {
+                      const checked = !hiddenIds.has(col.id);
+                      return (
+                        <label
+                          key={col.id}
+                          className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-bg-hover"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleColumn(col.id)}
+                          />
+                          <span>{col.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="h-11"
+                  title="Clear search + filters"
+                >
+                  <X size={14} /> Clear
+                </Button>
+              )}
+              {toolbarRight}
+            </div>
+          </div>
+
+          {/* Date range (only when a column drives it) */}
+          {dateRangeColumn && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-[6rem_1fr_auto] sm:items-center">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-tertiary">
+                <CalIcon size={12} />
+                {dateRangeColumn.label ?? "Range"}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="datetime-local"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="max-w-[14rem]"
+                />
+                <span className="text-xs text-fg-muted">→</span>
+                <Input
+                  type="datetime-local"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="max-w-[14rem]"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={setLast7Days}>
+                  7d
+                </Button>
+                <Button variant="ghost" size="sm" onClick={setLast30Days}>
+                  30d
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Toolbar (stacked default layout) */}
+      {!hideToolbar && !filterBar && (
       <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-panel p-3 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
           {searchableColumns.length > 0 && (

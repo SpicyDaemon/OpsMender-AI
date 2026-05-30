@@ -287,22 +287,15 @@ export default function MemoriesPage() {
         subtitle="Per-service lessons the agent has learned from prior incidents. Curate them like SKILL.md."
         icon={<Brain size={18} />}
         actions={
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={refresh}
-              disabled={loading}
-            >
-              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-              Refresh
-            </Button>
-            {canEdit && (
-              <Button size="sm" onClick={() => setCreateOpen(true)}>
-                <Plus size={14} /> New memory
-              </Button>
-            )}
-          </>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refresh}
+            disabled={loading}
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </Button>
         }
       />
 
@@ -329,18 +322,26 @@ export default function MemoriesPage() {
           columns={columns}
           rowKey={(memory) => memory.id}
           storageKey="opsmender:memories-table"
+          filterBar
           searchPlaceholder="Search title, summary, tag, or service…"
           toolbarRight={
-            isAdmin ? (
-              <label className="flex items-center gap-2 text-xs text-fg-secondary">
-                <input
-                  type="checkbox"
-                  checked={includeHidden}
-                  onChange={(e) => setIncludeHidden(e.target.checked)}
-                />
-                Include hidden
-              </label>
-            ) : undefined
+            <div className="flex items-center gap-3">
+              {isAdmin && (
+                <label className="flex items-center gap-2 text-xs text-fg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={includeHidden}
+                    onChange={(e) => setIncludeHidden(e.target.checked)}
+                  />
+                  Include hidden
+                </label>
+              )}
+              {canEdit && (
+                <Button size="sm" onClick={() => setCreateOpen(true)}>
+                  <Plus size={14} /> New memory
+                </Button>
+              )}
+            </div>
           }
           expandedRow={{
             expandedKeys,

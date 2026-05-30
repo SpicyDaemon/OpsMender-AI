@@ -594,14 +594,9 @@ export default function SkillsPage() {
         subtitle="Operator-owned skill definitions. Each MCP server can have its own skill; a global skill acts as the fallback."
         actions={
           canEdit ? (
-            <>
-              <Button variant="secondary" onClick={() => setShowImport(true)}>
-                <FileUp size={14} /> Import .md
-              </Button>
-              <Button onClick={openCreate}>
-                <Plus size={14} /> New skill
-              </Button>
-            </>
+            <Button variant="secondary" onClick={() => setShowImport(true)}>
+              <FileUp size={14} /> Import .md
+            </Button>
           ) : undefined
         }
       />
@@ -636,7 +631,15 @@ export default function SkillsPage() {
           columns={columns}
           rowKey={(skill) => skill.id}
           storageKey="opsmender:skills-table"
+          filterBar
           searchPlaceholder="Search skill, description, focus area, or server…"
+          toolbarRight={
+            canEdit ? (
+              <Button size="sm" onClick={openCreate}>
+                <Plus size={14} /> New skill
+              </Button>
+            ) : undefined
+          }
           rowActions={(skill) =>
             canEdit ? (
               <div className="flex justify-end gap-2">

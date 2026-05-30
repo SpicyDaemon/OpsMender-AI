@@ -1185,6 +1185,7 @@ export function ModelSection({
         columns={modelColumns}
         rowKey={(config) => config.id}
         storageKey="opsmender:model-configs-table"
+        filterBar
         searchPlaceholder="Search by config name, model, or env var…"
         toolbarRight={
           <>
@@ -2366,6 +2367,7 @@ export function MCPSection({
         columns={mcpColumns}
         rowKey={(server) => server.id}
         storageKey="opsmender:mcp-servers-table"
+        filterBar
         searchPlaceholder="Search MCP servers…"
         dateRangeColumn={{
           id: "created",

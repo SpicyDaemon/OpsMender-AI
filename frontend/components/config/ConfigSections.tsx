@@ -4570,96 +4570,130 @@ export function AgentTeamProfileSection({
     }
   }
 
+  const agentTeamColumns = useMemo<DataTableColumn<AgentTeamProfileResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Profile",
+        accessor: (profile) => `${profile.name} ${profile.description ?? ""}`,
+        sortable: true,
+        searchable: true,
+        cell: (profile) => (
+          <div className="min-w-[12rem]">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-fg-primary">{profile.name}</span>
+              {profile.is_default && <Badge>Default</Badge>}
+            </div>
+            {profile.description && (
+              <p className="mt-1 text-xs text-fg-secondary">
+                {profile.description}
+              </p>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: "roles",
+        label: "Roles",
+        accessor: (profile) =>
+          profile.roles
+            .map(
+              (role) =>
+                AGENT_ROLE_OPTIONS.find((item) => item.value === role)?.label ??
+                role,
+            )
+            .join(" "),
+        searchable: true,
+        cell: (profile) => (
+          <div className="flex flex-wrap gap-1.5">
+            {profile.roles.map((role) => {
+              const option = AGENT_ROLE_OPTIONS.find(
+                (item) => item.value === role,
+              );
+              return <Badge key={role}>{option?.label ?? role}</Badge>;
+            })}
+          </div>
+        ),
+      },
+      {
+        id: "status",
+        label: "Status",
+        accessor: (profile) => (profile.is_active ? "active" : "inactive"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ],
+          valueOf: (profile) => (profile.is_active ? "active" : "inactive"),
+        },
+        cell: (profile) => (
+          <Badge variant={profile.is_active ? "resolved" : "closed"}>
+            {profile.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <Section
       title="Agent Teams"
       description="Saved agent teams run multiple specialist reasoning passes inside the same OpsMender workflow, while execution still flows through the normal tier gate and execute path."
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-fg-secondary">
-            {profiles.length} saved team{profiles.length === 1 ? "" : "s"}
-          </p>
-          {!canEdit && (
-            <p className="text-sm text-fg-secondary">
-              Admin role required to manage agent teams.
-            </p>
-          )}
-        </div>
-        <Button onClick={openCreateModal} disabled={!canEdit}>
-          <Plus size={14} /> Add Agent Team
-        </Button>
-      </div>
+      {!canEdit && (
+        <p className="text-sm text-fg-secondary">
+          Admin role required to manage agent teams.
+        </p>
+      )}
 
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
 
-      {profiles.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No agent teams yet. Sessions will use OpsMender&apos;s default single-agent reasoning.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border-subtle">
-          <table className="min-w-full divide-y divide-border-subtle text-sm">
-            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-              <tr>
-                <th className="px-4 py-3">Profile</th>
-                <th className="px-4 py-3">Roles</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle bg-bg-panel">
-              {profiles.map((profile) => (
-                <tr key={profile.id}>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-fg-primary">{profile.name}</span>
-                      {profile.is_default && <Badge>Default</Badge>}
-                    </div>
-                    {profile.description && (
-                      <p className="mt-1 text-xs text-fg-secondary">{profile.description}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex flex-wrap gap-1.5">
-                      {profile.roles.map((role) => {
-                        const option = AGENT_ROLE_OPTIONS.find((item) => item.value === role);
-                        return <Badge key={role}>{option?.label ?? role}</Badge>;
-                      })}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <Badge variant={profile.is_active ? "resolved" : "closed"}>
-                      {profile.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openEditModal(profile)}
-                        disabled={!canEdit}
-                      >
-                        <Pencil size={13} /> Edit
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleDelete(profile)}
-                        disabled={!canEdit}
-                      >
-                        <Trash2 size={13} /> Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        rows={profiles}
+        columns={agentTeamColumns}
+        rowKey={(profile) => profile.id}
+        storageKey="opsmender:agent-teams-table"
+        filterBar
+        searchPlaceholder="Search agent teams by name, description, or role…"
+        toolbarRight={
+          <>
+            <span className="text-sm text-fg-secondary">
+              {profiles.length} saved team{profiles.length === 1 ? "" : "s"}
+            </span>
+            <Button onClick={openCreateModal} disabled={!canEdit}>
+              <Plus size={14} /> Add Agent Team
+            </Button>
+          </>
+        }
+        empty={
+          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+            No agent teams yet. Sessions will use OpsMender&apos;s default single-agent reasoning.
+          </div>
+        }
+        rowActions={(profile) => (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => openEditModal(profile)}
+              disabled={!canEdit}
+            >
+              <Pencil size={13} /> Edit
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => handleDelete(profile)}
+              disabled={!canEdit}
+            >
+              <Trash2 size={13} /> Delete
+            </Button>
+          </div>
+        )}
+      />
 
       {modalOpen && (
         <AgentTeamProfileModal
@@ -4958,95 +4992,120 @@ export function WorkflowProfileSection({
     }
   }
 
+  const workflowColumns = useMemo<DataTableColumn<WorkflowProfileResponse>[]>(
+    () => [
+      {
+        id: "name",
+        label: "Profile",
+        accessor: (profile) => `${profile.name} ${profile.description ?? ""}`,
+        sortable: true,
+        searchable: true,
+        cell: (profile) => (
+          <div className="min-w-[12rem]">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-fg-primary">{profile.name}</span>
+              {profile.is_default && <Badge>Default</Badge>}
+            </div>
+            {profile.description && (
+              <p className="mt-1 text-xs text-fg-secondary">
+                {profile.description}
+              </p>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: "nodes",
+        label: "Nodes",
+        accessor: (profile) => profile.node_order.join(" "),
+        searchable: true,
+        cell: (profile) => (
+          <div className="flex flex-wrap gap-1.5">
+            {profile.node_order.map((node) => (
+              <Badge key={node}>{node}</Badge>
+            ))}
+          </div>
+        ),
+      },
+      {
+        id: "status",
+        label: "Status",
+        accessor: (profile) => (profile.is_active ? "active" : "inactive"),
+        sortable: true,
+        filterChips: {
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ],
+          valueOf: (profile) => (profile.is_active ? "active" : "inactive"),
+        },
+        cell: (profile) => (
+          <Badge variant={profile.is_active ? "resolved" : "closed"}>
+            {profile.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <Section
       title="Workflow Profiles"
       description="Saved workflow profiles let operators choose which built-in OpsMender nodes run, and in what order, while preserving the tier-gate safety rules."
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-fg-secondary">
-            {profiles.length} saved profile{profiles.length === 1 ? "" : "s"}
-          </p>
-          {!canEdit && (
-            <p className="text-sm text-fg-secondary">
-              Admin role required to manage workflow profiles.
-            </p>
-          )}
-        </div>
-        <Button onClick={openCreateModal} disabled={!canEdit}>
-          <Plus size={14} /> Add Workflow Profile
-        </Button>
-      </div>
+      {!canEdit && (
+        <p className="text-sm text-fg-secondary">
+          Admin role required to manage workflow profiles.
+        </p>
+      )}
 
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
 
-      {profiles.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No workflow profiles yet. Sessions will use OpsMender&apos;s built-in default flow.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border-subtle">
-          <table className="min-w-full divide-y divide-border-subtle text-sm">
-            <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-              <tr>
-                <th className="px-4 py-3">Profile</th>
-                <th className="px-4 py-3">Nodes</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle bg-bg-panel">
-              {profiles.map((profile) => (
-                <tr key={profile.id}>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-fg-primary">{profile.name}</span>
-                      {profile.is_default && <Badge>Default</Badge>}
-                    </div>
-                    {profile.description && (
-                      <p className="mt-1 text-xs text-fg-secondary">{profile.description}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex flex-wrap gap-1.5">
-                      {profile.node_order.map((node) => (
-                        <Badge key={node}>{node}</Badge>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <Badge variant={profile.is_active ? "resolved" : "closed"}>
-                      {profile.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openEditModal(profile)}
-                        disabled={!canEdit}
-                      >
-                        <Pencil size={13} /> Edit
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleDelete(profile)}
-                        disabled={!canEdit}
-                      >
-                        <Trash2 size={13} /> Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        rows={profiles}
+        columns={workflowColumns}
+        rowKey={(profile) => profile.id}
+        storageKey="opsmender:workflow-profiles-table"
+        filterBar
+        searchPlaceholder="Search workflow profiles by name, description, or node…"
+        toolbarRight={
+          <>
+            <span className="text-sm text-fg-secondary">
+              {profiles.length} saved profile{profiles.length === 1 ? "" : "s"}
+            </span>
+            <Button onClick={openCreateModal} disabled={!canEdit}>
+              <Plus size={14} /> Add Workflow Profile
+            </Button>
+          </>
+        }
+        empty={
+          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
+            No workflow profiles yet. Sessions will use OpsMender&apos;s built-in default flow.
+          </div>
+        }
+        rowActions={(profile) => (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => openEditModal(profile)}
+              disabled={!canEdit}
+            >
+              <Pencil size={13} /> Edit
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => handleDelete(profile)}
+              disabled={!canEdit}
+            >
+              <Trash2 size={13} /> Delete
+            </Button>
+          </div>
+        )}
+      />
 
       {modalOpen && (
         <WorkflowProfileModal

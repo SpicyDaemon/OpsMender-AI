@@ -242,7 +242,7 @@ export default function ActivityPage() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       <div className="mb-6">
         <PageHeader
           title="Activity"
@@ -293,6 +293,7 @@ export default function ActivityPage() {
           columns={columns}
           rowKey={(entry) => entry.id}
           storageKey="opsmender:activity-table"
+          filterBar
           searchPlaceholder="Search timestamp, type, tool, or session…"
           dateRangeColumn={{
             id: "timestamp",

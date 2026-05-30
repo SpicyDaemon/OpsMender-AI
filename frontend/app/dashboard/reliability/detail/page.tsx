@@ -141,7 +141,7 @@ function TargetDetailContent() {
       </header>
 
       <main className="flex-1 p-6">
-        <div className="max-w-6xl mx-auto space-y-6">
+        <div className="space-y-6">
           {loading ? (
             <div className="space-y-6">
               <div className="h-40 rounded-xl bg-bg-elevated animate-pulse border border-border-subtle" />

@@ -150,7 +150,7 @@ export default function ReliabilityPage() {
       </header>
 
       <main className="flex-1 p-6">
-        <div className="max-w-6xl mx-auto space-y-6">
+        <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-fg-primary">Monitored Targets</h2>

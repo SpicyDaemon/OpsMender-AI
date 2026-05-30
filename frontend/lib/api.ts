@@ -157,11 +157,13 @@ import type {
 } from "./types";
 
 export async function listIncidents(params?: {
-  status?: string;
-  severity?: string;
+  // Categorical filters accept a single value or a list — a list is sent as
+  // repeated query params and OR-matched server-side.
+  status?: string | string[];
+  severity?: string | string[];
   service_id?: string;
-  team_id?: string;
-  source?: string;
+  team_id?: string | string[];
+  source?: string | string[];
   updated_from?: string;
   updated_to?: string;
   q?: string;
@@ -169,11 +171,19 @@ export async function listIncidents(params?: {
   offset?: number;
 }): Promise<IncidentListResponse> {
   const qs = new URLSearchParams();
-  if (params?.status) qs.set("status", params.status);
-  if (params?.severity) qs.set("severity", params.severity);
-  if (params?.service_id) qs.set("service_id", params.service_id);
-  if (params?.team_id) qs.set("team_id", params.team_id);
-  if (params?.source) qs.set("source", params.source);
+  const add = (key: string, value: string | string[] | undefined) => {
+    if (value == null) return;
+    if (Array.isArray(value)) {
+      for (const v of value) if (v) qs.append(key, v);
+    } else if (value) {
+      qs.set(key, value);
+    }
+  };
+  add("status", params?.status);
+  add("severity", params?.severity);
+  add("service_id", params?.service_id);
+  add("team_id", params?.team_id);
+  add("source", params?.source);
   if (params?.updated_from) qs.set("updated_from", params.updated_from);
   if (params?.updated_to) qs.set("updated_to", params.updated_to);
   if (params?.q) qs.set("q", params.q);

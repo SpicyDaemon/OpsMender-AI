@@ -4,21 +4,43 @@ import { type CSSProperties, type ReactNode } from "react";
 import { Search, X } from "lucide-react";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { FilterDropdown } from "@/components/ui/FilterDropdown";
 
-export interface FilterBarSelect {
+interface FilterOption {
+  value: string;
+  label: string;
+}
+
+/** Multi-select checkbox dropdown (OR within the dimension; empty = all). */
+export interface FilterBarMultiSelect {
+  kind?: "multi";
   id: string;
-  /** Accessible label for the dropdown. */
+  /** Accessible label + the dropdown's display label. */
+  label: string;
+  values: string[];
+  onChange: (next: string[]) => void;
+  options: FilterOption[];
+}
+
+/** Single-select dropdown — for inherently single-choice ranges. */
+export interface FilterBarSingleSelect {
+  kind: "single";
+  id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: { value: string; label: string }[];
+  options: FilterOption[];
 }
 
+export type FilterBarFilter = FilterBarMultiSelect | FilterBarSingleSelect;
+
 /**
- * Shared filter/search bar for Paging tables. Extracted from the Services
- * filter bar so Teams, Escalation Chains, Rosters, Maintenance Windows, and
- * Notifications share one clean layout: search on the left, a wrapping row of
- * select dropdowns, then Clear + a primary action on the right.
+ * Shared filter/search bar for Paging tables: search on the left, a row of
+ * filter dropdowns, then Clear + a primary action on the right. Filter
+ * dropdowns are multi-select checkbox popovers by default (OR within a
+ * dimension; no selection means "all"); pass `kind: "single"` for a plain
+ * single-choice select (e.g. a time range). Stacks on small screens, collapses
+ * to one row at xl.
  */
 export function PagingFilterBar({
   search,
@@ -34,27 +56,24 @@ export function PagingFilterBar({
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
   searchAriaLabel?: string;
-  filters?: FilterBarSelect[];
+  filters?: FilterBarFilter[];
   hasFilters: boolean;
   onClear: () => void;
   action?: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-3 shadow-sm">
-      {/* Grid (not flex): grid tracks constrain each control so the shared
-          Select's `w-full` fills its track instead of forcing its own row.
-          Stacks on small screens, collapses to a single row at xl — matching
-          the Services filter bar. Column count is dynamic via a CSS var. */}
+      {/* Grid (not flex): grid tracks constrain each control. Stacks on small
+          screens, collapses to one row at xl. Column count is dynamic. */}
       <div
         className="grid gap-3 xl:[grid-template-columns:var(--paging-filter-cols)]"
         style={
           {
             // Omit the repeat() when there are no filters — `repeat(0, …)`
-            // is invalid CSS and would drop the whole declaration, leaving
-            // search + action stacked (e.g. the Teams bar).
+            // is invalid CSS and would drop the whole declaration.
             "--paging-filter-cols":
               filters.length > 0
-                ? `minmax(16rem,1.25fr) repeat(${filters.length}, minmax(8rem,0.7fr)) auto`
+                ? `minmax(16rem,1.25fr) repeat(${filters.length}, minmax(9rem,0.7fr)) auto`
                 : "minmax(16rem,1.25fr) auto",
           } as CSSProperties
         }
@@ -72,21 +91,37 @@ export function PagingFilterBar({
             className="h-11 pl-9"
           />
         </div>
-        {filters.map((f) => (
-          <Select
-            key={f.id}
-            aria-label={f.label}
-            value={f.value}
-            onChange={(e) => f.onChange(e.target.value)}
-            className="h-11"
-          >
-            {f.options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-        ))}
+        {filters.map((f) =>
+          f.kind === "single" ? (
+            <Select
+              key={f.id}
+              aria-label={f.label}
+              value={f.value}
+              onChange={(e) => f.onChange(e.target.value)}
+              className="h-11"
+            >
+              {f.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <FilterDropdown
+              key={f.id}
+              label={f.label}
+              options={f.options}
+              selected={f.values}
+              onToggle={(value) =>
+                f.onChange(
+                  f.values.includes(value)
+                    ? f.values.filter((v) => v !== value)
+                    : [...f.values, value],
+                )
+              }
+            />
+          ),
+        )}
         <div className="flex items-center justify-end gap-2">
           {hasFilters ? (
             <Button variant="ghost" size="sm" onClick={onClear} className="h-11">

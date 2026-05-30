@@ -681,9 +681,6 @@ interface ServiceRow {
   last_incident_at: string | null;
 }
 
-type ServiceStatusFilter = "" | "active" | "inactive";
-type ServiceCoverageFilter = "" | "covered" | "uncovered";
-type ServiceIncidentFilter = "" | "has_open" | "no_open";
 type ServiceTimeFilter = "" | "24h" | "7d" | "30d" | "never";
 
 const SERVICE_TIME_OPTIONS: { value: ServiceTimeFilter; label: string }[] = [
@@ -738,10 +735,10 @@ function ServicesPanel({
   };
   const [form, setForm] = useState(emptyForm);
   const [serviceSearch, setServiceSearch] = useState("");
-  const [teamFilter, setTeamFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>("");
-  const [coverageFilter, setCoverageFilter] = useState<ServiceCoverageFilter>("");
-  const [incidentFilter, setIncidentFilter] = useState<ServiceIncidentFilter>("");
+  const [teamFilter, setTeamFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [coverageFilter, setCoverageFilter] = useState<string[]>([]);
+  const [incidentFilter, setIncidentFilter] = useState<string[]>([]);
   const [timeFilter, setTimeFilter] = useState<ServiceTimeFilter>("");
   const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [users, setUsers] = useState<UserResponse[]>([]);
@@ -975,15 +972,20 @@ function ServicesPanel({
           .toLowerCase();
         if (!haystack.includes(query)) return false;
       }
-      if (teamFilter && row.service.team_id !== teamFilter) return false;
-      if (statusFilter) {
+      if (teamFilter.length && !teamFilter.includes(row.service.team_id))
+        return false;
+      if (statusFilter.length) {
         const status = row.service.is_active ? "active" : "inactive";
-        if (status !== statusFilter) return false;
+        if (!statusFilter.includes(status)) return false;
       }
-      if (coverageFilter === "covered" && !row.on_call_username) return false;
-      if (coverageFilter === "uncovered" && row.on_call_username) return false;
-      if (incidentFilter === "has_open" && row.open_incidents <= 0) return false;
-      if (incidentFilter === "no_open" && row.open_incidents > 0) return false;
+      if (coverageFilter.length) {
+        const coverage = row.on_call_username ? "covered" : "uncovered";
+        if (!coverageFilter.includes(coverage)) return false;
+      }
+      if (incidentFilter.length) {
+        const incidentState = row.open_incidents > 0 ? "has_open" : "no_open";
+        if (!incidentFilter.includes(incidentState)) return false;
+      }
       if (!serviceRowMatchesTime(row, timeFilter)) return false;
       return true;
     });
@@ -999,10 +1001,10 @@ function ServicesPanel({
 
   const hasServiceFilters = Boolean(
     serviceSearch ||
-      teamFilter ||
-      statusFilter ||
-      coverageFilter ||
-      incidentFilter ||
+      teamFilter.length ||
+      statusFilter.length ||
+      coverageFilter.length ||
+      incidentFilter.length ||
       timeFilter,
   );
 
@@ -1140,27 +1142,65 @@ function ServicesPanel({
         />
       ) : (
         <>
-          <ServiceFilterBar
+          <PagingFilterBar
             search={serviceSearch}
             onSearchChange={setServiceSearch}
-            teams={teams}
-            teamFilter={teamFilter}
-            onTeamFilterChange={setTeamFilter}
-            statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
-            coverageFilter={coverageFilter}
-            onCoverageFilterChange={setCoverageFilter}
-            incidentFilter={incidentFilter}
-            onIncidentFilterChange={setIncidentFilter}
-            timeFilter={timeFilter}
-            onTimeFilterChange={setTimeFilter}
+            searchPlaceholder="Search services..."
+            searchAriaLabel="Search services"
+            filters={[
+              {
+                id: "team",
+                label: "teams",
+                values: teamFilter,
+                onChange: setTeamFilter,
+                options: teams.map((t) => ({ value: t.id, label: t.name })),
+              },
+              {
+                id: "status",
+                label: "statuses",
+                values: statusFilter,
+                onChange: setStatusFilter,
+                options: [
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                ],
+              },
+              {
+                id: "coverage",
+                label: "coverage",
+                values: coverageFilter,
+                onChange: setCoverageFilter,
+                options: [
+                  { value: "covered", label: "On-call covered" },
+                  { value: "uncovered", label: "No on-call" },
+                ],
+              },
+              {
+                id: "incident",
+                label: "incident states",
+                values: incidentFilter,
+                onChange: setIncidentFilter,
+                options: [
+                  { value: "has_open", label: "Has open incidents" },
+                  { value: "no_open", label: "No open incidents" },
+                ],
+              },
+              {
+                kind: "single",
+                id: "time",
+                label: "Filter services by last incident",
+                value: timeFilter,
+                onChange: (v) => setTimeFilter(v as ServiceTimeFilter),
+                options: SERVICE_TIME_OPTIONS,
+              },
+            ]}
             hasFilters={hasServiceFilters}
             onClear={() => {
               setServiceSearch("");
-              setTeamFilter("");
-              setStatusFilter("");
-              setCoverageFilter("");
-              setIncidentFilter("");
+              setTeamFilter([]);
+              setStatusFilter([]);
+              setCoverageFilter([]);
+              setIncidentFilter([]);
               setTimeFilter("");
             }}
             action={
@@ -1353,129 +1393,6 @@ function ServicesPanel({
   );
 }
 
-function ServiceFilterBar({
-  search,
-  onSearchChange,
-  teams,
-  teamFilter,
-  onTeamFilterChange,
-  statusFilter,
-  onStatusFilterChange,
-  coverageFilter,
-  onCoverageFilterChange,
-  incidentFilter,
-  onIncidentFilterChange,
-  timeFilter,
-  onTimeFilterChange,
-  hasFilters,
-  onClear,
-  action,
-}: {
-  search: string;
-  onSearchChange: (value: string) => void;
-  teams: TeamResponse[];
-  teamFilter: string;
-  onTeamFilterChange: (value: string) => void;
-  statusFilter: ServiceStatusFilter;
-  onStatusFilterChange: (value: ServiceStatusFilter) => void;
-  coverageFilter: ServiceCoverageFilter;
-  onCoverageFilterChange: (value: ServiceCoverageFilter) => void;
-  incidentFilter: ServiceIncidentFilter;
-  onIncidentFilterChange: (value: ServiceIncidentFilter) => void;
-  timeFilter: ServiceTimeFilter;
-  onTimeFilterChange: (value: ServiceTimeFilter) => void;
-  hasFilters: boolean;
-  onClear: () => void;
-  action: ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-3 shadow-sm">
-      <div className="grid gap-3 xl:grid-cols-[minmax(16rem,1.25fr)_repeat(5,minmax(8rem,0.7fr))_auto]">
-        <div className="relative">
-          <Search
-            size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-          />
-          <Input
-            aria-label="Search services"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search services..."
-            className="h-11 pl-9"
-          />
-        </div>
-        <Select
-          aria-label="Filter services by team"
-          value={teamFilter}
-          onChange={(e) => onTeamFilterChange(e.target.value)}
-          className="h-11"
-        >
-          <option value="">All teams</option>
-          {teams.map((team) => (
-            <option key={team.id} value={team.id}>
-              {team.name}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Filter services by status"
-          value={statusFilter}
-          onChange={(e) => onStatusFilterChange(e.target.value as ServiceStatusFilter)}
-          className="h-11"
-        >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </Select>
-        <Select
-          aria-label="Filter services by on-call coverage"
-          value={coverageFilter}
-          onChange={(e) =>
-            onCoverageFilterChange(e.target.value as ServiceCoverageFilter)
-          }
-          className="h-11"
-        >
-          <option value="">All coverage</option>
-          <option value="covered">On-call covered</option>
-          <option value="uncovered">No on-call</option>
-        </Select>
-        <Select
-          aria-label="Filter services by open incidents"
-          value={incidentFilter}
-          onChange={(e) =>
-            onIncidentFilterChange(e.target.value as ServiceIncidentFilter)
-          }
-          className="h-11"
-        >
-          <option value="">All incident states</option>
-          <option value="has_open">Has open incidents</option>
-          <option value="no_open">No open incidents</option>
-        </Select>
-        <Select
-          aria-label="Filter services by last incident"
-          value={timeFilter}
-          onChange={(e) => onTimeFilterChange(e.target.value as ServiceTimeFilter)}
-          className="h-11"
-        >
-          {SERVICE_TIME_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <div className="flex items-center justify-end gap-2">
-          {hasFilters ? (
-            <Button variant="ghost" size="sm" onClick={onClear} className="h-11">
-              <X size={14} />
-              Clear
-            </Button>
-          ) : null}
-          {action}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function RostersPanel({
   rosters,
@@ -1493,9 +1410,9 @@ function RostersPanel({
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [initialMemberIds, setInitialMemberIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [teamFilter, setTeamFilter] = useState("");
-  const [patternFilter, setPatternFilter] = useState("");
-  const [enabledFilter, setEnabledFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState<string[]>([]);
+  const [patternFilter, setPatternFilter] = useState<string[]>([]);
+  const [enabledFilter, setEnabledFilter] = useState<string[]>([]);
   const deferredSearch = useDeferredValue(search);
   const emptyForm = {
     name: "",
@@ -1680,10 +1597,7 @@ function RostersPanel({
   }, [teams]);
 
   const teamFilterOptions = useMemo(
-    () => [
-      { value: "", label: "All teams" },
-      ...teams.map((t) => ({ value: t.id, label: t.name })),
-    ],
+    () => teams.map((t) => ({ value: t.id, label: t.name })),
     [teams],
   );
 
@@ -1696,11 +1610,12 @@ function RostersPanel({
           .toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-      if (teamFilter && r.team_id !== teamFilter) return false;
-      if (patternFilter && r.pattern !== patternFilter) return false;
-      if (enabledFilter) {
+      if (teamFilter.length && !teamFilter.includes(r.team_id)) return false;
+      if (patternFilter.length && !patternFilter.includes(r.pattern))
+        return false;
+      if (enabledFilter.length) {
         const state = r.is_active ? "enabled" : "disabled";
-        if (state !== enabledFilter) return false;
+        if (!enabledFilter.includes(state)) return false;
       }
       return true;
     });
@@ -1787,7 +1702,7 @@ function RostersPanel({
   );
 
   const hasFilters = Boolean(
-    search || teamFilter || patternFilter || enabledFilter,
+    search || teamFilter.length || patternFilter.length || enabledFilter.length,
   );
 
   return (
@@ -1814,18 +1729,17 @@ function RostersPanel({
             filters={[
               {
                 id: "team",
-                label: "Filter rosters by team",
-                value: teamFilter,
+                label: "teams",
+                values: teamFilter,
                 onChange: setTeamFilter,
                 options: teamFilterOptions,
               },
               {
                 id: "pattern",
-                label: "Filter rosters by pattern",
-                value: patternFilter,
+                label: "patterns",
+                values: patternFilter,
                 onChange: setPatternFilter,
                 options: [
-                  { value: "", label: "All patterns" },
                   { value: "weekly", label: "Weekly" },
                   { value: "daily", label: "Daily" },
                   { value: "custom_n_days", label: "Custom" },
@@ -1833,11 +1747,10 @@ function RostersPanel({
               },
               {
                 id: "enabled",
-                label: "Filter rosters by state",
-                value: enabledFilter,
+                label: "states",
+                values: enabledFilter,
                 onChange: setEnabledFilter,
                 options: [
-                  { value: "", label: "All states" },
                   { value: "enabled", label: "Enabled" },
                   { value: "disabled", label: "Disabled" },
                 ],
@@ -1846,9 +1759,9 @@ function RostersPanel({
             hasFilters={hasFilters}
             onClear={() => {
               setSearch("");
-              setTeamFilter("");
-              setPatternFilter("");
-              setEnabledFilter("");
+              setTeamFilter([]);
+              setPatternFilter([]);
+              setEnabledFilter([]);
             }}
             action={
               <Button size="sm" onClick={openCreate} disabled={teams.length === 0}>
@@ -2073,8 +1986,8 @@ function ChainsPanel({
   >({});
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [search, setSearch] = useState("");
-  const [teamFilter, setTeamFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
@@ -2189,7 +2102,6 @@ function ChainsPanel({
 
   const teamFilterOptions = useMemo(
     () => [
-      { value: "", label: "All teams" },
       ...teams.map((t) => ({ value: t.id, label: t.name })),
     ],
     [teams],
@@ -2204,10 +2116,10 @@ function ChainsPanel({
           .toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-      if (teamFilter && c.team_id !== teamFilter) return false;
-      if (statusFilter) {
+      if (teamFilter.length && !teamFilter.includes(c.team_id)) return false;
+      if (statusFilter.length) {
         const status = c.is_active ? "active" : "inactive";
-        if (status !== statusFilter) return false;
+        if (!statusFilter.includes(status)) return false;
       }
       return true;
     });
@@ -2267,7 +2179,7 @@ function ChainsPanel({
     [teamNameById],
   );
 
-  const hasFilters = Boolean(search || teamFilter || statusFilter);
+  const hasFilters = Boolean(search || teamFilter.length || statusFilter.length);
 
   return (
     <section className="space-y-3">
@@ -2293,18 +2205,17 @@ function ChainsPanel({
             filters={[
               {
                 id: "team",
-                label: "Filter chains by team",
-                value: teamFilter,
+                label: "teams",
+                values: teamFilter,
                 onChange: setTeamFilter,
                 options: teamFilterOptions,
               },
               {
                 id: "status",
-                label: "Filter chains by status",
-                value: statusFilter,
+                label: "statuses",
+                values: statusFilter,
                 onChange: setStatusFilter,
                 options: [
-                  { value: "", label: "All statuses" },
                   { value: "active", label: "Active" },
                   { value: "inactive", label: "Inactive" },
                 ],
@@ -2313,8 +2224,8 @@ function ChainsPanel({
             hasFilters={hasFilters}
             onClear={() => {
               setSearch("");
-              setTeamFilter("");
-              setStatusFilter("");
+              setTeamFilter([]);
+              setStatusFilter([]);
             }}
             action={
               <Button size="sm" onClick={openCreate} disabled={teams.length === 0}>
@@ -2998,8 +2909,8 @@ function MaintenanceWindowsPanel({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MaintenanceWindowResponse | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | MaintenanceStatus>("");
-  const [scopeFilter, setScopeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [scopeFilter, setScopeFilter] = useState<string[]>([]);
   const deferredSearch = useDeferredValue(search);
   const nowMinusOne = () => {
     const d = new Date();
@@ -3132,8 +3043,10 @@ function MaintenanceWindowsPanel({
           .toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-      if (statusFilter && statusOf(w) !== statusFilter) return false;
-      if (scopeFilter && w.scope_type !== scopeFilter) return false;
+      if (statusFilter.length && !statusFilter.includes(statusOf(w)))
+        return false;
+      if (scopeFilter.length && !scopeFilter.includes(w.scope_type))
+        return false;
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3207,7 +3120,9 @@ function MaintenanceWindowsPanel({
     [services, rosters, teams],
   );
 
-  const hasFilters = Boolean(search || statusFilter || scopeFilter);
+  const hasFilters = Boolean(
+    search || statusFilter.length || scopeFilter.length,
+  );
 
   return (
     <section className="space-y-3">
@@ -3233,11 +3148,10 @@ function MaintenanceWindowsPanel({
             filters={[
               {
                 id: "status",
-                label: "Filter windows by status",
-                value: statusFilter,
-                onChange: (v) => setStatusFilter(v as "" | MaintenanceStatus),
+                label: "statuses",
+                values: statusFilter,
+                onChange: setStatusFilter,
                 options: [
-                  { value: "", label: "All statuses" },
                   { value: "active", label: "Active" },
                   { value: "scheduled", label: "Scheduled" },
                   { value: "past", label: "Past" },
@@ -3245,11 +3159,10 @@ function MaintenanceWindowsPanel({
               },
               {
                 id: "scope",
-                label: "Filter windows by scope",
-                value: scopeFilter,
+                label: "scopes",
+                values: scopeFilter,
                 onChange: setScopeFilter,
                 options: [
-                  { value: "", label: "All scopes" },
                   { value: "global", label: "Global" },
                   { value: "service", label: "Service" },
                   { value: "team", label: "Team" },
@@ -3260,8 +3173,8 @@ function MaintenanceWindowsPanel({
             hasFilters={hasFilters}
             onClear={() => {
               setSearch("");
-              setStatusFilter("");
-              setScopeFilter("");
+              setStatusFilter([]);
+              setScopeFilter([]);
             }}
             action={
               <Button size="sm" onClick={openCreate}>

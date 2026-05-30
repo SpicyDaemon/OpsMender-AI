@@ -34,6 +34,7 @@ import {
   type DataTableColumn,
 } from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { Input, Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -327,10 +328,10 @@ export default function IncidentsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<IncidentStatus | "">("");
-  const [severityFilter, setSeverityFilter] = useState<Severity | "">("");
-  const [sourceFilter, setSourceFilter] = useState("");
-  const [teamFilter, setTeamFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [severityFilter, setSeverityFilter] = useState<string[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [timePreset, setTimePreset] = useState<TimePreset>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -389,10 +390,10 @@ export default function IncidentsPage() {
       const inc = await listIncidents({
         limit: 200,
         q: deferredSearch.trim() || undefined,
-        status: statusFilter || undefined,
-        severity: severityFilter || undefined,
-        source: sourceFilter || undefined,
-        team_id: teamFilter || undefined,
+        status: statusFilter.length ? statusFilter : undefined,
+        severity: severityFilter.length ? severityFilter : undefined,
+        source: sourceFilter.length ? sourceFilter : undefined,
+        team_id: teamFilter.length ? teamFilter : undefined,
         updated_from: updatedFrom || undefined,
         updated_to: updatedTo || undefined,
       });
@@ -485,7 +486,7 @@ export default function IncidentsPage() {
   }, [items]);
 
   return (
-    <div className="mx-auto max-w-[96rem]">
+    <div>
       <SetupChecklist />
       <div className="mb-6">
         <PageHeader
@@ -545,10 +546,10 @@ export default function IncidentsPage() {
         onCustomToChange={setCustomTo}
         onClear={() => {
           setSearch("");
-          setTeamFilter("");
-          setSourceFilter("");
-          setStatusFilter("");
-          setSeverityFilter("");
+          setTeamFilter([]);
+          setSourceFilter([]);
+          setStatusFilter([]);
+          setSeverityFilter([]);
           setTimePreset("all");
           setCustomFrom("");
           setCustomTo("");
@@ -685,14 +686,14 @@ function IncidentFilterBar({
   search: string;
   onSearchChange: (value: string) => void;
   teams: TeamResponse[];
-  teamFilter: string;
-  onTeamFilterChange: (value: string) => void;
-  sourceFilter: string;
-  onSourceFilterChange: (value: string) => void;
-  statusFilter: IncidentStatus | "";
-  onStatusFilterChange: (value: IncidentStatus | "") => void;
-  severityFilter: Severity | "";
-  onSeverityFilterChange: (value: Severity | "") => void;
+  teamFilter: string[];
+  onTeamFilterChange: (value: string[]) => void;
+  sourceFilter: string[];
+  onSourceFilterChange: (value: string[]) => void;
+  statusFilter: string[];
+  onStatusFilterChange: (value: string[]) => void;
+  severityFilter: string[];
+  onSeverityFilterChange: (value: string[]) => void;
   timePreset: TimePreset;
   onTimePresetChange: (value: TimePreset) => void;
   customFrom: string;
@@ -701,12 +702,14 @@ function IncidentFilterBar({
   onCustomToChange: (value: string) => void;
   onClear: () => void;
 }) {
+  const toggle = (arr: string[], value: string) =>
+    arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
   const hasFilters = Boolean(
     search ||
-      teamFilter ||
-      sourceFilter ||
-      statusFilter ||
-      severityFilter ||
+      teamFilter.length ||
+      sourceFilter.length ||
+      statusFilter.length ||
+      severityFilter.length ||
       timePreset !== "all" ||
       customFrom ||
       customTo,
@@ -727,55 +730,39 @@ function IncidentFilterBar({
             className="h-11 pl-9"
           />
         </div>
-        <Select
-          aria-label="Filter by team"
-          value={teamFilter}
-          onChange={(e) => onTeamFilterChange(e.target.value)}
-          className="h-11"
-        >
-          <option value="">All teams</option>
-          {teams.map((team) => (
-            <option key={team.id} value={team.id}>
-              {team.name}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Filter by source"
-          value={sourceFilter}
-          onChange={(e) => onSourceFilterChange(e.target.value)}
-          className="h-11"
-        >
-          {SOURCE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Filter by status"
-          value={statusFilter}
-          onChange={(e) => onStatusFilterChange(e.target.value as IncidentStatus | "")}
-          className="h-11"
-        >
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Filter by severity"
-          value={severityFilter}
-          onChange={(e) => onSeverityFilterChange(e.target.value as Severity | "")}
-          className="h-11"
-        >
-          {SEVERITY_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
+        <FilterDropdown
+          label="teams"
+          options={teams.map((team) => ({ value: team.id, label: team.name }))}
+          selected={teamFilter}
+          onToggle={(v) => onTeamFilterChange(toggle(teamFilter, v))}
+        />
+        <FilterDropdown
+          label="sources"
+          options={SOURCE_OPTIONS.filter((o) => o.value).map((o) => ({
+            value: o.value,
+            label: o.label,
+          }))}
+          selected={sourceFilter}
+          onToggle={(v) => onSourceFilterChange(toggle(sourceFilter, v))}
+        />
+        <FilterDropdown
+          label="statuses"
+          options={STATUS_OPTIONS.filter((o) => o.value).map((o) => ({
+            value: o.value,
+            label: o.label,
+          }))}
+          selected={statusFilter}
+          onToggle={(v) => onStatusFilterChange(toggle(statusFilter, v))}
+        />
+        <FilterDropdown
+          label="severities"
+          options={SEVERITY_OPTIONS.filter((o) => o.value).map((o) => ({
+            value: o.value,
+            label: o.label,
+          }))}
+          selected={severityFilter}
+          onToggle={(v) => onSeverityFilterChange(toggle(severityFilter, v))}
+        />
         <IncidentTimeFilter
           preset={timePreset}
           onPresetChange={onTimePresetChange}

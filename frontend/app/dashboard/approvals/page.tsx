@@ -100,7 +100,7 @@ export default function ApprovalsPage() {
   const pendingCount = data?.items.filter((a) => a.status === "pending").length ?? 0;
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div>
       <div className="mb-6">
         <PageHeader
           title={

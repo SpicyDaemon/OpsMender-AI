@@ -441,7 +441,7 @@ export default function DashboardIndex() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div>
       <PageHeader
         title="Operations dashboard"
         subtitle="What needs your attention right now."

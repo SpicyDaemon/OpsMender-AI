@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
+import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { Input, Label } from "@/components/ui/Input";
 
 // ---------------------------------------------------------------------------
@@ -184,72 +185,6 @@ function paginationItems(currentPage: number, totalPages: number): Array<number 
     items.push(page);
   }
   return items;
-}
-
-// ---------------------------------------------------------------------------
-// Multi-select checkbox filter dropdown (Services-style filter bar)
-// ---------------------------------------------------------------------------
-
-function FilterDropdown({
-  label,
-  options,
-  selected,
-  onToggle,
-}: {
-  label: string;
-  options: FilterChipOption[];
-  selected: Set<string>;
-  onToggle: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  const count = selected.size;
-  const display = count === 0 ? `All ${label}` : `${label} · ${count}`;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-11 min-w-[9rem] items-center justify-between gap-2 rounded-md border border-border-strong bg-bg-input px-3 text-sm text-fg-primary"
-      >
-        <span className="truncate">{display}</span>
-        <ChevronDown size={15} className="shrink-0 text-fg-muted" />
-      </button>
-      {open && (
-        <div className="absolute z-30 mt-1 max-h-64 w-56 overflow-y-auto rounded-md border border-border-strong bg-bg-elevated p-1 shadow-lg">
-          {options.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-fg-muted">No options.</p>
-          ) : (
-            options.map((o) => (
-              <label
-                key={o.value}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(o.value)}
-                  onChange={() => onToggle(o.value)}
-                />
-                <span className="truncate">{o.label}</span>
-              </label>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +476,7 @@ export function DataTable<T>({
                 key={col.id}
                 label={col.label}
                 options={col.filterChips!.options}
-                selected={chipFilters[col.id] ?? new Set<string>()}
+                selected={[...(chipFilters[col.id] ?? new Set<string>())]}
                 onToggle={(value) => toggleChip(col.id, value)}
               />
             ))}

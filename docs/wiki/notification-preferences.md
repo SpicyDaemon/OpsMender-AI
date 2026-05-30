@@ -114,6 +114,8 @@ Adding a channel here makes it immediately routable in **My Routing** with no fu
 
 ## Future direction (not implemented yet)
 
+> The full long-term model — Personal Operator Routing vs. Team Channels vs. Viewer Notifications, interactive incident cards, and the end-to-end incident flow — lives in [Future Incident Communication Model](../future-incident-communication.md).
+
 The staged-routing architecture is intentionally channel-agnostic so the following can be layered on without changing routing:
 
 - **Rich incident cards on chat-capable channels** (Slack, Teams, Discord, Telegram, Mattermost, Matrix, WhatsApp) with inline actions: **Acknowledge**, **Resolve**, **Escalate**, **Start Session**.

@@ -4799,7 +4799,7 @@ function WorkflowProfileModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={initialProfile ? "Edit Workflow Profile" : "Add Workflow Profile"}
+      title={initialProfile ? "Edit Session Profile" : "Add Session Profile"}
       maxWidth="max-w-2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -4810,7 +4810,7 @@ function WorkflowProfileModal({
               id="workflow-name"
               value={form.name}
               onChange={(e) => setField("name", e.target.value)}
-              placeholder="default-linear"
+              placeholder="Read-only Investigation"
               required
             />
           </div>
@@ -4820,16 +4820,17 @@ function WorkflowProfileModal({
               id="workflow-desc"
               value={form.description}
               onChange={(e) => setField("description", e.target.value)}
-              placeholder="Standard observe → diagnose → plan flow"
+              placeholder="Investigate and diagnose only — no changes"
             />
           </div>
         </div>
 
         <div>
-          <Label>Node Order</Label>
+          <Label>Phase order</Label>
           <p className="mt-1 text-xs text-fg-muted">
-            Reorder the fixed OpsMender nodes. Safety rules are enforced server-side:
-            `execute` requires `tier_gate` immediately before it.
+            Advanced: reorder the phases the agent runs during a session. Safety
+            rules are enforced automatically — Execute always runs immediately
+            after the Tier Gate.
           </p>
           <div className="mt-3 space-y-2">
             {form.node_order.map((node, index) => {
@@ -4960,10 +4961,10 @@ export function WorkflowProfileSection({
       };
       if (editing) {
         await updateWorkflowProfile(editing.id, payload);
-        setNotice("Workflow profile updated.");
+        setNotice("Session profile updated.");
       } else {
         await createWorkflowProfile(payload);
-        setNotice("Workflow profile created.");
+        setNotice("Session profile created.");
       }
       setModalOpen(false);
       setEditing(null);
@@ -4977,7 +4978,7 @@ export function WorkflowProfileSection({
 
   async function handleDelete(profile: WorkflowProfileResponse) {
     const confirmed = window.confirm(
-      `Delete workflow profile "${profile.name}"?`,
+      `Delete session profile "${profile.name}"?`,
     );
     if (!confirmed) return;
 
@@ -4985,7 +4986,7 @@ export function WorkflowProfileSection({
     setNotice("");
     try {
       await deleteWorkflowProfile(profile.id);
-      setNotice("Workflow profile deleted.");
+      setNotice("Session profile deleted.");
       await onReload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -5015,8 +5016,8 @@ export function WorkflowProfileSection({
         ),
       },
       {
-        id: "nodes",
-        label: "Nodes",
+        id: "phases",
+        label: "Phases",
         accessor: (profile) => profile.node_order.join(" "),
         searchable: true,
         cell: (profile) => (
@@ -5051,12 +5052,12 @@ export function WorkflowProfileSection({
 
   return (
     <Section
-      title="Workflow Profiles"
-      description="Saved workflow profiles let operators choose which built-in OpsMender nodes run, and in what order, while preserving the tier-gate safety rules."
+      title="Session Profiles"
+      description="Session Profiles control how an AI incident session runs — which phases the agent goes through and in what order. Sessions use the built-in default unless a profile is assigned; the tier-gate safety rules are always preserved."
     >
       {!canEdit && (
         <p className="text-sm text-fg-secondary">
-          Admin role required to manage workflow profiles.
+          Admin role required to manage session profiles.
         </p>
       )}
 
@@ -5069,20 +5070,20 @@ export function WorkflowProfileSection({
         rowKey={(profile) => profile.id}
         storageKey="opsmender:workflow-profiles-table"
         filterBar
-        searchPlaceholder="Search workflow profiles by name, description, or node…"
+        searchPlaceholder="Search session profiles by name, description, or phase…"
         toolbarRight={
           <>
             <span className="text-sm text-fg-secondary">
               {profiles.length} saved profile{profiles.length === 1 ? "" : "s"}
             </span>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Add Workflow Profile
+              <Plus size={14} /> Add Session Profile
             </Button>
           </>
         }
         empty={
           <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No workflow profiles yet. Sessions will use OpsMender&apos;s built-in default flow.
+            No custom session profiles yet. Sessions will use OpsMender&apos;s built-in default flow.
           </div>
         }
         rowActions={(profile) => (

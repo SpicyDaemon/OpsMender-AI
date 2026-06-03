@@ -27,7 +27,6 @@ import {
   ShieldCheck,
   UserCog,
   Users,
-  Workflow,
   Wrench,
   X,
 } from "lucide-react";
@@ -97,7 +96,6 @@ export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
         { href: "/dashboard/memories", label: "Memories", icon: Brain },
         { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network },
         { href: "/dashboard/models", label: "Models", icon: Cpu },
-        { href: "/dashboard/workflows", label: "Workflows", icon: Workflow },
         { href: "/dashboard/agent-teams", label: "Agent Teams", icon: Bot },
       ],
     },

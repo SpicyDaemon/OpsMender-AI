@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Future direction captured: Multi-Agent Session Profiles.** New `docs/future-multi-agent-session-profiles.md` documents the long-term north star where a Session Profile may assign specialized agents (Observer / Diagnostician / Planner / Executor / Verifier / Reporter) to different incident-response phases — each potentially with its own model, prompt, MCP access, skill set, approval requirement, and memory scope. Added as **Theme 9** in `docs/V2_ROADMAP.md` (explicitly *beyond* committed v2 core, since it would evolve the LangGraph workflow shape) and as decision **D-029** + a glossary entry in `docs/REFERENCE.md`. Documentation only — **no code, schema, API, UI, or test changes**; the single-agent Session Profile remains the supported v1 behavior.
+
 ### Fixed
 
 - **Log level now actually applies.** `OPSMENDER_LOG_LEVEL` was read into config but never wired to Python logging or uvicorn, so the backend always logged at INFO regardless of the env var, the dashboard Config setting, or a container restart. New `backend/logging_config.py::configure_logging()` sets the root + `uvicorn`/`uvicorn.access` logger levels (so the setting governs HTTP access logs — the `GET /config 200 OK` lines — too). It's applied in three places: `create_app()` from the env var at boot, lifespan startup re-applies the persisted dashboard value (new `RuntimeConfigRepo.get_global_value`) so a UI change survives restart, and `PUT /config` applies the new level **live** to the running process. Log level is process-global (single-workspace assumption). `.env`/`.env.example` log-level comment corrected to include `CRITICAL` (which the UI already offered).

@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Search, X } from "lucide-react";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -63,22 +63,12 @@ export function PagingFilterBar({
 }) {
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-3 shadow-sm">
-      {/* Grid (not flex): grid tracks constrain each control. Stacks on small
-          screens, collapses to one row at xl. Column count is dynamic. */}
-      <div
-        className="grid gap-3 xl:[grid-template-columns:var(--paging-filter-cols)]"
-        style={
-          {
-            // Omit the repeat() when there are no filters — `repeat(0, …)`
-            // is invalid CSS and would drop the whole declaration.
-            "--paging-filter-cols":
-              filters.length > 0
-                ? `minmax(16rem,1.25fr) repeat(${filters.length}, minmax(9rem,0.7fr)) auto`
-                : "minmax(16rem,1.25fr) auto",
-          } as CSSProperties
-        }
-      >
-        <div className="relative">
+      {/* Flex row matching the DataTable filterBar (MCP Servers): the search
+          grows to fill, filter controls keep their natural width at a single
+          consistent gap, and the Clear + primary action group is pushed to
+          the right edge. Wraps on narrow screens. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[16rem] flex-1">
           <Search
             size={15}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
@@ -98,7 +88,7 @@ export function PagingFilterBar({
               aria-label={f.label}
               value={f.value}
               onChange={(e) => f.onChange(e.target.value)}
-              className="h-11"
+              className="h-11 !w-auto min-w-[9rem]"
             >
               {f.options.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -122,7 +112,7 @@ export function PagingFilterBar({
             />
           ),
         )}
-        <div className="flex items-center justify-end gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {hasFilters ? (
             <Button variant="ghost" size="sm" onClick={onClear} className="h-11">
               <X size={14} />

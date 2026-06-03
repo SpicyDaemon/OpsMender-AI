@@ -716,8 +716,11 @@ function IncidentFilterBar({
   );
   return (
     <div className="mb-4 rounded-xl border border-border-subtle bg-bg-panel/95 p-3 shadow-sm">
-      <div className="grid gap-3 lg:grid-cols-[minmax(15rem,1.35fr)_repeat(4,minmax(8rem,0.75fr))_minmax(12rem,0.8fr)_auto]">
-        <div className="relative">
+      {/* Flex row matching the DataTable filterBar (MCP Servers): search grows
+          to fill, filters keep their natural width at a single consistent gap,
+          and Clear is pushed to the right. Wraps on narrow screens. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[16rem] flex-1">
           <Search
             size={15}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
@@ -771,12 +774,14 @@ function IncidentFilterBar({
           customTo={customTo}
           onCustomToChange={onCustomToChange}
         />
-        {hasFilters ? (
-          <Button variant="ghost" size="sm" onClick={onClear} className="h-11">
-            <X size={14} />
-            Clear
-          </Button>
-        ) : null}
+        <div className="ml-auto flex items-center gap-2">
+          {hasFilters ? (
+            <Button variant="ghost" size="sm" onClick={onClear} className="h-11">
+              <X size={14} />
+              Clear
+            </Button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -809,7 +814,7 @@ function IncidentTimeFilter({
       : TIME_PRESETS.find((option) => option.value === preset)?.label ?? "All time";
 
   return (
-    <div className="relative">
+    <div className="relative w-48">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}

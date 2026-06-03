@@ -23,6 +23,7 @@ from backend.api.schemas import (
     SetupChecklistResponse,
 )
 from backend.config_loader import Config, set_env_path
+from backend.logging_config import configure_logging
 from backend.db.models import User
 from backend.db.repos import (
     IngestTokenRepo,
@@ -225,6 +226,10 @@ async def update_config(
             key="logging_level",
             value=body.logging_level,
         )
+        # Apply live to the running process. Log level is process-global, so a
+        # save here takes effect immediately without a restart (single-workspace
+        # assumption — see backend/logging_config.py).
+        configure_logging(body.logging_level)
     if body.ingest_auto_start_enabled is not None:
         await RuntimeConfigRepo.set(
             db,

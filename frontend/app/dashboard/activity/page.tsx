@@ -5,10 +5,11 @@ import Link from "next/link";
 import {
   BookOpen,
   ClipboardCopy,
+  Download,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { listAudit } from "@/lib/api";
+import { downloadAuditCsv, listAudit } from "@/lib/api";
 import type { AuditEntryResponse, AuditListResponse } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -112,7 +113,19 @@ export default function ActivityPage() {
   const [data, setData] = useState<AuditListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const toast = useToast();
+
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      await downloadAuditCsv();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to export CSV");
+    } finally {
+      setExporting(false);
+    }
+  }, [toast]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -255,15 +268,26 @@ export default function ActivityPage() {
           }
           icon={<BookOpen size={18} />}
           actions={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={load}
-              disabled={loading}
-            >
-              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExport}
+                disabled={exporting || entries.length === 0}
+              >
+                <Download size={14} className={exporting ? "animate-pulse" : ""} />
+                {exporting ? "Exporting…" : "Download CSV"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={load}
+                disabled={loading}
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                Refresh
+              </Button>
+            </div>
           }
         />
       </div>

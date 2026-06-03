@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config_loader import AppConfig, check_production_safety
+from backend.logging_config import configure_logging
 from backend.api.deps import set_mcp_pool, set_session_factory
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.mcp.mcp_json import MCPJSONSyncer
@@ -62,6 +63,26 @@ async def _lifespan(app: FastAPI):
     set_session_factory(factory)
     app.state.database_url = database_url
     app.state.session_factory = factory
+
+    # Re-apply the persisted log level (saved from the dashboard Config page)
+    # now that the DB is reachable, so a UI change survives a restart. Falls
+    # back to the env-var level already applied in create_app() when no
+    # override row exists. Best-effort: a read failure must not block startup.
+    try:
+        from backend.db.repos import RuntimeConfigRepo
+
+        async with factory() as session:
+            persisted_level = await RuntimeConfigRepo.get_global_value(
+                session, "logging_level"
+            )
+        if persisted_level:
+            configure_logging(persisted_level)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "logging: failed to apply persisted log level: %s", exc
+        )
 
     # Sprint 56: bootstrap admin from env vars if the users table is empty.
     # No-op when bootstrap env vars are unset or users already exist.
@@ -183,6 +204,11 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     """Build and return the fully-configured FastAPI application."""
     config = config or AppConfig.load()
     check_production_safety(config)
+
+    # Apply the env-var / .env log level immediately (process-global). The
+    # lifespan startup re-applies any persisted dashboard override on top of
+    # this once the DB is reachable.
+    configure_logging(config.app.log_level)
 
     app = FastAPI(
         title=config.app.name,

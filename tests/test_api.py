@@ -2157,6 +2157,22 @@ class TestAudit:
         resp = await client.get("/audit")
         assert resp.status_code == 401
 
+    async def test_export_audit_csv_headers_and_columns(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get("/audit/export.csv", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/csv")
+        assert "attachment" in resp.headers["content-disposition"]
+        assert "opsmender-audit.csv" in resp.headers["content-disposition"]
+        # Header row is always present even with zero entries.
+        first_line = resp.text.splitlines()[0]
+        assert first_line.startswith("timestamp,entry_type,tool_name,tier")
+
+    async def test_export_audit_csv_unauthenticated(self, client: AsyncClient):
+        resp = await client.get("/audit/export.csv")
+        assert resp.status_code == 401
+
 
 # ===========================================================================
 # Config

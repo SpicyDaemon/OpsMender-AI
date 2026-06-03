@@ -313,6 +313,51 @@ export async function listAudit(params?: {
   return api.get<AuditListResponse>(`/audit${q ? `?${q}` : ""}`);
 }
 
+/**
+ * Download the audit (AI action history) as a CSV file. Streams the response
+ * to a blob and triggers a browser download. Honors the same filters as
+ * {@link listAudit}.
+ */
+export async function downloadAuditCsv(params?: {
+  session_id?: string;
+  tool_name?: string;
+  permitted?: boolean;
+}): Promise<void> {
+  const qs = new URLSearchParams();
+  if (params?.session_id) qs.set("session_id", params.session_id);
+  if (params?.tool_name) qs.set("tool_name", params.tool_name);
+  if (params?.permitted !== undefined) qs.set("permitted", String(params.permitted));
+  const q = qs.toString();
+
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const orgId = getOrgId();
+  if (orgId) headers["X-Org-ID"] = orgId;
+
+  const res = await fetch(`${BASE_URL}/audit/export.csv${q ? `?${q}` : ""}`, {
+    headers,
+  });
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    throw new Error(`Export failed (HTTP ${res.status})`);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "opsmender-audit.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // ---------------------------------------------------------------------------
 // Approvals
 // ---------------------------------------------------------------------------

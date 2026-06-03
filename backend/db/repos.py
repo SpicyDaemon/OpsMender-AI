@@ -1904,6 +1904,23 @@ class RuntimeConfigRepo:
         return None if item is None else item.value
 
     @staticmethod
+    async def get_global_value(db: AsyncSession, key: str) -> str | None:
+        """Return the most-recently-updated value for *key* across all orgs.
+
+        Used for process-global settings (e.g. ``logging_level``) that are
+        stored per-org but applied process-wide. In single-workspace mode
+        there is exactly one row; with multiple orgs the newest write wins.
+        """
+        stmt = (
+            select(RuntimeConfig)
+            .where(RuntimeConfig.key == key)
+            .order_by(RuntimeConfig.updated_at.desc())
+            .limit(1)
+        )
+        item = (await db.execute(stmt)).scalars().first()
+        return None if item is None else item.value
+
+    @staticmethod
     async def get_many(
         db: AsyncSession, org_id: uuid.UUID, keys: Sequence[str]
     ) -> dict[str, str]:

@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Log level now actually applies.** `OPSMENDER_LOG_LEVEL` was read into config but never wired to Python logging or uvicorn, so the backend always logged at INFO regardless of the env var, the dashboard Config setting, or a container restart. New `backend/logging_config.py::configure_logging()` sets the root + `uvicorn`/`uvicorn.access` logger levels (so the setting governs HTTP access logs — the `GET /config 200 OK` lines — too). It's applied in three places: `create_app()` from the env var at boot, lifespan startup re-applies the persisted dashboard value (new `RuntimeConfigRepo.get_global_value`) so a UI change survives restart, and `PUT /config` applies the new level **live** to the running process. Log level is process-global (single-workspace assumption). `.env`/`.env.example` log-level comment corrected to include `CRITICAL` (which the UI already offered).
+
+### Added
+
+- **Audit (AI action history) CSV export.** The Activity page gains a **Download CSV** button backed by a new `GET /audit/export.csv` endpoint that honors the same filters as `GET /audit`. The on-disk audit stays JSONL — nested `tool_parameters`/`result` objects survive intact there — while the export flattens those into JSON-string cells so the rest of each row reads cleanly in a spreadsheet.
+
 ### Changed
 
+- **Config page spans full width.** Dropped the centered `max-w-5xl` wrapper on `/dashboard/config` so it matches the other widened AI Agent / Observe pages (no wasted side whitespace).
 - **Multi-select checkbox filters across Incidents, Escalation, and Paging surfaces; Dashboard/Incidents/Approvals widened.** Dashboard, Incidents, and Approvals dropped their centered `max-w-*` wrappers for full width. The filter dropdowns on **Incidents** (Team / Source / Status / Severity), **Escalation Chains** (Team / Status), **Services** (Team / Status / Coverage / Incident state), **Rosters** (Team / Pattern / State), and **Maintenance Windows** (Status / Scope) are now multi-select checkbox popovers — **no selection = all**, **multiple = OR**. The shared `FilterDropdown` is extracted to `components/ui` and reused by the `DataTable` filter bar, the `PagingFilterBar`, and Incidents. Incidents filtering stays server-side: `GET /incidents` now accepts repeated `status`/`severity`/`source`/`team_id` params (OR via `IN`), backward compatible with single values.
 - **Reliability + Activity pages widened; Activity gets the Services-style filter bar.** Reliability (list + detail) and Activity dropped their centered `max-w-6xl` wrappers so they use the full content width. The Activity (audit) table now uses the `filterBar` layout: search + multi-select checkbox dropdowns for **Type** (Pre/Post), **Tier** (0–3), and **Status** (Permitted/Blocked) — OR within a dimension, empty = all — plus the existing date-range picker and pagination.
 - **AI Agent pages span full width; Workflows & Agent Teams move onto the shared table.** MCP Servers, Workflows, and Agent Teams dropped their centered `max-w-5xl` wrapper so they use the full content width like Skills/Memories (no wasted side whitespace). Workflows and Agent Teams — previously plain `<table>`s with no search/filter/pagination — are now on the shared `DataTable` with the Services-style filter bar (search + a Status filter dropdown + pagination, with the "Add …" button in the filter row).

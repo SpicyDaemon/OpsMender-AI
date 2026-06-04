@@ -195,7 +195,7 @@ async def test_mint_password_reset_returns_one_time_url(env):
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["url"].startswith("http://test/password-reset/")
+    assert body["url"].startswith("http://test/password-reset?token=")
     assert body["email_sent"] is False  # SMTP not configured in tests
     assert "expires_at" in body
 
@@ -210,7 +210,7 @@ async def test_password_reset_round_trip(env):
     mint = await client.post(
         f"/auth/users/{target_id}/reset-password", headers=headers
     )
-    raw_token = mint.json()["url"].rsplit("/", 1)[-1]
+    raw_token = mint.json()["url"].split("token=", 1)[-1]
 
     # Consume with new password
     resp = await client.post(

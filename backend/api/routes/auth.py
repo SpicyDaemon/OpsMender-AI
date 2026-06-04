@@ -526,7 +526,10 @@ async def mint_password_reset(
     await db.commit()
 
     base = _resolve_public_base_url(request)
-    url = f"{base}/password-reset/{raw}"
+    # Query-param form so the Next.js static export serves it at `/password-reset`
+    # (a `/password-reset/<token>` path has no generated route and would 404).
+    # Keep in sync with frontend/app/password-reset/page.tsx.
+    url = f"{base}/password-reset?token={raw}"
 
     # Best-effort SMTP delivery alongside the copy-paste URL.
     cfg: AppConfig = request.app.state.config

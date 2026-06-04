@@ -151,7 +151,7 @@ async def test_people_full_lifecycle(env):
     )
     assert reset.status_code == 200, reset.text
     reset_url = reset.json()["url"]
-    reset_token = reset_url.rsplit("/", 1)[-1]
+    reset_token = reset_url.split("token=", 1)[-1]
 
     # ----- (6+7) Teammate consumes the reset; old pw fails, new works ---
     consume = await client.post(

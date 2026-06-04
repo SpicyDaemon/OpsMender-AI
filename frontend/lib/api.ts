@@ -1054,6 +1054,12 @@ export async function updateUser(
   return api.patch<import("./types").UserResponse>(`/auth/users/${id}`, body);
 }
 
+export async function createUser(
+  body: import("./types").UserCreateRequest,
+): Promise<import("./types").UserResponse> {
+  return api.post<import("./types").UserResponse>(`/auth/users`, body);
+}
+
 export async function getUserDeletePreconditions(
   id: string,
 ): Promise<import("./types").SoftDeletePreconditions> {

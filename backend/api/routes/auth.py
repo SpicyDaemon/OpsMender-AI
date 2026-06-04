@@ -33,6 +33,7 @@ from backend.api.schemas import (
     RegisterRequest,
     SoftDeletePreconditions,
     TokenResponse,
+    UserCreateRequest,
     UserListResponse,
     UserResponse,
     UserUpdateRequest,
@@ -231,6 +232,55 @@ async def list_users(
 ):
     users = await UserRepo.list_all(db, limit=limit, offset=offset)
     return UserListResponse(items=list(users), total=len(users))
+
+
+@router.post(
+    "/users",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role("admin"))],
+    summary="Create a local user directly (admin only) — no invite link needed",
+)
+async def create_user(
+    body: UserCreateRequest,
+    actor: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-driven direct user creation. The new user gets a temporary
+    password and can log in immediately (and change it later), bound to the
+    admin's active organization with the chosen role."""
+    username = body.username.strip()
+    email = body.email.lower().strip()
+
+    if await UserRepo.get_by_username(db, username):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Username '{username}' is taken.",
+        )
+    existing = await UserRepo.get_by_email(db, email)
+    if existing is not None and existing.deleted_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A user with email '{email}' already exists.",
+        )
+
+    user = await UserRepo.create(
+        db,
+        username=username,
+        email=email,
+        password_hash=hash_password(body.password),
+        role=body.role,
+        primary_org_id=actor.primary_org_id,
+    )
+    if not body.is_active:
+        await UserRepo.update_fields(db, user.id, is_active=False)
+    if actor.primary_org_id is not None:
+        await UserRepo.add_to_organization(
+            db, user_id=user.id, org_id=actor.primary_org_id, role=body.role
+        )
+    await db.commit()
+    refreshed = await UserRepo.get_by_id(db, user.id)
+    return refreshed
 
 
 # ---------------------------------------------------------------------------

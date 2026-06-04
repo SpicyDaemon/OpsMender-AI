@@ -387,3 +387,90 @@ async def test_soft_delete_blocks_when_on_roster(env):
     )
     assert resp.status_code == 409
     assert "roster" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Direct admin user creation (v1 — no invite link required)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_admin_creates_user_directly_and_they_can_log_in(env):
+    client: AsyncClient = env["client"]
+    headers, _ = await _admin_token(client)
+
+    resp = await client.post(
+        "/auth/users",
+        headers=headers,
+        json={
+            "username": "operator1",
+            "email": "Operator1@Test.com",
+            "role": "operator",
+            "password": "temp-pass-123",
+            "is_active": True,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["username"] == "operator1"
+    assert body["email"] == "operator1@test.com"  # normalized lowercase
+    assert body["role"] == "operator"
+    assert body["is_active"] is True
+
+    # The created user can log in immediately with the temporary password.
+    login = await client.post(
+        "/auth/login",
+        json={"username": "operator1", "password": "temp-pass-123"},
+    )
+    assert login.status_code == 200, login.text
+
+    # And appears in the admin user list.
+    listing = await client.get("/auth/users", headers=headers)
+    usernames = {u["username"] for u in listing.json()["items"]}
+    assert "operator1" in usernames
+
+
+@pytest.mark.asyncio
+async def test_create_user_rejects_duplicate_username(env):
+    client: AsyncClient = env["client"]
+    headers, _ = await _admin_token(client)
+    payload = {
+        "username": "dupe",
+        "email": "dupe@test.com",
+        "role": "viewer",
+        "password": "temp-pass-123",
+    }
+    first = await client.post("/auth/users", headers=headers, json=payload)
+    assert first.status_code == 201
+    second = await client.post(
+        "/auth/users",
+        headers=headers,
+        json={**payload, "email": "other@test.com"},
+    )
+    assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_create_user_requires_admin(env):
+    client: AsyncClient = env["client"]
+    await _admin_token(client)
+    # A non-admin (viewer) token must be rejected.
+    viewer_id = await _register_extra_user(
+        client, username="viewer1", email="viewer1@test.com", role="viewer"
+    )
+    assert viewer_id
+    login = await client.post(
+        "/auth/login", json={"username": "viewer1", "password": "securepass123"}
+    )
+    viewer_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    resp = await client.post(
+        "/auth/users",
+        headers=viewer_headers,
+        json={
+            "username": "nope",
+            "email": "nope@test.com",
+            "role": "viewer",
+            "password": "temp-pass-123",
+        },
+    )
+    assert resp.status_code == 403

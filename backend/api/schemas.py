@@ -56,6 +56,19 @@ class UserListResponse(BaseModel):
     total: int
 
 
+class UserCreateRequest(BaseModel):
+    """Admin creates a local user directly (no invite link required).
+
+    The user logs in with this temporary password and can change it later.
+    """
+
+    username: str = Field(..., min_length=3, max_length=150)
+    email: str = Field(..., max_length=255)
+    role: str = Field(..., pattern="^(admin|operator|viewer)$")
+    password: str = Field(..., min_length=8)
+    is_active: bool = True
+
+
 # ---------------------------------------------------------------------------
 # Sprint 56 — People surface
 # ---------------------------------------------------------------------------

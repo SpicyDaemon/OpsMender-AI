@@ -15,6 +15,8 @@ import {
 
 import {
   createInvite,
+  createUser,
+  getConfig,
   listInvites,
   listUsers,
   resendInvite,
@@ -25,6 +27,7 @@ import type {
   InviteCreatedResponse,
   InviteResponse,
   InviteStatus,
+  UserCreateRequest,
   UserResponse,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
@@ -197,6 +200,11 @@ function PeopleSurface() {
   const [invites, setInvites] = useState<InviteResponse[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [invitesLoading, setInvitesLoading] = useState(true);
+  // v1 is local-auth only by default. Surface SSO/SAML affordances (the auth
+  // method column + filter) only when advanced auth is enabled or already
+  // configured — matching the D-027 rule used elsewhere.
+  const [advancedAuth, setAdvancedAuth] = useState(false);
+  const [newUserOpen, setNewUserOpen] = useState(false);
   const [newInviteOpen, setNewInviteOpen] = useState(false);
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
   const [mintedInvite, setMintedInvite] = useState<{
@@ -242,6 +250,21 @@ function PeopleSurface() {
   useEffect(() => {
     void reloadInvites();
   }, [reloadInvites]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const cfg = await getConfig();
+        setAdvancedAuth(
+          Boolean(
+            cfg.advanced_auth_enabled || cfg.sso_configured || cfg.saml_configured,
+          ),
+        );
+      } catch {
+        setAdvancedAuth(false);
+      }
+    })();
+  }, []);
 
   const onInviteCreated = useCallback(
     (resp: InviteCreatedResponse, mode: MintedInviteMode = "created") => {
@@ -298,7 +321,7 @@ function PeopleSurface() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full">
       <PageHeader
         title="People"
         subtitle="Manage user accounts and pending invites."
@@ -347,7 +370,12 @@ function PeopleSurface() {
       </nav>
 
       {tab === "users" ? (
-        <UsersTab users={users} loading={usersLoading} />
+        <UsersTab
+          users={users}
+          loading={usersLoading}
+          advancedAuth={advancedAuth}
+          onNewUser={() => setNewUserOpen(true)}
+        />
       ) : (
         <InvitesTab
           invites={invites}
@@ -358,6 +386,15 @@ function PeopleSurface() {
           onResend={onResend}
         />
       )}
+
+      <CreateUserModal
+        open={newUserOpen}
+        onClose={() => setNewUserOpen(false)}
+        onCreated={() => {
+          setNewUserOpen(false);
+          void reloadUsers();
+        }}
+      />
 
       <NewInviteModal
         open={newInviteOpen}
@@ -393,9 +430,13 @@ function PeopleSurface() {
 function UsersTab({
   users,
   loading,
+  advancedAuth,
+  onNewUser,
 }: {
   users: UserResponse[];
   loading: boolean;
+  advancedAuth: boolean;
+  onNewUser: () => void;
 }) {
   const columns = useMemo<DataTableColumn<UserResponse>[]>(
     () => [
@@ -453,29 +494,35 @@ function UsersTab({
           valueOf: (u) => (u.is_active ? "active" : "inactive"),
         },
       },
-      {
-        id: "auth_source",
-        label: "Auth method",
-        accessor: (u) => {
-          if (u.auth_source.startsWith("oidc:")) return "oidc";
-          if (u.auth_source.startsWith("saml:")) return "saml";
-          return "local";
-        },
-        cell: (u) => <AuthMethodBadge user={u} />,
-        sortable: true,
-        filterChips: {
-          options: [
-            { value: "local", label: "Local" },
-            { value: "oidc", label: "OIDC" },
-            { value: "saml", label: "SAML" },
-          ],
-          valueOf: (u) => {
-            if (u.auth_source.startsWith("oidc:")) return "oidc";
-            if (u.auth_source.startsWith("saml:")) return "saml";
-            return "local";
-          },
-        },
-      },
+      // Auth-method column + filter only when advanced auth is in play; v1
+      // default is local-only, so we don't surface OIDC/SAML affordances.
+      ...(advancedAuth
+        ? [
+            {
+              id: "auth_source",
+              label: "Auth method",
+              accessor: (u: UserResponse) => {
+                if (u.auth_source.startsWith("oidc:")) return "oidc";
+                if (u.auth_source.startsWith("saml:")) return "saml";
+                return "local";
+              },
+              cell: (u: UserResponse) => <AuthMethodBadge user={u} />,
+              sortable: true,
+              filterChips: {
+                options: [
+                  { value: "local", label: "Local" },
+                  { value: "oidc", label: "OIDC" },
+                  { value: "saml", label: "SAML" },
+                ],
+                valueOf: (u: UserResponse) => {
+                  if (u.auth_source.startsWith("oidc:")) return "oidc";
+                  if (u.auth_source.startsWith("saml:")) return "saml";
+                  return "local";
+                },
+              },
+            } as DataTableColumn<UserResponse>,
+          ]
+        : []),
       {
         id: "created_at",
         label: "Joined",
@@ -488,7 +535,7 @@ function UsersTab({
         sortable: true,
       },
     ],
-    [],
+    [advancedAuth],
   );
 
   if (loading && users.length === 0) return <TableSkeleton rows={6} columns={5} />;
@@ -497,7 +544,12 @@ function UsersTab({
       <EmptyState
         icon={Users}
         title="No users yet"
-        description="Invite your first teammate from the Invites tab."
+        description="Create a user directly, or invite a teammate from the Invites tab."
+        action={
+          <Button onClick={onNewUser}>
+            <UserPlus className="h-4 w-4" /> New user
+          </Button>
+        }
       />
     );
   }
@@ -506,6 +558,12 @@ function UsersTab({
     <DataTable
       rows={users}
       columns={columns}
+      filterBar
+      toolbarRight={
+        <Button onClick={onNewUser}>
+          <UserPlus className="h-4 w-4" /> New user
+        </Button>
+      }
       rowKey={(u) => u.id}
       phoneLayout={(u) => (
         <div className="space-y-3">
@@ -527,14 +585,16 @@ function UsersTab({
             )}
           </div>
           <div className="grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
-                Auth method
-              </p>
-              <div className="mt-1">
-                <AuthMethodBadge user={u} />
+            {advancedAuth && (
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                  Auth method
+                </p>
+                <div className="mt-1">
+                  <AuthMethodBadge user={u} />
+                </div>
               </div>
-            </div>
+            )}
             <div>
               <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
                 Joined
@@ -686,6 +746,7 @@ function InvitesTab({
     <DataTable
       rows={invites}
       columns={columns}
+      filterBar
       rowKey={(i) => i.id}
       phoneLayout={(invite) => (
         <div className="space-y-3">
@@ -751,6 +812,175 @@ function InvitesTab({
         ) : null
       }
     />
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Create user modal (direct admin creation — no invite link required)
+// ---------------------------------------------------------------------------
+
+
+function randomTempPassword(): string {
+  // 16 url-safe chars — enough entropy for a temporary password the admin
+  // hands off and the user rotates on first login.
+  const bytes = new Uint8Array(12);
+  (globalThis.crypto ?? window.crypto).getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, "").slice(0, 16);
+}
+
+
+function CreateUserModal({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const toast = useToast();
+  const [form, setForm] = useState<UserCreateRequest>({
+    username: "",
+    email: "",
+    role: "operator",
+    password: "",
+    is_active: true,
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setForm({
+        username: "",
+        email: "",
+        role: "operator",
+        password: randomTempPassword(),
+        is_active: true,
+      });
+      setError("");
+    }
+  }, [open]);
+
+  const submit = useCallback(async () => {
+    if (!form.username.trim() || !form.email.trim()) {
+      setError("Username and email are required.");
+      return;
+    }
+    if ((form.password ?? "").length < 8) {
+      setError("Temporary password must be at least 8 characters.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await createUser({
+        username: form.username.trim(),
+        email: form.email.trim(),
+        role: form.role,
+        password: form.password,
+        is_active: form.is_active,
+      });
+      toast.success(`User “${form.username.trim()}” created`);
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [form, onCreated, toast]);
+
+  const copyPassword = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(form.password);
+      toast.success("Temporary password copied");
+    } catch {
+      toast.error("Copy failed — select and copy manually.");
+    }
+  }, [form.password, toast]);
+
+  return (
+    <Modal open={open} onClose={onClose} title="New user">
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Username</Label>
+            <Input
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              placeholder="jdoe"
+              autoFocus
+            />
+          </div>
+          <div>
+            <Label>Email</Label>
+            <Input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="jdoe@company.com"
+            />
+          </div>
+        </div>
+        <div>
+          <Label>Role</Label>
+          <Select
+            value={form.role}
+            onChange={(e) =>
+              setForm({ ...form, role: e.target.value as UserCreateRequest["role"] })
+            }
+          >
+            <option value="viewer">Viewer — read-only</option>
+            <option value="operator">Operator — can drive sessions</option>
+            <option value="admin">Admin — full access</option>
+          </Select>
+        </div>
+        <div>
+          <Label>Temporary password</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              className="font-mono text-sm"
+            />
+            <Button variant="ghost" size="sm" onClick={copyPassword} title="Copy">
+              <Copy className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setForm({ ...form, password: randomTempPassword() })}
+              title="Regenerate"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-fg-muted">
+            Share this with the user — they can log in and change it later.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-fg-primary">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+            checked={form.is_active}
+            onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+          />
+          Active (can sign in)
+        </label>
+        {error && <FormError message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={submitting}>
+            <UserPlus className="h-4 w-4" />
+            {submitting ? "Creating…" : "Create user"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

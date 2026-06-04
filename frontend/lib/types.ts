@@ -252,6 +252,14 @@ export interface UserUpdateRequest {
   is_active?: boolean;
 }
 
+export interface UserCreateRequest {
+  username: string;
+  email: string;
+  role: "admin" | "operator" | "viewer";
+  password: string;
+  is_active?: boolean;
+}
+
 export interface PasswordResetMintResponse {
   url: string;
   expires_at: string;

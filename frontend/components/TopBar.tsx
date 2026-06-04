@@ -293,7 +293,7 @@ export function TopBar({
               <ChevronDown size={14} className="text-fg-muted" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-md border border-border-subtle bg-bg-panel shadow-lg">
+              <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border-subtle bg-bg-panel shadow-lg">
                 <div className="border-b border-border-subtle px-3 py-2.5">
                   <div className="flex items-center gap-2.5">
                     <Avatar user={user} size={32} />
@@ -344,7 +344,7 @@ export function TopBar({
                   <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
                     Theme
                   </p>
-                  <ThemeToggle />
+                  <ThemeToggle full />
                 </div>
                 <button
                   onClick={() => { setMenuOpen(false); logout(); }}

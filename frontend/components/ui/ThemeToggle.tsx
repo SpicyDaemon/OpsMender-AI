@@ -15,16 +15,19 @@ const OPTIONS: Array<{
 
 export function ThemeToggle({
   compact = false,
+  full = false,
 }: {
   compact?: boolean;
+  /** Stretch to fill the container with evenly-sized segments. */
+  full?: boolean;
 }) {
   const { mode, setMode } = useTheme();
 
   return (
     <div
-      className={`inline-flex items-center rounded-md border border-border-subtle bg-bg-input p-1 ${
-        compact ? "gap-1" : "gap-1.5"
-      }`}
+      className={`items-center rounded-md border border-border-subtle bg-bg-input p-1 ${
+        full ? "flex w-full gap-1" : "inline-flex"
+      } ${!full && compact ? "gap-1" : ""} ${!full && !compact ? "gap-1.5" : ""}`}
     >
       {OPTIONS.map(({ mode: option, label, icon: Icon }) => {
         const active = mode === option;
@@ -35,7 +38,9 @@ export function ThemeToggle({
             onClick={() => setMode(option)}
             aria-pressed={active}
             title={label}
-            className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+            className={`inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              full ? "flex-1" : ""
+            } ${
               active
                 ? "bg-accent text-white"
                 : "text-fg-secondary hover:bg-bg-hover hover:text-fg-primary"

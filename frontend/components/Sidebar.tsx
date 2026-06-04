@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   Bell,
   LayoutDashboard,
-  Bot,
   BookOpen,
   Brain,
   Building2,
@@ -38,6 +37,8 @@ type NavItem = {
   label: string;
   icon: typeof AlertTriangle;
   reqRole?: string;
+  /** Roles allowed to see this item. Omit = visible to everyone. */
+  roles?: string[];
   badge?: { label: string; tone: "neutral" | "warn" };
   /**
    * When true, the active-state match requires `pathname === href`
@@ -64,60 +65,74 @@ type NavGroup = {
  * deep-links keep working. When the flag flips on, the entry reverts
  * to "Organizations" because the page is now genuinely multi-tenant.
  */
+/** Whether a nav item is visible to a given role. Omitting both gates =
+ *  visible to everyone. Exported for tests + the render filter. */
+export function navItemVisibleForRole(
+  item: NavItem,
+  role: string | undefined | null,
+): boolean {
+  if (item.reqRole) return Boolean(role && role === item.reqRole);
+  if (item.roles) return Boolean(role && item.roles.includes(role));
+  return true;
+}
+
 export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
   return [
     {
       id: "incident-management",
       label: "Incident Management",
       items: [
+        // Dashboard + Incidents are visible to everyone (Viewer = read-only).
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
         { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
-        { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
+        { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare, roles: ["admin", "operator"] },
       ],
     },
     {
+      // Paging configuration is workspace setup — admin only.
       id: "paging",
       label: "Paging & On-call",
       items: [
-        { href: "/dashboard/paging/teams", label: "Teams", icon: Users },
-        { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch },
-        { href: "/dashboard/paging/services", label: "Services", icon: Server },
-        { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat },
-        { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench },
-        { href: "/dashboard/paging/notifications", label: "Notifications", icon: Bell },
+        { href: "/dashboard/paging/teams", label: "Teams", icon: Users, roles: ["admin"] },
+        { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch, roles: ["admin"] },
+        { href: "/dashboard/paging/services", label: "Services", icon: Server, roles: ["admin"] },
+        { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat, roles: ["admin"] },
+        { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench, roles: ["admin"] },
+        // Notifications hosts each user's own routing — operators need it too.
+        { href: "/dashboard/paging/notifications", label: "Notifications", icon: Bell, roles: ["admin", "operator"] },
       ],
     },
     {
+      // AI configuration surfaces are admin only.
       id: "ai-agent",
       label: "AI Agent",
       items: [
-        { href: "/dashboard/skills", label: "Skills", icon: FileText },
-        { href: "/dashboard/memories", label: "Memories", icon: Brain },
-        { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network },
-        { href: "/dashboard/models", label: "Models", icon: Cpu },
-        { href: "/dashboard/agent-teams", label: "Agent Teams", icon: Bot },
+        { href: "/dashboard/skills", label: "Skills", icon: FileText, roles: ["admin"] },
+        { href: "/dashboard/memories", label: "Memories", icon: Brain, roles: ["admin"] },
+        { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network, roles: ["admin"] },
+        { href: "/dashboard/models", label: "Models", icon: Cpu, roles: ["admin"] },
       ],
     },
     {
       id: "observe",
       label: "Observe",
       items: [
-        { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
-        { href: "/dashboard/activity", label: "Activity", icon: BookOpen },
+        { href: "/dashboard/reliability", label: "Reliability", icon: Activity, roles: ["admin", "operator"] },
+        { href: "/dashboard/activity", label: "Activity", icon: BookOpen, roles: ["admin", "operator"] },
       ],
     },
     {
       id: "admin",
       label: "Admin",
       items: [
-        { href: "/dashboard/people", label: "People", icon: UserCog, reqRole: "admin" },
+        { href: "/dashboard/people", label: "People", icon: UserCog, roles: ["admin"] },
         {
           href: "/dashboard/organizations",
           label: multiOrgEnabled ? "Organizations" : "Workspace Settings",
           icon: Building2,
-          reqRole: "admin",
+          roles: ["admin"],
         },
-        { href: "/dashboard/config", label: "Config", icon: Settings },
+        { href: "/dashboard/config", label: "Config", icon: Settings, roles: ["admin"] },
       ],
     },
   ];
@@ -447,8 +462,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const navGroups = buildNavGroups(multiOrgEnabled);
   const visibleGroups: NavGroup[] = navGroups.map((group) => ({
     ...group,
-    items: group.items.filter(
-      (item) => !item.reqRole || (user && user.role === item.reqRole),
+    items: group.items.filter((item) =>
+      navItemVisibleForRole(item, user?.role),
     ),
   })).filter((group) => group.items.length > 0);
 

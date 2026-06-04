@@ -846,6 +846,8 @@ function CreateUserModal({
     role: "operator",
     password: "",
     is_active: true,
+    first_name: "",
+    last_name: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -858,6 +860,8 @@ function CreateUserModal({
         role: "operator",
         password: randomTempPassword(),
         is_active: true,
+        first_name: "",
+        last_name: "",
       });
       setError("");
     }
@@ -881,6 +885,8 @@ function CreateUserModal({
         role: form.role,
         password: form.password,
         is_active: form.is_active,
+        first_name: (form.first_name ?? "").trim() || null,
+        last_name: (form.last_name ?? "").trim() || null,
       });
       toast.success(`User “${form.username.trim()}” created`);
       onCreated();
@@ -905,12 +911,28 @@ function CreateUserModal({
       <div className="space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
+            <Label>First name</Label>
+            <Input
+              value={form.first_name ?? ""}
+              onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+              placeholder="Jane"
+              autoFocus
+            />
+          </div>
+          <div>
+            <Label>Last name</Label>
+            <Input
+              value={form.last_name ?? ""}
+              onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+              placeholder="Doe"
+            />
+          </div>
+          <div>
             <Label>Username</Label>
             <Input
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
               placeholder="jdoe"
-              autoFocus
             />
           </div>
           <div>
@@ -1005,13 +1027,15 @@ function NewInviteModal({
   const [form, setForm] = useState<InviteCreateRequest>({
     email: "",
     role: "viewer",
+    first_name: "",
+    last_name: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) {
-      setForm({ email: "", role: "viewer" });
+      setForm({ email: "", role: "viewer", first_name: "", last_name: "" });
       setError("");
     }
   }, [open]);
@@ -1054,6 +1078,24 @@ function NewInviteModal({
             placeholder="teammate@company.com"
             autoFocus
           />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>First name <span className="text-fg-muted">(optional)</span></Label>
+            <Input
+              value={form.first_name ?? ""}
+              onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+              placeholder="Ada"
+            />
+          </div>
+          <div>
+            <Label>Last name <span className="text-fg-muted">(optional)</span></Label>
+            <Input
+              value={form.last_name ?? ""}
+              onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+              placeholder="Lovelace"
+            />
+          </div>
         </div>
         <div>
           <Label>Role</Label>

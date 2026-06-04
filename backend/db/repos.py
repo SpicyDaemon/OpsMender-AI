@@ -85,6 +85,8 @@ class UserRepo:
         auth_source: str = "local",
         role: str = "viewer",
         primary_org_id: uuid.UUID | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
     ) -> User:
         user = User(
             username=username,
@@ -93,6 +95,8 @@ class UserRepo:
             auth_source=auth_source,
             role=role,
             primary_org_id=primary_org_id,
+            first_name=first_name,
+            last_name=last_name,
         )
         db.add(user)
         await db.flush()
@@ -360,11 +364,15 @@ class OrgInviteRepo:
         token_hash: str,
         expires_at: datetime,
         invited_by_user_id: uuid.UUID | None,
+        first_name: str | None = None,
+        last_name: str | None = None,
     ) -> OrgInvite:
         row = OrgInvite(
             org_id=org_id,
             email=email.lower().strip(),
             role=role,
+            first_name=first_name,
+            last_name=last_name,
             token_hash=token_hash,
             expires_at=expires_at,
             invited_by_user_id=invited_by_user_id,

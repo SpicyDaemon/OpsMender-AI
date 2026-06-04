@@ -261,6 +261,8 @@ export interface UserCreateRequest {
   role: "admin" | "operator" | "viewer";
   password: string;
   is_active?: boolean;
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
 export interface MeUpdateRequest {
@@ -313,6 +315,8 @@ export interface InviteListResponse {
 export interface InviteCreateRequest {
   email: string;
   role: "admin" | "operator" | "viewer";
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
 export interface InviteCreatedResponse {
@@ -327,11 +331,15 @@ export interface InvitePublicResponse {
   role: "admin" | "operator" | "viewer";
   org_name: string;
   expires_at: string;
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
 export interface InviteAcceptRequest {
   username: string;
   password: string;
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
 export interface ConfigResponse {

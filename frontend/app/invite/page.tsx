@@ -45,6 +45,8 @@ function InviteAcceptContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [username, setUsername] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -64,6 +66,9 @@ function InviteAcceptContent() {
           // Suggest a username from the local part of the email so the
           // recipient doesn't have to invent one.
           setUsername(suggestUsername(data.email));
+          // Prefill names the admin supplied on the invite (editable).
+          if (data.first_name) setFirstName(data.first_name);
+          if (data.last_name) setLastName(data.last_name);
         }
       } catch (err) {
         if (!cancelled) {
@@ -87,7 +92,12 @@ function InviteAcceptContent() {
     setSubmitError("");
     setSubmitting(true);
     try {
-      const resp = await acceptInvite(token, { username, password });
+      const resp = await acceptInvite(token, {
+        username,
+        password,
+        first_name: firstName.trim() || null,
+        last_name: lastName.trim() || null,
+      });
       setToken(resp.access_token);
       // Drop straight into the dashboard. We don't have primary_org_id
       // in the response, but /auth/me on the next page load will set it.
@@ -151,6 +161,26 @@ function InviteAcceptContent() {
         <div>
           <Label>Email</Label>
           <Input value={invite.email} disabled />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>First name</Label>
+            <Input
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              maxLength={100}
+              placeholder="Ada"
+            />
+          </div>
+          <div>
+            <Label>Last name</Label>
+            <Input
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              maxLength={100}
+              placeholder="Lovelace"
+            />
+          </div>
         </div>
         <div>
           <Label>Username</Label>

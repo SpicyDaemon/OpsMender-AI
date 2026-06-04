@@ -396,3 +396,48 @@ async def test_accept_invite_rejects_duplicate_username(env):
         json={"username": "newbie", "password": "accept-pass-123"},
     )
     assert resp.status_code == 409
+
+
+async def test_invite_carries_names_through_acceptance(env):
+    """Optional first/last name on the invite prefill the public response and
+    are applied to the created user on acceptance."""
+    client: AsyncClient = env["client"]
+    headers, org_id = await _admin_setup(env)
+
+    created = await client.post(
+        f"/organizations/{org_id}/invites",
+        json={
+            "email": "grace@example.com",
+            "role": "operator",
+            "first_name": "Grace",
+            "last_name": "Hopper",
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    raw = created.json()["url"].split("token=", 1)[-1]
+
+    # Public validate exposes the prefill names.
+    public = await client.get(f"/invites/{raw}")
+    assert public.status_code == 200
+    assert public.json()["first_name"] == "Grace"
+    assert public.json()["last_name"] == "Hopper"
+
+    # Accept (recipient can override; here they keep the prefill last name and
+    # change the first name).
+    accept = await client.post(
+        f"/invites/{raw}/accept",
+        json={
+            "username": "ghopper",
+            "password": "a-strong-pass-1",
+            "first_name": "Grace B.",
+        },
+    )
+    assert accept.status_code == 200, accept.text
+
+    me = await client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {accept.json()['access_token']}"},
+    )
+    assert me.json()["first_name"] == "Grace B."
+    assert me.json()["last_name"] == "Hopper"

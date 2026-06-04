@@ -339,6 +339,8 @@ async def create_user(
         password_hash=hash_password(body.password),
         role=body.role,
         primary_org_id=actor.primary_org_id,
+        first_name=(body.first_name or "").strip() or None,
+        last_name=(body.last_name or "").strip() or None,
     )
     if not body.is_active:
         await UserRepo.update_fields(db, user.id, is_active=False)

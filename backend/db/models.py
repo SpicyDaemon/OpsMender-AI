@@ -294,6 +294,9 @@ class OrgInvite(Base):
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # admin | operator | viewer
+    # Optional names supplied by the admin; prefill the accept page.
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     invited_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True

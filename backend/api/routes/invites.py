@@ -189,6 +189,8 @@ async def create_invite(
         token_hash=token_hash,
         expires_at=expires_at,
         invited_by_user_id=actor.id,
+        first_name=(body.first_name or "").strip() or None,
+        last_name=(body.last_name or "").strip() or None,
     )
     await db.commit()
 
@@ -247,6 +249,8 @@ async def resend_invite(
         token_hash=token_hash,
         expires_at=expires_at,
         invited_by_user_id=actor.id,
+        first_name=invite.first_name,
+        last_name=invite.last_name,
     )
     await db.commit()
 
@@ -357,6 +361,8 @@ async def get_invite(
         role=invite.role,
         org_name=org.name,
         expires_at=invite.expires_at,
+        first_name=invite.first_name,
+        last_name=invite.last_name,
     )
 
 
@@ -408,6 +414,8 @@ async def accept_invite(
         password_hash=hash_password(body.password),
         role=invite.role,
         primary_org_id=invite.org_id,
+        first_name=(body.first_name or invite.first_name or "").strip() or None,
+        last_name=(body.last_name or invite.last_name or "").strip() or None,
     )
     await UserRepo.add_to_organization(
         db, user_id=user.id, org_id=invite.org_id, role=invite.role

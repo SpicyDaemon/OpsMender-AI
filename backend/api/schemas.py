@@ -70,6 +70,8 @@ class UserCreateRequest(BaseModel):
     role: str = Field(..., pattern="^(admin|operator|viewer)$")
     password: str = Field(..., min_length=8)
     is_active: bool = True
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +141,8 @@ class InviteCreateRequest(BaseModel):
 
     email: str = Field(..., max_length=255)
     role: str = Field(..., pattern="^(admin|operator|viewer)$")
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
 
 
 class InviteResponse(BaseModel):
@@ -188,13 +192,17 @@ class InvitePublicResponse(BaseModel):
     role: str
     org_name: str
     expires_at: datetime
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
 
 
 class InviteAcceptRequest(BaseModel):
-    """Recipient consumes the token by setting username + password."""
+    """Recipient consumes the token by setting username + password (+ names)."""
 
     username: str = Field(..., min_length=3, max_length=150)
     password: str = Field(..., min_length=8)
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
 
 
 # ---------------------------------------------------------------------------

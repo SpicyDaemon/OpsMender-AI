@@ -113,7 +113,10 @@ async def _resolve_step_targets(
         roster = await RosterRepo.get_by_id(db, org_id, target_id)
         if roster is None:
             return []
-        members = await RosterRepo.list_members(db, org_id, target_id)
+        # Deactivated/soft-deleted users are never paged.
+        members = await RosterRepo.list_members(
+            db, org_id, target_id, active_only=True
+        )
         overrides = await RosterOverrideRepo.list_for_roster(db, org_id, target_id)
         ctx = OnCallContext(
             members=[

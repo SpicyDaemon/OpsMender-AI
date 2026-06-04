@@ -4533,16 +4533,25 @@ class RosterRepo:
 
     @staticmethod
     async def list_members(
-        db: AsyncSession, org_id: uuid.UUID, roster_id: uuid.UUID
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        roster_id: uuid.UUID,
+        *,
+        active_only: bool = False,
     ) -> Sequence[RosterMember]:
-        stmt = (
-            select(RosterMember)
-            .where(
-                RosterMember.org_id == org_id,
-                RosterMember.roster_id == roster_id,
-            )
-            .order_by(RosterMember.position_index)
+        """List roster members. With ``active_only`` deactivated / soft-deleted
+        users are excluded — used for on-call resolution + paging so a disabled
+        user never resolves as on-call or gets paged (their membership row is
+        preserved for history)."""
+        stmt = select(RosterMember).where(
+            RosterMember.org_id == org_id,
+            RosterMember.roster_id == roster_id,
         )
+        if active_only:
+            stmt = stmt.join(User, User.id == RosterMember.user_id).where(
+                User.is_active.is_(True), User.deleted_at.is_(None)
+            )
+        stmt = stmt.order_by(RosterMember.position_index)
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod

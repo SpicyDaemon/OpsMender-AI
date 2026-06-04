@@ -408,8 +408,8 @@ function ActiveToggle({
       </h2>
       <p className="mt-1 text-xs text-fg-muted">
         {user.is_active
-          ? "Deactivated users cannot log in. Their data stays in place. Required before deletion."
-          : "Reactivated users can log in again with their existing password."}
+          ? "Deactivated users cannot log in, are removed from on-call resolution and paging, and can't be selected for rosters. Their roster history and data stay in place. Required before deletion."
+          : "Reactivated users can log in again with their existing password and become eligible for on-call once more."}
       </p>
       <div className="mt-3">
         <Button

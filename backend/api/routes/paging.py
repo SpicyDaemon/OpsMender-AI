@@ -730,7 +730,10 @@ async def resolve_on_call(
     if not roster.is_active:
         when = at or datetime.now()
         return OnCallResolveResponse(roster_id=roster_id, at=when, user_id=None)
-    members = await RosterRepo.list_members(db, org_id, roster_id)
+    # On-call resolution excludes deactivated/soft-deleted users.
+    members = await RosterRepo.list_members(
+        db, org_id, roster_id, active_only=True
+    )
     overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
     ctx = OnCallContext(
         members=[
@@ -810,7 +813,10 @@ async def resolve_on_call_range(
             step_hours=step_hours,
             items=[],
         )
-    members = await RosterRepo.list_members(db, org_id, roster_id)
+    # On-call resolution excludes deactivated/soft-deleted users.
+    members = await RosterRepo.list_members(
+        db, org_id, roster_id, active_only=True
+    )
     overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
     ctx = OnCallContext(
         members=[

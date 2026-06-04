@@ -548,3 +548,89 @@ async def test_change_my_password(env):
         "/auth/login", json={"username": "admin", "password": "brand-new-pass-1"}
     )
     assert new_login.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Forced password change + temporary-password reset (Parts 2/3, Option B)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_created_user_must_change_password_then_clears(env):
+    client: AsyncClient = env["client"]
+    headers, _ = await _admin_token(client)
+
+    created = await client.post(
+        "/auth/users",
+        headers=headers,
+        json={
+            "username": "newhire",
+            "email": "newhire@test.com",
+            "role": "operator",
+            "password": "temp-pass-123",
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["must_change_password"] is True
+
+    login = await client.post(
+        "/auth/login", json={"username": "newhire", "password": "temp-pass-123"}
+    )
+    user_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    me = await client.get("/auth/me", headers=user_headers)
+    assert me.json()["must_change_password"] is True
+
+    # Changing the password clears the flag.
+    changed = await client.post(
+        "/auth/me/password",
+        headers=user_headers,
+        json={"current_password": "temp-pass-123", "new_password": "chosen-pass-1"},
+    )
+    assert changed.status_code == 204
+    me2 = await client.get("/auth/me", headers=user_headers)
+    assert me2.json()["must_change_password"] is False
+
+
+@pytest.mark.asyncio
+async def test_create_user_can_opt_out_of_forced_change(env):
+    client: AsyncClient = env["client"]
+    headers, _ = await _admin_token(client)
+    created = await client.post(
+        "/auth/users",
+        headers=headers,
+        json={
+            "username": "keeppass",
+            "email": "keeppass@test.com",
+            "role": "viewer",
+            "password": "fixed-pass-123",
+            "require_password_change": False,
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["must_change_password"] is False
+
+
+@pytest.mark.asyncio
+async def test_admin_set_temporary_password(env):
+    client: AsyncClient = env["client"]
+    headers, _ = await _admin_token(client)
+    target_id = await _register_extra_user(
+        client, username="lockedout", email="lo@test.com"
+    )
+
+    resp = await client.post(
+        f"/auth/users/{target_id}/set-temporary-password", headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    temp = resp.json()["temporary_password"]
+    assert temp
+    assert resp.json()["must_change_password"] is True
+
+    # User logs in with the temp password and is forced to change.
+    login = await client.post(
+        "/auth/login", json={"username": "lockedout", "password": temp}
+    )
+    assert login.status_code == 200
+    user_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    me = await client.get("/auth/me", headers=user_headers)
+    assert me.json()["must_change_password"] is True

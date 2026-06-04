@@ -10,13 +10,17 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+    if (!user) {
       router.push("/login");
+    } else if (user.must_change_password) {
+      // Temporary password — no dashboard access until it's rotated.
+      router.push("/password-change-required");
     }
   }, [loading, user, router]);
 
   if (loading) return <PageSpinner />;
-  if (!user) return null;
+  if (!user || user.must_change_password) return null;
 
   return <>{children}</>;
 }

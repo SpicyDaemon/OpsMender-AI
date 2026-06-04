@@ -44,6 +44,7 @@ class UserResponse(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     avatar_color: Optional[str] = None
+    must_change_password: bool = False
     primary_org_id: Optional[uuid.UUID] = None
     created_at: datetime
     # Sprint 56: soft-delete marker. When set, the user is hidden from
@@ -62,7 +63,8 @@ class UserListResponse(BaseModel):
 class UserCreateRequest(BaseModel):
     """Admin creates a local user directly (no invite link required).
 
-    The user logs in with this temporary password and can change it later.
+    The password is temporary: by default the user is forced to change it on
+    first login (``require_password_change``).
     """
 
     username: str = Field(..., min_length=3, max_length=150)
@@ -72,6 +74,15 @@ class UserCreateRequest(BaseModel):
     is_active: bool = True
     first_name: Optional[str] = Field(default=None, max_length=100)
     last_name: Optional[str] = Field(default=None, max_length=100)
+    require_password_change: bool = True
+
+
+class TemporaryPasswordResponse(BaseModel):
+    """One-time temporary password shown to the admin after a manual reset."""
+
+    user_id: uuid.UUID
+    temporary_password: str
+    must_change_password: bool = True
 
 
 # ---------------------------------------------------------------------------

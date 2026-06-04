@@ -35,6 +35,7 @@ from backend.api.schemas import (
     TokenResponse,
     MePasswordChangeRequest,
     MeUpdateRequest,
+    TemporaryPasswordResponse,
     UserCreateRequest,
     UserListResponse,
     UserResponse,
@@ -284,6 +285,8 @@ async def change_my_password(
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     target.password_hash = hash_password(body.new_password)
+    target.must_change_password = False
+    target.password_changed_at = datetime.now(timezone.utc)
     await db.commit()
 
 
@@ -342,6 +345,8 @@ async def create_user(
         first_name=(body.first_name or "").strip() or None,
         last_name=(body.last_name or "").strip() or None,
     )
+    # Temporary password: force a change on first login unless opted out.
+    user.must_change_password = body.require_password_change
     if not body.is_active:
         await UserRepo.update_fields(db, user.id, is_active=False)
     if actor.primary_org_id is not None:
@@ -561,6 +566,35 @@ async def mint_password_reset(
 
 
 @router.post(
+    "/users/{user_id}/set-temporary-password",
+    response_model=TemporaryPasswordResponse,
+    dependencies=[Depends(require_role("admin"))],
+    summary="Set a one-time temporary password (admin only) — Option B reset",
+)
+async def set_temporary_password(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manual (no-email) password reset: generate a temporary password, force a
+    change on next login, and return the password once for the admin to relay."""
+    import secrets
+
+    target = await UserRepo.get_by_id(db, user_id)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    temp = secrets.token_urlsafe(9)
+    target.password_hash = hash_password(temp)
+    target.must_change_password = True
+    target.password_changed_at = datetime.now(timezone.utc)
+    await db.commit()
+    return TemporaryPasswordResponse(
+        user_id=user_id, temporary_password=temp, must_change_password=True
+    )
+
+
+@router.post(
     "/password-reset/{token}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Consume a password reset token (public)",
@@ -598,6 +632,8 @@ async def consume_password_reset(
         )
 
     user.password_hash = hash_password(body.password)
+    user.must_change_password = False
+    user.password_changed_at = datetime.now(timezone.utc)
     await PasswordResetTokenRepo.mark_used(db, row.id)
     await db.commit()
 

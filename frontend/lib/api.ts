@@ -1098,6 +1098,12 @@ export async function mintPasswordReset(
   );
 }
 
+export async function setTemporaryPassword(
+  userId: string,
+): Promise<{ user_id: string; temporary_password: string; must_change_password: boolean }> {
+  return api.post(`/auth/users/${userId}/set-temporary-password`, {});
+}
+
 export async function consumePasswordReset(
   token: string,
   password: string,

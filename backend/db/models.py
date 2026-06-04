@@ -260,6 +260,13 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     avatar_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Forced password change (temp passwords from admin create / temp reset).
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     primary_org_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
     )

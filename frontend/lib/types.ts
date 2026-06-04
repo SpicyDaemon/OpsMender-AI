@@ -15,6 +15,7 @@ export interface UserResponse {
   first_name?: string | null;
   last_name?: string | null;
   avatar_color?: string | null;
+  must_change_password?: boolean;
   primary_org_id: string | null;
   created_at: string;
   // Sprint 56: soft-delete marker. When set, the user is hidden from

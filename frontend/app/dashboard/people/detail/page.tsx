@@ -17,6 +17,7 @@ import {
   getUser,
   getUserDeletePreconditions,
   mintPasswordReset,
+  setTemporaryPassword,
   softDeleteUser,
   updateUser,
 } from "@/lib/api";
@@ -457,6 +458,8 @@ function ActionsCard({
   const [resetting, setResetting] = useState(false);
   const [minted, setMinted] = useState<PasswordResetMintResponse | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [tempPw, setTempPw] = useState<string | null>(null);
+  const [tempLoading, setTempLoading] = useState(false);
 
   const mint = useCallback(async () => {
     setResetting(true);
@@ -475,19 +478,65 @@ function ActionsCard({
     }
   }, [toast, user.id]);
 
+  const makeTempPassword = useCallback(async () => {
+    setTempLoading(true);
+    setTempPw(null);
+    try {
+      const resp = await setTemporaryPassword(user.id);
+      setTempPw(resp.temporary_password);
+      toast.success("Temporary password set — copy it now (shown once)");
+      await onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTempLoading(false);
+    }
+  }, [toast, user.id, onChanged]);
+
   return (
     <section className="space-y-4 rounded-lg border border-border-default bg-bg-panel p-5">
       <div>
         <h2 className="text-sm font-semibold text-fg-primary">Password</h2>
         <p className="mt-1 text-xs text-fg-muted">
-          Mint a one-time URL the user can paste into their browser to set a new password. Expires in 24 hours.
+          <strong>Email reset:</strong> mint a one-time URL the user pastes into their browser to set a new password (expires in 24 hours).
+          {" "}
+          <strong>Manual reset:</strong> set a temporary password (shown once) — the user logs in with it and is forced to change it.
         </p>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
           <Button onClick={mint} disabled={resetting} variant="secondary">
             <KeyRound className="h-4 w-4" />
             {resetting ? "Minting…" : "Send password reset"}
           </Button>
+          <Button onClick={makeTempPassword} disabled={tempLoading} variant="secondary">
+            <KeyRound className="h-4 w-4" />
+            {tempLoading ? "Setting…" : "Set temporary password"}
+          </Button>
         </div>
+        {tempPw && (
+          <div className="mt-3 rounded-md border border-border-default bg-bg-elevated p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+              Temporary password (shown once)
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="flex-1 truncate font-mono text-sm text-fg-primary">{tempPw}</code>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard
+                    .writeText(tempPw)
+                    .then(() => toast.success("Copied"))
+                    .catch(() => toast.error("Copy failed"));
+                }}
+              >
+                Copy
+              </Button>
+            </div>
+            <p className="mt-1 text-xs text-fg-muted">
+              The user must change this on next sign-in.
+            </p>
+          </div>
+        )}
       </div>
 
       <hr className="border-border-subtle" />

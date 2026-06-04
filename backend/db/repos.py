@@ -226,8 +226,14 @@ class UserRepo:
         role: str | None = None,
         is_active: bool | None = None,
         auth_source: str | None = None,
+        username: str | None = None,
+        email: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        avatar_color: str | None = None,
     ) -> User | None:
-        """Sprint 56: admin patch — change role and/or active state."""
+        """Admin or self patch — change role/active/profile fields. Only
+        non-None arguments are applied."""
 
         values: dict[str, Any] = {}
         if role is not None:
@@ -236,6 +242,16 @@ class UserRepo:
             values["is_active"] = is_active
         if auth_source is not None:
             values["auth_source"] = auth_source
+        if username is not None:
+            values["username"] = username
+        if email is not None:
+            values["email"] = email
+        if first_name is not None:
+            values["first_name"] = first_name
+        if last_name is not None:
+            values["last_name"] = last_name
+        if avatar_color is not None:
+            values["avatar_color"] = avatar_color
         if not values:
             return await db.get(User, user_id)
         stmt = update(User).where(User.id == user_id).values(**values)

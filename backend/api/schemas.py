@@ -41,6 +41,9 @@ class UserResponse(BaseModel):
     auth_source: str = "local"
     role: str
     is_active: bool
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_color: Optional[str] = None
     primary_org_id: Optional[uuid.UUID] = None
     created_at: datetime
     # Sprint 56: soft-delete marker. When set, the user is hidden from
@@ -75,10 +78,29 @@ class UserCreateRequest(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
-    """Admin-only patch of a user's role and/or active state."""
+    """Admin-only patch of a user's role, active state, and profile fields."""
 
     role: Optional[str] = Field(default=None, pattern="^(admin|operator|viewer)$")
     is_active: Optional[bool] = None
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+
+
+class MeUpdateRequest(BaseModel):
+    """Self-service profile edit for the current user."""
+
+    username: Optional[str] = Field(default=None, min_length=3, max_length=150)
+    email: Optional[str] = Field(default=None, max_length=255)
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    avatar_color: Optional[str] = Field(default=None, max_length=20)
+
+
+class MePasswordChangeRequest(BaseModel):
+    """Self-service password change — verify current, set new."""
+
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
 
 
 class PasswordResetMintResponse(BaseModel):

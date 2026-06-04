@@ -474,3 +474,77 @@ async def test_create_user_requires_admin(env):
         },
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Self-service profile + password (Parts 6/7)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_me_profile_fields(env):
+    client: AsyncClient = env["client"]
+    headers, _ = await _admin_token(client)
+
+    resp = await client.patch(
+        "/auth/me",
+        headers=headers,
+        json={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "avatar_color": "violet",
+            "username": "ada",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["first_name"] == "Ada"
+    assert body["last_name"] == "Lovelace"
+    assert body["avatar_color"] == "violet"
+    assert body["username"] == "ada"
+
+    me = await client.get("/auth/me", headers=headers)
+    assert me.json()["first_name"] == "Ada"
+    assert me.json()["username"] == "ada"
+
+
+@pytest.mark.asyncio
+async def test_update_me_username_conflict(env):
+    client: AsyncClient = env["client"]
+    headers, _ = await _admin_token(client)
+    await _register_extra_user(client, username="taken", email="taken@test.com")
+
+    resp = await client.patch("/auth/me", headers=headers, json={"username": "taken"})
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_change_my_password(env):
+    client: AsyncClient = env["client"]
+    headers, _ = await _admin_token(client)
+
+    # Wrong current password is rejected.
+    bad = await client.post(
+        "/auth/me/password",
+        headers=headers,
+        json={"current_password": "wrong-pass", "new_password": "brand-new-pass-1"},
+    )
+    assert bad.status_code == 400
+
+    # Correct current password rotates it.
+    ok = await client.post(
+        "/auth/me/password",
+        headers=headers,
+        json={"current_password": "securepass123", "new_password": "brand-new-pass-1"},
+    )
+    assert ok.status_code == 204
+
+    # Old password no longer works; new one does.
+    old_login = await client.post(
+        "/auth/login", json={"username": "admin", "password": "securepass123"}
+    )
+    assert old_login.status_code == 401
+    new_login = await client.post(
+        "/auth/login", json={"username": "admin", "password": "brand-new-pass-1"}
+    )
+    assert new_login.status_code == 200

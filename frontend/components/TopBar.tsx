@@ -10,8 +10,10 @@ import {
   Keyboard,
   LogOut,
   Menu,
+  UserCircle,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
+import { Avatar, userDisplayName } from "@/components/ui/Avatar";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import {
   getConfig,
@@ -284,18 +286,26 @@ export function TopBar({
               onClick={() => setMenuOpen((o) => !o)}
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-bg-panel text-xs font-semibold uppercase">
-                {user.username.slice(0, 2)}
+              <Avatar user={user} size={28} />
+              <span className="hidden md:inline font-medium text-fg-primary">
+                {userDisplayName(user)}
               </span>
-              <span className="hidden md:inline font-medium text-fg-primary">{user.username}</span>
               <ChevronDown size={14} className="text-fg-muted" />
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-md border border-border-subtle bg-bg-panel shadow-lg">
                 <div className="border-b border-border-subtle px-3 py-2.5">
-                  <p className="truncate text-sm font-medium text-fg-primary">{user.username}</p>
+                  <div className="flex items-center gap-2.5">
+                    <Avatar user={user} size={32} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-fg-primary">
+                        {userDisplayName(user)}
+                      </p>
+                      <p className="truncate text-xs text-fg-muted">{user.email}</p>
+                    </div>
+                  </div>
                   <span
-                    className={`mt-1 inline-block rounded-pill border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${roleClass}`}
+                    className={`mt-2 inline-block rounded-pill border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${roleClass}`}
                   >
                     {user.role}
                   </span>
@@ -322,6 +332,14 @@ export function TopBar({
                     </div>
                   )}
                 </div>
+                <Link
+                  href="/dashboard/settings/profile"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex w-full items-center gap-2 border-b border-border-subtle px-3 py-2.5 text-sm text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
+                >
+                  <UserCircle size={14} />
+                  Profile &amp; settings
+                </Link>
                 <div className="border-b border-border-subtle px-3 py-2.5">
                   <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
                     Theme

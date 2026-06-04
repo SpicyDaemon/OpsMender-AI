@@ -255,6 +255,11 @@ class User(Base):
         String(20), nullable=False, default="viewer"
     )  # admin | operator | viewer
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Profile fields (optional). avatar_color is a palette key driving the
+    # generated initials avatar — no file storage in v1.
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    avatar_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     primary_org_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
     )

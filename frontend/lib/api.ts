@@ -131,6 +131,18 @@ export async function getMe(): Promise<UserResponse> {
   return api.get<UserResponse>("/auth/me");
 }
 
+export async function updateMe(
+  body: import("./types").MeUpdateRequest,
+): Promise<UserResponse> {
+  return api.patch<UserResponse>("/auth/me", body);
+}
+
+export async function changeMyPassword(
+  body: import("./types").MePasswordChangeRequest,
+): Promise<void> {
+  await api.post("/auth/me/password", body);
+}
+
 export async function listUsers(params?: {
   limit?: number;
   offset?: number;

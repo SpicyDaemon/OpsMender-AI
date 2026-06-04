@@ -1,0 +1,271 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Bell, Save, UserCircle } from "lucide-react";
+import { useAuth } from "@/context/auth";
+import { changeMyPassword, updateMe } from "@/lib/api";
+import {
+  Avatar,
+  AVATAR_COLOR_KEYS,
+  AVATAR_PALETTE,
+} from "@/components/ui/Avatar";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { FormError, Input, Label } from "@/components/ui/Input";
+import { PasswordField } from "@/components/ui/PasswordField";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
+
+export default function ProfileSettingsPage() {
+  const { user, refresh } = useAuth();
+  const toast = useToast();
+
+  const [form, setForm] = useState({
+    username: "",
+    email: "",
+    first_name: "",
+    last_name: "",
+    avatar_color: "" as string,
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState("");
+
+  const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
+  const [savingPw, setSavingPw] = useState(false);
+  const [pwError, setPwError] = useState("");
+
+  // Initialize the form once per user identity. Keying on user.id (not the
+  // whole object) avoids a re-sync loop if the context hands back a new user
+  // reference, and preserves in-progress edits after refresh().
+  useEffect(() => {
+    if (!user) return;
+    setForm({
+      username: user.username,
+      email: user.email,
+      first_name: user.first_name ?? "",
+      last_name: user.last_name ?? "",
+      avatar_color: user.avatar_color ?? "",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  if (!user) {
+    return <div className="py-12 text-center text-fg-muted">Loading…</div>;
+  }
+
+  const previewUser = {
+    username: form.username || user.username,
+    first_name: form.first_name,
+    last_name: form.last_name,
+    avatar_color: form.avatar_color || null,
+  };
+
+  async function saveProfile() {
+    if (!form.username.trim() || !form.email.trim()) {
+      setProfileError("Username and email are required.");
+      return;
+    }
+    setSavingProfile(true);
+    setProfileError("");
+    try {
+      await updateMe({
+        username: form.username.trim(),
+        email: form.email.trim(),
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        avatar_color: form.avatar_color || null,
+      });
+      await refresh();
+      toast.success("Profile updated");
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function savePassword() {
+    if (pw.new_password.length < 8) {
+      setPwError("New password must be at least 8 characters.");
+      return;
+    }
+    if (pw.new_password !== pw.confirm) {
+      setPwError("New password and confirmation don't match.");
+      return;
+    }
+    setSavingPw(true);
+    setPwError("");
+    try {
+      await changeMyPassword({
+        current_password: pw.current_password,
+        new_password: pw.new_password,
+      });
+      setPw({ current_password: "", new_password: "", confirm: "" });
+      toast.success("Password changed");
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingPw(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader
+        title="Profile & Settings"
+        subtitle="Manage your account details, avatar, and password."
+        icon={<UserCircle size={18} />}
+      />
+
+      {/* Profile */}
+      <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
+        <div className="mb-5 flex items-center gap-4">
+          <Avatar user={previewUser} size={56} />
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold text-fg-primary">
+              {`${form.first_name} ${form.last_name}`.trim() || form.username || user.username}
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <Badge variant="default">{user.role}</Badge>
+              <span className="text-xs text-fg-muted">{user.auth_source || "local"}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="pf-first">First name</Label>
+            <Input
+              id="pf-first"
+              value={form.first_name}
+              onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+              placeholder="Ada"
+            />
+          </div>
+          <div>
+            <Label htmlFor="pf-last">Last name</Label>
+            <Input
+              id="pf-last"
+              value={form.last_name}
+              onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+              placeholder="Lovelace"
+            />
+          </div>
+          <div>
+            <Label htmlFor="pf-username">Username</Label>
+            <Input
+              id="pf-username"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="pf-email">Email</Label>
+            <Input
+              id="pf-email"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <Label>Avatar color</Label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {AVATAR_COLOR_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setForm({ ...form, avatar_color: key })}
+                aria-label={`Avatar color ${key}`}
+                title={key}
+                className={`h-7 w-7 rounded-md ring-offset-2 ring-offset-bg-panel transition ${
+                  form.avatar_color === key ? "ring-2 ring-accent" : "hover:opacity-80"
+                }`}
+                style={{ backgroundColor: AVATAR_PALETTE[key] }}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, avatar_color: "" })}
+              className={`h-7 rounded-md border border-border-strong px-2 text-xs text-fg-secondary transition hover:text-fg-primary ${
+                form.avatar_color === "" ? "ring-2 ring-accent" : ""
+              }`}
+              title="Auto (derived from username)"
+            >
+              Auto
+            </button>
+          </div>
+        </div>
+
+        {profileError && <div className="mt-3"><FormError message={profileError} /></div>}
+
+        <div className="mt-5 flex justify-end">
+          <Button onClick={saveProfile} loading={savingProfile}>
+            <Save size={14} /> Save profile
+          </Button>
+        </div>
+      </section>
+
+      {/* Password */}
+      <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
+        <h2 className="text-sm font-semibold text-fg-primary">Change password</h2>
+        <p className="mt-0.5 text-sm text-fg-secondary">
+          Use a strong password of at least 8 characters.
+        </p>
+        <div className="mt-4 space-y-4">
+          <PasswordField
+            label="Current password"
+            value={pw.current_password}
+            onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
+            autoComplete="current-password"
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <PasswordField
+              label="New password"
+              value={pw.new_password}
+              onChange={(e) => setPw({ ...pw, new_password: e.target.value })}
+              autoComplete="new-password"
+            />
+            <PasswordField
+              label="Confirm new password"
+              value={pw.confirm}
+              onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
+              autoComplete="new-password"
+            />
+          </div>
+        </div>
+        {pwError && <div className="mt-3"><FormError message={pwError} /></div>}
+        <div className="mt-5 flex justify-end">
+          <Button
+            onClick={savePassword}
+            loading={savingPw}
+            disabled={!pw.current_password || !pw.new_password}
+          >
+            <Save size={14} /> Update password
+          </Button>
+        </div>
+      </section>
+
+      {/* Notifications link */}
+      <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-fg-primary">Notification preferences</h2>
+            <p className="mt-0.5 text-sm text-fg-secondary">
+              Choose how you're paged and which channels you receive.
+            </p>
+          </div>
+          <Link
+            href="/dashboard/paging/notifications"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-surface px-3 py-2 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
+          >
+            <Bell size={14} /> Open
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}

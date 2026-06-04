@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Direct admin user creation (no invite link required).** New `POST /auth/users` (admin-only) lets an admin create a local user with username, email, role, a temporary password, and active state; the user logs in immediately and can change the password later. Surfaced as a **New user** action on People → Users with a Create User modal (auto-generated copyable temp password + regenerate + active toggle). Invite links remain available; this is the non-invite path.
+- **User profiles + avatars.** The `users` table gains `first_name`, `last_name`, and `avatar_color` (migration `q6r7s8t9u0v1`; all nullable). A new generated **initials avatar** (storage-free — a colored square with initials; color is operator-chosen or derived from the username) renders in the top-right menu and across the People surface foundations. `UserResponse` now exposes these fields.
+- **Profile & Settings page + self-service editing.** New `/dashboard/settings/profile` page where any user edits their own first/last name, username, email, and avatar color (`PATCH /auth/me`) and changes their password (`POST /auth/me/password`, verifies the current password). The top-right user menu now shows the avatar + display name + email and a **Profile & settings** link, alongside the existing theme controls and a notification-preferences shortcut. Admins can also set first/last name from People management (`PATCH /auth/users/{id}` extended).
+
 ### Fixed
 
 - **Invite links no longer 404.** `_build_invite_url` produced `/invite/<token>` (a path segment), but the static-export accept page is served at `/invite` and reads the token from `?token=` — so generated invite URLs hit a non-existent route. Invite URLs are now `/invite?token=<token>`, matching the page. Invite creation → acceptance now works end-to-end with local auth.
@@ -19,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **People page reworked to the full-width Services-style layout.** Dropped the centered `max-w-6xl` wrapper for full width; both the Users and Invites tables now use the shared `DataTable` filter bar (search + multi-select checkbox filter dropdowns + a pagination row above the table) instead of inline pill filters.
+- **Local auth is the default; SSO/SAML affordances hidden unless advanced auth is on.** The People **Auth method** column + filter (and its phone-layout block) render only when `advanced_auth_enabled || sso_configured || saml_configured`; a default v1 install shows no OIDC/SAML controls.
 - **Reliability & SLA v1 UI/UX cleanup.** Repositioned Reliability as focused **HTTP/HTTPS uptime + SLA monitoring** ("Monitor HTTP/HTTPS uptime and SLA compliance for your services"), not a generic observability platform.
   - **Main page:** new compact summary row (total targets · up · down · avg 30-day uptime · active SLO warnings); target cards now surface the **monitored URL** (truncated, full on hover), monitor type (HTTP/HTTPS), **current status** (Up/Down/Unknown), 30-day uptime, last-check time, and active SLO count, with edit/delete.
   - **Target detail:** reworked into an uptime/SLA dashboard — header with status badge + clickable URL + **Test check** button; three top cards (Current Status · Last Check · Last 24 Hours with a strip + down-event count + downtime); **Last 7 / 30 / 365-day** summary panels each with **MTBF**; a **custom date-range** uptime + MTBF calculator; and a green/red/gray **uptime history strip** (no response-time/latency charts in v1).

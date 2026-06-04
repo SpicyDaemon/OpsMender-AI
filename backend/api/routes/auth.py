@@ -33,6 +33,8 @@ from backend.api.schemas import (
     RegisterRequest,
     SoftDeletePreconditions,
     TokenResponse,
+    MePasswordChangeRequest,
+    MeUpdateRequest,
     UserCreateRequest,
     UserListResponse,
     UserResponse,
@@ -219,6 +221,72 @@ async def me(user: User = Depends(get_current_user)):
     return user
 
 
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    summary="Update the current user's own profile",
+)
+async def update_me(
+    body: MeUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Self-service profile edit — username, email, first/last name, avatar
+    color. Username + email uniqueness is enforced."""
+    username = body.username.strip() if body.username is not None else None
+    email = body.email.lower().strip() if body.email is not None else None
+
+    if username is not None and username != user.username:
+        clash = await UserRepo.get_by_username(db, username)
+        if clash is not None and clash.id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Username '{username}' is taken.",
+            )
+    if email is not None and email != user.email:
+        clash = await UserRepo.get_by_email(db, email)
+        if clash is not None and clash.id != user.id and clash.deleted_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Email '{email}' is already in use.",
+            )
+
+    updated = await UserRepo.update_fields(
+        db,
+        user.id,
+        username=username,
+        email=email,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        avatar_color=body.avatar_color,
+    )
+    await db.commit()
+    return updated
+
+
+@router.post(
+    "/me/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Change the current user's own password",
+)
+async def change_my_password(
+    body: MePasswordChangeRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Self-service password change — the current password must verify."""
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+    target = await UserRepo.get_by_id(db, user.id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    target.password_hash = hash_password(body.new_password)
+    await db.commit()
+
+
 @router.get(
     "/users",
     response_model=UserListResponse,
@@ -341,13 +409,23 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    if body.role is None and body.is_active is None:
+    if (
+        body.role is None
+        and body.is_active is None
+        and body.first_name is None
+        and body.last_name is None
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide at least one of: role, is_active",
+            detail="Provide at least one of: role, is_active, first_name, last_name",
         )
     updated = await UserRepo.update_fields(
-        db, user_id, role=body.role, is_active=body.is_active
+        db,
+        user_id,
+        role=body.role,
+        is_active=body.is_active,
+        first_name=body.first_name,
+        last_name=body.last_name,
     )
     await db.commit()
     return updated

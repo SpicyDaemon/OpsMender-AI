@@ -12,6 +12,9 @@ export interface UserResponse {
   auth_source: string;
   role: "admin" | "operator" | "viewer";
   is_active: boolean;
+  first_name?: string | null;
+  last_name?: string | null;
+  avatar_color?: string | null;
   primary_org_id: string | null;
   created_at: string;
   // Sprint 56: soft-delete marker. When set, the user is hidden from
@@ -258,6 +261,19 @@ export interface UserCreateRequest {
   role: "admin" | "operator" | "viewer";
   password: string;
   is_active?: boolean;
+}
+
+export interface MeUpdateRequest {
+  username?: string;
+  email?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  avatar_color?: string | null;
+}
+
+export interface MePasswordChangeRequest {
+  current_password: string;
+  new_password: string;
 }
 
 export interface PasswordResetMintResponse {

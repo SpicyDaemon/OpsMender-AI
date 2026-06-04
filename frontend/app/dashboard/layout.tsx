@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AuthGuard } from "@/components/AuthGuard";
+import { RouteRoleGuard } from "@/components/RouteRoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { Sidebar } from "@/components/Sidebar";
@@ -21,7 +22,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="flex flex-1 flex-col overflow-hidden">
           <TopBar onOpenMobileNav={() => setMobileSidebarOpen(true)} />
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 text-fg-primary">
-            {children}
+            <RouteRoleGuard>{children}</RouteRoleGuard>
           </main>
         </div>
         <KeyboardShortcuts />

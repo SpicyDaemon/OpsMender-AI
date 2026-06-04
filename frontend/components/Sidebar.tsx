@@ -76,6 +76,26 @@ export function navItemVisibleForRole(
   return true;
 }
 
+/**
+ * Roles allowed to access a dashboard path, derived from the nav model so the
+ * route guard and the sidebar stay in sync. Returns ``null`` when the path is
+ * unrestricted (no matching gated nav item — e.g. self-service settings).
+ * Uses the most specific (longest) matching nav href.
+ */
+export function requiredRolesForPath(pathname: string): string[] | null {
+  const items = buildNavGroups(true).flatMap((g) => g.items);
+  let best: NavItem | null = null;
+  for (const item of items) {
+    if (pathname === item.href || pathname.startsWith(item.href + "/")) {
+      if (!best || item.href.length > best.href.length) best = item;
+    }
+  }
+  if (!best) return null;
+  if (best.reqRole) return [best.reqRole];
+  if (best.roles) return best.roles;
+  return null;
+}
+
 export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
   return [
     {

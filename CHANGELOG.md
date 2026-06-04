@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Role-based access enforced in the UI and verified at the API (Part 6).** A new `RouteRoleGuard` in the dashboard layout reuses the sidebar role model (`requiredRolesForPath`) so a user who navigates directly to a restricted URL sees a clean **Access denied** panel instead of admin data — not just a hidden nav item. The sidebar already hides admin/AI-config/paging-management items from Operators and limits Viewers to Dashboard + Incidents. Backend authorization is unchanged but now locked by a role-matrix test (`tests/test_role_access.py`): Operators/Viewers are rejected from admin mutations (config, SLA targets, user creation) and Viewers can't read admin surfaces (config, user list), while every role can manage its own profile/password.
+
 ### Added
 
 - **Direct admin user creation (no invite link required).** New `POST /auth/users` (admin-only) lets an admin create a local user with username, email, role, a temporary password, and active state; the user logs in immediately and can change the password later. Surfaced as a **New user** action on People → Users with a Create User modal (auto-generated copyable temp password + regenerate + active toggle). Invite links remain available; this is the non-invite path.

@@ -5,7 +5,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildNavGroups, navItemVisibleForRole } from "@/components/Sidebar";
+import {
+  buildNavGroups,
+  navItemVisibleForRole,
+  requiredRolesForPath,
+} from "@/components/Sidebar";
 
 function visibleHrefs(role: string): string[] {
   return buildNavGroups(false)
@@ -59,5 +63,27 @@ describe("Sidebar nav model", () => {
     expect(hrefs).not.toContain("/dashboard/config");
     expect(hrefs).not.toContain("/dashboard/people");
     expect(hrefs).not.toContain("/dashboard/paging/services");
+  });
+});
+
+describe("requiredRolesForPath (route guard)", () => {
+  it("restricts admin routes (incl. nested detail paths)", () => {
+    expect(requiredRolesForPath("/dashboard/config")).toEqual(["admin"]);
+    expect(requiredRolesForPath("/dashboard/people")).toEqual(["admin"]);
+    expect(requiredRolesForPath("/dashboard/people/detail")).toEqual(["admin"]);
+    expect(requiredRolesForPath("/dashboard/models")).toEqual(["admin"]);
+    expect(requiredRolesForPath("/dashboard/paging/services")).toEqual(["admin"]);
+  });
+
+  it("allows shared routes (null = everyone) and self-service settings", () => {
+    expect(requiredRolesForPath("/dashboard")).toBeNull();
+    expect(requiredRolesForPath("/dashboard/incidents")).toBeNull();
+    expect(requiredRolesForPath("/dashboard/incidents/detail")).toBeNull();
+    expect(requiredRolesForPath("/dashboard/settings/profile")).toBeNull();
+  });
+
+  it("scopes operator-and-admin routes", () => {
+    expect(requiredRolesForPath("/dashboard/approvals")).toEqual(["admin", "operator"]);
+    expect(requiredRolesForPath("/dashboard/reliability")).toEqual(["admin", "operator"]);
   });
 });

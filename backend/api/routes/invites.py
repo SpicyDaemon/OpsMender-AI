@@ -106,8 +106,12 @@ def _to_response(invite: OrgInvite) -> InviteResponse:
 
 
 def _build_invite_url(request: Request, raw_token: str) -> str:
+    # The invite-accept page is the Next.js static export served at `/invite`,
+    # which reads the token from `?token=` — a path segment like
+    # `/invite/<token>` has no statically-generated route and 404s. Keep this in
+    # sync with frontend/app/invite/page.tsx.
     base = _resolve_public_base_url(request)
-    return f"{base}/invite/{raw_token}"
+    return f"{base}/invite?token={raw_token}"
 
 
 def _invite_email_body(*, org_name: str, role: str, url: str) -> str:

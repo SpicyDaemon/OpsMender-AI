@@ -24,7 +24,6 @@ import {
   Repeat,
   Server,
   Settings,
-  ShieldCheck,
   UserCog,
   Users,
   Wrench,
@@ -103,7 +102,6 @@ export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
       id: "observe",
       label: "Observe",
       items: [
-        { href: "/dashboard/scans", label: "Environment Scans", icon: ShieldCheck },
         { href: "/dashboard/reliability", label: "Reliability", icon: Activity },
         { href: "/dashboard/activity", label: "Activity", icon: BookOpen },
       ],

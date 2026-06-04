@@ -18,7 +18,7 @@ const ALT_LABEL =
 const NAV_SHORTCUTS: Shortcut[] = [
   { keys: [ALT_LABEL, "I"], label: "Incidents", target: "/dashboard/incidents" },
   { keys: [ALT_LABEL, "A"], label: "Approvals", target: "/dashboard/approvals" },
-  { keys: [ALT_LABEL, "D"], label: "Environment Scans", target: "/dashboard/scans" },
+  { keys: [ALT_LABEL, "R"], label: "Reliability", target: "/dashboard/reliability" },
   { keys: [ALT_LABEL, "S"], label: "Skills", target: "/dashboard/skills" },
   { keys: [ALT_LABEL, "L"], label: "Activity", target: "/dashboard/activity" },
   { keys: [ALT_LABEL, "C"], label: "Config", target: "/dashboard/config" },
@@ -40,7 +40,7 @@ const OTHER_SHORTCUTS: Shortcut[] = [
 const NAV_CODE_MAP: Record<string, string> = {
   KeyI: "/dashboard/incidents",
   KeyA: "/dashboard/approvals",
-  KeyD: "/dashboard/scans",
+  KeyR: "/dashboard/reliability",
   KeyS: "/dashboard/skills",
   KeyL: "/dashboard/activity",
   KeyC: "/dashboard/config",

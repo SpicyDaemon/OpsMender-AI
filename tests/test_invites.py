@@ -93,7 +93,7 @@ async def test_create_invite_returns_one_time_url(env):
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["url"].startswith("http://test/invite/")
+    assert body["url"].startswith("http://test/invite?token=")
     assert body["email_sent"] is False  # SMTP not configured
     invite = body["invite"]
     assert invite["email"] == "newbie@example.com"
@@ -206,7 +206,7 @@ async def test_resend_invite_reissues_pending_invite(env):
     )
     invite_id = created.json()["invite"]["id"]
     old_url = created.json()["url"]
-    old_raw = old_url.rsplit("/", 1)[-1]
+    old_raw = old_url.split("token=", 1)[-1]
 
     resent = await client.post(
         f"/organizations/{org_id}/invites/{invite_id}/resend", headers=headers
@@ -217,7 +217,7 @@ async def test_resend_invite_reissues_pending_invite(env):
     assert body["invite"]["role"] == "viewer"
     assert body["invite"]["status"] == "pending"
     assert body["invite"]["id"] != invite_id
-    assert body["url"].startswith("http://test/invite/")
+    assert body["url"].startswith("http://test/invite?token=")
     assert body["url"] != old_url
 
     listing = await client.get(
@@ -231,7 +231,7 @@ async def test_resend_invite_reissues_pending_invite(env):
     old_validate = await client.get(f"/invites/{old_raw}")
     assert old_validate.status_code == 400
 
-    new_raw = body["url"].rsplit("/", 1)[-1]
+    new_raw = body["url"].split("token=", 1)[-1]
     new_validate = await client.get(f"/invites/{new_raw}")
     assert new_validate.status_code == 200
 
@@ -244,7 +244,7 @@ async def test_resend_invite_rejects_non_pending(env):
         json={"email": "accepted@example.com", "role": "viewer"},
         headers=headers,
     )
-    raw = created.json()["url"].rsplit("/", 1)[-1]
+    raw = created.json()["url"].split("token=", 1)[-1]
     invite_id = created.json()["invite"]["id"]
 
     accepted = await client.post(
@@ -272,7 +272,7 @@ async def test_get_invite_returns_safe_fields(env):
         json={"email": "newbie@example.com", "role": "viewer"},
         headers=headers,
     )
-    raw = created.json()["url"].rsplit("/", 1)[-1]
+    raw = created.json()["url"].split("token=", 1)[-1]
 
     resp = await client.get(f"/invites/{raw}")
     assert resp.status_code == 200
@@ -301,7 +301,7 @@ async def test_accept_invite_creates_user_and_returns_jwt(env):
         json={"email": "newbie@example.com", "role": "operator"},
         headers=headers,
     )
-    raw = created.json()["url"].rsplit("/", 1)[-1]
+    raw = created.json()["url"].split("token=", 1)[-1]
 
     resp = await client.post(
         f"/invites/{raw}/accept",
@@ -334,7 +334,7 @@ async def test_accept_invite_is_single_use(env):
         json={"email": "newbie@example.com", "role": "viewer"},
         headers=headers,
     )
-    raw = created.json()["url"].rsplit("/", 1)[-1]
+    raw = created.json()["url"].split("token=", 1)[-1]
 
     first = await client.post(
         f"/invites/{raw}/accept",
@@ -357,7 +357,7 @@ async def test_accept_invite_rejects_revoked_token(env):
         json={"email": "newbie@example.com", "role": "viewer"},
         headers=headers,
     )
-    raw = created.json()["url"].rsplit("/", 1)[-1]
+    raw = created.json()["url"].split("token=", 1)[-1]
     invite_id = created.json()["invite"]["id"]
 
     await client.post(
@@ -389,7 +389,7 @@ async def test_accept_invite_rejects_duplicate_username(env):
         json={"email": "newbie-invite@example.com", "role": "viewer"},
         headers=headers,
     )
-    raw = created.json()["url"].rsplit("/", 1)[-1]
+    raw = created.json()["url"].split("token=", 1)[-1]
 
     resp = await client.post(
         f"/invites/{raw}/accept",

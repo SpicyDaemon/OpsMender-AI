@@ -190,10 +190,16 @@ class IngestConfig:
 
 @dataclasses.dataclass
 class SLAConfig:
-    """SLA polling settings."""
+    """SLA polling settings.
 
-    poller_enabled: bool = False
-    poll_interval_default: int = 60
+    The HTTP/HTTPS uptime checker runs automatically on a 5-minute cadence by
+    default so a fresh deployment starts recording uptime samples without any
+    extra configuration. Operators can disable it with
+    ``OPSMENDER_SLA_POLLER_ENABLED=false`` or retune the interval.
+    """
+
+    poller_enabled: bool = True
+    poll_interval_default: int = 300
 
 
 @dataclasses.dataclass
@@ -458,8 +464,10 @@ class AppConfig:
             ),
         )
         sla = SLAConfig(
-            poller_enabled=_env_bool(env, "OPSMENDER_SLA_POLLER_ENABLED", False),
-            poll_interval_default=_env_int(env, "OPSMENDER_SLA_POLL_INTERVAL_DEFAULT", 60),
+            poller_enabled=_env_bool(env, "OPSMENDER_SLA_POLLER_ENABLED", True),
+            poll_interval_default=_env_int(
+                env, "OPSMENDER_SLA_POLL_INTERVAL_DEFAULT", 300
+            ),
         )
         tier0 = Tier0Config(
             max_session_seconds=_env_int(

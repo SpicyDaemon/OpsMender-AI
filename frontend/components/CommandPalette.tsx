@@ -44,7 +44,6 @@ import {
   Search,
   Server,
   Settings,
-  ShieldCheck,
   Sparkles,
   UserCog,
   Users,
@@ -84,8 +83,7 @@ const NAVIGATE_ITEMS: Omit<CommandItem, "kind">[] = [
   { id: "n-models", label: "AI Agent — Models", icon: Cpu, href: "/dashboard/models" },
   { id: "n-workflows", label: "Advanced — Session Profiles", icon: Workflow, href: "/dashboard/workflows" },
   { id: "n-agent-teams", label: "AI Agent — Agent Teams", icon: Bot, href: "/dashboard/agent-teams" },
-  { id: "n-scans", label: "Observe — Environment Scans", icon: ShieldCheck, href: "/dashboard/scans" },
-  { id: "n-reliability", label: "Observe — Reliability", icon: Activity, href: "/dashboard/reliability", keywords: "sla mttr" },
+  { id: "n-reliability", label: "Observe — Reliability", icon: Activity, href: "/dashboard/reliability", keywords: "sla mttr uptime" },
   { id: "n-activity", label: "Observe — Activity", icon: Activity, href: "/dashboard/activity", keywords: "audit log" },
   { id: "n-people", label: "Admin — People", icon: UserCog, href: "/dashboard/people", keywords: "users invites" },
   { id: "n-organizations", label: "Admin — Organizations", icon: Building2, href: "/dashboard/organizations" },
@@ -122,13 +120,6 @@ const ACTION_ITEMS: Omit<CommandItem, "kind">[] = [
     hint: "Jump to the rosters page.",
     icon: Phone,
     href: "/dashboard/paging/rosters",
-  },
-  {
-    id: "a-environment-scan",
-    label: "Run environment scan",
-    icon: ShieldCheck,
-    href: "/dashboard/scans",
-    keywords: "audit",
   },
 ];
 

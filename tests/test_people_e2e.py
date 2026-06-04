@@ -104,7 +104,7 @@ async def test_people_full_lifecycle(env):
     )
     assert minted.status_code == 201, minted.text
     invite_url = minted.json()["url"]
-    invite_token = invite_url.rsplit("/", 1)[-1]
+    invite_token = invite_url.split("token=", 1)[-1]
     assert minted.json()["invite"]["status"] == "pending"
 
     # ----- (3) Teammate validates + accepts ------------------------------

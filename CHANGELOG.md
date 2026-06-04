@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Invite links no longer 404.** `_build_invite_url` produced `/invite/<token>` (a path segment), but the static-export accept page is served at `/invite` and reads the token from `?token=` — so generated invite URLs hit a non-existent route. Invite URLs are now `/invite?token=<token>`, matching the page. Invite creation → acceptance now works end-to-end with local auth.
+- **Reliability HTTP/HTTPS checks now run automatically.** The SLA poller defaulted to **disabled** (`OPSMENDER_SLA_POLLER_ENABLED=false`) with a 60s interval, so automatic uptime checks never fired even though manual "Test check" worked. It now defaults to **enabled at a 5-minute cadence** (`poller_enabled=True`, `poll_interval_default=300`); a fresh deployment records uptime samples automatically once the backend starts. Operators can still disable it or retune the interval via env. (`.env.example` updated.)
 - **SLO objectives now store 3-decimal precision.** `slos.objective_pct` was `NUMERIC(5,4)` (max `9.9999`) and would overflow on PostgreSQL for any realistic objective — even `99.9`. Widened to `NUMERIC(6,3)` (migration `p5q6r7s8t9u0`) so `99.999` and `100.000` store and round-trip cleanly. The simplified SLO editor formats with adaptive precision so `99.999%` never rounds up to `100%`.
+
+### Removed
+
+- **Environment Scans removed from the v1 UI.** Environment Scans don't support the core v1 incident workflow, so they're gone from the sidebar (Observe group), command palette, and keyboard shortcuts, and the `/dashboard/scans` page is deleted. The freed keyboard shortcut `Alt+R` now jumps to Reliability. Backend auditor/scan routes are left intact (no UI exposure) to avoid churn; they can be removed in a later pass.
 
 ### Changed
 

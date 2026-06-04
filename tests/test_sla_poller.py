@@ -163,6 +163,62 @@ class TestSLAPoller:
         assert sample.latency_ms == 42
         assert sample.suppressed is False
 
+    def test_poller_defaults_enabled_every_5_minutes(self):
+        """v1: the HTTP/HTTPS checker runs automatically on a 5-minute cadence."""
+        from backend.config_loader import SLAConfig
+
+        defaults = SLAConfig()
+        assert defaults.poller_enabled is True
+        assert defaults.poll_interval_default == 300
+
+    @pytest.mark.asyncio
+    async def test_scheduler_selects_active_http_targets_only(
+        self, db: AsyncSession
+    ):
+        """The poller's per-tick target query returns active targets only —
+        inactive (monitoring-paused) targets are not probed."""
+        await SLATargetRepo.create(
+            db, TEST_ORG_ID, name="active-web", kind="http",
+            config={"url": "http://test.com"}, is_active=True,
+        )
+        await SLATargetRepo.create(
+            db, TEST_ORG_ID, name="paused-web", kind="http",
+            config={"url": "http://down.com"}, is_active=False,
+        )
+        await db.commit()
+
+        selected = await SLATargetRepo.list_all(db, TEST_ORG_ID, active_only=True)
+        names = {t.name for t in selected}
+        assert names == {"active-web"}
+
+    @pytest.mark.asyncio
+    async def test_automatic_check_records_down_sample_on_failure(
+        self, factory, config, db: AsyncSession
+    ):
+        """A failing automatic check records a down (up=False) sample — the same
+        path the scheduler runs per target each tick."""
+        target = await SLATargetRepo.create(
+            db, TEST_ORG_ID, name="failing", kind="http",
+            config={"url": "http://test.com"},
+        )
+        await db.commit()
+
+        poller = SLAPoller(factory, config)
+        with patch.object(poller, "_probe_target", new_callable=AsyncMock) as mock_probe:
+            mock_probe.return_value = (False, 88)
+            await poller._probe_and_record(TEST_ORG_ID, target)
+
+        from sqlalchemy import select
+        from backend.db.models import UptimeSample
+
+        sample = (
+            await db.execute(
+                select(UptimeSample).where(UptimeSample.target_id == target.id)
+            )
+        ).scalar_one()
+        assert sample.up is False
+        assert sample.suppressed is False
+
     @pytest.mark.asyncio
     async def test_probe_and_record_suppressed_in_maintenance(
         self, factory, config, db: AsyncSession

@@ -16,6 +16,7 @@ from backend.api.schemas import (
     MaintenanceWindowListResponse,
     MaintenanceWindowResponse,
     MaintenanceWindowUpdate,
+    SLASummaryResponse,
     SLATargetCreate,
     SLATargetListResponse,
     SLATargetResponse,
@@ -26,17 +27,67 @@ from backend.api.schemas import (
     SLOStatusResponse,
     SLOUpdate,
     UptimeResponse,
+    UptimeSeriesPoint,
 )
-from backend.db.models import User
+from backend.db.models import SLATarget as SLATargetModel, User
 from backend.db.repos import (
     MaintenanceWindowRepo,
     SLATargetRepo,
     SLORepo,
     UptimeSampleRepo,
 )
+from backend.sla import metrics
 from backend.sla.poller import validate_expected_status_config
 
 router = APIRouter(tags=["reliability"])
+
+
+# -- Target enrichment ------------------------------------------------------
+
+
+def _derive_url_and_type(target: SLATargetModel) -> tuple[str | None, str | None]:
+    """Pull the monitored URL + monitor type (http/https) from target config."""
+    config = target.config or {}
+    url = config.get("url") if isinstance(config, dict) else None
+    if not url or target.kind != "http":
+        return url, None
+    monitor_type = "https" if str(url).lower().startswith("https") else "http"
+    return url, monitor_type
+
+
+async def _enrich_target(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    target: SLATargetModel,
+    *,
+    now: datetime,
+    slo_count: int,
+) -> SLATargetResponse:
+    """Build an SLATargetResponse with current status + 30-day uptime."""
+    url, monitor_type = _derive_url_and_type(target)
+    latest = await UptimeSampleRepo.latest_sample(db, org_id, target.id)
+    if latest is None:
+        current_status = "unknown"
+        last_check_at = None
+    else:
+        current_status = "up" if latest.up else "down"
+        last_check_at = latest.observed_at
+
+    stats = await UptimeSampleRepo.compute_uptime(
+        db, org_id, target.id, since=now - timedelta(days=30), until=now
+    )
+    uptime_30d = stats["uptime_pct"] if latest is not None else None
+
+    return SLATargetResponse.model_validate(target).model_copy(
+        update={
+            "url": url,
+            "monitor_type": monitor_type,
+            "current_status": current_status,
+            "last_check_at": last_check_at,
+            "uptime_30d_pct": uptime_30d,
+            "active_slo_count": slo_count,
+        }
+    )
 
 # ======================================================================
 # SLA Targets
@@ -65,10 +116,22 @@ async def list_sla_targets(
     user: User = Depends(get_current_user),
 ):
     items = await SLATargetRepo.list_all(db, org_id)
-    return SLATargetListResponse(
-        items=[SLATargetResponse.model_validate(t) for t in items],
-        total=len(items),
-    )
+    now = datetime.now(timezone.utc)
+
+    # One SLO query for the whole org; count active SLOs per target.
+    slos = await SLORepo.list_all(db, org_id)
+    slo_counts: dict[uuid.UUID, int] = {}
+    for slo in slos:
+        if slo.is_active:
+            slo_counts[slo.target_id] = slo_counts.get(slo.target_id, 0) + 1
+
+    enriched = [
+        await _enrich_target(
+            db, org_id, t, now=now, slo_count=slo_counts.get(t.id, 0)
+        )
+        for t in items
+    ]
+    return SLATargetListResponse(items=enriched, total=len(enriched))
 
 
 @router.get(
@@ -85,7 +148,11 @@ async def get_sla_target(
     target = await SLATargetRepo.get_by_id(db, org_id, target_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
-    return SLATargetResponse.model_validate(target)
+    slos = await SLORepo.list_by_target(db, org_id, target_id, active_only=True)
+    slo_count = len(slos)
+    return await _enrich_target(
+        db, org_id, target, now=datetime.now(timezone.utc), slo_count=slo_count
+    )
 
 
 @router.post(
@@ -266,10 +333,23 @@ async def get_sla_target_incidents(
 # -- Uptime query ----------------------------------------------------------
 
 WINDOW_MAP = {
+    "24h": timedelta(hours=24),
     "7d": timedelta(days=7),
     "30d": timedelta(days=30),
     "90d": timedelta(days=90),
+    "365d": timedelta(days=365),
     "1y": timedelta(days=365),
+}
+
+# How many strip buckets each window renders into (kept modest so the timeline
+# stays a lightweight strip, not a dense chart).
+_WINDOW_BUCKETS = {
+    "24h": 48,  # half-hour blocks
+    "7d": 42,
+    "30d": 30,  # daily blocks
+    "90d": 45,
+    "365d": 52,  # weekly blocks
+    "1y": 52,
 }
 
 
@@ -280,7 +360,11 @@ WINDOW_MAP = {
 )
 async def get_target_uptime(
     target_id: uuid.UUID,
-    window: str = Query("30d", pattern="^(7d|30d|90d|1y)$"),
+    window: str = Query("30d", pattern="^(24h|7d|30d|90d|365d|1y)$"),
+    start: datetime | None = Query(
+        None, description="Custom range start (ISO-8601); overrides window"
+    ),
+    end: datetime | None = Query(None, description="Custom range end (ISO-8601)"),
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
@@ -290,10 +374,26 @@ async def get_target_uptime(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
 
     now = datetime.now(timezone.utc)
-    since = now - WINDOW_MAP[window]
+    if start is not None:
+        # Custom range mode. End defaults to now; validate ordering.
+        until = end or now
+        since = start
+        if since >= until:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "start must be before end"
+            )
+        buckets = 48
+    else:
+        until = now
+        since = now - WINDOW_MAP[window]
+        buckets = _WINDOW_BUCKETS.get(window, 48)
 
-    stats = await UptimeSampleRepo.compute_uptime(
-        db, org_id, target_id, since=since, until=now
+    samples = await UptimeSampleRepo.query_window(
+        db, org_id, target_id, since=since, until=until
+    )
+    stats = metrics.uptime_stats(samples)
+    series = metrics.history_series(
+        samples, since=since, until=until, buckets=buckets
     )
 
     return UptimeResponse(
@@ -303,6 +403,65 @@ async def get_target_uptime(
         up_samples=stats["up_samples"],
         downtime_seconds=stats["downtime_seconds"],
         suppressed_seconds=stats["suppressed_seconds"],
+        mtbf_seconds=metrics.mtbf_seconds(samples),
+        down_events=metrics.count_down_events(samples),
+        series=[UptimeSeriesPoint(**p) for p in series],
+    )
+
+
+@router.get(
+    "/sla-summary",
+    response_model=SLASummaryResponse,
+    summary="Org-level reliability rollup for the dashboard summary row",
+)
+async def get_sla_summary(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    targets = await SLATargetRepo.list_all(db, org_id)
+    now = datetime.now(timezone.utc)
+
+    up = down = unknown = 0
+    uptimes: list[float] = []
+    for t in targets:
+        latest = await UptimeSampleRepo.latest_sample(db, org_id, t.id)
+        if latest is None:
+            unknown += 1
+            continue
+        if latest.up:
+            up += 1
+        else:
+            down += 1
+        stats = await UptimeSampleRepo.compute_uptime(
+            db, org_id, t.id, since=now - timedelta(days=30), until=now
+        )
+        uptimes.append(stats["uptime_pct"])
+
+    avg_uptime = round(sum(uptimes) / len(uptimes), 4) if uptimes else None
+
+    # An "SLO warning" is an active SLO whose current actual uptime over its
+    # window is below objective. Warning only — never creates an incident.
+    slos = await SLORepo.list_all(db, org_id, active_only=True)
+    warnings = 0
+    for slo in slos:
+        stats = await UptimeSampleRepo.compute_uptime(
+            db,
+            org_id,
+            slo.target_id,
+            since=now - timedelta(seconds=slo.window_seconds),
+            until=now,
+        )
+        if stats["uptime_pct"] < float(slo.objective_pct):
+            warnings += 1
+
+    return SLASummaryResponse(
+        total_targets=len(targets),
+        targets_up=up,
+        targets_down=down,
+        targets_unknown=unknown,
+        avg_uptime_30d_pct=avg_uptime,
+        active_slo_warnings=warnings,
     )
 
 

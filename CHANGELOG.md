@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **SLO objectives now store 3-decimal precision.** `slos.objective_pct` was `NUMERIC(5,4)` (max `9.9999`) and would overflow on PostgreSQL for any realistic objective — even `99.9`. Widened to `NUMERIC(6,3)` (migration `p5q6r7s8t9u0`) so `99.999` and `100.000` store and round-trip cleanly. The simplified SLO editor formats with adaptive precision so `99.999%` never rounds up to `100%`.
+
+### Changed
+
+- **Reliability & SLA v1 UI/UX cleanup.** Repositioned Reliability as focused **HTTP/HTTPS uptime + SLA monitoring** ("Monitor HTTP/HTTPS uptime and SLA compliance for your services"), not a generic observability platform.
+  - **Main page:** new compact summary row (total targets · up · down · avg 30-day uptime · active SLO warnings); target cards now surface the **monitored URL** (truncated, full on hover), monitor type (HTTP/HTTPS), **current status** (Up/Down/Unknown), 30-day uptime, last-check time, and active SLO count, with edit/delete.
+  - **Target detail:** reworked into an uptime/SLA dashboard — header with status badge + clickable URL + **Test check** button; three top cards (Current Status · Last Check · Last 24 Hours with a strip + down-event count + downtime); **Last 7 / 30 / 365-day** summary panels each with **MTBF**; a **custom date-range** uptime + MTBF calculator; and a green/red/gray **uptime history strip** (no response-time/latency charts in v1).
+  - **SLO modal simplified:** name, target % (up to 3 decimals), window preset (7/30/90/365 days + custom), enabled. Burn-rate alerting, burn threshold, and error-budget language are removed from the v1 UI (backend fields retained). SLO breaches show a **warning only** — OpsMender does not create incidents from SLO breaches in v1.
+  - **Backend:** `/sla-targets` list + detail responses now include `url`, `monitor_type`, `current_status`, `last_check_at`, `uptime_30d_pct`, and `active_slo_count`; `/sla-targets/{id}/uptime` adds `24h`/`365d` windows, custom `start`/`end` range, and `mtbf_seconds` + `down_events` + a bucketed `series`; new `GET /sla-summary` org rollup. Maintenance-window copy corrected to state that suppressed time is **excluded from SLA calculations** (which the sample math already does), not merely silenced.
+  - **Future work (documented, not built):** response-time/latency charts, TCP-port and health-check-endpoint monitoring, and SLO-breach → create-incident / notify-team / link-to-Service. Reliability targets may eventually link to Services so a target going down opens an incident for the linked Service.
+
 ### Documentation
 
 - **Future direction captured: Multi-Agent Session Profiles.** New `docs/future-multi-agent-session-profiles.md` documents the long-term north star where a Session Profile may assign specialized agents (Observer / Diagnostician / Planner / Executor / Verifier / Reporter) to different incident-response phases — each potentially with its own model, prompt, MCP access, skill set, approval requirement, and memory scope. Added as **Theme 9** in `docs/V2_ROADMAP.md` (explicitly *beyond* committed v2 core, since it would evolve the LangGraph workflow shape) and as decision **D-029** + a glossary entry in `docs/REFERENCE.md`. Documentation only — **no code, schema, API, UI, or test changes**; the single-agent Session Profile remains the supported v1 behavior.

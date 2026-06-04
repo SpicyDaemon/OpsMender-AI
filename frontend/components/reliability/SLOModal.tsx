@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createSLO, updateSLO } from "@/lib/api_reliability";
-import type { SLOResponse, SLATargetResponse } from "@/lib/types";
+import type { SLOResponse } from "@/lib/types";
+import { SLO_WINDOW_OPTIONS } from "@/lib/uptime";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FormError } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
@@ -16,41 +17,44 @@ interface SLOModalProps {
   initialData?: SLOResponse | null;
 }
 
+const PRESET_VALUES = SLO_WINDOW_OPTIONS.map((o) => o.value);
+
+/**
+ * v1 SLO editor — name, target %, window, enabled. Burn-rate alerting and
+ * error-budget math are intentionally not exposed here (too SRE-heavy for v1);
+ * the backend fields remain and are simply left unset. SLO breaches show as a
+ * warning on the Reliability dashboard and never create incidents in v1.
+ */
 export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOModalProps) {
   const [form, setForm] = useState({
     name: "",
     objective_pct: "99.9",
-    window_hours: "720", // 30 days
-    burn_alert_threshold: "1.0",
-    alerts_enabled: true,
+    window_seconds: 30 * 86400,
     is_active: true,
   });
+  const [customWindow, setCustomWindow] = useState(false);
+  const [customDays, setCustomDays] = useState("30");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (open) {
-      if (initialData) {
-        setForm({
-          name: initialData.name,
-          objective_pct: String(initialData.objective_pct),
-          window_hours: String(initialData.window_seconds / 3600),
-          burn_alert_threshold: initialData.burn_alert_threshold ? String(initialData.burn_alert_threshold) : "1.0",
-          alerts_enabled: initialData.burn_alert_threshold !== null,
-          is_active: initialData.is_active,
-        });
-      } else {
-        setForm({
-          name: "",
-          objective_pct: "99.9",
-          window_hours: "720",
-          burn_alert_threshold: "1.0",
-          alerts_enabled: true,
-          is_active: true,
-        });
-      }
-      setError("");
+    if (!open) return;
+    if (initialData) {
+      const isPreset = PRESET_VALUES.includes(initialData.window_seconds);
+      setForm({
+        name: initialData.name,
+        objective_pct: String(initialData.objective_pct),
+        window_seconds: initialData.window_seconds,
+        is_active: initialData.is_active,
+      });
+      setCustomWindow(!isPreset);
+      setCustomDays(String(Math.round(initialData.window_seconds / 86400)));
+    } else {
+      setForm({ name: "", objective_pct: "99.9", window_seconds: 30 * 86400, is_active: true });
+      setCustomWindow(false);
+      setCustomDays("30");
     }
+    setError("");
   }, [open, initialData]);
 
   async function handleSubmit() {
@@ -58,38 +62,36 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
       setError("Name is required");
       return;
     }
+    const objective = parseFloat(form.objective_pct);
+    if (Number.isNaN(objective) || objective < 0 || objective > 100) {
+      setError("Target must be between 0 and 100%");
+      return;
+    }
+    const windowSeconds = customWindow
+      ? Math.round(parseFloat(customDays) * 86400)
+      : form.window_seconds;
+    if (Number.isNaN(windowSeconds) || windowSeconds < 3600) {
+      setError("Window must be at least 1 hour");
+      return;
+    }
 
     setSaving(true);
     setError("");
-
     try {
       const payload = {
         target_id: targetId,
         name: form.name.trim(),
-        objective_pct: parseFloat(form.objective_pct),
-        window_seconds: parseInt(form.window_hours, 10) * 3600,
-        burn_alert_threshold: form.alerts_enabled ? parseFloat(form.burn_alert_threshold) : null,
+        objective_pct: objective,
+        window_seconds: windowSeconds,
+        // v1: no burn-rate alerting — breaches are warning-only, never paging.
+        burn_alert_threshold: null,
         is_active: form.is_active,
       };
-
-      if (isNaN(payload.objective_pct) || payload.objective_pct < 0 || payload.objective_pct > 100) {
-        setError("Objective must be between 0 and 100%");
-        setSaving(false);
-        return;
-      }
-
-      if (isNaN(payload.window_seconds) || payload.window_seconds < 3600) {
-        setError("Window must be at least 1 hour");
-        setSaving(false);
-        return;
-      }
-
       if (initialData) {
         await updateSLO(initialData.id, payload);
       } else {
         await createSLO(payload);
       }
-
       onSaved();
       onClose();
     } catch (err) {
@@ -100,12 +102,7 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={initialData ? "Edit SLO" : "Add SLO"}
-      maxWidth="max-w-md"
-    >
+    <Modal open={open} onClose={onClose} title={initialData ? "Edit SLO" : "Add SLO"} maxWidth="max-w-md">
       <div className="space-y-4">
         <div>
           <Label htmlFor="slo-name">SLO Name</Label>
@@ -119,57 +116,52 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="slo-objective">Objective (%)</Label>
+            <Label htmlFor="slo-objective">Target (%)</Label>
             <Input
               id="slo-objective"
               type="number"
-              step="0.01"
+              step="0.001"
+              min="0"
+              max="100"
               value={form.objective_pct}
               onChange={(e) => setForm({ ...form, objective_pct: e.target.value })}
               placeholder="99.9"
             />
+            <p className="mt-1 text-[10px] text-fg-muted">Up to 3 decimals, e.g. 99.999</p>
           </div>
           <div>
-            <Label htmlFor="slo-window">Window (Hours)</Label>
-            <Input
+            <Label htmlFor="slo-window">Window</Label>
+            <Select
               id="slo-window"
-              type="number"
-              value={form.window_hours}
-              onChange={(e) => setForm({ ...form, window_hours: e.target.value })}
-              placeholder="720"
-            />
-            <p className="mt-1 text-[10px] text-fg-muted">720h = 30 days</p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl border border-border-subtle bg-bg-elevated space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-xs font-semibold text-fg-primary uppercase tracking-wider">Burn Rate Alerting</h4>
-              <p className="text-[10px] text-fg-secondary">Auto-generate incidents on rapid budget burn.</p>
-            </div>
-            <Toggle
-              checked={form.alerts_enabled}
-              onChange={(checked) => setForm({ ...form, alerts_enabled: checked })}
-            />
-          </div>
-
-          {form.alerts_enabled && (
-            <div className="pt-2 border-t border-border-subtle">
-              <Label htmlFor="slo-threshold">Burn Threshold (x)</Label>
+              value={customWindow ? "custom" : String(form.window_seconds)}
+              onChange={(e) => {
+                if (e.target.value === "custom") {
+                  setCustomWindow(true);
+                } else {
+                  setCustomWindow(false);
+                  setForm({ ...form, window_seconds: Number(e.target.value) });
+                }
+              }}
+            >
+              {SLO_WINDOW_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+              <option value="custom">Custom…</option>
+            </Select>
+            {customWindow && (
               <Input
-                id="slo-threshold"
+                aria-label="Custom window in days"
                 type="number"
-                step="0.1"
-                value={form.burn_alert_threshold}
-                onChange={(e) => setForm({ ...form, burn_alert_threshold: e.target.value })}
-                placeholder="1.0"
+                min="1"
+                className="mt-2"
+                value={customDays}
+                onChange={(e) => setCustomDays(e.target.value)}
+                placeholder="Days"
               />
-              <p className="mt-1 text-[10px] text-fg-muted">
-                1.0x means alerting if the error budget will be exhausted exactly by the end of the window.
-              </p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <div className="flex items-center justify-between py-2">
@@ -180,6 +172,11 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
             onChange={(checked) => setForm({ ...form, is_active: checked })}
           />
         </div>
+
+        <p className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-[11px] text-fg-secondary">
+          SLO breaches show as a warning on the Reliability dashboard. OpsMender
+          does not create incidents from SLO breaches yet.
+        </p>
 
         {error && <FormError message={error} />}
 

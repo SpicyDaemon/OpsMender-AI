@@ -864,12 +864,32 @@ class SLATargetResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # -- Computed convenience fields (Reliability v1) ----------------------
+    # Populated by the route; defaulted so model_validate(orm_row) still works.
+    url: Optional[str] = None
+    monitor_type: Optional[str] = None  # "http" | "https" (derived from URL)
+    current_status: str = "unknown"  # "up" | "down" | "unknown"
+    last_check_at: Optional[datetime] = None
+    uptime_30d_pct: Optional[float] = None
+    active_slo_count: int = 0
+
     model_config = {"from_attributes": True}
 
 
 class SLATargetListResponse(BaseModel):
     items: list[SLATargetResponse]
     total: int
+
+
+class SLASummaryResponse(BaseModel):
+    """Org-level rollup for the Reliability page summary row."""
+
+    total_targets: int
+    targets_up: int
+    targets_down: int
+    targets_unknown: int
+    avg_uptime_30d_pct: Optional[float] = None
+    active_slo_warnings: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -1027,6 +1047,7 @@ class NotificationSettingsUpdate(BaseModel):
 class UptimeSeriesPoint(BaseModel):
     ts: datetime
     up_pct: float
+    status: str = "unknown"  # "up" | "down" | "unknown"
 
 
 class UptimeResponse(BaseModel):
@@ -1038,6 +1059,10 @@ class UptimeResponse(BaseModel):
     up_samples: int
     downtime_seconds: int
     suppressed_seconds: int
+    # Reliability v1 additions:
+    mtbf_seconds: Optional[float] = None
+    down_events: int = 0
+    series: list[UptimeSeriesPoint] = Field(default_factory=list)
     series: list[UptimeSeriesPoint] = Field(default_factory=list)
 
 

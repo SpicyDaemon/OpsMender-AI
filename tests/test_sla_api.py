@@ -657,3 +657,203 @@ class TestUptimeAPI:
         assert len(data) == 1
         assert data[0]["title"] == "Target Outage"
         assert data[0]["id"] == str(incident.id)
+
+
+# ======================================================================
+# Reliability v1 cleanup — enriched targets, uptime windows, summary, SLO precision
+# ======================================================================
+
+
+class TestReliabilityV1:
+    @pytest.mark.asyncio
+    async def test_target_url_and_status_in_list_and_detail(
+        self, client: AsyncClient, db: AsyncSession
+    ):
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "url-visible",
+                "kind": "http",
+                "config": {"url": "https://shop.example.com/health"},
+            },
+        )
+        target_id = target_resp.json()["id"]
+
+        from backend.db.repos import UptimeSampleRepo
+
+        await UptimeSampleRepo.create(
+            db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=True, source="poller"
+        )
+        await db.commit()
+
+        # List response carries url, monitor_type, current_status, last_check_at.
+        list_resp = await client.get("/sla-targets")
+        item = next(t for t in list_resp.json()["items"] if t["id"] == target_id)
+        assert item["url"] == "https://shop.example.com/health"
+        assert item["monitor_type"] == "https"
+        assert item["current_status"] == "up"
+        assert item["last_check_at"] is not None
+        assert item["uptime_30d_pct"] == 100.0
+
+        # Detail response carries the same enrichment.
+        detail = await client.get(f"/sla-targets/{target_id}")
+        assert detail.json()["url"] == "https://shop.example.com/health"
+        assert detail.json()["current_status"] == "up"
+
+    @pytest.mark.asyncio
+    async def test_uptime_windows_and_mtbf(
+        self, client: AsyncClient, db: AsyncSession
+    ):
+        target_resp = await client.post(
+            "/sla-targets", json={"name": "windows", "kind": "http"}
+        )
+        target_id = target_resp.json()["id"]
+
+        from backend.db.repos import UptimeSampleRepo
+
+        # 8 up + 2 down (two separate down events) → MTBF = 8*60/2 = 240.
+        pattern = [True, True, False, True, True, True, False, True, True, True]
+        for up in pattern:
+            await UptimeSampleRepo.create(
+                db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=up, source="poller"
+            )
+        await db.commit()
+
+        for window in ("7d", "30d", "365d"):
+            resp = await client.get(
+                f"/sla-targets/{target_id}/uptime?window={window}"
+            )
+            assert resp.status_code == 200, window
+            data = resp.json()
+            assert data["uptime_pct"] == 80.0
+            assert data["down_events"] == 2
+            assert data["mtbf_seconds"] == 240.0
+            assert isinstance(data["series"], list) and len(data["series"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_uptime_custom_range(self, client: AsyncClient, db: AsyncSession):
+        target_resp = await client.post(
+            "/sla-targets", json={"name": "custom-range", "kind": "http"}
+        )
+        target_id = target_resp.json()["id"]
+
+        from backend.db.repos import UptimeSampleRepo
+
+        await UptimeSampleRepo.create(
+            db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=True, source="poller"
+        )
+        await db.commit()
+
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(days=2)).isoformat()
+        end = (now + timedelta(minutes=1)).isoformat()
+        resp = await client.get(
+            f"/sla-targets/{target_id}/uptime",
+            params={"start": start, "end": end},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["total_samples"] == 1
+
+        # Inverted range is rejected.
+        bad = await client.get(
+            f"/sla-targets/{target_id}/uptime",
+            params={"start": end, "end": start},
+        )
+        assert bad.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_slo_allows_three_decimal_objective(self, client: AsyncClient):
+        target_resp = await client.post(
+            "/sla-targets", json={"name": "five-nines", "kind": "http"}
+        )
+        target_id = target_resp.json()["id"]
+
+        resp = await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "five-nines",
+                "objective_pct": 99.999,
+                "window_seconds": 2592000,
+            },
+        )
+        assert resp.status_code == 201
+        # Must not be rounded to 100.0 or truncated.
+        assert resp.json()["objective_pct"] == 99.999
+
+    @pytest.mark.asyncio
+    async def test_sla_summary(self, client: AsyncClient, db: AsyncSession):
+        from backend.db.repos import UptimeSampleRepo
+
+        up_target = (
+            await client.post("/sla-targets", json={"name": "up-t", "kind": "http"})
+        ).json()["id"]
+        down_target = (
+            await client.post("/sla-targets", json={"name": "down-t", "kind": "http"})
+        ).json()["id"]
+        # A third target with no samples → unknown.
+        await client.post("/sla-targets", json={"name": "unknown-t", "kind": "http"})
+
+        await UptimeSampleRepo.create(
+            db, TEST_ORG_ID, target_id=uuid.UUID(up_target), up=True, source="poller"
+        )
+        await UptimeSampleRepo.create(
+            db, TEST_ORG_ID, target_id=uuid.UUID(down_target), up=False, source="poller"
+        )
+        await db.commit()
+
+        resp = await client.get("/sla-summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_targets"] == 3
+        assert data["targets_up"] == 1
+        assert data["targets_down"] == 1
+        assert data["targets_unknown"] == 1
+
+    @pytest.mark.asyncio
+    async def test_slo_breach_warning_only_no_incident(
+        self, app_db, client: AsyncClient, db: AsyncSession
+    ):
+        """A v1 SLO (no burn threshold) that is breached must NOT create an incident."""
+        _, factory, _ = app_db
+
+        target_resp = await client.post(
+            "/sla-targets", json={"name": "warn-only", "kind": "http"}
+        )
+        target_id = target_resp.json()["id"]
+
+        # SLO with NO burn_alert_threshold (the simplified v1 UI path).
+        slo_resp = await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "avail",
+                "objective_pct": 99.0,
+                "window_seconds": 604800,
+                "burn_alert_threshold": None,
+            },
+        )
+        assert slo_resp.status_code == 201
+
+        from backend.db.repos import IncidentRepo, UptimeSampleRepo
+
+        # Breach the objective: 50% uptime, well under 99%.
+        for i in range(10):
+            await UptimeSampleRepo.create(
+                db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=(i < 5),
+                source="poller",
+            )
+        await db.commit()
+
+        # Status reports non-compliant (a warning) ...
+        status_resp = await client.get(f"/slos/{slo_resp.json()['id']}/status")
+        assert status_resp.json()["compliant"] is False
+
+        # ... but the SLO poller check is a no-op for null-threshold SLOs.
+        from backend.sla.poller import SLAPoller
+
+        poller = SLAPoller(factory, config=AppConfig.load())
+        await poller._check_slos(TEST_ORG_ID)
+
+        incidents = await IncidentRepo.list_all(db, TEST_ORG_ID)
+        assert all("SLO" not in (i.title or "") for i in incidents)

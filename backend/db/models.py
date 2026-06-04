@@ -1025,8 +1025,11 @@ class SLO(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Percentage 0–100 with up to 3 decimal places (e.g. 99.999). Numeric(6,3)
+    # holds 100.000 and 99.999; the old Numeric(5,4) capped at 9.9999 and would
+    # overflow on Postgres for any realistic SLA objective.
     objective_pct: Mapped[float] = mapped_column(
-        Numeric(5, 4, asdecimal=False), nullable=False
+        Numeric(6, 3, asdecimal=False), nullable=False
     )
     window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     burn_alert_threshold: Mapped[float | None] = mapped_column(

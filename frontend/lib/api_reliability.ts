@@ -6,6 +6,7 @@ import {
   SLOResponse,
   MaintenanceWindowListResponse,
   MaintenanceWindowResponse,
+  SLASummaryResponse,
   SLATargetUptimeResponse,
   SLOStatusResponse,
   IncidentResponse,
@@ -31,8 +32,29 @@ export async function deleteSLATarget(id: string): Promise<void> {
   return api.del(`/sla-targets/${id}`);
 }
 
-export async function getSLATargetUptime(id: string, window: string = "30d"): Promise<SLATargetUptimeResponse> {
-  return api.get(`/sla-targets/${id}/uptime?window=${window}`);
+export async function getSLATargetUptime(
+  id: string,
+  window: string = "30d",
+  range?: { start?: string; end?: string },
+): Promise<SLATargetUptimeResponse> {
+  const qs = new URLSearchParams();
+  if (range?.start) {
+    qs.set("start", range.start);
+    if (range.end) qs.set("end", range.end);
+  } else {
+    qs.set("window", window);
+  }
+  return api.get(`/sla-targets/${id}/uptime?${qs.toString()}`);
+}
+
+export async function getSLASummary(): Promise<SLASummaryResponse> {
+  return api.get("/sla-summary");
+}
+
+export async function probeSLATarget(
+  id: string,
+): Promise<{ up: boolean; latency_ms: number | null }> {
+  return api.post(`/sla-targets/${id}/probe`, {});
 }
 
 export async function listSLOs(): Promise<SLOListResponse> {

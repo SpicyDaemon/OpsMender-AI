@@ -2783,6 +2783,22 @@ class UptimeSampleRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def latest_sample(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        target_id: uuid.UUID,
+    ) -> UptimeSample | None:
+        """Most recent sample for a target (drives current status + last check)."""
+        stmt = (
+            select(UptimeSample)
+            .where(UptimeSample.org_id == org_id)
+            .where(UptimeSample.target_id == target_id)
+            .order_by(UptimeSample.observed_at.desc())
+            .limit(1)
+        )
+        return (await db.execute(stmt)).scalars().first()
+
+    @staticmethod
     async def compute_uptime(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -2796,33 +2812,13 @@ class UptimeSampleRepo:
         Returns a dict with: uptime_pct, total_samples, up_samples,
         downtime_seconds, suppressed_seconds.
         """
+        from backend.sla.metrics import uptime_stats
+
         until = until or datetime.now(timezone.utc)
         samples = await UptimeSampleRepo.query_window(
             db, org_id, target_id, since=since, until=until
         )
-        total = len(samples)
-        if total == 0:
-            return {
-                "uptime_pct": 100.0,
-                "total_samples": 0,
-                "up_samples": 0,
-                "downtime_seconds": 0,
-                "suppressed_seconds": 0,
-            }
-        non_suppressed = [s for s in samples if not s.suppressed]
-        suppressed_count = total - len(non_suppressed)
-        up_count = sum((1 for s in non_suppressed if s.up))
-        ns_total = len(non_suppressed)
-        uptime_pct = up_count / ns_total * 100.0 if ns_total > 0 else 100.0
-        downtime_seconds = (ns_total - up_count) * 60
-        suppressed_seconds = suppressed_count * 60
-        return {
-            "uptime_pct": round(uptime_pct, 4),
-            "total_samples": total,
-            "up_samples": up_count,
-            "downtime_seconds": downtime_seconds,
-            "suppressed_seconds": suppressed_seconds,
-        }
+        return uptime_stats(samples)
 
 
 class SLORepo:

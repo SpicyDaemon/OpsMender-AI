@@ -853,6 +853,8 @@ export interface WSMessage {
 
 export type SLATargetKind = "http" | "tcp" | "external";
 
+export type UptimeStatus = "up" | "down" | "unknown";
+
 export interface SLATargetResponse {
   id: string;
   name: string;
@@ -862,6 +864,22 @@ export interface SLATargetResponse {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Computed convenience fields (Reliability v1)
+  url: string | null;
+  monitor_type: string | null; // "http" | "https"
+  current_status: UptimeStatus;
+  last_check_at: string | null;
+  uptime_30d_pct: number | null;
+  active_slo_count: number;
+}
+
+export interface SLASummaryResponse {
+  total_targets: number;
+  targets_up: number;
+  targets_down: number;
+  targets_unknown: number;
+  avg_uptime_30d_pct: number | null;
+  active_slo_warnings: number;
 }
 
 export interface SLATargetListResponse {
@@ -973,6 +991,7 @@ export interface MaintenanceWindowListResponse {
 export interface UptimeSeriesPoint {
   ts: string;
   up_pct: number;
+  status: UptimeStatus;
 }
 
 export interface SLATargetUptimeResponse {
@@ -981,6 +1000,8 @@ export interface SLATargetUptimeResponse {
   up_samples: number;
   downtime_seconds: number;
   suppressed_seconds: number;
+  mtbf_seconds: number | null;
+  down_events: number;
   series: UptimeSeriesPoint[];
 }
 

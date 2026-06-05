@@ -462,7 +462,32 @@ Full curl recipes covering the supported strict providers (CloudWatch SNS, Azure
 
 ## Notifications
 
-OpsMender also supports operator delivery and viewer updates. This is separate from inbound alert ingestion:
+OpsMender has **three distinct notification concepts**. They are separate from inbound alert ingestion (`POST /api/v1/intake/{service_token}`), which is how incidents get *in*.
+
+| Concept | Audience | Purpose | Where |
+|---|---|---|---|
+| **Personal Routing** | The current on-call operator | How *one* person is paged for an incident they own (Slack/Teams DM, Email, SMS, Telegram DM, …) | Paging & On-call → My Notifications |
+| **Notification Channels** | The responder team | Workspace/team channels where responders collaborate — this is where incident cards/messages appear | Paging & On-call → Notification Channels |
+| **Viewer Notifications** | Read-only stakeholders / downstream systems | Read-only session/incident updates to webhooks; never pages an operator | Paging & On-call → Notifications |
+
+Personal Routing pages the owner; Notification Channels keep the responding team in the loop with an incident card; Viewer Notifications fan out read-only status. The expected flow:
+
+```
+Alert intake → Incident created → Service/team/escalation chain resolved
+  → Personal Routing pages the current on-call operator
+  → Notification Channels receive the incident card / lifecycle update
+  → Viewer Notifications receive read-only updates (if configured)
+```
+
+### Notification Channel capability model
+
+Every platform is modelled honestly in [`backend/bots/capabilities.py`](backend/bots/capabilities.py) — the single source of truth for what a channel can actually do (`incident_card`, `interactive_actions`, `direct_message`, `shared_channel`, `delivery_only`). The API exposes it per platform and per configured channel, and the UI only advertises what a platform supports — a delivery-only channel (Twilio SMS, email, custom webhook) never shows an "Actions" chip.
+
+**v1 delivery is honest about interactivity.** No platform ships verified interactive action buttons yet, so on incident **created / acknowledged / resolved** OpsMender posts a formatted incident message — title, severity, status, service/team, current responder, short description — plus an **authenticated incident link**. Responders click through and **acknowledge / resolve / escalate / start an AI session inside OpsMender under login + RBAC**. OpsMender never embeds a public, unauthenticated action URL in a chat message. Twilio is shown as **Twilio (SMS)**.
+
+**Future enhancements:** richer platform-specific cards; in-message interactive buttons backed by signed action tokens / platform signature verification (per-adapter, flipped on only when a verified callback path exists); bi-directional threaded chat and channel-to-OpsMender comment sync; MFA for action authorization; more platforms with first-class action support.
+
+Legacy summary of the three flows:
 
 - **Inbound**: external tools create incidents in OpsMender through a service endpoint: `POST /api/v1/intake/{service_token}`
 - **Operator delivery**: OpsMender pages operators through configured channels and per-user routing

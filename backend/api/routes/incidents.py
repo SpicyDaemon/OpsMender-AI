@@ -34,6 +34,7 @@ from backend.config_loader import Config
 from backend.db.models import User
 from backend.db.repos import (
     AuditEntryRepo,
+    BotConnectorRepo,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentPageRepo,
@@ -59,7 +60,51 @@ from backend.paging.service import compute_priority_for_payload
 from backend.paging import escalation as _esc_kickoff
 from backend.skills.parser import loads as load_skill_def_text
 
+import logging
+
 router = APIRouter(prefix="/incidents", tags=["incidents"])
+
+_log = logging.getLogger(__name__)
+
+
+async def _notify_channels(
+    db: AsyncSession,
+    incident_id: uuid.UUID,
+    org_id: uuid.UUID,
+    event_type: str,
+) -> None:
+    """Best-effort: post an incident card to enabled Notification Channels.
+
+    Must be called *after* the incident change is committed so the background
+    delivery (which opens its own DB session) sees the new state.
+
+    We first check — on the already-committed request session — whether any
+    enabled channel even wants notifications. Only then do we spawn the
+    fire-and-forget delivery task. This keeps the hot path cheap and, crucially,
+    avoids opening a second concurrent session when there is nothing to deliver.
+    Never raises into the request path — channel delivery is non-critical.
+    """
+    try:
+        connectors = await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
+        wants = any(
+            "notifications" in (c.allowed_capabilities or []) for c in connectors
+        )
+        if not wants:
+            return
+
+        from backend.api.deps import get_current_session_factory
+        from backend.bots.notifier import schedule_incident_event
+
+        factory = get_current_session_factory()
+        schedule_incident_event(
+            factory,
+            org_id=org_id,
+            event_type=event_type,
+            incident_id=incident_id,
+            base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+        )
+    except Exception:  # pragma: no cover - delivery is best-effort
+        _log.warning("incident channel notify skipped", exc_info=True)
 
 
 def _tier0_max_session_seconds() -> int:
@@ -283,6 +328,8 @@ async def create_incident(
                 incident=incident,
                 base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
             )
+    await db.commit()
+    await _notify_channels(db, incident.id, org_id, "incident.created")
     return await _to_incident_response(db, org_id, incident)
 
 
@@ -409,6 +456,10 @@ async def update_incident(
             detail="Incident not found",
         )
 
+    # Capture the pre-update status now: update_fields re-selects the row and
+    # can refresh this identity-mapped instance to the new status, which would
+    # otherwise defeat the resolved-transition guard below.
+    prior_status = incident.status
     service_changed = body.service_id_set and body.service_id != incident.service_id
     if body.service_id_set and body.service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
@@ -455,6 +506,8 @@ async def update_incident(
                 )
 
     await db.commit()
+    if body.status == "resolved" and prior_status != "resolved":
+        await _notify_channels(db, incident_id, org_id, "incident.resolved")
     refreshed = await IncidentRepo.get_by_id(db, org_id, incident_id)
     assert refreshed is not None
     return await _to_incident_response(db, org_id, refreshed)
@@ -1119,6 +1172,7 @@ async def ack_incident(
         via=body.via,
     )
     await db.commit()
+    await _notify_channels(db, incident_id, org_id, "incident.acknowledged")
     state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     pages = await IncidentPageRepo.list_for_incident(db, org_id, incident_id)
     return IncidentChainPanelResponse(

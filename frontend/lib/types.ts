@@ -567,6 +567,21 @@ export type BotConnectorStatus =
   | "error"
   | "disabled";
 
+// Honest per-platform capability descriptor (see backend bots/capabilities.py).
+// Drives what the Notification Channels UI advertises — it never offers an
+// action a platform cannot securely support.
+export interface PlatformCapabilities {
+  platform: string;
+  display_name: string;
+  delivery: boolean;
+  incident_card: boolean;
+  interactive_actions: boolean;
+  direct_message: boolean;
+  shared_channel: boolean;
+  ai_session_link: boolean;
+  delivery_only: boolean;
+}
+
 export interface BotConnectorResponse {
   id: string;
   name: string;
@@ -581,6 +596,8 @@ export interface BotConnectorResponse {
   last_error: string | null;
   credential_keys: string[];
   has_credentials: boolean;
+  platform_label: string | null;
+  platform_capabilities: PlatformCapabilities | null;
 }
 
 export interface BotConnectorListResponse {
@@ -636,6 +653,8 @@ export interface BotConnectorPlatformSchema {
   platform: string;
   fields: BotConnectorFieldSchema[];
   oauth_enabled: boolean;
+  label: string | null;
+  capabilities: PlatformCapabilities | null;
 }
 
 export interface BotConnectorPlatformListResponse {

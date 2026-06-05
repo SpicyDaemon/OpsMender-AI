@@ -13,13 +13,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import backend.bots  # noqa: F401  -- registers built-in adapters
+from backend.bots.capabilities import supports_interactive_actions
 from backend.bots.connectors import get_adapter
+from backend.bots.incident_card import build_incident_message
 from backend.db.models import BotActionAudit, BotConnector
 from backend.db.repos import (
     BotActionAuditRepo,
     BotConnectorRepo,
+    IncidentAssignmentRepo,
+    IncidentPageRepo,
     IncidentRepo,
+    ServiceRepo,
     SessionRepo,
+    TeamRepo,
+    UserRepo,
 )
 
 log = logging.getLogger(__name__)
@@ -246,6 +253,151 @@ def schedule_session_chat_event(
             session_id=session_id,
         )
     )
+
+
+INCIDENT_CHAT_EVENTS = {
+    "incident.created",
+    "incident.acknowledged",
+    "incident.resolved",
+    "incident.escalated",
+    "incident.updated",
+}
+
+
+def _display_name(user) -> str | None:
+    if user is None or getattr(user, "deleted_at", None) is not None:
+        return None
+    full = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    return full or user.username
+
+
+async def _resolve_incident_responder(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+) -> dict:
+    """Lightweight responder snapshot for the card.
+
+    Mirrors the incidents route precedence (acknowledged assignment wins,
+    otherwise the latest escalation page) without importing the route module.
+    """
+    assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))
+    latest = pages[-1] if pages else None
+
+    ack_uid = assignment.assigned_to if assignment is not None else None
+    esc_uid = latest.user_id if latest is not None else None
+    esc_step = latest.step_index if latest is not None else None
+
+    if ack_uid is not None:
+        state, resp_uid = "assigned", ack_uid
+    elif esc_uid is not None:
+        state = "escalated" if (esc_step or 0) > 0 else "awaiting"
+        resp_uid = esc_uid
+    else:
+        state, resp_uid = "unassigned", None
+
+    async def _name(uid):
+        if uid is None:
+            return None
+        return _display_name(await UserRepo.get_by_id(db, uid))
+
+    return {
+        "responder_state": state,
+        "responder_display_name": await _name(resp_uid),
+        "acknowledged_by_display_name": await _name(ack_uid),
+    }
+
+
+async def deliver_incident_event(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    event_type: str,
+    base_url: str | None = None,
+) -> None:
+    """Post an incident card/message to every enabled Notification Channel that
+    has the ``notifications`` capability.
+
+    Honest delivery: each platform receives the same useful incident message
+    with an authenticated incident link. Interactive action controls are only
+    rendered when the *platform* advertises verified interactive callbacks
+    (``capabilities.supports_interactive_actions``), which is never the case in
+    v1 — so the message always routes the recipient into OpsMender to act.
+    Delivery-only platforms (SMS, email, custom webhook, …) get the same
+    message minus any card framing, which their adapters already handle.
+    """
+    if event_type not in INCIDENT_CHAT_EVENTS:
+        return
+
+    async with factory() as db:
+        incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+        if incident is None:
+            return
+
+        service_name: str | None = None
+        team_name: str | None = None
+        if incident.service_id is not None:
+            service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+            if service is not None:
+                service_name = service.name
+                team = await TeamRepo.get_by_id(db, org_id, service.team_id)
+                team_name = team.name if team is not None else None
+
+        responder = await _resolve_incident_responder(db, org_id, incident.id)
+        connectors = list(
+            await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
+        )
+
+    for connector in connectors:
+        if not _has_capability(connector, "notifications"):
+            continue
+        if get_adapter(connector.platform) is None and connector.platform != "telegram":
+            continue
+        text = build_incident_message(
+            incident,
+            event_type=event_type,
+            base_url=base_url,
+            responder=responder,
+            service_name=service_name,
+            team_name=team_name,
+            supports_actions=supports_interactive_actions(connector.platform),
+        )
+        for chat_id in _allowed_chat_ids(connector):
+            await _deliver(
+                factory,
+                org_id=org_id,
+                connector=connector,
+                chat_id=chat_id,
+                text=text,
+                command_label=f"notify:{event_type}",
+                session_id=None,
+            )
+
+
+def schedule_incident_event(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    org_id: uuid.UUID,
+    event_type: str,
+    incident_id: uuid.UUID,
+    base_url: str | None = None,
+    task_registry: set[asyncio.Task] | None = None,
+) -> asyncio.Task:
+    task = asyncio.create_task(
+        deliver_incident_event(
+            factory,
+            org_id=org_id,
+            incident_id=incident_id,
+            event_type=event_type,
+            base_url=base_url,
+        )
+    )
+    if task_registry is not None:
+        task_registry.add(task)
+        task.add_done_callback(task_registry.discard)
+    return task
 
 
 async def _resolve_relay_targets(

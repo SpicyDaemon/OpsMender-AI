@@ -24,6 +24,7 @@ from backend.api.schemas import (
     BotUserLinkResponse,
 )
 import backend.bots  # noqa: F401 — triggers adapter registry side-effect
+from backend.bots.capabilities import display_name, get_platform_capabilities
 from backend.bots.connectors import FieldSpec, get_adapter, list_platforms
 from backend.db.models import BotConnector, User
 from backend.db.repos import BotConnectorRepo, BotUserLinkRepo, UserRepo
@@ -77,6 +78,7 @@ def _resolve_credentials(
 
 def _to_response(connector: BotConnector) -> BotConnectorResponse:
     credentials = connector.credentials or {}
+    caps = get_platform_capabilities(connector.platform)
     return BotConnectorResponse(
         id=connector.id,
         name=connector.name,
@@ -91,6 +93,8 @@ def _to_response(connector: BotConnector) -> BotConnectorResponse:
         last_error=connector.last_error,
         credential_keys=sorted(credentials.keys()),
         has_credentials=bool(credentials),
+        platform_label=display_name(connector.platform),
+        platform_capabilities=caps.as_dict() if caps is not None else None,
     )
 
 
@@ -142,10 +146,13 @@ def _platform_schema(platform: str) -> BotConnectorPlatformSchema | None:
     fields = schema_fn() if callable(schema_fn) else []
     from backend.auth.bot_oauth import is_platform_enabled as _oauth_enabled
 
+    caps = get_platform_capabilities(platform)
     return BotConnectorPlatformSchema(
         platform=platform,
         fields=[_field_spec_to_schema(f) for f in fields],
         oauth_enabled=_oauth_enabled(platform),
+        label=display_name(platform),
+        capabilities=caps.as_dict() if caps is not None else None,
     )
 
 

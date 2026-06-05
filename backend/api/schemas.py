@@ -1167,6 +1167,10 @@ class BotConnectorResponse(BaseModel):
     last_error: Optional[str]
     credential_keys: list[str] = Field(default_factory=list)
     has_credentials: bool
+    # User-friendly platform name (e.g. "Twilio (SMS)") and the honest
+    # capability descriptor for this connector's platform.
+    platform_label: Optional[str] = None
+    platform_capabilities: Optional[dict] = None
 
     model_config = {"from_attributes": True}
 
@@ -1204,6 +1208,10 @@ class BotConnectorPlatformSchema(BaseModel):
     platform: str
     fields: list[BotConnectorFieldSchema]
     oauth_enabled: bool = False
+    # User-friendly name + honest capability descriptor (incident_card,
+    # interactive_actions, delivery_only, …) for this platform.
+    label: Optional[str] = None
+    capabilities: Optional[dict] = None
 
 
 class BotConnectorPlatformListResponse(BaseModel):

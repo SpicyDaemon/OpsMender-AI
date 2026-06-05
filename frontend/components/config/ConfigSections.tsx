@@ -101,6 +101,7 @@ import type {
   ModelBootstrapStatusResponse,
   ModelConfigResponse,
   ModelConfigUpdate,
+  PlatformCapabilities,
   ProviderModelsResponse,
   RetentionCategoryStorage,
   RetentionRunReportResponse,
@@ -2682,12 +2683,36 @@ const PLATFORM_LABELS: Record<BotConnectorPlatform, string> = {
   dingtalk: "DingTalk",
   wecom: "WeCom",
   weixin: "WeChat (Official Account)",
-  twilio: "Twilio (SMS/WhatsApp)",
+  twilio: "Twilio (SMS)",
   email: "Email (SMTP/IMAP)",
   homeassistant: "Home Assistant",
   bluebubbles: "BlueBubbles (iMessage)",
   custom: "Custom Adapter",
 };
+
+function platformLabel(connector: BotConnectorResponse): string {
+  return (
+    connector.platform_label ??
+    PLATFORM_LABELS[connector.platform] ??
+    connector.platform
+  );
+}
+
+// Honest capability chips derived from the platform capability model. The UI
+// never advertises an action a platform can't securely support — e.g. a
+// delivery-only channel (SMS/email) never shows an "Actions" chip.
+function platformCapabilityLabels(
+  caps: PlatformCapabilities | null | undefined,
+): string[] {
+  if (!caps) return ["Delivery-only"];
+  const out: string[] = [];
+  if (caps.incident_card) out.push("Incident cards");
+  if (caps.interactive_actions) out.push("Actions");
+  if (caps.delivery_only) out.push("Delivery-only");
+  if (caps.direct_message) out.push("DM");
+  if (caps.shared_channel) out.push("Channel post");
+  return out;
+}
 
 function DynamicFieldInput({
   field,
@@ -3052,6 +3077,20 @@ function BotConnectorModal({
               ))}
             </Select>
           </div>
+        </div>
+
+        <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-2.5 text-xs text-fg-secondary">
+          <span className="font-medium text-fg-primary">
+            {schema?.label ?? PLATFORM_LABELS[form.platform]} can:
+          </span>{" "}
+          {platformCapabilityLabels(schema?.capabilities).join(" · ")}
+          {schema?.capabilities?.delivery_only !== false && (
+            <span className="mt-1 block text-fg-muted">
+              Delivery-only in v1: OpsMender posts an incident message with an
+              authenticated link. Responders acknowledge, resolve, or escalate
+              after signing in to OpsMender — no public action buttons are sent.
+            </span>
+          )}
         </div>
 
         {schema ? (
@@ -3692,7 +3731,7 @@ export function BotConnectorSection({
                         </span>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Badge>{connector.platform}</Badge>
+                        <Badge>{platformLabel(connector)}</Badge>
                         <Badge variant={connector.is_enabled ? "resolved" : "closed"}>
                           {connector.is_enabled ? "Enabled" : "Disabled"}
                         </Badge>
@@ -3700,12 +3739,24 @@ export function BotConnectorSection({
                     </td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex max-w-xs flex-wrap gap-1.5">
-                        {connector.allowed_capabilities.map((capability) => (
-                          <Badge key={capability}>
-                            {capability.replace(/_/g, " ")}
-                          </Badge>
-                        ))}
+                        {platformCapabilityLabels(connector.platform_capabilities).map(
+                          (label) => (
+                            <Badge
+                              key={label}
+                              variant={label === "Delivery-only" ? "closed" : undefined}
+                            >
+                              {label}
+                            </Badge>
+                          ),
+                        )}
                       </div>
+                      {connector.allowed_capabilities.length > 0 && (
+                        <p className="mt-1.5 text-xs text-fg-muted">
+                          Enabled: {connector.allowed_capabilities
+                            .map((c) => c.replace(/_/g, " "))
+                            .join(", ")}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 align-top">
                       {connector.has_credentials ? (

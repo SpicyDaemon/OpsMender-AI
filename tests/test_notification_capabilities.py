@@ -14,6 +14,7 @@ from backend.bots.capabilities import (
     is_delivery_only,
     supports_incident_card,
     supports_interactive_actions,
+    supports_message_update,
 )
 from backend.bots.connectors import list_platforms
 
@@ -53,9 +54,18 @@ def test_no_platform_advertises_interactive_actions_in_v1():
         assert supports_interactive_actions(platform) is False, platform
 
 
+def test_no_platform_advertises_message_updates_in_v1():
+    # The receipt/update framework exists, but no adapter currently ships a
+    # verified provider message-edit path.
+    for platform, caps in PLATFORM_CAPABILITIES.items():
+        assert caps.message_update is False, platform
+        assert supports_message_update(platform) is False, platform
+
+
 def test_delivery_is_the_floor_for_every_platform():
     for caps in PLATFORM_CAPABILITIES.values():
         assert caps.delivery is True
+        assert caps.incident_updates is True
 
 
 def test_unknown_platform_is_treated_as_delivery_only():
@@ -63,6 +73,7 @@ def test_unknown_platform_is_treated_as_delivery_only():
     assert is_delivery_only("nope") is True
     assert supports_incident_card("nope") is False
     assert supports_interactive_actions("nope") is False
+    assert supports_message_update("nope") is False
 
 
 def test_as_dict_round_trip_exposes_delivery_only():
@@ -70,5 +81,7 @@ def test_as_dict_round_trip_exposes_delivery_only():
     assert data["platform"] == "slack"
     assert data["display_name"] == "Slack"
     assert data["incident_card"] is True
+    assert data["incident_updates"] is True
     assert data["interactive_actions"] is False
+    assert data["message_update"] is False
     assert data["delivery_only"] is False

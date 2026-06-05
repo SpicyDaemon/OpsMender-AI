@@ -3,12 +3,13 @@
  *
  * The table must advertise only what each platform can actually do: a
  * delivery-only channel (Twilio SMS) shows "Delivery-only" and never an
- * "Actions" chip, while a chat-capable channel (Slack) shows "Incident cards".
+ * "Interactive actions" chip, while a chat-capable channel (Slack) shows
+ * "Incident updates".
  * Platform names render in their friendly form, including "Twilio (SMS)".
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 // The component pulls in the whole config API surface; only listBotPlatformSchemas
 // runs on mount. Stub the module so the import graph resolves.
@@ -47,10 +48,12 @@ function caps(overrides: Partial<PlatformCapabilities>): PlatformCapabilities {
     display_name: "X",
     delivery: true,
     incident_card: false,
+    incident_updates: true,
     interactive_actions: false,
     direct_message: false,
     shared_channel: false,
     ai_session_link: true,
+    message_update: false,
     delivery_only: true,
     ...overrides,
   };
@@ -123,17 +126,42 @@ describe("Notification Channels capability rendering", () => {
     expect(within(row).getByText("Incident updates")).toBeTruthy();
     expect(within(row).queryByText("Incident cards")).toBeNull();
     // No interactive actions are advertised in v1.
-    expect(within(row).queryByText("Actions")).toBeNull();
+    expect(within(row).queryByText("Interactive actions")).toBeNull();
+    expect(within(row).queryByText("Message updates")).toBeNull();
   });
 
-  it("delivery-only channel shows Delivery-only and never Actions", () => {
+  it("delivery-only channel shows Delivery-only and never Interactive actions", () => {
     render(
       <BotConnectorSection connectors={[sms]} onReload={async () => {}} canEdit />,
     );
     const row = screen.getByText("On-call SMS").closest("tr")!;
     expect(within(row).getByText("Delivery-only")).toBeTruthy();
-    expect(within(row).queryByText("Actions")).toBeNull();
-    expect(within(row).queryByText("Incident updates")).toBeNull();
+    expect(within(row).queryByText("Interactive actions")).toBeNull();
+  });
+
+  it("shows native action and message update chips only when supported", () => {
+    const futurePlatform = connector({
+      id: "c3",
+      name: "Future chat",
+      platform: "slack",
+      platform_label: "Future Chat",
+      platform_capabilities: caps({
+        platform: "slack",
+        display_name: "Future Chat",
+        incident_card: true,
+        interactive_actions: true,
+        message_update: true,
+        shared_channel: true,
+        delivery_only: false,
+      }),
+    });
+    render(
+      <BotConnectorSection connectors={[futurePlatform]} onReload={async () => {}} canEdit />,
+    );
+    const row = screen.getByText("Future chat").closest("tr")!;
+    expect(within(row).getByText("Incident updates")).toBeTruthy();
+    expect(within(row).getByText("Message updates")).toBeTruthy();
+    expect(within(row).getByText("Interactive actions")).toBeTruthy();
   });
 
   it("shows team scope and defaults old channels to workspace-wide", () => {
@@ -149,6 +177,7 @@ describe("Notification Channels capability rendering", () => {
     render(
       <BotConnectorSection connectors={[slack]} onReload={async () => {}} canEdit />,
     );
+    await act(async () => {});
 
     fireEvent.click(screen.getByRole("button", { name: /add channel/i }));
     expect(screen.getAllByText("Team Scope").length).toBeGreaterThan(1);

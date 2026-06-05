@@ -14,6 +14,10 @@ Capability flags
 ``incident_card``
     The platform/adapter can render a structured, multi-field incident card
     (rich formatting / blocks) rather than a single plain-text line.
+``incident_updates``
+    The platform participates in incident lifecycle notifications. This is the
+    product-level feature flag shown in the UI; it does not imply interactive
+    buttons or in-place message edits.
 ``interactive_actions``
     The platform/adapter can render *secure* interactive action controls
     (Acknowledge / Resolve / Escalate / Start AI Session) whose callbacks are
@@ -34,6 +38,10 @@ Capability flags
 ``ai_session_link``
     The incident message can carry a link to an AI session for this incident.
     Always available because it is just another authenticated deep link.
+``message_update``
+    The platform/adapter can update a previously-posted incident message in
+    place using a stored provider message id. This is False everywhere in v1
+    until an adapter ships a verified update path.
 
 ``delivery_only`` is *derived*: a channel is delivery-only when it can neither
 render an incident card nor host interactive actions. Such channels still get
@@ -53,10 +61,12 @@ class PlatformCapabilities:
     display_name: str
     delivery: bool = True
     incident_card: bool = False
+    incident_updates: bool = True
     interactive_actions: bool = False
     direct_message: bool = False
     shared_channel: bool = False
     ai_session_link: bool = True
+    message_update: bool = False
 
     @property
     def delivery_only(self) -> bool:
@@ -70,10 +80,12 @@ class PlatformCapabilities:
             "display_name": self.display_name,
             "delivery": self.delivery,
             "incident_card": self.incident_card,
+            "incident_updates": self.incident_updates,
             "interactive_actions": self.interactive_actions,
             "direct_message": self.direct_message,
             "shared_channel": self.shared_channel,
             "ai_session_link": self.ai_session_link,
+            "message_update": self.message_update,
             "delivery_only": self.delivery_only,
         }
 
@@ -145,6 +157,11 @@ def supports_incident_card(platform: str) -> bool:
 def supports_interactive_actions(platform: str) -> bool:
     caps = PLATFORM_CAPABILITIES.get(platform)
     return bool(caps and caps.interactive_actions)
+
+
+def supports_message_update(platform: str) -> bool:
+    caps = PLATFORM_CAPABILITIES.get(platform)
+    return bool(caps and caps.message_update)
 
 
 def is_delivery_only(platform: str) -> bool:

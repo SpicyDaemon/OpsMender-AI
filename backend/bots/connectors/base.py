@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping, Protocol
 
+from backend.bots.delivery import DeliveryReceipt, UpdateResult
 from backend.db.models import BotConnector
 
 
@@ -97,3 +98,21 @@ class BotConnectorAdapter(Protocol):
         chat_id: str,
         text: str,
     ) -> tuple[bool, str | None]: ...
+
+    async def send_incident_update(
+        self,
+        connector: BotConnector,
+        *,
+        chat_id: str,
+        text: str,
+    ) -> DeliveryReceipt: ...
+
+    async def update_incident_update(
+        self,
+        connector: BotConnector,
+        *,
+        chat_id: str,
+        text: str,
+        external_message_id: str,
+        external_thread_id: str | None = None,
+    ) -> UpdateResult: ...

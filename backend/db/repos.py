@@ -33,6 +33,7 @@ from backend.db.models import (
     IncidentAssignment,
     IncidentChainState,
     NotificationEscalation,
+    IncidentNotificationReceipt,
     IncidentMemory,
     IncidentMemoryRecallLog,
     IncidentPage,
@@ -3410,6 +3411,87 @@ class BotUserLinkRepo:
         await db.delete(link)
         await db.flush()
         return True
+
+
+class IncidentNotificationReceiptRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        connector_id: uuid.UUID,
+        platform: str,
+        lifecycle_event: str,
+        external_channel_id: str | None = None,
+        external_message_id: str | None = None,
+        external_thread_id: str | None = None,
+        rendered_status: str | None = None,
+        can_update: bool = False,
+        session_id: uuid.UUID | None = None,
+    ) -> IncidentNotificationReceipt:
+        row = IncidentNotificationReceipt(
+            org_id=org_id,
+            incident_id=incident_id,
+            connector_id=connector_id,
+            session_id=session_id,
+            platform=platform,
+            external_channel_id=external_channel_id,
+            external_message_id=external_message_id,
+            external_thread_id=external_thread_id,
+            lifecycle_event=lifecycle_event,
+            rendered_status=rendered_status,
+            can_update=can_update,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def latest_for_incident_channel(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        connector_id: uuid.UUID,
+        external_channel_id: str | None,
+        updateable_only: bool = False,
+    ) -> IncidentNotificationReceipt | None:
+        stmt = (
+            select(IncidentNotificationReceipt)
+            .where(
+                IncidentNotificationReceipt.org_id == org_id,
+                IncidentNotificationReceipt.incident_id == incident_id,
+                IncidentNotificationReceipt.connector_id == connector_id,
+                IncidentNotificationReceipt.external_channel_id == external_channel_id,
+            )
+            .order_by(IncidentNotificationReceipt.created_at.desc())
+            .limit(1)
+        )
+        if updateable_only:
+            stmt = stmt.where(
+                IncidentNotificationReceipt.can_update == True,
+                IncidentNotificationReceipt.external_message_id.is_not(None),
+            )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_incident(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+    ) -> Sequence[IncidentNotificationReceipt]:
+        stmt = (
+            select(IncidentNotificationReceipt)
+            .where(
+                IncidentNotificationReceipt.org_id == org_id,
+                IncidentNotificationReceipt.incident_id == incident_id,
+            )
+            .order_by(IncidentNotificationReceipt.created_at)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
 
 class BotActionAuditRepo:

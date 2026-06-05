@@ -577,10 +577,12 @@ export interface PlatformCapabilities {
   display_name: string;
   delivery: boolean;
   incident_card: boolean;
+  incident_updates: boolean;
   interactive_actions: boolean;
   direct_message: boolean;
   shared_channel: boolean;
   ai_session_link: boolean;
+  message_update: boolean;
   delivery_only: boolean;
 }
 

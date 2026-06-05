@@ -1231,6 +1231,63 @@ class BotActionAudit(Base):
     )
 
 
+class IncidentNotificationReceipt(Base):
+    """Provider receipt for an incident/session lifecycle notification.
+
+    Rows are intentionally scoped to org + connector + channel so future
+    adapters can decide whether to edit a prior message or post a follow-up.
+    v1 adapters store receipts but do not advertise in-place updates.
+    """
+
+    __tablename__ = "incident_notification_receipts"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("bot_connectors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True
+    )
+    platform: Mapped[str] = mapped_column(String(30), nullable=False)
+    external_channel_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    external_message_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    external_thread_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lifecycle_event: Mapped[str] = mapped_column(String(80), nullable=False)
+    rendered_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    can_update: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_incident_notification_receipts_incident_connector",
+            "org_id",
+            "incident_id",
+            "connector_id",
+            "external_channel_id",
+        ),
+        Index(
+            "ix_incident_notification_receipts_session",
+            "org_id",
+            "session_id",
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Auditor (Sprint 32) — read-only environment scans producing findings reports.
 # Distinct from incidents: audits run on demand or on schedule, produce a

@@ -14,8 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import backend.bots  # noqa: F401  -- registers built-in adapters
-from backend.bots.capabilities import supports_interactive_actions
+from backend.bots.capabilities import (
+    supports_interactive_actions,
+    supports_message_update,
+)
 from backend.bots.connectors import get_adapter
+from backend.bots.delivery import DeliveryReceipt, UpdateResult
 from backend.bots.incident_card import build_incident_message
 from backend.db.models import BotActionAudit, BotConnector
 from backend.db.repos import (
@@ -23,6 +27,7 @@ from backend.db.repos import (
     BotConnectorRepo,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
+    IncidentNotificationReceiptRepo,
     IncidentPageRepo,
     IncidentRepo,
     ServiceRepo,
@@ -181,7 +186,7 @@ async def _deliver_to_telegram(
     text: str,
     command_label: str,
     session_id: uuid.UUID | None,
-) -> None:
+) -> DeliveryReceipt:
     bot_token = (connector.credentials or {}).get("bot_token")
     from backend.bots.telegram import send_message as telegram_send
 
@@ -191,27 +196,12 @@ async def _deliver_to_telegram(
         text=text,
     )
 
-    async with factory() as db:
-        await BotActionAuditRepo.create(
-            db,
-            org_id,
-            connector_id=connector.id,
-            platform=connector.platform,
-            chat_id=chat_id,
-            command=command_label,
-            status="ok" if ok else "delivery_failed",
-            detail=None if ok else (error or "")[:1000],
-            session_id=session_id,
-        )
-        if not ok:
-            await BotConnectorRepo.mark_status(
-                db,
-                org_id,
-                connector.id,
-                status="error",
-                error=(error or "")[:1000],
-            )
-        await db.commit()
+    return DeliveryReceipt(
+        ok=ok,
+        error=error,
+        external_channel_id=chat_id,
+        can_update=False,
+    )
 
 
 async def _deliver_via_adapter(
@@ -223,33 +213,148 @@ async def _deliver_via_adapter(
     text: str,
     command_label: str,
     session_id: uuid.UUID | None,
-) -> None:
+) -> DeliveryReceipt:
     adapter = get_adapter(connector.platform)
     if adapter is None:
-        return
-    ok, error = await adapter.send_message(connector, chat_id=chat_id, text=text)
+        return DeliveryReceipt(ok=False, error="adapter_not_found")
 
-    async with factory() as db:
-        await BotActionAuditRepo.create(
+    if hasattr(adapter, "send_incident_update") and command_label.startswith("notify:"):
+        receipt = await adapter.send_incident_update(
+            connector,
+            chat_id=chat_id,
+            text=text,
+        )
+        if receipt.external_channel_id is None:
+            return DeliveryReceipt(
+                ok=receipt.ok,
+                error=receipt.error,
+                external_message_id=receipt.external_message_id,
+                external_thread_id=receipt.external_thread_id,
+                external_channel_id=chat_id,
+                can_update=receipt.can_update,
+            )
+        return receipt
+
+    ok, error = await adapter.send_message(connector, chat_id=chat_id, text=text)
+    return DeliveryReceipt(
+        ok=ok,
+        error=error,
+        external_channel_id=chat_id,
+        can_update=False,
+    )
+
+
+async def _record_delivery(
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    connector: BotConnector,
+    chat_id: str,
+    command_label: str,
+    session_id: uuid.UUID | None,
+    receipt: DeliveryReceipt,
+    incident_id: uuid.UUID | None,
+    lifecycle_event: str | None,
+    rendered_status: str | None,
+) -> None:
+    await BotActionAuditRepo.create(
+        db,
+        org_id,
+        connector_id=connector.id,
+        platform=connector.platform,
+        chat_id=chat_id,
+        command=command_label,
+        status="ok" if receipt.ok else "delivery_failed",
+        detail=None if receipt.ok else (receipt.error or "")[:1000],
+        session_id=session_id,
+    )
+    if not receipt.ok:
+        await BotConnectorRepo.mark_status(
             db,
             org_id,
+            connector.id,
+            status="error",
+            error=(receipt.error or "")[:1000],
+        )
+        return
+    if incident_id is not None and lifecycle_event is not None:
+        await IncidentNotificationReceiptRepo.create(
+            db,
+            org_id,
+            incident_id=incident_id,
             connector_id=connector.id,
             platform=connector.platform,
-            chat_id=chat_id,
-            command=command_label,
-            status="ok" if ok else "delivery_failed",
-            detail=None if ok else (error or "")[:1000],
+            lifecycle_event=lifecycle_event,
+            external_channel_id=receipt.external_channel_id or chat_id,
+            external_message_id=receipt.external_message_id,
+            external_thread_id=receipt.external_thread_id,
+            rendered_status=rendered_status,
+            can_update=receipt.can_update,
             session_id=session_id,
         )
-        if not ok:
-            await BotConnectorRepo.mark_status(
-                db,
-                org_id,
-                connector.id,
-                status="error",
-                error=(error or "")[:1000],
-            )
+
+
+async def _try_update_incident_notification(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    org_id: uuid.UUID,
+    connector: BotConnector,
+    chat_id: str,
+    text: str,
+    command_label: str,
+    session_id: uuid.UUID | None,
+    incident_id: uuid.UUID,
+    lifecycle_event: str,
+    rendered_status: str | None,
+) -> bool:
+    if not supports_message_update(connector.platform):
+        return False
+    adapter = get_adapter(connector.platform)
+    if adapter is None or not hasattr(adapter, "update_incident_update"):
+        return False
+
+    async with factory() as db:
+        prior = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
+            db,
+            org_id,
+            incident_id=incident_id,
+            connector_id=connector.id,
+            external_channel_id=chat_id,
+            updateable_only=True,
+        )
+    if prior is None or prior.external_message_id is None:
+        return False
+
+    result: UpdateResult = await adapter.update_incident_update(
+        connector,
+        chat_id=chat_id,
+        text=text,
+        external_message_id=prior.external_message_id,
+        external_thread_id=prior.external_thread_id,
+    )
+    receipt = result.receipt or DeliveryReceipt(
+        ok=result.ok,
+        error=result.error,
+        external_message_id=prior.external_message_id,
+        external_thread_id=prior.external_thread_id,
+        external_channel_id=chat_id,
+        can_update=prior.can_update,
+    )
+    async with factory() as db:
+        await _record_delivery(
+            db,
+            org_id=org_id,
+            connector=connector,
+            chat_id=chat_id,
+            command_label=command_label,
+            session_id=session_id,
+            receipt=receipt,
+            incident_id=incident_id,
+            lifecycle_event=lifecycle_event,
+            rendered_status=rendered_status,
+        )
         await db.commit()
+    return result.ok and not result.fallback_to_followup
 
 
 async def _deliver(
@@ -261,9 +366,28 @@ async def _deliver(
     text: str,
     command_label: str,
     session_id: uuid.UUID | None,
+    incident_id: uuid.UUID | None = None,
+    lifecycle_event: str | None = None,
+    rendered_status: str | None = None,
 ) -> None:
+    if incident_id is not None and lifecycle_event is not None:
+        updated = await _try_update_incident_notification(
+            factory,
+            org_id=org_id,
+            connector=connector,
+            chat_id=chat_id,
+            text=text,
+            command_label=command_label,
+            session_id=session_id,
+            incident_id=incident_id,
+            lifecycle_event=lifecycle_event,
+            rendered_status=rendered_status,
+        )
+        if updated:
+            return
+
     if connector.platform == "telegram":
-        await _deliver_to_telegram(
+        receipt = await _deliver_to_telegram(
             factory,
             org_id=org_id,
             connector=connector,
@@ -273,7 +397,7 @@ async def _deliver(
             session_id=session_id,
         )
     else:
-        await _deliver_via_adapter(
+        receipt = await _deliver_via_adapter(
             factory,
             org_id=org_id,
             connector=connector,
@@ -282,6 +406,20 @@ async def _deliver(
             command_label=command_label,
             session_id=session_id,
         )
+    async with factory() as db:
+        await _record_delivery(
+            db,
+            org_id=org_id,
+            connector=connector,
+            chat_id=chat_id,
+            command_label=command_label,
+            session_id=session_id,
+            receipt=receipt,
+            incident_id=incident_id,
+            lifecycle_event=lifecycle_event,
+            rendered_status=rendered_status,
+        )
+        await db.commit()
 
 
 async def deliver_session_chat_event(
@@ -339,6 +477,9 @@ async def deliver_session_chat_event(
                 text=text,
                 command_label=f"notify:{event_type}",
                 session_id=session_id,
+                incident_id=incident.id if incident is not None else None,
+                lifecycle_event=event_type if incident is not None else None,
+                rendered_status=session.status if session is not None else None,
             )
 
 
@@ -491,6 +632,9 @@ async def deliver_incident_event(
                 text=text,
                 command_label=f"notify:{event_type}",
                 session_id=None,
+                incident_id=incident_id,
+                lifecycle_event=event_type,
+                rendered_status=incident.status,
             )
 
 
@@ -525,6 +669,8 @@ async def deliver_incident_text(
     text: str,
     event_type: str,
     team_id: uuid.UUID | None = None,
+    incident_id: uuid.UUID | None = None,
+    rendered_status: str | None = None,
 ) -> None:
     """Fan out a *pre-built* incident message to enabled Notification Channels
     with the ``notifications`` capability.
@@ -554,6 +700,9 @@ async def deliver_incident_text(
                 text=text,
                 command_label=f"notify:{event_type}",
                 session_id=None,
+                incident_id=incident_id,
+                lifecycle_event=event_type if incident_id is not None else None,
+                rendered_status=rendered_status,
             )
 
 
@@ -564,11 +713,19 @@ def schedule_incident_text(
     text: str,
     event_type: str,
     team_id: uuid.UUID | None = None,
+    incident_id: uuid.UUID | None = None,
+    rendered_status: str | None = None,
     task_registry: set[asyncio.Task] | None = None,
 ) -> asyncio.Task:
     task = asyncio.create_task(
         deliver_incident_text(
-            factory, org_id=org_id, text=text, event_type=event_type, team_id=team_id
+            factory,
+            org_id=org_id,
+            text=text,
+            event_type=event_type,
+            team_id=team_id,
+            incident_id=incident_id,
+            rendered_status=rendered_status,
         )
     )
     if task_registry is not None:

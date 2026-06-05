@@ -14,10 +14,12 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.bots import notifier
+from backend.bots.delivery import DeliveryReceipt, UpdateResult
 from backend.bots.incident_card import build_incident_message, incident_link
 from backend.db.models import Base
 from backend.db.repos import (
     BotConnectorRepo,
+    IncidentNotificationReceiptRepo,
     IncidentPageRepo,
     IncidentRepo,
     ServiceRepo,
@@ -194,6 +196,92 @@ class TestIncidentEventFanOut:
         assert all("DB outage" in s["text"] for s in sent)
         assert all("https://ops.example.com/dashboard/incidents/detail" in s["text"] for s in sent)
         assert all("token=" not in s["text"] for s in sent)
+        async with factory() as db:
+            receipts = await IncidentNotificationReceiptRepo.list_for_incident(
+                db, TEST_ORG_ID, incident_id
+            )
+        assert len(receipts) == 2
+        assert {r.external_channel_id for r in receipts} == {"-100A", "-100B"}
+        assert {r.lifecycle_event for r in receipts} == {"incident.created"}
+        assert all(r.can_update is False for r in receipts)
+
+    async def test_update_capable_adapter_edits_existing_incident_message(
+        self, factory, monkeypatch
+    ):
+        class FakeUpdateAdapter:
+            platform = "slack"
+
+            def __init__(self):
+                self.sent = []
+                self.updated = []
+
+            async def send_incident_update(self, connector, *, chat_id, text):
+                self.sent.append((chat_id, text))
+                return DeliveryReceipt(
+                    external_channel_id=chat_id,
+                    external_message_id="msg-1",
+                    external_thread_id="thread-1",
+                    can_update=True,
+                )
+
+            async def update_incident_update(
+                self,
+                connector,
+                *,
+                chat_id,
+                text,
+                external_message_id,
+                external_thread_id=None,
+            ):
+                self.updated.append((chat_id, external_message_id, external_thread_id, text))
+                return UpdateResult(
+                    ok=True,
+                    receipt=DeliveryReceipt(
+                        external_channel_id=chat_id,
+                        external_message_id=external_message_id,
+                        external_thread_id=external_thread_id,
+                        can_update=True,
+                    ),
+                )
+
+        fake = FakeUpdateAdapter()
+        monkeypatch.setattr(notifier, "get_adapter", lambda platform: fake)
+        monkeypatch.setattr(notifier, "supports_message_update", lambda platform: True)
+
+        await _make_connector(
+            factory,
+            platform="slack",
+            capabilities=["notifications"],
+            allowed_chat_ids=["C123"],
+        )
+        incident_id = await _make_incident(factory)
+
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.created",
+        )
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.resolved",
+        )
+
+        assert len(fake.sent) == 1
+        assert len(fake.updated) == 1
+        assert fake.updated[0][1] == "msg-1"
+        async with factory() as db:
+            receipts = await IncidentNotificationReceiptRepo.list_for_incident(
+                db, TEST_ORG_ID, incident_id
+            )
+        assert [r.lifecycle_event for r in receipts] == [
+            "incident.created",
+            "incident.resolved",
+        ]
+        assert all(r.external_message_id == "msg-1" for r in receipts)
+        assert all(r.can_update is True for r in receipts)
 
     async def test_resolved_event_delivers(self, factory, monkeypatch):
         sent = []

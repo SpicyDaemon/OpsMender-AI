@@ -2724,18 +2724,15 @@ function toggleTeamId(teamIds: string[], teamId: string): string[] {
 }
 
 // Honest capability chips derived from the platform capability model. The UI
-// never advertises an action a platform can't securely support — e.g. a
-// delivery-only channel (SMS/email) never shows an "Actions" chip.
+// never advertises an action/update path a platform can't securely support.
 function platformCapabilityLabels(
   caps: PlatformCapabilities | null | undefined,
 ): string[] {
   if (!caps) return ["Delivery-only"];
   const out: string[] = [];
-  // v1 sends formatted incident messages with an authenticated link — not
-  // interactive cards with buttons. Label it "Incident updates" so the UI
-  // never implies in-chat action buttons exist.
-  if (caps.incident_card) out.push("Incident updates");
-  if (caps.interactive_actions) out.push("Actions");
+  if (caps.incident_updates || caps.incident_card) out.push("Incident updates");
+  if (caps.message_update) out.push("Message updates");
+  if (caps.interactive_actions) out.push("Interactive actions");
   if (caps.delivery_only) out.push("Delivery-only");
   if (caps.direct_message) out.push("DM");
   if (caps.shared_channel) out.push("Channel post");
@@ -3147,13 +3144,12 @@ function BotConnectorModal({
             {schema?.label ?? PLATFORM_LABELS[form.platform]} can:
           </span>{" "}
           {platformCapabilityLabels(schema?.capabilities).join(" · ")}
-          {schema?.capabilities?.delivery_only !== false && (
-            <span className="mt-1 block text-fg-muted">
-              Delivery-only in v1: OpsMender posts an incident message with an
-              authenticated link. Responders acknowledge, resolve, or escalate
-              after signing in to OpsMender — no public action buttons are sent.
-            </span>
-          )}
+          <span className="mt-1 block text-fg-muted">
+            OpsMender posts incident updates with authenticated links. Native
+            message updates or in-chat actions appear only when the platform has
+            a verified callback/update path; otherwise responders act after
+            signing in to OpsMender.
+          </span>
         </div>
 
         <fieldset className="space-y-3">

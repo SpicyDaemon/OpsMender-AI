@@ -267,6 +267,8 @@ async def _notify_escalation(
             text=text,
             event_type="incident.escalated",
             team_id=target_team_id,
+            incident_id=incident.id,
+            rendered_status=incident.status,
         )
     except Exception:  # pragma: no cover - delivery is best-effort
         _log.warning("escalation channel notify skipped", exc_info=True)

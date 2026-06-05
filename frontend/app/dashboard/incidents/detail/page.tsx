@@ -41,6 +41,7 @@ import type {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Label, Select, Textarea, FormError } from "@/components/ui/Input";
+import { useAuth } from "@/context/auth";
 import { Modal } from "@/components/ui/Modal";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
@@ -124,6 +125,60 @@ export default function IncidentDetailPage() {
   );
 }
 
+/**
+ * Read-only incident view for Viewers: summary + lifecycle status only. No AI
+ * session content, tool activity, paging, approvals, or action buttons.
+ */
+function ViewerIncidentView({ incident }: { incident: IncidentResponse }) {
+  const fmt = (iso: string) => new Date(iso).toLocaleString();
+  return (
+    <div className="mx-auto max-w-3xl">
+      <Link
+        href="/dashboard/incidents"
+        className="mb-6 inline-flex items-center gap-1.5 text-sm text-fg-secondary hover:text-fg-primary"
+      >
+        <ArrowLeft size={14} /> Incidents
+      </Link>
+
+      <div className="rounded-xl border border-border-subtle bg-bg-panel p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-lg font-semibold text-fg-primary">{incident.title}</h1>
+          <div className="flex items-center gap-2">
+            <Badge>{incident.status}</Badge>
+            {incident.severity && <Badge variant="default">{incident.severity}</Badge>}
+          </div>
+        </div>
+        {incident.description && (
+          <p className="mt-3 whitespace-pre-wrap text-sm text-fg-secondary">
+            {incident.description}
+          </p>
+        )}
+        <dl className="mt-5 grid grid-cols-1 gap-4 border-t border-border-subtle pt-4 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Status</dt>
+            <dd className="mt-1 text-fg-primary">{incident.status}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Source</dt>
+            <dd className="mt-1 text-fg-primary">{incident.external_source || "manual"}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Created</dt>
+            <dd className="mt-1 text-fg-primary">{fmt(incident.created_at)}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Last updated</dt>
+            <dd className="mt-1 text-fg-primary">{fmt(incident.updated_at)}</dd>
+          </div>
+        </dl>
+      </div>
+      <p className="mt-3 text-center text-xs text-fg-muted">
+        You have read-only access. Remediation details and AI sessions are visible to operators and admins.
+      </p>
+    </div>
+  );
+}
+
 function IncidentDetailContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
@@ -143,6 +198,10 @@ function IncidentDetailContent() {
   const [showSession, setShowSession] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState("");
   const toast = useToast();
+  const { user } = useAuth();
+  // Viewers get a read-only summary: no AI sessions, tool activity, paging, or
+  // lifecycle actions (those endpoints are admin/operator-only on the backend).
+  const isViewer = user?.role === "viewer";
 
   const reload = useCallback(async () => {
     if (!id) {
@@ -155,6 +214,11 @@ function IncidentDetailContent() {
     try {
       const incidentRes = await getIncident(id);
       setIncident(incidentRes);
+      if (isViewer) {
+        // Skip operator/admin-only fetches (sessions, timeline, paging, users).
+        setLoading(false);
+        return;
+      }
       Promise.all([
         getIncidentPaging(id).catch(() => null),
         listUsers().catch(() => ({ items: [], total: 0 })),
@@ -190,7 +254,7 @@ function IncidentDetailContent() {
     } finally {
       setLoading(false);
     }
-  }, [id, toast]);
+  }, [id, toast, isViewer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +280,8 @@ function IncidentDetailContent() {
   if (loading) return <DetailSkeleton />;
   if (!id) return <p className="text-status-critical">Missing incident id.</p>;
   if (!incident) return <p className="text-status-critical">Incident not found.</p>;
+
+  if (isViewer) return <ViewerIncidentView incident={incident} />;
 
   return (
     <div className="mx-auto max-w-7xl">

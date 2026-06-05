@@ -340,6 +340,9 @@ export default function IncidentsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const canManage = user?.role === "admin" || user?.role === "operator";
+  // Creating incidents + firing test incidents is admin-only (Operators
+  // respond to incidents but don't author them).
+  const isAdmin = user?.role === "admin";
   const deferredSearch = useDeferredValue(search);
 
   // Sprint 61 (Sprint E) — command-palette deep-links.
@@ -498,13 +501,17 @@ export default function IncidentsPage() {
                 <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
                 Refresh
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setShowTest(true)}>
-                Fire Test Incident
-              </Button>
-              <Button size="sm" onClick={() => setShowCreate(true)}>
-                <Plus size={14} />
-                New Incident
-              </Button>
+              {isAdmin && (
+                <>
+                  <Button variant="secondary" size="sm" onClick={() => setShowTest(true)}>
+                    Fire Test Incident
+                  </Button>
+                  <Button size="sm" onClick={() => setShowCreate(true)}>
+                    <Plus size={14} />
+                    New Incident
+                  </Button>
+                </>
+              )}
             </>
           }
         />
@@ -563,19 +570,25 @@ export default function IncidentsPage() {
         <EmptyState
           icon={AlertTriangle}
           title="No incidents yet"
-          description="Incidents you create or receive from integrations will appear here. Try a synthetic test incident to walk through the full response loop without touching production."
+          description={
+            isAdmin
+              ? "Incidents you create or receive from integrations will appear here. Try a synthetic test incident to walk through the full response loop without touching production."
+              : "Incidents you receive from integrations will appear here."
+          }
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
           action={
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button size="sm" variant="secondary" onClick={() => setShowTest(true)}>
-                Fire Test Incident
-              </Button>
-              <Button size="sm" onClick={() => setShowCreate(true)}>
-                <Plus size={14} />
-                New Incident
-              </Button>
-            </div>
+            isAdmin ? (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setShowTest(true)}>
+                  Fire Test Incident
+                </Button>
+                <Button size="sm" onClick={() => setShowCreate(true)}>
+                  <Plus size={14} />
+                  New Incident
+                </Button>
+              </div>
+            ) : undefined
           }
         />
       ) : (

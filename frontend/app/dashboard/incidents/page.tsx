@@ -370,8 +370,11 @@ export default function IncidentsPage() {
   useEffect(() => {
     const wantNew = searchParams.get("new");
     const wantTest = searchParams.get("test");
-    if (wantNew === "1") setShowCreate(true);
-    if (wantTest === "1") setShowTest(true);
+    // Creating + firing test incidents is admin-only — the buttons are hidden
+    // for non-admins, so the ?new=1 / ?test=1 deep links (e.g. the Activity /
+    // Approvals empty-state hints) must not open the modal for them either.
+    if (isAdmin && wantNew === "1") setShowCreate(true);
+    if (isAdmin && wantTest === "1") setShowTest(true);
     if (wantNew === "1" || wantTest === "1") {
       const next = new URLSearchParams(searchParams.toString());
       next.delete("new");
@@ -379,7 +382,7 @@ export default function IncidentsPage() {
       const qs = next.toString();
       router.replace(`/dashboard/incidents${qs ? `?${qs}` : ""}`);
     }
-  }, [searchParams, router]);
+  }, [searchParams, router, isAdmin]);
 
   const loadMetadata = useCallback(async () => {
     try {

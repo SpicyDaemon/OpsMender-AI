@@ -7,9 +7,10 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+const search = { current: "" };
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(search.current),
   usePathname: () => "/dashboard/incidents",
 }));
 
@@ -53,6 +54,7 @@ beforeEach(() => {
     },
   });
   role.current = "admin";
+  search.current = "";
 });
 
 async function renderAndSettle() {
@@ -86,6 +88,33 @@ describe("Incidents page RBAC", () => {
     await renderAndSettle();
     expect(screen.queryByRole("button", { name: /new incident/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /fire test incident/i })).toBeNull();
+  });
+
+  it("opens the fire-test modal via ?test=1 for admin", async () => {
+    role.current = "admin";
+    search.current = "test=1";
+    await renderAndSettle();
+    // Button + modal title both read "Fire Test Incident" → at least 2 nodes.
+    await waitFor(() =>
+      expect(
+        screen.queryAllByText(/fire test incident/i).length,
+      ).toBeGreaterThan(1),
+    );
+  });
+
+  it("does NOT open the fire-test modal via ?test=1 for operator", async () => {
+    role.current = "operator";
+    search.current = "test=1";
+    await renderAndSettle();
+    // No button (hidden) and the deep link must not open the modal either.
+    expect(screen.queryByText(/fire test incident/i)).toBeNull();
+  });
+
+  it("does NOT open the create modal via ?new=1 for viewer", async () => {
+    role.current = "viewer";
+    search.current = "new=1";
+    await renderAndSettle();
+    expect(screen.queryByText(/create incident/i)).toBeNull();
   });
 
   it("renders a Responder column with the responder state", async () => {

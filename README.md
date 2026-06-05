@@ -470,7 +470,7 @@ OpsMender has **three distinct notification concepts**. They are separate from i
 | **Notification Channels** | The responder team | Workspace/team channels where responders collaborate — this is where incident updates appear | Paging & On-call → Notification Channels |
 | **Viewer Notifications** | Read-only stakeholders / downstream systems | Read-only session/incident updates to webhooks; never pages an operator | Paging & On-call → Notifications |
 
-Personal Routing pages the owner; Notification Channels keep the responding team in the loop with an incident card; Viewer Notifications fan out read-only status. The expected flow:
+Personal Routing pages the owner; Notification Channels keep the responding team in the loop with formatted incident updates (authenticated links, no in-chat buttons today); Viewer Notifications fan out read-only status. The expected flow:
 
 ```
 Alert intake → Incident created → Service/team/escalation chain resolved

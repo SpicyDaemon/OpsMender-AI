@@ -4532,6 +4532,19 @@ class RosterRepo:
         return m
 
     @staticmethod
+    async def remove_user_everywhere(db: AsyncSession, user_id: uuid.UUID) -> int:
+        """Delete all of a user's roster memberships (e.g. on deactivation), so
+        they stop paging and don't block deletion with stale roster references.
+        Returns the number of memberships removed."""
+        from sqlalchemy import delete as sql_delete
+
+        result = await db.execute(
+            sql_delete(RosterMember).where(RosterMember.user_id == user_id)
+        )
+        await db.flush()
+        return result.rowcount or 0
+
+    @staticmethod
     async def list_members(
         db: AsyncSession,
         org_id: uuid.UUID,

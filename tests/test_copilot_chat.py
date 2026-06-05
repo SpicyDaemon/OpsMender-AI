@@ -363,9 +363,10 @@ class TestChatRoutes:
         )
         assert resp.status_code == 403
 
-    async def test_viewer_can_read(
+    async def test_viewer_cannot_read_chat(
         self, client: AsyncClient, admin_headers, viewer_headers
     ):
+        # Co-pilot chat is AI session content — Viewers are forbidden (Part 1).
         create = await client.post("/sessions", json={"tier": 2}, headers=admin_headers)
         session_id = create.json()["id"]
         await client.post(
@@ -377,9 +378,7 @@ class TestChatRoutes:
         resp = await client.get(
             f"/sessions/{session_id}/messages", headers=viewer_headers
         )
-        assert resp.status_code == 200
-        assert resp.json()["total"] == 1
-        assert resp.json()["items"][0]["content"] == "audit trail"
+        assert resp.status_code == 403
 
     async def test_post_to_unknown_session_404(
         self, client: AsyncClient, admin_headers

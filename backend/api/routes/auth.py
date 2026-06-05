@@ -434,6 +434,12 @@ async def update_user(
         first_name=body.first_name,
         last_name=body.last_name,
     )
+    # Deactivation removes the user from on-call rosters: they stop paging and
+    # no longer block deletion with stale roster references (Part 5).
+    if body.is_active is False:
+        from backend.db.repos import RosterRepo
+
+        await RosterRepo.remove_user_everywhere(db, user_id)
     await db.commit()
     return updated
 

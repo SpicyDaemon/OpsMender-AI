@@ -389,6 +389,15 @@ function ActiveToggle({
   const [saving, setSaving] = useState(false);
 
   const toggle = useCallback(async () => {
+    // Warn about the roster/on-call impact before deactivating.
+    if (
+      user.is_active &&
+      !window.confirm(
+        `Deactivate ${user.username}? They will be signed out, removed from all on-call rosters, and stop receiving pages. You can delete the account afterwards.`,
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     try {
       await updateUser(user.id, { is_active: !user.is_active });

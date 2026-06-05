@@ -634,3 +634,57 @@ async def test_admin_set_temporary_password(env):
     user_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     me = await client.get("/auth/me", headers=user_headers)
     assert me.json()["must_change_password"] is True
+
+
+async def test_deactivation_removes_roster_membership_and_unblocks_delete(env):
+    """Part 5 bug fix: deactivating a user removes them from rosters, so the
+    delete precondition reflects real state and delete is no longer blocked."""
+    client = env["client"]
+    factory = env["factory"]
+    headers, _ = await _admin_token(client)
+    target_id = await _register_extra_user(
+        client, username="oncall2", email="oc2@b.com"
+    )
+
+    # Seed org + team + roster + membership while the user is still ACTIVE.
+    async with factory() as db:
+        org_id = uuid.uuid4()
+        team_id = uuid.uuid4()
+        roster_id = uuid.uuid4()
+        from datetime import date as _date
+
+        db.add(Organization(id=org_id, name="O2", slug="o2"))
+        db.add(Team(id=team_id, org_id=org_id, name="T2", slug="t2"))
+        db.add(
+            Roster(
+                id=roster_id, org_id=org_id, team_id=team_id, name="r2",
+                pattern="weekly", anchor_date=_date.today(),
+                handoff_time="09:00", time_zone="UTC",
+            )
+        )
+        db.add(
+            RosterMember(
+                id=uuid.uuid4(), org_id=org_id, roster_id=roster_id,
+                user_id=uuid.UUID(target_id), position_index=0,
+            )
+        )
+        await db.commit()
+
+    # Deactivate via the route — this should strip the roster membership.
+    deact = await client.patch(
+        f"/auth/users/{target_id}", json={"is_active": False}, headers=headers
+    )
+    assert deact.status_code == 200
+
+    pre = await client.get(
+        f"/auth/users/{target_id}/delete-preconditions", headers=headers
+    )
+    assert pre.json()["roster_memberships"] == 0
+    assert pre.json()["can_delete"] is True
+
+    # Delete now succeeds (no stale roster block).
+    resp = await client.post(
+        f"/auth/users/{target_id}/soft-delete", headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deleted_at"] is not None

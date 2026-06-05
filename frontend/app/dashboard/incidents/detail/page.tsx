@@ -273,7 +273,8 @@ function IncidentDetailContent() {
     const assignedTo = pagingPanel?.assignment?.assigned_to;
     if (!assignedTo) return null;
     const owner = users.find((candidate) => candidate.id === assignedTo);
-    if (!owner) return null;
+    // Fallback identity for users that were deleted after acting on the incident.
+    if (!owner) return `Deleted user ${assignedTo.slice(0, 8)}`;
     return owner.username || owner.email;
   }, [pagingPanel, users]);
 

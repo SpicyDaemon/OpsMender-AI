@@ -16,7 +16,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.bots import notifier
 from backend.bots.incident_card import build_incident_message, incident_link
 from backend.db.models import Base
-from backend.db.repos import BotConnectorRepo, IncidentRepo
+from backend.db.repos import (
+    BotConnectorRepo,
+    IncidentPageRepo,
+    IncidentRepo,
+    UserRepo,
+)
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
@@ -229,6 +234,83 @@ class TestIncidentEventFanOut:
             org_id=TEST_ORG_ID,
             incident_id=incident_id,
             event_type="incident.created",
+        )
+        assert sent == []
+
+    async def test_escalated_event_delivers_with_escalation_context(
+        self, factory, monkeypatch
+    ):
+        sent = []
+
+        async def fake_send(*, bot_token, chat_id, text, **kwargs):
+            sent.append(text)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+
+        await _make_connector(
+            factory, capabilities=["notifications"], allowed_chat_ids=["-100A"]
+        )
+        incident_id = await _make_incident(factory)
+
+        # Two escalation pages: step 0 -> Alice, step 1 -> Bob (escalated to Bob).
+        async with factory() as db:
+            alice = await UserRepo.create(
+                db, username="alice", email="a@x.io", password_hash="x",
+                first_name="Alice", last_name="A",
+            )
+            bob = await UserRepo.create(
+                db, username="bob", email="b@x.io", password_hash="x",
+                first_name="Bob", last_name="B",
+            )
+            await IncidentPageRepo.create(
+                db, TEST_ORG_ID, incident_id=incident_id, user_id=alice.id, step_index=0
+            )
+            await IncidentPageRepo.create(
+                db, TEST_ORG_ID, incident_id=incident_id, user_id=bob.id, step_index=1
+            )
+            await db.commit()
+
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.escalated",
+            base_url="https://ops.example.com",
+        )
+
+        assert len(sent) == 1
+        text = sent[0]
+        assert "escalated" in text.lower()
+        assert "Escalated to Alice B" not in text  # Bob is the current target
+        assert "Escalated to Bob B" in text
+        assert "Escalation level: 1" in text
+        assert "Previous responder: Alice A" in text
+        assert "https://ops.example.com/dashboard/incidents/detail" in text
+        assert "token=" not in text
+
+    async def test_disabled_channel_skips_escalation(self, factory, monkeypatch):
+        sent = []
+
+        async def fake_send(**kwargs):
+            sent.append(kwargs)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-100A"],
+            is_enabled=False,
+        )
+        incident_id = await _make_incident(factory)
+
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.escalated",
         )
         assert sent == []
 

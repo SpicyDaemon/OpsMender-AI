@@ -141,6 +141,18 @@ async def test_incident_create_and_actions_rbac(client):
         await client.post(f"/incidents/{incident_id}/ack", headers=h["operator"])
     ).status_code != 403
 
+    # Viewer cannot drive escalation-related lifecycle either: takeover (the
+    # only operator-initiated escalation handoff) and resolve are both blocked.
+    # Escalation itself is time-driven by the engine, never a viewer action.
+    assert (
+        await client.post(f"/incidents/{incident_id}/take", headers=h["viewer"], json={})
+    ).status_code == 403
+    assert (
+        await client.patch(
+            f"/incidents/{incident_id}", headers=h["viewer"], json={"status": "resolved"}
+        )
+    ).status_code == 403
+
     # Viewer cannot read AI session internals for the incident.
     assert (
         await client.get(f"/incidents/{incident_id}/sessions", headers=h["viewer"])

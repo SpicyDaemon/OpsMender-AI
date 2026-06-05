@@ -89,12 +89,14 @@ describe("Notification Channels capability rendering", () => {
     expect(screen.getAllByText("Slack").length).toBeGreaterThan(0);
   });
 
-  it("shows Incident cards for a chat-capable channel", () => {
+  it("shows Incident updates (not buttons) for a chat-capable channel", () => {
     render(
       <BotConnectorSection connectors={[slack]} onReload={async () => {}} canEdit />,
     );
     const row = screen.getByText("Slack #incidents").closest("tr")!;
-    expect(within(row).getByText("Incident cards")).toBeTruthy();
+    // v1 label is "Incident updates" — must not imply in-chat action buttons.
+    expect(within(row).getByText("Incident updates")).toBeTruthy();
+    expect(within(row).queryByText("Incident cards")).toBeNull();
     // No interactive actions are advertised in v1.
     expect(within(row).queryByText("Actions")).toBeNull();
   });
@@ -106,6 +108,6 @@ describe("Notification Channels capability rendering", () => {
     const row = screen.getByText("On-call SMS").closest("tr")!;
     expect(within(row).getByText("Delivery-only")).toBeTruthy();
     expect(within(row).queryByText("Actions")).toBeNull();
-    expect(within(row).queryByText("Incident cards")).toBeNull();
+    expect(within(row).queryByText("Incident updates")).toBeNull();
   });
 });

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from backend.api.deps import get_db, set_mcp_pool, set_session_factory
 from backend.config_loader import set_env_path
 from backend.db.models import Base, Organization
 from backend.db.repos import (
+    BotConnectorRepo,
     EscalationChainRepo,
     EscalationStepRepo,
     IncidentAssignmentRepo,
@@ -1162,3 +1164,127 @@ class TestChannelFactoryBuilder:
             }
         )
         assert isinstance(full("sms"), SMSChannel)
+
+
+# ---------------------------------------------------------------------------
+# Escalation → Notification Channel delivery (v1 follow-up)
+# ---------------------------------------------------------------------------
+
+
+async def _make_notifications_connector(app, *, is_enabled=True):
+    async with app.state.session_factory() as db:
+        connector = await BotConnectorRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="ops-telegram",
+            platform="telegram",
+            config={"allowed_chat_ids": ["-100A"]},
+            credentials={"bot_token": "BOT-TOKEN"},
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=is_enabled,
+        )
+        await db.commit()
+        return connector.id
+
+
+async def _drain_background(predicate, *, max_ticks=100):
+    """Wait until ``predicate()`` is true or we give up.
+
+    Uses a small real delay (not ``sleep(0)``) because the fire-and-forget
+    delivery awaits aiosqlite I/O on a worker thread, which needs wall-clock
+    time to complete — tight ``sleep(0)`` spins would never let it finish.
+    """
+    for _ in range(max_ticks):
+        if predicate():
+            return
+        await asyncio.sleep(0.02)
+
+
+class TestEscalationNotification:
+    async def _two_step_chain_at_step_zero(self, app):
+        team_id = await _make_team(app)
+        u1 = await _make_user(app, username="primary")
+        u2 = await _make_user(app, username="secondary")
+        async with app.state.session_factory() as db:
+            chain = await EscalationChainRepo.create(
+                db, TEST_ORG_ID, team_id=team_id, name="multi"
+            )
+            for idx, uid in ((0, u1), (1, u2)):
+                await EscalationStepRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    chain_id=chain.id,
+                    step_index=idx,
+                    target_type="user",
+                    target_id=uid,
+                    timeout_seconds=30,
+                )
+            incident = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="Escalating incident", description="d",
+                severity="critical",
+            )
+            start = datetime(2026, 5, 15, 12, 0, tzinfo=timezone.utc)
+            await _esc.start_chain(
+                db, TEST_ORG_ID, incident_id=incident.id, chain_id=chain.id, at=start,
+            )
+            await db.commit()
+        return incident.id, start
+
+    async def test_tick_escalation_sends_channel_notification(self, app, monkeypatch):
+        sent = []
+
+        async def fake_send(*, bot_token, chat_id, text, **kwargs):
+            sent.append(text)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+        await _make_notifications_connector(app)
+        incident_id, start = await self._two_step_chain_at_step_zero(app)
+
+        async with app.state.session_factory() as db:
+            result = await _esc.tick(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident_id,
+                at=start + timedelta(seconds=45),
+            )
+            await db.commit()
+        assert result is not None and result.step_index == 1
+
+        await _drain_background(lambda: len(sent) > 0)
+        assert len(sent) == 1
+        text = sent[0]
+        assert "escalated" in text.lower()
+        assert "Escalation level: 1" in text
+        assert "Escalated to secondary" in text
+        assert "Previous responder: primary" in text
+        assert "/dashboard/incidents/detail" in text
+        # Security: no public action URL, only an authenticated incident link.
+        assert "token=" not in text
+        assert "/ack?" not in text and "/resolve?" not in text
+
+    async def test_disabled_channel_gets_no_escalation_notification(
+        self, app, monkeypatch
+    ):
+        sent = []
+
+        async def fake_send(**kwargs):
+            sent.append(kwargs)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+        await _make_notifications_connector(app, is_enabled=False)
+        incident_id, start = await self._two_step_chain_at_step_zero(app)
+
+        async with app.state.session_factory() as db:
+            await _esc.tick(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident_id,
+                at=start + timedelta(seconds=45),
+            )
+            await db.commit()
+
+        await _drain_background(lambda: len(sent) > 0, max_ticks=20)
+        assert sent == []

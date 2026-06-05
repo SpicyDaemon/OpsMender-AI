@@ -2706,7 +2706,10 @@ function platformCapabilityLabels(
 ): string[] {
   if (!caps) return ["Delivery-only"];
   const out: string[] = [];
-  if (caps.incident_card) out.push("Incident cards");
+  // v1 sends formatted incident messages with an authenticated link — not
+  // interactive cards with buttons. Label it "Incident updates" so the UI
+  // never implies in-chat action buttons exist.
+  if (caps.incident_card) out.push("Incident updates");
   if (caps.interactive_actions) out.push("Actions");
   if (caps.delivery_only) out.push("Delivery-only");
   if (caps.direct_message) out.push("DM");

@@ -280,6 +280,8 @@ async def _resolve_incident_responder(
 
     Mirrors the incidents route precedence (acknowledged assignment wins,
     otherwise the latest escalation page) without importing the route module.
+    Also surfaces escalation context — the level (latest page step index) and
+    the previous responder paged before the current one — for escalation cards.
     """
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
     pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))
@@ -297,6 +299,14 @@ async def _resolve_incident_responder(
     else:
         state, resp_uid = "unassigned", None
 
+    # Previous responder = the most recent page target *before* the latest one,
+    # skipping repeats of the current target.
+    prev_uid = None
+    for page in reversed(pages[:-1]) if len(pages) > 1 else []:
+        if page.user_id != esc_uid:
+            prev_uid = page.user_id
+            break
+
     async def _name(uid):
         if uid is None:
             return None
@@ -306,6 +316,8 @@ async def _resolve_incident_responder(
         "responder_state": state,
         "responder_display_name": await _name(resp_uid),
         "acknowledged_by_display_name": await _name(ack_uid),
+        "escalation_level": esc_step,
+        "previous_responder_display_name": await _name(prev_uid),
     }
 
 
@@ -392,6 +404,61 @@ def schedule_incident_event(
             incident_id=incident_id,
             event_type=event_type,
             base_url=base_url,
+        )
+    )
+    if task_registry is not None:
+        task_registry.add(task)
+        task.add_done_callback(task_registry.discard)
+    return task
+
+
+async def deliver_incident_text(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    org_id: uuid.UUID,
+    text: str,
+    event_type: str,
+) -> None:
+    """Fan out a *pre-built* incident message to enabled Notification Channels
+    with the ``notifications`` capability.
+
+    Used when the caller has already resolved the message from a live session
+    (e.g. the escalation engine, where the new page row may not be committed
+    yet) so the background delivery does not have to re-read incident state.
+    """
+    async with factory() as db:
+        connectors = list(
+            await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
+        )
+
+    for connector in connectors:
+        if not _has_capability(connector, "notifications"):
+            continue
+        if get_adapter(connector.platform) is None and connector.platform != "telegram":
+            continue
+        for chat_id in _allowed_chat_ids(connector):
+            await _deliver(
+                factory,
+                org_id=org_id,
+                connector=connector,
+                chat_id=chat_id,
+                text=text,
+                command_label=f"notify:{event_type}",
+                session_id=None,
+            )
+
+
+def schedule_incident_text(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    org_id: uuid.UUID,
+    text: str,
+    event_type: str,
+    task_registry: set[asyncio.Task] | None = None,
+) -> asyncio.Task:
+    task = asyncio.create_task(
+        deliver_incident_text(
+            factory, org_id=org_id, text=text, event_type=event_type
         )
     )
     if task_registry is not None:

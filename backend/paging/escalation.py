@@ -43,6 +43,8 @@ actual channels.
 from __future__ import annotations
 
 import dataclasses
+import logging
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
@@ -50,6 +52,7 @@ from typing import Iterable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.repos import (
+    BotConnectorRepo,
     EscalationStepRepo,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
@@ -61,6 +64,8 @@ from backend.db.repos import (
     TeamRepo,
     UserRepo,
 )
+
+_log = logging.getLogger(__name__)
 from backend.paging.dispatch import ChannelFactory, dispatch_page
 from backend.paging.on_call import (
     OnCallContext,
@@ -208,6 +213,56 @@ async def _fire_step(
                     at=at,
                 )
     return StepFireResult(step_index=step.step_index, users_paged=fired)
+
+
+async def _notify_escalation(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+) -> None:
+    """Best-effort: post an escalation card to enabled Notification Channels.
+
+    The message is built here from the live session (which already sees the
+    just-fired page row) and handed to a fire-and-forget text delivery, so the
+    background task never has to re-read state that the caller has not yet
+    committed. Only spawns the task when an enabled ``notifications`` channel
+    exists — keeps the hot path cheap and side-effect-free when there is
+    nothing to deliver. Never raises into the escalation engine.
+    """
+    try:
+        connectors = await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
+        if not any(
+            "notifications" in (c.allowed_capabilities or []) for c in connectors
+        ):
+            return
+
+        incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+        if incident is None:
+            return
+
+        from backend.api.deps import get_current_session_factory
+        from backend.bots.incident_card import build_incident_message
+        from backend.bots.notifier import (
+            _resolve_incident_responder,
+            schedule_incident_text,
+        )
+
+        responder = await _resolve_incident_responder(db, org_id, incident_id)
+        text = build_incident_message(
+            incident,
+            event_type="incident.escalated",
+            base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+            responder=responder,
+            supports_actions=False,
+        )
+        schedule_incident_text(
+            get_current_session_factory(),
+            org_id=org_id,
+            text=text,
+            event_type="incident.escalated",
+        )
+    except Exception:  # pragma: no cover - delivery is best-effort
+        _log.warning("escalation channel notify skipped", exc_info=True)
 
 
 async def select_chain_for_incident(
@@ -462,6 +517,10 @@ async def tick(
     else:
         state.next_step_due_at = None
     await db.flush()
+    # An advanced step (index >= 1) is an escalation to a higher level — notify
+    # configured Notification Channels. Best-effort; never blocks the engine.
+    if result.step_index >= 1 and result.users_paged:
+        await _notify_escalation(db, org_id, incident_id)
     return result
 
 

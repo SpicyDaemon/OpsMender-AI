@@ -49,6 +49,15 @@ export interface IncidentResponse {
   external_source: string | null;
   created_at: string;
   updated_at: string;
+  // Responder / assignment state (Part 6)
+  responder_user_id?: string | null;
+  responder_display_name?: string | null;
+  responder_email?: string | null;
+  responder_state?: "awaiting" | "assigned" | "escalated" | "unassigned";
+  acknowledged_by_user_id?: string | null;
+  acknowledged_by_display_name?: string | null;
+  escalated_to_user_id?: string | null;
+  escalated_to_display_name?: string | null;
 }
 
 export interface IncidentListResponse {

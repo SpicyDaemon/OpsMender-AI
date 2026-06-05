@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useAuth } from "@/context/auth";
+import { responderDisplay } from "@/lib/responder";
 import type {
   ConfigResponse,
   IncidentCreate,
@@ -195,6 +196,22 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
         ) : (
           <span className="text-fg-muted">—</span>
         );
+      },
+      sortable: true,
+    },
+    {
+      id: "responder",
+      label: "Responder",
+      accessor: (inc) => responderDisplay(inc).text,
+      cell: (inc) => {
+        const r = responderDisplay(inc);
+        const cls =
+          r.tone === "ok"
+            ? "text-status-low"
+            : r.tone === "warn"
+              ? "text-status-medium"
+              : "text-fg-muted";
+        return <span className={`text-sm ${cls}`}>{r.text}</span>;
       },
       sortable: true,
     },

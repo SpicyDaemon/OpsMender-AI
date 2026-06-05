@@ -259,6 +259,20 @@ class IncidentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # -- Responder / assignment state (Part 6) -----------------------------
+    # Computed by the route so the list doesn't infer from detail-only state.
+    # responder_state: awaiting | assigned | escalated | unassigned.
+    # A *_display_name of null with a non-null *_user_id means the user was
+    # deleted (frontend renders "Deleted user <id>").
+    responder_user_id: Optional[uuid.UUID] = None
+    responder_display_name: Optional[str] = None
+    responder_email: Optional[str] = None
+    responder_state: str = "unassigned"
+    acknowledged_by_user_id: Optional[uuid.UUID] = None
+    acknowledged_by_display_name: Optional[str] = None
+    escalated_to_user_id: Optional[uuid.UUID] = None
+    escalated_to_display_name: Optional[str] = None
+
     model_config = {"from_attributes": True}
 
 

@@ -87,4 +87,31 @@ describe("Incidents page RBAC", () => {
     expect(screen.queryByRole("button", { name: /new incident/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /fire test incident/i })).toBeNull();
   });
+
+  it("renders a Responder column with the responder state", async () => {
+    role.current = "admin";
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [
+        {
+          id: "inc-1",
+          title: "DB outage",
+          description: "down",
+          status: "open",
+          severity: "high",
+          service_id: null,
+          external_id: null,
+          external_source: null,
+          created_at: "2026-06-01T00:00:00Z",
+          updated_at: "2026-06-01T00:00:00Z",
+          responder_state: "awaiting",
+          responder_user_id: "u1",
+          responder_display_name: "Alice",
+        },
+      ],
+      total: 1,
+    });
+    await renderAndSettle();
+    await waitFor(() => expect(screen.getAllByText(/Awaiting Alice/).length).toBeGreaterThan(0));
+    expect(screen.getAllByText("Responder").length).toBeGreaterThan(0);
+  });
 });

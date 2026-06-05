@@ -42,6 +42,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Label, Select, Textarea, FormError } from "@/components/ui/Input";
 import { useAuth } from "@/context/auth";
+import { acknowledgedByName, responderDisplay } from "@/lib/responder";
 import { Modal } from "@/components/ui/Modal";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
@@ -157,6 +158,10 @@ function ViewerIncidentView({ incident }: { incident: IncidentResponse }) {
           <div>
             <dt className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Status</dt>
             <dd className="mt-1 text-fg-primary">{incident.status}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Responder</dt>
+            <dd className="mt-1 text-fg-primary">{responderDisplay(incident).text}</dd>
           </div>
           <div>
             <dt className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Source</dt>
@@ -284,6 +289,8 @@ function IncidentDetailContent() {
 
   if (isViewer) return <ViewerIncidentView incident={incident} />;
 
+  const acknowledgedByDetail = acknowledgedByName(incident);
+
   return (
     <div className="mx-auto max-w-7xl">
       {/* Sprint A Step 1: sticky command strip surfaces the lifecycle actions
@@ -296,6 +303,26 @@ function IncidentDetailContent() {
         onChanged={reload}
         ownerLabel={ownerLabel}
       />
+
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+          Responder
+        </span>
+        <span
+          className={`rounded-full border px-2.5 py-0.5 font-medium ${
+            responderDisplay(incident).tone === "ok"
+              ? "border-status-low-border bg-status-low-bg text-status-low"
+              : responderDisplay(incident).tone === "warn"
+                ? "border-status-medium-border bg-status-medium-bg text-status-medium"
+                : "border-border-subtle bg-bg-elevated text-fg-muted"
+          }`}
+        >
+          {responderDisplay(incident).text}
+        </span>
+        {acknowledgedByDetail && (
+          <span className="text-xs text-fg-muted">Acknowledged by {acknowledgedByDetail}</span>
+        )}
+      </div>
 
       <div className={`grid gap-6 ${activeSessionId ? "xl:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.95fr)]" : ""}`}>
         <div className="min-w-0">

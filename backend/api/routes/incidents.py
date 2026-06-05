@@ -118,6 +118,57 @@ def _assignment_body(assigned_by: str, actor_label: str | None) -> str | None:
     return f"{actor_label} became the current owner."
 
 
+def _user_display(user) -> tuple[str | None, str | None]:
+    """(display_name, email) for a user, or (None, None) when the user is
+    missing or soft-deleted — the frontend then renders 'Deleted user <id>'."""
+    if user is None or getattr(user, "deleted_at", None) is not None:
+        return None, None
+    full = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    return (full or user.username), user.email
+
+
+async def _resolve_responder(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    user_by_id: dict,
+) -> dict:
+    """Resolve the current responder/assignment state for an incident.
+
+    Acknowledged (active assignment) wins; otherwise the latest escalation page
+    is the current target — ``awaiting`` at the first level, ``escalated`` after.
+    """
+    assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))
+    latest = pages[-1] if pages else None
+
+    ack_uid = assignment.assigned_to if assignment is not None else None
+    esc_uid = latest.user_id if latest is not None else None
+    esc_step = latest.step_index if latest is not None else None
+
+    if ack_uid is not None:
+        state, resp_uid = "assigned", ack_uid
+    elif esc_uid is not None:
+        state = "escalated" if (esc_step or 0) > 0 else "awaiting"
+        resp_uid = esc_uid
+    else:
+        state, resp_uid = "unassigned", None
+
+    resp_name, resp_email = _user_display(user_by_id.get(resp_uid))
+    ack_name, _ = _user_display(user_by_id.get(ack_uid))
+    esc_name, _ = _user_display(user_by_id.get(esc_uid))
+    return {
+        "responder_user_id": resp_uid,
+        "responder_display_name": resp_name,
+        "responder_email": resp_email,
+        "responder_state": state,
+        "acknowledged_by_user_id": ack_uid,
+        "acknowledged_by_display_name": ack_name,
+        "escalated_to_user_id": esc_uid,
+        "escalated_to_display_name": esc_name,
+    }
+
+
 async def _to_incident_response(
     db: AsyncSession, org_id: uuid.UUID, incident
 ) -> IncidentResponse:
@@ -129,6 +180,8 @@ async def _to_incident_response(
             data["team_id"] = service.team_id
             team = await TeamRepo.get_by_id(db, org_id, service.team_id)
             data["team_name"] = team.name if team is not None else None
+    user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000)}
+    data.update(await _resolve_responder(db, org_id, incident.id, user_by_id))
     return IncidentResponse(**data)
 
 
@@ -139,6 +192,7 @@ async def _to_incident_list_response(
     teams = await TeamRepo.list_all(db, org_id)
     service_by_id = {service.id: service for service in services}
     team_by_id = {team.id: team for team in teams}
+    user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000)}
     responses: list[IncidentResponse] = []
     for incident in incidents:
         data = IncidentResponse.model_validate(incident).model_dump()
@@ -149,6 +203,7 @@ async def _to_incident_list_response(
                 data["team_id"] = service.team_id
                 team = team_by_id.get(service.team_id)
                 data["team_name"] = team.name if team is not None else None
+        data.update(await _resolve_responder(db, org_id, incident.id, user_by_id))
         responses.append(IncidentResponse(**data))
     return responses
 

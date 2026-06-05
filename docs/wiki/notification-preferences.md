@@ -9,6 +9,23 @@ When an incident reaches OpsMender's paging engine, it has to know **how** to re
 
 Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
+> **Three separate concepts — don't confuse them.**
+> - **Personal Routing (My Routing)** — how *you*, the current on-call operator, get paged.
+> - **Notification Channels** — shared team/workspace channels that receive incident + AI-session lifecycle updates (not a paging target).
+> - **Viewer Notifications** — read-only updates for viewers/stakeholders/downstream systems; never paging.
+
+> **How v1 chat notifications work (and what's deferred).** In v1.0.0, Notification
+> Channels send a **formatted message with an authenticated OpsMender link** — you
+> click through, sign in, and act inside OpsMender under normal Admin/Operator
+> RBAC. There are **no native in-chat buttons** and **no message edit-in-place**
+> yet: those need per-platform verified callbacks and are planned for **v1.1**
+> (see [`ROADMAP.md`](../ROADMAP.md) → "Native Chat Buttons Are Deferred From v1").
+> A signed-action-token and delivery-receipt foundation exists in the backend but
+> is intentionally dormant — tokens alone never mutate incidents, and OpsMender
+> never posts a public, unauthenticated action URL. The capability chips on the
+> Notification Channels table reflect this honestly: a platform only shows
+> **Interactive actions** or **Message updates** once a verified adapter exists.
+
 ---
 
 ## 1. My Routing — routing by priority

@@ -163,7 +163,7 @@ async def create_incident(
     body: IncidentCreate,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin", "operator")),
+    user: User = Depends(require_role("admin")),
 ):
     if body.service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
@@ -299,7 +299,7 @@ async def list_incident_sessions(
     incident_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
@@ -480,7 +480,7 @@ async def get_incident_timeline(
     incident_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
@@ -831,7 +831,7 @@ async def assign_incident(
     body: IncidentAssignRequest,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
@@ -868,7 +868,7 @@ async def release_incident(
     incident_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
@@ -892,7 +892,7 @@ async def bulk_incident_action(
     body: IncidentBulkActionRequest,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     """Apply ``action`` to every id in ``incident_ids``. Per-row failures
     don't abort the batch — each result reports its own ``ok`` + optional
@@ -1051,7 +1051,7 @@ async def ack_incident(
     body: IncidentAckRequest,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
@@ -1087,7 +1087,7 @@ async def take_incident(
     body: IncidentTakeRequest,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:

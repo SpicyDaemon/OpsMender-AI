@@ -116,3 +116,32 @@ async def test_all_roles_can_manage_own_profile(client):
         )
         assert patch.status_code == 200, role
         assert patch.json()["first_name"] == role.title()
+
+
+@pytest.mark.asyncio
+async def test_incident_create_and_actions_rbac(client):
+    """Part 1/8: only admin creates incidents; viewer can't act; operator can."""
+    h = await _headers(client)
+    body = {"title": "Outage", "description": "DB down", "severity": "high"}
+
+    # Create incident — admin only (operator + viewer rejected).
+    admin_create = await client.post("/incidents", headers=h["admin"], json=body)
+    assert admin_create.status_code == 201, admin_create.text
+    incident_id = admin_create.json()["id"]
+    assert (await client.post("/incidents", headers=h["operator"], json=body)).status_code == 403
+    assert (await client.post("/incidents", headers=h["viewer"], json=body)).status_code == 403
+
+    # Everyone can view the list + detail.
+    assert (await client.get("/incidents", headers=h["viewer"])).status_code == 200
+    assert (await client.get(f"/incidents/{incident_id}", headers=h["viewer"])).status_code == 200
+
+    # Viewer cannot acknowledge; operator/admin can reach the action.
+    assert (await client.post(f"/incidents/{incident_id}/ack", headers=h["viewer"])).status_code == 403
+    assert (
+        await client.post(f"/incidents/{incident_id}/ack", headers=h["operator"])
+    ).status_code != 403
+
+    # Viewer cannot read AI session internals for the incident.
+    assert (
+        await client.get(f"/incidents/{incident_id}/sessions", headers=h["viewer"])
+    ).status_code == 403

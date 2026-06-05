@@ -238,7 +238,7 @@ class AuthConfig:
 
     jwt_secret: str = "dev-secret-change-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60
+    jwt_expire_minutes: int = 43200  # 30 days (v1 long-lived session)
 
 
 @dataclasses.dataclass
@@ -510,7 +510,7 @@ class AppConfig:
                 or "dev-secret-change-in-production",
                 jwt_algorithm=_env_str(env, "OPSMENDER_JWT_ALGORITHM", "HS256")
                 or "HS256",
-                jwt_expire_minutes=_env_int(env, "OPSMENDER_JWT_EXPIRE_MINUTES", 60),
+                jwt_expire_minutes=_env_int(env, "OPSMENDER_JWT_EXPIRE_MINUTES", 43200),
             ),
             saml=SAMLConfig(
                 sp_cert=_env_str(env, "OPSMENDER_SAML_SP_CERT"),

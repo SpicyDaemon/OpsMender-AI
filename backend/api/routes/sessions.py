@@ -217,7 +217,7 @@ async def list_sessions(
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     """Sprint 59 / UX-direction Sprint C: powers the dashboard
     Attention Queue's "active sessions" + "failed sessions" panels.
@@ -244,7 +244,7 @@ async def get_session(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
@@ -269,7 +269,7 @@ async def list_session_messages(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:

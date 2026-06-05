@@ -1146,6 +1146,8 @@ class BotConnectorUpsert(BaseModel):
     credentials: Optional[dict] = None
     clear_credentials: bool = False
     allowed_capabilities: list[str] = Field(..., min_length=1)
+    team_scope: str = Field(default="workspace", pattern="^(workspace|teams)$")
+    team_ids: list[uuid.UUID] = Field(default_factory=list)
     status: str = Field(
         default="not_configured",
         pattern="^(not_configured|configured|healthy|error|disabled)$",
@@ -1171,6 +1173,9 @@ class BotConnectorResponse(BaseModel):
     # capability descriptor for this connector's platform.
     platform_label: Optional[str] = None
     platform_capabilities: Optional[dict] = None
+    team_scope: str = "workspace"
+    team_ids: list[uuid.UUID] = Field(default_factory=list)
+    team_names: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

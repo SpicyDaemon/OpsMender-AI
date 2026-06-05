@@ -476,6 +476,7 @@ Personal Routing pages the owner; Notification Channels keep the responding team
 Alert intake → Incident created → Service/team/escalation chain resolved
   → Personal Routing pages the current on-call operator
   → Notification Channels receive the incident update (created/ack/resolved/escalated)
+  → AI session start/completion/failure posts go to the same matching channels
   → Viewer Notifications receive read-only updates (if configured)
 ```
 
@@ -483,7 +484,9 @@ Alert intake → Incident created → Service/team/escalation chain resolved
 
 Every platform is modelled honestly in [`backend/bots/capabilities.py`](backend/bots/capabilities.py) — the single source of truth for what a channel can actually do (`incident_card`, `interactive_actions`, `direct_message`, `shared_channel`, `delivery_only`). The API exposes it per platform and per configured channel, and the UI only advertises what a platform supports — a chat-capable channel shows an **"Incident updates"** chip (not "Incident cards", which would imply in-chat buttons), and a delivery-only channel (Twilio SMS, email, custom webhook) shows **"Delivery-only"** and never an **"Actions"** chip.
 
-**v1 delivery is honest about interactivity.** No platform ships verified interactive action buttons yet, so on incident **created / acknowledged / resolved / escalated** OpsMender posts a formatted incident message — title, severity/priority, service/team, current responder (and, for escalations, the previous responder + escalation level), short description — plus an **authenticated incident link**. Responders click through and **acknowledge / resolve / escalate / start an AI session inside OpsMender under login + RBAC**. OpsMender never embeds a public, unauthenticated action URL in a chat message. Twilio is shown as **Twilio (SMS)**. Delivery is built on [`backend/bots/incident_card.py`](backend/bots/incident_card.py) + `backend/bots/notifier.py`; the escalation card is emitted by the escalation engine when a chain advances to a higher level.
+**v1 delivery is honest about interactivity.** No platform ships verified interactive action buttons yet, so on incident **created / acknowledged / resolved / escalated** OpsMender posts a formatted incident message — title, severity/priority, service/team, current responder (and, for escalations, the previous responder + escalation level), short description — plus an **authenticated incident link**. AI session lifecycle posts are sent when an incident-linked session starts, completes, fails, or times out. Responders click through and **acknowledge / resolve / escalate / start an AI session inside OpsMender under login + RBAC**. OpsMender never embeds a public, unauthenticated action URL in a chat message. Twilio is shown as **Twilio (SMS)**. Delivery is built on [`backend/bots/incident_card.py`](backend/bots/incident_card.py) + `backend/bots/notifier.py`; the escalation card is emitted by the escalation engine when a chain advances to a higher level.
+
+Notification Channels can be **workspace-wide** or scoped to one or more Teams. Incident ownership is resolved deterministically from the incident Service's team, then the active escalation chain's team, otherwise no team. Workspace-wide channels receive all incident/session lifecycle posts; team-scoped channels receive only matching incidents and sessions.
 
 **Future enhancements:** richer platform-specific cards; in-message interactive buttons backed by signed action tokens / platform signature verification (per-adapter, flipped on only when a verified callback path exists); bi-directional threaded chat and channel-to-OpsMender comment sync; MFA for action authorization; more platforms with first-class action support.
 

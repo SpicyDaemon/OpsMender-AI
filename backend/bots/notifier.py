@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -21,6 +22,7 @@ from backend.db.repos import (
     BotActionAuditRepo,
     BotConnectorRepo,
     IncidentAssignmentRepo,
+    IncidentChainStateRepo,
     IncidentPageRepo,
     IncidentRepo,
     ServiceRepo,
@@ -58,20 +60,111 @@ def _has_capability(connector: BotConnector, capability: str) -> bool:
     return capability in set(connector.allowed_capabilities or [])
 
 
+def _connector_team_scope(connector: BotConnector) -> tuple[str, set[uuid.UUID]]:
+    config = connector.config or {}
+    if config.get("team_scope") != "teams":
+        return "workspace", set()
+    team_ids: set[uuid.UUID] = set()
+    for raw in config.get("team_ids") or []:
+        try:
+            team_ids.add(raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    if not team_ids:
+        return "workspace", set()
+    return "teams", team_ids
+
+
+def _connector_matches_team(
+    connector: BotConnector,
+    team_id: uuid.UUID | None,
+) -> bool:
+    scope, team_ids = _connector_team_scope(connector)
+    if scope == "workspace":
+        return True
+    if team_id is None:
+        return False
+    return team_id in team_ids
+
+
+async def _resolve_incident_team(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident,
+) -> tuple[uuid.UUID | None, str | None, str | None]:
+    """Resolve incident ownership deterministically for channel filtering.
+
+    Precedence: incident service -> service.team; incident escalation chain ->
+    escalation_chain.team; no free-text or AI inference.
+    """
+    if incident is None:
+        return None, None, None
+
+    if incident.service_id is not None:
+        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        if service is not None:
+            team = await TeamRepo.get_by_id(db, org_id, service.team_id)
+            return service.team_id, team.name if team is not None else None, service.name
+
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident.id)
+    if state is not None and state.chain_id is not None:
+        from backend.db.repos import EscalationChainRepo
+
+        chain = await EscalationChainRepo.get_by_id(db, org_id, state.chain_id)
+        if chain is not None:
+            team = await TeamRepo.get_by_id(db, org_id, chain.team_id)
+            return chain.team_id, team.name if team is not None else None, None
+
+    return None, None, None
+
+
+def _auth_link(base_url: str | None, path: str) -> str:
+    root = (base_url or os.environ.get("OPSMENDER_PUBLIC_URL") or "").rstrip("/")
+    return f"{root}{path}" if root else path
+
+
 def _format_session_event(
     *,
     event_type: str,
     session_id: uuid.UUID,
     session,
     incident,
+    service_name: str | None = None,
+    team_name: str | None = None,
+    actor_name: str | None = None,
+    base_url: str | None = None,
 ) -> str:
     label = event_type.replace("session.", "").replace("_", " ").title()
-    lines = [f"*OpsMender Session {label}*", f"Session: `{session_id}`"]
+    if event_type == "session.created":
+        headline = (
+            f"*AI session started by {actor_name}*"
+            if actor_name
+            else "*AI session started*"
+        )
+    elif event_type == "session.completed":
+        headline = "*AI session completed*"
+    elif event_type in {"session.failed", "session.timed_out"}:
+        headline = "*AI session failed*"
+    else:
+        headline = f"*AI session {label.lower()}*"
+
+    lines = [headline, f"Session ID: `{session_id}`"]
     if session is not None:
-        lines.append(f"Tier: `{session.tier}`")
-        lines.append(f"Status: `{session.status}`")
+        lines.append(f"Session status: `{session.status}`")
     if incident is not None:
         lines.append(f"Incident: `{incident.title}` ({incident.severity or 'unknown'})")
+    if service_name:
+        lines.append(f"Service: `{service_name}`")
+    if team_name:
+        lines.append(f"Team: `{team_name}`")
+    if incident is not None:
+        lines.append(
+            "Open incident/session: "
+            + _auth_link(
+                base_url,
+                f"/dashboard/sessions/detail?id={session_id}",
+            )
+        )
     return "\n".join(lines)
 
 
@@ -197,6 +290,8 @@ async def deliver_session_chat_event(
     org_id: uuid.UUID,
     event_type: str,
     session_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None = None,
+    base_url: str | None = None,
 ) -> None:
     if event_type not in SESSION_CHAT_EVENTS:
         return
@@ -206,6 +301,10 @@ async def deliver_session_chat_event(
         incident = None
         if session and session.incident_id:
             incident = await IncidentRepo.get_by_id(db, org_id, session.incident_id)
+        team_id, team_name, service_name = await _resolve_incident_team(
+            db, org_id, incident
+        )
+        actor = await UserRepo.get_by_id(db, actor_user_id) if actor_user_id else None
         connectors = list(
             await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
         )
@@ -218,12 +317,18 @@ async def deliver_session_chat_event(
         session_id=session_id,
         session=session,
         incident=incident,
+        service_name=service_name,
+        team_name=team_name,
+        actor_name=_display_name(actor),
+        base_url=base_url,
     )
 
     for connector in connectors:
         if not _has_capability(connector, "notifications"):
             continue
-        if get_adapter(connector.platform) is None:
+        if get_adapter(connector.platform) is None and connector.platform != "telegram":
+            continue
+        if not _connector_matches_team(connector, team_id):
             continue
         for chat_id in _allowed_chat_ids(connector):
             await _deliver(
@@ -244,6 +349,8 @@ def schedule_session_chat_event(
     task_registry: set[asyncio.Task] | None,
     event_type: str,
     session_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None = None,
+    base_url: str | None = None,
 ) -> asyncio.Task:
     return asyncio.create_task(
         deliver_session_chat_event(
@@ -251,6 +358,8 @@ def schedule_session_chat_event(
             org_id=org_id,
             event_type=event_type,
             session_id=session_id,
+            actor_user_id=actor_user_id,
+            base_url=base_url,
         )
     )
 
@@ -348,14 +457,9 @@ async def deliver_incident_event(
         if incident is None:
             return
 
-        service_name: str | None = None
-        team_name: str | None = None
-        if incident.service_id is not None:
-            service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
-            if service is not None:
-                service_name = service.name
-                team = await TeamRepo.get_by_id(db, org_id, service.team_id)
-                team_name = team.name if team is not None else None
+        team_id, team_name, service_name = await _resolve_incident_team(
+            db, org_id, incident
+        )
 
         responder = await _resolve_incident_responder(db, org_id, incident.id)
         connectors = list(
@@ -366,6 +470,8 @@ async def deliver_incident_event(
         if not _has_capability(connector, "notifications"):
             continue
         if get_adapter(connector.platform) is None and connector.platform != "telegram":
+            continue
+        if not _connector_matches_team(connector, team_id):
             continue
         text = build_incident_message(
             incident,
@@ -418,6 +524,7 @@ async def deliver_incident_text(
     org_id: uuid.UUID,
     text: str,
     event_type: str,
+    team_id: uuid.UUID | None = None,
 ) -> None:
     """Fan out a *pre-built* incident message to enabled Notification Channels
     with the ``notifications`` capability.
@@ -435,6 +542,8 @@ async def deliver_incident_text(
         if not _has_capability(connector, "notifications"):
             continue
         if get_adapter(connector.platform) is None and connector.platform != "telegram":
+            continue
+        if not _connector_matches_team(connector, team_id):
             continue
         for chat_id in _allowed_chat_ids(connector):
             await _deliver(
@@ -454,11 +563,12 @@ def schedule_incident_text(
     org_id: uuid.UUID,
     text: str,
     event_type: str,
+    team_id: uuid.UUID | None = None,
     task_registry: set[asyncio.Task] | None = None,
 ) -> asyncio.Task:
     task = asyncio.create_task(
         deliver_incident_text(
-            factory, org_id=org_id, text=text, event_type=event_type
+            factory, org_id=org_id, text=text, event_type=event_type, team_id=team_id
         )
     )
     if task_registry is not None:

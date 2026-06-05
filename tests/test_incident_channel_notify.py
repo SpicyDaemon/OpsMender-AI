@@ -20,6 +20,9 @@ from backend.db.repos import (
     BotConnectorRepo,
     IncidentPageRepo,
     IncidentRepo,
+    ServiceRepo,
+    SessionRepo,
+    TeamRepo,
     UserRepo,
 )
 
@@ -42,15 +45,20 @@ async def _make_connector(
     platform="telegram",
     allowed_chat_ids=None,
     is_enabled=True,
-    name="chan",
+    name=None,
+    team_ids=None,
 ):
+    config = {"allowed_chat_ids": allowed_chat_ids or []}
+    if team_ids is not None:
+        config["team_scope"] = "teams"
+        config["team_ids"] = [str(team_id) for team_id in team_ids]
     async with factory() as db:
         connector = await BotConnectorRepo.create(
             db,
             TEST_ORG_ID,
-            name=name,
+            name=name or f"chan-{uuid.uuid4()}",
             platform=platform,
-            config={"allowed_chat_ids": allowed_chat_ids or []},
+            config=config,
             credentials={"bot_token": "BOT-TOKEN"},
             allowed_capabilities=list(capabilities),
             status="configured",
@@ -71,6 +79,28 @@ async def _make_incident(factory, *, title="DB outage", severity="high"):
         )
         await db.commit()
         return incident.id
+
+
+async def _make_service_incident(factory, *, team_name="Platform", slug="platform"):
+    async with factory() as db:
+        team = await TeamRepo.create(db, TEST_ORG_ID, name=team_name, slug=slug)
+        service = await ServiceRepo.create(
+            db,
+            TEST_ORG_ID,
+            team_id=team.id,
+            name=f"{team_name} API",
+            slug=f"{slug}-api",
+        )
+        incident = await IncidentRepo.create(
+            db,
+            TEST_ORG_ID,
+            title=f"{team_name} outage",
+            description="connection pool exhausted",
+            severity="high",
+            service_id=service.id,
+        )
+        await db.commit()
+        return team.id, service.id, incident.id
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +217,212 @@ class TestIncidentEventFanOut:
         )
         assert len(sent) == 1
         assert "resolved" in sent[0].lower()
+
+    async def test_team_scoped_channel_receives_matching_service_incident(
+        self, factory, monkeypatch
+    ):
+        sent = []
+
+        async def fake_send(*, bot_token, chat_id, text, **kwargs):
+            sent.append({"chat_id": chat_id, "text": text})
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+
+        team_id, _, incident_id = await _make_service_incident(
+            factory, team_name="Payments", slug="payments"
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-payments"],
+            team_ids=[team_id],
+        )
+
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.acknowledged",
+        )
+
+        assert [s["chat_id"] for s in sent] == ["-payments"]
+        assert "Payments API" in sent[0]["text"]
+        assert "Team: Payments" in sent[0]["text"]
+        assert "acknowledged" in sent[0]["text"].lower()
+
+    async def test_team_scoped_channel_skips_non_matching_service_incident(
+        self, factory, monkeypatch
+    ):
+        sent = []
+
+        async def fake_send(**kwargs):
+            sent.append(kwargs)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+
+        matching_team_id, _, _ = await _make_service_incident(
+            factory, team_name="Search", slug="search"
+        )
+        _, _, incident_id = await _make_service_incident(
+            factory, team_name="Billing", slug="billing"
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-search"],
+            team_ids=[matching_team_id],
+        )
+
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.created",
+        )
+
+        assert sent == []
+
+    async def test_unowned_incident_only_reaches_workspace_channels(
+        self, factory, monkeypatch
+    ):
+        sent = []
+
+        async def fake_send(*, bot_token, chat_id, text, **kwargs):
+            sent.append(chat_id)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+
+        team_id, _, _ = await _make_service_incident(
+            factory, team_name="Core", slug="core"
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-team"],
+            team_ids=[team_id],
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-workspace"],
+            name="workspace",
+        )
+        incident_id = await _make_incident(factory, title="Unowned outage")
+
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.created",
+        )
+
+        assert sent == ["-workspace"]
+
+    async def test_prebuilt_escalation_text_respects_team_scope(
+        self, factory, monkeypatch
+    ):
+        sent = []
+
+        async def fake_send(*, bot_token, chat_id, text, **kwargs):
+            sent.append(chat_id)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+
+        team_id, _, _ = await _make_service_incident(
+            factory, team_name="Edge", slug="edge"
+        )
+        other_team_id, _, _ = await _make_service_incident(
+            factory, team_name="Data", slug="data"
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-edge"],
+            team_ids=[team_id],
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-data"],
+            team_ids=[other_team_id],
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-workspace"],
+            name="workspace",
+        )
+
+        await notifier.deliver_incident_text(
+            factory,
+            org_id=TEST_ORG_ID,
+            text="*Incident escalated*",
+            event_type="incident.escalated",
+            team_id=team_id,
+        )
+
+        assert sent == ["-edge", "-workspace"]
+
+    async def test_ai_session_started_respects_incident_team_scope(
+        self, factory, monkeypatch
+    ):
+        sent = []
+
+        async def fake_send(*, bot_token, chat_id, text, **kwargs):
+            sent.append({"chat_id": chat_id, "text": text})
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+
+        team_id, _, incident_id = await _make_service_incident(
+            factory, team_name="Runtime", slug="runtime"
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-runtime"],
+            team_ids=[team_id],
+        )
+        await _make_connector(
+            factory,
+            capabilities=["notifications"],
+            allowed_chat_ids=["-workspace"],
+            name="workspace",
+        )
+        async with factory() as db:
+            actor = await UserRepo.create(
+                db,
+                username="sam",
+                email="sam@example.com",
+                password_hash="x",
+                first_name="Sam",
+                last_name="Ops",
+            )
+            session = await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=1,
+                incident_id=incident_id,
+            )
+            await db.commit()
+
+        await notifier.deliver_session_chat_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            event_type="session.created",
+            session_id=session.id,
+            actor_user_id=actor.id,
+            base_url="https://ops.example.com",
+        )
+
+        assert {s["chat_id"] for s in sent} == {"-runtime", "-workspace"}
+        assert all("AI session started by Sam Ops" in s["text"] for s in sent)
+        assert all("Team: `Runtime`" in s["text"] for s in sent)
+        assert all("/dashboard/sessions/detail?id=" in s["text"] for s in sent)
 
     async def test_skips_connector_without_notifications_capability(
         self, factory, monkeypatch

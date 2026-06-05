@@ -3251,6 +3251,9 @@ class TestBotConnectorsAPI:
         assert data["status"] == "configured"
         assert data["credential_keys"] == ["bot_token"]
         assert data["has_credentials"] is True
+        assert data["team_scope"] == "workspace"
+        assert data["team_ids"] == []
+        assert data["team_names"] == []
         assert "credentials" not in data
 
         async with app.state.session_factory() as db:
@@ -3282,12 +3285,65 @@ class TestBotConnectorsAPI:
         assert updated["has_credentials"] is False
         assert updated["credential_keys"] == []
         assert updated["allowed_capabilities"] == ["notifications"]
+        assert updated["team_scope"] == "workspace"
 
         delete_resp = await client.delete(
             f"/bot-connectors/{connector_id}",
             headers=auth_headers,
         )
         assert delete_resp.status_code == 204
+
+    async def test_bot_connector_team_scope_round_trips(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="Platform", slug="platform"
+            )
+            await db.commit()
+
+        create_resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "platform-alerts",
+                "platform": "telegram",
+                "config": {"default_chat_id": "-100123"},
+                "credentials": {"bot_token": "secret-token"},
+                "allowed_capabilities": ["notifications"],
+                "team_scope": "teams",
+                "team_ids": [str(team.id)],
+            },
+            headers=auth_headers,
+        )
+
+        assert create_resp.status_code == 201
+        data = create_resp.json()
+        assert data["team_scope"] == "teams"
+        assert data["team_ids"] == [str(team.id)]
+        assert data["team_names"] == ["Platform"]
+
+        list_resp = await client.get("/bot-connectors", headers=auth_headers)
+        item = list_resp.json()["items"][0]
+        assert item["team_scope"] == "teams"
+        assert item["team_names"] == ["Platform"]
+
+    async def test_bot_connector_rejects_empty_team_scope(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "empty-scope",
+                "platform": "telegram",
+                "allowed_capabilities": ["notifications"],
+                "team_scope": "teams",
+                "team_ids": [],
+            },
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 400
+        assert "Select at least one team" in resp.json()["detail"]
 
     async def test_bot_connector_rejects_unknown_capability(
         self, client: AsyncClient, auth_headers

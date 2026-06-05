@@ -27,7 +27,7 @@ import backend.bots  # noqa: F401 — triggers adapter registry side-effect
 from backend.bots.capabilities import display_name, get_platform_capabilities
 from backend.bots.connectors import FieldSpec, get_adapter, list_platforms
 from backend.db.models import BotConnector, User
-from backend.db.repos import BotConnectorRepo, BotUserLinkRepo, UserRepo
+from backend.db.repos import BotConnectorRepo, BotUserLinkRepo, TeamRepo, UserRepo
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-connectors"])
 
@@ -76,9 +76,77 @@ def _resolve_credentials(
     return body.credentials
 
 
-def _to_response(connector: BotConnector) -> BotConnectorResponse:
+def _scoped_config(
+    config: dict | None,
+    *,
+    team_scope: str,
+    team_ids: list[uuid.UUID],
+) -> dict | None:
+    next_config = dict(config or {})
+    if team_scope == "teams":
+        next_config["team_scope"] = "teams"
+        next_config["team_ids"] = [str(team_id) for team_id in team_ids]
+    else:
+        next_config.pop("team_scope", None)
+        next_config.pop("team_ids", None)
+    return next_config or None
+
+
+def _connector_team_scope(connector: BotConnector) -> tuple[str, list[uuid.UUID]]:
+    config = connector.config or {}
+    if config.get("team_scope") != "teams":
+        return "workspace", []
+    out: list[uuid.UUID] = []
+    for raw in config.get("team_ids") or []:
+        try:
+            out.append(raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    if not out:
+        return "workspace", []
+    return "teams", out
+
+
+async def _validate_team_scope(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    body: BotConnectorUpsert,
+) -> list[uuid.UUID]:
+    if body.team_scope != "teams":
+        return []
+    if not body.team_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select at least one team or use workspace-wide scope.",
+        )
+    seen: set[uuid.UUID] = set()
+    ordered: list[uuid.UUID] = []
+    for team_id in body.team_ids:
+        if team_id in seen:
+            continue
+        seen.add(team_id)
+        if await TeamRepo.get_by_id(db, org_id, team_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Team scope contains an unknown team.",
+            )
+        ordered.append(team_id)
+    return ordered
+
+
+async def _to_response(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    connector: BotConnector,
+) -> BotConnectorResponse:
     credentials = connector.credentials or {}
     caps = get_platform_capabilities(connector.platform)
+    team_scope, team_ids = _connector_team_scope(connector)
+    team_names: list[str] = []
+    for team_id in team_ids:
+        team = await TeamRepo.get_by_id(db, org_id, team_id)
+        if team is not None:
+            team_names.append(team.name)
     return BotConnectorResponse(
         id=connector.id,
         name=connector.name,
@@ -95,6 +163,9 @@ def _to_response(connector: BotConnector) -> BotConnectorResponse:
         has_credentials=bool(credentials),
         platform_label=display_name(connector.platform),
         platform_capabilities=caps.as_dict() if caps is not None else None,
+        team_scope=team_scope,
+        team_ids=team_ids,
+        team_names=team_names,
     )
 
 
@@ -209,7 +280,7 @@ async def list_bot_connectors(
         enabled_only=enabled_only,
     )
     return BotConnectorListResponse(
-        items=[_to_response(item) for item in items],
+        items=[await _to_response(db, org_id, item) for item in items],
         total=len(items),
     )
 
@@ -226,13 +297,16 @@ async def create_bot_connector(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
+    team_ids = await _validate_team_scope(db, org_id, body)
     try:
         connector = await BotConnectorRepo.create(
             db,
             org_id,
             name=body.name,
             platform=body.platform,
-            config=body.config,
+            config=_scoped_config(
+                body.config, team_scope=body.team_scope, team_ids=team_ids
+            ),
             credentials=_resolve_credentials(body),
             allowed_capabilities=_validate_capabilities(body.allowed_capabilities),
             status="configured" if body.credentials else body.status,
@@ -240,7 +314,7 @@ async def create_bot_connector(
         )
         await db.commit()
         await db.refresh(connector)
-        return _to_response(connector)
+        return await _to_response(db, org_id, connector)
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
@@ -269,6 +343,7 @@ async def update_bot_connector(
         )
 
     credentials = _resolve_credentials(body, existing)
+    team_ids = await _validate_team_scope(db, org_id, body)
     try:
         updated = await BotConnectorRepo.update(
             db,
@@ -276,7 +351,9 @@ async def update_bot_connector(
             connector_id,
             name=body.name,
             platform=body.platform,
-            config=body.config,
+            config=_scoped_config(
+                body.config, team_scope=body.team_scope, team_ids=team_ids
+            ),
             credentials=credentials,
             allowed_capabilities=_validate_capabilities(body.allowed_capabilities),
             status=(
@@ -293,7 +370,7 @@ async def update_bot_connector(
                 detail="Bot connector not found",
             )
         await db.refresh(updated)
-        return _to_response(updated)
+        return await _to_response(db, org_id, updated)
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(

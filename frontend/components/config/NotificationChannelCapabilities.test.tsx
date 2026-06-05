@@ -8,12 +8,34 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 // The component pulls in the whole config API surface; only listBotPlatformSchemas
 // runs on mount. Stub the module so the import graph resolves.
 vi.mock("@/lib/api", () => ({
   listBotPlatformSchemas: () => Promise.resolve({ items: [], total: 0 }),
+  listTeams: () =>
+    Promise.resolve({
+      items: [
+        {
+          id: "team-1",
+          name: "Platform",
+          slug: "platform",
+          description: null,
+          created_at: "2026-06-05T00:00:00Z",
+          updated_at: "2026-06-05T00:00:00Z",
+        },
+        {
+          id: "team-2",
+          name: "Payments",
+          slug: "payments",
+          description: null,
+          created_at: "2026-06-05T00:00:00Z",
+          updated_at: "2026-06-05T00:00:00Z",
+        },
+      ],
+      total: 2,
+    }),
 }));
 
 import { BotConnectorSection } from "@/components/config/ConfigSections";
@@ -48,6 +70,9 @@ function connector(
     last_error: null,
     credential_keys: [],
     has_credentials: false,
+    team_scope: "workspace",
+    team_ids: [],
+    team_names: [],
     platform_label: null,
     platform_capabilities: null,
     ...over,
@@ -109,5 +134,33 @@ describe("Notification Channels capability rendering", () => {
     expect(within(row).getByText("Delivery-only")).toBeTruthy();
     expect(within(row).queryByText("Actions")).toBeNull();
     expect(within(row).queryByText("Incident updates")).toBeNull();
+  });
+
+  it("shows team scope and defaults old channels to workspace-wide", () => {
+    render(
+      <BotConnectorSection connectors={[slack]} onReload={async () => {}} canEdit />,
+    );
+    expect(screen.getByText("Team Scope")).toBeTruthy();
+    const row = screen.getByText("Slack #incidents").closest("tr")!;
+    expect(within(row).getByText("Workspace-wide")).toBeTruthy();
+  });
+
+  it("lets admins choose specific teams in the modal", async () => {
+    render(
+      <BotConnectorSection connectors={[slack]} onReload={async () => {}} canEdit />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /add channel/i }));
+    expect(screen.getAllByText("Team Scope").length).toBeGreaterThan(1);
+    expect(screen.getByLabelText("Workspace-wide")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Specific teams"));
+
+    await waitFor(() => expect(screen.getByText("Payments")).toBeTruthy());
+    const payments = screen
+      .getByText("Payments")
+      .closest("label")!
+      .querySelector("input") as HTMLInputElement;
+    fireEvent.click(payments);
+    expect(payments.checked).toBe(true);
   });
 });

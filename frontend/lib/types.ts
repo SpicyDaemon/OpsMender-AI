@@ -567,6 +567,8 @@ export type BotConnectorStatus =
   | "error"
   | "disabled";
 
+export type NotificationTeamScope = "workspace" | "teams";
+
 // Honest per-platform capability descriptor (see backend bots/capabilities.py).
 // Drives what the Notification Channels UI advertises — it never offers an
 // action a platform cannot securely support.
@@ -596,6 +598,9 @@ export interface BotConnectorResponse {
   last_error: string | null;
   credential_keys: string[];
   has_credentials: boolean;
+  team_scope: NotificationTeamScope;
+  team_ids: string[];
+  team_names: string[];
   platform_label: string | null;
   platform_capabilities: PlatformCapabilities | null;
 }
@@ -612,6 +617,8 @@ export interface BotConnectorUpsert {
   credentials?: Record<string, string> | null;
   clear_credentials?: boolean;
   allowed_capabilities: BotConnectorCapability[];
+  team_scope?: NotificationTeamScope;
+  team_ids?: string[];
   status?: BotConnectorStatus;
   is_enabled?: boolean;
 }

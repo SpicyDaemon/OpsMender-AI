@@ -243,16 +243,22 @@ async def _notify_escalation(
         from backend.api.deps import get_current_session_factory
         from backend.bots.incident_card import build_incident_message
         from backend.bots.notifier import (
+            _resolve_incident_team,
             _resolve_incident_responder,
             schedule_incident_text,
         )
 
+        target_team_id, team_name, service_name = await _resolve_incident_team(
+            db, org_id, incident
+        )
         responder = await _resolve_incident_responder(db, org_id, incident_id)
         text = build_incident_message(
             incident,
             event_type="incident.escalated",
             base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
             responder=responder,
+            service_name=service_name,
+            team_name=team_name,
             supports_actions=False,
         )
         schedule_incident_text(
@@ -260,6 +266,7 @@ async def _notify_escalation(
             org_id=org_id,
             text=text,
             event_type="incident.escalated",
+            team_id=target_team_id,
         )
     except Exception:  # pragma: no cover - delivery is best-effort
         _log.warning("escalation channel notify skipped", exc_info=True)

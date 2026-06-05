@@ -51,6 +51,7 @@ import {
   listMCPServers,
   listModelConfigs,
   listProvidersWithParams,
+  listTeams,
   listWebhookTriggers,
   listWorkflowProfiles,
   revokeIngestToken,
@@ -101,6 +102,7 @@ import type {
   ModelBootstrapStatusResponse,
   ModelConfigResponse,
   ModelConfigUpdate,
+  NotificationTeamScope,
   PlatformCapabilities,
   ProviderModelsResponse,
   RetentionCategoryStorage,
@@ -114,6 +116,7 @@ import type {
   WorkflowNode,
   WorkflowProfileResponse,
   WorkflowProfileUpsert,
+  TeamResponse,
   UserResponse,
   UserListResponse,
 } from "@/lib/types";
@@ -2502,6 +2505,8 @@ type BotConnectorFormState = {
   credentialsText: string;
   credentialMode: CredentialMode;
   allowed_capabilities: BotConnectorCapability[];
+  team_scope: NotificationTeamScope;
+  team_ids: string[];
   status: BotConnectorStatus;
   is_enabled: boolean;
 };
@@ -2544,6 +2549,8 @@ function createBotConnectorFormState(
       "session_status",
       "notifications",
     ],
+    team_scope: current?.team_scope ?? "workspace",
+    team_ids: current?.team_ids ?? [],
     status: current?.status ?? "not_configured",
     is_enabled: current?.is_enabled ?? true,
   };
@@ -2592,6 +2599,9 @@ function buildBotConnectorPayload(
   if (form.allowed_capabilities.length === 0) {
     return { error: "Select at least one allowed capability." };
   }
+  if (form.team_scope === "teams" && form.team_ids.length === 0) {
+    return { error: "Select at least one team or use workspace-wide scope." };
+  }
 
   let configObj: Record<string, unknown> | null = null;
   let credentialsObj: Record<string, string> | null = null;
@@ -2639,6 +2649,8 @@ function buildBotConnectorPayload(
     platform: form.platform,
     config: configObj,
     allowed_capabilities: form.allowed_capabilities,
+    team_scope: form.team_scope,
+    team_ids: form.team_scope === "teams" ? form.team_ids : [],
     status: form.status,
     is_enabled: form.is_enabled,
   };
@@ -2658,6 +2670,7 @@ function isFormFillable(
 ): boolean {
   if (!form.name.trim()) return false;
   if (form.allowed_capabilities.length === 0) return false;
+  if (form.team_scope === "teams" && form.team_ids.length === 0) return false;
   if (!schema) return true; // free-form fallback handles its own validation
   for (const field of schema.fields) {
     if (!field.required) continue;
@@ -2696,6 +2709,18 @@ function platformLabel(connector: BotConnectorResponse): string {
     PLATFORM_LABELS[connector.platform] ??
     connector.platform
   );
+}
+
+function connectorTeamScopeLabels(connector: BotConnectorResponse): string[] {
+  if (connector.team_scope !== "teams") return ["Workspace-wide"];
+  if (connector.team_names?.length) return connector.team_names;
+  return connector.team_ids?.length ? ["Unknown team"] : ["Workspace-wide"];
+}
+
+function toggleTeamId(teamIds: string[], teamId: string): string[] {
+  return teamIds.includes(teamId)
+    ? teamIds.filter((current) => current !== teamId)
+    : [...teamIds, teamId];
 }
 
 // Honest capability chips derived from the platform capability model. The UI
@@ -2946,6 +2971,8 @@ function BotConnectorModal({
     status: "idle" | "running" | "success" | "failure";
     result?: BotConnectorTestResponse;
   }>({ status: "idle" });
+  const [teams, setTeams] = useState<TeamResponse[]>([]);
+  const [teamsError, setTeamsError] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -2957,6 +2984,24 @@ function BotConnectorModal({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTestState({ status: "idle" });
   }, [open, initialConnector, schemas]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setTeamsError("");
+    listTeams()
+      .then((res) => {
+        if (!cancelled) setTeams(res.items);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setTeams([]);
+        setTeamsError(err instanceof Error ? err.message : "Failed to load teams.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const schema = schemas[form.platform] ?? null;
 
@@ -2992,6 +3037,21 @@ function BotConnectorModal({
           : [...current.allowed_capabilities, capability],
       };
     });
+  }
+
+  function setTeamScope(scope: NotificationTeamScope) {
+    setForm((current) => ({
+      ...current,
+      team_scope: scope,
+      team_ids: scope === "workspace" ? [] : current.team_ids,
+    }));
+  }
+
+  function toggleTeam(teamId: string) {
+    setForm((current) => ({
+      ...current,
+      team_ids: toggleTeamId(current.team_ids, teamId),
+    }));
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -3095,6 +3155,61 @@ function BotConnectorModal({
             </span>
           )}
         </div>
+
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+            Team Scope
+          </legend>
+          <div className="grid gap-2 md:grid-cols-2">
+            <label className="flex items-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-primary">
+              <input
+                type="radio"
+                name="bot-team-scope"
+                checked={form.team_scope === "workspace"}
+                onChange={() => setTeamScope("workspace")}
+                className="h-4 w-4 border-border-strong text-accent focus:ring-accent"
+              />
+              Workspace-wide
+            </label>
+            <label className="flex items-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-primary">
+              <input
+                type="radio"
+                name="bot-team-scope"
+                checked={form.team_scope === "teams"}
+                onChange={() => setTeamScope("teams")}
+                className="h-4 w-4 border-border-strong text-accent focus:ring-accent"
+              />
+              Specific teams
+            </label>
+          </div>
+          {form.team_scope === "teams" && (
+            <div className="space-y-2">
+              {teamsError && <FormError message={teamsError} />}
+              {teams.length === 0 && !teamsError ? (
+                <p className="text-xs text-fg-muted">
+                  No teams are configured yet.
+                </p>
+              ) : (
+                <div className="grid max-h-48 gap-2 overflow-auto rounded-md border border-border-subtle bg-bg-panel p-2 md:grid-cols-2">
+                  {teams.map((team) => (
+                    <label
+                      key={team.id}
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg-primary hover:bg-bg-elevated"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.team_ids.includes(team.id)}
+                        onChange={() => toggleTeam(team.id)}
+                        className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                      />
+                      {team.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </fieldset>
 
         {schema ? (
           <DynamicConnectorForm
@@ -3713,6 +3828,7 @@ export function BotConnectorSection({
               <tr>
                 <th className="px-4 py-3">Channel</th>
                 <th className="px-4 py-3">Capabilities</th>
+                <th className="px-4 py-3">Team Scope</th>
                 <th className="px-4 py-3">Credentials</th>
                 <th className="px-4 py-3">Health</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -3760,6 +3876,18 @@ export function BotConnectorSection({
                             .join(", ")}
                         </p>
                       )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex max-w-xs flex-wrap gap-1.5">
+                        {connectorTeamScopeLabels(connector).map((label) => (
+                          <Badge
+                            key={label}
+                            variant={connector.team_scope === "teams" ? undefined : "closed"}
+                          >
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-4 py-3 align-top">
                       {connector.has_credentials ? (

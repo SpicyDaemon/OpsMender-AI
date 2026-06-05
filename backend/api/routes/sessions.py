@@ -10,6 +10,7 @@ POST /sessions/{id}/rollback        — replay compensating inverses (Sprint 17)
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -185,6 +186,8 @@ async def create_session(
         task_registry=request.app.state.background_tasks,
         event_type="session.created",
         session_id=session.id,
+        actor_user_id=user.id,
+        base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
     )
 
     # If a briefing was provided, fire the responder so the chat has an

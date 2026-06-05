@@ -296,12 +296,12 @@ export function IncidentSessionSidecar({
   }, [canChat, session?.status]);
 
   return (
-    <aside className="flex min-h-[680px] flex-col rounded-2xl border border-border-subtle bg-bg-panel shadow-sm xl:sticky xl:top-8 xl:max-h-[calc(100vh-8rem)]">
+    <aside className="flex min-h-[600px] flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-sm xl:sticky xl:top-8 xl:max-h-[calc(100vh-8rem)]">
       <div className="border-b border-border-subtle px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-fg-primary">Session Sidecar</p>
+              <p className="text-sm font-semibold text-fg-primary">Session Chat</p>
               {session && (
                 <Badge variant={session.status as Parameters<typeof Badge>[0]["variant"]}>
                   {session.status.replace("_", " ")}
@@ -329,7 +329,7 @@ export function IncidentSessionSidecar({
           <button
             onClick={onClose}
             className="rounded-md p-1 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-primary"
-            aria-label="Close session sidecar"
+            aria-label="Close session chat panel"
           >
             <X size={16} />
           </button>
@@ -450,7 +450,7 @@ export function IncidentSessionSidecar({
                   <EmptyState
                     icon={MessageSquare}
                     title="No chat yet"
-                    description="Use the sidecar for quick back-and-forth, then jump to the full session page for the complete operational view."
+                    description="Use the chat panel for quick back-and-forth, then jump to the full session page for the complete operational view."
                     className="h-full py-8"
                   />
                 ) : (
@@ -517,7 +517,7 @@ function ChatBubble({ message }: { message: SessionMessageResponse }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[92%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm ${
+        className={`max-w-[92%] min-w-0 overflow-hidden rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm ${
           isUser
             ? "bg-accent text-fg-primary"
             : "border border-border-subtle bg-bg-panel text-fg-primary"

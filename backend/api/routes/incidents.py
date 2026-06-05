@@ -225,7 +225,9 @@ async def _to_incident_response(
             data["team_id"] = service.team_id
             team = await TeamRepo.get_by_id(db, org_id, service.team_id)
             data["team_name"] = team.name if team is not None else None
-    user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000)}
+    # include_deleted=True: historical responder references must render a
+    # fallback display (e.g. "deleted_user-<id>") rather than crashing.
+    user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000, include_deleted=True)}
     data.update(await _resolve_responder(db, org_id, incident.id, user_by_id))
     return IncidentResponse(**data)
 
@@ -237,7 +239,7 @@ async def _to_incident_list_response(
     teams = await TeamRepo.list_all(db, org_id)
     service_by_id = {service.id: service for service in services}
     team_by_id = {team.id: team for team in teams}
-    user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000)}
+    user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000, include_deleted=True)}
     responses: list[IncidentResponse] = []
     for incident in incidents:
         data = IncidentResponse.model_validate(incident).model_dump()

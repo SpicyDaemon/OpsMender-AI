@@ -93,6 +93,14 @@ export async function deleteMaintenanceWindow(id: string): Promise<void> {
   return api.del(`/maintenance-windows/${id}`);
 }
 
+export async function approveMaintenanceWindow(id: string): Promise<MaintenanceWindowResponse> {
+  return api.post(`/maintenance-windows/${id}/approve`, {});
+}
+
+export async function rejectMaintenanceWindow(id: string): Promise<void> {
+  return api.post(`/maintenance-windows/${id}/reject`, {});
+}
+
 export async function getSLATargetIncidents(id: string): Promise<IncidentResponse[]> {
   return api.get(`/sla-targets/${id}/incidents`);
 }

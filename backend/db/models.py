@@ -1090,6 +1090,16 @@ class MaintenanceWindow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+    # Approval workflow: operator-requested windows start unapproved and do
+    # not suppress alerts until an admin explicitly approves them.  Admin-created
+    # windows default to approved=True and are immediately effective.
+    approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         Index("ix_maintenance_windows_org_range", "org_id", "starts_at", "ends_at"),

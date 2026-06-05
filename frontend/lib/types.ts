@@ -412,6 +412,7 @@ export interface ModelConfigResponse {
   max_tokens: number;
   temperature: number;
   is_default: boolean;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -1051,6 +1052,9 @@ export interface MaintenanceWindowResponse {
   scope_ids: string[];
   created_by: string | null;
   created_at: string;
+  approved: boolean;
+  approved_by: string | null;
+  approved_at: string | null;
 }
 
 export interface MaintenanceWindowListResponse {

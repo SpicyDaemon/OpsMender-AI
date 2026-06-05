@@ -56,6 +56,7 @@ import {
   listWorkflowProfiles,
   revokeIngestToken,
   setDefaultModelConfig,
+  toggleModelConfigActive,
   startBotOAuth,
   startMCPOAuth,
   testMCPServer,
@@ -1218,6 +1219,22 @@ export function ModelSection({
                 <Star size={13} /> Default
               </Button>
             )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await toggleModelConfigActive(config.id);
+                  await onReload();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Toggle failed");
+                }
+              }}
+              disabled={!canEdit}
+              title={config.is_active ? "Disable this model config" : "Enable this model config"}
+            >
+              {config.is_active ? "Disable" : "Enable"}
+            </Button>
             <Button
               variant="secondary"
               size="sm"

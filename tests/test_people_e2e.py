@@ -240,13 +240,13 @@ async def test_people_full_lifecycle(env):
     )
     assert patch.status_code == 404
 
-    # ----- (13) Listing users still shows the deleted row but is_active=False
+    # ----- (13) Listing users does NOT show deleted rows (Part 3 QA fix) -----
+    # Deleted users are excluded from GET /auth/users so the People table
+    # stays clean. The individual GET /auth/users/{id} still works for admin
+    # audit purposes (shown above at step 12).
     all_users = await client.get("/auth/users", headers=admin_headers)
     found = [u for u in all_users.json()["items"] if u["id"] == teammate_id]
-    assert len(found) == 1
-    assert found[0]["is_active"] is False
-    assert found[0]["deleted_at"] is not None
-    assert found[0]["username"] == "teammate"  # historical-display preserved
+    assert len(found) == 0, "Deleted user must not appear in the People list"
 
     # ----- Sanity: admin can't accidentally delete themselves -----------
     self_delete = await client.post(

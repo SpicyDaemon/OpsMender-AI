@@ -34,7 +34,7 @@ describe("Sidebar nav model", () => {
 
   it("operator does NOT see admin/global config items", () => {
     const hrefs = visibleHrefs("operator");
-    for (const admin of [
+    for (const adminOnly of [
       "/dashboard/config",
       "/dashboard/people",
       "/dashboard/organizations",
@@ -42,12 +42,13 @@ describe("Sidebar nav model", () => {
       "/dashboard/models",
       "/dashboard/mcp-servers",
       "/dashboard/memories",
-      "/dashboard/paging/services",
-      "/dashboard/paging/teams",
     ]) {
-      expect(hrefs).not.toContain(admin);
+      expect(hrefs).not.toContain(adminOnly);
     }
-    // But keeps its incident-response surfaces.
+    // Operators CAN see paging setup in read-only mode (Part 1 QA fix).
+    expect(hrefs).toContain("/dashboard/paging/services");
+    expect(hrefs).toContain("/dashboard/paging/teams");
+    // Keeps incident-response surfaces.
     expect(hrefs).toContain("/dashboard/incidents");
     expect(hrefs).toContain("/dashboard/approvals");
     expect(hrefs).toContain("/dashboard/paging/notifications");
@@ -72,7 +73,19 @@ describe("requiredRolesForPath (route guard)", () => {
     expect(requiredRolesForPath("/dashboard/people")).toEqual(["admin"]);
     expect(requiredRolesForPath("/dashboard/people/detail")).toEqual(["admin"]);
     expect(requiredRolesForPath("/dashboard/models")).toEqual(["admin"]);
-    expect(requiredRolesForPath("/dashboard/paging/services")).toEqual(["admin"]);
+  });
+
+  it("paging setup is read-only for operators (admin+operator)", () => {
+    // Operators can view Teams/Chains/Services/Rosters/Maintenance Windows read-only.
+    for (const route of [
+      "/dashboard/paging/services",
+      "/dashboard/paging/teams",
+      "/dashboard/paging/rosters",
+      "/dashboard/paging/escalation-chains",
+      "/dashboard/paging/maintenance-windows",
+    ]) {
+      expect(requiredRolesForPath(route)).toEqual(["admin", "operator"]);
+    }
   });
 
   it("allows shared routes (null = everyone) and self-service settings", () => {

@@ -526,6 +526,7 @@ class ModelConfigResponse(BaseModel):
     max_tokens: int
     temperature: float
     is_default: bool
+    is_active: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -1060,6 +1061,9 @@ class MaintenanceWindowResponse(BaseModel):
     scope_ids: list[uuid.UUID] = Field(default_factory=list)
     created_by: Optional[uuid.UUID]
     created_at: datetime
+    approved: bool = True
+    approved_by: Optional[uuid.UUID] = None
+    approved_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

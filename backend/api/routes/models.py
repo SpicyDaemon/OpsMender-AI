@@ -272,3 +272,36 @@ async def set_default_model_config(
             detail="Model config not found",
         )
     return refreshed
+
+
+@router.post(
+    "/configs/{config_id}/toggle-active",
+    response_model=ModelConfigResponse,
+    summary="Enable or disable a saved model config (admin only)",
+)
+async def toggle_model_config_active(
+    config_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    existing = await ModelConfigRepo.get_by_id(db, org_id, config_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model config not found",
+        )
+    # Safety: prevent disabling the only active config that is also the default.
+    if existing.is_active and existing.is_default:
+        # Check if any other active, non-default config exists.
+        all_cfgs = await ModelConfigRepo.list_all(db, org_id)
+        other_active = [c for c in all_cfgs if c.id != config_id and c.is_active]
+        if not other_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot disable the only active model config. Enable another config first.",
+            )
+    existing.is_active = not existing.is_active
+    await db.commit()
+    await db.refresh(existing)
+    return existing

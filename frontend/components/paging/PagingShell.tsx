@@ -38,11 +38,14 @@ import {
 import { RosterCalendarModal } from "@/components/RosterCalendarModal";
 import { NotificationChannelsPage } from "@/components/NotificationChannelsPage";
 import { OutboundHooksPage } from "@/components/OutboundHooksPage";
+import { useAuth } from "@/context/auth";
 
 import {
+  approveMaintenanceWindow,
   createMaintenanceWindow,
   deleteMaintenanceWindow,
   listMaintenanceWindows,
+  rejectMaintenanceWindow,
   updateMaintenanceWindow,
 } from "@/lib/api_reliability";
 import {
@@ -231,6 +234,9 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
   const toast = useToast();
   const router = useRouter();
   const tab = initialTab;
+  const { user } = useAuth();
+  // Operators can view paging setup in read-only mode; only admins can create/edit/delete.
+  const canEdit = user?.role === "admin";
   const [showFlow, setShowFlow] = useState(false);
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [services, setServices] = useState<ServiceResponse[]>([]);
@@ -314,7 +320,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
         <p className="text-sm text-fg-secondary">{activeTab.description}</p>
       </div>
 
-      {tab === "teams" && <TeamsPanel teams={teams} onChange={refresh} />}
+      {tab === "teams" && <TeamsPanel teams={teams} onChange={refresh} canEdit={canEdit} />}
       {tab === "services" && (
         <ServicesPanel
           services={services}
@@ -322,10 +328,11 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
           rosters={rosters}
           chains={chains}
           onChange={refresh}
+          canEdit={canEdit}
         />
       )}
       {tab === "rosters" && (
-        <RostersPanel rosters={rosters} teams={teams} onChange={refresh} />
+        <RostersPanel rosters={rosters} teams={teams} onChange={refresh} canEdit={canEdit} />
       )}
       {tab === "chains" && (
         <ChainsPanel
@@ -333,6 +340,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
           teams={teams}
           rosters={rosters}
           onChange={refresh}
+          canEdit={canEdit}
         />
       )}
       {tab === "maintenance" && (
@@ -342,6 +350,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
           rosters={rosters}
           teams={teams}
           onChange={refresh}
+          canEdit={canEdit}
         />
       )}
       {tab === "notifications" && (
@@ -358,9 +367,11 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
 function TeamsPanel({
   teams,
   onChange,
+  canEdit,
 }: {
   teams: TeamResponse[];
   onChange: () => void;
+  canEdit?: boolean;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -562,11 +573,11 @@ function TeamsPanel({
           description="Create your first team to start grouping services and rosters."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
-          action={
+          action={canEdit ? (
             <Button onClick={openCreate}>
               <PlusCircle className="h-4 w-4" /> New team
             </Button>
-          }
+          ) : undefined}
         />
       ) : (
         <>
@@ -578,9 +589,11 @@ function TeamsPanel({
             hasFilters={Boolean(search)}
             onClear={() => setSearch("")}
             action={
-              <Button size="sm" onClick={openCreate}>
-                <PlusCircle className="h-4 w-4" /> New team
-              </Button>
+              canEdit ? (
+                <Button size="sm" onClick={openCreate}>
+                  <PlusCircle className="h-4 w-4" /> New team
+                </Button>
+              ) : null
             }
           />
           <DataTable
@@ -589,7 +602,7 @@ function TeamsPanel({
             rowKey={(t) => t.id}
             storageKey="opsmender:teams-table"
             hideToolbar
-            rowActions={(t) => (
+            rowActions={canEdit ? (t) => (
               <div className="flex items-center gap-1">
                 <Button
                   variant="ghost"
@@ -603,7 +616,7 @@ function TeamsPanel({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-            )}
+            ) : undefined}
           />
         </>
       )}
@@ -715,12 +728,14 @@ function ServicesPanel({
   rosters,
   chains,
   onChange,
+  canEdit,
 }: {
   services: ServiceResponse[];
   teams: TeamResponse[];
   rosters: RosterResponse[];
   chains: EscalationChainResponse[];
   onChange: () => void;
+  canEdit?: boolean;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -1136,7 +1151,7 @@ function ServicesPanel({
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
           action={
-            teams.length > 0 ? (
+            canEdit && teams.length > 0 ? (
               <Button onClick={openCreate}>
                 <PlusCircle className="h-4 w-4" /> New service
               </Button>
@@ -1207,13 +1222,15 @@ function ServicesPanel({
               setTimeFilter("");
             }}
             action={
-              <Button
-                size="sm"
-                onClick={openCreate}
-                disabled={teams.length === 0}
-              >
-                <PlusCircle className="h-4 w-4" /> New service
-              </Button>
+              canEdit ? (
+                <Button
+                  size="sm"
+                  onClick={openCreate}
+                  disabled={teams.length === 0}
+                >
+                  <PlusCircle className="h-4 w-4" /> New service
+                </Button>
+              ) : undefined
             }
           />
           <DataTable
@@ -1222,7 +1239,7 @@ function ServicesPanel({
             rowKey={(r) => r.service.id}
             storageKey="opsmender:services-table"
             hideToolbar
-            rowActions={(r) => (
+            rowActions={canEdit ? (r) => (
               <div className="flex items-center gap-1">
                 <Button
                   variant="ghost"
@@ -1241,7 +1258,7 @@ function ServicesPanel({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-            )}
+            ) : undefined}
           />
         </>
       )}
@@ -1401,10 +1418,12 @@ function RostersPanel({
   rosters,
   teams,
   onChange,
+  canEdit,
 }: {
   rosters: RosterResponse[];
   teams: TeamResponse[];
   onChange: () => void;
+  canEdit?: boolean;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -1717,9 +1736,11 @@ function RostersPanel({
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
           action={
-            <Button onClick={openCreate} disabled={teams.length === 0}>
-              <PlusCircle className="h-4 w-4" /> New roster
-            </Button>
+            canEdit ? (
+              <Button onClick={openCreate} disabled={teams.length === 0}>
+                <PlusCircle className="h-4 w-4" /> New roster
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -1767,9 +1788,11 @@ function RostersPanel({
               setEnabledFilter([]);
             }}
             action={
-              <Button size="sm" onClick={openCreate} disabled={teams.length === 0}>
-                <PlusCircle className="h-4 w-4" /> New roster
-              </Button>
+              canEdit ? (
+                <Button size="sm" onClick={openCreate} disabled={teams.length === 0}>
+                  <PlusCircle className="h-4 w-4" /> New roster
+                </Button>
+              ) : null
             }
           />
           <DataTable
@@ -1793,17 +1816,21 @@ function RostersPanel({
                 >
                   <CalendarDays className="h-4 w-4" /> Calendar
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void openEdit(r)}
-                  title="Edit roster"
-                >
-                  <Pencil className="h-4 w-4" /> Edit
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => remove(r.id)} title="Delete">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void openEdit(r)}
+                    title="Edit roster"
+                  >
+                    <Pencil className="h-4 w-4" /> Edit
+                  </Button>
+                )}
+                {canEdit && (
+                  <Button variant="ghost" size="sm" onClick={() => remove(r.id)} title="Delete">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             )}
           />
@@ -1973,11 +2000,13 @@ function ChainsPanel({
   teams,
   rosters,
   onChange,
+  canEdit,
 }: {
   chains: EscalationChainResponse[];
   teams: TeamResponse[];
   rosters: RosterResponse[];
   onChange: () => void;
+  canEdit?: boolean;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -2194,9 +2223,11 @@ function ChainsPanel({
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/paging-guide.md"
           learnMoreLabel="Paging guide"
           action={
-            <Button onClick={openCreate} disabled={teams.length === 0}>
-              <PlusCircle className="h-4 w-4" /> New chain
-            </Button>
+            canEdit ? (
+              <Button onClick={openCreate} disabled={teams.length === 0}>
+                <PlusCircle className="h-4 w-4" /> New chain
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -2232,9 +2263,11 @@ function ChainsPanel({
               setStatusFilter([]);
             }}
             action={
-              <Button size="sm" onClick={openCreate} disabled={teams.length === 0}>
-                <PlusCircle className="h-4 w-4" /> New chain
-              </Button>
+              canEdit ? (
+                <Button size="sm" onClick={openCreate} disabled={teams.length === 0}>
+                  <PlusCircle className="h-4 w-4" /> New chain
+                </Button>
+              ) : null
             }
           />
           <DataTable
@@ -2273,22 +2306,26 @@ function ChainsPanel({
                 >
                   <CalendarDays className="h-4 w-4" /> Calendar
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => openEdit(c)}
-                  title="Edit chain"
-                >
-                  <Pencil className="h-4 w-4" /> Edit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => remove(c.id)}
-                  title="Delete chain"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEdit(c)}
+                    title="Edit chain"
+                  >
+                    <Pencil className="h-4 w-4" /> Edit
+                  </Button>
+                )}
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => remove(c.id)}
+                    title="Delete chain"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             )}
           />
@@ -3148,12 +3185,14 @@ function MaintenanceWindowsPanel({
   rosters,
   teams,
   onChange,
+  canEdit,
 }: {
   windows: MaintenanceWindowResponse[];
   services: ServiceResponse[];
   rosters: RosterResponse[];
   teams: TeamResponse[];
   onChange: () => void;
+  canEdit?: boolean;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -3354,9 +3393,19 @@ function MaintenanceWindowsPanel({
       {
         id: "status",
         label: "Status",
-        accessor: (w) => statusOf(w),
+        accessor: (w) => (!w.approved ? "pending approval" : statusOf(w)),
         sortable: true,
         cell: (w) => {
+          if (!w.approved) {
+            return (
+              <div className="flex flex-col gap-1">
+                <Badge variant="medium">pending approval</Badge>
+                <span className="text-[10px] text-fg-muted">
+                  Does not suppress alerts until approved
+                </span>
+              </div>
+            );
+          }
           const s = statusOf(w);
           return (
             <Badge variant={s === "active" ? "open" : s === "scheduled" ? "info" : "closed"}>
@@ -3384,7 +3433,8 @@ function MaintenanceWindowsPanel({
           learnMoreLabel="Paging guide"
           action={
             <Button onClick={openCreate}>
-              <PlusCircle className="h-4 w-4" /> New window
+              <PlusCircle className="h-4 w-4" />
+              {canEdit ? "Schedule window" : "Request window"}
             </Button>
           }
         />
@@ -3428,7 +3478,8 @@ function MaintenanceWindowsPanel({
             }}
             action={
               <Button size="sm" onClick={openCreate}>
-                <PlusCircle className="h-4 w-4" /> New window
+                <PlusCircle className="h-4 w-4" />
+                {canEdit ? "Schedule window" : "Request window"}
               </Button>
             }
           />
@@ -3445,17 +3496,55 @@ function MaintenanceWindowsPanel({
             }
             rowActions={(w) => (
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => openEdit(w)}
-                  title="Edit window"
-                >
-                  <Pencil className="h-4 w-4" /> Edit
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => remove(w.id)} title="Delete">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {canEdit && !w.approved && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await approveMaintenanceWindow(w.id);
+                        onChange();
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Approve failed");
+                      }
+                    }}
+                    title="Approve pending request"
+                  >
+                    Approve
+                  </Button>
+                )}
+                {canEdit && !w.approved && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await rejectMaintenanceWindow(w.id);
+                        onChange();
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Reject failed");
+                      }
+                    }}
+                    title="Reject pending request"
+                  >
+                    Reject
+                  </Button>
+                )}
+                {canEdit && w.approved && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEdit(w)}
+                    title="Edit window"
+                  >
+                    <Pencil className="h-4 w-4" /> Edit
+                  </Button>
+                )}
+                {canEdit && (
+                  <Button variant="ghost" size="sm" onClick={() => remove(w.id)} title="Delete">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             )}
           />

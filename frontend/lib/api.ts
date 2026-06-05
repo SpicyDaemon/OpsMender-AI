@@ -492,6 +492,12 @@ export async function setDefaultModelConfig(
   return api.post<ModelConfigResponse>(`/models/configs/${id}/set-default`);
 }
 
+export async function toggleModelConfigActive(
+  id: string,
+): Promise<ModelConfigResponse> {
+  return api.post<ModelConfigResponse>(`/models/configs/${id}/toggle-active`);
+}
+
 // ---------------------------------------------------------------------------
 // MCP Servers
 // ---------------------------------------------------------------------------

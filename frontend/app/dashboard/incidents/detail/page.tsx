@@ -622,7 +622,7 @@ function StartSessionModal({
         </div>
 
         <div>
-          <Label htmlFor="ss-workflow">Workflow Profile (optional)</Label>
+          <Label htmlFor="ss-workflow">Session Profile (optional)</Label>
           <Select
             id="ss-workflow"
             value={form.workflow_profile_id ?? ""}

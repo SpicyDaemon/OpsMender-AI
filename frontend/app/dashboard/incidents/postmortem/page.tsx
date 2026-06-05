@@ -14,16 +14,91 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Eye, Pencil, Save, ScrollText, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Eye, Pencil, Save, ScrollText, Sparkles, Trash2 } from "lucide-react";
 import {
   getIncident,
   getIncidentPostmortem,
   putIncidentPostmortem,
 } from "@/lib/api";
+import { responderDisplay } from "@/lib/responder";
 import type {
   IncidentPostmortemResponse,
   IncidentResponse,
 } from "@/lib/types";
+
+function buildDraftFromIncident(incident: IncidentResponse): string {
+  const now = new Date().toISOString();
+  const created = incident.created_at
+    ? new Date(incident.created_at).toISOString()
+    : "(unknown)";
+  const updated = incident.updated_at
+    ? new Date(incident.updated_at).toISOString()
+    : "(unknown)";
+  const severity = incident.severity ?? "unknown";
+  const status = incident.status ?? "unknown";
+  const responder = responderDisplay(incident);
+  const service = incident.service_name ?? incident.external_source ?? "(unknown)";
+  const team = incident.team_name ?? "(unknown)";
+
+  return [
+    `# Postmortem: ${incident.title}`,
+    ``,
+    `**Incident:** ${incident.id.slice(0, 8)}`,
+    `**Severity:** ${severity}  **Status:** ${status}`,
+    `**Service:** ${service}  **Team:** ${team}`,
+    `**Responder:** ${responder.text}`,
+    `**Created:** ${created}  **Last updated:** ${updated}`,
+    `**Draft generated:** ${now}`,
+    ``,
+    `---`,
+    ``,
+    `## Summary`,
+    ``,
+    `<!-- What happened, in one paragraph. -->`,
+    ``,
+    incident.description ? incident.description.trim() : `_Summarize what happened here._`,
+    ``,
+    `## Impact`,
+    ``,
+    `<!-- Who was affected, for how long, how badly. -->`,
+    ``,
+    `_Describe customer or system impact._`,
+    ``,
+    `## Timeline`,
+    ``,
+    `<!-- Key moments with UTC timestamps. -->`,
+    ``,
+    `| Time (UTC) | Event |`,
+    `|---|---|`,
+    `| ${created} | Incident opened (${severity}) |`,
+    `| ${updated} | Last updated |`,
+    `| _..._ | _Add key events here_ |`,
+    ``,
+    `## Root Cause`,
+    ``,
+    `<!-- What caused the incident. -->`,
+    ``,
+    `_Describe the root cause._`,
+    ``,
+    `## Resolution`,
+    ``,
+    `<!-- What fixed it. -->`,
+    ``,
+    `_Describe how the incident was resolved._`,
+    ``,
+    `## Lessons Learned`,
+    ``,
+    `<!-- What the team should do differently. -->`,
+    ``,
+    `- `,
+    ``,
+    `## Memory Candidates`,
+    ``,
+    `<!-- Short, durable lessons for the AI recall system. One bullet per memory. -->`,
+    ``,
+    `- `,
+  ].join(`\n`);
+}
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
@@ -235,6 +310,33 @@ function IncidentPostmortemContent() {
     setDraft(postmortem.template);
   }
 
+  function handleGenerateDraft() {
+    if (!incident) return;
+    if (
+      draft.trim() &&
+      !confirm(
+        "Replace the current draft with a generated draft from this incident's data? Unsaved edits will be lost.",
+      )
+    ) {
+      return;
+    }
+    setDraft(buildDraftFromIncident(incident));
+    setMode("edit");
+  }
+
+  function handleDownload() {
+    const filename = `postmortem-${incident?.id?.slice(0, 8) ?? "incident"}.md`;
+    const blob = new Blob([draft], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) return <DetailSkeleton />;
   if (!id) {
     return (
@@ -307,11 +409,31 @@ function IncidentPostmortemContent() {
             {canEdit && (
               <Button
                 size="sm"
+                variant="secondary"
+                onClick={handleGenerateDraft}
+                title="Populate a structured draft from this incident's data"
+              >
+                <Sparkles size={14} /> Generate draft
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                size="sm"
                 onClick={handleSave}
                 loading={saving}
                 disabled={!dirty}
               >
                 <Save size={14} /> Save
+              </Button>
+            )}
+            {draft.trim() && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleDownload}
+                title="Download postmortem as Markdown"
+              >
+                <Download size={14} /> Download .md
               </Button>
             )}
             {canEdit && hasStored && (

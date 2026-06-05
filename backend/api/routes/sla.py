@@ -668,7 +668,7 @@ async def create_maintenance_window(
     body: MaintenanceWindowCreate,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     if body.ends_at <= body.starts_at:
         raise HTTPException(
@@ -681,6 +681,11 @@ async def create_maintenance_window(
         scope_ids.insert(0, body.scope_id)
     scope_id = scope_ids[0] if scope_ids else body.scope_id
     target_ids = [str(v) for v in scope_ids] if scope_ids else body.target_ids
+
+    # Admin-created windows are approved immediately; operator requests are
+    # pending until an admin explicitly approves them.
+    is_admin = user.role == "admin"
+    now = datetime.now(timezone.utc)
 
     mw = await MaintenanceWindowRepo.create(
         db,
@@ -695,6 +700,9 @@ async def create_maintenance_window(
         scope_type=body.scope_type,
         scope_id=scope_id,
         created_by=user.id,
+        approved=is_admin,
+        approved_by=user.id if is_admin else None,
+        approved_at=now if is_admin else None,
     )
     await db.commit()
     await db.refresh(mw)
@@ -765,6 +773,54 @@ async def delete_maintenance_window(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
+    deleted = await MaintenanceWindowRepo.delete(db, org_id, mw_id)
+    if not deleted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    _mw_prefix + "/{mw_id}/approve",
+    response_model=MaintenanceWindowResponse,
+    summary="Approve a pending maintenance window request (admin only)",
+)
+async def approve_maintenance_window(
+    mw_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    mw = await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
+    if mw is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
+    if mw.approved:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Maintenance window is already approved")
+    now = datetime.now(timezone.utc)
+    mw.approved = True
+    mw.approved_by = user.id
+    mw.approved_at = now
+    await db.commit()
+    await db.refresh(mw)
+    return MaintenanceWindowResponse.model_validate(mw)
+
+
+@router.post(
+    _mw_prefix + "/{mw_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Reject and delete a pending maintenance window request (admin only)",
+)
+async def reject_maintenance_window(
+    mw_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    mw = await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
+    if mw is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
+    if mw.approved:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Cannot reject an already-approved window")
     deleted = await MaintenanceWindowRepo.delete(db, org_id, mw_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")

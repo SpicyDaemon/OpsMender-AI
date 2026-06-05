@@ -217,9 +217,15 @@ class UserRepo:
 
     @staticmethod
     async def list_all(
-        db: AsyncSession, *, limit: int = 100, offset: int = 0
+        db: AsyncSession,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        include_deleted: bool = False,
     ) -> Sequence[User]:
         stmt = select(User).order_by(User.created_at).limit(limit).offset(offset)
+        if not include_deleted:
+            stmt = stmt.where(User.deleted_at.is_(None))
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -2989,6 +2995,9 @@ class MaintenanceWindowRepo:
         scope_type: str = "global",
         scope_id: uuid.UUID | None = None,
         created_by: uuid.UUID | None = None,
+        approved: bool = True,
+        approved_by: uuid.UUID | None = None,
+        approved_at: datetime | None = None,
     ) -> MaintenanceWindow:
         mw = MaintenanceWindow(
             org_id=org_id,
@@ -3002,6 +3011,9 @@ class MaintenanceWindowRepo:
             scope_type=scope_type,
             scope_id=scope_id,
             created_by=created_by,
+            approved=approved,
+            approved_by=approved_by,
+            approved_at=approved_at,
         )
         db.add(mw)
         await db.flush()
@@ -3055,6 +3067,8 @@ class MaintenanceWindowRepo:
             select(MaintenanceWindow)
             .where(MaintenanceWindow.org_id == org_id)
             .where(MaintenanceWindow.starts_at <= dt, MaintenanceWindow.ends_at > dt)
+            # Pending (unapproved) windows do not suppress alerts.
+            .where(MaintenanceWindow.approved == True)  # noqa: E712
         )
         if scope_type is not None:
             from sqlalchemy import and_, or_

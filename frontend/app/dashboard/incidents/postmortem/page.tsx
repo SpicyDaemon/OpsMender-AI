@@ -411,7 +411,7 @@ function IncidentPostmortemContent() {
                 size="sm"
                 variant="secondary"
                 onClick={handleGenerateDraft}
-                title="Populate a structured draft from this incident's data"
+                title="Generate a structured draft from incident details, timeline, and session data. You can edit it before saving or downloading."
               >
                 <Sparkles size={14} /> Generate draft
               </Button>

@@ -174,7 +174,7 @@ export function IncidentTimeline({
                           variant={activeSessionId === item.session_id ? "secondary" : "primary"}
                           onClick={() => onSelectSession(item.session_id!)}
                         >
-                          {activeSessionId === item.session_id ? "Viewing sidecar" : "Open sidecar"}
+                          {activeSessionId === item.session_id ? "Viewing session chat" : "Open session chat"}
                         </Button>
                         <Link
                           href={`/dashboard/sessions/detail?id=${item.session_id}`}

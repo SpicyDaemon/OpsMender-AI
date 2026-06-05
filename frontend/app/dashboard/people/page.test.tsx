@@ -70,9 +70,37 @@ describe("People page (v1)", () => {
   it("renders a Services-style filter bar (search) and a direct New user action", async () => {
     render(<PeoplePage />);
     await waitFor(() =>
-      expect(screen.getByPlaceholderText(/search by username or email/i)).toBeTruthy(),
+      expect(screen.getByPlaceholderText(/search by name, username, or email/i)).toBeTruthy(),
     );
     expect(screen.getByRole("button", { name: /new user/i })).toBeTruthy();
+  });
+
+  it("has no separate Invites tab (unified People table)", async () => {
+    render(<PeoplePage />);
+    await waitFor(() => expect(screen.getAllByText("jdoe").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("button", { name: /^invites$/i })).toBeNull();
+  });
+
+  it("shows pending invites as Invited rows in the same table", async () => {
+    apiMocks.listInvites.mockResolvedValue({
+      items: [
+        {
+          id: "inv-1",
+          org_id: "org-1",
+          email: "invitee@test.com",
+          role: "viewer",
+          status: "pending",
+          expires_at: "2026-07-01T00:00:00Z",
+          created_at: "2026-06-01T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    render(<PeoplePage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("invitee@test.com").length).toBeGreaterThan(0),
+    );
+    expect(screen.getAllByText("Invited").length).toBeGreaterThan(0);
   });
 
   it("hides the Auth method column when advanced auth is disabled", async () => {

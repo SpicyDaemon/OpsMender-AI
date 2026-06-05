@@ -327,95 +327,33 @@ function PeopleSurface() {
         subtitle="Manage user accounts and pending invites."
       />
 
-      <nav
-        aria-label="People sections"
-        className="mb-5 flex flex-wrap gap-2"
-      >
-        {(
-          [
-            { id: "users", label: "Users", icon: Users, count: users.length },
-            {
-              id: "invites",
-              label: "Invites",
-              icon: Mail,
-              count: invites.filter((i) => i.status === "pending").length,
-            },
-          ] as const
-        ).map(({ id, label, icon: Icon, count }) => {
-          const active = tab === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              aria-current={active ? "page" : undefined}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
-                active
-                  ? "bg-accent text-white shadow-sm"
-                  : "border border-border-default bg-bg-surface text-fg-secondary hover:border-border-strong hover:text-fg-primary"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-              <span
-                className={`ml-1 rounded-pill px-1.5 text-[10px] font-semibold ${
-                  active ? "bg-white/20" : "bg-bg-elevated text-fg-muted"
-                }`}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
+      <PeopleTable
+        users={users}
+        invites={invites}
+        loading={usersLoading || invitesLoading}
+        advancedAuth={advancedAuth}
+        onNewPerson={() => setNewUserOpen(true)}
+        onRevoke={onRevoke}
+        onResend={onResend}
+      />
 
-      {tab === "users" ? (
-        <UsersTab
-          users={users}
-          loading={usersLoading}
-          advancedAuth={advancedAuth}
-          onNewUser={() => setNewUserOpen(true)}
-        />
-      ) : (
-        <InvitesTab
-          invites={invites}
-          loading={invitesLoading}
-          onNew={() => setNewInviteOpen(true)}
-          onBulk={() => setBulkInviteOpen(true)}
-          onRevoke={onRevoke}
-          onResend={onResend}
-        />
-      )}
-
-      <CreateUserModal
+      <NewPersonModal
         open={newUserOpen}
         onClose={() => setNewUserOpen(false)}
-        onCreated={() => {
+        orgId={orgId}
+        onUserCreated={() => {
           setNewUserOpen(false);
           void reloadUsers();
         }}
-      />
-
-      <NewInviteModal
-        open={newInviteOpen}
-        onClose={() => setNewInviteOpen(false)}
-        orgId={orgId}
-        onCreated={onInviteCreated}
-      />
-      <BulkInviteModal
-        open={bulkInviteOpen}
-        onClose={() => setBulkInviteOpen(false)}
-        orgId={orgId}
-        onCompleted={onBulkInviteCompleted}
+        onInviteCreated={(resp) => {
+          setNewUserOpen(false);
+          onInviteCreated(resp);
+        }}
       />
 
       <MintedInviteModal
         invite={mintedInvite}
         onClose={() => setMintedInvite(null)}
-      />
-      <BulkInviteResultModal
-        result={bulkInviteResult}
-        onClose={() => setBulkInviteResult(null)}
       />
     </div>
   );
@@ -427,44 +365,89 @@ function PeopleSurface() {
 // ---------------------------------------------------------------------------
 
 
-function UsersTab({
+/**
+ * Unified People table: real users + pending invites in one list with statuses
+ * Active / Inactive / Invited (Part 2). One "New user" action opens the tabbed
+ * create/invite modal; invite rows expose resend/revoke.
+ */
+type PersonRow =
+  | { kind: "user"; id: string; user: UserResponse }
+  | { kind: "invite"; id: string; invite: InviteResponse };
+
+function personName(row: PersonRow): string {
+  if (row.kind === "user") {
+    const u = row.user;
+    const full = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
+    return full || u.username;
+  }
+  return row.invite.email;
+}
+
+function personRole(row: PersonRow): UserResponse["role"] {
+  return row.kind === "user" ? row.user.role : row.invite.role;
+}
+
+function personStatus(row: PersonRow): "active" | "inactive" | "invited" {
+  if (row.kind === "invite") return "invited";
+  return row.user.is_active ? "active" : "inactive";
+}
+
+function PeopleTable({
   users,
+  invites,
   loading,
   advancedAuth,
-  onNewUser,
+  onNewPerson,
+  onRevoke,
+  onResend,
 }: {
   users: UserResponse[];
+  invites: InviteResponse[];
   loading: boolean;
   advancedAuth: boolean;
-  onNewUser: () => void;
+  onNewPerson: () => void;
+  onRevoke: (invite: InviteResponse) => void;
+  onResend: (invite: InviteResponse) => void;
 }) {
-  const columns = useMemo<DataTableColumn<UserResponse>[]>(
+  const rows = useMemo<PersonRow[]>(() => {
+    const userRows: PersonRow[] = users.map((u) => ({ kind: "user", id: u.id, user: u }));
+    const inviteRows: PersonRow[] = invites
+      .filter((i) => i.status === "pending")
+      .map((i) => ({ kind: "invite", id: `invite-${i.id}`, invite: i }));
+    return [...userRows, ...inviteRows];
+  }, [users, invites]);
+
+  const columns = useMemo<DataTableColumn<PersonRow>[]>(
     () => [
       {
-        id: "username",
-        label: "User",
-        accessor: (u) => u.username,
-        cell: (u) => (
-          <div>
-            <Link
-              href={`/dashboard/people/detail?id=${u.id}`}
-              className="font-medium text-fg-primary hover:text-accent"
-            >
-              {u.username}
-            </Link>
-            <p className="text-xs text-fg-muted">{u.email}</p>
-          </div>
-        ),
+        id: "name",
+        label: "Name",
+        accessor: (r) => `${personName(r)} ${r.kind === "user" ? r.user.email : r.invite.email}`,
+        cell: (r) =>
+          r.kind === "user" ? (
+            <div>
+              <Link
+                href={`/dashboard/people/detail?id=${r.user.id}`}
+                className="font-medium text-fg-primary hover:text-accent"
+              >
+                {personName(r)}
+              </Link>
+              <p className="text-xs text-fg-muted">{r.user.email}</p>
+            </div>
+          ) : (
+            <div>
+              <span className="font-medium text-fg-primary">{personName(r)}</span>
+              <p className="text-xs text-fg-muted">Invitation pending</p>
+            </div>
+          ),
         sortable: true,
         searchable: true,
       },
       {
         id: "role",
         label: "Role",
-        accessor: (u) => u.role,
-        cell: (u) => (
-          <Badge variant={ROLE_VARIANT[u.role] as never}>{u.role}</Badge>
-        ),
+        accessor: (r) => personRole(r),
+        cell: (r) => <Badge variant={ROLE_VARIANT[personRole(r)] as never}>{personRole(r)}</Badge>,
         sortable: true,
         filterChips: {
           options: [
@@ -472,41 +455,44 @@ function UsersTab({
             { value: "operator", label: "Operator" },
             { value: "viewer", label: "Viewer" },
           ],
-          valueOf: (u) => u.role,
+          valueOf: (r) => personRole(r),
         },
       },
       {
         id: "status",
         label: "Status",
-        accessor: (u) => (u.is_active ? "active" : "inactive"),
-        cell: (u) =>
-          u.is_active ? (
-            <Badge variant="low">Active</Badge>
-          ) : (
-            <Badge variant="default">Inactive</Badge>
-          ),
+        accessor: (r) => personStatus(r),
+        cell: (r) => {
+          const s = personStatus(r);
+          if (s === "active") return <Badge variant="low">Active</Badge>;
+          if (s === "inactive") return <Badge variant="default">Inactive</Badge>;
+          return <Badge variant="medium">Invited</Badge>;
+        },
         sortable: true,
         filterChips: {
           options: [
             { value: "active", label: "Active" },
             { value: "inactive", label: "Inactive" },
+            { value: "invited", label: "Invited" },
           ],
-          valueOf: (u) => (u.is_active ? "active" : "inactive"),
+          valueOf: (r) => personStatus(r),
         },
       },
-      // Auth-method column + filter only when advanced auth is in play; v1
-      // default is local-only, so we don't surface OIDC/SAML affordances.
       ...(advancedAuth
         ? [
             {
               id: "auth_source",
               label: "Auth method",
-              accessor: (u: UserResponse) => {
-                if (u.auth_source.startsWith("oidc:")) return "oidc";
-                if (u.auth_source.startsWith("saml:")) return "saml";
-                return "local";
-              },
-              cell: (u: UserResponse) => <AuthMethodBadge user={u} />,
+              accessor: (r: PersonRow) =>
+                r.kind === "user"
+                  ? r.user.auth_source.startsWith("oidc:")
+                    ? "oidc"
+                    : r.user.auth_source.startsWith("saml:")
+                      ? "saml"
+                      : "local"
+                  : "local",
+              cell: (r: PersonRow) =>
+                r.kind === "user" ? <AuthMethodBadge user={r.user} /> : <Badge variant="low">local</Badge>,
               sortable: true,
               filterChips: {
                 options: [
@@ -514,22 +500,30 @@ function UsersTab({
                   { value: "oidc", label: "OIDC" },
                   { value: "saml", label: "SAML" },
                 ],
-                valueOf: (u: UserResponse) => {
-                  if (u.auth_source.startsWith("oidc:")) return "oidc";
-                  if (u.auth_source.startsWith("saml:")) return "saml";
-                  return "local";
-                },
+                valueOf: (r: PersonRow) =>
+                  r.kind === "user" && r.user.auth_source.startsWith("oidc:")
+                    ? "oidc"
+                    : r.kind === "user" && r.user.auth_source.startsWith("saml:")
+                      ? "saml"
+                      : "local",
               },
-            } as DataTableColumn<UserResponse>,
+            } as DataTableColumn<PersonRow>,
           ]
         : []),
       {
-        id: "created_at",
-        label: "Joined",
-        accessor: (u) => u.created_at,
-        cell: (u) => (
+        id: "when",
+        label: "Joined / Sent",
+        accessor: (r) => (r.kind === "user" ? r.user.created_at : r.invite.created_at),
+        cell: (r) => (
           <span className="whitespace-nowrap text-sm text-fg-secondary">
-            {fmtDate(u.created_at)}
+            {r.kind === "user"
+              ? fmtDate(r.user.created_at)
+              : `Sent ${fmtDate(r.invite.created_at)}`}
+            {r.kind === "invite" && (
+              <span className="block text-[11px] text-fg-muted">
+                Expires {fmtDate(r.invite.expires_at)}
+              </span>
+            )}
           </span>
         ),
         sortable: true,
@@ -538,15 +532,15 @@ function UsersTab({
     [advancedAuth],
   );
 
-  if (loading && users.length === 0) return <TableSkeleton rows={6} columns={5} />;
-  if (users.length === 0) {
+  if (loading && rows.length === 0) return <TableSkeleton rows={6} columns={5} />;
+  if (rows.length === 0) {
     return (
       <EmptyState
         icon={Users}
-        title="No users yet"
-        description="Create a user directly, or invite a teammate from the Invites tab."
+        title="No people yet"
+        description="Create a user directly or invite a teammate by email."
         action={
-          <Button onClick={onNewUser}>
+          <Button onClick={onNewPerson}>
             <UserPlus className="h-4 w-4" /> New user
           </Button>
         }
@@ -556,76 +550,43 @@ function UsersTab({
 
   return (
     <DataTable
-      rows={users}
+      rows={rows}
       columns={columns}
       filterBar
       toolbarRight={
-        <Button onClick={onNewUser}>
+        <Button onClick={onNewPerson}>
           <UserPlus className="h-4 w-4" /> New user
         </Button>
       }
-      rowKey={(u) => u.id}
-      phoneLayout={(u) => (
-        <div className="space-y-3">
-          <div className="min-w-0">
-            <Link
-              href={`/dashboard/people/detail?id=${u.id}`}
-              className="font-medium text-fg-primary hover:text-accent"
-            >
-              {u.username}
-            </Link>
-            <p className="mt-1 text-sm text-fg-muted">{u.email}</p>
+      rowKey={(r) => r.id}
+      storageKey="opsmender:people-table"
+      searchPlaceholder="Search by name, username, or email…"
+      rowActions={(r) =>
+        r.kind === "user" ? (
+          <Link
+            href={`/dashboard/people/detail?id=${r.user.id}`}
+            className="text-sm font-medium text-accent hover:underline"
+          >
+            Manage
+          </Link>
+        ) : (
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => onResend(r.invite)} title="Resend">
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => onRevoke(r.invite)} title="Revoke">
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant={ROLE_VARIANT[u.role] as never}>{u.role}</Badge>
-            {u.is_active ? (
-              <Badge variant="low">Active</Badge>
-            ) : (
-              <Badge variant="default">Inactive</Badge>
-            )}
-          </div>
-          <div className="grid gap-3 text-sm sm:grid-cols-2">
-            {advancedAuth && (
-              <div>
-                <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
-                  Auth method
-                </p>
-                <div className="mt-1">
-                  <AuthMethodBadge user={u} />
-                </div>
-              </div>
-            )}
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
-                Joined
-              </p>
-              <p className="mt-1 text-fg-secondary">{fmtDate(u.created_at)}</p>
-            </div>
-          </div>
-        </div>
-      )}
-      storageKey="opsmender:people-users-table"
-      searchPlaceholder="Search by username or email…"
-      dateRangeColumn={{
-        id: "created_at",
-        label: "Joined",
-        valueOf: (u) => u.created_at,
-      }}
-      rowActions={(u) => (
-        <Link
-          href={`/dashboard/people/detail?id=${u.id}`}
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          Manage
-        </Link>
-      )}
+        )
+      }
     />
   );
 }
 
 
 // ---------------------------------------------------------------------------
-// Invites tab
+// Legacy invites tab (removed — unified into PeopleTable)
 // ---------------------------------------------------------------------------
 
 
@@ -830,12 +791,62 @@ function randomTempPassword(): string {
 }
 
 
-function CreateUserModal({
+function NewPersonModal({
   open,
+  onClose,
+  orgId,
+  onUserCreated,
+  onInviteCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId: string | null;
+  onUserCreated: () => void;
+  onInviteCreated: (resp: InviteCreatedResponse, mode?: MintedInviteMode) => void;
+}) {
+  const [tab, setTab] = useState<"create" | "invite">("create");
+
+  useEffect(() => {
+    if (open) setTab("create");
+  }, [open]);
+
+  return (
+    <Modal open={open} onClose={onClose} title="New user">
+      <div className="mb-4 flex gap-2">
+        {(
+          [
+            { id: "create", label: "Create user" },
+            { id: "invite", label: "Invite user" },
+          ] as const
+        ).map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            aria-current={tab === id ? "page" : undefined}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              tab === id
+                ? "bg-accent text-white"
+                : "border border-border-default bg-bg-surface text-fg-secondary hover:text-fg-primary"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "create" ? (
+        <CreateUserForm onClose={onClose} onCreated={onUserCreated} />
+      ) : (
+        <InviteUserForm onClose={onClose} orgId={orgId} onCreated={onInviteCreated} />
+      )}
+    </Modal>
+  );
+}
+
+function CreateUserForm({
   onClose,
   onCreated,
 }: {
-  open: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -844,28 +855,13 @@ function CreateUserModal({
     username: "",
     email: "",
     role: "operator",
-    password: "",
+    password: randomTempPassword(),
     is_active: true,
     first_name: "",
     last_name: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (open) {
-      setForm({
-        username: "",
-        email: "",
-        role: "operator",
-        password: randomTempPassword(),
-        is_active: true,
-        first_name: "",
-        last_name: "",
-      });
-      setError("");
-    }
-  }, [open]);
 
   const submit = useCallback(async () => {
     if (!form.username.trim() || !form.email.trim()) {
@@ -907,7 +903,6 @@ function CreateUserModal({
   }, [form.password, toast]);
 
   return (
-    <Modal open={open} onClose={onClose} title="New user">
       <div className="space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
@@ -1002,23 +997,20 @@ function CreateUserModal({
           </Button>
         </div>
       </div>
-    </Modal>
   );
 }
 
 
 // ---------------------------------------------------------------------------
-// New invite modal
+// Invite-user form (tab in NewPersonModal)
 // ---------------------------------------------------------------------------
 
 
-function NewInviteModal({
-  open,
+function InviteUserForm({
   onClose,
   orgId,
   onCreated,
 }: {
-  open: boolean;
   onClose: () => void;
   orgId: string | null;
   onCreated: (resp: InviteCreatedResponse, mode?: MintedInviteMode) => void;
@@ -1032,13 +1024,6 @@ function NewInviteModal({
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!open) {
-      setForm({ email: "", role: "viewer", first_name: "", last_name: "" });
-      setError("");
-    }
-  }, [open]);
 
   const submit = useCallback(async () => {
     if (!orgId) {
@@ -1067,7 +1052,6 @@ function NewInviteModal({
   }, [form, onCreated, orgId, toast]);
 
   return (
-    <Modal open={open} onClose={onClose} title="New invite">
       <div className="space-y-3">
         <div>
           <Label>Email</Label>
@@ -1124,7 +1108,6 @@ function NewInviteModal({
           </Button>
         </div>
       </div>
-    </Modal>
   );
 }
 

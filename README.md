@@ -467,7 +467,7 @@ OpsMender has **three distinct notification concepts**. They are separate from i
 | Concept | Audience | Purpose | Where |
 |---|---|---|---|
 | **Personal Routing** | The current on-call operator | How *one* person is paged for an incident they own (Slack/Teams DM, Email, SMS, Telegram DM, …) | Paging & On-call → My Notifications |
-| **Notification Channels** | The responder team | Workspace/team channels where responders collaborate — this is where incident cards/messages appear | Paging & On-call → Notification Channels |
+| **Notification Channels** | The responder team | Workspace/team channels where responders collaborate — this is where incident updates appear | Paging & On-call → Notification Channels |
 | **Viewer Notifications** | Read-only stakeholders / downstream systems | Read-only session/incident updates to webhooks; never pages an operator | Paging & On-call → Notifications |
 
 Personal Routing pages the owner; Notification Channels keep the responding team in the loop with an incident card; Viewer Notifications fan out read-only status. The expected flow:
@@ -475,15 +475,15 @@ Personal Routing pages the owner; Notification Channels keep the responding team
 ```
 Alert intake → Incident created → Service/team/escalation chain resolved
   → Personal Routing pages the current on-call operator
-  → Notification Channels receive the incident card / lifecycle update
+  → Notification Channels receive the incident update (created/ack/resolved/escalated)
   → Viewer Notifications receive read-only updates (if configured)
 ```
 
 ### Notification Channel capability model
 
-Every platform is modelled honestly in [`backend/bots/capabilities.py`](backend/bots/capabilities.py) — the single source of truth for what a channel can actually do (`incident_card`, `interactive_actions`, `direct_message`, `shared_channel`, `delivery_only`). The API exposes it per platform and per configured channel, and the UI only advertises what a platform supports — a delivery-only channel (Twilio SMS, email, custom webhook) never shows an "Actions" chip.
+Every platform is modelled honestly in [`backend/bots/capabilities.py`](backend/bots/capabilities.py) — the single source of truth for what a channel can actually do (`incident_card`, `interactive_actions`, `direct_message`, `shared_channel`, `delivery_only`). The API exposes it per platform and per configured channel, and the UI only advertises what a platform supports — a chat-capable channel shows an **"Incident updates"** chip (not "Incident cards", which would imply in-chat buttons), and a delivery-only channel (Twilio SMS, email, custom webhook) shows **"Delivery-only"** and never an **"Actions"** chip.
 
-**v1 delivery is honest about interactivity.** No platform ships verified interactive action buttons yet, so on incident **created / acknowledged / resolved** OpsMender posts a formatted incident message — title, severity, status, service/team, current responder, short description — plus an **authenticated incident link**. Responders click through and **acknowledge / resolve / escalate / start an AI session inside OpsMender under login + RBAC**. OpsMender never embeds a public, unauthenticated action URL in a chat message. Twilio is shown as **Twilio (SMS)**.
+**v1 delivery is honest about interactivity.** No platform ships verified interactive action buttons yet, so on incident **created / acknowledged / resolved / escalated** OpsMender posts a formatted incident message — title, severity/priority, service/team, current responder (and, for escalations, the previous responder + escalation level), short description — plus an **authenticated incident link**. Responders click through and **acknowledge / resolve / escalate / start an AI session inside OpsMender under login + RBAC**. OpsMender never embeds a public, unauthenticated action URL in a chat message. Twilio is shown as **Twilio (SMS)**. Delivery is built on [`backend/bots/incident_card.py`](backend/bots/incident_card.py) + `backend/bots/notifier.py`; the escalation card is emitted by the escalation engine when a chain advances to a higher level.
 
 **Future enhancements:** richer platform-specific cards; in-message interactive buttons backed by signed action tokens / platform signature verification (per-adapter, flipped on only when a verified callback path exists); bi-directional threaded chat and channel-to-OpsMender comment sync; MFA for action authorization; more platforms with first-class action support.
 

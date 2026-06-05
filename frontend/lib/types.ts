@@ -1644,6 +1644,46 @@ export interface ChainWhereUsedResponse {
   total: number;
 }
 
+export type EscalationCalendarStatus =
+  | "covered"
+  | "unassigned"
+  | "outside_coverage"
+  | "disabled_roster"
+  | "empty_roster"
+  | "inactive_user"
+  | "deleted_user"
+  | "unknown";
+
+export interface EscalationCalendarLevel {
+  level: number;
+  target_type: EscalationTargetType;
+  target_id: string;
+  target_name: string;
+  resolved_user_id: string | null;
+  resolved_user_name: string | null;
+  resolved_user_email: string | null;
+  coverage_start: string | null;
+  coverage_end: string | null;
+  status: EscalationCalendarStatus;
+  warnings: string[];
+}
+
+export interface EscalationCalendarDay {
+  date: string;
+  levels: EscalationCalendarLevel[];
+}
+
+export interface EscalationCalendarResponse {
+  chain_id: string;
+  chain_name: string;
+  team_id: string;
+  team_name: string | null;
+  start: string;
+  end: string;
+  range: "today" | "7d" | "30d" | "90d";
+  days: EscalationCalendarDay[];
+}
+
 export interface IncidentPageRecord {
   id: string;
   incident_id: string;

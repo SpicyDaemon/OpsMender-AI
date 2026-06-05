@@ -97,4 +97,18 @@ describe("v1 paging IA", () => {
   it("labels escalation steps as Levels", () => {
     expect(pagingShellSource).toContain("Level {idx + 1}");
   });
+
+  it("adds a read-only escalation chain calendar", () => {
+    expect(pagingShellSource).toContain("View escalation calendar");
+    expect(pagingShellSource).toContain("Escalation Calendar");
+    expect(pagingShellSource).toContain("This shows who will be contacted at each escalation level");
+    expect(pagingShellSource).toContain("Coverage is resolved from escalation levels");
+    expect(pagingShellSource).toContain("CALENDAR_RANGES");
+    expect(pagingShellSource).toContain("empty_roster");
+    expect(pagingShellSource).toContain("disabled_roster");
+  });
+
+  it("keeps the escalation calendar generic", () => {
+    expect(pagingShellSource).not.toMatch(/incident management platform|on-call platform|Datadog/i);
+  });
 });

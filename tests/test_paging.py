@@ -1221,6 +1221,322 @@ class TestPagingAPI:
         )
         assert resp.status_code == 400
 
+    async def test_escalation_chain_calendar_default_range_and_order(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Calendar", "slug": f"cal-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": team.json()["id"], "name": "Primary chain"},
+            headers=auth_headers,
+        )
+        assert chain.status_code == 201
+        chain_id = chain.json()["id"]
+
+        async with app.state.session_factory() as db:
+            u1 = await UserRepo.create(
+                db,
+                username=f"cal-a-{uuid.uuid4().hex[:6]}",
+                email=f"cal-a-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            u2 = await UserRepo.create(
+                db,
+                username=f"cal-b-{uuid.uuid4().hex[:6]}",
+                email=f"cal-b-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+
+        for step_index, user_id in [(1, u2.id), (0, u1.id)]:
+            step = await client.post(
+                f"/escalation-chains/{chain_id}/steps",
+                json={
+                    "step_index": step_index,
+                    "target_type": "user",
+                    "target_id": str(user_id),
+                    "timeout_seconds": 300,
+                },
+                headers=auth_headers,
+            )
+            assert step.status_code == 201, step.text
+
+        resp = await client.get(
+            f"/escalation-chains/{chain_id}/calendar", headers=auth_headers
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["range"] == "7d"
+        assert len(body["days"]) == 7
+        assert [level["level"] for level in body["days"][0]["levels"]] == [1, 2]
+        assert body["days"][0]["levels"][0]["resolved_user_id"] == str(u1.id)
+        assert body["days"][0]["levels"][1]["resolved_user_id"] == str(u2.id)
+
+    async def test_escalation_chain_calendar_30d_and_90d_ranges(
+        self, client: AsyncClient, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Ranges", "slug": f"ranges-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": team.json()["id"], "name": "Range chain"},
+            headers=auth_headers,
+        )
+        chain_id = chain.json()["id"]
+
+        for requested, expected in [("30d", 30), ("90d", 90), ("today", 1)]:
+            resp = await client.get(
+                f"/escalation-chains/{chain_id}/calendar?range={requested}&start=2026-06-05",
+                headers=auth_headers,
+            )
+            assert resp.status_code == 200
+            assert resp.json()["range"] == requested
+            assert len(resp.json()["days"]) == expected
+
+    async def test_escalation_chain_calendar_resolves_roster_rotation_and_overnight(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Night", "slug": f"night-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        team_id = team.json()["id"]
+        roster = await client.post(
+            "/rosters",
+            json={
+                "team_id": team_id,
+                "name": "Night rotation",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-06-01",
+                "coverage_start_time": "18:00",
+                "coverage_end_time": "08:00",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        roster_id = roster.json()["id"]
+        async with app.state.session_factory() as db:
+            alice = await UserRepo.create(
+                db,
+                username="alice-night",
+                email="alice-night@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            bob = await UserRepo.create(
+                db,
+                username="bob-night",
+                email="bob-night@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            carol = await UserRepo.create(
+                db,
+                username="carol-night",
+                email="carol-night@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+        for idx, user_id in enumerate([alice.id, bob.id, carol.id]):
+            add = await client.post(
+                f"/rosters/{roster_id}/members",
+                json={"user_id": str(user_id), "position_index": idx},
+                headers=auth_headers,
+            )
+            assert add.status_code == 201
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": team_id, "name": "Night chain"},
+            headers=auth_headers,
+        )
+        step = await client.post(
+            f"/escalation-chains/{chain.json()['id']}/steps",
+            json={
+                "step_index": 0,
+                "target_type": "roster",
+                "target_id": roster_id,
+                "timeout_seconds": 300,
+            },
+            headers=auth_headers,
+        )
+        assert step.status_code == 201
+
+        resp = await client.get(
+            f"/escalation-chains/{chain.json()['id']}/calendar?range=7d&start=2026-06-01",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        resolved = [day["levels"][0]["resolved_user_name"] for day in resp.json()["days"][:4]]
+        assert resolved == ["alice-night", "bob-night", "carol-night", "alice-night"]
+        first = resp.json()["days"][0]["levels"][0]
+        assert first["coverage_start"] == "18:00"
+        assert first["coverage_end"] == "08:00"
+        assert first["status"] == "covered"
+
+    async def test_escalation_chain_calendar_warning_statuses(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Warnings", "slug": f"warn-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        team_id = team.json()["id"]
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": team_id, "name": "Warning chain"},
+            headers=auth_headers,
+        )
+        chain_id = chain.json()["id"]
+
+        disabled = await client.post(
+            "/rosters",
+            json={
+                "team_id": team_id,
+                "name": "Disabled roster",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-06-01",
+                "coverage_start_time": "00:00",
+                "coverage_end_time": "00:00",
+                "time_zone": "UTC",
+                "is_active": False,
+            },
+            headers=auth_headers,
+        )
+        empty = await client.post(
+            "/rosters",
+            json={
+                "team_id": team_id,
+                "name": "Empty roster",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-06-01",
+                "coverage_start_time": "00:00",
+                "coverage_end_time": "00:00",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        inactive_roster = await client.post(
+            "/rosters",
+            json={
+                "team_id": team_id,
+                "name": "Inactive roster",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-06-01",
+                "coverage_start_time": "00:00",
+                "coverage_end_time": "00:00",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        async with app.state.session_factory() as db:
+            inactive = await UserRepo.create(
+                db,
+                username="inactive-calendar",
+                email="inactive-calendar@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            inactive.is_active = False
+            await db.commit()
+        await client.post(
+            f"/rosters/{inactive_roster.json()['id']}/members",
+            json={"user_id": str(inactive.id), "position_index": 0},
+            headers=auth_headers,
+        )
+        for idx, (target_type, target_id) in enumerate(
+            [
+                ("roster", disabled.json()["id"]),
+                ("roster", empty.json()["id"]),
+                ("roster", inactive_roster.json()["id"]),
+                ("user", str(inactive.id)),
+            ]
+        ):
+            step = await client.post(
+                f"/escalation-chains/{chain_id}/steps",
+                json={
+                    "step_index": idx,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "timeout_seconds": 300,
+                },
+                headers=auth_headers,
+            )
+            assert step.status_code == 201, step.text
+
+        resp = await client.get(
+            f"/escalation-chains/{chain_id}/calendar?range=today&start=2026-06-05",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        statuses = [level["status"] for level in resp.json()["days"][0]["levels"]]
+        assert statuses == [
+            "disabled_roster",
+            "empty_roster",
+            "inactive_user",
+            "inactive_user",
+        ]
+        assert all(level["warnings"] for level in resp.json()["days"][0]["levels"])
+
+    async def test_escalation_chain_calendar_rbac(
+        self, client: AsyncClient, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "RBAC", "slug": f"rbac-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": team.json()["id"], "name": "RBAC chain"},
+            headers=auth_headers,
+        )
+        chain_id = chain.json()["id"]
+        for role in ("operator", "viewer"):
+            create = await client.post(
+                "/auth/users",
+                headers=auth_headers,
+                json={
+                    "username": f"calendar-{role}",
+                    "email": f"calendar-{role}@test.com",
+                    "role": role,
+                    "password": "temp-pass-123",
+                    "require_password_change": False,
+                },
+            )
+            assert create.status_code == 201
+            login = await client.post(
+                "/auth/login",
+                json={"username": f"calendar-{role}", "password": "temp-pass-123"},
+            )
+            headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+            resp = await client.get(
+                f"/escalation-chains/{chain_id}/calendar?start=2026-06-05",
+                headers=headers,
+            )
+            assert resp.status_code == (200 if role == "operator" else 403)
+
     async def test_priority_rule_crud(self, client: AsyncClient, auth_headers):
         resp = await client.post(
             "/priority-rules",

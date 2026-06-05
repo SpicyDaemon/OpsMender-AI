@@ -1507,6 +1507,7 @@ export async function bulkIncidentAction(
 
 import type {
   ChainWhereUsedResponse,
+  EscalationCalendarResponse,
   EscalationChainCreate,
   EscalationChainListResponse,
   EscalationChainResponse,
@@ -1595,6 +1596,19 @@ export async function listChainServices(
 ): Promise<ChainWhereUsedResponse> {
   return api.get<ChainWhereUsedResponse>(
     `/escalation-chains/${chainId}/services`,
+  );
+}
+
+export async function getEscalationChainCalendar(
+  chainId: string,
+  options?: { range?: "today" | "7d" | "30d" | "90d"; start?: string },
+): Promise<EscalationCalendarResponse> {
+  const qs = new URLSearchParams();
+  if (options?.range) qs.set("range", options.range);
+  if (options?.start) qs.set("start", options.start);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return api.get<EscalationCalendarResponse>(
+    `/escalation-chains/${chainId}/calendar${suffix}`,
   );
 }
 

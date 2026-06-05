@@ -59,6 +59,7 @@ import {
   deleteService,
   deleteTeam,
   getConfig,
+  getEscalationChainCalendar,
   getMyNotificationPreferences,
   linkServiceEscalationChain,
   listBotConnectors,
@@ -92,6 +93,8 @@ import {
 import type {
   BotConnectorResponse,
   ChainWhereUsedItem,
+  EscalationCalendarLevel,
+  EscalationCalendarResponse,
   EscalationChainResponse,
   EscalationStepResponse,
   EscalationTargetType,
@@ -1985,6 +1988,7 @@ function ChainsPanel({
     Record<string, EscalationStepResponse[]>
   >({});
   const [users, setUsers] = useState<UserResponse[]>([]);
+  const [calendarFor, setCalendarFor] = useState<EscalationChainResponse | null>(null);
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -2264,6 +2268,14 @@ function ChainsPanel({
                 <Button
                   variant="ghost"
                   size="sm"
+                  onClick={() => setCalendarFor(c)}
+                  title="View escalation calendar"
+                >
+                  <CalendarDays className="h-4 w-4" /> Calendar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => openEdit(c)}
                   title="Edit chain"
                 >
@@ -2335,7 +2347,245 @@ function ChainsPanel({
           </div>
         </div>
       </Modal>
+
+      {calendarFor && (
+        <EscalationCalendarModal
+          chain={calendarFor}
+          onClose={() => setCalendarFor(null)}
+        />
+      )}
     </section>
+  );
+}
+
+type CalendarRange = "today" | "7d" | "30d" | "90d";
+
+const CALENDAR_RANGES: { value: CalendarRange; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "7d", label: "7D" },
+  { value: "30d", label: "30D" },
+  { value: "90d", label: "90D" },
+];
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function fmtCalendarDate(value: string): string {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    weekday: "short",
+  });
+}
+
+function calendarStatusLabel(status: EscalationCalendarLevel["status"]): string {
+  switch (status) {
+    case "covered":
+      return "covered";
+    case "disabled_roster":
+      return "disabled roster";
+    case "empty_roster":
+      return "empty roster";
+    case "inactive_user":
+      return "inactive user";
+    case "deleted_user":
+      return "deleted user";
+    case "outside_coverage":
+      return "outside coverage";
+    case "unassigned":
+      return "unassigned";
+    default:
+      return "unknown";
+  }
+}
+
+function calendarStatusVariant(status: EscalationCalendarLevel["status"]) {
+  if (status === "covered") return "resolved";
+  if (status === "disabled_roster" || status === "empty_roster") return "closed";
+  if (status === "unknown" || status === "deleted_user") return "failed";
+  return "pending";
+}
+
+function targetTypeLabel(targetType: EscalationCalendarLevel["target_type"]): string {
+  if (targetType === "roster") return "Roster";
+  if (targetType === "user") return "User";
+  return "Team";
+}
+
+function EscalationCalendarModal({
+  chain,
+  onClose,
+}: {
+  chain: EscalationChainResponse;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [range, setRange] = useState<CalendarRange>("7d");
+  const [start, setStart] = useState(todayIsoDate);
+  const [data, setData] = useState<EscalationCalendarResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(
+    async (nextRange = range, nextStart = start) => {
+      setLoading(true);
+      try {
+        const resp = await getEscalationChainCalendar(chain.id, {
+          range: nextRange,
+          start: nextStart,
+        });
+        setData(resp);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [chain.id, range, start, toast],
+  );
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const setWindow = (nextRange: CalendarRange) => {
+    const nextStart = todayIsoDate();
+    setRange(nextRange);
+    setStart(nextStart);
+    void refresh(nextRange, nextStart);
+  };
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={`Escalation Calendar — ${chain.name}`}
+      maxWidth="max-w-5xl"
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2">
+          <p className="text-sm text-fg-primary">
+            This shows who will be contacted at each escalation level for this chain.
+          </p>
+          <p className="mt-1 text-xs text-fg-muted">
+            Coverage is resolved from escalation levels, rosters, rotation order, and active users.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg-base p-1">
+            {CALENDAR_RANGES.map((item) => (
+              <Button
+                key={item.value}
+                size="sm"
+                variant={range === item.value ? "primary" : "ghost"}
+                onClick={() => setWindow(item.value)}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setWindow(range)}
+            title="Jump back to today"
+          >
+            <CalendarDays className="h-4 w-4" /> Today
+          </Button>
+        </div>
+
+        {loading && (
+          <div className="rounded-lg border border-border-subtle bg-bg-base px-4 py-6 text-sm text-fg-secondary">
+            Loading escalation coverage...
+          </div>
+        )}
+
+        {!loading && data && data.days.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-base px-4 py-6 text-sm text-fg-secondary">
+            No calendar days returned for this range.
+          </div>
+        )}
+
+        {!loading && data && data.days.length > 0 && (
+          <div className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+            {data.days.map((day) => (
+              <div
+                key={day.date}
+                className="rounded-lg border border-border-subtle bg-bg-base px-3 py-3"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-fg-primary">
+                    {fmtCalendarDate(day.date)}
+                  </h3>
+                  <span className="text-xs text-fg-muted">{day.date}</span>
+                </div>
+
+                {day.levels.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-border-subtle px-3 py-3 text-xs text-fg-secondary">
+                    This chain has no escalation levels.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {day.levels.map((level) => (
+                      <div
+                        key={`${day.date}-${level.level}`}
+                        className="grid gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm md:grid-cols-[5rem_7rem_1fr_1fr_7rem]"
+                      >
+                        <div className="font-medium text-fg-primary">
+                          Level {level.level}
+                        </div>
+                        <div className="text-xs text-fg-muted">
+                          {targetTypeLabel(level.target_type)}
+                        </div>
+                        <div>
+                          <div className="text-fg-primary">{level.target_name}</div>
+                          <div className="text-xs text-fg-muted">
+                            {level.coverage_start && level.coverage_end
+                              ? `${level.coverage_start}-${level.coverage_end}`
+                              : "Always"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-fg-primary">
+                            {level.resolved_user_name ?? "Unassigned"}
+                          </div>
+                          {level.resolved_user_email && (
+                            <div className="truncate text-xs text-fg-muted">
+                              {level.resolved_user_email}
+                            </div>
+                          )}
+                          {level.warnings.length > 0 && (
+                            <div className="mt-1 space-y-0.5 text-xs text-status-high">
+                              {level.warnings.map((warning) => (
+                                <div key={warning}>{warning}</div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-start justify-start md:justify-end">
+                          <Badge variant={calendarStatusVariant(level.status)}>
+                            {calendarStatusLabel(level.status)}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && !data && (
+          <div className="rounded-lg border border-border-subtle bg-bg-base px-4 py-6 text-sm text-fg-secondary">
+            Calendar coverage could not be loaded.
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

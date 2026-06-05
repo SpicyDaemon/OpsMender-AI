@@ -116,6 +116,8 @@ Every escalation chain belongs to a team. Chains define levels:
 
 Services use their team's escalation behavior. Roster and user targets are supported in v1. Team-to-team fallback is a later enhancement.
 
+The Escalation Chain Calendar shows who is expected to respond at each escalation level over a selected time range. It is resolved from chain levels, roster schedules, rotation order, coverage windows, and active users.
+
 ---
 
 ## 6. Maintenance Windows

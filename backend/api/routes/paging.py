@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import uuid
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +28,9 @@ from backend.api.schemas import (
     OnCallRangeItem,
     OnCallRangeResponse,
     OnCallResolveResponse,
+    EscalationCalendarDay,
+    EscalationCalendarLevel,
+    EscalationCalendarResponse,
     UserNotificationPrefResponse,
     UserNotificationPrefUpdate,
     PriorityRuleCreate,
@@ -987,6 +991,207 @@ from backend.db.repos import (
 )
 
 
+_CALENDAR_RANGE_DAYS = {
+    "today": 1,
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+}
+
+
+def _user_display_name(user: User | None, fallback_id: uuid.UUID | None = None) -> str:
+    if user is None:
+        if fallback_id is None:
+            return "Deleted user"
+        return f"Deleted user {str(fallback_id)[:8]}"
+    full_name = " ".join(
+        part for part in (user.first_name, user.last_name) if part
+    ).strip()
+    return full_name or user.username or user.email
+
+
+def _parse_time(value: str) -> time:
+    parts = value.split(":")
+    if len(parts) < 2:
+        raise ValueError(f"Invalid time value: {value!r}")
+    return time(int(parts[0]), int(parts[1]))
+
+
+def _calendar_sample_at(roster, day: date) -> datetime:
+    """Return a timestamp inside the roster coverage window starting on *day*."""
+    tz = ZoneInfo(roster.time_zone)
+    start = _parse_time(roster.coverage_start_time)
+    end = _parse_time(roster.coverage_end_time)
+    start_at = datetime.combine(day, start, tzinfo=tz)
+    if start == end:
+        return start_at + timedelta(hours=12)
+    end_day = day if start < end else day + timedelta(days=1)
+    end_at = datetime.combine(end_day, end, tzinfo=tz)
+    return start_at + ((end_at - start_at) / 2)
+
+
+def _aware_utc(dt: datetime) -> datetime:
+    # SQLite drops tzinfo from aware datetimes; normalize for comparisons.
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+async def _resolve_roster_calendar_level(
+    *,
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    step,
+    day: date,
+    level: int,
+) -> EscalationCalendarLevel:
+    roster = await RosterRepo.get_by_id(db, org_id, step.target_id)
+    if roster is None:
+        return EscalationCalendarLevel(
+            level=level,
+            target_type="roster",
+            target_id=step.target_id,
+            target_name=f"Missing roster {str(step.target_id)[:8]}",
+            status="unknown",
+            warnings=["Roster target was not found."],
+        )
+
+    base = {
+        "level": level,
+        "target_type": "roster",
+        "target_id": step.target_id,
+        "target_name": roster.name,
+        "coverage_start": roster.coverage_start_time,
+        "coverage_end": roster.coverage_end_time,
+    }
+    if not roster.is_active:
+        return EscalationCalendarLevel(
+            **base,
+            status="disabled_roster",
+            warnings=["Roster is disabled."],
+        )
+
+    all_members = await RosterRepo.list_members(db, org_id, roster.id)
+    if not all_members:
+        return EscalationCalendarLevel(
+            **base,
+            status="empty_roster",
+            warnings=["Roster has no members."],
+        )
+
+    active_members = await RosterRepo.list_members(
+        db, org_id, roster.id, active_only=True
+    )
+    if not active_members:
+        return EscalationCalendarLevel(
+            **base,
+            status="inactive_user",
+            warnings=["Roster has no active members."],
+        )
+
+    overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster.id)
+    ctx = OnCallContext(
+        members=[
+            OnCallMember(user_id=m.user_id, position_index=m.position_index)
+            for m in active_members
+        ],
+        overrides=[
+            OnCallOverride(
+                covering_user_id=o.covering_user_id,
+                starts_at=_aware_utc(o.starts_at),
+                ends_at=_aware_utc(o.ends_at),
+            )
+            for o in overrides
+        ],
+        time_zone=roster.time_zone,
+        pattern=roster.pattern,
+        pattern_length=roster.pattern_length,
+        coverage_start_time=roster.coverage_start_time,
+        coverage_end_time=roster.coverage_end_time,
+        handoff_time=roster.handoff_time,
+        anchor_date=roster.anchor_date,
+    )
+    sample_at = _calendar_sample_at(roster, day)
+    resolved_user_id = on_call_at(ctx, sample_at)
+    if resolved_user_id is None:
+        return EscalationCalendarLevel(
+            **base,
+            status="outside_coverage",
+            warnings=["No active user resolves for this coverage window."],
+        )
+
+    resolved_user = await UserRepo.get_by_id(db, resolved_user_id)
+    if resolved_user is None or resolved_user.deleted_at is not None:
+        return EscalationCalendarLevel(
+            **base,
+            resolved_user_id=resolved_user_id,
+            resolved_user_name=_user_display_name(resolved_user, resolved_user_id),
+            resolved_user_email=resolved_user.email if resolved_user else None,
+            status="deleted_user",
+            warnings=["Resolved user no longer exists."],
+        )
+    if not resolved_user.is_active:
+        return EscalationCalendarLevel(
+            **base,
+            resolved_user_id=resolved_user.id,
+            resolved_user_name=_user_display_name(resolved_user),
+            resolved_user_email=resolved_user.email,
+            status="inactive_user",
+            warnings=["Resolved user is inactive."],
+        )
+
+    warnings: list[str] = []
+    if len(active_members) < len(all_members):
+        warnings.append("Inactive roster members were skipped.")
+    return EscalationCalendarLevel(
+        **base,
+        resolved_user_id=resolved_user.id,
+        resolved_user_name=_user_display_name(resolved_user),
+        resolved_user_email=resolved_user.email,
+        status="covered",
+        warnings=warnings,
+    )
+
+
+async def _resolve_user_calendar_level(
+    *,
+    db: AsyncSession,
+    step,
+    level: int,
+) -> EscalationCalendarLevel:
+    target_user = await UserRepo.get_by_id(db, step.target_id)
+    base = {
+        "level": level,
+        "target_type": "user",
+        "target_id": step.target_id,
+        "target_name": _user_display_name(target_user, step.target_id),
+    }
+    if target_user is None or target_user.deleted_at is not None:
+        return EscalationCalendarLevel(
+            **base,
+            resolved_user_id=step.target_id,
+            resolved_user_name=_user_display_name(target_user, step.target_id),
+            resolved_user_email=target_user.email if target_user else None,
+            status="deleted_user",
+            warnings=["User target was not found."],
+        )
+    if not target_user.is_active:
+        return EscalationCalendarLevel(
+            **base,
+            resolved_user_id=target_user.id,
+            resolved_user_name=_user_display_name(target_user),
+            resolved_user_email=target_user.email,
+            status="inactive_user",
+            warnings=["User target is inactive."],
+        )
+    return EscalationCalendarLevel(
+        **base,
+        resolved_user_id=target_user.id,
+        resolved_user_name=_user_display_name(target_user),
+        resolved_user_email=target_user.email,
+        status="covered",
+        warnings=[],
+    )
+
+
 @router.get(
     "/escalation-chains",
     response_model=EscalationChainListResponse,
@@ -1219,6 +1424,79 @@ async def reorder_escalation_steps(
     return EscalationStepListResponse(
         items=[EscalationStepResponse.model_validate(i) for i in items],
         total=len(items),
+    )
+
+
+@router.get(
+    "/escalation-chains/{chain_id}/calendar",
+    response_model=EscalationCalendarResponse,
+    summary="Resolve escalation-chain on-call coverage over a calendar range",
+)
+async def escalation_chain_calendar(
+    chain_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+    range_: str = Query(default="7d", alias="range", pattern="^(today|7d|30d|90d)$"),
+    start: date | None = Query(default=None),
+):
+    chain = await EscalationChainRepo.get_by_id(db, org_id, chain_id)
+    if chain is None:
+        raise HTTPException(status_code=404, detail="Chain not found")
+
+    span_days = _CALENDAR_RANGE_DAYS[range_]
+    start_day = start or datetime.now(timezone.utc).date()
+    end_day = start_day + timedelta(days=span_days - 1)
+    team = await TeamRepo.get_by_id(db, org_id, chain.team_id)
+    steps = await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
+
+    days: list[EscalationCalendarDay] = []
+    for offset in range(span_days):
+        day = start_day + timedelta(days=offset)
+        levels: list[EscalationCalendarLevel] = []
+        for idx, step in enumerate(steps, start=1):
+            if step.target_type == "roster":
+                levels.append(
+                    await _resolve_roster_calendar_level(
+                        db=db,
+                        org_id=org_id,
+                        step=step,
+                        day=day,
+                        level=idx,
+                    )
+                )
+            elif step.target_type == "user":
+                levels.append(
+                    await _resolve_user_calendar_level(
+                        db=db,
+                        step=step,
+                        level=idx,
+                    )
+                )
+            else:
+                levels.append(
+                    EscalationCalendarLevel(
+                        level=idx,
+                        target_type=step.target_type,
+                        target_id=step.target_id,
+                        target_name=f"Unsupported target {str(step.target_id)[:8]}",
+                        status="unknown",
+                        warnings=[
+                            "Team targets are planned for a later release.",
+                        ],
+                    )
+                )
+        days.append(EscalationCalendarDay(date=day, levels=levels))
+
+    return EscalationCalendarResponse(
+        chain_id=chain.id,
+        chain_name=chain.name,
+        team_id=chain.team_id,
+        team_name=team.name if team is not None else None,
+        start=start_day,
+        end=end_day,
+        range=range_,
+        days=days,
     )
 
 

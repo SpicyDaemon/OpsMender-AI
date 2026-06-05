@@ -2011,6 +2011,36 @@ class ChainWhereUsedResponse(BaseModel):
     total: int
 
 
+class EscalationCalendarLevel(BaseModel):
+    level: int
+    target_type: str
+    target_id: uuid.UUID
+    target_name: str
+    resolved_user_id: Optional[uuid.UUID] = None
+    resolved_user_name: Optional[str] = None
+    resolved_user_email: Optional[str] = None
+    coverage_start: Optional[str] = None
+    coverage_end: Optional[str] = None
+    status: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class EscalationCalendarDay(BaseModel):
+    date: date
+    levels: list[EscalationCalendarLevel]
+
+
+class EscalationCalendarResponse(BaseModel):
+    chain_id: uuid.UUID
+    chain_name: str
+    team_id: uuid.UUID
+    team_name: Optional[str] = None
+    start: date
+    end: date
+    range: str
+    days: list[EscalationCalendarDay]
+
+
 class IncidentPageResponse(BaseModel):
     id: uuid.UUID
     incident_id: uuid.UUID

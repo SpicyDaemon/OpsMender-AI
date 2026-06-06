@@ -152,7 +152,7 @@ export function TopBar({
   const pendingLabel = pending === null ? "?" : pending > 99 ? "99+" : String(pending);
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-elevated px-4">
+    <header className="relative z-40 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-elevated px-4">
       <div className="flex items-center">
         <button
           type="button"
@@ -293,7 +293,7 @@ export function TopBar({
               <ChevronDown size={14} className="text-fg-muted" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border-subtle bg-bg-panel shadow-lg">
+              <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border-subtle bg-bg-panel shadow-xl">
                 <div className="border-b border-border-subtle px-3 py-2.5">
                   <div className="flex items-center gap-2.5">
                     <Avatar user={user} size={32} />

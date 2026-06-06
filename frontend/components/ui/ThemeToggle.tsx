@@ -38,8 +38,8 @@ export function ThemeToggle({
             onClick={() => setMode(option)}
             aria-pressed={active}
             title={label}
-            className={`inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-              full ? "flex-1" : ""
+            className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              full ? "min-w-0 flex-1" : ""
             } ${
               active
                 ? "bg-accent text-white"

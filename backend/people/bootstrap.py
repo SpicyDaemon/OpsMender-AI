@@ -10,11 +10,18 @@ are both set, create:
 Runs once at API startup. If any user already exists, the function is a
 no-op — operators who later want to onboard a *new* admin do so through
 the invite flow.
+
+Development convenience: when ``OPSMENDER_DEPLOYMENT_MODE=development`` and no
+bootstrap env vars are set, fall back to a default ``admin`` / ``admin123``
+admin so the documented ``docker compose up`` dev flow logs in out of the box
+(matching ``scripts/dev_server.py`` and the README). Production mode never
+seeds a default admin — it requires explicit bootstrap vars.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import TYPE_CHECKING
 
@@ -31,6 +38,11 @@ logger = logging.getLogger(__name__)
 
 _USERNAME_RE = re.compile(r"[^a-z0-9_-]+")
 
+# Default dev admin — kept in sync with scripts/dev_server.py and the README.
+_DEV_ADMIN_USERNAME = "admin"
+_DEV_ADMIN_EMAIL = "admin@localhost"
+_DEV_ADMIN_PASSWORD = "admin123"  # noqa: S105 — development-only convenience default
+
 
 def _username_from_email(email: str) -> str:
     local = email.split("@", 1)[0].lower()
@@ -38,13 +50,24 @@ def _username_from_email(email: str) -> str:
     return cleaned[:150]
 
 
+def _is_development_mode() -> bool:
+    return (os.environ.get("OPSMENDER_DEPLOYMENT_MODE") or "").strip().lower() == "development"
+
+
 async def bootstrap_admin(
     session_factory: "async_sessionmaker",
     cfg: "PeopleConfig",
 ) -> None:
-    """Create the first admin from env vars when the system is empty."""
+    """Create the first admin when the system is empty.
 
-    if not cfg.bootstrap_configured:
+    Uses the explicit ``OPSMENDER_BOOTSTRAP_ADMIN_*`` env vars when configured;
+    otherwise, in development mode only, falls back to ``admin`` / ``admin123``
+    so the documented Docker dev flow works without hidden steps. Does nothing
+    when a user already exists, or when not configured outside development mode.
+    """
+
+    use_dev_default = not cfg.bootstrap_configured and _is_development_mode()
+    if not cfg.bootstrap_configured and not use_dev_default:
         return
 
     async with session_factory() as db:
@@ -57,15 +80,23 @@ async def bootstrap_admin(
             db, name="Main", slug="main"
         )
 
-        assert cfg.bootstrap_admin_email is not None
-        assert cfg.bootstrap_admin_password is not None
-        username = _username_from_email(cfg.bootstrap_admin_email)
+        if cfg.bootstrap_configured:
+            assert cfg.bootstrap_admin_email is not None
+            assert cfg.bootstrap_admin_password is not None
+            email = cfg.bootstrap_admin_email
+            password = cfg.bootstrap_admin_password
+            username = _username_from_email(email)
+        else:
+            # Development-only convenience default (matches dev_server.py).
+            email = _DEV_ADMIN_EMAIL
+            password = _DEV_ADMIN_PASSWORD
+            username = _DEV_ADMIN_USERNAME
 
         user = await UserRepo.create(
             db,
             username=username,
-            email=cfg.bootstrap_admin_email,
-            password_hash=hash_password(cfg.bootstrap_admin_password),
+            email=email,
+            password_hash=hash_password(password),
             role="admin",
             primary_org_id=org.id,
         )
@@ -74,9 +105,16 @@ async def bootstrap_admin(
         )
         await db.commit()
 
-        logger.info(
-            "Bootstrap admin created (username=%s, email=%s, org=%s)",
-            username,
-            cfg.bootstrap_admin_email,
-            org.slug,
-        )
+        if use_dev_default:
+            logger.info(
+                "Development bootstrap admin created (username=%s / default password). "
+                "Set OPSMENDER_BOOTSTRAP_ADMIN_EMAIL + _PASSWORD to override.",
+                username,
+            )
+        else:
+            logger.info(
+                "Bootstrap admin created (username=%s, email=%s, org=%s)",
+                username,
+                email,
+                org.slug,
+            )

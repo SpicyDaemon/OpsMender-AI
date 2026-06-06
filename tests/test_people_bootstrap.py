@@ -73,11 +73,35 @@ def test_smtp_send_swallows_smtp_exception():
 # ----- Bootstrap admin -----
 
 
-async def test_bootstrap_noop_when_env_unset(factory):
+async def test_bootstrap_noop_when_env_unset_in_production(factory, monkeypatch):
+    # Production mode + no bootstrap env vars → no default admin is seeded.
+    monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "production")
     cfg = PeopleConfig()  # bootstrap_admin_email = None
     await bootstrap_admin(factory, cfg)
     async with factory() as db:
         assert await UserRepo.list_all(db) == []
+
+
+async def test_bootstrap_dev_default_admin_when_env_unset(factory, monkeypatch):
+    # Development mode + no bootstrap env vars → seed admin / admin123 so the
+    # documented `docker compose up` dev flow logs in out of the box.
+    monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "development")
+    cfg = PeopleConfig()  # bootstrap not configured
+    await bootstrap_admin(factory, cfg)
+    async with factory() as db:
+        from backend.api.auth import verify_password
+
+        users = list(await UserRepo.list_all(db))
+        assert len(users) == 1
+        admin = users[0]
+        assert admin.username == "admin"
+        assert admin.email == "admin@localhost"
+        assert admin.role == "admin"
+        assert verify_password("admin123", admin.password_hash)
+    # Idempotent — a second startup does not create a duplicate.
+    await bootstrap_admin(factory, cfg)
+    async with factory() as db:
+        assert len(list(await UserRepo.list_all(db))) == 1
 
 
 async def test_bootstrap_creates_admin_and_default_org(factory):

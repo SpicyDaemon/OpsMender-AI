@@ -114,9 +114,11 @@ Four configurable surfaces drive the behavior under the loop above:
 |---|---|---|
 | **Incident Management** | Always | Dashboard, Incidents, Approvals |
 | **Paging & On-call** | Most operators | Teams, Escalation Chains, Services, Rosters, Maintenance Windows, Notifications |
-| **AI Agent** (Day-1 setup) | Always | Skills, Memories, MCP Servers, Models, Workflows, Agent Teams |
-| **Observe** | Operators | Environment Scans, Reliability, Activity |
+| **AI Agent** (Day-1 setup) | Always | Skills, Memories, MCP Servers, Models |
+| **Observe** | Operators | Reliability, Activity |
 | **Admin** | Admins | People, Workspace Settings, Config |
+
+Session Profiles (the saved AI-session node order, formerly "Workflows") live under **Config → Advanced** as advanced configuration; most users keep the default. Agent Teams (multi-agent reasoning) is deferred from the v1 dashboard — see [`docs/ROADMAP.md`](docs/ROADMAP.md) for what v1.0.0 includes vs. what's planned for v1.1 / v1.2 / v2.0.
 
 If you're new to OpsMender, work top-down: get one model + one MCP server + one skill definition working (`/dashboard/models`, `/dashboard/mcp-servers`, `/dashboard/skills`), then create a service under **Paging & On-call** and treat that service as the home for alert intake, priority, preferred MCP servers, and escalation setup.
 
@@ -139,7 +141,7 @@ Open **http://localhost:8000**.
 
 `.env.example` ships with `OPSMENDER_DEPLOYMENT_MODE=development`, which tells the API to accept the placeholder JWT secret as-is. The bundled Postgres container persists data in a named Docker volume; the app waits for `db` to be healthy, runs Alembic migrations, then binds Uvicorn to port 8000.
 
-> **First-time login:** Self-signup is closed. On a fresh database, sign in with `admin` / `admin123` (seeded by the dev path), or set `OPSMENDER_BOOTSTRAP_ADMIN_EMAIL` + `OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD` in `.env` before bringing the stack up — those become the first admin.
+> **First-time login:** Self-signup is closed. In **development mode** (the `.env.example` default), a fresh database is seeded with a default admin — sign in with `admin` / `admin123`. To use your own first admin instead (required for production), set `OPSMENDER_BOOTSTRAP_ADMIN_EMAIL` + `OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD` in `.env` before bringing the stack up — those become the first admin and the `admin`/`admin123` default is **not** created. Production mode never seeds a default admin.
 
 To stop and remove containers:
 
@@ -202,10 +204,10 @@ All other configuration (tier, log level, ingest rate limits, SMTP, SAML SP keyp
 1. **Models** — open `/dashboard/models`, click **Add model**, pick a provider, fill in fields (`Refresh catalog` will list available IDs once credentials resolve). Set one as default.
 2. **MCP servers** — open `/dashboard/mcp-servers`, click **Add server**, point at a stdio/SSE/HTTP MCP endpoint. Use **Test** to confirm connectivity. The Config → MCP Servers modal ships curated templates for common server shapes (Kubernetes, Postgres, GitHub Copilot MCP, generic HTTP/bearer/stdio).
 3. **Skills** — open `/dashboard/skills`, click **Import** to upload a `SKILL.md` (start from [`examples/SKILL.md`](examples/SKILL.md) for infra ops or [`examples/SKILL.app-incident.md`](examples/SKILL.app-incident.md) for app-layer incident response). The file classifies each MCP tool as `safe` / `caution` / `destructive` — the tier gate enforces these at runtime. Skills dropped into the local `skills/` directory are auto-imported on backend startup.
-4. **Services / Alert Intake** — open `/dashboard/paging/services`, create a service and a team, then use that service as the home for inbound alerts. v1 keeps the legacy `/dashboard/ingest-tokens` page working, but first-time setup should think in terms of a service-specific webhook URL with an embedded unguessable secret.
+4. **Services / Alert Intake** — open `/dashboard/paging/services`, create a service and a team, then use that service as the home for inbound alerts. Each service exposes its own intake webhook URL with an embedded unguessable secret. (The legacy ingest-token API remains for internal compatibility, but the standalone Ingest Tokens page was removed from the v1 UI — think in terms of the service intake URL.)
 5. **Paging** — attach a roster (on-call rotation), then attach a priority rule + escalation chain so paged incidents actually notify someone. Walkthrough: [docs/wiki/paging-guide.md](docs/wiki/paging-guide.md).
 6. **Notification channels** — configure workspace-level channels at `/dashboard/paging/notification-channels`, then have each operator set their personal routing preferences at `/dashboard/paging/my-notifications`.
-7. **People** — invite the rest of the team from `/dashboard/people`. Three roles: admin / operator / viewer. The first registered user is automatically admin.
+7. **People** — invite the rest of the team from `/dashboard/people` (or create users directly). Three roles: admin / operator / viewer. The first admin comes from the bootstrap step above (dev default or `OPSMENDER_BOOTSTRAP_ADMIN_*`), not self-signup — self-registration is closed.
 8. **(Optional) Tier** — `/dashboard/config` sets the runtime tier. Default `2` (safe operations only). Move to `1` (approval-gated execution) once your operators are confident with the audit trail.
 
 ### Health check

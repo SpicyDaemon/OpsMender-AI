@@ -1348,7 +1348,7 @@ class TestIncidents:
         await client.post(
             "/sessions",
             json={
-                "tier": 3,
+                "tier": 2,
                 "incident_id": other_incident.json()["id"],
             },
             headers=auth_headers,
@@ -1786,7 +1786,7 @@ class TestSessions:
         create_resp = await client.post(
             "/sessions",
             json={
-                "tier": 3,
+                "tier": 2,
             },
             headers=auth_headers,
         )
@@ -1794,7 +1794,7 @@ class TestSessions:
 
         resp = await client.get(f"/sessions/{sess_id}", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.json()["tier"] == 3
+        assert resp.json()["tier"] == 2
 
     async def test_get_session_not_found(self, client: AsyncClient, auth_headers):
         resp = await client.get(f"/sessions/{uuid.uuid4()}", headers=auth_headers)
@@ -1806,7 +1806,7 @@ class TestSessions:
     async def test_list_sessions_returns_all_for_org(
         self, client: AsyncClient, auth_headers
     ):
-        for tier in (1, 2, 3):
+        for tier in (0, 1, 2):
             await client.post(
                 "/sessions",
                 json={"tier": tier},
@@ -3184,7 +3184,7 @@ class TestAgentTeamProfiles:
         resp = await client.put(
             "/config",
             json={
-                "tier": 3,
+                "tier": 2,
                 "logging_level": "DEBUG",
                 "ingest_auto_start_enabled": True,
                 "ingest_auto_start_min_severity": "high",
@@ -3194,7 +3194,7 @@ class TestAgentTeamProfiles:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["tier"] == 3
+        assert data["tier"] == 2
         assert data["logging_level"] == "DEBUG"
         assert data["ingest_auto_start_enabled"] is True
         assert data["ingest_auto_start_min_severity"] == "high"

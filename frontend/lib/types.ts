@@ -797,11 +797,14 @@ export interface AgentTeamProfileUpsert {
 // Skills
 // ---------------------------------------------------------------------------
 
+export type SkillAssignment = "unassigned" | "global" | "server";
+
 export interface SkillResponse {
   id: string;
   name: string;
   description: string | null;
   mcp_server_id: string | null;
+  assignment: SkillAssignment;
   content_md: string;
   focus_areas: string[];
   created_at: string;
@@ -818,6 +821,7 @@ export interface SkillCreate {
   content_md: string;
   description?: string | null;
   mcp_server_id?: string | null;
+  assignment?: SkillAssignment;
 }
 
 export interface SkillUpdate {
@@ -825,6 +829,12 @@ export interface SkillUpdate {
   content_md: string;
   description?: string | null;
   mcp_server_id?: string | null;
+  assignment?: SkillAssignment;
+}
+
+export interface SkillTemplateResponse {
+  name: string;
+  content_md: string;
 }
 
 export interface SkillCloneRequest {

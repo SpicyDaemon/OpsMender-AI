@@ -587,3 +587,68 @@ class TestEnforcementFromDB:
 
     async def test_returns_none_when_empty(self, db: AsyncSession):
         assert await load_skill_for_mcp_server(db, TEST_ORG_ID, None) is None
+
+
+class TestMCPSkillStudio:
+    """New from Template, Markdown download, and Unassigned drafts (3-tier)."""
+
+    async def test_template_endpoint_returns_three_tier_template(
+        self, client, auth_headers
+    ):
+        resp = await client.get("/skills/template", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "content_md" in body and "name" in body
+        md = body["content_md"]
+        assert "Tier 0 — Autonomous" in md
+        assert "Tier 1 — Approval Required" in md
+        assert "Tier 2 — Advisory Only" in md
+
+    async def test_save_unassigned_then_download(self, client, auth_headers):
+        tmpl = (await client.get("/skills/template", headers=auth_headers)).json()
+        created = await client.post(
+            "/skills",
+            json={
+                "name": "draft-skill",
+                "content_md": tmpl["content_md"],
+                "assignment": "unassigned",
+            },
+            headers=auth_headers,
+        )
+        assert created.status_code == 201, created.text
+        skill = created.json()
+        assert skill["assignment"] == "unassigned"
+        assert skill["mcp_server_id"] is None
+
+        # Unassigned drafts are downloadable as Markdown.
+        dl = await client.get(f"/skills/{skill['id']}/download", headers=auth_headers)
+        assert dl.status_code == 200
+        assert dl.headers["content-type"].startswith("text/markdown")
+        assert "attachment" in dl.headers.get("content-disposition", "")
+        assert "Tier 2 — Advisory Only" in dl.text
+
+    async def test_assignment_round_trips_through_api(self, client, auth_headers):
+        tmpl = (await client.get("/skills/template", headers=auth_headers)).json()
+        created = await client.post(
+            "/skills",
+            json={"name": "global-skill", "content_md": tmpl["content_md"], "assignment": "global"},
+            headers=auth_headers,
+        )
+        assert created.status_code == 201
+        assert created.json()["assignment"] == "global"
+
+
+class TestSessionTierDefault:
+    async def test_session_defaults_to_tier_2_when_omitted(self, client, auth_headers):
+        resp = await client.post("/sessions", json={}, headers=auth_headers)
+        assert resp.status_code in (200, 201), resp.text
+        assert resp.json()["tier"] == 2
+
+    async def test_session_rejects_tier_3(self, client, auth_headers):
+        resp = await client.post("/sessions", json={"tier": 3}, headers=auth_headers)
+        assert resp.status_code == 422  # Tier 3 is no longer selectable
+
+    async def test_session_stores_selected_tier_0(self, client, auth_headers):
+        resp = await client.post("/sessions", json={"tier": 0}, headers=auth_headers)
+        assert resp.status_code in (200, 201)
+        assert resp.json()["tier"] == 0

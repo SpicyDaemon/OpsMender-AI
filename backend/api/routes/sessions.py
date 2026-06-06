@@ -49,6 +49,7 @@ from backend.db.repos import (
 from backend.mcp.client import list_tools as mcp_list_tools
 from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import loads as load_skill_def
+from backend.tiers.enforcement import normalize_tier
 from backend.tiers.sandbox import Tier0Sandbox
 from backend.bots.notifier import schedule_session_chat_event
 from backend.webhooks import schedule_session_event
@@ -149,7 +150,8 @@ async def create_session(
     session = await SessionRepo.create(
         db,
         org_id,
-        tier=body.tier,
+        # AI Autonomy Tier — default Tier 2 (Advisory) server-side; legacy 3 -> 2.
+        tier=normalize_tier(body.tier),
         incident_id=body.incident_id,
         workflow_profile_id=workflow_profile_id,
         agent_team_profile_id=agent_team_profile_id,

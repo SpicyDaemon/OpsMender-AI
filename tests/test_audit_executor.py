@@ -19,7 +19,10 @@ from backend.skills.parser import OperationClassification, SkillDefinition
 # ---------------------------------------------------------------------------
 
 SESSION_ID = "test-session-exec-001"
-TIER = 2
+# Tier 1 (Approval Required) is the lowest tier that auto-executes safe/caution
+# tools, so the "permitted" execution-path tests run here. Destructive/blocked
+# tests pin tier=2 (advisory) explicitly.
+TIER = 1
 
 
 def _skill_def() -> SkillDefinition:
@@ -209,7 +212,7 @@ class TestBlockedToolCall:
             tool_name="delete_pod",
             tool_parameters={"pod": "api-server"},
             session_id=SESSION_ID,
-            tier=TIER,
+            tier=2,  # advisory tier blocks destructive
             skill_def=_skill_def(),
             logger=audit_log,
         )
@@ -227,7 +230,7 @@ class TestBlockedToolCall:
             session=mock_session,
             tool_name="delete_pod",
             session_id=SESSION_ID,
-            tier=TIER,
+            tier=2,  # advisory tier blocks destructive
             skill_def=_skill_def(),
             logger=audit_log,
         )
@@ -241,7 +244,7 @@ class TestBlockedToolCall:
             session=mock_session,
             tool_name="delete_pod",
             session_id=SESSION_ID,
-            tier=TIER,
+            tier=2,  # advisory tier blocks destructive
             skill_def=_skill_def(),
             logger=audit_log,
         )
@@ -258,16 +261,16 @@ class TestBlockedToolCall:
             session=mock_session,
             tool_name="delete_pod",
             session_id=SESSION_ID,
-            tier=TIER,
+            tier=2,  # advisory tier blocks destructive
             skill_def=_skill_def(),
             logger=audit_log,
         )
         blocked = audit_log.read_all()[1]
         assert blocked.permitted is False
         assert blocked.block_reason is not None
+        reason = blocked.block_reason.lower()
         assert (
-            "destructive" in blocked.block_reason.lower()
-            or "deny" in blocked.block_reason.lower()
+            "destructive" in reason or "deny" in reason or "advisory" in reason
         )
 
     @pytest.mark.asyncio

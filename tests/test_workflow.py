@@ -411,8 +411,8 @@ class TestTierGate:
     """The tier gate is the most critical node — it MUST enforce the
     tier/skill matrix programmatically, not via LLM reasoning."""
 
-    def test_safe_action_permitted_at_tier_2(self):
-        gate = _build_tier_gate(tier=2, skill_def=_skill_def())
+    def test_safe_action_permitted_at_tier_1(self):
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def())
         state = _base_state(
             plan=[
                 {"tool_name": "get_pods", "tool_parameters": {"ns": "default"}},
@@ -422,8 +422,8 @@ class TestTierGate:
         assert len(result["approved_actions"]) == 1
         assert len(result["blocked_actions"]) == 0
 
-    def test_caution_action_permitted_at_tier_2(self):
-        gate = _build_tier_gate(tier=2, skill_def=_skill_def())
+    def test_caution_action_permitted_at_tier_1(self):
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def())
         state = _base_state(
             plan=[
                 {"tool_name": "scale_deployment", "tool_parameters": {"replicas": 3}},
@@ -432,6 +432,19 @@ class TestTierGate:
         result = gate(state)
         assert len(result["approved_actions"]) == 1
         assert len(result["blocked_actions"]) == 0
+
+    def test_tier_2_advisory_blocks_safe_and_caution(self):
+        # New model: Tier 2 is advisory — even safe/caution actions are blocked.
+        gate = _build_tier_gate(tier=2, skill_def=_skill_def())
+        state = _base_state(
+            plan=[
+                {"tool_name": "get_pods", "tool_parameters": {}},
+                {"tool_name": "scale_deployment", "tool_parameters": {}},
+            ]
+        )
+        result = gate(state)
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 2
 
     def test_destructive_action_blocked_at_tier_2(self):
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
@@ -468,7 +481,9 @@ class TestTierGate:
         assert result["blocked_actions"][0]["classification"] == "unknown"
 
     def test_mixed_actions_split_correctly(self):
-        gate = _build_tier_gate(tier=2, skill_def=_skill_def())
+        # At Tier 1: safe + caution auto-approve; destructive is blocked by the
+        # sync gate (it needs an approval service).
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def())
         state = _base_state(
             plan=[
                 {"tool_name": "get_pods", "tool_parameters": {}},
@@ -728,15 +743,15 @@ class TestFullGraphWithLLM:
                 return "[stub response]"
 
         llm = PlanningLLM()
-        graph = build_graph(tier=2, skill_def=_skill_def(), llm=llm)
+        graph = build_graph(tier=1, skill_def=_skill_def(), llm=llm)
         result = graph.invoke(
             {
                 "session_id": "e2e-llm-002",
-                "tier": 2,
+                "tier": 1,
                 "incident_description": "test",
             }
         )
-        # get_pods approved, delete_pod blocked at tier 2
+        # Tier 1: get_pods (safe) approved, delete_pod (destructive) blocked
         assert len(result["approved_actions"]) == 1
         assert len(result["blocked_actions"]) == 1
         assert result["blocked_actions"][0]["tool_name"] == "delete_pod"
@@ -772,6 +787,7 @@ class TestExecuteWithMCP:
         node = _build_execute(session, _skill_def(), logger)
         result = await node(
             _base_state(
+                tier=1,
                 approved_actions=[
                     {"tool_name": "get_pods", "tool_parameters": {"ns": "default"}}
                 ],
@@ -793,6 +809,7 @@ class TestExecuteWithMCP:
         node = _build_execute(session, _skill_def(), logger)
         result = await node(
             _base_state(
+                tier=1,
                 approved_actions=[
                     {"tool_name": "get_pods", "tool_parameters": {}},
                     {
@@ -813,6 +830,7 @@ class TestExecuteWithMCP:
         node = _build_execute(session, _skill_def(), logger)
         result = await node(
             _base_state(
+                tier=1,
                 approved_actions=[{"tool_name": "get_pods", "tool_parameters": {}}],
             )
         )
@@ -838,6 +856,7 @@ class TestExecuteWithMCP:
         node = _build_execute(session, _skill_def(), logger)
         await node(
             _base_state(
+                tier=1,
                 approved_actions=[{"tool_name": "get_pods", "tool_parameters": {}}],
             )
         )
@@ -884,7 +903,7 @@ class TestFullGraphWithMCP:
         logger = AuditLogger(tmp_path / "audit.jsonl")
 
         graph = build_graph(
-            tier=2,
+            tier=1,
             skill_def=_skill_def(),
             llm=PlanningLLM(),
             mcp_session=session,
@@ -893,12 +912,12 @@ class TestFullGraphWithMCP:
         result = await graph.ainvoke(
             {
                 "session_id": "e2e-mcp-001",
-                "tier": 2,
+                "tier": 1,
                 "incident_description": "pods crashing",
             }
         )
 
-        # get_pods approved and executed, delete_pod blocked
+        # Tier 1: get_pods (safe) approved + executed, delete_pod (destructive) blocked
         assert len(result["approved_actions"]) == 1
         assert len(result["blocked_actions"]) == 1
         assert len(result["tool_calls"]) == 1

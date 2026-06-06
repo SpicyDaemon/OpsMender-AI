@@ -24,11 +24,13 @@ from backend.api.schemas import (
     SkillCreate,
     SkillListResponse,
     SkillResponse,
+    SkillTemplateResponse,
     SkillUpdate,
 )
 from backend.db.models import Skill, User
 from backend.db.repos import MCPServerRepo, SkillRepo
 from backend.skills.parser import loads as parse_skill
+from backend.skills.template import DEFAULT_TEMPLATE_NAME, build_skill_template
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -52,6 +54,7 @@ def _to_response(skill: Skill) -> SkillResponse:
         name=skill.name,
         description=skill.description,
         mcp_server_id=skill.mcp_server_id,
+        assignment=getattr(skill, "assignment", "global") or "global",
         content_md=skill.content_md,
         focus_areas=_extract_focus_areas(skill.content_md),
         created_at=skill.created_at,
@@ -104,6 +107,25 @@ async def list_skills(
 
 
 @router.get(
+    "/template",
+    response_model=SkillTemplateResponse,
+    summary="Get a fresh 3-tier MCP Skill template (New from Template)",
+)
+async def get_skill_template(
+    user: User = Depends(require_role("admin")),
+):
+    """Return a structured 3-tier skill policy template (Tier 0 / 1 / 2).
+
+    The caller loads it into the MCP Skill Studio editor, edits, and saves it
+    (as Unassigned by default). Not persisted by this call.
+    """
+    return SkillTemplateResponse(
+        name=DEFAULT_TEMPLATE_NAME,
+        content_md=build_skill_template(),
+    )
+
+
+@router.get(
     "/{skill_id}",
     response_model=SkillResponse,
     summary="Get a saved skill",
@@ -121,6 +143,34 @@ async def get_skill(
             detail="Skill not found",
         )
     return _to_response(skill)
+
+
+@router.get(
+    "/{skill_id}/download",
+    summary="Download a skill as a Markdown file (any assignment, incl. unassigned)",
+)
+async def download_skill(
+    skill_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    skill = await SkillRepo.get_by_id(db, org_id, skill_id)
+    if skill is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Skill not found",
+        )
+    safe_name = "".join(
+        c if c.isalnum() or c in ("-", "_") else "-" for c in skill.name
+    ).strip("-") or "skill"
+    return Response(
+        content=skill.content_md,
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}.md"'
+        },
+    )
 
 
 @router.post(
@@ -145,6 +195,7 @@ async def create_skill(
             content_md=body.content_md,
             description=body.description,
             mcp_server_id=body.mcp_server_id,
+            assignment=body.assignment,
         )
         await db.commit()
         await db.refresh(skill)
@@ -187,6 +238,7 @@ async def update_skill(
             content_md=body.content_md,
             description=body.description,
             mcp_server_id=body.mcp_server_id,
+            assignment=body.assignment,
         )
         await db.commit()
         if updated is None:
@@ -255,6 +307,7 @@ async def clone_skill(
             content_md=source.content_md,
             description=description,
             mcp_server_id=body.mcp_server_id,
+            assignment=body.assignment,
         )
         await db.commit()
         await db.refresh(clone)
@@ -278,6 +331,7 @@ async def import_skill(
     name: str | None = Form(default=None),
     description: str | None = Form(default=None),
     mcp_server_id: uuid.UUID | None = Form(default=None),
+    assignment: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
@@ -312,6 +366,7 @@ async def import_skill(
             content_md=content_md,
             description=description or f"Imported from {file.filename or 'upload'}",
             mcp_server_id=mcp_server_id,
+            assignment=assignment,
         )
         await db.commit()
         await db.refresh(skill)

@@ -24,6 +24,7 @@ from backend.api.schemas import (
 )
 from backend.config_loader import Config, set_env_path
 from backend.logging_config import configure_logging
+from backend.tiers.enforcement import normalize_tier
 from backend.db.models import User
 from backend.db.repos import (
     IngestTokenRepo,
@@ -124,7 +125,7 @@ async def get_config(
         )
 
     overrides = await _read_runtime_config(db, org_id)
-    tier = int(overrides.get("tier", cfg.tiers.get("default", 2)))
+    tier = normalize_tier(int(overrides.get("tier", cfg.tiers.get("default", 2))))
     logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
     ingest_auto_start_enabled = overrides.get(
         "ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled)
@@ -261,7 +262,7 @@ async def update_config(
             detail=str(exc),
         )
     overrides = await _read_runtime_config(db, org_id)
-    tier = int(overrides.get("tier", cfg.tiers.get("default", 2)))
+    tier = normalize_tier(int(overrides.get("tier", cfg.tiers.get("default", 2))))
     logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
     ingest_auto_start_enabled = overrides.get(
         "ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled)

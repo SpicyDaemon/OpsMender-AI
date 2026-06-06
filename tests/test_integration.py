@@ -78,7 +78,8 @@ class TestSimulatedEndToEnd:
     """Full pipeline with mocked MCP + StubLLM — validates wiring."""
 
     async def test_full_pipeline_with_safe_actions(self, tmp_path):
-        """Safe actions at tier 2 should be approved and executed."""
+        """Safe actions at Tier 1 should be approved and executed (no approval
+        needed for safe; advisory Tier 2 would block them)."""
         audit_path = tmp_path / "audit.jsonl"
         skill_def = load_skill_def("examples/SKILL.md")
 
@@ -97,10 +98,10 @@ class TestSimulatedEndToEnd:
             ]
         )
         logger = AuditLogger(audit_path)
-        logger.log_session_start("integration-test-001", 2)
+        logger.log_session_start("integration-test-001", 1)
 
         graph = build_graph(
-            tier=2,
+            tier=1,
             skill_def=skill_def,
             llm=llm,
             mcp_session=session,
@@ -110,12 +111,12 @@ class TestSimulatedEndToEnd:
         result = await graph.ainvoke(
             {
                 "session_id": "integration-test-001",
-                "tier": 2,
+                "tier": 1,
                 "incident_description": "Pods crashing in namespace default",
             }
         )
 
-        logger.log_session_end("integration-test-001", 2)
+        logger.log_session_end("integration-test-001", 1)
 
         # Assertions on workflow state
         assert result["status"] == "completed"
@@ -141,8 +142,10 @@ class TestSimulatedEndToEnd:
         assert "tool_call_start" in types
         assert "tool_call_end" in types
 
-    async def test_destructive_actions_blocked_at_tier_2(self, tmp_path):
-        """Destructive actions at tier 2 should be blocked by tier gate."""
+    async def test_all_actions_blocked_at_tier_2_advisory(self, tmp_path):
+        """Tier 2 is advisory only — every planned remediation action is
+        blocked by the tier gate (read-only observation happens earlier in the
+        observe node, not the plan/execute phase)."""
         audit_path = tmp_path / "audit.jsonl"
         skill_def = load_skill_def("examples/SKILL.md")
 
@@ -182,17 +185,17 @@ class TestSimulatedEndToEnd:
         )
 
         assert result["status"] == "completed"
-        assert len(result["approved_actions"]) == 1  # get_pods
-        assert len(result["blocked_actions"]) == 1  # delete_pod
-        assert result["blocked_actions"][0]["tool_name"] == "delete_pod"
-        assert result["blocked_actions"][0]["classification"] == "destructive"
+        # Advisory tier: nothing from the plan executes — both actions blocked.
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 2
+        blocked_tools = {a["tool_name"] for a in result["blocked_actions"]}
+        assert blocked_tools == {"get_pods", "delete_pod"}
 
-        # Only the safe action was executed
-        assert len(result["tool_calls"]) == 1
-        assert result["tool_calls"][0]["tool_name"] == "get_pods"
+        # No remediation actions were executed under advisory tier.
+        assert len(result["tool_calls"]) == 0
 
     async def test_tier_3_blocks_everything(self, tmp_path):
-        """Tier 3 is advise-only — all actions should be blocked."""
+        """Legacy Tier 3 normalizes to advisory Tier 2 — all actions blocked."""
         audit_path = tmp_path / "audit.jsonl"
         skill_def = load_skill_def("examples/SKILL.md")
 

@@ -671,6 +671,12 @@ class Skill(Base):
     mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("mcp_servers.id", ondelete="SET NULL"), nullable=True
     )
+    # Assignment: "server" (bound to mcp_server_id) | "global" (fallback for all
+    # servers without a specific skill) | "unassigned" (a saved draft — editable
+    # and downloadable, but NEVER injected into AI sessions or used as fallback).
+    assignment: Mapped[str] = mapped_column(
+        String(20), default="global", nullable=False
+    )
     content_md: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

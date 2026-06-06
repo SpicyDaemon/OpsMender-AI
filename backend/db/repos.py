@@ -1654,6 +1654,23 @@ class MCPServerOAuthTokenRepo:
 
 class SkillRepo:
     @staticmethod
+    def _resolve_assignment(
+        assignment: str | None, mcp_server_id: uuid.UUID | None
+    ) -> tuple[str, uuid.UUID | None]:
+        """Normalize (assignment, mcp_server_id) into a consistent pair.
+
+        A server-bound skill keeps its mcp_server_id; global/unassigned skills
+        never carry one. When assignment is omitted, infer it from
+        mcp_server_id (set -> server, else global) for backward compatibility.
+        """
+        if assignment is None:
+            assignment = "server" if mcp_server_id is not None else "global"
+        if assignment == "server":
+            return "server", mcp_server_id
+        # global / unassigned never bind to a server.
+        return assignment, None
+
+    @staticmethod
     async def create(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -1662,12 +1679,17 @@ class SkillRepo:
         content_md: str,
         description: str | None = None,
         mcp_server_id: uuid.UUID | None = None,
+        assignment: str | None = None,
     ) -> Skill:
+        assignment, mcp_server_id = SkillRepo._resolve_assignment(
+            assignment, mcp_server_id
+        )
         skill = Skill(
             org_id=org_id,
             name=name,
             description=description,
             mcp_server_id=mcp_server_id,
+            assignment=assignment,
             content_md=content_md,
         )
         db.add(skill)
@@ -1733,18 +1755,20 @@ class SkillRepo:
     async def get_for_mcp_server(
         db: AsyncSession, org_id: uuid.UUID, mcp_server_id: uuid.UUID | None
     ) -> Skill | None:
-        """Return the most relevant skill for a given MCP server.
+        """Return the effective skill for a given MCP server.
 
-        Falls back to a global skill (``mcp_server_id IS NULL``) when no
-        server-specific skill exists. Returns ``None`` if no skill matches.
+        Precedence: a server-specific skill (``mcp_server_id`` match) wins;
+        otherwise the global-fallback skill (``assignment == 'global'``). A
+        skill assigned ``unassigned`` is a draft and is **never** returned —
+        it must not be injected into AI sessions. Returns ``None`` if neither
+        a server-specific nor a global skill exists.
         """
         if mcp_server_id is not None:
             stmt = (
                 select(Skill)
                 .where(Skill.org_id == org_id)
-                .where(Skill.org_id == org_id)
-                .where(Skill.org_id == org_id)
                 .where(Skill.mcp_server_id == mcp_server_id)
+                .where(Skill.assignment != "unassigned")
                 .order_by(Skill.created_at)
                 .limit(1)
             )
@@ -1755,9 +1779,8 @@ class SkillRepo:
         stmt = (
             select(Skill)
             .where(Skill.org_id == org_id)
-            .where(Skill.org_id == org_id)
-            .where(Skill.org_id == org_id)
             .where(Skill.mcp_server_id.is_(None))
+            .where(Skill.assignment == "global")
             .order_by(Skill.created_at)
             .limit(1)
         )
@@ -1774,11 +1797,13 @@ class SkillRepo:
         content_md: str,
         description: str | None = None,
         mcp_server_id: uuid.UUID | None = None,
+        assignment: str | None = None,
     ) -> Skill | None:
+        assignment, mcp_server_id = SkillRepo._resolve_assignment(
+            assignment, mcp_server_id
+        )
         stmt = (
             update(Skill)
-            .where(Skill.org_id == org_id)
-            .where(Skill.org_id == org_id)
             .where(Skill.org_id == org_id)
             .where(Skill.id == skill_id)
             .values(
@@ -1786,6 +1811,7 @@ class SkillRepo:
                 content_md=content_md,
                 description=description,
                 mcp_server_id=mcp_server_id,
+                assignment=assignment,
                 updated_at=datetime.now(timezone.utc),
             )
         )

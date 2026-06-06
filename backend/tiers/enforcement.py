@@ -22,33 +22,58 @@ class EnforcementResult:
     reversible: bool = False
 
 
+# AI Autonomy Tiers (3-tier model):
+#   Tier 0 — Autonomous       (may execute remediation, incl. destructive,
+#                              within skill policy / deny lists / sandbox floor)
+#   Tier 1 — Approval Required (safe/caution auto; destructive routed to the
+#                              approval gate; unknown denied)
+#   Tier 2 — Advisory Only     (DEFAULT — no write/remediation actions execute;
+#                              read-only observation still happens in the
+#                              observe node, which runs before this gate)
+#
+# Legacy Tier 3 (advise-only) is remapped to Tier 2 (see ``check`` + migration).
+_ADVISORY_REASON = (
+    "Tier 2 is advisory only — no remediation actions execute "
+    "(read-only analysis and recommendations only)"
+)
+
 # Rows: classification → {tier: (permitted, reason)}
 _MATRIX: dict[str, dict[int, tuple[bool, str]]] = {
     "safe": {
-        0: (True, "safe operation — permitted at Tier 0"),
-        1: (True, "safe operation — permitted at Tier 1"),
-        2: (True, "safe operation — permitted at Tier 2"),
-        3: (False, "Tier 3 is advise-only — agent cannot execute"),
+        0: (True, "safe operation — permitted at Tier 0 (autonomous)"),
+        1: (True, "safe operation — permitted at Tier 1 (approval required)"),
+        2: (False, _ADVISORY_REASON),
     },
     "caution": {
-        0: (True, "caution operation — permitted at Tier 0"),
-        1: (True, "caution operation — permitted at Tier 1"),
-        2: (True, "caution operation — permitted at Tier 2"),
-        3: (False, "Tier 3 denies caution operations"),
+        0: (True, "caution operation — permitted at Tier 0 (autonomous)"),
+        1: (True, "caution operation — permitted at Tier 1 (approval required)"),
+        2: (False, _ADVISORY_REASON),
     },
     "destructive": {
-        0: (True, "destructive operation — permitted at Tier 0 (sandbox)"),
+        0: (True, "destructive operation — permitted at Tier 0 (autonomous, sandbox floor)"),
         1: (True, "destructive operation — permitted at Tier 1 (requires approval)"),
-        2: (False, "Tier 2 denies destructive operations"),
-        3: (False, "Tier 3 denies destructive operations"),
+        2: (False, _ADVISORY_REASON),
     },
     "unknown": {
         0: (False, "unknown operation — denied (not in skill definition)"),
         1: (False, "unknown operation — denied (not in skill definition)"),
-        2: (False, "unknown operation — denied (not in skill definition)"),
-        3: (False, "unknown operation — denied (not in skill definition)"),
+        2: (False, _ADVISORY_REASON),
     },
 }
+
+
+def normalize_tier(tier: int) -> int:
+    """Map any tier value to a valid 3-tier value.
+
+    Legacy Tier 3 (advise-only) collapses into Tier 2 (advisory only). Any
+    out-of-range value is clamped to the safest tier (2 — advisory), never to
+    a more permissive tier.
+    """
+    if tier == 3:
+        return 2
+    if tier in (0, 1, 2):
+        return tier
+    return 2
 
 
 def check(
@@ -59,10 +84,9 @@ def check(
     """Check whether *tool_name* is permitted at the given *tier*.
 
     This is a hard programmatic check — it cannot be bypassed by agent
-    reasoning.
+    reasoning. Legacy Tier 3 is normalized to Tier 2 (advisory).
     """
-    if tier not in (0, 1, 2, 3):
-        raise ValueError(f"Invalid tier: {tier} (must be 0-3)")
+    tier = normalize_tier(tier)
 
     classification = skill_def.classify(tool_name)
     permitted, reason = _MATRIX[classification][tier]

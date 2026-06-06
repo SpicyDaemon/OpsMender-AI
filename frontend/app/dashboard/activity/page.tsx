@@ -207,7 +207,6 @@ export default function ActivityPage() {
             { value: "0", label: "Tier 0" },
             { value: "1", label: "Tier 1" },
             { value: "2", label: "Tier 2" },
-            { value: "3", label: "Tier 3" },
           ],
           valueOf: (entry) => String(entry.tier),
         },

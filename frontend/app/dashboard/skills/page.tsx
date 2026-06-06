@@ -3,16 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
+  Download,
   FileText,
   FileUp,
   Pencil,
   Plus,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import {
   cloneSkill,
   createSkill,
   deleteSkill,
+  getSkillTemplate,
   importSkill,
   listMCPServers,
   listSkills,
@@ -20,6 +23,7 @@ import {
 } from "@/lib/api";
 import type {
   MCPServerResponse,
+  SkillAssignment,
   SkillResponse,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
@@ -37,6 +41,7 @@ import { CardSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
 const GLOBAL_SERVER = "__global";
+const UNASSIGNED_FILTER = "__unassigned";
 
 const TEMPLATE_SKILL = `---
 version: "1"
@@ -67,16 +72,34 @@ function fmtDate(iso: string) {
 type FormState = {
   name: string;
   description: string;
-  mcpServerId: string;
+  // "unassigned" | "global" | <mcp server id>
+  assignment: string;
   content: string;
 };
 
-function toFormState(skill: SkillResponse | null): FormState {
+// Map the form's assignment value to the API's {assignment, mcp_server_id}.
+function resolveAssignment(value: string): {
+  assignment: SkillAssignment;
+  mcp_server_id: string | null;
+} {
+  if (value === "unassigned") return { assignment: "unassigned", mcp_server_id: null };
+  if (value === "global") return { assignment: "global", mcp_server_id: null };
+  return { assignment: "server", mcp_server_id: value };
+}
+
+function assignmentFormValue(skill: SkillResponse | null): string {
+  if (!skill) return "unassigned"; // new skills start as drafts
+  if (skill.assignment === "server" && skill.mcp_server_id) return skill.mcp_server_id;
+  if (skill.assignment === "global") return "global";
+  return "unassigned";
+}
+
+function toFormState(skill: SkillResponse | null, content?: string): FormState {
   return {
     name: skill?.name ?? "",
     description: skill?.description ?? "",
-    mcpServerId: skill?.mcp_server_id ?? "",
-    content: skill?.content_md ?? TEMPLATE_SKILL,
+    assignment: assignmentFormValue(skill),
+    content: content ?? skill?.content_md ?? TEMPLATE_SKILL,
   };
 }
 
@@ -84,25 +107,28 @@ function SkillModal({
   open,
   skill,
   servers,
+  initialContent,
   onClose,
   onSaved,
 }: {
   open: boolean;
   skill: SkillResponse | null;
   servers: MCPServerResponse[];
+  /** Prefill content (e.g. from "New from Template") when creating a new skill. */
+  initialContent?: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const [form, setForm] = useState<FormState>(toFormState(skill));
+  const [form, setForm] = useState<FormState>(toFormState(skill, initialContent));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (open) {
-      setForm(toFormState(skill));
+      setForm(toFormState(skill, initialContent));
       setError("");
     }
-  }, [open, skill]);
+  }, [open, skill, initialContent]);
 
   if (!open) return null;
 
@@ -119,11 +145,13 @@ function SkillModal({
     setSaving(true);
     setError("");
     try {
+      const { assignment, mcp_server_id } = resolveAssignment(form.assignment);
       const payload = {
         name: form.name.trim(),
         content_md: form.content,
         description: form.description.trim() || null,
-        mcp_server_id: form.mcpServerId || null,
+        mcp_server_id,
+        assignment,
       };
       if (skill) {
         await updateSkill(skill.id, payload);
@@ -158,21 +186,27 @@ function SkillModal({
             />
           </div>
           <div>
-            <Label htmlFor="skill-mcp">MCP server</Label>
+            <Label htmlFor="skill-mcp">Assignment</Label>
             <Select
               id="skill-mcp"
-              value={form.mcpServerId}
+              value={form.assignment}
               onChange={(e) =>
-                setForm({ ...form, mcpServerId: e.target.value })
+                setForm({ ...form, assignment: e.target.value })
               }
             >
-              <option value="">Global (fallback for all servers)</option>
+              <option value="unassigned">Unassigned (draft — not used by sessions)</option>
+              <option value="global">Global (fallback for all servers)</option>
               {servers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
               ))}
             </Select>
+            <p className="mt-1 text-xs text-fg-muted">
+              Unassigned skills are saved drafts: editable and downloadable, but
+              never injected into AI sessions. A specific server takes
+              precedence over the Global fallback.
+            </p>
           </div>
         </div>
 
@@ -420,6 +454,7 @@ export default function SkillsPage() {
   const [cloning, setCloning] = useState<SkillResponse | null>(null);
   const [showClone, setShowClone] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [templateContent, setTemplateContent] = useState<string | undefined>(undefined);
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -449,6 +484,7 @@ export default function SkillsPage() {
 
   const serverFilterOptions = useMemo(
     () => [
+      { value: UNASSIGNED_FILTER, label: "Unassigned" },
       { value: GLOBAL_SERVER, label: "Global" },
       ...servers.map((server) => ({
         value: server.id,
@@ -471,7 +507,32 @@ export default function SkillsPage() {
 
   function openCreate() {
     setEditing(null);
+    setTemplateContent(undefined);
     setShowEdit(true);
+  }
+
+  async function handleNewFromTemplate() {
+    try {
+      const tmpl = await getSkillTemplate();
+      setEditing(null);
+      setTemplateContent(tmpl.content_md);
+      setShowEdit(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load template");
+    }
+  }
+
+  function handleDownload(skill: SkillResponse) {
+    const safe = skill.name.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "skill";
+    const blob = new Blob([skill.content_md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safe}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
   function openEdit(skill: SkillResponse) {
     setEditing(skill);
@@ -494,10 +555,12 @@ export default function SkillsPage() {
               <span className="font-medium text-fg-primary">
                 {skill.name}
               </span>
-              {skill.mcp_server_id ? (
+              {skill.assignment === "server" && skill.mcp_server_id ? (
                 <Badge variant="in_progress">
                   {serverNameById.get(skill.mcp_server_id) ?? "server"}
                 </Badge>
+              ) : skill.assignment === "unassigned" ? (
+                <Badge variant="closed">unassigned</Badge>
               ) : (
                 <Badge variant="default">global</Badge>
               )}
@@ -514,22 +577,31 @@ export default function SkillsPage() {
       },
       {
         id: "mcp_server",
-        label: "MCP server",
+        label: "Assignment",
         accessor: (skill) =>
-          skill.mcp_server_id
+          skill.assignment === "server" && skill.mcp_server_id
             ? serverNameById.get(skill.mcp_server_id) ?? skill.mcp_server_id
-            : "Global",
+            : skill.assignment === "unassigned"
+              ? "Unassigned"
+              : "Global",
         cell: (skill) => (
           <span className="text-sm text-fg-secondary">
-            {skill.mcp_server_id
+            {skill.assignment === "server" && skill.mcp_server_id
               ? serverNameById.get(skill.mcp_server_id) ?? skill.mcp_server_id
-              : "Global fallback"}
+              : skill.assignment === "unassigned"
+                ? "Unassigned (draft)"
+                : "Global fallback"}
           </span>
         ),
         sortable: true,
         filterChips: {
           options: serverFilterOptions,
-          valueOf: (skill) => skill.mcp_server_id ?? GLOBAL_SERVER,
+          valueOf: (skill) =>
+            skill.assignment === "server" && skill.mcp_server_id
+              ? skill.mcp_server_id
+              : skill.assignment === "unassigned"
+                ? UNASSIGNED_FILTER
+                : GLOBAL_SERVER,
         },
       },
       {
@@ -590,13 +662,18 @@ export default function SkillsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Skills"
-        subtitle="Operator-owned skill definitions. Each MCP server can have its own skill; a global skill acts as the fallback."
+        title="MCP Skills"
+        subtitle="MCP Skill Studio — create, edit, assign, and download skill policies. MCP Skills guide the AI; the backend tier gate enforces what can actually run."
         actions={
           canEdit ? (
-            <Button variant="secondary" onClick={() => setShowImport(true)}>
-              <FileUp size={14} /> Import .md
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => setShowImport(true)}>
+                <FileUp size={14} /> Import .md
+              </Button>
+              <Button onClick={handleNewFromTemplate}>
+                <Sparkles size={14} /> New from Template
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -607,19 +684,19 @@ export default function SkillsPage() {
           title="No skills yet"
           description={
             canEdit
-              ? "Skills classify MCP tool calls as safe, caution, or destructive. Import a SKILL.md file or author one from scratch."
-              : "Ask an admin to import or create a SKILL.md file."
+              ? "MCP Skills define how the AI should use tools for each autonomy tier — action order, allow lists, approval-required actions, deny lists, and environment rules. Start from the 3-tier template."
+              : "Ask an admin to import or create an MCP Skill."
           }
-          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/skills-guide.md"
-          learnMoreLabel="Skills guide"
+          learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/mcp-skills.md"
+          learnMoreLabel="MCP Skills guide"
           action={
             canEdit ? (
               <div className="flex items-center gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setShowImport(true)}>
                   <FileUp size={14} /> Import .md
                 </Button>
-                <Button size="sm" onClick={openCreate}>
-                  <Plus size={14} /> New skill
+                <Button size="sm" onClick={handleNewFromTemplate}>
+                  <Sparkles size={14} /> New from Template
                 </Button>
               </div>
             ) : undefined
@@ -635,14 +712,27 @@ export default function SkillsPage() {
           searchPlaceholder="Search skill, description, focus area, or server…"
           toolbarRight={
             canEdit ? (
-              <Button size="sm" onClick={openCreate}>
-                <Plus size={14} /> New skill
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={handleNewFromTemplate}>
+                  <Sparkles size={14} /> New from Template
+                </Button>
+                <Button size="sm" onClick={openCreate}>
+                  <Plus size={14} /> New skill
+                </Button>
+              </div>
             ) : undefined
           }
-          rowActions={(skill) =>
-            canEdit ? (
-              <div className="flex justify-end gap-2">
+          rowActions={(skill) => (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleDownload(skill)}
+                title="Download as Markdown"
+              >
+                <Download size={14} /> Download
+              </Button>
+              {canEdit && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -650,6 +740,8 @@ export default function SkillsPage() {
                 >
                   <Pencil size={14} /> Edit
                 </Button>
+              )}
+              {canEdit && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -657,6 +749,8 @@ export default function SkillsPage() {
                 >
                   <Copy size={14} /> Clone
                 </Button>
+              )}
+              {canEdit && (
                 <Button
                   variant="danger"
                   size="sm"
@@ -664,9 +758,9 @@ export default function SkillsPage() {
                 >
                   <Trash2 size={14} />
                 </Button>
-              </div>
-            ) : undefined
-          }
+              )}
+            </div>
+          )}
         />
       )}
 
@@ -674,6 +768,7 @@ export default function SkillsPage() {
         open={showEdit}
         skill={editing}
         servers={servers}
+        initialContent={templateContent}
         onClose={() => setShowEdit(false)}
         onSaved={load}
       />

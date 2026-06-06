@@ -32,6 +32,13 @@ describe("Sidebar nav model", () => {
     expect(hrefs).toContain("/dashboard/paging/services");
   });
 
+  it("labels the skills surface 'MCP Skills'", () => {
+    const skillsItem = buildNavGroups(false)
+      .flatMap((g) => g.items)
+      .find((i) => i.href === "/dashboard/skills");
+    expect(skillsItem?.label).toBe("MCP Skills");
+  });
+
   it("operator does NOT see admin/global config items", () => {
     const hrefs = visibleHrefs("operator");
     for (const adminOnly of [

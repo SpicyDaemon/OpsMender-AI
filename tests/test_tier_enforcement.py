@@ -46,13 +46,18 @@ class TestCheck:
     def test_safe_permitted_tier_1(self, skill_def):
         assert check("get_pods", 1, skill_def).permitted is True
 
-    def test_safe_permitted_tier_2(self, skill_def):
-        assert check("get_pods", 2, skill_def).permitted is True
+    def test_safe_denied_tier_2_advisory(self, skill_def):
+        # New model: Tier 2 is advisory only — no remediation executes.
+        r = check("get_pods", 2, skill_def)
+        assert r.permitted is False
+        assert "advisory" in r.reason
 
-    def test_safe_denied_tier_3(self, skill_def):
+    def test_tier_3_remaps_to_advisory_tier_2(self, skill_def):
+        # Legacy Tier 3 normalizes to Tier 2 (advisory): same deny behaviour.
         r = check("get_pods", 3, skill_def)
         assert r.permitted is False
-        assert "advise-only" in r.reason
+        assert r.tier == 2
+        assert "advisory" in r.reason
 
     # --- Caution operations ---
     def test_caution_permitted_tier_0(self, skill_def):
@@ -61,12 +66,13 @@ class TestCheck:
     def test_caution_permitted_tier_1(self, skill_def):
         assert check("scale_deployment", 1, skill_def).permitted is True
 
-    def test_caution_permitted_tier_2(self, skill_def):
-        assert check("scale_deployment", 2, skill_def).permitted is True
+    def test_caution_denied_tier_2_advisory(self, skill_def):
+        assert check("scale_deployment", 2, skill_def).permitted is False
 
-    def test_caution_denied_tier_3(self, skill_def):
+    def test_caution_tier_3_remaps_to_advisory(self, skill_def):
         r = check("scale_deployment", 3, skill_def)
         assert r.permitted is False
+        assert r.tier == 2
 
     # --- Destructive operations ---
     def test_destructive_permitted_tier_0(self, skill_def):
@@ -81,7 +87,7 @@ class TestCheck:
         r = check("delete_pod", 2, skill_def)
         assert r.permitted is False
 
-    def test_destructive_denied_tier_3(self, skill_def):
+    def test_destructive_tier_3_remaps_to_advisory(self, skill_def):
         assert check("delete_pod", 3, skill_def).permitted is False
 
     # --- Unknown operations ---
@@ -91,15 +97,19 @@ class TestCheck:
             assert r.permitted is False
             assert r.classification == "unknown"
 
-    # --- Invalid tier ---
-    def test_invalid_tier_raises(self, skill_def):
-        with pytest.raises(ValueError, match="Invalid tier"):
-            check("get_pods", 5, skill_def)
+    # --- Tier normalization (3-tier model) ---
+    def test_out_of_range_tier_clamps_to_advisory(self, skill_def):
+        # Any out-of-range tier clamps to the safest tier (2 — advisory), never
+        # to a more permissive tier. No exception is raised.
+        r = check("get_pods", 5, skill_def)
+        assert r.tier == 2
+        assert r.permitted is False
 
 
 class TestCheckAndExplain:
     def test_permit_message(self, skill_def):
-        msg = check_and_explain("get_pods", 2, skill_def)
+        # Tier 0 permits a safe read; message reflects the PERMIT decision.
+        msg = check_and_explain("get_pods", 0, skill_def)
         assert msg.startswith("[PERMIT]")
         assert "get_pods" in msg
 
@@ -196,8 +206,9 @@ class TestTier0SandboxFloor:
         assert r.permitted is True
         assert r.reversible is True
 
-    def test_reversibility_gate_does_not_affect_higher_tiers(self):
-        """Tier 1/2 ignore reversibility (Tier 0 floor only)."""
+    def test_reversibility_gate_does_not_affect_tier_1(self):
+        """Tier 1 ignores reversibility (the Tier 0 floor only). Tier 2 is
+        advisory regardless of reversibility."""
         sd = SkillDefinition(
             version="1",
             environment="test",
@@ -208,4 +219,5 @@ class TestTier0SandboxFloor:
             ],
         )
         assert check("rollout_restart", 1, sd).permitted is True
-        assert check("rollout_restart", 2, sd).permitted is True
+        # Tier 2 is advisory — caution actions never execute.
+        assert check("rollout_restart", 2, sd).permitted is False

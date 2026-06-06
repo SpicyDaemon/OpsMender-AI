@@ -14,7 +14,7 @@
 
 ## What is OpsMender
 
-OpsMender is a self-hosted AI incident-response framework. It connects AI agents to your infrastructure via **Model Context Protocol (MCP) servers** that you provide, then enforces a **four-tier permission model** so the agent can only do what you allow. Operators classify each tool as `safe`, `caution`, or `destructive` in a `SKILL.md` file; the tier gate is enforced programmatically — the agent cannot reason its way past it.
+OpsMender is a self-hosted AI incident-response framework. It connects AI agents to your infrastructure via **Model Context Protocol (MCP) servers** that you provide, then enforces a **three-tier AI autonomy model** (Autonomous / Approval Required / Advisory Only) so the agent can only do what you allow. Operators classify each tool as `safe`, `caution`, or `destructive` in an MCP Skill; the tier gate is enforced programmatically — the agent cannot reason its way past it.
 
 A single team installs OpsMender, invites their on-call operators, connects a model, connects MCP servers, defines what's safe vs destructive, wires up ingest from their monitoring stack, and from then on every paged incident walks the same loop: **alert → AI → ack → fix → resolve** — with a full audit trail and an authored postmortem at the end.
 
@@ -23,7 +23,7 @@ A single team installs OpsMender, invites their on-call operators, connects a mo
 > **Simple by default. Enterprise-ready underneath.** Spin OpsMender up as a single-workspace self-hosted tool with email + admin invites — multi-tenant, SSO, SAML, and host-based domain isolation stay in the codebase and turn on when you need them, not before.
 
 - **MCP-first** — every infrastructure action goes through an MCP server the operator provides. No native integrations locked to one cloud or tool.
-- **Tiered autonomy** — four tiers from advice-only (Tier 3) to fully autonomous (Tier 0). Tier 0 has a sandbox, hard time limits, and automatic rollback.
+- **Tiered AI autonomy** — three tiers: Tier 0 Autonomous, Tier 1 Approval Required, Tier 2 Advisory Only (the default). Tier 0 has a sandbox, hard time limits, and automatic rollback.
 - **Human in the loop** — Tier 1 pauses the workflow on destructive actions and requires explicit approval from an operator or admin.
 - **Programmatic tier gate** — enforced in code, not by prompt. The agent cannot reason its way past it.
 - **Org-owned skill definitions** — a single `SKILL.md` classifies every operation as `safe`, `caution`, or `destructive`. Your call, not ours.
@@ -60,8 +60,8 @@ Every paged incident walks the same five stages.
    │     (auto_resolve / notify / page / escalate_immediate).       │
    │     LangGraph workflow runs the tier-gated session in          │
    │     parallel — Tier 0 fixes autonomously, Tier 1 pauses on     │
-   │     destructive actions, Tier 2 stays read-only, Tier 3        │
-   │     advises only.                                              │
+   │     destructive actions for approval, Tier 2 (default) is      │
+   │     advisory only.                                             │
    │                                                                │
    │  3. OPERATOR ACKS                                              │
    │     Page mode → escalation chain fires step 0; on-call user    │
@@ -305,14 +305,27 @@ Each recipe wires secrets through the cloud's native secret manager (Secrets Man
 
 ---
 
-## Tier system
+## AI Autonomy Tiers
 
-| Tier | Mode | Destructive Actions |
-|------|------|---------------------|
-| 3 | Advisory only | AI does not execute anything; human executes manually |
-| 2 | Safe operations only | Blocked; AI recommends and human executes manually |
-| 1 | Approved execution | Allowed only after human approval, then AI executes |
-| 0 | Experimental autonomous | Allowed with no approval; non-production/sandbox only |
+The **AI Autonomy Tier** controls how much the AI agent may do during an incident
+session. It is **separate** from incident priority (P0–P3) and user role
+(Admin/Operator/Viewer). The default is **Tier 2 — Advisory Only**.
+
+| Tier | Mode | What the AI may do |
+|------|------|--------------------|
+| **0** | **Autonomous** | May execute remediation automatically — including rollbacks, restarts, failovers, and destructive ops — **but only within MCP Skill policy, deny lists, MCP permissions, and backend guardrails.** Most autonomous, not unlimited. |
+| **1** | **Approval Required** | May investigate and propose actions; safe/allow-listed actions run, destructive/high-risk actions pause for operator approval, deny-listed actions never run. |
+| **2** | **Advisory Only** *(default)* | Analysis, recommendations, runbooks, and read-only observation only. **No write/remediation actions execute.** |
+
+> **Skills guide the AI. The backend tier gate enforces what can actually run.**
+> The tier gate is a hard programmatic check in `backend/tiers/enforcement.py` —
+> the agent cannot reason its way past it. Unknown actions are never silently
+> allowed (denied at every tier). See [MCP Skills](docs/wiki/mcp-skills.md).
+
+Operators may override the default tier when starting a session; selecting Tier 0
+shows a strong red warning. The selected tier is recorded on the session and in
+the audit/activity log. (Legacy installs that stored a fourth "Tier 3 — advise-only"
+value are automatically remapped to Tier 2.)
 
 ### Tier 1 approval flow
 

@@ -44,6 +44,7 @@ from backend.llm.base import LLM
 from backend.llm.factory import create_llm
 from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import SkillDefinition, load as load_skill_def, loads as load_skill_def_text
+from backend.tiers.enforcement import normalize_tier
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.bots.notifier import schedule_session_chat_event
 from backend.webhooks import schedule_session_event
@@ -513,9 +514,12 @@ async def _run_session_workflow_inner(
         )
 
         incident_description = _build_incident_description(incident, pending_messages)
+        # Normalize the stored tier to the 3-tier model (legacy Tier 3 -> 2)
+        # so the gate, sandbox, and logs all use the effective autonomy tier.
+        effective_tier = normalize_tier(int(session.tier))
         initial_state = {
             "session_id": str(session_id),
-            "tier": int(session.tier),
+            "tier": effective_tier,
             "incident_description": incident_description,
             "incident": _incident_payload(incident),
             "preferred_mcp_servers": preferred_mcp_server_names,
@@ -542,7 +546,7 @@ async def _run_session_workflow_inner(
         }
 
         graph_kwargs: dict[str, Any] = {
-            "tier": int(session.tier),
+            "tier": effective_tier,
             "skill_def": skill_def,
             "llm": llm,
             "approval_service": approval_service,
@@ -574,7 +578,7 @@ async def _run_session_workflow_inner(
                 graph_kwargs["agent_roles"] = list(agent_team_profile.roles or [])
 
         server_name = None if selected_server is None else selected_server.name
-        if int(session.tier) == 0:
+        if effective_tier == 0:
             graph_kwargs["tier0_time_config"] = Tier0TimeConfig(
                 max_session_seconds=config.tier0.max_session_seconds,
                 max_node_seconds=config.tier0.max_node_seconds,

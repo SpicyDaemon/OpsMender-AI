@@ -283,22 +283,32 @@ export function TierSection({
   return (
     <Section
       title="Runtime Config"
-      description="Global tier controls the maximum action tier allowed without explicit override."
+      description="The Default AI Autonomy Tier is the starting tier for new incident sessions. Operators may override it per session."
     >
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <Label htmlFor="cfg-tier">Global Tier</Label>
+          <Label htmlFor="cfg-tier">Default AI Autonomy Tier</Label>
           <Select
             id="cfg-tier"
             value={tier}
             onChange={(e) => setTier(e.target.value)}
             disabled={!canEdit}
           >
-            <option value="0">Tier 0 — Autonomous rollback-safe only (time-limited)</option>
-            <option value="1">Tier 1 — Approval gate (destructive ops need approval)</option>
-            <option value="2">Tier 2 — Safe + caution only (no destructive ops)</option>
-            <option value="3">Tier 3 — Advise-only (no execution)</option>
+            <option value="0">Tier 0 — Autonomous</option>
+            <option value="1">Tier 1 — Approval Required</option>
+            <option value="2">Tier 2 — Advisory Only</option>
           </Select>
+          <p className="mt-1.5 text-xs text-fg-muted">
+            AI autonomy tier controls what the agent can do during incident
+            sessions. It is separate from incident priority and user role.
+          </p>
+          {tier === "0" && (
+            <p className="mt-1.5 text-xs font-medium text-status-critical">
+              Tier 0 allows autonomous remediation, including destructive
+              operations when allowed by MCP Skill policy. Use only when you
+              trust the connected MCP server, skill policy, and environment.
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor="cfg-log">Log Level</Label>

@@ -756,6 +756,7 @@ import type {
   SkillCreate,
   SkillListResponse,
   SkillResponse,
+  SkillTemplateResponse,
   SkillUpdate,
 } from "./types";
 
@@ -766,6 +767,10 @@ export async function listSkills(params?: {
   if (params?.mcp_server_id) qs.set("mcp_server_id", params.mcp_server_id);
   const q = qs.toString();
   return api.get<SkillListResponse>(`/skills${q ? `?${q}` : ""}`);
+}
+
+export async function getSkillTemplate(): Promise<SkillTemplateResponse> {
+  return api.get<SkillTemplateResponse>("/skills/template");
 }
 
 export async function getSkill(id: string): Promise<SkillResponse> {

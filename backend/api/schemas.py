@@ -331,7 +331,9 @@ class SessionCreate(BaseModel):
     incident_id: Optional[uuid.UUID] = None
     workflow_profile_id: Optional[uuid.UUID] = None
     agent_team_profile_id: Optional[uuid.UUID] = None
-    tier: int = Field(..., ge=0, le=3)
+    # AI Autonomy Tier: 0 Autonomous · 1 Approval Required · 2 Advisory Only.
+    # Defaults to Tier 2 (Advisory Only) server-side when omitted.
+    tier: int = Field(default=2, ge=0, le=2)
     model_provider: Optional[str] = None
     model_id: Optional[str] = None
     initial_briefing: Optional[str] = Field(default=None, max_length=10000)
@@ -497,7 +499,8 @@ class SetupChecklistResponse(BaseModel):
 
 
 class ConfigUpdate(BaseModel):
-    tier: Optional[int] = Field(default=None, ge=0, le=3)
+    # Default AI Autonomy Tier: 0 Autonomous · 1 Approval Required · 2 Advisory.
+    tier: Optional[int] = Field(default=None, ge=0, le=2)
     logging_level: Optional[str] = Field(
         default=None,
         pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
@@ -621,11 +624,15 @@ class MCPServerTestResponse(BaseModel):
     tool_names: list[str] = Field(default_factory=list)
 
 
+_ASSIGNMENT_PATTERN = "^(unassigned|global|server)$"
+
+
 class SkillResponse(BaseModel):
     id: uuid.UUID
     name: str
     description: Optional[str]
     mcp_server_id: Optional[uuid.UUID]
+    assignment: str = "global"
     content_md: str
     focus_areas: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -644,6 +651,7 @@ class SkillCreate(BaseModel):
     content_md: str = Field(..., min_length=1)
     description: Optional[str] = None
     mcp_server_id: Optional[uuid.UUID] = None
+    assignment: Optional[str] = Field(default=None, pattern=_ASSIGNMENT_PATTERN)
 
 
 class SkillUpdate(BaseModel):
@@ -651,12 +659,21 @@ class SkillUpdate(BaseModel):
     content_md: str = Field(..., min_length=1)
     description: Optional[str] = None
     mcp_server_id: Optional[uuid.UUID] = None
+    assignment: Optional[str] = Field(default=None, pattern=_ASSIGNMENT_PATTERN)
 
 
 class SkillCloneRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     mcp_server_id: Optional[uuid.UUID] = None
     description: Optional[str] = None
+    assignment: Optional[str] = Field(default=None, pattern=_ASSIGNMENT_PATTERN)
+
+
+class SkillTemplateResponse(BaseModel):
+    """A fresh 3-tier MCP Skill template (not yet saved)."""
+
+    name: str
+    content_md: str
 
 
 class ProviderModelsResponse(BaseModel):

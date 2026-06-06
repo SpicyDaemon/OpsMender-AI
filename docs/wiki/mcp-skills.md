@@ -122,6 +122,45 @@ hardcodes prod/staging/dev.
 
 ---
 
+## Generic command tools (high-risk)
+
+Generic execution tools run **arbitrary** commands, so the tool name alone does
+not bound what they can do. OpsMender detects them automatically (e.g. `shell`,
+`bash`, `run_command`, `kubectl`, `aws_cli`, `gcloud`, `az`, `terraform`, `sql`,
+`python`, `node`, and `*_exec` / `run_*` / `*_cli` patterns) and guards them
+conservatively:
+
+- **Tier 2** — blocked.
+- **Tier 1** — **requires operator approval** before execution.
+- **Tier 0** — blocked (there is no command-pattern allowlisting yet, so a
+  generic tool cannot run autonomously).
+
+To opt a **narrowly-scoped** wrapper out of the guardrail, list it in the skill
+with `allow_generic: true` (normal tier/classification rules then apply). Prefer
+explicit `deny: true` entries for anything dangerous.
+
+```yaml
+operations:
+  - tool: shell
+    deny: true              # blocked at every tier (deny always wins)
+  - tool: kubectl_get_only  # a scoped read-only wrapper you trust
+    classification: safe
+    allow_generic: true
+```
+
+## Action classification & deny lists
+
+Each tool resolves to a classification that drives the gate: `safe` (read-only /
+low-risk) · `caution` (reversible writes) · `destructive` (high-risk /
+irreversible) · `unknown` (unclassified — **always denied**, never silently
+allowed) · generic-execution (auto-detected). An entry with `deny: true` is
+blocked at **every tier — deny always wins**, even over `allow_generic` or a
+`safe` classification, and even at Tier 0.
+
+Conservative defaults: if **no skill** resolves for a server (no server-specific
+and no global), unclassified write/remediation actions are treated as unknown
+and **denied**.
+
 ## Backend enforcement (hard safety)
 
 The tier gate runs before any tool/action execution and knows: the selected

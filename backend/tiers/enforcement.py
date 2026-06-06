@@ -9,17 +9,24 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.skills.parser import SkillDefinition, loads
+from backend.tiers.generic_tools import is_generic_execution_tool
 
 
 @dataclasses.dataclass(frozen=True)
 class EnforcementResult:
-    """Result of a tier enforcement check."""
+    """Result of a tier enforcement check.
+
+    ``requires_approval`` is True when the action is permitted *only* after
+    human approval (Tier 1 destructive, or a generic-execution tool at Tier 1).
+    The tier gate routes these through the approval service before execution.
+    """
 
     permitted: bool
-    classification: str  # "safe" | "caution" | "destructive" | "unknown"
+    classification: str  # "safe" | "caution" | "destructive" | "unknown" | "generic_execution"
     tier: int
     reason: str
     reversible: bool = False
+    requires_approval: bool = False
 
 
 # AI Autonomy Tiers (3-tier model):
@@ -85,14 +92,56 @@ def check(
 
     This is a hard programmatic check — it cannot be bypassed by agent
     reasoning. Legacy Tier 3 is normalized to Tier 2 (advisory).
+
+    Enforcement order: deny-list (always wins) → generic-execution guardrail →
+    tier/classification matrix → Tier 0 sandbox floor.
     """
     tier = normalize_tier(tier)
-
     classification = skill_def.classify(tool_name)
-    permitted, reason = _MATRIX[classification][tier]
     reversible = skill_def.is_reversible(tool_name)
 
-    # Tier 0 sandbox floor: only rollback-safe ops execute.
+    # 1. Deny-list ALWAYS wins, at every tier.
+    if skill_def.is_denied(tool_name):
+        return EnforcementResult(
+            permitted=False,
+            classification=classification if classification != "unknown" else "destructive",
+            tier=tier,
+            reason="deny-list policy match — blocked at every tier",
+            reversible=reversible,
+        )
+
+    # 2. Generic command-execution guardrail. A generic tool's name does not
+    #    bound what it can do, so treat conservatively unless the skill opts it
+    #    out with allow_generic. (No command-payload allowlisting yet.)
+    if is_generic_execution_tool(tool_name) and not skill_def.allows_generic(tool_name):
+        if tier == 1:
+            return EnforcementResult(
+                permitted=True,
+                classification="generic_execution",
+                tier=tier,
+                reason="generic execution tool — requires operator approval at Tier 1",
+                reversible=reversible,
+                requires_approval=True,
+            )
+        # Tier 0 (autonomous) and Tier 2 (advisory) both block generic tools.
+        reason = (
+            "generic execution tool blocked at Tier 2 (advisory only)"
+            if tier == 2
+            else "generic execution tool blocked at Tier 0 — no command-pattern "
+            "allowlisting (set allow_generic in the MCP Skill to override)"
+        )
+        return EnforcementResult(
+            permitted=False,
+            classification="generic_execution",
+            tier=tier,
+            reason=reason,
+            reversible=reversible,
+        )
+
+    # 3. Tier/classification matrix.
+    permitted, reason = _MATRIX[classification][tier]
+
+    # 4. Tier 0 sandbox floor: only rollback-safe ops execute.
     if tier == 0 and permitted:
         violation = skill_def.tier0_violation_reason(tool_name)
         if violation is not None:
@@ -102,12 +151,16 @@ def check(
                 "(sandbox floor)"
             )
 
+    # Destructive at Tier 1 is permitted only via the approval gate.
+    requires_approval = tier == 1 and classification == "destructive" and permitted
+
     return EnforcementResult(
         permitted=permitted,
         classification=classification,
         tier=tier,
         reason=reason,
         reversible=reversible,
+        requires_approval=requires_approval,
     )
 
 

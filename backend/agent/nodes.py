@@ -558,14 +558,13 @@ def _build_tier_gate(
             for action in proposed:
                 tool_name = action.get("tool_name", "")
                 enforcement = tier_check(tool_name, tier, skill_def)
-                if (
-                    tier == 1
-                    and enforcement.classification == "destructive"
-                    and enforcement.permitted
-                ):
+                if enforcement.requires_approval:
                     blocked.append({
                         **action,
-                        "block_reason": "Tier 1 destructive operations require an approval service",
+                        "block_reason": (
+                            f"{enforcement.classification} action requires an "
+                            "approval service (none configured)"
+                        ),
                         "classification": enforcement.classification,
                     })
                     continue
@@ -600,11 +599,7 @@ def _build_tier_gate(
             tool_name = action.get("tool_name", "")
             enforcement = tier_check(tool_name, tier, skill_def)
 
-            if (
-                tier == 1
-                and enforcement.classification == "destructive"
-                and enforcement.permitted
-            ):
+            if enforcement.requires_approval:
                 resolution = await approval_service.request_and_wait(
                     session_id=session_id,
                     action=action,

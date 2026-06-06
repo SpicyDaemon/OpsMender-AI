@@ -47,9 +47,20 @@ class OperationClassification:
     notes: Optional[str] = None
     reversible: Optional[bool] = None
     compensating_inverse: Optional[str] = None
+    # ``deny: true`` makes this an explicit deny-list entry — the tier gate
+    # blocks it at EVERY tier (deny always wins), regardless of classification.
+    deny: bool = False
+    # ``allow_generic: true`` opts a generic command-execution tool OUT of the
+    # generic-tool guardrail (operator explicitly accepted the risk); normal
+    # tier/classification rules then apply. No effect on non-generic tools.
+    allow_generic: bool = False
 
     def __post_init__(self) -> None:
         valid = ("safe", "caution", "destructive")
+        # A deny-list entry need not carry a classification — the gate blocks it
+        # regardless. Default such entries to "destructive" (the safest label).
+        if self.deny and self.classification in ("", "unknown", None):
+            object.__setattr__(self, "classification", "destructive")
         if self.classification not in valid:
             raise ValueError(
                 f"Operation '{self.tool}': classification must be one of {valid}, "
@@ -101,6 +112,17 @@ class SkillDefinition:
         """
         op = self._match(tool_name)
         return op.classification if op is not None else "unknown"
+
+    def is_denied(self, tool_name: str) -> bool:
+        """Return True when *tool_name* matches an explicit deny-list entry."""
+        op = self._match(tool_name)
+        return bool(op is not None and op.deny)
+
+    def allows_generic(self, tool_name: str) -> bool:
+        """Return True when an exact policy entry opts this generic tool out of
+        the generic-tool guardrail (``allow_generic: true``)."""
+        op = self._match(tool_name)
+        return bool(op is not None and op.allow_generic and not op.deny)
 
     def is_reversible(self, tool_name: str) -> bool:
         """Return True if *tool_name* is declared reversible.
@@ -186,6 +208,8 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
                 notes=entry.get("notes"),
                 reversible=reversible,
                 compensating_inverse=entry.get("compensating_inverse"),
+                deny=bool(entry.get("deny", False)),
+                allow_generic=bool(entry.get("allow_generic", False)),
             )
         )
 

@@ -48,6 +48,12 @@ operations:
   - tool: delete_*
     classification: destructive
     notes: "Example destructive op — Tier 0 only within policy; Tier 1 approval."
+  # Generic command tools are auto-guarded, but listing them as explicit deny
+  # entries makes the policy self-documenting. deny: true wins at every tier.
+  - tool: shell
+    deny: true
+  - tool: run_command
+    deny: true
 focus_areas: []
 ---
 
@@ -57,6 +63,20 @@ focus_areas: []
 >
 > AI Autonomy Tier controls how much the agent may do during a session. It is
 > **separate** from incident priority (P0–P3) and user role (Admin/Operator/Viewer).
+
+> ⚠️ **Generic command tools are high-risk.** Tools such as `shell`, `bash`,
+> `run_command`, `kubectl`, `aws_cli`, `gcloud`, `az`, `terraform`, `sql`,
+> `python`, or `node` run arbitrary commands, so their name alone does not bound
+> what they can do. OpsMender **denies them by default**: blocked at Tier 0 and
+> Tier 2, and **approval-required at Tier 1**. Only opt a narrowly-scoped wrapper
+> out with `allow_generic: true`, and prefer explicit deny entries
+> (`deny: true`) for anything dangerous. Deny always wins.
+
+Action classification (drives the tier gate): `safe` (read-only / low-risk) ·
+`caution` (reversible writes) · `destructive` (high-risk / irreversible) ·
+`unknown` (unclassified — always denied) · generic-execution (auto-detected
+arbitrary-command tools — conservatively guarded). `deny: true` blocks an entry
+at every tier.
 
 ## Metadata
 

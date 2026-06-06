@@ -231,7 +231,15 @@ function SkillModal({
           />
           <p className="mt-1 text-xs text-fg-secondary">
             YAML front-matter between <code>---</code> fences defines
-            operations. Content is validated before saving.
+            operations. Use exact MCP tool/action identifiers where possible.
+            Content is validated before saving.
+          </p>
+          <p className="mt-2 rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-xs text-status-critical">
+            Skills guide the AI; the backend tier gate enforces what actually
+            runs. Generic command tools (shell, bash, kubectl, aws_cli, gcloud,
+            az, terraform, sql, run_command, …) are high-risk and are denied by
+            default — blocked at Tier 0/2 and approval-required at Tier 1 — unless
+            you explicitly allow narrow command patterns. Deny entries always win.
           </p>
         </div>
 

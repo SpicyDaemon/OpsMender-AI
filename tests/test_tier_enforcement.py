@@ -90,10 +90,10 @@ class TestCheck:
     def test_destructive_tier_3_remaps_to_advisory(self, skill_def):
         assert check("delete_pod", 3, skill_def).permitted is False
 
-    # --- Unknown operations ---
+    # --- Unknown operations (genuinely unknown, non-generic) ---
     def test_unknown_denied_all_tiers(self, skill_def):
         for tier in (0, 1, 2, 3):
-            r = check("exec_shell", tier, skill_def)
+            r = check("frobnicate_widget", tier, skill_def)
             assert r.permitted is False
             assert r.classification == "unknown"
 

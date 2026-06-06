@@ -87,6 +87,16 @@ describe("MCP Skills page", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("warns about generic command tools + guide/enforce distinction in the editor", async () => {
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^new skill$/i }));
+    await waitFor(() => expect(screen.getByLabelText("Assignment")).toBeTruthy());
+    // High-risk generic-tool warning + the skills-guide / backend-enforces line.
+    expect(screen.getByText(/Generic command tools/i)).toBeTruthy();
+    expect(screen.getAllByText(/backend tier gate enforces/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/exact MCP tool\/action identifiers/i)).toBeTruthy();
+  });
+
   it("create modal explains Unassigned drafts and defaults to unassigned", async () => {
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: /^new skill$/i }));

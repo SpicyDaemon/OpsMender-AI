@@ -571,6 +571,82 @@ class TestTierGate:
 
         await engine.dispose()
 
+    async def test_approved_action_parameters_are_bound(self, tmp_path):
+        """Parameter binding: the action executed after approval carries exactly
+        the parameters that were proposed/approved — the AI cannot swap them."""
+        db_path = tmp_path / "tier1-bind.db"
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as db:
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
+            await db.commit()
+            await db.refresh(session)
+
+        service = ApprovalService(factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01)
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        original_params = {"pod": "api-7", "namespace": "prod"}
+        state = _base_state(
+            session_id=str(session.id),
+            tier=1,
+            plan=[{"tool_name": "delete_pod", "tool_parameters": original_params}],
+        )
+
+        task = asyncio.create_task(gate(state))
+        await asyncio.sleep(0.05)
+        async with factory() as db:
+            pending = await ApprovalRequestRepo.list_pending(
+                db, TEST_ORG_ID, session_id=session.id
+            )
+            # The approval record captures the exact proposed parameters.
+            assert pending[0].action["tool_parameters"] == original_params
+            await ApprovalRequestRepo.resolve(
+                db, TEST_ORG_ID, pending[0].id, status="approved"
+            )
+            await db.commit()
+
+        result = await task
+        # The approved action that flows to execute carries the same params.
+        assert result["approved_actions"][0]["tool_parameters"] == original_params
+        await engine.dispose()
+
+    async def test_generic_tool_routes_to_approval_at_tier_1(self, tmp_path):
+        """A generic command-execution tool requires approval at Tier 1."""
+        db_path = tmp_path / "tier1-generic.db"
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as db:
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
+            await db.commit()
+            await db.refresh(session)
+
+        service = ApprovalService(factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01)
+        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        state = _base_state(
+            session_id=str(session.id),
+            tier=1,
+            plan=[{"tool_name": "run_command", "tool_parameters": {"cmd": "ls"}}],
+        )
+
+        task = asyncio.create_task(gate(state))
+        await asyncio.sleep(0.05)
+        async with factory() as db:
+            pending = await ApprovalRequestRepo.list_pending(
+                db, TEST_ORG_ID, session_id=session.id
+            )
+            assert len(pending) == 1  # generic tool went to approval, not auto-run
+            await ApprovalRequestRepo.resolve(
+                db, TEST_ORG_ID, pending[0].id, status="rejected"
+            )
+            await db.commit()
+        result = await task
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 1
+        await engine.dispose()
+
     async def test_tier_1_rejected_action_is_blocked(self, tmp_path):
         db_path = tmp_path / "tier1-rejected.db"
         engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)

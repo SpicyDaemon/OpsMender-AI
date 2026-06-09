@@ -187,3 +187,14 @@ Every MCP tool call flows through one chokepoint (`audited_tool_call` →
 and **Environment Scans (the auditor) run read-only** — an analyzer may invoke
 only tools the applicable skill classifies `safe`, never writes/remediation,
 generic command tools, or deny-listed tools.
+
+## Future work (v1.1)
+
+**MCP Skill Generator / Skill Studio improvements** — select an MCP server,
+review its discovered tools, classify each action by AI Autonomy Tier
+(allow / approval-required / deny / read-only), add per-tier custom instructions
+and deny-list notes, and let the AI generate a complete, editable, downloadable
+skill draft (saveable as Unassigned / Global / server-specific). The AI may help
+*author* the skill, but the backend tier gate remains the execution authority —
+a generated skill never relaxes the gate, deny lists, generic-command guardrail,
+or conservative defaults. Tracked in [ROADMAP.md](../ROADMAP.md). **Not in v1.**

@@ -90,10 +90,19 @@ with the active tier to decide what it can do autonomously.
 
 ## How the Agent Uses This
 
-- **Tier 2** — executes `safe` + `caution` autonomously, surfaces `destructive` as recommendations
-- **Tier 3** — advises only, human executes everything
-- **Tier 1** — executes everything, but `destructive` requires human approval first
-- **Tier 0** — full autonomous (non-prod/sandbox only)
+OpsMender uses a **3-tier AI Autonomy model** (Tier 2 is the default). The
+classification above combines with the selected tier at the backend tier gate:
+
+- **Tier 2 — Advisory Only** *(default)* — analysis and recommendations only;
+  **no** write/remediation actions execute (read-only `safe` observation still
+  runs before the gate). `caution`/`destructive` are surfaced as suggestions.
+- **Tier 1 — Approval Required** — `safe` runs autonomously; `caution` and
+  `destructive` require operator approval first; deny-listed/unknown denied.
+- **Tier 0 — Autonomous** *(non-prod/sandbox only — hard time limits)* — may
+  execute autonomously within skill policy and the Tier 0 reversible-only floor;
+  deny-listed/unknown/generic actions are still blocked.
+
+> Tier 3 has been removed; any legacy stored `3` is remapped to Tier 2.
 
 ## Customizing
 

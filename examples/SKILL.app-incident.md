@@ -163,16 +163,19 @@ logs/metrics/traces/errors provider) and the agent can:
 
 ## How the tiers shape behavior
 
-| Tier | Diagnosis | File Jira ticket | Open PR/MR with fix | Merge PR/MR |
-|------|-----------|------------------|---------------------|-------------|
-| **0** (sandbox only) | autonomous | autonomous | autonomous | still blocked — destructive |
-| **1** | autonomous | after approval | after approval | after approval |
-| **2** | autonomous | autonomous (caution) | autonomous (caution) | recommendation only |
-| **3** | advises only | advises only | advises only | advises only |
+OpsMender uses a **3-tier AI Autonomy model** (Tier 2 is the default; Tier 3 is
+removed and any legacy stored `3` is remapped to Tier 2).
 
-Tier 2 is the recommended default for most app teams: the agent can
-file tickets and open draft PRs on its own, but a human still owns the
-merge.
+| Tier | Diagnosis (safe) | File Jira ticket (caution) | Open PR/MR with fix (caution) | Merge PR/MR (destructive) |
+|------|------------------|----------------------------|-------------------------------|---------------------------|
+| **0 — Autonomous** (sandbox only) | autonomous | autonomous | autonomous | still blocked — destructive |
+| **1 — Approval Required** | autonomous | after approval | after approval | after approval |
+| **2 — Advisory Only** *(default)* | autonomous (read-only) | recommendation only | recommendation only | recommendation only |
+
+At the default **Tier 2 (Advisory Only)** the agent diagnoses and *recommends* a
+ticket + PR but does not write — a human performs the writes. Move to **Tier 1**
+to let the agent file the ticket and open the draft PR after operator approval,
+while a human still owns the merge.
 
 ## Customizing
 

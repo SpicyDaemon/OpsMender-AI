@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 interface TierDef {
-  tier: 0 | 1 | 2 | 3;
+  tier: 0 | 1 | 2;
   headline: string;
   oneLiner: string;
   allowed: string[];
@@ -35,53 +35,44 @@ const TIERS: TierDef[] = [
   {
     tier: 0,
     headline: "Autonomous",
-    oneLiner: "Full autonomous execution. Sandbox / non-prod only. Hard time limits.",
+    oneLiner: "Executes remediation autonomously within skill policy. Sandbox / non-prod only. Hard time limits.",
     allowed: [
-      "Safe operations",
-      "Caution operations",
-      "Destructive operations",
+      "Safe operations (autonomous)",
+      "Reversible caution operations (autonomous)",
+      "Skill-permitted remediation within the reversible-only floor",
     ],
     notAllowed: [
-      "Anything beyond the configured time budget",
-      "Operations outside sandbox / non-prod environments",
+      "Deny-listed, unknown, or generic-command tools",
+      "Irreversible operations beyond the Tier 0 floor",
+      "Anything beyond the time budget / outside sandbox",
     ],
     tone: "critical",
   },
   {
     tier: 1,
-    headline: "Approval",
-    oneLiner: "AI proposes + executes after a human approves the specific action.",
+    headline: "Approval Required",
+    oneLiner: "AI investigates and proposes. Destructive + generic-command actions pause for operator approval.",
     allowed: [
-      "Safe operations (after approval)",
-      "Caution operations (after approval)",
-      "Destructive operations (after approval)",
+      "Safe operations (autonomous)",
+      "Caution + destructive operations (after approval)",
+      "Generic-command tools (after approval)",
     ],
-    notAllowed: ["Anything without an approved request"],
+    notAllowed: [
+      "Deny-listed or unknown actions",
+      "Anything still awaiting an approval decision",
+    ],
     tone: "high",
   },
   {
     tier: 2,
-    headline: "Assisted",
-    oneLiner: "AI executes safe + caution operations autonomously. Destructive requires Tier 1 approval.",
+    headline: "Advisory Only",
+    oneLiner: "Analysis, recommendations, and read-only observation. No write/remediation actions execute.",
     allowed: [
-      "Safe operations (autonomous)",
-      "Caution operations (autonomous)",
+      "Read-only observation + context gathering",
+      "Diagnosis, planning, and recommendations",
     ],
     notAllowed: [
-      "Destructive operations (escalate to Tier 1)",
-    ],
-    tone: "medium",
-  },
-  {
-    tier: 3,
-    headline: "Advisory",
-    oneLiner: "AI advises only. Humans execute every operation.",
-    allowed: [
-      "Read-only context gathering",
-      "Diagnosis + planning + recommendations",
-    ],
-    notAllowed: [
-      "Any tool execution — the human performs every action manually",
+      "Any write or remediation execution — humans perform every action",
     ],
     tone: "low",
   },

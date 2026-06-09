@@ -172,7 +172,9 @@ const ROLE_STYLES: Record<string, string> = {
 const TIER_STYLES: Record<number, { label: string; cls: string }> = {
   0: { label: "Autonomous", cls: "bg-status-critical-bg text-status-critical border-status-critical-border" },
   1: { label: "Approval", cls: "bg-status-high-bg text-status-high border-status-high-border" },
-  2: { label: "Assisted", cls: "bg-status-medium-bg text-status-medium border-status-medium-border" },
+  2: { label: "Advisory", cls: "bg-status-low-bg text-status-low border-status-low-border" },
+  // Tier 3 is removed; a legacy stored 3 is normalized to 2 before it reaches
+  // here. Kept as a defensive alias so a stale value never renders blank.
   3: { label: "Advisory", cls: "bg-status-low-bg text-status-low border-status-low-border" },
 };
 

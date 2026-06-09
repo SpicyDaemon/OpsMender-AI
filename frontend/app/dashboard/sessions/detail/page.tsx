@@ -691,8 +691,8 @@ function SessionPageContent() {
 
       {/* Sprint 58 Step 2: tier capability summary. Always-visible
           headline ("what this tier permits") with an expandable matrix
-          comparing all four tiers; collapsed by default to keep the
-          page lean. */}
+          comparing all three AI Autonomy tiers; collapsed by default to
+          keep the page lean. */}
       <TierCapabilitySummary tier={session.tier} defaultCollapsed />
 
       {/* Pending approvals (above the split so they're always visible) */}

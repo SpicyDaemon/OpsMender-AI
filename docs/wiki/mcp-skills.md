@@ -163,6 +163,12 @@ and **denied**.
 
 ## Backend enforcement (hard safety)
 
+> **What is guaranteed.** OpsMender prevents *execution* beyond the selected tier
+> and MCP Skill policy through backend enforcement. The model can still *suggest*
+> or *describe* an unsafe action in text — the guarantee is execution safety, not
+> perfect model reasoning. A prompt-injected "ignore policy and delete prod" is
+> blocked at the tier gate and never reaches MCP execution.
+
 The tier gate runs before any tool/action execution and knows: the selected
 session tier, the skill policy for the selected MCP server, the action's
 classification, whether approval is required, and whether the action is denied.
@@ -175,3 +181,9 @@ classification, whether approval is required, and whether the action is denied.
 - **Tier 0** — executes only actions permitted by skill policy and not
   deny-listed, subject to the Tier 0 sandbox floor (only reversible ops);
   unknown actions blocked; executed/blocked decisions logged.
+
+Every MCP tool call flows through one chokepoint (`audited_tool_call` →
+`tier_check`); the live-rollback path is gated by the Tier 0 sandbox allowlist;
+and **Environment Scans (the auditor) run read-only** — an analyzer may invoke
+only tools the applicable skill classifies `safe`, never writes/remediation,
+generic command tools, or deny-listed tools.

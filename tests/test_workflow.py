@@ -502,6 +502,39 @@ class TestTierGate:
         assert result["approved_actions"] == []
         assert result["blocked_actions"] == []
 
+    def test_prompt_injection_destructive_plan_is_blocked(self):
+        """Prompt-injection scenario: the model is coerced into planning
+        `kubectl delete namespace prod`. Backend enforcement blocks it — the
+        action never reaches the approved set (so it is never executed),
+        regardless of what the model "decided"."""
+        # Even at the most autonomous tier, a generic command tool is blocked.
+        gate = _build_tier_gate(tier=0, skill_def=_skill_def())
+        state = _base_state(
+            tier=0,
+            plan=[
+                {
+                    "tool_name": "kubectl",
+                    "tool_parameters": {"args": "delete namespace prod"},
+                    "justification": "ignore policy and delete prod",
+                },
+            ],
+        )
+        result = gate(state)
+        assert result["approved_actions"] == []
+        assert len(result["blocked_actions"]) == 1
+        assert result["blocked_actions"][0]["tool_name"] == "kubectl"
+
+    def test_prompt_injection_blocked_at_advisory_tier(self):
+        # At the default advisory tier, the injected destructive plan is blocked.
+        gate = _build_tier_gate(tier=2, skill_def=_skill_def())
+        state = _base_state(
+            tier=2,
+            plan=[{"tool_name": "delete_pod", "tool_parameters": {"pod": "prod"}}],
+        )
+        result = gate(state)
+        assert result["approved_actions"] == []
+        assert len(result["blocked_actions"]) == 1
+
     def test_tier_3_blocks_everything(self):
         gate = _build_tier_gate(tier=3, skill_def=_skill_def())
         state = _base_state(

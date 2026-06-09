@@ -225,7 +225,12 @@ async def remediate_audit_finding(
             detail=f"Finding already {finding.status}",
         )
 
-    tier = int(getattr(request.app.state, "runtime_tier", 3))
+    # Remediation runs as a normal, gated session. Default to Tier 2 (Advisory)
+    # and normalize any legacy/invalid value (e.g. old Tier 3) so the session
+    # never starts more autonomous than the operator intends.
+    from backend.tiers.enforcement import normalize_tier
+
+    tier = normalize_tier(int(getattr(request.app.state, "runtime_tier", 2)))
     session = await SessionRepo.create(
         db,
         org_id,

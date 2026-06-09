@@ -69,7 +69,49 @@ def make_call(
     return CallSpec(server_name=server_name, tool_name=tool_name, params=params)
 
 
+async def _ensure_read_only(ctx: AnalyzerContext, call: CallSpec) -> None:
+    """Environment scans are READ-ONLY and run outside the session tier gate, so
+    they must be constrained independently: an analyzer may invoke ONLY tools
+    classified ``safe`` (read-only) by the applicable MCP Skill. Writes,
+    remediation, destructive, unknown, generic command tools, and deny-listed
+    tools are all blocked. This closes the auditor as a path that could
+    otherwise bypass the tier/skill enforcement.
+
+    Conservative by default: with no resolved skill, every tool is treated as
+    unknown and blocked — environment scanning requires an MCP Skill that marks
+    its read-only tools ``safe``.
+    """
+    # Local imports keep the auditor's import graph light and avoid cycles.
+    from backend.db.repos import MCPServerRepo
+    from backend.tiers.enforcement import load_skill_for_mcp_server
+    from backend.tiers.generic_tools import is_generic_execution_tool
+
+    tool = call.tool_name
+    server = await MCPServerRepo.get_by_name(ctx.db, ctx.org_id, call.server_name)
+    skill_def = await load_skill_for_mcp_server(
+        ctx.db, ctx.org_id, server.id if server is not None else None
+    )
+
+    if skill_def is not None and skill_def.is_denied(tool):
+        raise AnalyzerError(f"tool '{tool}' is deny-listed by MCP Skill policy")
+    if is_generic_execution_tool(tool) and not (
+        skill_def is not None and skill_def.allows_generic(tool)
+    ):
+        raise AnalyzerError(
+            f"generic command tool '{tool}' is blocked in read-only environment scans"
+        )
+    classification = skill_def.classify(tool) if skill_def is not None else "unknown"
+    if classification != "safe":
+        raise AnalyzerError(
+            f"tool '{tool}' is not read-only (classification={classification}); "
+            "environment scans only run safe read-only tools"
+        )
+
+
 async def execute_call(ctx: AnalyzerContext, call: CallSpec) -> str:
+    # Read-only enforcement BEFORE any MCP execution — the auditor is not an
+    # execution surface and must not run write/remediation tools.
+    await _ensure_read_only(ctx, call)
     async with ctx.pool.connect(ctx.org_id, call.server_name) as session:
         result = await call_tool(session, call.tool_name, call.params)
         if getattr(result, "isError", False):

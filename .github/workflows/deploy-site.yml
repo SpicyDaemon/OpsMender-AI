@@ -37,7 +37,7 @@ jobs:
       - name: Build
         working-directory: site
         env:
-          SITE_BASE: /OpsMender-AI-Private
+          SITE_BASE: /OpsMender-AI
           SITE_URL: https://${{ github.repository_owner }}.github.io
         run: npm run build
 

@@ -22,7 +22,7 @@ npm run preview    # preview the built site locally
 ## GitHub Pages deployment
 
 The workflow at `.github/workflows/deploy-site.yml` runs on every push to `main`.
-It builds the site with `SITE_BASE=/OpsMender-AI-Private` (the repository name) and
+It builds the site with `SITE_BASE=/OpsMender-AI` (the repository name) and
 deploys the output to the `gh-pages` environment.
 
 Enable Pages in your repository settings:
@@ -31,7 +31,7 @@ Enable Pages in your repository settings:
 2. The workflow handles everything else automatically
 
 The live site will be available at:
-`https://<org-or-user>.github.io/OpsMender-AI-Private/`
+`https://<org-or-user>.github.io/OpsMender-AI/`
 
 ## Environment variables
 

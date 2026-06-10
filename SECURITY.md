@@ -13,7 +13,7 @@ Only the latest `1.x` minor release receives security patches. Older versions wi
 
 Please do **not** file security issues as public GitHub issues.
 
-Report vulnerabilities privately by emailing **noreply@opsmender.local** with the subject line `OpsMender SECURITY: <short description>`.
+Use GitHub's [private vulnerability reporting](https://github.com/SpicyDaemon/OpsMender-AI/security/advisories/new) to disclose vulnerabilities privately. Include a short description in the advisory title.
 
 Include:
 
@@ -56,4 +56,4 @@ OpsMender is meant to be deployed inside an organization's trusted network. The 
 - Operators and viewers are authenticated and authorized via the built-in JWT + role model.
 - The tier gate is the final guard against destructive actions — it is programmatic and cannot be bypassed by agent reasoning. Reports showing a way to bypass the tier gate are treated as critical.
 
-If you have questions about whether something is in scope, email first — it's fine to ask.
+If you have questions about whether something is in scope, open an issue first — it's fine to ask.

@@ -21,7 +21,7 @@ OpsMender AI is an open project and we want it to stay a productive, friendly pl
 
 ## Reporting
 
-If you see behavior that breaks this code of conduct, contact the maintainers privately at **noreply@opsmender.local**. Reports are handled in confidence.
+If you see behavior that breaks this code of conduct, open a [GitHub issue](https://github.com/SpicyDaemon/OpsMender-AI/issues) or use the private contact option on the repository. Reports are handled in confidence.
 
 ## Enforcement
 

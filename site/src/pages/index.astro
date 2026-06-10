@@ -60,11 +60,12 @@ const features = [
 ];
 
 const screenshots = [
-  { file: 'incidents.svg',           caption: 'Incident command center',          alt: 'Incident list with status and responder columns' },
-  { file: 'session-chat.svg',        caption: 'AI session chat',                  alt: 'AI-assisted incident session with workflow state pipeline' },
-  { file: 'mcp-skills.svg',          caption: 'MCP Skills and safety policies',   alt: 'MCP Skills editor with tier classification' },
-  { file: 'reliability.svg',         caption: 'Reliability checks',               alt: 'HTTP uptime monitoring and SLA status' },
-  { file: 'maintenance-windows.svg', caption: 'Maintenance windows and approvals', alt: 'Maintenance window list with approval workflow' },
+  { file: 'incidents-admin.png',    caption: 'Incident command center',         role: 'Admin',    alt: 'Incident list with status, priority, and responder columns' },
+  { file: 'incidents-operator.png', caption: 'Same board, operator scope',       role: 'Operator', alt: 'Operator view with a scoped sidebar and role-gated actions' },
+  { file: 'incident-detail.png',    caption: 'Incident detail & AI timeline',    role: 'Admin',    alt: 'Incident detail with AI session, timeline, and alert evidence' },
+  { file: 'ai-session.png',         caption: 'AI session — Tier 2 Advisory',     role: 'Admin',    alt: 'AI-assisted session showing the autonomy tier and workflow state pipeline' },
+  { file: 'mcp-skills.png',         caption: 'MCP Skill Studio',                 role: 'Admin',    alt: 'MCP Skills list — policies that gate what the AI may run' },
+  { file: 'people-rbac.png',        caption: 'People & role-based access',       role: 'Admin',    alt: 'User management with admin, operator, and viewer roles' },
 ];
 
 const tiers = [
@@ -215,37 +216,41 @@ const v11Features = [
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div class="mb-12 text-center">
         <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">Everything in one place</h2>
-        <p class="mt-3 text-ops-subtle">From incident intake to AI session to postmortem — a complete operations surface.</p>
+        <p class="mt-3 text-ops-subtle">Real screens from the dashboard — incident intake, AI sessions, skill policy, and role-based access. Click any shot to open it full size.</p>
       </div>
 
-      <!-- Screenshot gallery: horizontal scroll on small, 3-col grid on large -->
-      <div class="flex gap-4 overflow-x-auto pb-4 lg:grid lg:grid-cols-3 lg:overflow-visible lg:pb-0">
+      <!-- Screenshot gallery: horizontal scroll on small, 2-col grid on large -->
+      <div class="flex gap-5 overflow-x-auto pb-4 lg:grid lg:grid-cols-2 lg:gap-6 lg:overflow-visible lg:pb-0">
         {screenshots.map((s, i) => (
-          <div class="group flex-shrink-0 w-[80vw] sm:w-[60vw] lg:w-auto">
-            <div class="relative overflow-hidden rounded-xl border border-ops-border bg-ops-card shadow-card transition-all duration-300 group-hover:border-ops-blue/30 group-hover:shadow-glow-sm">
+          <a
+            href={`${base}/screenshots/${s.file}`}
+            target="_blank"
+            rel="noopener"
+            class="group flex-shrink-0 w-[88vw] sm:w-[64vw] lg:w-auto"
+          >
+            <div class="relative overflow-hidden rounded-xl border border-ops-border bg-ops-card shadow-card transition-all duration-300 group-hover:border-ops-blue/40 group-hover:shadow-glow-sm">
               <!-- Frame chrome -->
               <div class="flex items-center gap-1.5 border-b border-ops-border bg-ops-surface px-3 py-2">
                 <span class="h-2.5 w-2.5 rounded-full bg-red-500/60"></span>
                 <span class="h-2.5 w-2.5 rounded-full bg-amber-400/60"></span>
                 <span class="h-2.5 w-2.5 rounded-full bg-green-500/60"></span>
-                <span class="ml-2 flex-1 rounded bg-ops-border px-2 py-0.5 text-center font-mono text-[10px] text-ops-muted">opsmender</span>
+                <span class="ml-2 flex-1 rounded bg-ops-border px-2 py-0.5 text-center font-mono text-[10px] text-ops-muted">opsmender / dashboard</span>
+                <span class={`rounded px-2 py-0.5 text-[10px] font-semibold ${s.role === 'Operator' ? 'bg-ops-cyan/15 text-ops-cyan' : 'bg-ops-blue/15 text-ops-blue'}`}>{s.role}</span>
               </div>
               <div class="aspect-[16/10] w-full overflow-hidden">
                 <img
                   src={`${base}/screenshots/${s.file}`}
                   alt={s.alt}
-                  class="h-full w-full object-cover object-top"
+                  width="3200"
+                  height="2000"
+                  class="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-[1.02]"
                   loading={i === 0 ? 'eager' : 'lazy'}
                 />
               </div>
             </div>
             <p class="mt-3 text-center text-sm font-medium text-ops-subtle">{s.caption}</p>
-          </div>
+          </a>
         ))}
-        <!-- Wide screenshot that spans full row on large -->
-        <div class="hidden lg:block lg:col-span-3">
-          <!-- intentional gap for overflow balance -->
-        </div>
       </div>
     </div>
   </section>

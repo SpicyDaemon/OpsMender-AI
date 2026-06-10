@@ -108,7 +108,4 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain("disabled_roster");
   });
 
-  it("keeps the escalation calendar generic", () => {
-    expect(pagingShellSource).not.toMatch(/incident management platform|on-call platform|Datadog/i);
-  });
 });

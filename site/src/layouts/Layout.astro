@@ -1,0 +1,66 @@
+---
+export interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+}
+
+const {
+  title = 'OpsMender — Self-hosted Incident Response',
+  description = 'Open-source, self-hosted incident response and on-call operations platform for engineering teams. AI-assisted sessions, escalation chains, MCP Skills, and more.',
+  ogImage,
+} = Astro.props;
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#07090f" />
+
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    {ogImage && <meta property="og:image" content={ogImage} />}
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>{title}</title>
+
+    <style is:global>
+      :root {
+        --font-sans: 'Inter', system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+      }
+      * { box-sizing: border-box; }
+      html { background-color: #07090f; }
+      body {
+        font-family: var(--font-sans);
+        background-color: #07090f;
+        color: #f1f5f9;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      code, pre, kbd, .font-mono { font-family: var(--font-mono); }
+      ::selection { background: rgba(59,130,246,0.3); color: #fff; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #07090f; }
+      ::-webkit-scrollbar-thumb { background: #1a2540; border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750">
+  <rect width="1200" height="750" fill="#07090f"/>
+  <!-- Sidebar -->
+  <rect width="220" height="750" fill="#0d1221" stroke="#1a2540" stroke-width="1"/>
+  <text x="24" y="40" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="700" fill="#f1f5f9">Ops<tspan fill="#3b82f6">Mender</tspan></text>
+  <text x="36" y="81" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">Incidents</text>
+  <text x="36" y="113" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">AI Sessions</text>
+  <rect x="12" y="125" width="196" height="32" rx="6" fill="#3b82f6" fill-opacity="0.12"/>
+  <rect x="22" y="135" width="4" height="12" rx="2" fill="#3b82f6"/>
+  <text x="36" y="146" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#93c5fd">MCP Skills</text>
+  <text x="36" y="178" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">Reliability</text>
+
+  <!-- Top bar -->
+  <rect x="220" y="0" width="980" height="52" fill="#0d1221" stroke="#1a2540" stroke-width="1"/>
+  <text x="240" y="32" font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="700" fill="#f1f5f9">MCP Skills</text>
+  <rect x="1020" y="14" width="160" height="28" rx="6" fill="#3b82f6" fill-opacity="0.15" stroke="#3b82f6" stroke-opacity="0.4" stroke-width="1"/>
+  <text x="1100" y="33" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="600" fill="#93c5fd" text-anchor="middle">+ New from Template</text>
+
+  <!-- Skills table header -->
+  <rect x="220" y="66" width="980" height="36" fill="#0d1221" stroke="#1a2540" stroke-width="1"/>
+  <text x="258" y="89" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">NAME</text>
+  <text x="480" y="89" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">ASSIGNMENT</text>
+  <text x="660" y="89" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">MCP SERVER</text>
+  <text x="860" y="89" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">OPERATIONS</text>
+  <text x="1000" y="89" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">ACTIONS</text>
+
+  <!-- Skill row 1 - server specific -->
+  <rect x="220" y="102" width="980" height="56" fill="#111827" stroke="#1a2540" stroke-width="0.5"/>
+  <text x="258" y="126" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f1f5f9">k8s-production</text>
+  <text x="258" y="144" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Kubernetes production environment — strict policy</text>
+  <rect x="476" y="113" width="116" height="20" rx="10" fill="#3b82f6" fill-opacity="0.12" stroke="#3b82f6" stroke-opacity="0.3" stroke-width="1"/>
+  <text x="534" y="127" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#93c5fd" text-anchor="middle">Server-specific</text>
+  <text x="660" y="132" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#94a3b8">k8s-prod-cluster</text>
+  <text x="860" y="120" font-family="mono,sans-serif" font-size="10" fill="#22c55e">9 safe</text>
+  <text x="860" y="136" font-family="mono,sans-serif" font-size="10" fill="#eab308">5 caution</text>
+  <text x="860" y="152" font-family="mono,sans-serif" font-size="10" fill="#ef4444">6 destructive</text>
+  <rect x="998" y="114" width="64" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1030" y="130" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Edit</text>
+  <rect x="1070" y="114" width="80" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1110" y="130" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Download</text>
+
+  <!-- Skill row 2 - global -->
+  <rect x="220" y="158" width="980" height="56" fill="#07090f" stroke="#1a2540" stroke-width="0.5"/>
+  <text x="258" y="182" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f1f5f9">standard-ops-global</text>
+  <text x="258" y="200" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Global fallback — applies to all unassigned servers</text>
+  <rect x="476" y="169" width="96" height="20" rx="10" fill="#6366f1" fill-opacity="0.12" stroke="#6366f1" stroke-opacity="0.3" stroke-width="1"/>
+  <text x="524" y="183" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#a5b4fc" text-anchor="middle">Global fallback</text>
+  <text x="660" y="188" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#64748b">all servers</text>
+  <text x="860" y="176" font-family="mono,sans-serif" font-size="10" fill="#22c55e">12 safe</text>
+  <text x="860" y="192" font-family="mono,sans-serif" font-size="10" fill="#eab308">3 caution</text>
+  <text x="860" y="208" font-family="mono,sans-serif" font-size="10" fill="#ef4444">2 destructive</text>
+  <rect x="998" y="170" width="64" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1030" y="186" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Edit</text>
+  <rect x="1070" y="170" width="80" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1110" y="186" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Download</text>
+
+  <!-- Skill row 3 - unassigned draft -->
+  <rect x="220" y="214" width="980" height="56" fill="#111827" stroke="#1a2540" stroke-width="0.5"/>
+  <text x="258" y="238" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#94a3b8">aws-infra-draft</text>
+  <text x="258" y="256" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#475569">Draft — not yet assigned to any server</text>
+  <rect x="476" y="225" width="80" height="20" rx="10" fill="#475569" fill-opacity="0.15" stroke="#475569" stroke-opacity="0.3" stroke-width="1"/>
+  <text x="516" y="239" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b" text-anchor="middle">Unassigned</text>
+  <text x="660" y="244" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#475569">—</text>
+  <text x="860" y="244" font-family="mono,sans-serif" font-size="10" fill="#475569">draft</text>
+  <rect x="998" y="226" width="64" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1030" y="242" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Edit</text>
+  <rect x="1070" y="226" width="80" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1110" y="242" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Download</text>
+
+  <!-- YAML editor / detail panel -->
+  <rect x="240" y="296" width="920" height="380" rx="10" fill="#0d1221" stroke="#1a2540" stroke-width="1"/>
+  <rect x="240" y="296" width="920" height="36" rx="10" fill="#111827" stroke="#1a2540" stroke-width="1"/>
+  <text x="260" y="319" font-family="mono,sans-serif" font-size="12" fill="#94a3b8">k8s-production — structured operations</text>
+  <rect x="1060" y="304" width="80" height="20" rx="4" fill="#22c55e" fill-opacity="0.12" stroke="#22c55e" stroke-opacity="0.3" stroke-width="1"/>
+  <text x="1100" y="318" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#86efac" text-anchor="middle">Save skill</text>
+
+  <!-- Operation rows -->
+  <rect x="260" y="348" width="880" height="28" rx="4" fill="#111827"/>
+  <rect x="268" y="356" width="50" height="12" rx="2" fill="#22c55e" fill-opacity="0.15"/>
+  <text x="293" y="367" font-family="mono,sans-serif" font-size="10" fill="#86efac" text-anchor="middle">safe</text>
+  <text x="330" y="367" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">get_pods</text>
+  <text x="600" y="367" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#475569">Read-only pod listing</text>
+
+  <rect x="260" y="382" width="880" height="28" rx="4" fill="#0d1221"/>
+  <rect x="268" y="390" width="50" height="12" rx="2" fill="#22c55e" fill-opacity="0.15"/>
+  <text x="293" y="401" font-family="mono,sans-serif" font-size="10" fill="#86efac" text-anchor="middle">safe</text>
+  <text x="330" y="401" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">get_pod_logs</text>
+  <text x="600" y="401" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#475569">Stream logs from a pod</text>
+
+  <rect x="260" y="416" width="880" height="28" rx="4" fill="#111827"/>
+  <rect x="268" y="424" width="60" height="12" rx="2" fill="#eab308" fill-opacity="0.15"/>
+  <text x="298" y="435" font-family="mono,sans-serif" font-size="10" fill="#fef08a" text-anchor="middle">caution</text>
+  <text x="342" y="435" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">scale_deployment</text>
+  <text x="600" y="435" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#475569">reversible: true</text>
+
+  <rect x="260" y="450" width="880" height="28" rx="4" fill="#0d1221"/>
+  <rect x="268" y="458" width="70" height="12" rx="2" fill="#ef4444" fill-opacity="0.15"/>
+  <text x="303" y="469" font-family="mono,sans-serif" font-size="10" fill="#fca5a5" text-anchor="middle">destructive</text>
+  <text x="352" y="469" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">delete_pod</text>
+  <text x="600" y="469" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#475569">Approval required at Tier 1</text>
+
+  <rect x="260" y="484" width="880" height="28" rx="4" fill="#111827"/>
+  <rect x="268" y="492" width="38" height="12" rx="2" fill="#ef4444" fill-opacity="0.25" stroke="#ef4444" stroke-opacity="0.4" stroke-width="1"/>
+  <text x="287" y="503" font-family="mono,sans-serif" font-size="10" fill="#fca5a5" text-anchor="middle">deny</text>
+  <text x="320" y="503" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">shell</text>
+  <text x="600" y="503" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#ef4444">Blocked at every tier — deny always wins</text>
+
+  <rect x="260" y="518" width="880" height="28" rx="4" fill="#0d1221"/>
+  <rect x="268" y="526" width="38" height="12" rx="2" fill="#ef4444" fill-opacity="0.25" stroke="#ef4444" stroke-opacity="0.4" stroke-width="1"/>
+  <text x="287" y="537" font-family="mono,sans-serif" font-size="10" fill="#fca5a5" text-anchor="middle">deny</text>
+  <text x="320" y="537" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">exec_*</text>
+  <text x="600" y="537" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#ef4444">Glob — all exec variants denied</text>
+
+  <!-- safety note -->
+  <rect x="260" y="562" width="880" height="36" rx="6" fill="#3b82f6" fill-opacity="0.06" stroke="#3b82f6" stroke-opacity="0.2" stroke-width="1"/>
+  <text x="280" y="584" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#93c5fd">Skills guide the AI. The backend tier gate enforces what can actually run — not model reasoning.</text>
+</svg>

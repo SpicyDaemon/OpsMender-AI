@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750">
+  <rect width="1200" height="750" fill="#07090f"/>
+  <!-- Sidebar -->
+  <rect width="220" height="750" fill="#0d1221" stroke="#1a2540" stroke-width="1"/>
+  <text x="24" y="40" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="700" fill="#f1f5f9">Ops<tspan fill="#3b82f6">Mender</tspan></text>
+  <text x="36" y="81" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">Incidents</text>
+  <text x="36" y="113" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">AI Sessions</text>
+  <text x="36" y="145" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">Reliability</text>
+  <rect x="12" y="157" width="196" height="32" rx="6" fill="#3b82f6" fill-opacity="0.12"/>
+  <rect x="22" y="167" width="4" height="12" rx="2" fill="#3b82f6"/>
+  <text x="36" y="178" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#93c5fd">Maintenance</text>
+  <text x="36" y="210" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">Config</text>
+
+  <!-- Top bar -->
+  <rect x="220" y="0" width="980" height="52" fill="#0d1221" stroke="#1a2540" stroke-width="1"/>
+  <text x="240" y="32" font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="700" fill="#f1f5f9">Maintenance Windows</text>
+  <rect x="1020" y="14" width="160" height="28" rx="6" fill="#3b82f6" fill-opacity="0.15" stroke="#3b82f6" stroke-opacity="0.4" stroke-width="1"/>
+  <text x="1100" y="33" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="600" fill="#93c5fd" text-anchor="middle">+ Schedule window</text>
+
+  <!-- Info note -->
+  <rect x="240" y="68" width="920" height="36" rx="6" fill="#3b82f6" fill-opacity="0.06" stroke="#3b82f6" stroke-opacity="0.2" stroke-width="1"/>
+  <text x="260" y="90" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#93c5fd">During a maintenance window, reliability alerts are suppressed and AI sessions can operate at a higher autonomy tier with approval.</text>
+
+  <!-- Table header -->
+  <rect x="220" y="118" width="980" height="36" fill="#0d1221" stroke="#1a2540" stroke-width="1"/>
+  <text x="258" y="141" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">TITLE</text>
+  <text x="500" y="141" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">WINDOW</text>
+  <text x="680" y="141" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">STATUS</text>
+  <text x="800" y="141" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">SCOPE</text>
+  <text x="940" y="141" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">APPROVAL</text>
+  <text x="1070" y="141" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.05em">ACTIONS</text>
+
+  <!-- Row 1 - ACTIVE -->
+  <rect x="220" y="154" width="980" height="60" fill="#111827" stroke="#1a2540" stroke-width="0.5"/>
+  <rect x="236" y="167" width="4" height="36" rx="2" fill="#3b82f6"/>
+  <text x="258" y="178" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f1f5f9">k8s node drain — region us-east-1a</text>
+  <text x="258" y="196" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Kernel patching — cordon + drain workers</text>
+  <text x="258" y="208" font-family="mono,sans-serif" font-size="10" fill="#64748b">Requested by alice · 10 min ago</text>
+  <text x="500" y="176" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">23:00–01:00 UTC</text>
+  <text x="500" y="194" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#475569">tonight (Tue 10 Jun)</text>
+  <rect x="676" y="165" width="80" height="22" rx="11" fill="#3b82f6" fill-opacity="0.15" stroke="#3b82f6" stroke-opacity="0.5" stroke-width="1"/>
+  <circle cx="688" cy="176" r="4" fill="#3b82f6"/>
+  <text x="706" y="181" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#93c5fd">Approved</text>
+  <text x="800" y="184" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#94a3b8">k8s-prod-cluster</text>
+  <rect x="936" y="165" width="84" height="22" rx="4" fill="#22c55e" fill-opacity="0.10" stroke="#22c55e" stroke-opacity="0.3" stroke-width="1"/>
+  <text x="978" y="180" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#86efac" text-anchor="middle">bob (approved)</text>
+  <rect x="1068" y="165" width="52" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1094" y="180" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Edit</text>
+  <rect x="1126" y="165" width="56" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1154" y="180" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Cancel</text>
+
+  <!-- Row 2 - PENDING APPROVAL -->
+  <rect x="220" y="214" width="980" height="60" fill="#07090f" stroke="#1a2540" stroke-width="0.5"/>
+  <rect x="236" y="227" width="4" height="36" rx="2" fill="#eab308"/>
+  <text x="258" y="238" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f1f5f9">Database schema migration — accounts DB</text>
+  <text x="258" y="256" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Non-backwards-compatible column rename — requires downtime</text>
+  <text x="258" y="268" font-family="mono,sans-serif" font-size="10" fill="#64748b">Requested by carol · 45 min ago</text>
+  <text x="500" y="236" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">02:00–04:00 UTC</text>
+  <text x="500" y="254" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#475569">Wed 11 Jun</text>
+  <rect x="676" y="225" width="104" height="22" rx="11" fill="#eab308" fill-opacity="0.12" stroke="#eab308" stroke-opacity="0.4" stroke-width="1"/>
+  <circle cx="688" cy="236" r="4" fill="#eab308"/>
+  <text x="706" y="241" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#fef08a">Pending approval</text>
+  <text x="800" y="244" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#94a3b8">accounts-db-prod</text>
+  <rect x="936" y="225" width="84" height="22" rx="4" fill="#3b82f6" fill-opacity="0.10" stroke="#3b82f6" stroke-opacity="0.2" stroke-width="1"/>
+  <text x="978" y="240" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#93c5fd" text-anchor="middle">Approve</text>
+  <rect x="1026" y="225" width="64" height="22" rx="4" fill="#ef4444" fill-opacity="0.10" stroke="#ef4444" stroke-opacity="0.2" stroke-width="1"/>
+  <text x="1058" y="240" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#fca5a5" text-anchor="middle">Reject</text>
+  <rect x="1097" y="225" width="52" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1123" y="240" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Edit</text>
+  <rect x="1155" y="225" width="26" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1168" y="240" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">×</text>
+
+  <!-- Row 3 - SCHEDULED -->
+  <rect x="220" y="274" width="980" height="60" fill="#111827" stroke="#1a2540" stroke-width="0.5"/>
+  <rect x="236" y="287" width="4" height="36" rx="2" fill="#6366f1"/>
+  <text x="258" y="298" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f1f5f9">CDN cache flush — global edge nodes</text>
+  <text x="258" y="316" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Stale asset purge after next static deploy</text>
+  <text x="258" y="328" font-family="mono,sans-serif" font-size="10" fill="#64748b">Requested by deploy-bot · recurring on deploy</text>
+  <text x="500" y="296" font-family="mono,sans-serif" font-size="11" fill="#94a3b8">On deploy trigger</text>
+  <text x="500" y="314" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#475569">next: Thu 12 Jun ~18:00 UTC</text>
+  <rect x="676" y="285" width="80" height="22" rx="11" fill="#6366f1" fill-opacity="0.12" stroke="#6366f1" stroke-opacity="0.4" stroke-width="1"/>
+  <circle cx="688" cy="296" r="4" fill="#6366f1"/>
+  <text x="706" y="301" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#a5b4fc">Scheduled</text>
+  <text x="800" y="304" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#94a3b8">cdn-global</text>
+  <rect x="936" y="285" width="104" height="22" rx="4" fill="#22c55e" fill-opacity="0.10" stroke="#22c55e" stroke-opacity="0.3" stroke-width="1"/>
+  <text x="988" y="300" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="600" fill="#86efac" text-anchor="middle">Auto-approved (bot)</text>
+  <rect x="1068" y="285" width="52" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1094" y="300" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Edit</text>
+  <rect x="1126" y="285" width="56" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1154" y="300" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">Cancel</text>
+
+  <!-- Row 4 - COMPLETED -->
+  <rect x="220" y="334" width="980" height="60" fill="#07090f" stroke="#1a2540" stroke-width="0.5"/>
+  <rect x="236" y="347" width="4" height="36" rx="2" fill="#22c55e" fill-opacity="0.4"/>
+  <text x="258" y="358" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">redis memory eviction policy change</text>
+  <text x="258" y="376" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#475569">volatile-lru → allkeys-lru — zero-downtime config reload</text>
+  <text x="258" y="388" font-family="mono,sans-serif" font-size="10" fill="#475569">Completed by bob · 6 hr ago</text>
+  <text x="500" y="356" font-family="mono,sans-serif" font-size="11" fill="#475569">17:00–17:30 UTC</text>
+  <text x="500" y="374" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#475569">Mon 09 Jun (completed)</text>
+  <rect x="676" y="345" width="80" height="22" rx="11" fill="#22c55e" fill-opacity="0.08" stroke="#22c55e" stroke-opacity="0.2" stroke-width="1"/>
+  <circle cx="688" cy="356" r="4" fill="#22c55e" fill-opacity="0.5"/>
+  <text x="706" y="361" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Completed</text>
+  <text x="800" y="364" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#475569">redis-cluster</text>
+  <text x="936" y="364" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#64748b">alice (approved)</text>
+  <rect x="1068" y="345" width="60" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1098" y="360" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b" text-anchor="middle">View log</text>
+
+  <!-- Row 5 - REJECTED -->
+  <rect x="220" y="394" width="980" height="60" fill="#111827" stroke="#1a2540" stroke-width="0.5"/>
+  <rect x="236" y="407" width="4" height="36" rx="2" fill="#ef4444" fill-opacity="0.4"/>
+  <text x="258" y="418" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#64748b">Force-restart all pods — payment-svc</text>
+  <text x="258" y="436" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#475569">Non-graceful restart — risk of in-flight transaction loss</text>
+  <text x="258" y="448" font-family="mono,sans-serif" font-size="10" fill="#475569">Rejected by alice · 2 hr ago</text>
+  <text x="500" y="416" font-family="mono,sans-serif" font-size="11" fill="#475569">12:00–12:30 UTC</text>
+  <text x="500" y="434" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#475569">Mon 09 Jun</text>
+  <rect x="676" y="405" width="66" height="22" rx="11" fill="#ef4444" fill-opacity="0.08" stroke="#ef4444" stroke-opacity="0.2" stroke-width="1"/>
+  <circle cx="688" cy="416" r="4" fill="#ef4444" fill-opacity="0.5"/>
+  <text x="706" y="421" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Rejected</text>
+  <text x="800" y="424" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#475569">payment-svc</text>
+  <text x="936" y="424" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#64748b">alice (rejected)</text>
+  <rect x="1068" y="405" width="60" height="22" rx="4" fill="#1a2540" stroke="#2d3f5a" stroke-width="1"/>
+  <text x="1098" y="420" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b" text-anchor="middle">View log</text>
+
+  <!-- Timeline bar -->
+  <rect x="240" y="480" width="920" height="200" rx="10" fill="#0d1221" stroke="#1a2540" stroke-width="1"/>
+  <text x="260" y="504" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="600" fill="#64748b">UPCOMING — Next 24h timeline</text>
+  <!-- time axis -->
+  <line x1="260" y1="540" x2="1140" y2="540" stroke="#1a2540" stroke-width="1"/>
+  <text x="260" y="556" font-family="mono,sans-serif" font-size="10" fill="#475569">18:00</text>
+  <text x="480" y="556" font-family="mono,sans-serif" font-size="10" fill="#475569">00:00</text>
+  <text x="700" y="556" font-family="mono,sans-serif" font-size="10" fill="#475569">06:00</text>
+  <text x="920" y="556" font-family="mono,sans-serif" font-size="10" fill="#475569">12:00</text>
+  <text x="1120" y="556" font-family="mono,sans-serif" font-size="10" fill="#475569">18:00</text>
+  <!-- tick marks -->
+  <line x1="260" y1="535" x2="260" y2="545" stroke="#1a2540" stroke-width="1"/>
+  <line x1="480" y1="535" x2="480" y2="545" stroke="#1a2540" stroke-width="1"/>
+  <line x1="700" y1="535" x2="700" y2="545" stroke="#1a2540" stroke-width="1"/>
+  <line x1="920" y1="535" x2="920" y2="545" stroke="#1a2540" stroke-width="1"/>
+  <line x1="1140" y1="535" x2="1140" y2="545" stroke="#1a2540" stroke-width="1"/>
+  <!-- window bars -->
+  <!-- k8s drain: 23:00-01:00 → roughly x=422 to x=524 -->
+  <rect x="422" y="510" width="102" height="20" rx="4" fill="#3b82f6" fill-opacity="0.25" stroke="#3b82f6" stroke-opacity="0.5" stroke-width="1"/>
+  <text x="473" y="525" font-family="Inter,system-ui,sans-serif" font-size="9" fill="#93c5fd" text-anchor="middle">k8s drain</text>
+  <!-- DB migration: 02:00-04:00 → x=568 to x=656 -->
+  <rect x="568" y="510" width="88" height="20" rx="4" fill="#eab308" fill-opacity="0.20" stroke="#eab308" stroke-opacity="0.4" stroke-width="1"/>
+  <text x="612" y="525" font-family="Inter,system-ui,sans-serif" font-size="9" fill="#fef08a" text-anchor="middle">DB migration</text>
+  <!-- CDN flush: Thu 18:00 (24h from now effectively end of axis) -->
+  <rect x="1100" y="510" width="40" height="20" rx="4" fill="#6366f1" fill-opacity="0.20" stroke="#6366f1" stroke-opacity="0.4" stroke-width="1"/>
+  <text x="1120" y="525" font-family="Inter,system-ui,sans-serif" font-size="9" fill="#a5b4fc" text-anchor="middle">CDN</text>
+  <!-- "now" marker -->
+  <line x1="260" y1="506" x2="260" y2="545" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <text x="268" y="510" font-family="Inter,system-ui,sans-serif" font-size="9" fill="#3b82f6">now</text>
+
+  <text x="260" y="656" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#475569">All windows require an explicit approver. Approval suppresses alerts for the listed scope only.</text>
+</svg>

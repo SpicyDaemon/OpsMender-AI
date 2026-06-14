@@ -244,6 +244,131 @@ describe("MCP Skills page", () => {
     expect(screen.getByDisplayValue("AI-T0-GUIDANCE")).toBeTruthy();
   });
 
+  async function openStudioWithTool(tool: Record<string, unknown>) {
+    apiMocks.listMCPServers.mockResolvedValue({
+      items: [
+        {
+          id: "srv-1",
+          name: "k8s-prod",
+          transport: "stdio",
+          command: "echo",
+          args: [],
+          env_vars: {},
+          url: null,
+          created_at: "2026-06-06T00:00:00Z",
+          updated_at: "2026-06-06T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    apiMocks.discoverSkillTools.mockResolvedValue({
+      mcp_server_id: "srv-1",
+      mcp_server_name: "k8s-prod",
+      tools: [tool],
+    });
+    await renderPage();
+    fireEvent.click(screen.getAllByRole("button", { name: /generate from mcp/i })[0]);
+    fireEvent.change(await screen.findByLabelText("MCP server"), {
+      target: { value: "srv-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+    await screen.findByText(tool.name as string);
+  }
+
+  const CAUTION_TOOL = {
+    name: "restart_service",
+    description: "Roll a deployment",
+    suggested_classification: "caution",
+    generic: false,
+    suggested_deny: false,
+    needs_review: false,
+    rationale: "reversible write",
+  };
+
+  it("Tier 0: shows reversible + inverse fields and blocks generate until provided", async () => {
+    apiMocks.generateSkill.mockResolvedValue({
+      name: "k8s-prod skill",
+      content_md: "---\n---\n# x\nGENERATED",
+    });
+    await openStudioWithTool(CAUTION_TOOL);
+
+    // Tier 0 fields are hidden until the tool is opted into autonomous run.
+    expect(screen.queryByLabelText("Reversible restart_service")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Allow restart_service at Tier 0"));
+    expect(screen.getByLabelText("Reversible restart_service")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Compensating inverse for restart_service"),
+    ).toBeTruthy();
+
+    // Generate is blocked while the inverse is missing.
+    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Tier 0 \(autonomous\) actions need/i)).toBeTruthy(),
+    );
+    expect(apiMocks.generateSkill).not.toHaveBeenCalled();
+
+    // Provide the inverse → generate succeeds and sends the safety metadata.
+    fireEvent.change(
+      screen.getByLabelText("Compensating inverse for restart_service"),
+      { target: { value: "restart_service_previous" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
+    const payload = apiMocks.generateSkill.mock.calls[0][0];
+    const op = payload.operations[0];
+    expect(op.reversible).toBe(true);
+    expect(op.compensating_inverse).toBe("restart_service_previous");
+  });
+
+  it("Tier 1/2 tools do not require Tier 0 safety metadata", async () => {
+    apiMocks.generateSkill.mockResolvedValue({
+      name: "s",
+      content_md: "---\n---\n# x\nGENERATED",
+    });
+    await openStudioWithTool(CAUTION_TOOL);
+    // Leave Tier 0 unticked (tool stays Tier 1/2) → generate succeeds, no metadata.
+    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
+    const op = apiMocks.generateSkill.mock.calls[0][0].operations[0];
+    expect(op.reversible).toBeNull();
+    expect(op.compensating_inverse).toBeNull();
+  });
+
+  it("AI assist maps reversible + inverse into the Tier 0 row", async () => {
+    apiMocks.aiSuggestSkill.mockResolvedValue({
+      tools: [
+        {
+          name: "restart_service",
+          classification: "caution",
+          deny: false,
+          allow_generic: false,
+          reversible: true,
+          compensating_inverse: "restart_service_previous",
+          generic: false,
+          needs_review: false,
+          rationale: "reversible with inverse",
+        },
+      ],
+      tier0_instructions: "",
+      tier1_instructions: "",
+      tier2_instructions: "",
+      environment: "production",
+    });
+    await openStudioWithTool(CAUTION_TOOL);
+    fireEvent.click(screen.getByRole("button", { name: /ai assist/i }));
+    await waitFor(() => expect(apiMocks.aiSuggestSkill).toHaveBeenCalled());
+    // The model's reversible+inverse turned on Tier 0 and filled the inverse.
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByLabelText(
+            "Compensating inverse for restart_service",
+          ) as HTMLInputElement
+        ).value,
+      ).toBe("restart_service_previous"),
+    );
+  });
+
   it("create modal explains Unassigned drafts and defaults to unassigned", async () => {
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: /^new skill$/i }));

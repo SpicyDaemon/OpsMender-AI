@@ -919,6 +919,7 @@ export interface SkillAISuggestedTool {
   deny: boolean;
   allow_generic: boolean;
   reversible: boolean | null;
+  compensating_inverse: string | null;
   generic: boolean;
   needs_review: boolean;
   rationale: string;

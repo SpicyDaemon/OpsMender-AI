@@ -209,9 +209,23 @@ real MCP server's tools:
 4. **Override anything** — change the classification, toggle deny, opt a scoped
    generic wrapper out with `allow_generic`, add notes, and write/adjust per-tier
    custom instructions.
-5. **Generate draft** — OpsMender deterministically builds a structured 3-tier
+5. **(For autonomous tools) set Tier 0 safety metadata.** Tick **Tier 0
+   (autonomous)** on a tool you want the AI to run without approval. For a
+   non-`safe` tool this reveals **Reversible?** and **Compensating inverse**
+   (the rollback tool). The backend Tier 0 safety floor only lets a non-`safe`
+   action run autonomously when it is `reversible: true` **and** has a
+   `compensating_inverse` — so generation is blocked until you provide both (or
+   untick Tier 0, leaving the tool at Tier 1 approval). Read-only `safe` tools
+   clear Tier 0 automatically.
+6. **Generate draft** — OpsMender deterministically builds a structured 3-tier
    skill (YAML `operations` front-matter + prose) and opens it in the editor.
-6. **Review, edit, then save** (Unassigned by default) or **download**.
+7. **Review, edit, then save** (Unassigned by default) or **download**.
+
+> **Tier 0 autonomous actions require explicit safety metadata** —
+> reversibility and a compensating inverse / rollback. Skill Studio helps you
+> collect it, but the backend tier gate remains authoritative: a Tier 0 action
+> without the required metadata is blocked at runtime regardless of what the
+> skill says, and Tier 0 never runs arbitrary destructive actions.
 
 > The default suggestions are heuristic and the draft is built **deterministically**
 > from your reviewed classifications. The generated front-matter is validated by
@@ -230,6 +244,11 @@ write per-tier guidance from your intent prompt. It is strictly an assist:
   the generic-command guardrail.
 - Any model classification *less restrictive* than OpsMender's own heuristic is
   flagged **needs-review** so you notice the downgrade.
+- The model may propose **Tier 0 safety metadata** (`reversible` + a
+  `compensating_inverse`) for autonomous tools, but an autonomous **destructive**
+  inverse — and any reversible tool the model could not give an inverse for — is
+  flagged **needs-review**. It can never invent an inverse that relaxes the Tier 0
+  floor.
 - If no model is configured (or the provider is unreachable), AI assist is
   unavailable and the Studio falls back to the heuristic suggestions.
 

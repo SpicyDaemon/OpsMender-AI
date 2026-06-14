@@ -708,6 +708,10 @@ class SkillGenerateOperation(BaseModel):
     deny: bool = False
     allow_generic: bool = False
     reversible: Optional[bool] = None
+    # Tool that undoes this one, with the same parameters. Required (together
+    # with reversible=true) for a non-``safe`` tool to clear the Tier 0 safety
+    # floor — see backend/skills/parser.py::tier0_violation_reason.
+    compensating_inverse: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -749,6 +753,7 @@ class SkillAISuggestedTool(BaseModel):
     deny: bool = False
     allow_generic: bool = False
     reversible: Optional[bool] = None
+    compensating_inverse: Optional[str] = None
     generic: bool = False
     needs_review: bool = False
     rationale: str = ""

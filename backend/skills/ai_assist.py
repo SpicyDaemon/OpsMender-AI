@@ -43,6 +43,7 @@ class AISuggestedTool:
     deny: bool
     allow_generic: bool
     reversible: bool | None
+    compensating_inverse: str | None
     generic: bool
     needs_review: bool
     rationale: str
@@ -82,7 +83,14 @@ Classify each tool by RISK:
 Set "deny": true for tools that must NEVER run automatically — irreversible data \
 loss, or arbitrary-command runners (shell, bash, kubectl, run_command, sql, …) \
 whose name does not bound what they can do.
-Set "reversible": true only for a "caution" tool that can be safely undone.
+
+For a tool that could safely run AUTONOMOUSLY (Tier 0): set "reversible": true \
+and set "compensating_inverse" to the exact tool name that undoes it with the \
+same parameters. Only do this when you are confident the inverse exists and is \
+correct — if you cannot confidently name a real inverse, omit \
+"compensating_inverse" (do NOT invent one). Prefer this for "caution" tools; for \
+"destructive" tools an autonomous inverse is high-risk and will always be flagged \
+for human review. Never set reversible/inverse on a denied tool.
 Keep each "rationale" to one short sentence.
 
 Be conservative: when unsure, choose the MORE restrictive classification. Never \
@@ -98,7 +106,7 @@ Return ONLY a JSON object (no prose, no code fences) of this exact shape:
 {{
   "environment": "short label, e.g. production",
   "tools": [
-    {{"name": "<tool name>", "classification": "safe|caution|destructive", "deny": false, "reversible": false, "rationale": "one sentence"}}
+    {{"name": "<tool name>", "classification": "safe|caution|destructive", "deny": false, "reversible": false, "compensating_inverse": null, "rationale": "one sentence"}}
   ],
   "tier0_instructions": "guidance for autonomous remediation",
   "tier1_instructions": "guidance for approval-gated response",
@@ -192,6 +200,7 @@ def parse_ai_response(
                     deny=heuristic.deny,
                     allow_generic=False,
                     reversible=None,
+                    compensating_inverse=None,
                     generic=heuristic.generic,
                     needs_review=True,
                     rationale=heuristic.rationale,
@@ -205,19 +214,39 @@ def parse_ai_response(
         deny = _coerce_bool(ai.get("deny", False))
         reversible = ai.get("reversible")
         reversible_b = _coerce_bool(reversible) if reversible is not None else None
+        inverse_raw = ai.get("compensating_inverse")
+        inverse = str(inverse_raw).strip() if inverse_raw else None
         rationale = str(ai.get("rationale", "")).strip()[:_MAX_RATIONALE] or heuristic.rationale
         needs_review = False
 
         # Hard guardrail: a generic command tool is always denied + destructive,
-        # no matter what the model proposed.
+        # no matter what the model proposed — and cannot carry Tier 0 metadata.
         if heuristic.generic:
             deny = True
             classification = "destructive"
+            reversible_b = None
+            inverse = None
             needs_review = True
+
+        # A denied tool never runs, so it carries no Tier 0 metadata.
+        if deny:
+            reversible_b = None
+            inverse = None
 
         # Flag a model downgrade relative to the deterministic heuristic so the
         # operator notices a less-restrictive suggestion.
         if not deny and _RANK[classification] < _RANK[heuristic.classification]:
+            needs_review = True
+
+        # An autonomous (Tier 0) DESTRUCTIVE action is high-risk: always flag the
+        # model's proposed inverse for human review.
+        if not deny and classification == "destructive" and reversible_b and inverse:
+            needs_review = True
+
+        # Flag incomplete Tier 0 metadata: a tool the model marked reversible but
+        # for which it could not name a compensating inverse will NOT clear the
+        # Tier 0 floor — surface that for operator review.
+        if not deny and classification in ("caution", "destructive") and reversible_b and not inverse:
             needs_review = True
 
         out.append(
@@ -227,6 +256,7 @@ def parse_ai_response(
                 deny=deny,
                 allow_generic=False,
                 reversible=reversible_b,
+                compensating_inverse=inverse,
                 generic=heuristic.generic,
                 needs_review=needs_review,
                 rationale=rationale,

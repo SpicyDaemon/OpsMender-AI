@@ -363,6 +363,10 @@ type EditableTool = {
   needs_review: boolean;
   rationale: string;
   notes: string;
+  // Tier 0 (autonomous) intent + the safety metadata the backend floor needs.
+  tier0: boolean;
+  reversible: boolean;
+  compensating_inverse: string;
 };
 
 function fromDiscovered(t: SkillDiscoveredTool): EditableTool {
@@ -376,7 +380,24 @@ function fromDiscovered(t: SkillDiscoveredTool): EditableTool {
     needs_review: t.needs_review,
     rationale: t.rationale,
     notes: "",
+    tier0: false,
+    reversible: true,
+    compensating_inverse: "",
   };
+}
+
+// A non-safe Tier 0 tool only clears the backend safety floor with reversible
+// = true AND a compensating inverse. Returns the names that are short of it.
+function tier0Incomplete(tools: EditableTool[]): string[] {
+  return tools
+    .filter(
+      (t) =>
+        t.tier0 &&
+        !t.deny &&
+        t.classification !== "safe" &&
+        (!t.reversible || !t.compensating_inverse.trim()),
+    )
+    .map((t) => t.name);
 }
 
 /**
@@ -474,6 +495,12 @@ function GenerateModal({
         current.map((t) => {
           const s = byName.get(t.name);
           if (!s) return t;
+          // The model proposes Tier 0 metadata by returning reversible/inverse;
+          // map that into the row's Tier 0 intent for non-safe tools.
+          const wantsTier0 =
+            s.classification !== "safe" &&
+            !s.deny &&
+            (s.reversible === true || !!s.compensating_inverse);
           return {
             ...t,
             classification: s.classification,
@@ -481,6 +508,9 @@ function GenerateModal({
             allow_generic: s.allow_generic,
             needs_review: s.needs_review,
             rationale: s.rationale || t.rationale,
+            tier0: wantsTier0,
+            reversible: s.reversible ?? t.reversible,
+            compensating_inverse: s.compensating_inverse ?? t.compensating_inverse,
           };
         }),
       );
@@ -506,19 +536,39 @@ function GenerateModal({
       setError("Discover tools first, or pick a server that exposes tools.");
       return;
     }
+    // Block generation when a Tier 0 tool lacks the safety metadata the backend
+    // floor requires — otherwise it would silently never run autonomously.
+    const incomplete = tier0Incomplete(tools);
+    if (incomplete.length > 0) {
+      setError(
+        `Tier 0 (autonomous) actions need "reversible" and a compensating ` +
+          `inverse to pass the backend safety floor. Complete or untick Tier 0 ` +
+          `for: ${incomplete.join(", ")}.`,
+      );
+      return;
+    }
     setGenerating(true);
     setError("");
     try {
       const res = await generateSkill({
         name: name.trim() || "New MCP Skill (generated)",
         environment: environment.trim() || "your-environment",
-        operations: tools.map((t) => ({
-          tool: t.name,
-          classification: t.classification,
-          deny: t.deny,
-          allow_generic: t.allow_generic,
-          notes: t.notes.trim() || null,
-        })),
+        operations: tools.map((t) => {
+          const tier0NonSafe = t.tier0 && !t.deny && t.classification !== "safe";
+          return {
+            tool: t.name,
+            classification: t.classification,
+            deny: t.deny,
+            allow_generic: t.allow_generic,
+            // Only emit Tier 0 safety metadata when the operator opted the tool
+            // into autonomous execution; otherwise leave it unset.
+            reversible: tier0NonSafe ? t.reversible : null,
+            compensating_inverse: tier0NonSafe
+              ? t.compensating_inverse.trim() || null
+              : null,
+            notes: t.notes.trim() || null,
+          };
+        }),
         tier0_instructions: t0,
         tier1_instructions: t1,
         tier2_instructions: t2,
@@ -602,6 +652,12 @@ function GenerateModal({
               </div>
             </div>
 
+            <p className="text-xs text-fg-secondary">
+              Tier 0 actions require enough rollback/safety metadata to pass
+              backend enforcement. Skills guide the AI, but the backend tier gate
+              decides what can actually run.
+            </p>
+
             <div className="max-h-[22rem] overflow-y-auto rounded-md border border-border-subtle">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-bg-elevated text-left text-xs text-fg-secondary">
@@ -659,6 +715,55 @@ function GenerateModal({
                             />
                             allow_generic
                           </label>
+                        )}
+                        {!t.deny && (
+                          <label className="mt-1 flex items-center gap-1 text-[11px] text-fg-secondary">
+                            <input
+                              type="checkbox"
+                              aria-label={`Allow ${t.name} at Tier 0`}
+                              checked={t.tier0}
+                              onChange={(e) =>
+                                patchTool(i, { tier0: e.target.checked })
+                              }
+                            />
+                            Tier 0 (autonomous)
+                          </label>
+                        )}
+                        {t.tier0 && !t.deny && t.classification !== "safe" && (
+                          <div className="mt-1 space-y-1 rounded border border-border-subtle bg-bg-base p-1.5">
+                            <label className="flex items-center gap-1 text-[11px] text-fg-secondary">
+                              <input
+                                type="checkbox"
+                                aria-label={`Reversible ${t.name}`}
+                                checked={t.reversible}
+                                onChange={(e) =>
+                                  patchTool(i, { reversible: e.target.checked })
+                                }
+                              />
+                              reversible
+                            </label>
+                            <Input
+                              aria-label={`Compensating inverse for ${t.name}`}
+                              value={t.compensating_inverse}
+                              onChange={(e) =>
+                                patchTool(i, {
+                                  compensating_inverse: e.target.value,
+                                })
+                              }
+                              placeholder="compensating inverse (rollback tool)"
+                            />
+                            {(!t.reversible || !t.compensating_inverse.trim()) && (
+                              <p className="text-[11px] text-status-medium">
+                                Needs reversible + inverse to clear the Tier 0
+                                floor; otherwise it runs at Tier 1 approval.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {t.tier0 && !t.deny && t.classification === "safe" && (
+                          <p className="mt-1 text-[11px] text-fg-tertiary">
+                            Read-only — clears Tier 0 automatically.
+                          </p>
                         )}
                       </td>
                       <td className="px-3 py-2">

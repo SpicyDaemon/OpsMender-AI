@@ -1026,3 +1026,140 @@ class TestAiSuggestRoute:
             headers=viewer_headers,
         )
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# v1.1 correctness fix — Skill Studio Tier 0 safety metadata (reversible +
+# compensating_inverse round-trip through generator → parser → enforcement).
+# ---------------------------------------------------------------------------
+
+from backend.tiers.enforcement import check as _check_tool  # noqa: E402
+
+
+class TestSkillStudioTier0Metadata:
+    def _skill(self, ops):
+        return build_skill_from_tools(name="t0", environment="prod", operations=ops)
+
+    def test_generated_skill_emits_reversible_and_inverse(self):
+        md = self._skill(
+            [
+                {
+                    "tool": "restart_deployment",
+                    "classification": "caution",
+                    "reversible": True,
+                    "compensating_inverse": "restart_deployment_previous_state",
+                }
+            ]
+        )
+        assert "reversible: true" in md
+        assert "compensating_inverse: restart_deployment_previous_state" in md
+        parsed = parse_skill_content(md)
+        assert parsed.is_reversible("restart_deployment") is True
+        assert parsed.inverse_for("restart_deployment") == "restart_deployment_previous_state"
+
+    def test_tier0_tool_with_full_metadata_clears_floor(self):
+        md = self._skill(
+            [
+                {
+                    "tool": "restart_deployment",
+                    "classification": "caution",
+                    "reversible": True,
+                    "compensating_inverse": "restart_deployment_previous_state",
+                }
+            ]
+        )
+        parsed = parse_skill_content(md)
+        assert parsed.tier0_violation_reason("restart_deployment") is None
+        # And the full enforcement check permits it at Tier 0.
+        result = _check_tool("restart_deployment", 0, parsed)
+        assert result.permitted is True
+
+    def test_tier0_tool_missing_inverse_is_blocked(self):
+        md = self._skill(
+            [{"tool": "scale_up", "classification": "caution", "reversible": True}]
+        )
+        parsed = parse_skill_content(md)
+        assert parsed.tier0_violation_reason("scale_up") is not None
+        assert _check_tool("scale_up", 0, parsed).permitted is False
+        # Still available at Tier 1 (approval).
+        assert _check_tool("scale_up", 1, parsed).permitted is True
+
+    def test_tier0_tool_not_reversible_is_blocked(self):
+        md = self._skill(
+            [{"tool": "delete_pod", "classification": "destructive"}]
+        )
+        parsed = parse_skill_content(md)
+        assert _check_tool("delete_pod", 0, parsed).permitted is False
+
+    def test_destructive_with_full_metadata_can_clear_floor(self):
+        # The matrix permits destructive at Tier 0; the floor allows it only
+        # with reversible + a compensating inverse.
+        md = self._skill(
+            [
+                {
+                    "tool": "delete_pod",
+                    "classification": "destructive",
+                    "reversible": True,
+                    "compensating_inverse": "recreate_pod",
+                }
+            ]
+        )
+        parsed = parse_skill_content(md)
+        assert _check_tool("delete_pod", 0, parsed).permitted is True
+
+    def test_deny_wins_even_with_tier0_metadata(self):
+        md = self._skill(
+            [
+                {
+                    "tool": "drop_table",
+                    "classification": "destructive",
+                    "deny": True,
+                    "reversible": True,
+                    "compensating_inverse": "restore_table",
+                }
+            ]
+        )
+        parsed = parse_skill_content(md)
+        assert parsed.is_denied("drop_table") is True
+        assert _check_tool("drop_table", 0, parsed).permitted is False
+        assert _check_tool("drop_table", 1, parsed).permitted is False
+
+    def test_generic_tool_blocked_at_tier0_even_with_metadata(self):
+        # A generic command tool stays blocked at Tier 0 regardless of metadata
+        # (it is only opted out by allow_generic, and even then not at Tier 0).
+        md = self._skill(
+            [
+                {
+                    "tool": "kubectl",
+                    "classification": "caution",
+                    "reversible": True,
+                    "compensating_inverse": "kubectl_undo",
+                }
+            ]
+        )
+        parsed = parse_skill_content(md)
+        assert _check_tool("kubectl", 0, parsed).permitted is False
+
+
+class TestGenerateRouteTier0(object):
+    async def test_generate_round_trips_inverse_via_api(self, client, auth_headers):
+        resp = await client.post(
+            "/skills/generate",
+            json={
+                "name": "T0",
+                "environment": "prod",
+                "operations": [
+                    {
+                        "tool": "restart_deployment",
+                        "classification": "caution",
+                        "reversible": True,
+                        "compensating_inverse": "restart_prev",
+                    }
+                ],
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        parsed = parse_skill_content(resp.json()["content_md"])
+        assert parsed.inverse_for("restart_deployment") == "restart_prev"
+        assert parsed.tier0_violation_reason("restart_deployment") is None

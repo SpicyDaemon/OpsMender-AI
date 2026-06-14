@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Skill Studio Tier 0 safety metadata (v1.1 correctness fix).** Generated MCP
+  Skills could never enable Tier 0 autonomy: the generator/wizard collected no
+  `compensating_inverse` (and never sent `reversible`), but the parser/enforcement
+  Tier 0 floor requires a non-`safe` action to be `reversible: true` **and**
+  declare a `compensating_inverse` to run autonomously. The generator schema,
+  Markdown emitter, and AI-assist now carry both fields and they round-trip
+  through the parser. In the wizard, opting a tool into **Tier 0 (autonomous)**
+  reveals `reversible` + `compensating inverse` fields; generation is **blocked**
+  until a non-safe Tier 0 tool has both. The backend floor is unchanged and stays
+  authoritative — a Tier 0 tool missing the metadata is still blocked (and falls
+  to Tier 1 approval), deny-list still wins, and generic command tools stay
+  blocked at Tier 0. AI assist may propose `reversible`/`compensating_inverse`
+  but autonomous **destructive** inverses (and any reversible tool the model
+  could not give an inverse for) are flagged needs-review; it can never invent an
+  inverse that relaxes the floor. No schema change.
+
 ### Added
 
 - **Skill Studio AI assist (Phase F follow-up).** The MCP Skill generator can now

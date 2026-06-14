@@ -40,6 +40,11 @@ def _normalize_operation(op: dict[str, Any]) -> dict[str, Any]:
     entry: dict[str, Any] = {"tool": tool, "classification": classification}
     if op.get("reversible") is not None:
         entry["reversible"] = bool(op["reversible"])
+    # Tier 0 safety floor: a non-safe op needs a compensating inverse to run
+    # autonomously. Emit it so the parser/enforcement can honor it.
+    inverse = op.get("compensating_inverse")
+    if inverse:
+        entry["compensating_inverse"] = str(inverse).strip()
     if deny:
         entry["deny"] = True
     if op.get("allow_generic"):
@@ -95,6 +100,8 @@ def build_skill_from_tools(
                 flags.append("allow_generic")
             if o.get("reversible") is True:
                 flags.append("reversible")
+            if o.get("compensating_inverse"):
+                flags.append(f"rollback→`{o['compensating_inverse']}`")
             note = o.get("notes", "") or ""
             extra = (", ".join(flags))
             out += f"| `{o['tool']}` | {note} | {extra} |\n"
@@ -131,6 +138,12 @@ def build_skill_from_tools(
 
 The AI may execute remediation automatically — **only within this policy, deny
 lists, MCP permissions, and backend guardrails.** Most autonomous, not unlimited.
+
+> **Tier 0 safety floor.** A non-`safe` action only runs autonomously when the
+> policy marks it `reversible: true` **and** declares a `compensating_inverse`
+> (the tool that rolls it back). Skills guide the AI, but the backend tier gate
+> decides what can actually run — an action without this metadata is blocked at
+> Tier 0 and falls to Tier 1 approval instead.
 
 ### Safe actions (read-only / low-risk)
 

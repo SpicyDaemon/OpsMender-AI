@@ -166,6 +166,10 @@ async def _to_response(
         team_scope=team_scope,
         team_ids=team_ids,
         team_names=team_names,
+        native_actions_enabled=connector.native_actions_enabled,
+        callback_status=connector.callback_status,
+        callback_last_verified_at=connector.callback_last_verified_at,
+        callback_last_error=connector.callback_last_error,
     )
 
 
@@ -449,6 +453,10 @@ async def _link_to_response(db: AsyncSession, link) -> BotUserLinkResponse:
         opsmender_username=opsmender_user.username if opsmender_user else "(deleted)",
         opsmender_role=opsmender_user.role if opsmender_user else "viewer",
         created_at=link.created_at,
+        external_username=link.external_username,
+        external_display_name=link.external_display_name,
+        last_seen_at=link.last_seen_at,
+        verified=link.verified,
     )
 
 
@@ -495,10 +503,12 @@ async def create_bot_user_link(
         )
 
     opsmender_user = await UserRepo.get_by_id(db, body.opsmender_user_id)
-    if opsmender_user is None:
+    if opsmender_user is None or not await UserRepo.is_member(
+        db, body.opsmender_user_id, org_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OpsMender user not found",
+            detail="OpsMender user not found in this workspace",
         )
 
     platform_user_id = body.platform_user_id.strip()
@@ -527,6 +537,8 @@ async def create_bot_user_link(
         platform_user_id=platform_user_id,
         opsmender_user_id=body.opsmender_user_id,
         created_by=user.id,
+        external_username=body.external_username,
+        external_display_name=body.external_display_name,
     )
     await db.commit()
     await db.refresh(link)

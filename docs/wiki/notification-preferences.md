@@ -14,14 +14,15 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > - **Notification Channels** — shared team/workspace channels that receive incident + AI-session lifecycle updates (not a paging target).
 > - **Viewer Notifications** — read-only updates for viewers/stakeholders/downstream systems; never paging.
 
-> **How v1 chat notifications work (and what's deferred).** In v1.0.0, Notification
+> **How chat notifications work during the v1.1 rollout.** Notification
 > Channels send a **formatted message with an authenticated OpsMender link** — you
 > click through, sign in, and act inside OpsMender under normal Admin/Operator
 > RBAC. There are **no native in-chat buttons** and **no message edit-in-place**
-> yet: those need per-platform verified callbacks and are planned for **v1.1**
+> yet. v1.1 Phase A added the common idempotency, identity, RBAC, receipt, and
+> audit foundation, but each platform still needs its own verified callback path
+> before actions can be enabled
 > (see [`ROADMAP.md`](../ROADMAP.md) → "Native Chat Buttons Are Deferred From v1").
-> A signed-action-token and delivery-receipt foundation exists in the backend but
-> is intentionally dormant — tokens alone never mutate incidents, and OpsMender
+> The foundation is intentionally dormant — tokens alone never mutate incidents, and OpsMender
 > never posts a public, unauthenticated action URL. The capability chips on the
 > Notification Channels table reflect this honestly: a platform only shows
 > **Interactive actions** or **Message updates** once a verified adapter exists.

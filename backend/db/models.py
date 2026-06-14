@@ -1188,6 +1188,16 @@ class BotConnector(Base):
         DateTime(timezone=True), nullable=True
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    native_actions_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    callback_status: Mapped[str] = mapped_column(
+        String(30), default="not_configured", nullable=False
+    )
+    callback_last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    callback_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class BotUserLink(Base):
@@ -1206,6 +1216,10 @@ class BotUserLink(Base):
         nullable=False,
     )
     platform_user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    external_username: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    external_display_name: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
     opsmender_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -1217,6 +1231,18 @@ class BotUserLink(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    verified: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "connector_id",
+            "platform_user_id",
+            name="uq_bot_user_links_connector_platform_user",
+        ),
     )
 
 
@@ -1241,6 +1267,14 @@ class BotActionAudit(Base):
     command: Mapped[str | None] = mapped_column(String(80), nullable=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="SET NULL"), nullable=True
+    )
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    external_user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
     session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False, index=True
@@ -1281,6 +1315,16 @@ class IncidentNotificationReceipt(Base):
     lifecycle_event: Mapped[str] = mapped_column(String(80), nullable=False)
     rendered_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
     can_update: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    delivery_status: Mapped[str] = mapped_column(
+        String(30), default="delivered", nullable=False
+    )
+    update_failed_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -1300,6 +1344,64 @@ class IncidentNotificationReceipt(Base):
             "ix_incident_notification_receipts_session",
             "org_id",
             "session_id",
+        ),
+    )
+
+
+class NativeActionInvocation(Base):
+    """Idempotency and outcome record for a verified native chat action."""
+
+    __tablename__ = "native_action_invocations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("bot_connectors.id", ondelete="CASCADE"), nullable=False
+    )
+    platform: Mapped[str] = mapped_column(String(30), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    external_user_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(30), default="processing", nullable=False
+    )
+    result_status: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True
+    )
+    callback_received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "connector_id",
+            "idempotency_key",
+            name="uq_native_action_invocation_key",
+        ),
+        Index(
+            "ix_native_action_invocations_incident",
+            "org_id",
+            "incident_id",
         ),
     )
 

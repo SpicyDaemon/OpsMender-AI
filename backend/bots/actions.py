@@ -16,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.db.models import BotConnector, User, UserOrganization
 from backend.db.repos import (
+    BotActionAuditRepo,
     BotUserLinkRepo,
     IncidentAssignmentRepo,
     IncidentRepo,
+    NativeActionInvocationRepo,
     SessionRepo,
     UserRepo,
 )
@@ -53,6 +55,8 @@ class IncidentActionTokenClaims:
 @dataclass(frozen=True)
 class ExternalActorIdentity:
     platform_user_id: str | None = None
+    username: str | None = None
+    display_name: str | None = None
     email: str | None = None
     email_verified: bool = False
 
@@ -65,6 +69,18 @@ class IncidentActionResult:
     actor_user_id: uuid.UUID
     session_id: uuid.UUID | None = None
     detail: str | None = None
+
+
+@dataclass(frozen=True)
+class VerifiedNativeAction:
+    """Platform-verified callback normalized for the common action handler."""
+
+    connector: BotConnector
+    claims: IncidentActionTokenClaims
+    external_actor: ExternalActorIdentity
+    idempotency_key: str
+    callback_received_at: datetime
+    chat_id: str | None = None
 
 
 def _b64encode(raw: bytes) -> str:
@@ -164,7 +180,14 @@ async def resolve_external_actor(
             connector_id=connector.id,
             platform_user_id=identity.platform_user_id,
         )
-        if link is not None:
+        if link is not None and link.verified:
+            await BotUserLinkRepo.mark_seen(
+                db,
+                org_id,
+                link.id,
+                external_username=identity.username,
+                external_display_name=identity.display_name,
+            )
             return await UserRepo.get_by_id(db, link.opsmender_user_id)
     if identity.email and identity.email_verified:
         return await UserRepo.get_by_email(db, identity.email.lower().strip())
@@ -316,3 +339,147 @@ async def execute_incident_action(
         )
 
     raise IncidentActionError("unsupported_action")
+
+
+async def execute_verified_native_action(
+    db: AsyncSession,
+    *,
+    request: VerifiedNativeAction,
+    channel_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> IncidentActionResult:
+    """Deduplicate, authorize, execute, and audit a verified chat callback.
+
+    Platform routes must verify their native signature/secret before creating
+    this request. This function deliberately has no ``verified=False`` mode.
+    """
+
+    connector = request.connector
+    claims = request.claims
+    external_user_id = (request.external_actor.platform_user_id or "").strip()
+    idempotency_key = request.idempotency_key.strip()
+
+    if connector.org_id != claims.org_id:
+        raise IncidentActionError("connector_org_mismatch")
+    if connector.platform not in {"slack", "teams", "discord", "telegram"}:
+        raise IncidentActionError("unsupported_callback_platform")
+    if not connector.is_enabled:
+        raise IncidentActionError("connector_disabled")
+    if not connector.native_actions_enabled:
+        raise IncidentActionError("native_actions_disabled")
+    if connector.callback_status != "verified":
+        raise IncidentActionError("callback_not_verified")
+    if not external_user_id:
+        raise IncidentActionError("external_user_required")
+    if not idempotency_key:
+        raise IncidentActionError("idempotency_key_required")
+
+    invocation, reserved = await NativeActionInvocationRepo.reserve(
+        db,
+        claims.org_id,
+        connector_id=connector.id,
+        platform=connector.platform,
+        idempotency_key=idempotency_key,
+        incident_id=claims.incident_id,
+        action=claims.action,
+        external_user_id=external_user_id,
+        callback_received_at=request.callback_received_at,
+    )
+    if not reserved:
+        await BotActionAuditRepo.create(
+            db,
+            claims.org_id,
+            connector_id=connector.id,
+            platform=connector.platform,
+            chat_id=request.chat_id,
+            command=claims.action,
+            status="native_action_deduplicated",
+            detail=invocation.status,
+            session_id=invocation.session_id,
+            incident_id=claims.incident_id,
+            actor_user_id=invocation.actor_user_id,
+            external_user_id=external_user_id,
+            idempotency_key=idempotency_key,
+        )
+        if invocation.status == "applied" and invocation.actor_user_id is not None:
+            return IncidentActionResult(
+                action=claims.action,
+                status=invocation.result_status or "deduplicated",
+                incident_id=claims.incident_id,
+                actor_user_id=invocation.actor_user_id,
+                session_id=invocation.session_id,
+                detail="deduplicated",
+            )
+        if invocation.status == "rejected":
+            raise IncidentActionError(invocation.error_code or "action_rejected")
+        raise IncidentActionError("action_in_progress")
+    await BotActionAuditRepo.create(
+        db,
+        claims.org_id,
+        connector_id=connector.id,
+        platform=connector.platform,
+        chat_id=request.chat_id,
+        command=claims.action,
+        status="callback_verified",
+        incident_id=claims.incident_id,
+        external_user_id=external_user_id,
+        idempotency_key=idempotency_key,
+    )
+
+    try:
+        result = await execute_incident_action(
+            db,
+            claims=claims,
+            connector=connector,
+            external_actor=request.external_actor,
+            channel_factory=channel_factory,
+        )
+    except IncidentActionError as exc:
+        error_code = str(exc)
+        await NativeActionInvocationRepo.finish(
+            db,
+            invocation,
+            status="rejected",
+            error_code=error_code,
+        )
+        await BotActionAuditRepo.create(
+            db,
+            claims.org_id,
+            connector_id=connector.id,
+            platform=connector.platform,
+            chat_id=request.chat_id,
+            command=claims.action,
+            status="native_action_rejected",
+            detail=error_code,
+            incident_id=claims.incident_id,
+            external_user_id=external_user_id,
+            idempotency_key=idempotency_key,
+        )
+        # Rejections must remain auditable even though the public callback
+        # route will translate the exception into a non-2xx response.
+        await db.commit()
+        raise
+
+    await NativeActionInvocationRepo.finish(
+        db,
+        invocation,
+        status="applied",
+        actor_user_id=result.actor_user_id,
+        result_status=result.status,
+        session_id=result.session_id,
+    )
+    await BotActionAuditRepo.create(
+        db,
+        claims.org_id,
+        connector_id=connector.id,
+        platform=connector.platform,
+        chat_id=request.chat_id,
+        command=claims.action,
+        status="native_action_applied",
+        detail=result.status,
+        session_id=result.session_id,
+        incident_id=claims.incident_id,
+        actor_user_id=result.actor_user_id,
+        external_user_id=external_user_id,
+        idempotency_key=idempotency_key,
+    )
+    return result

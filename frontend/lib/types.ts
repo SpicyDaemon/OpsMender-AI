@@ -604,6 +604,10 @@ export interface BotConnectorResponse {
   team_scope: NotificationTeamScope;
   team_ids: string[];
   team_names: string[];
+  native_actions_enabled?: boolean;
+  callback_status?: string;
+  callback_last_verified_at?: string | null;
+  callback_last_error?: string | null;
   platform_label: string | null;
   platform_capabilities: PlatformCapabilities | null;
 }
@@ -1104,10 +1108,14 @@ export interface BotUserLinkResponse {
   id: string;
   connector_id: string;
   platform_user_id: string;
+  external_username?: string | null;
+  external_display_name?: string | null;
   opsmender_user_id: string;
   opsmender_username: string;
   opsmender_role: string;
   created_at: string;
+  last_seen_at?: string | null;
+  verified?: boolean;
 }
 
 export interface BotUserLinkListResponse {
@@ -1117,6 +1125,8 @@ export interface BotUserLinkListResponse {
 
 export interface BotUserLinkCreate {
   platform_user_id: string;
+  external_username?: string | null;
+  external_display_name?: string | null;
   opsmender_user_id: string;
 }
 

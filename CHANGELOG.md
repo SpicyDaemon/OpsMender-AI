@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **v1.1 Notification Collaboration Phase A — common verified-action foundation.** Added migration `w2x3y4z5a6b7` with per-channel native-action/callback readiness state, richer external identity metadata, delivery/update receipt status fields, enriched bot action audit context, and durable `native_action_invocations` idempotency records. The common verified-action coordinator now deduplicates callback action IDs, resolves only verified external identity mappings, applies existing active-user + Admin/Operator RBAC, invokes the existing incident action path, and audits verified/applied/rejected/deduplicated outcomes.
+
 ### Fixed
 
 - **v1 finalization — stale 4-tier copy corrected to the shipped 3-tier AI Autonomy model.** The session-detail **Tier capability summary** (`TierCapabilitySummary.tsx`) still rendered the old four-tier ladder — it labeled **Tier 2 as "Assisted / executes safe + caution autonomously"** and showed a removed **Tier 3 "Advisory"** card, directly contradicting the actual advisory-only enforcement and the Start Session modal. It now shows the three real tiers (**0 Autonomous · 1 Approval Required · 2 Advisory Only**) with accurate allow/deny rows (deny-listed, generic-command, and irreversible-beyond-floor actions called out). Also corrected the `Sidebar.tsx` tier badge (`2 → "Advisory"`), the `.env.example` `OPSMENDER_TIER` comment, both example skills (`examples/SKILL.md`, `examples/SKILL.app-incident.md`) tier tables, and `docs/REFERENCE.md` (enforcement matrix + decision D-002, marked superseded). No behavior change — copy/UI accuracy only.
@@ -16,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **v1.1 follow-up recorded — MCP Skill Generator / Skill Studio.** Roadmap + `wiki/mcp-skills.md` now describe a future flow to select an MCP server, review discovered tools, classify actions per AI Autonomy Tier, add custom instructions, and have the AI generate a saveable/downloadable MCP Skill draft — with the explicit invariant that **the backend tier gate remains the execution authority** (a generated skill never relaxes the gate, deny lists, generic guardrail, or conservative defaults). **Not implemented in v1.**
 
 ### Security
+
+- **Native notification actions remain fail-closed.** The new common coordinator cannot run unless the connector is enabled, `native_actions_enabled=true`, and `callback_status=verified`; unsupported platforms, unmapped users, Viewers, inactive/deleted users, and replayed callbacks cannot create a second mutation. Platform capabilities remain disabled in this phase, so no native buttons or public action URLs are exposed yet.
 
 - **Role-based access enforced in the UI and verified at the API (Part 6).** A new `RouteRoleGuard` in the dashboard layout reuses the sidebar role model (`requiredRolesForPath`) so a user who navigates directly to a restricted URL sees a clean **Access denied** panel instead of admin data — not just a hidden nav item. The sidebar already hides admin/AI-config/paging-management items from Operators and limits Viewers to Dashboard + Incidents. Backend authorization is unchanged but now locked by a role-matrix test (`tests/test_role_access.py`): Operators/Viewers are rejected from admin mutations (config, SLA targets, user creation) and Viewers can't read admin surfaces (config, user list), while every role can manage its own profile/password.
 

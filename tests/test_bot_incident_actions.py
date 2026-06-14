@@ -11,16 +11,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.bots.actions import (
     ExternalActorIdentity,
     IncidentActionError,
+    VerifiedNativeAction,
     execute_incident_action,
+    execute_verified_native_action,
     make_incident_action_token,
     verify_incident_action_token,
 )
 from backend.db.models import Base
 from backend.db.repos import (
+    BotActionAuditRepo,
     BotConnectorRepo,
     BotUserLinkRepo,
     IncidentAssignmentRepo,
     IncidentRepo,
+    NativeActionInvocationRepo,
     SessionRepo,
     UserRepo,
 )
@@ -246,3 +250,175 @@ async def test_external_actor_must_be_linked_and_active(factory):
         )
         assert result.status == "acknowledged"
 
+
+async def test_verified_native_action_is_idempotent_and_audited(factory):
+    async with factory() as db:
+        connector = await BotConnectorRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="slack-native-actions",
+            platform="slack",
+            credentials={"signing_secret": "secret"},
+            allowed_capabilities=["notifications"],
+            status="healthy",
+            is_enabled=True,
+        )
+        connector.native_actions_enabled = True
+        connector.callback_status = "verified"
+        operator = await _user(db, username="native-op", role="operator")
+        await BotUserLinkRepo.create(
+            db,
+            TEST_ORG_ID,
+            connector_id=connector.id,
+            platform_user_id="U-native",
+            opsmender_user_id=operator.id,
+        )
+        incident = await IncidentRepo.create(
+            db,
+            TEST_ORG_ID,
+            title="Native callback outage",
+            description="timeouts",
+            severity="high",
+        )
+        request = VerifiedNativeAction(
+            connector=connector,
+            claims=_claims(incident.id),
+            external_actor=ExternalActorIdentity(
+                platform_user_id="U-native",
+                username="native.user",
+                display_name="Native User",
+            ),
+            idempotency_key="slack-action-123",
+            callback_received_at=datetime.now(timezone.utc),
+            chat_id="C123",
+        )
+
+        first = await execute_verified_native_action(db, request=request)
+        await db.commit()
+        second = await execute_verified_native_action(db, request=request)
+        await db.commit()
+
+        assert first.status == "acknowledged"
+        assert second.status == "acknowledged"
+        assert second.detail == "deduplicated"
+        assignments = await IncidentAssignmentRepo.list_for_incident(
+            db, TEST_ORG_ID, incident.id
+        )
+        assert len(assignments) == 1
+
+        invocation = await NativeActionInvocationRepo.get_by_key(
+            db, TEST_ORG_ID, connector.id, "slack-action-123"
+        )
+        assert invocation is not None
+        assert invocation.status == "applied"
+        assert invocation.actor_user_id == operator.id
+        assert invocation.result_status == "acknowledged"
+
+        link = await BotUserLinkRepo.get_by_platform_user(
+            db,
+            TEST_ORG_ID,
+            connector_id=connector.id,
+            platform_user_id="U-native",
+        )
+        assert link is not None
+        assert link.last_seen_at is not None
+        assert link.external_username == "native.user"
+        assert link.external_display_name == "Native User"
+
+        audits = await BotActionAuditRepo.list_by_connector(
+            db, TEST_ORG_ID, connector.id
+        )
+        assert {row.status for row in audits} == {
+            "callback_verified",
+            "native_action_applied",
+            "native_action_deduplicated",
+        }
+        assert all(row.incident_id == incident.id for row in audits)
+
+
+async def test_native_action_requires_enabled_verified_callback(factory):
+    async with factory() as db:
+        connector = await BotConnectorRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="slack-disabled-actions",
+            platform="slack",
+            credentials={"signing_secret": "secret"},
+            allowed_capabilities=["notifications"],
+            status="healthy",
+            is_enabled=True,
+        )
+        incident = await IncidentRepo.create(
+            db,
+            TEST_ORG_ID,
+            title="No callback execution",
+            description="must stay open",
+            severity="medium",
+        )
+        request = VerifiedNativeAction(
+            connector=connector,
+            claims=_claims(incident.id),
+            external_actor=ExternalActorIdentity(platform_user_id="U1"),
+            idempotency_key="disabled-1",
+            callback_received_at=datetime.now(timezone.utc),
+        )
+
+        with pytest.raises(IncidentActionError, match="native_actions_disabled"):
+            await execute_verified_native_action(db, request=request)
+
+        connector.native_actions_enabled = True
+        with pytest.raises(IncidentActionError, match="callback_not_verified"):
+            await execute_verified_native_action(db, request=request)
+
+        invocation = await NativeActionInvocationRepo.get_by_key(
+            db, TEST_ORG_ID, connector.id, "disabled-1"
+        )
+        assert invocation is None
+
+
+async def test_unmapped_verified_callback_is_rejected_and_recorded(factory):
+    async with factory() as db:
+        connector = await BotConnectorRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="telegram-native-actions",
+            platform="telegram",
+            credentials={"webhook_secret": "secret"},
+            allowed_capabilities=["notifications"],
+            status="healthy",
+            is_enabled=True,
+        )
+        connector.native_actions_enabled = True
+        connector.callback_status = "verified"
+        incident = await IncidentRepo.create(
+            db,
+            TEST_ORG_ID,
+            title="Unmapped callback",
+            description="must be rejected",
+            severity="high",
+        )
+        request = VerifiedNativeAction(
+            connector=connector,
+            claims=_claims(incident.id, action="resolve"),
+            external_actor=ExternalActorIdentity(platform_user_id="TG-missing"),
+            idempotency_key="telegram-action-404",
+            callback_received_at=datetime.now(timezone.utc),
+            chat_id="-1001",
+        )
+
+        with pytest.raises(IncidentActionError, match="actor_not_linked"):
+            await execute_verified_native_action(db, request=request)
+
+        invocation = await NativeActionInvocationRepo.get_by_key(
+            db, TEST_ORG_ID, connector.id, "telegram-action-404"
+        )
+        assert invocation is not None
+        assert invocation.status == "rejected"
+        assert invocation.error_code == "actor_not_linked"
+        audits = await BotActionAuditRepo.list_by_connector(
+            db, TEST_ORG_ID, connector.id
+        )
+        assert {row.status for row in audits} == {
+            "callback_verified",
+            "native_action_rejected",
+        }

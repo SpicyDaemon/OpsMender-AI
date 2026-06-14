@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
     AgentTeamProfile,
@@ -53,6 +54,7 @@ from backend.db.models import (
     MCPServer,
     MCPServerOAuthToken,
     ModelConfig,
+    NativeActionInvocation,
     RuntimeConfig,
     Session,
     SessionMessage,
@@ -3381,6 +3383,9 @@ class BotUserLinkRepo:
         platform_user_id: str,
         opsmender_user_id: uuid.UUID,
         created_by: uuid.UUID | None = None,
+        external_username: str | None = None,
+        external_display_name: str | None = None,
+        verified: bool = True,
     ) -> BotUserLink:
         link = BotUserLink(
             org_id=org_id,
@@ -3388,6 +3393,9 @@ class BotUserLinkRepo:
             platform_user_id=platform_user_id,
             opsmender_user_id=opsmender_user_id,
             created_by=created_by,
+            external_username=external_username,
+            external_display_name=external_display_name,
+            verified=verified,
         )
         db.add(link)
         await db.flush()
@@ -3444,6 +3452,30 @@ class BotUserLinkRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def mark_seen(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        link_id: uuid.UUID,
+        *,
+        external_username: str | None = None,
+        external_display_name: str | None = None,
+    ) -> BotUserLink | None:
+        values: dict[str, Any] = {"last_seen_at": datetime.now(timezone.utc)}
+        if external_username is not None:
+            values["external_username"] = external_username
+        if external_display_name is not None:
+            values["external_display_name"] = external_display_name
+        result = await db.execute(
+            update(BotUserLink)
+            .where(BotUserLink.org_id == org_id, BotUserLink.id == link_id)
+            .values(**values)
+        )
+        if not result.rowcount:
+            return None
+        await db.flush()
+        return await BotUserLinkRepo.get_by_id(db, org_id, link_id)
+
+    @staticmethod
     async def delete(db: AsyncSession, org_id: uuid.UUID, link_id: uuid.UUID) -> bool:
         link = await BotUserLinkRepo.get_by_id(db, org_id, link_id)
         if link is None:
@@ -3469,6 +3501,9 @@ class IncidentNotificationReceiptRepo:
         rendered_status: str | None = None,
         can_update: bool = False,
         session_id: uuid.UUID | None = None,
+        delivery_status: str = "delivered",
+        update_failed_reason: str | None = None,
+        last_updated_at: datetime | None = None,
     ) -> IncidentNotificationReceipt:
         row = IncidentNotificationReceipt(
             org_id=org_id,
@@ -3482,6 +3517,9 @@ class IncidentNotificationReceiptRepo:
             lifecycle_event=lifecycle_event,
             rendered_status=rendered_status,
             can_update=can_update,
+            delivery_status=delivery_status,
+            update_failed_reason=update_failed_reason,
+            last_updated_at=last_updated_at,
         )
         db.add(row)
         await db.flush()
@@ -3547,6 +3585,10 @@ class BotActionAuditRepo:
         status: str,
         detail: str | None = None,
         session_id: uuid.UUID | None = None,
+        incident_id: uuid.UUID | None = None,
+        actor_user_id: uuid.UUID | None = None,
+        external_user_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> BotActionAudit:
         entry = BotActionAudit(
             org_id=org_id,
@@ -3557,6 +3599,10 @@ class BotActionAuditRepo:
             status=status,
             detail=detail,
             session_id=session_id,
+            incident_id=incident_id,
+            actor_user_id=actor_user_id,
+            external_user_id=external_user_id,
+            idempotency_key=idempotency_key,
         )
         db.add(entry)
         await db.flush()
@@ -3583,6 +3629,113 @@ class BotActionAuditRepo:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
+
+
+class NativeActionInvocationRepo:
+    @staticmethod
+    async def get_by_key(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        connector_id: uuid.UUID,
+        idempotency_key: str,
+    ) -> NativeActionInvocation | None:
+        return (
+            await db.execute(
+                select(NativeActionInvocation).where(
+                    NativeActionInvocation.org_id == org_id,
+                    NativeActionInvocation.connector_id == connector_id,
+                    NativeActionInvocation.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        connector_id: uuid.UUID,
+        platform: str,
+        idempotency_key: str,
+        incident_id: uuid.UUID,
+        action: str,
+        external_user_id: str,
+        callback_received_at: datetime,
+    ) -> NativeActionInvocation:
+        row = NativeActionInvocation(
+            org_id=org_id,
+            connector_id=connector_id,
+            platform=platform,
+            idempotency_key=idempotency_key,
+            incident_id=incident_id,
+            action=action,
+            external_user_id=external_user_id,
+            callback_received_at=callback_received_at,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def reserve(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        connector_id: uuid.UUID,
+        platform: str,
+        idempotency_key: str,
+        incident_id: uuid.UUID,
+        action: str,
+        external_user_id: str,
+        callback_received_at: datetime,
+    ) -> tuple[NativeActionInvocation, bool]:
+        existing = await NativeActionInvocationRepo.get_by_key(
+            db, org_id, connector_id, idempotency_key
+        )
+        if existing is not None:
+            return existing, False
+        try:
+            async with db.begin_nested():
+                row = await NativeActionInvocationRepo.create(
+                    db,
+                    org_id,
+                    connector_id=connector_id,
+                    platform=platform,
+                    idempotency_key=idempotency_key,
+                    incident_id=incident_id,
+                    action=action,
+                    external_user_id=external_user_id,
+                    callback_received_at=callback_received_at,
+                )
+            return row, True
+        except IntegrityError:
+            existing = await NativeActionInvocationRepo.get_by_key(
+                db, org_id, connector_id, idempotency_key
+            )
+            if existing is None:
+                raise
+            return existing, False
+
+    @staticmethod
+    async def finish(
+        db: AsyncSession,
+        invocation: NativeActionInvocation,
+        *,
+        status: str,
+        actor_user_id: uuid.UUID | None = None,
+        result_status: str | None = None,
+        error_code: str | None = None,
+        session_id: uuid.UUID | None = None,
+    ) -> NativeActionInvocation:
+        invocation.status = status
+        invocation.actor_user_id = actor_user_id
+        invocation.result_status = result_status
+        invocation.error_code = error_code
+        invocation.session_id = session_id
+        invocation.completed_at = datetime.now(timezone.utc)
+        invocation.updated_at = invocation.completed_at
+        await db.flush()
+        return invocation
 
 
 class OrganizationRepo:

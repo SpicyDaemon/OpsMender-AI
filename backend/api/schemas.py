@@ -1197,6 +1197,10 @@ class BotConnectorResponse(BaseModel):
     team_scope: str = "workspace"
     team_ids: list[uuid.UUID] = Field(default_factory=list)
     team_names: list[str] = Field(default_factory=list)
+    native_actions_enabled: bool = False
+    callback_status: str = "not_configured"
+    callback_last_verified_at: Optional[datetime] = None
+    callback_last_error: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -1246,7 +1250,9 @@ class BotConnectorPlatformListResponse(BaseModel):
 
 
 class BotUserLinkCreate(BaseModel):
-    platform_user_id: str
+    platform_user_id: str = Field(..., min_length=1, max_length=120)
+    external_username: Optional[str] = Field(default=None, max_length=200)
+    external_display_name: Optional[str] = Field(default=None, max_length=200)
     opsmender_user_id: uuid.UUID
 
 
@@ -1254,10 +1260,14 @@ class BotUserLinkResponse(BaseModel):
     id: uuid.UUID
     connector_id: uuid.UUID
     platform_user_id: str
+    external_username: Optional[str] = None
+    external_display_name: Optional[str] = None
     opsmender_user_id: uuid.UUID
     opsmender_username: str
     opsmender_role: str
     created_at: datetime
+    last_seen_at: Optional[datetime] = None
+    verified: bool = True
 
 
 class BotUserLinkListResponse(BaseModel):

@@ -13,6 +13,7 @@ import {
   Wand2,
 } from "lucide-react";
 import {
+  aiSuggestSkill,
   cloneSkill,
   createSkill,
   deleteSkill,
@@ -401,6 +402,8 @@ function GenerateModal({
   const [tools, setTools] = useState<EditableTool[]>([]);
   const [name, setName] = useState("New MCP Skill (generated)");
   const [environment, setEnvironment] = useState("production");
+  const [intent, setIntent] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
   const [t0, setT0] = useState("");
   const [t1, setT1] = useState("");
   const [t2, setT2] = useState("");
@@ -416,6 +419,8 @@ function GenerateModal({
       setTools([]);
       setName("New MCP Skill (generated)");
       setEnvironment("production");
+      setIntent("");
+      setAiBusy(false);
       setT0("");
       setT1("");
       setT2("");
@@ -452,6 +457,48 @@ function GenerateModal({
     setTools((current) =>
       current.map((t, i) => (i === index ? { ...t, ...patch } : t)),
     );
+  }
+
+  async function handleAiAssist() {
+    if (tools.length === 0) return;
+    setAiBusy(true);
+    setError("");
+    try {
+      const res = await aiSuggestSkill({
+        intent,
+        environment,
+        tools: tools.map((t) => ({ name: t.name, description: t.description })),
+      });
+      const byName = new Map(res.tools.map((t) => [t.name, t]));
+      setTools((current) =>
+        current.map((t) => {
+          const s = byName.get(t.name);
+          if (!s) return t;
+          return {
+            ...t,
+            classification: s.classification,
+            deny: s.deny,
+            allow_generic: s.allow_generic,
+            needs_review: s.needs_review,
+            rationale: s.rationale || t.rationale,
+          };
+        }),
+      );
+      if (res.tier0_instructions) setT0(res.tier0_instructions);
+      if (res.tier1_instructions) setT1(res.tier1_instructions);
+      if (res.tier2_instructions) setT2(res.tier2_instructions);
+      if (res.environment) setEnvironment(res.environment);
+      toast.success("AI suggestions applied — review the flagged rows.");
+    } catch (err) {
+      // AI assist is optional: degrade to the heuristic suggestions already shown.
+      setError(
+        err instanceof Error
+          ? `${err.message} You can still classify tools manually.`
+          : "AI assist failed; classify tools manually.",
+      );
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   async function handleGenerate() {
@@ -527,6 +574,34 @@ function GenerateModal({
 
         {discovered && tools.length > 0 && (
           <>
+            <div className="rounded-md border border-border-subtle bg-bg-elevated p-3">
+              <Label htmlFor="gen-intent">
+                Intent / context for AI assist (optional)
+              </Label>
+              <Textarea
+                id="gen-intent"
+                rows={2}
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
+                placeholder="e.g. Production Kubernetes. Be conservative — never auto-delete; restarts OK if health checks pass."
+              />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs text-fg-secondary">
+                  AI suggestions are reviewed by you; generic command tools stay
+                  denied and downgrades are flagged. The tier gate enforces what
+                  runs.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleAiAssist}
+                  loading={aiBusy}
+                >
+                  <Sparkles size={14} /> AI assist
+                </Button>
+              </div>
+            </div>
+
             <div className="max-h-[22rem] overflow-y-auto rounded-md border border-border-subtle">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-bg-elevated text-left text-xs text-fg-secondary">

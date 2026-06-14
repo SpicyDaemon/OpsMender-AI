@@ -757,6 +757,8 @@ import type {
   SkillCloneRequest,
   SkillCreate,
   SkillListResponse,
+  SkillAISuggestRequest,
+  SkillAISuggestResponse,
   SkillDiscoverResponse,
   SkillGenerateRequest,
   SkillGenerateResponse,
@@ -790,6 +792,12 @@ export async function generateSkill(
   body: SkillGenerateRequest,
 ): Promise<SkillGenerateResponse> {
   return api.post<SkillGenerateResponse>("/skills/generate", body);
+}
+
+export async function aiSuggestSkill(
+  body: SkillAISuggestRequest,
+): Promise<SkillAISuggestResponse> {
+  return api.post<SkillAISuggestResponse>("/skills/ai-suggest", body);
 }
 
 export async function getSkill(id: string): Promise<SkillResponse> {

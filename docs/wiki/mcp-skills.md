@@ -202,19 +202,35 @@ real MCP server's tools:
    (`shell`, `kubectl`, `run_command`, …) are flagged `generic` and suggested
    **deny**; anything unrecognized defaults to `caution` and is flagged for
    review (never silently `safe`).
-3. **Override anything** — change the classification, toggle deny, opt a scoped
-   generic wrapper out with `allow_generic`, add notes, and write per-tier
+3. **(Optional) AI assist** — type a freeform **intent** (e.g. "production
+   Kubernetes — be conservative, never auto-delete; restarts OK if health checks
+   pass") and click **AI assist**. OpsMender asks your configured model to
+   classify each tool and author per-tier instructions, seeded by that intent.
+4. **Override anything** — change the classification, toggle deny, opt a scoped
+   generic wrapper out with `allow_generic`, add notes, and write/adjust per-tier
    custom instructions.
-4. **Generate draft** — OpsMender deterministically builds a structured 3-tier
+5. **Generate draft** — OpsMender deterministically builds a structured 3-tier
    skill (YAML `operations` front-matter + prose) and opens it in the editor.
-5. **Review, edit, then save** (Unassigned by default) or **download**.
+6. **Review, edit, then save** (Unassigned by default) or **download**.
 
-> The suggestions are heuristic and the draft is generated **deterministically**
-> from your reviewed classifications — no LLM is involved, so the same input
-> always produces the same skill. The generated front-matter is validated by the
-> same parser the tier gate uses. The backend tier gate, deny lists, the
+> The default suggestions are heuristic and the draft is built **deterministically**
+> from your reviewed classifications. The generated front-matter is validated by
+> the same parser the tier gate uses. The backend tier gate, deny lists, the
 > generic-command guardrail, and conservative unknown-deny defaults remain the
 > execution authority — a generated skill never relaxes them.
 
-LLM-*authored* skill prose (vs. heuristic suggestions) remains a possible future
-enhancement; it would never change the structured policy's enforcement role.
+### AI assist (optional)
+
+When a model is configured, **AI assist** uses it to *suggest* classifications and
+write per-tier guidance from your intent prompt. It is strictly an assist:
+
+- You review and override every row before generating.
+- **Generic command tools** (`shell`, `kubectl`, `run_command`, …) are
+  **force-denied regardless of what the model says** — the model can never relax
+  the generic-command guardrail.
+- Any model classification *less restrictive* than OpsMender's own heuristic is
+  flagged **needs-review** so you notice the downgrade.
+- If no model is configured (or the provider is unreachable), AI assist is
+  unavailable and the Studio falls back to the heuristic suggestions.
+
+The model helps *author* the skill; it never changes what the tier gate enforces.

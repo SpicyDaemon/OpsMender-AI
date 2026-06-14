@@ -730,6 +730,38 @@ class SkillGenerateResponse(BaseModel):
     content_md: str
 
 
+class SkillAISuggestToolInput(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+
+
+class SkillAISuggestRequest(BaseModel):
+    """Ask the configured model to classify discovered tools + author prose."""
+
+    intent: str = Field(default="", max_length=4000)
+    environment: str = Field(default="your-environment", max_length=120)
+    tools: list[SkillAISuggestToolInput] = Field(default_factory=list)
+
+
+class SkillAISuggestedTool(BaseModel):
+    name: str
+    classification: str
+    deny: bool = False
+    allow_generic: bool = False
+    reversible: Optional[bool] = None
+    generic: bool = False
+    needs_review: bool = False
+    rationale: str = ""
+
+
+class SkillAISuggestResponse(BaseModel):
+    tools: list[SkillAISuggestedTool] = Field(default_factory=list)
+    tier0_instructions: str = ""
+    tier1_instructions: str = ""
+    tier2_instructions: str = ""
+    environment: str = "your-environment"
+
+
 class ProviderModelsResponse(BaseModel):
     provider: str
     label: str

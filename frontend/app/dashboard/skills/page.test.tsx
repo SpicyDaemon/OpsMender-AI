@@ -25,6 +25,7 @@ const apiMocks = vi.hoisted(() => ({
   importSkill: vi.fn(),
   discoverSkillTools: vi.fn(),
   generateSkill: vi.fn(),
+  aiSuggestSkill: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -168,6 +169,79 @@ describe("MCP Skills page", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue(/GENERATED-CONTENT/)).toBeTruthy(),
     );
+  });
+
+  it("Skill Studio: AI assist applies suggestions and per-tier instructions", async () => {
+    apiMocks.listMCPServers.mockResolvedValue({
+      items: [
+        {
+          id: "srv-1",
+          name: "k8s-prod",
+          transport: "stdio",
+          command: "echo",
+          args: [],
+          env_vars: {},
+          url: null,
+          created_at: "2026-06-06T00:00:00Z",
+          updated_at: "2026-06-06T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    apiMocks.discoverSkillTools.mockResolvedValue({
+      mcp_server_id: "srv-1",
+      mcp_server_name: "k8s-prod",
+      tools: [
+        {
+          name: "get_pods",
+          description: "List pods",
+          suggested_classification: "safe",
+          generic: false,
+          suggested_deny: false,
+          needs_review: false,
+          rationale: "read-only",
+        },
+      ],
+    });
+    apiMocks.aiSuggestSkill.mockResolvedValue({
+      tools: [
+        {
+          name: "get_pods",
+          classification: "caution",
+          deny: false,
+          allow_generic: false,
+          reversible: null,
+          generic: false,
+          needs_review: true,
+          rationale: "model bumped it",
+        },
+      ],
+      tier0_instructions: "AI-T0-GUIDANCE",
+      tier1_instructions: "AI-T1",
+      tier2_instructions: "AI-T2",
+      environment: "production",
+    });
+
+    await renderPage();
+    fireEvent.click(screen.getAllByRole("button", { name: /generate from mcp/i })[0]);
+    fireEvent.change(await screen.findByLabelText("MCP server"), {
+      target: { value: "srv-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+    await screen.findByText("get_pods");
+
+    // Run AI assist.
+    fireEvent.click(screen.getByRole("button", { name: /ai assist/i }));
+    await waitFor(() => expect(apiMocks.aiSuggestSkill).toHaveBeenCalled());
+
+    // Classification select updated and per-tier instructions filled in.
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Classification for get_pods") as HTMLSelectElement)
+          .value,
+      ).toBe("caution"),
+    );
+    expect(screen.getByDisplayValue("AI-T0-GUIDANCE")).toBeTruthy();
   });
 
   it("create modal explains Unassigned drafts and defaults to unassigned", async () => {

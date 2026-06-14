@@ -372,7 +372,7 @@ Skills are managed from the dashboard:
 
 - `/dashboard/skills` groups skills by MCP server with a "Global (unassigned)" section for the fallback skill.
 - Admins can **Import** `.md` files, **Clone** a skill to a different MCP server, start **New from Template**, and create/edit/delete skills inline.
-- **Generate from MCP** (Skill Studio) discovers a saved MCP server's live tools and suggests a starting classification for each (generic command tools are flagged and suggested deny), then deterministically builds an editable 3-tier skill draft from your reviewed classifications — no LLM, and the backend tier gate stays the execution authority. See [docs/wiki/mcp-skills.md](docs/wiki/mcp-skills.md).
+- **Generate from MCP** (Skill Studio) discovers a saved MCP server's live tools and suggests a starting classification for each (generic command tools are flagged and suggested deny), then builds an editable 3-tier skill draft from your reviewed classifications. An optional **AI assist** (when a model is configured) uses a freeform intent prompt to suggest classifications and author per-tier guidance — but the operator reviews every row, generic command tools stay force-denied, and the backend tier gate remains the execution authority. See [docs/wiki/mcp-skills.md](docs/wiki/mcp-skills.md).
 - Skills in `skills/` are auto-imported on backend startup — existing rows are skipped by name, so edits made in the UI are preserved across restarts.
 - Enforcement looks up the skill bound to the session's MCP server first, then falls back to the global (unassigned) skill. If neither exists, behavior falls back to file-path loading via `OPSMENDER_SKILL_DEFINITION`.
 

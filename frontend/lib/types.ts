@@ -907,6 +907,31 @@ export interface SkillGenerateResponse {
   content_md: string;
 }
 
+export interface SkillAISuggestRequest {
+  intent?: string;
+  environment?: string;
+  tools: { name: string; description?: string | null }[];
+}
+
+export interface SkillAISuggestedTool {
+  name: string;
+  classification: SkillClassification;
+  deny: boolean;
+  allow_generic: boolean;
+  reversible: boolean | null;
+  generic: boolean;
+  needs_review: boolean;
+  rationale: string;
+}
+
+export interface SkillAISuggestResponse {
+  tools: SkillAISuggestedTool[];
+  tier0_instructions: string;
+  tier1_instructions: string;
+  tier2_instructions: string;
+  environment: string;
+}
+
 // ---------------------------------------------------------------------------
 // Legacy intake token API
 // ---------------------------------------------------------------------------

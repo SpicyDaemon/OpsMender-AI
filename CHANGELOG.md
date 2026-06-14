@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Skill Studio AI assist (Phase F follow-up).** The MCP Skill generator can now
+  use the org's configured model to classify discovered tools and author per-tier
+  instructions, seeded by a freeform operator **intent** prompt (e.g. "production
+  Kubernetes — be conservative, never auto-delete"). `POST /skills/ai-suggest`
+  returns a suggested classification + one-line rationale per tool plus Tier 0/1/2
+  guidance. It is strictly an **assist**: the operator reviews and overrides every
+  row; arbitrary-command tools (`shell`, `kubectl`, …) are **force-denied
+  regardless of the model output**; any model classification *less restrictive*
+  than OpsMender's deterministic heuristic is flagged **needs-review**; and the
+  resulting draft still passes through the same parser the tier gate uses. With no
+  model configured the endpoint returns 503 and the Studio degrades to the
+  heuristic suggestions. No LLM output ever relaxes the tier gate. No schema change.
+
 - **v1.1 Phase F — MCP Skill Generator / Skill Studio.** Admins can now select a
   saved MCP server, discover its live tools (`POST /skills/discover`), and get a
   heuristic starting classification for each tool — generic command tools

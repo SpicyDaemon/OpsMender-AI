@@ -859,3 +859,170 @@ class TestSkillStudioRoutes:
             headers=viewer_headers,
         )
         assert g.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Phase F follow-up — AI-assisted classification (Skill Studio "AI assist")
+# ---------------------------------------------------------------------------
+
+import json as _json  # noqa: E402
+
+from backend.skills.ai_assist import build_prompt, parse_ai_response  # noqa: E402
+
+
+class TestAiAssistParser:
+    TOOLS = [
+        {"name": "get_pods", "description": "list pods"},
+        {"name": "delete_pod"},
+        {"name": "kubectl"},
+        {"name": "restart_service"},
+    ]
+
+    def _resp(self, **over):
+        base = {
+            "environment": "prod",
+            "tools": [
+                {"name": "get_pods", "classification": "safe", "rationale": "read"},
+                {"name": "delete_pod", "classification": "destructive", "rationale": "irreversible"},
+                {"name": "kubectl", "classification": "safe", "deny": False, "rationale": "model wants safe"},
+                {"name": "restart_service", "classification": "caution", "reversible": True, "rationale": "roll"},
+            ],
+            "tier0_instructions": "t0",
+            "tier1_instructions": "t1",
+            "tier2_instructions": "t2",
+        }
+        base.update(over)
+        return _json.dumps(base)
+
+    def test_applies_valid_classifications(self):
+        r = parse_ai_response(self._resp(), tools=self.TOOLS)
+        by = {t.name: t for t in r.tools}
+        assert by["get_pods"].classification == "safe"
+        assert by["delete_pod"].classification == "destructive"
+        assert by["restart_service"].classification == "caution"
+        assert by["restart_service"].reversible is True
+        assert r.environment == "prod"
+        assert r.tier0_instructions == "t0"
+
+    def test_generic_tool_is_force_denied(self):
+        # The model tried to mark kubectl "safe"/not-denied; the guardrail wins.
+        r = parse_ai_response(self._resp(), tools=self.TOOLS)
+        kubectl = next(t for t in r.tools if t.name == "kubectl")
+        assert kubectl.generic is True
+        assert kubectl.deny is True
+        assert kubectl.classification == "destructive"
+        assert kubectl.needs_review is True
+
+    def test_downgrade_vs_heuristic_is_flagged(self):
+        # Model marks delete_pod "safe" — less restrictive than the destructive
+        # heuristic → needs_review.
+        resp = self._resp(
+            tools=[{"name": "delete_pod", "classification": "safe", "rationale": "x"}]
+        )
+        r = parse_ai_response(resp, tools=[{"name": "delete_pod"}])
+        t = r.tools[0]
+        assert t.classification == "safe"
+        assert t.needs_review is True
+
+    def test_omitted_tool_falls_back_to_heuristic(self):
+        resp = _json.dumps({"tools": [{"name": "get_pods", "classification": "safe"}]})
+        r = parse_ai_response(resp, tools=self.TOOLS)
+        rs = next(t for t in r.tools if t.name == "restart_service")
+        assert rs.classification == "caution"  # heuristic
+        assert rs.needs_review is True
+
+    def test_garbage_output_falls_back_for_all(self):
+        r = parse_ai_response("not json at all", tools=self.TOOLS)
+        assert len(r.tools) == 4
+        assert all(t.needs_review for t in r.tools)
+        # Generic kubectl is still denied even with no model output.
+        assert next(t for t in r.tools if t.name == "kubectl").deny is True
+
+    def test_invalid_classification_falls_back_to_heuristic(self):
+        resp = _json.dumps({"tools": [{"name": "get_pods", "classification": "bogus"}]})
+        r = parse_ai_response(resp, tools=[{"name": "get_pods"}])
+        assert r.tools[0].classification == "safe"  # heuristic for get_*
+
+    def test_json_embedded_in_prose_is_parsed(self):
+        text = "Sure! Here it is:\n" + self._resp() + "\nHope that helps."
+        r = parse_ai_response(text, tools=self.TOOLS)
+        assert {t.name for t in r.tools} == {
+            "get_pods", "delete_pod", "kubectl", "restart_service"
+        }
+
+    def test_build_prompt_lists_tools_and_intent(self):
+        p = build_prompt(
+            intent="be careful", environment="prod", tools=self.TOOLS
+        )
+        assert "be careful" in p
+        assert "get_pods" in p and "kubectl" in p
+        assert "JSON" in p
+
+
+class TestAiSuggestRoute:
+    async def test_ai_suggest_applies_model_output(
+        self, client, auth_headers, monkeypatch
+    ):
+        async def fake_complete(request, db, org_id, prompt):
+            return _json.dumps(
+                {
+                    "environment": "production",
+                    "tools": [
+                        {"name": "get_pods", "classification": "safe", "rationale": "read"},
+                        {"name": "shell", "classification": "safe", "rationale": "tries to allow"},
+                    ],
+                    "tier0_instructions": "auto",
+                    "tier1_instructions": "approve",
+                    "tier2_instructions": "advise",
+                }
+            )
+
+        monkeypatch.setattr(
+            "backend.api.routes.skills._ai_complete", fake_complete
+        )
+
+        resp = await client.post(
+            "/skills/ai-suggest",
+            json={
+                "intent": "prod k8s",
+                "environment": "production",
+                "tools": [{"name": "get_pods"}, {"name": "shell"}],
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        by = {t["name"]: t for t in body["tools"]}
+        assert by["get_pods"]["classification"] == "safe"
+        # Generic shell force-denied despite the model.
+        assert by["shell"]["deny"] is True
+        assert by["shell"]["generic"] is True
+        assert body["tier0_instructions"] == "auto"
+        assert body["environment"] == "production"
+
+    async def test_ai_suggest_requires_tools(self, client, auth_headers):
+        resp = await client.post(
+            "/skills/ai-suggest",
+            json={"intent": "x", "tools": []},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_ai_suggest_no_model_returns_503(
+        self, client, auth_headers
+    ):
+        # No default model configured in the test org → 503 (degrade to manual).
+        resp = await client.post(
+            "/skills/ai-suggest",
+            json={"tools": [{"name": "get_pods"}]},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 503
+
+    async def test_viewer_cannot_ai_suggest(self, client, viewer_headers):
+        resp = await client.post(
+            "/skills/ai-suggest",
+            json={"tools": [{"name": "get_pods"}]},
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403

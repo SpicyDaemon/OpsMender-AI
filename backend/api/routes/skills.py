@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 
 from fastapi import (
@@ -9,6 +11,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Request,
     Response,
     UploadFile,
     status,
@@ -20,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    SkillAISuggestedTool,
+    SkillAISuggestRequest,
+    SkillAISuggestResponse,
     SkillCloneRequest,
     SkillCreate,
     SkillDiscoverRequest,
@@ -34,8 +40,9 @@ from backend.api.schemas import (
 )
 from backend.config_loader import MCPServerConfig
 from backend.db.models import Skill, User
-from backend.db.repos import MCPServerRepo, SkillRepo
+from backend.db.repos import MCPServerRepo, ModelConfigRepo, SkillRepo
 from backend.mcp.client import connect, list_tools
+from backend.skills.ai_assist import build_prompt, parse_ai_response
 from backend.skills.parser import loads as parse_skill
 from backend.skills.suggest import suggest_classification
 from backend.skills.template import (
@@ -44,7 +51,38 @@ from backend.skills.template import (
     build_skill_template,
 )
 
+log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/skills", tags=["skills"])
+
+
+async def _ai_complete(request: Request, db: AsyncSession, org_id: uuid.UUID, prompt: str) -> str:
+    """Run a single completion against the org's default model.
+
+    Raises ``HTTPException(503)`` when no model is configured or the provider
+    cannot be reached — the Skill Studio falls back to the heuristic path.
+    Isolated so tests can monkeypatch the model call.
+    """
+    from backend.auditor._helpers import resolve_provider_kwargs
+    from backend.llm.factory import create_provider
+
+    config = request.app.state.config
+    model_cfg = await ModelConfigRepo.get_default(db, org_id)
+    if model_cfg is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No default model is configured. Configure one under Models, "
+            "or classify tools manually.",
+        )
+    try:
+        provider = create_provider(**resolve_provider_kwargs(config, model_cfg))
+        return await asyncio.to_thread(provider.complete, prompt)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("skills.ai_suggest: completion failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AI assist is unavailable: {exc}. Classify tools manually.",
+        )
 
 
 def _extract_focus_areas(content_md: str) -> list[str]:
@@ -235,6 +273,49 @@ async def generate_skill(
             detail=f"Generated skill could not be parsed: {exc}",
         )
     return SkillGenerateResponse(name=body.name, content_md=content_md)
+
+
+@router.post(
+    "/ai-suggest",
+    response_model=SkillAISuggestResponse,
+    summary="AI-assist: classify discovered tools and author per-tier guidance",
+)
+async def ai_suggest_skill(
+    body: SkillAISuggestRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    """Use the configured model to propose a classification + rationale per tool
+    and author per-tier custom instructions, seeded by the operator's intent.
+
+    The result is a **suggestion** the operator reviews and overrides. Generic
+    command tools are force-denied regardless of the model output, model
+    downgrades vs. the heuristic are flagged for review, and the eventual draft
+    still passes through the parser and the tier gate.
+    """
+    if not body.tools:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discover an MCP server's tools before requesting AI assist.",
+        )
+
+    prompt = build_prompt(
+        intent=body.intent,
+        environment=body.environment,
+        tools=[t.model_dump() for t in body.tools],
+    )
+    text = await _ai_complete(request, db, org_id, prompt)
+    result = parse_ai_response(text, tools=[t.model_dump() for t in body.tools])
+
+    return SkillAISuggestResponse(
+        tools=[SkillAISuggestedTool(**t.as_dict()) for t in result.tools],
+        tier0_instructions=result.tier0_instructions,
+        tier1_instructions=result.tier1_instructions,
+        tier2_instructions=result.tier2_instructions,
+        environment=result.environment,
+    )
 
 
 @router.get(

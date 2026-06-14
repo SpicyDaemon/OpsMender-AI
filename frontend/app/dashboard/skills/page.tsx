@@ -10,11 +10,14 @@ import {
   Plus,
   Sparkles,
   Trash2,
+  Wand2,
 } from "lucide-react";
 import {
   cloneSkill,
   createSkill,
   deleteSkill,
+  discoverSkillTools,
+  generateSkill,
   getSkillTemplate,
   importSkill,
   listMCPServers,
@@ -24,6 +27,8 @@ import {
 import type {
   MCPServerResponse,
   SkillAssignment,
+  SkillClassification,
+  SkillDiscoveredTool,
   SkillResponse,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
@@ -347,6 +352,335 @@ function CloneModal({
   );
 }
 
+type EditableTool = {
+  name: string;
+  description: string | null;
+  classification: SkillClassification;
+  deny: boolean;
+  allow_generic: boolean;
+  generic: boolean;
+  needs_review: boolean;
+  rationale: string;
+  notes: string;
+};
+
+function fromDiscovered(t: SkillDiscoveredTool): EditableTool {
+  return {
+    name: t.name,
+    description: t.description,
+    classification: t.suggested_classification,
+    deny: t.suggested_deny,
+    allow_generic: false,
+    generic: t.generic,
+    needs_review: t.needs_review,
+    rationale: t.rationale,
+    notes: "",
+  };
+}
+
+/**
+ * MCP Skill Studio generator: discover a server's tools, review OpsMender's
+ * heuristic classification suggestions, then generate an editable skill draft.
+ * The draft is handed to the editor for review/edit before saving — the backend
+ * tier gate, not this UI, remains the execution authority.
+ */
+function GenerateModal({
+  open,
+  servers,
+  onClose,
+  onGenerated,
+}: {
+  open: boolean;
+  servers: MCPServerResponse[];
+  onClose: () => void;
+  onGenerated: (name: string, contentMd: string) => void;
+}) {
+  const [mcpServerId, setMcpServerId] = useState("");
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState(false);
+  const [tools, setTools] = useState<EditableTool[]>([]);
+  const [name, setName] = useState("New MCP Skill (generated)");
+  const [environment, setEnvironment] = useState("production");
+  const [t0, setT0] = useState("");
+  const [t1, setT1] = useState("");
+  const [t2, setT2] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState("");
+  const toast = useToast();
+
+  useEffect(() => {
+    if (open) {
+      setMcpServerId("");
+      setDiscovering(false);
+      setDiscovered(false);
+      setTools([]);
+      setName("New MCP Skill (generated)");
+      setEnvironment("production");
+      setT0("");
+      setT1("");
+      setT2("");
+      setError("");
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  async function handleDiscover() {
+    if (!mcpServerId) {
+      setError("Select an MCP server to discover its tools.");
+      return;
+    }
+    setDiscovering(true);
+    setError("");
+    try {
+      const res = await discoverSkillTools(mcpServerId);
+      setTools(res.tools.map(fromDiscovered));
+      setDiscovered(true);
+      const serverName = servers.find((s) => s.id === mcpServerId)?.name;
+      if (serverName) setName(`${serverName} skill`);
+      if (res.tools.length === 0) {
+        toast.info("The MCP server exposed no tools.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Tool discovery failed");
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
+  function patchTool(index: number, patch: Partial<EditableTool>) {
+    setTools((current) =>
+      current.map((t, i) => (i === index ? { ...t, ...patch } : t)),
+    );
+  }
+
+  async function handleGenerate() {
+    if (tools.length === 0) {
+      setError("Discover tools first, or pick a server that exposes tools.");
+      return;
+    }
+    setGenerating(true);
+    setError("");
+    try {
+      const res = await generateSkill({
+        name: name.trim() || "New MCP Skill (generated)",
+        environment: environment.trim() || "your-environment",
+        operations: tools.map((t) => ({
+          tool: t.name,
+          classification: t.classification,
+          deny: t.deny,
+          allow_generic: t.allow_generic,
+          notes: t.notes.trim() || null,
+        })),
+        tier0_instructions: t0,
+        tier1_instructions: t1,
+        tier2_instructions: t2,
+      });
+      onGenerated(res.name, res.content_md);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Generation failed");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Generate skill from MCP server"
+      maxWidth="max-w-4xl"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-fg-secondary">
+          Discover an MCP server&apos;s tools, review the suggested
+          classifications, then generate a draft you can edit before saving.
+          Suggestions are heuristic — the backend tier gate enforces what can
+          actually run.
+        </p>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[16rem] flex-1">
+            <Label htmlFor="gen-mcp">MCP server</Label>
+            <Select
+              id="gen-mcp"
+              value={mcpServerId}
+              onChange={(e) => setMcpServerId(e.target.value)}
+            >
+              <option value="">Select a server…</option>
+              {servers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={handleDiscover}
+            loading={discovering}
+            disabled={!mcpServerId}
+          >
+            <Sparkles size={14} /> Discover tools
+          </Button>
+        </div>
+
+        {discovered && tools.length > 0 && (
+          <>
+            <div className="max-h-[22rem] overflow-y-auto rounded-md border border-border-subtle">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-bg-elevated text-left text-xs text-fg-secondary">
+                  <tr>
+                    <th className="px-3 py-2">Tool</th>
+                    <th className="px-3 py-2">Classification</th>
+                    <th className="px-3 py-2">Deny</th>
+                    <th className="px-3 py-2">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tools.map((t, i) => (
+                    <tr key={t.name} className="border-t border-border-subtle align-top">
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="font-mono text-xs text-fg-primary">
+                            {t.name}
+                          </span>
+                          {t.generic && <Badge variant="closed">generic</Badge>}
+                          {t.needs_review && (
+                            <Badge variant="in_progress">review</Badge>
+                          )}
+                        </div>
+                        {t.description && (
+                          <p className="mt-0.5 text-xs text-fg-secondary">
+                            {t.description}
+                          </p>
+                        )}
+                        <p className="mt-0.5 text-[11px] text-fg-tertiary">
+                          {t.rationale}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Select
+                          aria-label={`Classification for ${t.name}`}
+                          value={t.classification}
+                          onChange={(e) =>
+                            patchTool(i, {
+                              classification: e.target.value as SkillClassification,
+                            })
+                          }
+                        >
+                          <option value="safe">safe</option>
+                          <option value="caution">caution</option>
+                          <option value="destructive">destructive</option>
+                        </Select>
+                        {t.generic && !t.deny && (
+                          <label className="mt-1 flex items-center gap-1 text-[11px] text-fg-secondary">
+                            <input
+                              type="checkbox"
+                              checked={t.allow_generic}
+                              onChange={(e) =>
+                                patchTool(i, { allow_generic: e.target.checked })
+                              }
+                            />
+                            allow_generic
+                          </label>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label={`Deny ${t.name}`}
+                          checked={t.deny}
+                          onChange={(e) => patchTool(i, { deny: e.target.checked })}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          aria-label={`Notes for ${t.name}`}
+                          value={t.notes}
+                          onChange={(e) => patchTool(i, { notes: e.target.value })}
+                          placeholder="optional"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <Label htmlFor="gen-name">Skill name</Label>
+                <Input
+                  id="gen-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="gen-env">Environment</Label>
+                <Input
+                  id="gen-env"
+                  value={environment}
+                  onChange={(e) => setEnvironment(e.target.value)}
+                  placeholder="production"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <Label htmlFor="gen-t0">Tier 0 instructions (optional)</Label>
+                <Textarea
+                  id="gen-t0"
+                  rows={2}
+                  value={t0}
+                  onChange={(e) => setT0(e.target.value)}
+                  placeholder="Freeform guidance for autonomous remediation."
+                />
+              </div>
+              <div>
+                <Label htmlFor="gen-t1">Tier 1 instructions (optional)</Label>
+                <Textarea
+                  id="gen-t1"
+                  rows={2}
+                  value={t1}
+                  onChange={(e) => setT1(e.target.value)}
+                  placeholder="Freeform guidance for approval-gated response."
+                />
+              </div>
+              <div>
+                <Label htmlFor="gen-t2">Tier 2 instructions (optional)</Label>
+                <Textarea
+                  id="gen-t2"
+                  rows={2}
+                  value={t2}
+                  onChange={(e) => setT2(e.target.value)}
+                  placeholder="Freeform advisory guidance."
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        <FormError message={error} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={generating}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleGenerate}
+            loading={generating}
+            disabled={!discovered || tools.length === 0}
+          >
+            <Wand2 size={14} /> Generate draft
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function ImportModal({
   open,
   servers,
@@ -462,6 +796,7 @@ export default function SkillsPage() {
   const [cloning, setCloning] = useState<SkillResponse | null>(null);
   const [showClone, setShowClone] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
   const [templateContent, setTemplateContent] = useState<string | undefined>(undefined);
   const toast = useToast();
 
@@ -528,6 +863,14 @@ export default function SkillsPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load template");
     }
+  }
+
+  function handleGenerated(_name: string, contentMd: string) {
+    // Hand the generated draft to the editor for review/edit before saving.
+    setShowGenerate(false);
+    setEditing(null);
+    setTemplateContent(contentMd);
+    setShowEdit(true);
   }
 
   function handleDownload(skill: SkillResponse) {
@@ -678,6 +1021,9 @@ export default function SkillsPage() {
               <Button variant="secondary" onClick={() => setShowImport(true)}>
                 <FileUp size={14} /> Import .md
               </Button>
+              <Button variant="secondary" onClick={() => setShowGenerate(true)}>
+                <Wand2 size={14} /> Generate from MCP
+              </Button>
               <Button onClick={handleNewFromTemplate}>
                 <Sparkles size={14} /> New from Template
               </Button>
@@ -703,6 +1049,9 @@ export default function SkillsPage() {
                 <Button variant="secondary" size="sm" onClick={() => setShowImport(true)}>
                   <FileUp size={14} /> Import .md
                 </Button>
+                <Button variant="secondary" size="sm" onClick={() => setShowGenerate(true)}>
+                  <Wand2 size={14} /> Generate from MCP
+                </Button>
                 <Button size="sm" onClick={handleNewFromTemplate}>
                   <Sparkles size={14} /> New from Template
                 </Button>
@@ -721,6 +1070,9 @@ export default function SkillsPage() {
           toolbarRight={
             canEdit ? (
               <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setShowGenerate(true)}>
+                  <Wand2 size={14} /> Generate from MCP
+                </Button>
                 <Button variant="secondary" size="sm" onClick={handleNewFromTemplate}>
                   <Sparkles size={14} /> New from Template
                 </Button>
@@ -792,6 +1144,12 @@ export default function SkillsPage() {
         servers={servers}
         onClose={() => setShowImport(false)}
         onSaved={load}
+      />
+      <GenerateModal
+        open={showGenerate}
+        servers={servers}
+        onClose={() => setShowGenerate(false)}
+        onGenerated={handleGenerated}
       />
     </div>
   );

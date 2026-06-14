@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.1 Phase F — MCP Skill Generator / Skill Studio.** Admins can now select a
+  saved MCP server, discover its live tools (`POST /skills/discover`), and get a
+  heuristic starting classification for each tool — generic command tools
+  (`shell`, `kubectl`, `run_command`, …) are flagged and suggested **deny**;
+  clear read verbs → `safe`; destructive verbs → `destructive`; reversible-write
+  verbs → `caution`; anything unrecognized → `caution` + needs-review (never
+  silently safe). After reviewing/overriding the classifications and adding
+  optional per-tier instructions, `POST /skills/generate` **deterministically**
+  builds a parseable 3-tier MCP Skill Markdown (YAML `operations` front-matter +
+  prose) — no LLM, so the output is a pure function of the operator's structured
+  input. The draft opens in the existing editor for review/edit before saving
+  (Unassigned by default) or downloading. The generated front-matter is
+  validated by the same parser the tier gate uses, and the backend tier gate,
+  deny lists, generic-command guardrail, and conservative unknown-deny defaults
+  remain the execution authority. New Skill Studio "Generate from MCP" flow in
+  the UI. No schema change.
+
 - **v1.1 Notification Collaboration Phase E — Notification Channel testing &
   configuration UX.** The connector test endpoint now returns **structured
   checks** (enabled · credentials · capabilities · destination · team scope ·

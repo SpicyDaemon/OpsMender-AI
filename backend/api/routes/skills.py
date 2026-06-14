@@ -22,15 +22,27 @@ from backend.api.deps import get_db
 from backend.api.schemas import (
     SkillCloneRequest,
     SkillCreate,
+    SkillDiscoverRequest,
+    SkillDiscoverResponse,
+    SkillDiscoveredTool,
+    SkillGenerateRequest,
+    SkillGenerateResponse,
     SkillListResponse,
     SkillResponse,
     SkillTemplateResponse,
     SkillUpdate,
 )
+from backend.config_loader import MCPServerConfig
 from backend.db.models import Skill, User
 from backend.db.repos import MCPServerRepo, SkillRepo
+from backend.mcp.client import connect, list_tools
 from backend.skills.parser import loads as parse_skill
-from backend.skills.template import DEFAULT_TEMPLATE_NAME, build_skill_template
+from backend.skills.suggest import suggest_classification
+from backend.skills.template import (
+    DEFAULT_TEMPLATE_NAME,
+    build_skill_from_tools,
+    build_skill_template,
+)
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -123,6 +135,106 @@ async def get_skill_template(
         name=DEFAULT_TEMPLATE_NAME,
         content_md=build_skill_template(),
     )
+
+
+@router.post(
+    "/discover",
+    response_model=SkillDiscoverResponse,
+    summary="Discover an MCP server's tools with classification suggestions",
+)
+async def discover_skill_tools(
+    body: SkillDiscoverRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    """Connect to a saved MCP server, list its tools, and suggest a starting
+    classification for each (Skill Studio generator step 1–4).
+
+    Suggestions are heuristic and conservative — the operator reviews/overrides
+    them, and the backend tier gate remains the execution authority.
+    """
+    server = await MCPServerRepo.get_by_id(db, org_id, body.mcp_server_id)
+    if server is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="MCP server not found",
+        )
+
+    runtime_config = MCPServerConfig(
+        name=server.name,
+        transport=server.transport,
+        command=server.command,
+        args=server.args,
+        env=server.env_vars,
+        url=server.url,
+        token=server.token,
+    )
+    try:
+        async with connect(runtime_config) as session:
+            tools = await list_tools(session)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not list tools from MCP server: {exc}",
+        )
+
+    discovered: list[SkillDiscoveredTool] = []
+    for tool in tools:
+        suggestion = suggest_classification(tool.name)
+        discovered.append(
+            SkillDiscoveredTool(
+                name=tool.name,
+                description=getattr(tool, "description", None),
+                suggested_classification=suggestion.classification,
+                generic=suggestion.generic,
+                suggested_deny=suggestion.deny,
+                needs_review=suggestion.needs_review,
+                rationale=suggestion.rationale,
+            )
+        )
+
+    return SkillDiscoverResponse(
+        mcp_server_id=server.id,
+        mcp_server_name=server.name,
+        tools=discovered,
+    )
+
+
+@router.post(
+    "/generate",
+    response_model=SkillGenerateResponse,
+    summary="Generate (but do not save) an MCP Skill draft from classified tools",
+)
+async def generate_skill(
+    body: SkillGenerateRequest,
+    user: User = Depends(require_role("admin")),
+):
+    """Deterministically build a 3-tier MCP Skill Markdown from the operator's
+    reviewed tool classifications (Skill Studio generator step 7).
+
+    The result is not persisted — the caller loads it into the editor to review,
+    edit, then save (Unassigned by default) or download. The generated YAML
+    front-matter is validated by the same parser the tier gate uses.
+    """
+    content_md = build_skill_from_tools(
+        name=body.name,
+        environment=body.environment,
+        description=body.description or "",
+        operations=[op.model_dump() for op in body.operations],
+        tier0_instructions=body.tier0_instructions,
+        tier1_instructions=body.tier1_instructions,
+        tier2_instructions=body.tier2_instructions,
+    )
+    # Fail-closed: never hand back a draft the tier gate can't parse.
+    try:
+        parse_skill(content_md)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Generated skill could not be parsed: {exc}",
+        )
+    return SkillGenerateResponse(name=body.name, content_md=content_md)
 
 
 @router.get(

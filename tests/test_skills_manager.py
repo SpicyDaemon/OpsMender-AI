@@ -652,3 +652,210 @@ class TestSessionTierDefault:
         resp = await client.post("/sessions", json={"tier": 0}, headers=auth_headers)
         assert resp.status_code in (200, 201)
         assert resp.json()["tier"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase F — MCP Skill Studio generator (suggest + generate)
+# ---------------------------------------------------------------------------
+
+from contextlib import asynccontextmanager  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from backend.skills.suggest import suggest_classification  # noqa: E402
+from backend.skills.template import build_skill_from_tools  # noqa: E402
+
+
+class TestClassificationSuggest:
+    def test_read_verbs_are_safe(self):
+        for name in ("get_pods", "list_nodes", "describe_service", "search_logs"):
+            s = suggest_classification(name)
+            assert s.classification == "safe", name
+            assert s.generic is False and s.deny is False
+
+    def test_destructive_verbs(self):
+        for name in ("delete_pod", "destroy_cluster", "drop_table", "terminate_instance"):
+            assert suggest_classification(name).classification == "destructive", name
+
+    def test_caution_verbs(self):
+        for name in ("restart_service", "scale_deployment", "update_config"):
+            s = suggest_classification(name)
+            assert s.classification == "caution", name
+
+    def test_generic_tools_suggest_deny(self):
+        for name in ("shell", "kubectl", "run_command", "exec_sql"):
+            s = suggest_classification(name)
+            assert s.generic is True
+            assert s.deny is True
+            assert s.classification == "destructive"
+            assert s.needs_review is True
+
+    def test_unknown_verb_defaults_to_caution_needs_review(self):
+        s = suggest_classification("frobnicate_widget")
+        assert s.classification == "caution"
+        assert s.needs_review is True
+        assert s.generic is False
+
+
+class TestSkillGenerator:
+    def test_generates_parseable_markdown(self):
+        md = build_skill_from_tools(
+            name="K8s Ops",
+            environment="production",
+            description="generated",
+            operations=[
+                {"tool": "get_pods", "classification": "safe"},
+                {"tool": "restart_service", "classification": "caution", "notes": "roll"},
+                {"tool": "delete_pod", "classification": "destructive"},
+                {"tool": "shell", "deny": True, "notes": "arbitrary"},
+            ],
+            tier0_instructions="Be careful.",
+        )
+        parsed = parse_skill_content(md)
+        assert parsed.environment == "production"
+        assert parsed.classify("get_pods") == "safe"
+        assert parsed.classify("restart_service") == "caution"
+        assert parsed.classify("delete_pod") == "destructive"
+        assert parsed.is_denied("shell") is True
+        assert "Be careful." in md
+        assert "# K8s Ops" in md
+
+    def test_deny_without_classification_defaults_destructive(self):
+        md = build_skill_from_tools(
+            name="x",
+            operations=[{"tool": "wipe_all", "deny": True}],
+        )
+        parsed = parse_skill_content(md)
+        assert parsed.is_denied("wipe_all") is True
+        assert parsed.classify("wipe_all") == "destructive"
+
+    def test_empty_tools_still_parses(self):
+        md = build_skill_from_tools(name="empty", operations=[])
+        parsed = parse_skill_content(md)
+        assert parsed.operations == []
+
+    def test_allow_generic_round_trips(self):
+        md = build_skill_from_tools(
+            name="x",
+            operations=[
+                {"tool": "scoped_exec", "classification": "caution", "allow_generic": True},
+            ],
+        )
+        parsed = parse_skill_content(md)
+        assert parsed.allows_generic("scoped_exec") is True
+
+
+def _patch_mcp_discovery(monkeypatch, tools):
+    @asynccontextmanager
+    async def fake_connect(config):
+        yield SimpleNamespace(config=config)
+
+    async def fake_list_tools(session):
+        return tools
+
+    monkeypatch.setattr("backend.api.routes.skills.connect", fake_connect)
+    monkeypatch.setattr("backend.api.routes.skills.list_tools", fake_list_tools)
+
+
+class TestSkillStudioRoutes:
+    async def test_discover_returns_tools_with_suggestions(
+        self, client, app, auth_headers, monkeypatch
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db, TEST_ORG_ID, name="k8s", transport="stdio", command="echo"
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        _patch_mcp_discovery(
+            monkeypatch,
+            [
+                SimpleNamespace(name="get_pods", description="list pods"),
+                SimpleNamespace(name="delete_pod", description="delete a pod"),
+                SimpleNamespace(name="kubectl", description="run kubectl"),
+            ],
+        )
+
+        resp = await client.post(
+            "/skills/discover",
+            json={"mcp_server_id": str(server_id)},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["mcp_server_name"] == "k8s"
+        by_name = {t["name"]: t for t in body["tools"]}
+        assert by_name["get_pods"]["suggested_classification"] == "safe"
+        assert by_name["delete_pod"]["suggested_classification"] == "destructive"
+        assert by_name["kubectl"]["generic"] is True
+        assert by_name["kubectl"]["suggested_deny"] is True
+
+    async def test_discover_unknown_server_404(self, client, auth_headers):
+        resp = await client.post(
+            "/skills/discover",
+            json={"mcp_server_id": str(uuid.uuid4())},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_discover_connection_failure_is_502(
+        self, client, app, auth_headers, monkeypatch
+    ):
+        async with app.state.session_factory() as db:
+            server = await MCPServerRepo.create(
+                db, TEST_ORG_ID, name="broken", transport="stdio", command="echo"
+            )
+            await db.commit()
+            await db.refresh(server)
+            server_id = server.id
+
+        @asynccontextmanager
+        async def boom(config):
+            raise RuntimeError("connect failed")
+            yield  # pragma: no cover
+
+        monkeypatch.setattr("backend.api.routes.skills.connect", boom)
+
+        resp = await client.post(
+            "/skills/discover",
+            json={"mcp_server_id": str(server_id)},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 502
+
+    async def test_generate_returns_parseable_draft(self, client, auth_headers):
+        resp = await client.post(
+            "/skills/generate",
+            json={
+                "name": "Generated K8s",
+                "environment": "production",
+                "operations": [
+                    {"tool": "get_pods", "classification": "safe"},
+                    {"tool": "delete_pod", "classification": "destructive"},
+                    {"tool": "shell", "classification": "destructive", "deny": True},
+                ],
+                "tier0_instructions": "Careful.",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["name"] == "Generated K8s"
+        parsed = parse_skill_content(body["content_md"])
+        assert parsed.classify("get_pods") == "safe"
+        assert parsed.is_denied("shell") is True
+
+    async def test_viewer_cannot_discover_or_generate(self, client, viewer_headers):
+        d = await client.post(
+            "/skills/discover",
+            json={"mcp_server_id": str(uuid.uuid4())},
+            headers=viewer_headers,
+        )
+        assert d.status_code == 403
+        g = await client.post(
+            "/skills/generate",
+            json={"name": "x", "operations": []},
+            headers=viewer_headers,
+        )
+        assert g.status_code == 403

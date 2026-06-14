@@ -188,13 +188,33 @@ and **Environment Scans (the auditor) run read-only** — an analyzer may invoke
 only tools the applicable skill classifies `safe`, never writes/remediation,
 generic command tools, or deny-listed tools.
 
-## Future work (v1.1)
+## Generate from MCP (MCP Skill Generator)
 
-**MCP Skill Generator / Skill Studio improvements** — select an MCP server,
-review its discovered tools, classify each action by AI Autonomy Tier
-(allow / approval-required / deny / read-only), add per-tier custom instructions
-and deny-list notes, and let the AI generate a complete, editable, downloadable
-skill draft (saveable as Unassigned / Global / server-specific). The AI may help
-*author* the skill, but the backend tier gate remains the execution authority —
-a generated skill never relaxes the gate, deny lists, generic-command guardrail,
-or conservative defaults. Tracked in [ROADMAP.md](../ROADMAP.md). **Not in v1.**
+**Generate from MCP** (Skill Studio, v1.1 Phase F) builds a skill draft from a
+real MCP server's tools:
+
+1. **Pick a server** and click **Discover tools** — OpsMender connects to the
+   saved MCP server and lists the tools it exposes.
+2. **Review the suggestions.** Each tool gets a heuristic starting
+   classification from its name: read verbs (`get`/`list`/`describe`…) → `safe`;
+   destructive verbs (`delete`/`destroy`/`drop`…) → `destructive`; reversible
+   writes (`restart`/`scale`/`update`…) → `caution`. **Generic command tools**
+   (`shell`, `kubectl`, `run_command`, …) are flagged `generic` and suggested
+   **deny**; anything unrecognized defaults to `caution` and is flagged for
+   review (never silently `safe`).
+3. **Override anything** — change the classification, toggle deny, opt a scoped
+   generic wrapper out with `allow_generic`, add notes, and write per-tier
+   custom instructions.
+4. **Generate draft** — OpsMender deterministically builds a structured 3-tier
+   skill (YAML `operations` front-matter + prose) and opens it in the editor.
+5. **Review, edit, then save** (Unassigned by default) or **download**.
+
+> The suggestions are heuristic and the draft is generated **deterministically**
+> from your reviewed classifications — no LLM is involved, so the same input
+> always produces the same skill. The generated front-matter is validated by the
+> same parser the tier gate uses. The backend tier gate, deny lists, the
+> generic-command guardrail, and conservative unknown-deny defaults remain the
+> execution authority — a generated skill never relaxes them.
+
+LLM-*authored* skill prose (vs. heuristic suggestions) remains a possible future
+enhancement; it would never change the structured policy's enforcement role.

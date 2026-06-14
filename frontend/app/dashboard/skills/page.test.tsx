@@ -23,6 +23,8 @@ const apiMocks = vi.hoisted(() => ({
   deleteSkill: vi.fn(),
   cloneSkill: vi.fn(),
   importSkill: vi.fn(),
+  discoverSkillTools: vi.fn(),
+  generateSkill: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -95,6 +97,77 @@ describe("MCP Skills page", () => {
     expect(screen.getByText(/Generic command tools/i)).toBeTruthy();
     expect(screen.getAllByText(/backend tier gate enforces/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/exact MCP tool\/action identifiers/i)).toBeTruthy();
+  });
+
+  it("Skill Studio: discover MCP tools, generate a draft, and open the editor", async () => {
+    apiMocks.listMCPServers.mockResolvedValue({
+      items: [
+        {
+          id: "srv-1",
+          name: "k8s-prod",
+          transport: "stdio",
+          command: "echo",
+          args: [],
+          env_vars: {},
+          url: null,
+          created_at: "2026-06-06T00:00:00Z",
+          updated_at: "2026-06-06T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    apiMocks.discoverSkillTools.mockResolvedValue({
+      mcp_server_id: "srv-1",
+      mcp_server_name: "k8s-prod",
+      tools: [
+        {
+          name: "get_pods",
+          description: "List pods",
+          suggested_classification: "safe",
+          generic: false,
+          suggested_deny: false,
+          needs_review: false,
+          rationale: "read-only",
+        },
+        {
+          name: "kubectl",
+          description: "Run kubectl",
+          suggested_classification: "destructive",
+          generic: true,
+          suggested_deny: true,
+          needs_review: true,
+          rationale: "arbitrary commands",
+        },
+      ],
+    });
+    apiMocks.generateSkill.mockResolvedValue({
+      name: "k8s-prod skill",
+      content_md:
+        "---\nversion: \"1\"\n---\n# k8s-prod skill\n## Tier 0 — Autonomous\nGENERATED-CONTENT",
+    });
+
+    await renderPage();
+    fireEvent.click(screen.getAllByRole("button", { name: /generate from mcp/i })[0]);
+
+    // Pick the server and discover its tools.
+    const select = await screen.findByLabelText("MCP server");
+    fireEvent.change(select, { target: { value: "srv-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+
+    await waitFor(() =>
+      expect(apiMocks.discoverSkillTools).toHaveBeenCalledWith("srv-1"),
+    );
+    // Discovered tools render with their suggestions.
+    expect(await screen.findByText("get_pods")).toBeTruthy();
+    expect(screen.getByText("kubectl")).toBeTruthy();
+    expect(screen.getAllByText("generic").length).toBeGreaterThan(0);
+
+    // Generate the draft and hand off to the editor.
+    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByDisplayValue(/GENERATED-CONTENT/)).toBeTruthy(),
+    );
   });
 
   it("create modal explains Unassigned drafts and defaults to unassigned", async () => {

@@ -865,6 +865,48 @@ export interface SkillCloneRequest {
   description?: string | null;
 }
 
+export type SkillClassification = "safe" | "caution" | "destructive";
+
+export interface SkillDiscoveredTool {
+  name: string;
+  description: string | null;
+  suggested_classification: SkillClassification;
+  generic: boolean;
+  suggested_deny: boolean;
+  needs_review: boolean;
+  rationale: string;
+}
+
+export interface SkillDiscoverResponse {
+  mcp_server_id: string;
+  mcp_server_name: string;
+  tools: SkillDiscoveredTool[];
+}
+
+export interface SkillGenerateOperation {
+  tool: string;
+  classification: SkillClassification;
+  deny?: boolean;
+  allow_generic?: boolean;
+  reversible?: boolean | null;
+  notes?: string | null;
+}
+
+export interface SkillGenerateRequest {
+  name: string;
+  description?: string | null;
+  environment?: string;
+  operations: SkillGenerateOperation[];
+  tier0_instructions?: string;
+  tier1_instructions?: string;
+  tier2_instructions?: string;
+}
+
+export interface SkillGenerateResponse {
+  name: string;
+  content_md: string;
+}
+
 // ---------------------------------------------------------------------------
 // Legacy intake token API
 // ---------------------------------------------------------------------------

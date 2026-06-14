@@ -15,7 +15,173 @@ one ``content_md`` blob, which is editable and downloadable.
 
 from __future__ import annotations
 
+from typing import Any, Sequence
+
+import yaml
+
 DEFAULT_TEMPLATE_NAME = "New MCP Skill (from template)"
+
+_VALID_CLASSIFICATIONS = ("safe", "caution", "destructive")
+
+
+def _normalize_operation(op: dict[str, Any]) -> dict[str, Any]:
+    """Coerce one generator operation into a valid front-matter entry.
+
+    Conservative + fail-safe: an unknown/empty classification on a non-deny op
+    becomes ``caution`` (never silently ``safe``); deny entries that omit a
+    classification are labelled ``destructive`` (matching the parser default).
+    """
+    tool = str(op.get("tool", "")).strip()
+    deny = bool(op.get("deny", False))
+    classification = str(op.get("classification", "") or "").strip().lower()
+    if classification not in _VALID_CLASSIFICATIONS:
+        classification = "destructive" if deny else "caution"
+
+    entry: dict[str, Any] = {"tool": tool, "classification": classification}
+    if op.get("reversible") is not None:
+        entry["reversible"] = bool(op["reversible"])
+    if deny:
+        entry["deny"] = True
+    if op.get("allow_generic"):
+        entry["allow_generic"] = True
+    notes = op.get("notes")
+    if notes:
+        entry["notes"] = str(notes).strip()
+    return entry
+
+
+def build_skill_from_tools(
+    *,
+    name: str,
+    operations: Sequence[dict[str, Any]],
+    environment: str = "your-environment",
+    description: str = "",
+    tier0_instructions: str = "",
+    tier1_instructions: str = "",
+    tier2_instructions: str = "",
+) -> str:
+    """Deterministically build a 3-tier MCP Skill Markdown from classified tools.
+
+    ``operations`` is the operator's reviewed classification of an MCP server's
+    discovered tools (each: ``tool``, ``classification``, optional ``deny`` /
+    ``allow_generic`` / ``reversible`` / ``notes``). The front-matter
+    ``operations`` block is what the backend tier gate enforces; the prose is
+    human-readable guidance. No LLM is involved — the output is a pure function
+    of the operator's structured input, so it is reproducible and testable.
+    """
+    norm = [_normalize_operation(op) for op in operations if str(op.get("tool", "")).strip()]
+
+    front: dict[str, Any] = {
+        "version": "1",
+        "environment": (environment or "your-environment").strip() or "your-environment",
+        "operations": norm,
+        "focus_areas": [],
+    }
+    fm_yaml = yaml.safe_dump(front, sort_keys=False, default_flow_style=False).strip()
+
+    # Categorize for the prose tables.
+    denied = [o for o in norm if o.get("deny")]
+    safe = [o for o in norm if not o.get("deny") and o["classification"] == "safe"]
+    caution = [o for o in norm if not o.get("deny") and o["classification"] == "caution"]
+    destructive = [o for o in norm if not o.get("deny") and o["classification"] == "destructive"]
+
+    def _rows(ops: list[dict[str, Any]]) -> str:
+        if not ops:
+            return "| _(none)_ | | |\n"
+        out = ""
+        for o in ops:
+            flags = []
+            if o.get("allow_generic"):
+                flags.append("allow_generic")
+            if o.get("reversible") is True:
+                flags.append("reversible")
+            note = o.get("notes", "") or ""
+            extra = (", ".join(flags))
+            out += f"| `{o['tool']}` | {note} | {extra} |\n"
+        return out
+
+    desc_line = description.strip() or "Generated in the MCP Skill Studio from discovered MCP tools."
+    t0 = tier0_instructions.strip() or "_Freeform guidance for autonomous remediation._"
+    t1 = tier1_instructions.strip() or "_Freeform guidance for approval-gated response._"
+    t2 = tier2_instructions.strip() or "_Freeform advisory guidance._"
+
+    return f"""---
+{fm_yaml}
+---
+
+# {name}
+
+> **Skills guide the AI. The backend tier gate enforces what can actually run.**
+>
+> Generated in the MCP Skill Studio from discovered MCP tools. The
+> classifications below were chosen by an operator (assisted by OpsMender's
+> heuristic suggestions); the backend tier gate, deny lists, generic-command
+> guardrail, and conservative unknown-deny defaults remain the execution
+> authority. Edit anything before saving.
+
+- **Skill name:** {name}
+- **Description:** {desc_line}
+- **Action classification:** `safe` (read-only / low-risk) · `caution`
+  (reversible writes) · `destructive` (high-risk / irreversible). `deny: true`
+  blocks an entry at every tier. Generic command tools are auto-guarded.
+
+---
+
+## Tier 0 — Autonomous
+
+The AI may execute remediation automatically — **only within this policy, deny
+lists, MCP permissions, and backend guardrails.** Most autonomous, not unlimited.
+
+### Safe actions (read-only / low-risk)
+
+| MCP tool/action | Notes | Flags |
+|---|---|---|
+{_rows(safe)}
+### Reversible writes (caution)
+
+| MCP tool/action | Notes | Flags |
+|---|---|---|
+{_rows(caution)}
+### Custom Instructions
+
+{t0}
+
+---
+
+## Tier 1 — Approval Required
+
+The AI may investigate and propose actions. Safe actions run; destructive /
+high-risk actions pause for operator approval; deny-listed actions never run.
+
+### Destructive / high-risk (approval required)
+
+| MCP tool/action | Notes | Flags |
+|---|---|---|
+{_rows(destructive)}
+### Custom Instructions
+
+{t1}
+
+---
+
+## Tier 2 — Advisory Only
+
+**No actions execute.** The AI provides analysis, recommendations, and runbooks,
+and may perform read-only observation. Tier 2 is the **default** for new sessions.
+
+### Custom Instructions
+
+{t2}
+
+---
+
+## Deny list (never executes at any tier)
+
+`deny: true` always wins — over classification, allow lists, and Tier 0.
+
+| MCP tool/action | Notes |
+|---|---|
+{"".join(f"| `{o['tool']}` | {o.get('notes', '') or ''} |\n" for o in denied) or "| _(none)_ | |\n"}"""
 
 
 def build_skill_template(

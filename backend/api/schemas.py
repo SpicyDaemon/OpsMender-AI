@@ -676,6 +676,60 @@ class SkillTemplateResponse(BaseModel):
     content_md: str
 
 
+class SkillDiscoverRequest(BaseModel):
+    """Discover an MCP server's tools for the Skill Studio generator."""
+
+    mcp_server_id: uuid.UUID
+
+
+class SkillDiscoveredTool(BaseModel):
+    """One discovered MCP tool with a heuristic classification suggestion."""
+
+    name: str
+    description: Optional[str] = None
+    suggested_classification: str  # "safe" | "caution" | "destructive"
+    generic: bool = False
+    suggested_deny: bool = False
+    needs_review: bool = False
+    rationale: str = ""
+
+
+class SkillDiscoverResponse(BaseModel):
+    mcp_server_id: uuid.UUID
+    mcp_server_name: str
+    tools: list[SkillDiscoveredTool] = Field(default_factory=list)
+
+
+class SkillGenerateOperation(BaseModel):
+    """An operator-reviewed classification for one tool, fed to the generator."""
+
+    tool: str = Field(..., min_length=1, max_length=200)
+    classification: str = Field(default="safe", pattern=r"^(safe|caution|destructive)$")
+    deny: bool = False
+    allow_generic: bool = False
+    reversible: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class SkillGenerateRequest(BaseModel):
+    """Build (but do not save) an MCP Skill draft from classified tools."""
+
+    name: str = Field(default="New MCP Skill (generated)", min_length=1, max_length=150)
+    description: Optional[str] = None
+    environment: str = Field(default="your-environment", max_length=120)
+    operations: list[SkillGenerateOperation] = Field(default_factory=list)
+    tier0_instructions: str = ""
+    tier1_instructions: str = ""
+    tier2_instructions: str = ""
+
+
+class SkillGenerateResponse(BaseModel):
+    """A generated MCP Skill draft (not yet saved)."""
+
+    name: str
+    content_md: str
+
+
 class ProviderModelsResponse(BaseModel):
     provider: str
     label: str

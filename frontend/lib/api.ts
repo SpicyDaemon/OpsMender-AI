@@ -757,6 +757,9 @@ import type {
   SkillCloneRequest,
   SkillCreate,
   SkillListResponse,
+  SkillDiscoverResponse,
+  SkillGenerateRequest,
+  SkillGenerateResponse,
   SkillResponse,
   SkillTemplateResponse,
   SkillUpdate,
@@ -773,6 +776,20 @@ export async function listSkills(params?: {
 
 export async function getSkillTemplate(): Promise<SkillTemplateResponse> {
   return api.get<SkillTemplateResponse>("/skills/template");
+}
+
+export async function discoverSkillTools(
+  mcpServerId: string,
+): Promise<SkillDiscoverResponse> {
+  return api.post<SkillDiscoverResponse>("/skills/discover", {
+    mcp_server_id: mcpServerId,
+  });
+}
+
+export async function generateSkill(
+  body: SkillGenerateRequest,
+): Promise<SkillGenerateResponse> {
+  return api.post<SkillGenerateResponse>("/skills/generate", body);
 }
 
 export async function getSkill(id: string): Promise<SkillResponse> {

@@ -177,6 +177,12 @@ OPSMENDER_BOOTSTRAP_ADMIN_EMAIL=you@example.com
 OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD=<strong password>
 ```
 
+**Browser session duration:** a successful login keeps you signed in for **7 days**
+by default (`OPSMENDER_JWT_EXPIRE_MINUTES=10080`, i.e. 604800 seconds) before a
+re-login is required. Reloading or reopening the browser keeps the session; logout
+clears it immediately, and deactivated/deleted users are rejected even within the
+window. MFA is deferred to v2.
+
 Then bring the stack up:
 
 ```bash

@@ -4354,6 +4354,21 @@ class TeamRepo:
         )
         return (await db.execute(stmt)).scalars().all()
 
+    @staticmethod
+    async def is_member(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        team_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> bool:
+        """True when ``user_id`` is on ``team_id`` within ``org_id``."""
+        stmt = select(TeamMember.id).where(
+            TeamMember.org_id == org_id,
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == user_id,
+        )
+        return (await db.execute(stmt)).first() is not None
+
 
 class ServiceRepo:
     @staticmethod

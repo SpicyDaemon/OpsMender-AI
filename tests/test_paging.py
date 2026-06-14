@@ -960,6 +960,13 @@ class TestPagingAPI:
             )
             await db.commit()
 
+        # Rotation members must belong to the roster's team.
+        await client.post(
+            f"/teams/{team_id}/members",
+            json={"user_id": str(u1.id)},
+            headers=auth_headers,
+        )
+
         add = await client.post(
             f"/rosters/{roster_id}/members",
             json={"user_id": str(u1.id), "position_index": 0},
@@ -1012,6 +1019,11 @@ class TestPagingAPI:
                 primary_org_id=TEST_ORG_ID,
             )
             await db.commit()
+        await client.post(
+            f"/teams/{team.json()['id']}/members",
+            json={"user_id": str(operator.id)},
+            headers=auth_headers,
+        )
         add = await client.post(
             f"/rosters/{roster_id}/members",
             json={"user_id": str(operator.id), "position_index": 0},
@@ -1067,7 +1079,7 @@ class TestPagingAPI:
             headers=auth_headers,
         )
         assert add.status_code == 400
-        assert "Viewer users cannot be assigned" in add.json()["detail"]
+        assert "Admin or Operator" in add.json()["detail"]
 
     async def test_on_call_range_powers_calendar(
         self, client: AsyncClient, app, auth_headers
@@ -1117,6 +1129,12 @@ class TestPagingAPI:
                 primary_org_id=TEST_ORG_ID,
             )
             await db.commit()
+        for uid in (u1.id, u2.id):
+            await client.post(
+                f"/teams/{team_id}/members",
+                json={"user_id": str(uid)},
+                headers=auth_headers,
+            )
         await client.post(
             f"/rosters/{roster_id}/members",
             json={"user_id": str(u1.id), "position_index": 0},
@@ -1354,6 +1372,12 @@ class TestPagingAPI:
                 primary_org_id=TEST_ORG_ID,
             )
             await db.commit()
+        for user_id in (alice.id, bob.id, carol.id):
+            await client.post(
+                f"/teams/{team_id}/members",
+                json={"user_id": str(user_id)},
+                headers=auth_headers,
+            )
         for idx, user_id in enumerate([alice.id, bob.id, carol.id]):
             add = await client.post(
                 f"/rosters/{roster_id}/members",
@@ -1458,13 +1482,23 @@ class TestPagingAPI:
                 role="operator",
                 primary_org_id=TEST_ORG_ID,
             )
-            inactive.is_active = False
             await db.commit()
+            inactive_id = inactive.id
+        # Realistic sequence: the user joins the team + roster while active,
+        # then is deactivated later (the roster keeps the now-inactive member).
         await client.post(
-            f"/rosters/{inactive_roster.json()['id']}/members",
-            json={"user_id": str(inactive.id), "position_index": 0},
+            f"/teams/{team_id}/members",
+            json={"user_id": str(inactive_id)},
             headers=auth_headers,
         )
+        await client.post(
+            f"/rosters/{inactive_roster.json()['id']}/members",
+            json={"user_id": str(inactive_id), "position_index": 0},
+            headers=auth_headers,
+        )
+        async with app.state.session_factory() as db:
+            await UserRepo.update_fields(db, inactive_id, is_active=False)
+            await db.commit()
         for idx, (target_type, target_id) in enumerate(
             [
                 ("roster", disabled.json()["id"]),
@@ -1864,3 +1898,279 @@ class TestIncidentPagingSuppression:
         )
         assert resp.status_code == 200
         assert resp.json()["suppressed_by_maintenance_window"] is None
+
+
+class TestRosterMemberTeamScoping:
+    """A rotation member must be an active, non-deleted Admin/Operator who
+    belongs to the roster's owning team. Enforced server-side on add + on team
+    reparenting so direct API calls can't create invalid rosters."""
+
+    async def _make_team(self, client, auth_headers, name):
+        resp = await client.post(
+            "/teams",
+            json={"name": name, "slug": f"{name.lower()}-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    async def _make_roster(self, client, auth_headers, team_id, name="Primary"):
+        resp = await client.post(
+            "/rosters",
+            json={
+                "team_id": team_id,
+                "name": name,
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-05-04",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    async def _make_user(self, app, *, role="operator", is_active=True, deleted=False):
+        async with app.state.session_factory() as db:
+            u = await UserRepo.create(
+                db,
+                username=f"rm-{uuid.uuid4().hex[:8]}",
+                email=f"rm-{uuid.uuid4().hex[:8]}@test.com",
+                password_hash="x",
+                role=role,
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+            uid = u.id
+            if not is_active:
+                await UserRepo.update_fields(db, uid, is_active=False)
+                await db.commit()
+            if deleted:
+                await UserRepo.soft_delete(db, uid)
+                await db.commit()
+        return uid
+
+    async def _join_team(self, client, auth_headers, team_id, user_id):
+        resp = await client.post(
+            f"/teams/{team_id}/members",
+            json={"user_id": str(user_id)},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+
+    async def _add_member(self, client, auth_headers, roster_id, user_id, idx=0):
+        return await client.post(
+            f"/rosters/{roster_id}/members",
+            json={"user_id": str(user_id), "position_index": idx},
+            headers=auth_headers,
+        )
+
+    async def test_add_member_of_team_succeeds(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        await self._join_team(client, auth_headers, team_id, uid)
+        resp = await self._add_member(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 201, resp.text
+
+    async def test_add_user_not_in_team_fails(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        other_id = await self._make_team(client, auth_headers, "Web")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        # Joins a DIFFERENT team, not the roster's team.
+        await self._join_team(client, auth_headers, other_id, uid)
+        resp = await self._add_member(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 400
+        assert "belong to the selected team" in resp.json()["detail"]
+
+    async def test_add_viewer_in_team_fails(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="viewer")
+        await self._join_team(client, auth_headers, team_id, uid)
+        resp = await self._add_member(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 400
+        assert "Admin or Operator" in resp.json()["detail"]
+
+    async def test_add_inactive_user_fails(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        await self._join_team(client, auth_headers, team_id, uid)
+        # Deactivate after joining the team.
+        async with app.state.session_factory() as db:
+            await UserRepo.update_fields(db, uid, is_active=False)
+            await db.commit()
+        resp = await self._add_member(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 400
+        assert "not active" in resp.json()["detail"]
+
+    async def test_add_deleted_user_fails(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        await self._join_team(client, auth_headers, team_id, uid)
+        async with app.state.session_factory() as db:
+            await UserRepo.soft_delete(db, uid)
+            await db.commit()
+        resp = await self._add_member(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "User not found"
+
+    async def test_update_roster_team_with_valid_members_succeeds(
+        self, client, app, auth_headers
+    ):
+        team_a = await self._make_team(client, auth_headers, "Data")
+        team_b = await self._make_team(client, auth_headers, "Web")
+        roster_id = await self._make_roster(client, auth_headers, team_a)
+        uid = await self._make_user(app, role="operator")
+        # The member belongs to BOTH teams, so reparenting is allowed.
+        await self._join_team(client, auth_headers, team_a, uid)
+        await self._join_team(client, auth_headers, team_b, uid)
+        assert (
+            await self._add_member(client, auth_headers, roster_id, uid)
+        ).status_code == 201
+        resp = await client.put(
+            f"/rosters/{roster_id}",
+            json={"team_id": team_b},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["team_id"] == team_b
+
+    async def test_update_roster_team_strands_members_fails(
+        self, client, app, auth_headers
+    ):
+        team_a = await self._make_team(client, auth_headers, "Data")
+        team_b = await self._make_team(client, auth_headers, "Web")
+        roster_id = await self._make_roster(client, auth_headers, team_a)
+        uid = await self._make_user(app, role="operator")
+        await self._join_team(client, auth_headers, team_a, uid)  # only team A
+        assert (
+            await self._add_member(client, auth_headers, roster_id, uid)
+        ).status_code == 201
+        resp = await client.put(
+            f"/rosters/{roster_id}",
+            json={"team_id": team_b},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "belong to the selected team" in resp.json()["detail"]
+
+    async def test_existing_roster_list_and_detail_still_render(
+        self, client, app, auth_headers
+    ):
+        """Even if legacy data holds a member who isn't a team member, the
+        read paths (list + members) must not break."""
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        # Insert a roster member directly (bypassing the route) to simulate
+        # pre-existing invalid data — no team membership.
+        async with app.state.session_factory() as db:
+            await RosterRepo.add_member(
+                db, TEST_ORG_ID, roster_id=uuid.UUID(roster_id), user_id=uid,
+                position_index=0,
+            )
+            await db.commit()
+        listed = await client.get("/rosters", headers=auth_headers)
+        assert listed.status_code == 200
+        assert any(r["id"] == roster_id for r in listed.json()["items"])
+        members = await client.get(
+            f"/rosters/{roster_id}/members", headers=auth_headers
+        )
+        assert members.status_code == 200
+        assert members.json()["total"] == 1
+
+
+class TestRosterOverrideTeamScoping(TestRosterMemberTeamScoping):
+    """Coverage overrides obey the same eligibility rule as rotation members:
+    the covering user must be an active, non-deleted Admin/Operator on the
+    roster's team. Inherits the team/roster/user helpers from the member
+    scoping suite."""
+
+    async def _add_override(self, client, auth_headers, roster_id, user_id):
+        return await client.post(
+            f"/rosters/{roster_id}/overrides",
+            json={
+                "covering_user_id": str(user_id),
+                "starts_at": "2026-07-01T00:00:00+00:00",
+                "ends_at": "2026-07-02T00:00:00+00:00",
+                "reason": "cover",
+            },
+            headers=auth_headers,
+        )
+
+    async def test_override_for_team_member_succeeds(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        await self._join_team(client, auth_headers, team_id, uid)
+        resp = await self._add_override(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 201, resp.text
+
+    async def test_override_user_not_in_team_fails(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        other_id = await self._make_team(client, auth_headers, "Web")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        await self._join_team(client, auth_headers, other_id, uid)  # wrong team
+        resp = await self._add_override(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 400
+        assert "belong to the selected team" in resp.json()["detail"]
+
+    async def test_override_viewer_in_team_fails(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="viewer")
+        await self._join_team(client, auth_headers, team_id, uid)
+        resp = await self._add_override(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 400
+        assert "Admin or Operator" in resp.json()["detail"]
+
+    async def test_override_inactive_user_fails(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        await self._join_team(client, auth_headers, team_id, uid)
+        async with app.state.session_factory() as db:
+            await UserRepo.update_fields(db, uid, is_active=False)
+            await db.commit()
+        resp = await self._add_override(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 400
+        assert "not active" in resp.json()["detail"]
+
+    async def test_override_deleted_user_fails(self, client, app, auth_headers):
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")
+        await self._join_team(client, auth_headers, team_id, uid)
+        async with app.state.session_factory() as db:
+            await UserRepo.soft_delete(db, uid)
+            await db.commit()
+        resp = await self._add_override(client, auth_headers, roster_id, uid)
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "User not found"
+
+    async def test_existing_override_list_still_renders(self, client, app, auth_headers):
+        """Legacy overrides for a now-ineligible user must still list cleanly."""
+        team_id = await self._make_team(client, auth_headers, "Data")
+        roster_id = await self._make_roster(client, auth_headers, team_id)
+        uid = await self._make_user(app, role="operator")  # never joined the team
+        async with app.state.session_factory() as db:
+            await RosterOverrideRepo.create(
+                db,
+                TEST_ORG_ID,
+                roster_id=uuid.UUID(roster_id),
+                covering_user_id=uid,
+                starts_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                ends_at=datetime(2026, 7, 2, tzinfo=timezone.utc),
+                reason="legacy",
+            )
+            await db.commit()
+        listed = await client.get(
+            f"/rosters/{roster_id}/overrides", headers=auth_headers
+        )
+        assert listed.status_code == 200
+        assert listed.json()["total"] == 1

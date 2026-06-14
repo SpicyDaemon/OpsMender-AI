@@ -125,6 +125,10 @@ import { MultiSelect, type MultiSelectOption } from "@/components/ui/MultiSelect
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PagingFilterBar } from "@/components/ui/PagingFilterBar";
 import { useToast } from "@/components/ui/Toast";
+import {
+  eligibleRosterMemberOptions,
+  keepRosterMembersOnTeam,
+} from "@/lib/rosterEligibility";
 import { fullIntakeUrl } from "@/lib/intake";
 
 export type Tab =
@@ -1430,6 +1434,9 @@ function RostersPanel({
   const [editing, setEditing] = useState<RosterResponse | null>(null);
   const [calendarFor, setCalendarFor] = useState<RosterResponse | null>(null);
   const [users, setUsers] = useState<UserResponse[]>([]);
+  // user_ids on the currently-selected team. null = not loaded yet (so the
+  // picker stays empty until we know the team's membership).
+  const [teamMemberIds, setTeamMemberIds] = useState<Set<string> | null>(null);
   const [initialMemberIds, setInitialMemberIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
@@ -1471,22 +1478,49 @@ function RostersPanel({
     };
   }, []);
 
-  // Rotation members must be Admin/Operator users (Viewers can't operate).
+  // Scope the member picker to the selected team. When the team changes, drop
+  // any already-selected members who aren't on the new team (the backend
+  // enforces this too) and explain why.
+  useEffect(() => {
+    if (!open) return;
+    const teamId = form.team_id;
+    if (!teamId) {
+      setTeamMemberIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    setTeamMemberIds(null);
+    listTeamMembers(teamId)
+      .then((res) => {
+        if (cancelled) return;
+        const ids = new Set(res.items.map((m) => m.user_id));
+        setTeamMemberIds(ids);
+        setForm((f) => {
+          if (f.team_id !== teamId) return f;
+          const kept = keepRosterMembersOnTeam(f.member_ids, ids);
+          if (kept.length !== f.member_ids.length) {
+            toast.warning(
+              "Some selected members were removed because they are not part of the selected team.",
+            );
+            return { ...f, member_ids: kept };
+          }
+          return f;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setTeamMemberIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, form.team_id]);
+
+  // Rotation members must be Admin/Operator users (Viewers can't operate) AND
+  // belong to the selected team.
   const memberOptions = useMemo<MultiSelectOption[]>(
-    () =>
-      users
-        .filter(
-          (u) =>
-            u.is_active &&
-            !u.deleted_at &&
-            (u.role === "admin" || u.role === "operator"),
-        )
-        .map((u) => ({
-          value: u.id,
-          label: u.username,
-          sublabel: `${u.email} · ${u.role}`,
-        })),
-    [users],
+    () => eligibleRosterMemberOptions(users, teamMemberIds),
+    [users, teamMemberIds],
   );
 
   const openCreate = () => {
@@ -1558,6 +1592,17 @@ function RostersPanel({
     if (!form.name || !form.team_id) {
       toast.error("Name and team required");
       return;
+    }
+    // Block save if any selected member isn't an eligible member of the team
+    // (the backend rejects these too — this just fails fast before any write).
+    if (teamMemberIds !== null) {
+      const eligibleIds = new Set(memberOptions.map((o) => o.value));
+      if (form.member_ids.some((id) => !eligibleIds.has(id))) {
+        toast.error(
+          "Some selected members are not eligible for the selected team.",
+        );
+        return;
+      }
     }
     try {
       const payload = {
@@ -1962,17 +2007,29 @@ function RostersPanel({
           </div>
           <div>
             <Label>Rotation members (ordered)</Label>
-            <MultiSelect
-              ariaLabel="Rotation members"
-              ordered
-              options={memberOptions}
-              selected={form.member_ids}
-              onChange={(next) => setForm({ ...form, member_ids: next })}
-              emptyLabel="No Admin/Operator users available."
-            />
+            {!form.team_id ? (
+              <p className="text-sm text-fg-muted">
+                Select a team first to choose rotation members.
+              </p>
+            ) : memberOptions.length === 0 ? (
+              <p className="text-sm text-fg-muted">
+                No eligible team members. Add Admin or Operator users to this team
+                before creating a roster.
+              </p>
+            ) : (
+              <MultiSelect
+                ariaLabel="Rotation members"
+                ordered
+                options={memberOptions}
+                selected={form.member_ids}
+                onChange={(next) => setForm({ ...form, member_ids: next })}
+                emptyLabel="No eligible team members."
+              />
+            )}
             <p className="mt-1 text-xs text-fg-muted">
-              Admin/Operator users only. Member 1 covers the first window, member
-              2 the next, and so on — then the cycle repeats.
+              Only Admin and Operator users assigned to the selected team can be
+              added to this roster. Member 1 covers the first window, member 2 the
+              next, and so on — then the cycle repeats.
             </p>
           </div>
           <div className="flex justify-end gap-2">

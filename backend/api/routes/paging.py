@@ -439,6 +439,60 @@ async def delete_service(
 # Rosters
 # ---------------------------------------------------------------------------
 
+# Roles that may be placed on an on-call rotation. Viewers are read-only and
+# cannot operate, so they are never eligible.
+_ROSTER_ELIGIBLE_ROLES = {"admin", "operator"}
+
+
+async def _validate_roster_eligible_user(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    team_id: uuid.UUID,
+    user_id: uuid.UUID,
+    subject: str = "Roster members",
+) -> None:
+    """Enforce that ``user_id`` may be used on a roster owned by ``team_id``.
+
+    Shared source of truth for both rotation members and coverage overrides:
+    the user must exist, be active, not be deleted, hold an Admin/Operator
+    role, and belong to the roster's owning team. Raises a clear 400 on the
+    first failed check. This is the authoritative server-side guard — direct
+    API calls cannot create invalid rosters even if the frontend filter is
+    bypassed. ``subject`` tailors the team-membership message (e.g. "Roster
+    override users").
+    """
+    target_user = await UserRepo.get_by_id(db, user_id)
+    if (
+        target_user is None
+        or target_user.deleted_at is not None
+        or target_user.primary_org_id != org_id
+    ):
+        raise HTTPException(status_code=400, detail="User not found")
+    if not target_user.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail=f"User {target_user.username} is not active.",
+        )
+    if target_user.role not in _ROSTER_ELIGIBLE_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"User {target_user.username} is a {target_user.role}; only "
+                "Admin or Operator users can be added to an on-call roster."
+            ),
+        )
+    if not await TeamRepo.is_member(db, org_id, team_id, user_id):
+        team = await TeamRepo.get_by_id(db, org_id, team_id)
+        team_name = team.name if team is not None else str(team_id)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{subject} must belong to the selected team. "
+                f"User {target_user.username} is not a member of team {team_name}."
+            ),
+        )
+
 
 @router.get(
     "/rosters",
@@ -505,7 +559,23 @@ async def update_roster(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
+    existing = await RosterRepo.get_by_id(db, org_id, roster_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Roster not found")
     fields = body.model_dump(exclude_unset=True)
+
+    # Reparenting the roster to a different team must not strand its current
+    # rotation members under a team they don't belong to. Reject the update
+    # unless every existing member is also eligible for the new team.
+    new_team_id = fields.get("team_id")
+    if new_team_id is not None and new_team_id != existing.team_id:
+        if await TeamRepo.get_by_id(db, org_id, new_team_id) is None:
+            raise HTTPException(status_code=400, detail="Owning team not found")
+        for member in await RosterRepo.list_members(db, org_id, roster_id):
+            await _validate_roster_eligible_user(
+                db, org_id, team_id=new_team_id, user_id=member.user_id
+            )
+
     updated = await RosterRepo.update(db, org_id, roster_id, **fields)
     if updated is None:
         raise HTTPException(status_code=404, detail="Roster not found")
@@ -564,16 +634,12 @@ async def add_roster_member(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
+    roster = await RosterRepo.get_by_id(db, org_id, roster_id)
+    if roster is None:
         raise HTTPException(status_code=404, detail="Roster not found")
-    target_user = await UserRepo.get_by_id(db, body.user_id)
-    if target_user is None or target_user.primary_org_id != org_id:
-        raise HTTPException(status_code=400, detail="User not found")
-    if target_user.role == "viewer":
-        raise HTTPException(
-            status_code=400,
-            detail="Viewer users cannot be assigned to on-call rosters",
-        )
+    await _validate_roster_eligible_user(
+        db, org_id, team_id=roster.team_id, user_id=body.user_id
+    )
     try:
         member = await RosterRepo.add_member(
             db,
@@ -670,16 +736,18 @@ async def create_roster_override(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    if await RosterRepo.get_by_id(db, org_id, roster_id) is None:
+    roster = await RosterRepo.get_by_id(db, org_id, roster_id)
+    if roster is None:
         raise HTTPException(status_code=404, detail="Roster not found")
-    target_user = await UserRepo.get_by_id(db, body.covering_user_id)
-    if target_user is None or target_user.primary_org_id != org_id:
-        raise HTTPException(status_code=400, detail="User not found")
-    if target_user.role == "viewer":
-        raise HTTPException(
-            status_code=400,
-            detail="Viewer users cannot cover on-call rosters",
-        )
+    # A coverage override must satisfy the same eligibility rule as a rotation
+    # member: active, non-deleted Admin/Operator who belongs to the roster's team.
+    await _validate_roster_eligible_user(
+        db,
+        org_id,
+        team_id=roster.team_id,
+        user_id=body.covering_user_id,
+        subject="Roster override users",
+    )
     if body.ends_at <= body.starts_at:
         raise HTTPException(status_code=400, detail="ends_at must be > starts_at")
     ov = await RosterOverrideRepo.create(

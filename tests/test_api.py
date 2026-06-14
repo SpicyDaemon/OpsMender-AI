@@ -457,6 +457,146 @@ class TestAuth:
         assert resp.status_code == 401
 
 
+class TestSessionDuration:
+    """v1 browser session = 7 days (604800s). See OPSMENDER_JWT_EXPIRE_MINUTES."""
+
+    SEVEN_DAYS_SECONDS = 7 * 24 * 60 * 60  # 604800
+
+    def test_default_session_ttl_is_seven_days(self):
+        """Config default is 7 days = 10080 minutes = 604800 seconds."""
+        from backend.config_loader import AuthConfig
+
+        assert AuthConfig().jwt_expire_minutes == 10080
+        assert AuthConfig().jwt_expire_minutes * 60 == self.SEVEN_DAYS_SECONDS
+
+    async def test_login_issues_seven_day_token(self, client: AsyncClient):
+        """The token minted at login carries an ~7-day exp window."""
+        from backend.api.auth import decode_access_token
+
+        await client.post(
+            "/auth/register",
+            json={
+                "username": "ttluser",
+                "email": "ttl@test.com",
+                "password": "password123",
+            },
+        )
+        resp = await client.post(
+            "/auth/login",
+            json={"username": "ttluser", "password": "password123"},
+        )
+        assert resp.status_code == 200
+        payload = decode_access_token(resp.json()["access_token"])
+        window = payload["exp"] - payload["iat"]
+        # Allow a few seconds of clock slack; must be the 7-day window, not 1h.
+        assert abs(window - self.SEVEN_DAYS_SECONDS) <= 5
+
+    async def test_me_accepts_token_within_window(self, client: AsyncClient, app):
+        """A current-user check succeeds for a token well inside the window."""
+        from datetime import timedelta
+        from backend.api.auth import create_access_token
+
+        async with app.state.session_factory() as db:
+            user = await UserRepo.create(
+                db,
+                username="withinwindow",
+                email="within@test.com",
+                password_hash="x",
+                role="viewer",
+            )
+            user.primary_org_id = TEST_ORG_ID
+            await db.commit()
+            user_id, role = user.id, user.role
+
+        token = create_access_token(
+            user_id, role, expires_delta=timedelta(days=6)
+        )
+        resp = await client.get(
+            "/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["username"] == "withinwindow"
+
+    async def test_me_rejects_expired_token(self, client: AsyncClient, app):
+        """After the window closes the session is rejected (not infinite)."""
+        from datetime import timedelta
+        from backend.api.auth import create_access_token
+
+        async with app.state.session_factory() as db:
+            user = await UserRepo.create(
+                db,
+                username="expireduser",
+                email="expired@test.com",
+                password_hash="x",
+                role="viewer",
+            )
+            user.primary_org_id = TEST_ORG_ID
+            await db.commit()
+            user_id, role = user.id, user.role
+
+        token = create_access_token(
+            user_id, role, expires_delta=timedelta(seconds=-1)
+        )
+        resp = await client.get(
+            "/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert resp.status_code == 401
+
+    async def test_deactivated_user_rejected_with_valid_token(
+        self, client: AsyncClient, app
+    ):
+        """A deactivated user can't keep using a still-valid token."""
+        from backend.api.auth import create_access_token
+
+        async with app.state.session_factory() as db:
+            user = await UserRepo.create(
+                db,
+                username="deactivated",
+                email="deact@test.com",
+                password_hash="x",
+                role="operator",
+            )
+            user.primary_org_id = TEST_ORG_ID
+            await db.commit()
+            user_id, role = user.id, user.role
+            # Deactivate AFTER minting the token below would be more realistic,
+            # but is_active is checked per-request so order doesn't matter.
+            await UserRepo.update_fields(db, user_id, is_active=False)
+            await db.commit()
+
+        token = create_access_token(user_id, role)  # full 7-day token
+        resp = await client.get(
+            "/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert resp.status_code == 401
+
+    async def test_deleted_user_rejected_with_valid_token(
+        self, client: AsyncClient, app
+    ):
+        """A soft-deleted user can't keep using a still-valid token."""
+        from backend.api.auth import create_access_token
+
+        async with app.state.session_factory() as db:
+            user = await UserRepo.create(
+                db,
+                username="deleteduser",
+                email="del@test.com",
+                password_hash="x",
+                role="operator",
+            )
+            user.primary_org_id = TEST_ORG_ID
+            await db.commit()
+            user_id, role = user.id, user.role
+            await UserRepo.soft_delete(db, user_id)
+            await db.commit()
+
+        token = create_access_token(user_id, role)  # full 7-day token
+        resp = await client.get(
+            "/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert resp.status_code == 401
+
+
 class TestMyOrganizations:
     async def test_list_my_organizations(self, client: AsyncClient, app, auth_headers):
         resp = await client.get("/auth/me/organizations", headers=auth_headers)
@@ -1047,6 +1187,106 @@ class TestIncidents:
             headers=viewer_headers,
         )
         assert resp.status_code == 403
+
+    async def test_resolve_does_not_start_session_or_call_model(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        """v1 perf guard: resolving an incident must not synchronously create
+        an AI session, build a model provider, or call MCP.
+
+        AI sessions in v1 start only when an Admin/Operator explicitly starts
+        one; lifecycle updates (resolve) stay local and fast. This locks that
+        contract so a future change can't reintroduce a blocking model call on
+        the resolve path.
+        """
+        # Tripwires: if the resolve path tries to build a model provider or
+        # open an MCP client, fail loudly instead of silently going slow.
+        import backend.llm.factory as llm_factory
+
+        def _boom_llm(*args, **kwargs):  # pragma: no cover - must never run
+            raise AssertionError("resolve path must not build a model provider")
+
+        monkeypatch.setattr(llm_factory, "create_llm", _boom_llm)
+
+        session_create_calls = 0
+        original_session_create = SessionRepo.create
+
+        async def _counting_session_create(*args, **kwargs):
+            nonlocal session_create_calls
+            session_create_calls += 1
+            return await original_session_create(*args, **kwargs)
+
+        monkeypatch.setattr(SessionRepo, "create", staticmethod(_counting_session_create))
+
+        create_resp = await client.post(
+            "/incidents",
+            json={"title": "TEST · synthetic alert", "description": "qa"},
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["id"]
+
+        resp = await client.patch(
+            f"/incidents/{incident_id}",
+            json={"status": "resolved", "service_id_set": False},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "resolved"
+
+        # No session was created anywhere during create + resolve.
+        assert session_create_calls == 0
+
+        # And none exists for the incident — resolve did not auto-start one.
+        sessions_resp = await client.get(
+            f"/incidents/{incident_id}/sessions", headers=auth_headers
+        )
+        assert sessions_resp.status_code == 200
+        assert sessions_resp.json()["total"] == 0
+
+    async def test_resolve_notification_delivery_is_fire_and_forget(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        """A slow/failing notification channel must not break or block the
+        resolve request — delivery is scheduled fire-and-forget after commit.
+        """
+        # Enable a connector that wants incident notifications so the resolve
+        # transition actually reaches the delivery scheduler.
+        async with app.state.session_factory() as db:
+            await BotConnectorRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="qa-slack",
+                platform="slack",
+                allowed_capabilities=["notifications"],
+                status="connected",
+                is_enabled=True,
+            )
+            await db.commit()
+
+        # Make the background delivery coroutine blow up. Because it is
+        # scheduled (not awaited) in the request path, resolve must still
+        # succeed — proving delivery failure can't break incident resolve.
+        import backend.bots.notifier as notifier
+
+        async def _failing_delivery(*args, **kwargs):  # pragma: no cover
+            raise RuntimeError("channel delivery is down")
+
+        monkeypatch.setattr(notifier, "deliver_incident_event", _failing_delivery)
+
+        create_resp = await client.post(
+            "/incidents",
+            json={"title": "TEST · synthetic alert", "description": "qa"},
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["id"]
+
+        resp = await client.patch(
+            f"/incidents/{incident_id}",
+            json={"status": "resolved", "service_id_set": False},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "resolved"
 
     async def test_create_incident_with_missing_service_returns_404(
         self, client: AsyncClient, auth_headers

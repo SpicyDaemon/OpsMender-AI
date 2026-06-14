@@ -1696,6 +1696,7 @@ class RosterCreate(BaseModel):
 
 
 class RosterUpdate(BaseModel):
+    team_id: Optional[uuid.UUID] = None
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
     time_zone: Optional[str] = Field(None, max_length=64)

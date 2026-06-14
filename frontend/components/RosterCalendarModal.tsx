@@ -12,18 +12,19 @@ import {
 import {
   createRosterOverride,
   deleteRosterOverride,
-  listRosterMembers,
   listRosterOverrides,
+  listTeamMembers,
   listUsers,
   resolveOnCallRange,
 } from "@/lib/api";
 import type {
   OnCallRangeItem,
-  RosterMemberResponse,
   RosterOverrideResponse,
   RosterResponse,
   UserResponse,
 } from "@/lib/types";
+import { eligibleRosterMemberOptions } from "@/lib/rosterEligibility";
+import type { MultiSelectOption } from "@/components/ui/MultiSelect";
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -94,8 +95,9 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
   const [windowStart, setWindowStart] = useState<Date>(() => startOfDay(new Date()));
   const [range, setRange] = useState<OnCallRangeItem[]>([]);
   const [overrides, setOverrides] = useState<RosterOverrideResponse[]>([]);
-  const [members, setMembers] = useState<RosterMemberResponse[]>([]);
   const [users, setUsers] = useState<UserResponse[]>([]);
+  // user_ids on the roster's owning team — coverage is scoped to these.
+  const [teamMemberIds, setTeamMemberIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [picking, setPicking] = useState<{ day: Date } | null>(null);
 
@@ -110,26 +112,26 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [rng, ovs, mbrs, uList] = await Promise.all([
+      const [rng, ovs, uList, tMembers] = await Promise.all([
         resolveOnCallRange(roster.id, {
           from: fmtIso(windowStart),
           to: fmtIso(windowEnd),
           step_hours: 24,
         }),
         listRosterOverrides(roster.id),
-        listRosterMembers(roster.id),
         listUsers().catch(() => ({ items: [], total: 0 })),
+        listTeamMembers(roster.team_id).catch(() => ({ items: [], total: 0 })),
       ]);
       setRange(rng.items);
       setOverrides(ovs.items);
-      setMembers(mbrs.items);
       setUsers(uList.items);
+      setTeamMemberIds(new Set(tMembers.items.map((m) => m.user_id)));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [roster.id, windowStart, windowEnd, toast]);
+  }, [roster.id, roster.team_id, windowStart, windowEnd, toast]);
 
   useEffect(() => {
     refresh();
@@ -141,11 +143,12 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
     return map;
   }, [users]);
 
-  const memberUsers = useMemo(() => {
-    return members
-      .map((m) => users.find((u) => u.id === m.user_id))
-      .filter((u): u is UserResponse => Boolean(u));
-  }, [members, users]);
+  // Coverage overrides may only be assigned to eligible Admin/Operator users
+  // of the roster's team (same rule as rotation members; backend enforces it).
+  const eligibleCoveringOptions = useMemo(
+    () => eligibleRosterMemberOptions(users, teamMemberIds),
+    [users, teamMemberIds],
+  );
 
   const deleteOverride = async (overrideId: string) => {
     if (!canEdit) return;
@@ -328,7 +331,7 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
         <OverrideCreateModal
           rosterId={roster.id}
           defaultStart={picking.day}
-          memberUsers={memberUsers}
+          options={eligibleCoveringOptions}
           onClose={() => setPicking(null)}
           onSaved={async () => {
             setPicking(null);
@@ -344,13 +347,13 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
 function OverrideCreateModal({
   rosterId,
   defaultStart,
-  memberUsers,
+  options,
   onClose,
   onSaved,
 }: {
   rosterId: string;
   defaultStart: Date;
-  memberUsers: UserResponse[];
+  options: MultiSelectOption[];
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }) {
@@ -364,7 +367,7 @@ function OverrideCreateModal({
   const endOfThatDay = new Date(defaultStart);
   endOfThatDay.setHours(23, 59, 0, 0);
 
-  const [userId, setUserId] = useState<string>(memberUsers[0]?.id ?? "");
+  const [userId, setUserId] = useState<string>(options[0]?.value ?? "");
   const [starts, setStarts] = useState<string>(dayIso(startOfThatDay));
   const [ends, setEnds] = useState<string>(dayIso(endOfThatDay));
   const [reason, setReason] = useState<string>("");
@@ -409,15 +412,21 @@ function OverrideCreateModal({
             onChange={(e) => setUserId(e.target.value)}
           >
             <option value="">(pick a user)</option>
-            {memberUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.username}
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
               </option>
             ))}
           </Select>
-          {memberUsers.length === 0 && (
+          {options.length === 0 ? (
             <p className="mt-1 text-xs text-fg-muted">
-              No roster members yet. Add members to the roster first.
+              No eligible team members. Add Admin or Operator users to this
+              roster&apos;s team before creating an override.
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-fg-muted">
+              Only Admin and Operator users assigned to this roster&apos;s team
+              can be used for overrides.
             </p>
           )}
         </div>

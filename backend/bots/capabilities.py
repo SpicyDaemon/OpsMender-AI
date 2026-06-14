@@ -127,7 +127,7 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
     "whatsapp": _cap("whatsapp", "WhatsApp", direct_message=True),
     "signal": _cap("signal", "Signal", direct_message=True, shared_channel=True),
     "twilio": _cap("twilio", "Twilio (SMS)", direct_message=True),
-    "email": _cap("email", "Email", direct_message=True, shared_channel=True),
+    "email": _cap("email", "Mailgun Email", direct_message=True, shared_channel=True),
     "weixin": _cap("weixin", "WeChat (Official Account)"),
     "homeassistant": _cap("homeassistant", "Home Assistant", shared_channel=True),
     "bluebubbles": _cap("bluebubbles", "BlueBubbles (iMessage)", direct_message=True, shared_channel=True),

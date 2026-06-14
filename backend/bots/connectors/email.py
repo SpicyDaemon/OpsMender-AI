@@ -1,4 +1,4 @@
-"""Email (Mailgun/SMTP) connector adapter."""
+"""Mailgun Email connector adapter."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
 class EmailAdapter:
-    """Adapter for Email (via Mailgun Webhooks and API)."""
+    """Adapter for email delivery and inbound routes through Mailgun."""
 
     platform = "email"
 
@@ -66,13 +66,17 @@ class EmailAdapter:
         raw_body: bytes,
     ) -> None:
         if connector.platform != self.platform:
-            raise HTTPException(status_code=400, detail="Not an Email connector")
-            
+            raise HTTPException(status_code=400, detail="Not a Mailgun Email connector")
+        if not connector.is_enabled:
+            raise HTTPException(status_code=403, detail="Connector is disabled")
+
         credentials = connector.credentials or {}
         api_key = credentials.get("mailgun_api_key")
         if not api_key:
-            # If no API key, we might skip verification or use a different method
-            return
+            raise HTTPException(
+                status_code=403,
+                detail="Mailgun API key is not configured",
+            )
 
         # Mailgun signature verification: https://documentation.mailgun.com/en/latest/user_manual.html#webhooks
         # Mailgun sends: timestamp, token, signature in the JSON body or form
@@ -91,7 +95,10 @@ class EmailAdapter:
             signature = params.get("signature", [None])[0]
 
         if not all([timestamp, token, signature]):
-            return # Skip verification if not Mailgun style
+            raise HTTPException(
+                status_code=401,
+                detail="Missing Mailgun webhook signature",
+            )
 
         hmac_digest = hmac.new(
             api_key.encode("utf-8"),

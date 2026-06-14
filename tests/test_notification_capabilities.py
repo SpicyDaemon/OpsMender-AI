@@ -36,6 +36,7 @@ def test_twilio_is_named_sms_and_is_delivery_only():
 def test_email_and_custom_are_delivery_only():
     assert is_delivery_only("email") is True
     assert is_delivery_only("custom") is True
+    assert display_name("email") == "Mailgun Email"
 
 
 def test_rich_chat_platforms_support_incident_cards():

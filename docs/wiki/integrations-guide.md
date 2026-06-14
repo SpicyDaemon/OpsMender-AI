@@ -384,9 +384,11 @@ Set the **A MESSAGE COMES IN** webhook in the Twilio Phone Number settings to th
 
 Identity mapping (RBAC): Use the sender's phone number (e.g., `+15550100`) as the platform user ID.
 
-### Email (Mailgun)
+### Mailgun Email
 
-Email integration supports incident reporting and replies via Mailgun.
+The current email Notification Channel supports incident reporting, replies,
+and outbound delivery through Mailgun. It is not a generic SMTP or IMAP
+connector.
 
 Required connector credentials:
 
@@ -402,9 +404,14 @@ Set up a **Route** in Mailgun to forward emails to:
 POST https://<your-opsmender-url>/bot-connectors/<connector-id>/email/webhook
 ```
 
-OpsMender verifies the Mailgun signature if the API key is provided.
+OpsMender requires the Mailgun API key and rejects inbound requests that do not
+include a valid Mailgun signature.
 
 Identity mapping (RBAC): Use the sender's email address (e.g., `operator@company.com`) as the platform user ID.
+
+Generic SMTP Notification Channel support is a future provider enhancement.
+The separate `OPSMENDER_SMTP_*` settings are only for account invites and
+password-reset delivery.
 
 ### Home Assistant
 

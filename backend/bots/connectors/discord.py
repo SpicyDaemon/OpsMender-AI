@@ -42,11 +42,15 @@ class DiscordAdapter:
             ),
             FieldSpec(
                 name="default_chat_id",
-                label="Default channel ID",
+                label="Discord Channel ID",
                 kind="text",
                 group="config",
                 required=False,
-                helper="Optional. Snowflake channel ID used for outbound notifications.",
+                helper=(
+                    "Optional. The Discord channel ID where OpsMender should post "
+                    "outbound notifications. In Discord, enable Developer Mode, "
+                    "right-click the channel, and copy its ID."
+                ),
                 placeholder="123456789012345678",
             ),
         ]

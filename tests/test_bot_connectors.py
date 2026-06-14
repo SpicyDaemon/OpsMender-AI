@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+
 import pytest
 from fastapi import HTTPException
 
@@ -567,3 +571,98 @@ class TestFormSchema:
         adapter = get_adapter("whatsapp")
         names = {f.name for f in adapter.form_schema()}
         assert {"app_secret", "verify_token", "access_token", "phone_number_id"} <= names
+
+    def test_discord_schema_uses_customer_facing_channel_copy(self):
+        adapter = get_adapter("discord")
+        fields = {field.name: field for field in adapter.form_schema()}
+        channel = fields["default_chat_id"]
+        assert channel.label == "Discord Channel ID"
+        assert "where OpsMender should post outbound notifications" in channel.helper
+        assert "Snowflake" not in channel.helper
+
+    def test_email_schema_is_mailgun_specific(self):
+        adapter = get_adapter("email")
+        fields = {field.name: field for field in adapter.form_schema()}
+        assert set(fields) == {
+            "mailgun_api_key",
+            "mailgun_domain",
+            "from_email",
+            "default_chat_id",
+        }
+        assert fields["mailgun_api_key"].required is True
+        assert fields["mailgun_domain"].required is True
+
+
+class TestMailgunEmailAdapter:
+    def _connector(
+        self,
+        *,
+        api_key: str | None = "key-test",
+        enabled: bool = True,
+    ) -> BotConnector:
+        credentials = {"mailgun_domain": "mg.example.com"}
+        if api_key is not None:
+            credentials["mailgun_api_key"] = api_key
+        return BotConnector(
+            name="mailgun-test",
+            platform="email",
+            config={},
+            credentials=credentials,
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=enabled,
+        )
+
+    def test_webhook_rejects_disabled_connector(self):
+        adapter = get_adapter("email")
+        with pytest.raises(HTTPException) as exc:
+            adapter.verify_webhook(
+                self._connector(enabled=False),
+                headers={},
+                raw_body=b"{}",
+            )
+        assert exc.value.status_code == 403
+
+    def test_webhook_rejects_missing_api_key(self):
+        adapter = get_adapter("email")
+        with pytest.raises(HTTPException) as exc:
+            adapter.verify_webhook(
+                self._connector(api_key=None),
+                headers={},
+                raw_body=b"{}",
+            )
+        assert exc.value.status_code == 403
+
+    def test_webhook_rejects_missing_signature(self):
+        adapter = get_adapter("email")
+        with pytest.raises(HTTPException) as exc:
+            adapter.verify_webhook(
+                self._connector(),
+                headers={},
+                raw_body=b"{}",
+            )
+        assert exc.value.status_code == 401
+
+    def test_webhook_accepts_valid_signature(self):
+        adapter = get_adapter("email")
+        timestamp = "1710000000"
+        token = "token-123"
+        signature = hmac.new(
+            b"key-test",
+            f"{timestamp}{token}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        raw_body = json.dumps(
+            {
+                "signature": {
+                    "timestamp": timestamp,
+                    "token": token,
+                    "signature": signature,
+                }
+            }
+        ).encode()
+        adapter.verify_webhook(
+            self._connector(),
+            headers={},
+            raw_body=raw_body,
+        )

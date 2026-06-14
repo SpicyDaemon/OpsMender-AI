@@ -3728,6 +3728,31 @@ class TestBotConnectorsAPI:
         assert names["webhook_secret"]["required"] is True
         assert names["default_chat_id"]["group"] == "config"
 
+    async def test_discord_and_mailgun_platform_copy(
+        self, client: AsyncClient, auth_headers
+    ):
+        discord_resp = await client.get(
+            "/bot-connectors/platforms/discord/schema", headers=auth_headers
+        )
+        assert discord_resp.status_code == 200
+        discord = discord_resp.json()
+        discord_fields = {field["name"]: field for field in discord["fields"]}
+        assert discord_fields["default_chat_id"]["label"] == "Discord Channel ID"
+        assert "Snowflake" not in discord_fields["default_chat_id"]["helper"]
+
+        email_resp = await client.get(
+            "/bot-connectors/platforms/email/schema", headers=auth_headers
+        )
+        assert email_resp.status_code == 200
+        email = email_resp.json()
+        assert email["label"] == "Mailgun Email"
+        assert {field["name"] for field in email["fields"]} == {
+            "mailgun_api_key",
+            "mailgun_domain",
+            "from_email",
+            "default_chat_id",
+        }
+
     async def test_unknown_platform_schema_returns_404(
         self, client: AsyncClient, auth_headers
     ):

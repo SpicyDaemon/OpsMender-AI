@@ -180,6 +180,14 @@ describe("Workspace Settings page (single-workspace mode)", () => {
     await waitFor(() => expect(listOrganizationUsers).toHaveBeenCalled());
     // The modal title contains the org name.
     expect(await screen.findByText(/Manage Users: Main/i)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Manage workspace membership from People\. This view shows current members and roles\./i,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Add User/i })).toBeNull();
+    expect(screen.queryByLabelText(/^User$/i)).toBeNull();
+    expect(listUsers).not.toHaveBeenCalled();
   });
 
   it("does not crash when Domains is clicked", async () => {

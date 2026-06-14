@@ -43,6 +43,10 @@ REQUIRED_CREDENTIAL_KEYS = {
     "telegram": ("bot_token",),
     "signal": ("service_url", "bot_number", "webhook_secret"),
     "whatsapp": ("access_token", "phone_number_id"),
+    "slack": ("signing_secret", "bot_token"),
+    "discord": ("public_key", "bot_token"),
+    "teams": ("tenant_id", "client_id", "client_secret"),
+    "email": ("mailgun_api_key", "mailgun_domain"),
     "custom": (),
 }
 
@@ -192,7 +196,7 @@ def _test_connector_configuration(
 
     return (
         True,
-        "Connector configuration looks ready. Platform-specific delivery checks will run once that connector is implemented.",
+        "Required stored credentials are present. This check validates configuration only; it does not send a message or enable native actions.",
         "healthy",
         None,
     )

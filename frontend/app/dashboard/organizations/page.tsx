@@ -158,10 +158,12 @@ function OrgModal({
 function UsersModal({
   open,
   org,
+  allowAddUsers,
   onClose,
 }: {
   open: boolean;
   org: OrganizationResponse | null;
+  allowAddUsers: boolean;
   onClose: () => void;
 }) {
   const [members, setMembers] = useState<UserOrganizationResponse[]>([]);
@@ -179,7 +181,9 @@ function UsersModal({
     try {
       const [membersRes, usersRes] = await Promise.all([
         listOrganizationUsers(org.id),
-        listUsers({ limit: 1000 }), // Fetch all users for the dropdown
+        allowAddUsers
+          ? listUsers({ limit: 1000 })
+          : Promise.resolve({ items: [], total: 0 }),
       ]);
       setMembers(membersRes.items);
       setAllUsers(usersRes.items);
@@ -188,7 +192,7 @@ function UsersModal({
     } finally {
       setLoading(false);
     }
-  }, [org]);
+  }, [allowAddUsers, org]);
 
   useEffect(() => {
     if (open) {
@@ -275,9 +279,11 @@ function UsersModal({
     }
   }
 
-  // Filter out users who are already members
+  // Multi-org installs may attach an existing active account to another org.
   const memberIds = new Set(members.map((m) => m.user_id));
-  const availableUsers = allUsers.filter((u) => !memberIds.has(u.id));
+  const availableUsers = allUsers.filter(
+    (u) => u.is_active && !u.deleted_at && !memberIds.has(u.id),
+  );
 
   return (
     <Modal
@@ -289,39 +295,55 @@ function UsersModal({
       <div className="space-y-6">
         <FormError message={error} />
 
-        {/* Add User Form */}
-        <div className="flex items-end gap-3 rounded-lg border border-border-subtle bg-bg-muted p-4">
-          <div className="flex-1">
-            <Label htmlFor="add-user">User</Label>
-            <Select
-              id="add-user"
-              value={selectedUser}
-              onChange={(e) => setSelectedUser(e.target.value)}
-            >
-              <option value="">Select a user...</option>
-              {availableUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.username} ({u.email})
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="w-40">
-            <Label htmlFor="add-role">Org Role</Label>
-            <Select
-              id="add-role"
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value as any)}
-            >
-              <option value="admin">Admin</option>
-              <option value="operator">Operator</option>
-              <option value="viewer">Viewer</option>
-            </Select>
-          </div>
-          <Button onClick={handleAddUser} disabled={!selectedUser} loading={adding}>
-            Add User
-          </Button>
-        </div>
+        <p className="text-sm text-fg-secondary">
+          Manage workspace membership from People. This view shows current
+          members and roles.
+        </p>
+
+        {allowAddUsers && !loading && (
+          availableUsers.length > 0 ? (
+            <div className="flex items-end gap-3 rounded-lg border border-border-subtle bg-bg-muted p-4">
+              <div className="flex-1">
+                <Label htmlFor="add-user">User</Label>
+                <Select
+                  id="add-user"
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                >
+                  <option value="">Select a user...</option>
+                  {availableUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.username} ({u.email})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="w-40">
+                <Label htmlFor="add-role">Org Role</Label>
+                <Select
+                  id="add-role"
+                  value={selectedRole}
+                  onChange={(e) =>
+                    setSelectedRole(
+                      e.target.value as "admin" | "operator" | "viewer",
+                    )
+                  }
+                >
+                  <option value="admin">Admin</option>
+                  <option value="operator">Operator</option>
+                  <option value="viewer">Viewer</option>
+                </Select>
+              </div>
+              <Button onClick={handleAddUser} disabled={!selectedUser} loading={adding}>
+                Add User
+              </Button>
+            </div>
+          ) : (
+            <p className="rounded-lg border border-border-subtle bg-bg-muted p-4 text-sm text-fg-secondary">
+              No eligible users available to add.
+            </p>
+          )
+        )}
 
         {/* User List */}
         <div>
@@ -1428,6 +1450,7 @@ export default function OrganizationsPage() {
       <UsersModal
         open={showUsersModal}
         org={managingUsersOrg}
+        allowAddUsers={multiOrgEnabled}
         onClose={() => setShowUsersModal(false)}
       />
 

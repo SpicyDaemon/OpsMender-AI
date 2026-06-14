@@ -11,10 +11,115 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
+const platformSchemas = vi.hoisted(() => [
+  {
+    platform: "discord",
+    label: "Discord",
+    oauth_enabled: false,
+    capabilities: null,
+    fields: [
+      {
+        name: "public_key",
+        label: "Application public key",
+        kind: "secret",
+        group: "credentials",
+        required: true,
+        default: null,
+        helper: "From your Discord application.",
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "bot_token",
+        label: "Bot token",
+        kind: "secret",
+        group: "credentials",
+        required: true,
+        default: null,
+        helper: "Required for outbound message delivery.",
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "default_chat_id",
+        label: "Discord Channel ID",
+        kind: "text",
+        group: "config",
+        required: false,
+        default: null,
+        helper:
+          "Optional. The Discord channel ID where OpsMender should post outbound notifications. In Discord, enable Developer Mode, right-click the channel, and copy its ID.",
+        doc_url: null,
+        placeholder: "123456789012345678",
+        options: [],
+      },
+    ],
+  },
+  {
+    platform: "email",
+    label: "Mailgun Email",
+    oauth_enabled: false,
+    capabilities: null,
+    fields: [
+      {
+        name: "mailgun_api_key",
+        label: "Mailgun API key",
+        kind: "secret",
+        group: "credentials",
+        required: true,
+        default: null,
+        helper: "Used for Mailgun delivery and webhook verification.",
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "mailgun_domain",
+        label: "Mailgun sending domain",
+        kind: "text",
+        group: "credentials",
+        required: true,
+        default: null,
+        helper: "Domain configured in Mailgun.",
+        doc_url: null,
+        placeholder: "mg.example.com",
+        options: [],
+      },
+      {
+        name: "from_email",
+        label: "From address",
+        kind: "text",
+        group: "credentials",
+        required: false,
+        default: null,
+        helper: "Optional sender address.",
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "default_chat_id",
+        label: "Default recipient",
+        kind: "text",
+        group: "config",
+        required: false,
+        default: null,
+        helper: "Optional recipient email used for outbound notifications.",
+        doc_url: null,
+        placeholder: "oncall@example.com",
+        options: [],
+      },
+    ],
+  },
+]);
+
 // The component pulls in the whole config API surface; only listBotPlatformSchemas
 // runs on mount. Stub the module so the import graph resolves.
 vi.mock("@/lib/api", () => ({
-  listBotPlatformSchemas: () => Promise.resolve({ items: [], total: 0 }),
+  listBotPlatformSchemas: () =>
+    Promise.resolve({ items: platformSchemas, total: platformSchemas.length }),
   listTeams: () =>
     Promise.resolve({
       items: [
@@ -191,5 +296,33 @@ describe("Notification Channels capability rendering", () => {
       .querySelector("input") as HTMLInputElement;
     fireEvent.click(payments);
     expect(payments.checked).toBe(true);
+  });
+
+  it("uses accurate Discord and Mailgun configuration copy", async () => {
+    render(
+      <BotConnectorSection connectors={[]} onReload={async () => {}} canEdit />,
+    );
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: /add channel/i }));
+    const platform = screen.getByLabelText("Platform");
+
+    fireEvent.change(platform, { target: { value: "discord" } });
+    expect(await screen.findByLabelText(/Discord Channel ID/i)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /The Discord channel ID where OpsMender should post outbound notifications/i,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Snowflake/i)).toBeNull();
+
+    fireEvent.change(platform, { target: { value: "email" } });
+    expect(await screen.findByText("Mailgun Email can:")).toBeTruthy();
+    expect(screen.getByLabelText(/Mailgun API key/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Mailgun sending domain/i)).toBeTruthy();
+    expect(screen.getByLabelText(/From address/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Default recipient/i)).toBeTruthy();
+    expect(screen.queryByText(/SMTP|IMAP/i)).toBeNull();
+    expect(screen.getByText("Enable this notification channel")).toBeTruthy();
   });
 });

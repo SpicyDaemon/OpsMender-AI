@@ -2724,7 +2724,7 @@ const PLATFORM_LABELS: Record<BotConnectorPlatform, string> = {
   wecom: "WeCom",
   weixin: "WeChat (Official Account)",
   twilio: "Twilio (SMS)",
-  email: "Email (SMTP/IMAP)",
+  email: "Mailgun Email",
   homeassistant: "Home Assistant",
   bluebubbles: "BlueBubbles (iMessage)",
   custom: "Custom Adapter",
@@ -3354,7 +3354,7 @@ function BotConnectorModal({
                 onChange={(e) => setField("is_enabled", e.target.checked)}
                 className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
               />
-              Enabled for chat workflows
+              Enable this notification channel
             </label>
           </div>
         </div>

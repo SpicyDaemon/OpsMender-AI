@@ -509,6 +509,12 @@ Every platform is modelled honestly in [`backend/bots/capabilities.py`](backend/
 
 Notification Channels can be **workspace-wide** or scoped to one or more Teams. Incident ownership is resolved deterministically from the incident Service's team, then the active escalation chain's team, otherwise no team. Workspace-wide channels receive all incident/session lifecycle posts; team-scoped channels receive only matching incidents and sessions.
 
+The current email Notification Channel is **Mailgun Email** and requires a
+Mailgun API key and sending domain. It is separate from the optional
+`OPSMENDER_SMTP_*` settings used to deliver account invites and password-reset
+links. Generic SMTP Notification Channel support is a future provider
+enhancement; IMAP is not currently supported.
+
 **Future enhancements:** richer platform-specific cards; per-adapter verified callbacks that turn on native interactive buttons; per-adapter message edit-in-place support using stored notification receipts; bi-directional threaded chat and channel-to-OpsMender comment sync; MFA for action authorization; more platforms with first-class action support.
 
 Legacy summary of the three flows:

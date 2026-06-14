@@ -4,7 +4,7 @@ When an incident reaches OpsMender's paging engine, it has to know **how** to re
 
 - **My Routing** — your personal priority-based routing and quiet hours.
 - **Routing Summary** — a read-only view of how incidents are routed (derived from services → escalation chains → rosters → channels). Editable team-level routing defaults are planned for v1.1.
-- **Notification Channels** — the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Email, SMS, custom). Configure these once; operators route to them.
+- **Notification Channels** — the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMS, custom). Configure these once; operators route to them.
 - **Viewer Notifications** — read-only/status updates to Viewer audiences and external/downstream recipients (formerly "Outbound Hooks").
 
 Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
@@ -55,7 +55,7 @@ Per stage you pick a **channel** and (for non-final stages) a **wait** before th
 
 If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
 
-**Chat-capable vs delivery-only:** Slack, Teams, Discord, Telegram, Mattermost, Matrix, and WhatsApp are chat-capable and will (in a future release) host interactive incident actions. Email and SMS are delivery-only.
+**Chat-capable vs delivery-only:** Slack, Teams, Discord, Telegram, Mattermost, Matrix, and WhatsApp are chat-capable and may host interactive incident actions after a verified callback implementation ships. Mailgun Email and SMS are delivery-only.
 
 Click **Test notification** (top-right) to send a one-off test to your routed channels. Channels without credentials or a destination are reported as skipped rather than failing.
 
@@ -124,7 +124,7 @@ After saving:
 
 ## Notification Channels (configured delivery adapters)
 
-The **Notification Channels** tab (Admin) is where every delivery adapter is configured: Telegram, Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Email, SMS, Home Assistant, BlueBubbles (iMessage), and a custom adapter. Each channel has a friendly **name** (what routing displays) and its **provider/transport details live here only** — e.g. *SMS (provider: Twilio)*, *Email (provider: SMTP)*, *WhatsApp (provider: Twilio)*. Routing screens never expose provider names; they show the channel name you chose (e.g. "SMS Primary", "SMS Executive Escalation").
+The **Notification Channels** tab (Admin) is where every delivery adapter is configured: Telegram, Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Mailgun Email, SMS, Home Assistant, BlueBubbles (iMessage), and a custom adapter. Each channel has a friendly **name** (what routing displays) and its provider details live here only. The current email adapter is Mailgun-specific and requires a Mailgun API key and sending domain; it does not provide generic SMTP or IMAP support. Routing screens show the channel name you chose (for example, "SMS Primary" or "Mailgun On-call").
 
 Adding a channel here makes it immediately routable in **My Routing** with no further changes — the routing layer routes to *configured channels*, not to platform types, so new providers never require routing changes.
 

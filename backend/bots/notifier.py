@@ -213,17 +213,28 @@ async def _deliver_via_adapter(
     text: str,
     command_label: str,
     session_id: uuid.UUID | None,
+    incident=None,
+    native_actions_ready: bool = False,
 ) -> DeliveryReceipt:
     adapter = get_adapter(connector.platform)
     if adapter is None:
         return DeliveryReceipt(ok=False, error="adapter_not_found")
 
     if hasattr(adapter, "send_incident_update") and command_label.startswith("notify:"):
-        receipt = await adapter.send_incident_update(
-            connector,
-            chat_id=chat_id,
-            text=text,
-        )
+        if connector.platform == "slack":
+            receipt = await adapter.send_incident_update(
+                connector,
+                chat_id=chat_id,
+                text=text,
+                incident=incident,
+                native_actions_ready=native_actions_ready,
+            )
+        else:
+            receipt = await adapter.send_incident_update(
+                connector,
+                chat_id=chat_id,
+                text=text,
+            )
         if receipt.external_channel_id is None:
             return DeliveryReceipt(
                 ok=receipt.ok,
@@ -369,6 +380,8 @@ async def _deliver(
     incident_id: uuid.UUID | None = None,
     lifecycle_event: str | None = None,
     rendered_status: str | None = None,
+    incident=None,
+    native_actions_ready: bool = False,
 ) -> None:
     if incident_id is not None and lifecycle_event is not None:
         updated = await _try_update_incident_notification(
@@ -405,6 +418,8 @@ async def _deliver(
             text=text,
             command_label=command_label,
             session_id=session_id,
+            incident=incident,
+            native_actions_ready=native_actions_ready,
         )
     async with factory() as db:
         await _record_delivery(
@@ -584,9 +599,9 @@ async def deliver_incident_event(
 
     Honest delivery: each platform receives the same useful incident message
     with an authenticated incident link. Interactive action controls are only
-    rendered when the *platform* advertises verified interactive callbacks
-    (``capabilities.supports_interactive_actions``), which is never the case in
-    v1 — so the message always routes the recipient into OpsMender to act.
+    rendered when the platform supports interactive callbacks and the channel
+    has native actions enabled with a configured signing secret. Slack verifies
+    every callback before the shared action coordinator permits a mutation.
     Delivery-only platforms (SMS, email, custom webhook, …) get the same
     message minus any card framing, which their adapters already handle.
     """
@@ -614,6 +629,12 @@ async def deliver_incident_event(
             continue
         if not _connector_matches_team(connector, team_id):
             continue
+        native_actions_ready = bool(
+            connector.platform == "slack"
+            and connector.native_actions_enabled
+            and connector.callback_status in {"configured", "verified"}
+            and supports_interactive_actions(connector.platform)
+        )
         text = build_incident_message(
             incident,
             event_type=event_type,
@@ -621,7 +642,7 @@ async def deliver_incident_event(
             responder=responder,
             service_name=service_name,
             team_name=team_name,
-            supports_actions=supports_interactive_actions(connector.platform),
+            supports_actions=native_actions_ready,
         )
         for chat_id in _allowed_chat_ids(connector):
             await _deliver(
@@ -635,6 +656,8 @@ async def deliver_incident_event(
                 incident_id=incident_id,
                 lifecycle_event=event_type,
                 rendered_status=incident.status,
+                incident=incident,
+                native_actions_ready=native_actions_ready,
             )
 
 

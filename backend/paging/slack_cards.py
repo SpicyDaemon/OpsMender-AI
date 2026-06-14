@@ -5,7 +5,7 @@ fires a step. It carries:
 
 * an at-a-glance header (incident title, priority pill, status badge),
 * a deep-link button to the OpsMender web UI for the incident,
-* in-place action buttons for Acknowledge / Take Over / Resolve.
+* optional signed actions for Acknowledge / Resolve / Escalate / Start AI Session.
 
 The card's action ``block_id``/``action_id`` values encode the incident id and
 the verb, so the interactions endpoint can route a click without parsing the
@@ -27,8 +27,10 @@ from backend.db.models import Incident
 
 
 ACTION_ACK = "opsmender:ack"
-ACTION_TAKE = "opsmender:take"
 ACTION_RESOLVE = "opsmender:resolve"
+ACTION_ESCALATE = "opsmender:escalate"
+ACTION_START_AI_SESSION = "opsmender:start_ai_session"
+ACTION_TAKE = "opsmender:take"
 ACTION_VIEW = "opsmender:view"
 
 _PRIORITY_EMOJI = {
@@ -53,7 +55,10 @@ def build_page_card_text(incident: Incident) -> str:
 
 
 def build_page_card_blocks(
-    incident: Incident, *, base_url: str | None = None
+    incident: Incident,
+    *,
+    base_url: str | None = None,
+    include_native_actions: bool = False,
 ) -> list[dict[str, Any]]:
     """Block Kit JSON for an actionable page card. ``base_url`` is the
     OpsMender web UI origin (e.g. ``https://opsmender.example.com``); when
@@ -91,28 +96,38 @@ def build_page_card_blocks(
         },
     ]
 
-    elements: list[dict[str, Any]] = [
-        {
-            "type": "button",
-            "action_id": ACTION_ACK,
-            "text": {"type": "plain_text", "text": "Acknowledge"},
-            "style": "primary",
-            "value": incident_id_str,
-        },
-        {
-            "type": "button",
-            "action_id": ACTION_TAKE,
-            "text": {"type": "plain_text", "text": "Take Over"},
-            "value": incident_id_str,
-        },
-        {
-            "type": "button",
-            "action_id": ACTION_RESOLVE,
-            "text": {"type": "plain_text", "text": "Resolve"},
-            "style": "danger",
-            "value": incident_id_str,
-        },
-    ]
+    elements: list[dict[str, Any]] = []
+    if include_native_actions and incident.status not in {"resolved", "closed"}:
+        elements.extend(
+            [
+                {
+                    "type": "button",
+                    "action_id": ACTION_ACK,
+                    "text": {"type": "plain_text", "text": "Acknowledge"},
+                    "style": "primary",
+                    "value": incident_id_str,
+                },
+                {
+                    "type": "button",
+                    "action_id": ACTION_RESOLVE,
+                    "text": {"type": "plain_text", "text": "Resolve"},
+                    "style": "danger",
+                    "value": incident_id_str,
+                },
+                {
+                    "type": "button",
+                    "action_id": ACTION_ESCALATE,
+                    "text": {"type": "plain_text", "text": "Escalate"},
+                    "value": incident_id_str,
+                },
+                {
+                    "type": "button",
+                    "action_id": ACTION_START_AI_SESSION,
+                    "text": {"type": "plain_text", "text": "Start AI Session"},
+                    "value": incident_id_str,
+                },
+            ]
+        )
     if base_url:
         deep_link = f"{base_url.rstrip('/')}/dashboard/incidents/detail?id={incident_id_str}&from=slack"
         elements.append(
@@ -125,13 +140,14 @@ def build_page_card_blocks(
             }
         )
 
-    blocks.append(
-        {
-            "type": "actions",
-            "block_id": f"{block_id}:actions",
-            "elements": elements,
-        }
-    )
+    if elements:
+        blocks.append(
+            {
+                "type": "actions",
+                "block_id": f"{block_id}:actions",
+                "elements": elements,
+            }
+        )
     return blocks
 
 

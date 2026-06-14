@@ -550,6 +550,7 @@ export type BotConnectorPlatform =
   | "weixin"
   | "twilio"
   | "email"
+  | "smtp"
   | "homeassistant"
   | "bluebubbles"
   | "custom";
@@ -628,6 +629,7 @@ export interface BotConnectorUpsert {
   team_ids?: string[];
   status?: BotConnectorStatus;
   is_enabled?: boolean;
+  native_actions_enabled?: boolean;
 }
 
 export interface BotConnectorTestResponse {

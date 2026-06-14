@@ -113,6 +113,102 @@ const platformSchemas = vi.hoisted(() => [
       },
     ],
   },
+  {
+    platform: "smtp",
+    label: "SMTP Email",
+    oauth_enabled: false,
+    capabilities: null,
+    fields: [
+      {
+        name: "smtp_host",
+        label: "SMTP host",
+        kind: "text",
+        group: "credentials",
+        required: true,
+        default: null,
+        helper: "Hosted provider or infrastructure mail server.",
+        doc_url: null,
+        placeholder: "smtp.example.com",
+        options: [],
+      },
+      {
+        name: "smtp_port",
+        label: "SMTP port",
+        kind: "text",
+        group: "credentials",
+        required: true,
+        default: "587",
+        helper: "Usually 587 for STARTTLS.",
+        doc_url: null,
+        placeholder: "587",
+        options: [],
+      },
+      {
+        name: "security",
+        label: "Connection security",
+        kind: "select",
+        group: "credentials",
+        required: true,
+        default: "starttls",
+        helper: null,
+        doc_url: null,
+        placeholder: null,
+        options: [
+          { value: "starttls", label: "STARTTLS" },
+          { value: "ssl", label: "Implicit TLS / SSL" },
+          { value: "none", label: "None (trusted internal relay only)" },
+        ],
+      },
+      {
+        name: "smtp_username",
+        label: "SMTP username",
+        kind: "text",
+        group: "credentials",
+        required: false,
+        default: null,
+        helper: "Optional for trusted relays.",
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "smtp_password",
+        label: "SMTP password",
+        kind: "secret",
+        group: "credentials",
+        required: false,
+        default: null,
+        helper: "Use a provider SMTP credential where supported.",
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "from_email",
+        label: "From address",
+        kind: "text",
+        group: "credentials",
+        required: true,
+        default: null,
+        helper: null,
+        doc_url: null,
+        placeholder: "opsmender@example.com",
+        options: [],
+      },
+      {
+        name: "default_chat_id",
+        label: "Default recipient",
+        kind: "text",
+        group: "config",
+        required: false,
+        default: null,
+        helper: "Optional recipient email used for outbound notifications.",
+        doc_url: null,
+        placeholder: "oncall@example.com",
+        options: [],
+      },
+    ],
+  },
 ]);
 
 // The component pulls in the whole config API surface; only listBotPlatformSchemas
@@ -227,10 +323,10 @@ describe("Notification Channels capability rendering", () => {
       <BotConnectorSection connectors={[slack]} onReload={async () => {}} canEdit />,
     );
     const row = screen.getByText("Slack #incidents").closest("tr")!;
-    // v1 label is "Incident updates" — must not imply in-chat action buttons.
+    // The base Slack channel has not opted into native actions.
     expect(within(row).getByText("Incident updates")).toBeTruthy();
     expect(within(row).queryByText("Incident cards")).toBeNull();
-    // No interactive actions are advertised in v1.
+    // No interactive actions are advertised until channel readiness is enabled.
     expect(within(row).queryByText("Interactive actions")).toBeNull();
     expect(within(row).queryByText("Message updates")).toBeNull();
   });
@@ -259,6 +355,8 @@ describe("Notification Channels capability rendering", () => {
         shared_channel: true,
         delivery_only: false,
       }),
+      native_actions_enabled: true,
+      callback_status: "configured",
     });
     render(
       <BotConnectorSection connectors={[futurePlatform]} onReload={async () => {}} canEdit />,
@@ -322,7 +420,20 @@ describe("Notification Channels capability rendering", () => {
     expect(screen.getByLabelText(/Mailgun sending domain/i)).toBeTruthy();
     expect(screen.getByLabelText(/From address/i)).toBeTruthy();
     expect(screen.getByLabelText(/Default recipient/i)).toBeTruthy();
-    expect(screen.queryByText(/SMTP|IMAP/i)).toBeNull();
+    expect(screen.queryByText(/IMAP/i)).toBeNull();
     expect(screen.getByText("Enable this notification channel")).toBeTruthy();
+
+    fireEvent.change(platform, { target: { value: "smtp" } });
+    expect(await screen.findByText("SMTP Email can:")).toBeTruthy();
+    expect(screen.getByLabelText(/SMTP host/i)).toBeTruthy();
+    expect(screen.getByLabelText(/SMTP port/i)).toHaveProperty("value", "587");
+    expect(screen.getByLabelText(/Connection security/i)).toHaveProperty(
+      "value",
+      "starttls",
+    );
+    expect(screen.getByLabelText(/SMTP password/i)).toHaveProperty(
+      "type",
+      "password",
+    );
   });
 });

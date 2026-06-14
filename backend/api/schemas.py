@@ -1162,7 +1162,7 @@ class UptimeResponse(BaseModel):
 
 class BotConnectorUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
-    platform: str = Field(pattern="^(telegram|signal|whatsapp|slack|discord|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|homeassistant|bluebubbles|custom)$")
+    platform: str = Field(pattern="^(telegram|signal|whatsapp|slack|discord|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|smtp|homeassistant|bluebubbles|custom)$")
     config: Optional[dict] = None
     credentials: Optional[dict] = None
     clear_credentials: bool = False
@@ -1174,6 +1174,7 @@ class BotConnectorUpsert(BaseModel):
         pattern="^(not_configured|configured|healthy|error|disabled)$",
     )
     is_enabled: bool = False
+    native_actions_enabled: bool = False
 
 
 class BotConnectorResponse(BaseModel):

@@ -22,6 +22,7 @@ from .matrix import MatrixAdapter
 from .mattermost import MattermostAdapter
 from .signal import SignalAdapter
 from .slack import SlackAdapter
+from .smtp import SMTPEmailAdapter
 from .teams import TeamsAdapter
 from .telegram import TelegramAdapter
 from .twilio import TwilioAdapter
@@ -43,6 +44,7 @@ __all__ = [
     "MattermostAdapter",
     "SignalAdapter",
     "SlackAdapter",
+    "SMTPEmailAdapter",
     "TeamsAdapter",
     "TelegramAdapter",
     "TwilioAdapter",

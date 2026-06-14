@@ -12,6 +12,8 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
+from backend.bots.delivery import DeliveryReceipt
+from backend.paging.slack_cards import build_page_card_blocks
 from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
@@ -180,3 +182,46 @@ class SlackAdapter:
                 return False, f"Slack API error: {data.get('error')}"
             
             return True, None
+
+    async def send_incident_update(
+        self,
+        connector: BotConnector,
+        *,
+        chat_id: str,
+        text: str,
+        incident=None,
+        native_actions_ready: bool = False,
+    ) -> DeliveryReceipt:
+        credentials = connector.credentials or {}
+        bot_token = credentials.get("bot_token")
+        if not bot_token:
+            return DeliveryReceipt(ok=False, error="Slack bot token is not configured")
+
+        payload: dict[str, Any] = {"channel": chat_id, "text": text}
+        if incident is not None:
+            payload["blocks"] = build_page_card_blocks(
+                incident,
+                base_url=None,
+                include_native_actions=native_actions_ready,
+            )
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://slack.com/api/chat.postMessage",
+                headers={
+                    "Authorization": f"Bearer {bot_token}",
+                    "Content-Type": "application/json; charset=utf-8",
+                },
+                json=payload,
+                timeout=10.0,
+            )
+        if resp.status_code != 200:
+            return DeliveryReceipt(ok=False, error=f"Slack API error: HTTP {resp.status_code}")
+        data = resp.json()
+        if not data.get("ok"):
+            return DeliveryReceipt(ok=False, error=f"Slack API error: {data.get('error')}")
+        return DeliveryReceipt(
+            ok=True,
+            external_channel_id=str(data.get("channel") or chat_id),
+            external_message_id=str(data.get("ts")) if data.get("ts") else None,
+            can_update=False,
+        )

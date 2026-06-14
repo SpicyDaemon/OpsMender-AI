@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import time
+import urllib.parse
 import uuid
 from contextlib import asynccontextmanager
 
@@ -27,7 +28,9 @@ from backend.db.repos import (
 )
 from backend.paging.slack_cards import (
     ACTION_ACK,
+    ACTION_ESCALATE,
     ACTION_RESOLVE,
+    ACTION_START_AI_SESSION,
     ACTION_TAKE,
     ACTION_VIEW,
     build_page_card_blocks,
@@ -132,20 +135,33 @@ async def _seed_slack_connector(app, *, signing_secret=SIGNING_SECRET):
             allowed_capabilities=["paging"],
             status="configured",
             is_enabled=True,
+            native_actions_enabled=True,
         )
         await db.commit()
         return connector
 
 
-async def _seed_user_and_link(app, *, connector_id, slack_user_id="U_TEST"):
+async def _seed_user_and_link(
+    app,
+    *,
+    connector_id,
+    slack_user_id="U_TEST",
+    role="operator",
+):
     async with app.state.session_factory() as db:
         user = await UserRepo.create(
             db,
             username=f"sl-{slack_user_id}",
             email=f"{slack_user_id}@test.com",
             password_hash="x",
-            role="operator",
+            role=role,
             primary_org_id=TEST_ORG_ID,
+        )
+        await UserRepo.add_to_organization(
+            db,
+            user_id=user.id,
+            org_id=TEST_ORG_ID,
+            role=role,
         )
         link = await BotUserLinkRepo.create(
             db,
@@ -203,7 +219,7 @@ class TestPageCardBuilder:
         )
         assert build_page_card_text(inc) == "[P0] OpsMender page: db on fire"
 
-    def test_blocks_contain_three_action_buttons(self):
+    def test_blocks_hide_actions_until_channel_is_ready(self):
         inc = Incident(
             id=uuid.uuid4(),
             org_id=TEST_ORG_ID,
@@ -213,11 +229,15 @@ class TestPageCardBuilder:
             severity="high",
         )
         blocks = build_page_card_blocks(inc)
+        assert [b for b in blocks if b["type"] == "actions"] == []
+
+        blocks = build_page_card_blocks(inc, include_native_actions=True)
         actions = [b for b in blocks if b["type"] == "actions"][0]
         action_ids = [e["action_id"] for e in actions["elements"]]
         assert ACTION_ACK in action_ids
-        assert ACTION_TAKE in action_ids
         assert ACTION_RESOLVE in action_ids
+        assert ACTION_ESCALATE in action_ids
+        assert ACTION_START_AI_SESSION in action_ids
         # No base_url → no View button.
         assert ACTION_VIEW not in action_ids
 
@@ -230,7 +250,9 @@ class TestPageCardBuilder:
             status="open",
         )
         blocks = build_page_card_blocks(
-            inc, base_url="https://opsmender.example.com"
+            inc,
+            base_url="https://opsmender.example.com",
+            include_native_actions=True,
         )
         actions = [b for b in blocks if b["type"] == "actions"][0]
         view = [e for e in actions["elements"] if e["action_id"] == ACTION_VIEW][0]
@@ -268,6 +290,28 @@ class TestSlackInteractionsEndpoint:
         assert resp.status_code == 403
         assert resp.json()["error"] == "invalid_signature"
 
+    async def test_rejects_stale_signature(self, client, app):
+        await _seed_slack_connector(app)
+        body = urllib.parse.urlencode(
+            {"payload": json.dumps({"type": "block_actions"})}
+        ).encode()
+        timestamp = str(int(time.time()) - 601)
+        signature = "v0=" + hmac.new(
+            SIGNING_SECRET.encode(),
+            f"v0:{timestamp}:{body.decode()}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        resp = await client.post(
+            "/bot/slack/interactions",
+            content=body,
+            headers={
+                "X-Slack-Request-Timestamp": timestamp,
+                "X-Slack-Signature": signature,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+        assert resp.status_code == 403
+
     async def test_ack_button_acks_chain(self, client, app):
         connector = await _seed_slack_connector(app)
         user, _ = await _seed_user_and_link(
@@ -288,11 +332,8 @@ class TestSlackInteractionsEndpoint:
         payload = _block_actions_payload(
             action_id=ACTION_ACK, incident_id=incident.id, user_id="U_ACK"
         )
-        body_form = f"payload={json.dumps(payload)}"
         # Form-encode the value of `payload` so the server can read it via
         # request.form().
-        import urllib.parse
-
         encoded = urllib.parse.urlencode({"payload": json.dumps(payload)})
         body_bytes = encoded.encode("utf-8")
         headers = _slack_sign(body_bytes)
@@ -304,6 +345,11 @@ class TestSlackInteractionsEndpoint:
         )
         assert resp.status_code == 200, resp.text
         assert "acknowledged" in resp.json()["text"] or "recorded" in resp.json()["text"]
+        async with app.state.session_factory() as db:
+            reloaded = await BotConnectorRepo.get_by_id(
+                db, TEST_ORG_ID, connector.id
+            )
+            assert reloaded.callback_status == "verified"
 
     async def test_unlinked_user_gets_friendly_ephemeral(self, client, app):
         connector = await _seed_slack_connector(app)
@@ -313,8 +359,6 @@ class TestSlackInteractionsEndpoint:
         payload = _block_actions_payload(
             action_id=ACTION_ACK, incident_id=incident.id, user_id="U_STRANGER"
         )
-        import urllib.parse
-
         body_bytes = urllib.parse.urlencode(
             {"payload": json.dumps(payload)}
         ).encode("utf-8")
@@ -329,14 +373,38 @@ class TestSlackInteractionsEndpoint:
         assert body["response_type"] == "ephemeral"
         assert "isn't linked" in body["text"]
 
+    async def test_viewer_cannot_mutate_from_slack(self, client, app):
+        connector = await _seed_slack_connector(app)
+        await _seed_user_and_link(
+            app,
+            connector_id=connector.id,
+            slack_user_id="U_VIEWER",
+            role="viewer",
+        )
+        incident = await _seed_incident(app)
+        payload = _block_actions_payload(
+            action_id=ACTION_RESOLVE,
+            incident_id=incident.id,
+            user_id="U_VIEWER",
+        )
+        body = urllib.parse.urlencode({"payload": json.dumps(payload)}).encode()
+        resp = await client.post(
+            "/bot/slack/interactions",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "role cannot perform" in resp.json()["text"]
+        async with app.state.session_factory() as db:
+            reloaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
+            assert reloaded.status != "resolved"
+
     async def test_view_action_is_noop_ack(self, client, app):
         connector = await _seed_slack_connector(app)
         incident = await _seed_incident(app)
         payload = _block_actions_payload(
             action_id=ACTION_VIEW, incident_id=incident.id, user_id="U_X"
         )
-        import urllib.parse
-
         body_bytes = urllib.parse.urlencode(
             {"payload": json.dumps(payload)}
         ).encode("utf-8")
@@ -359,8 +427,6 @@ class TestSlackInteractionsEndpoint:
         payload = _block_actions_payload(
             action_id=ACTION_RESOLVE, incident_id=incident.id, user_id="U_RES"
         )
-        import urllib.parse
-
         body_bytes = urllib.parse.urlencode(
             {"payload": json.dumps(payload)}
         ).encode("utf-8")

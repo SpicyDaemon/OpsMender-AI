@@ -23,13 +23,10 @@ Capability flags
     (Acknowledge / Resolve / Escalate / Start AI Session) whose callbacks are
     authenticated (signed token or platform signature verification).
 
-    IMPORTANT — honesty guardrail: in v1 this is ``False`` for **every**
-    platform. No adapter yet ships a verified interactive-callback path, so we
-    do not advertise interactive buttons anywhere. Channels instead receive a
-    delivery message with an authenticated incident link that opens OpsMender,
-    where a logged-in operator performs the action under normal RBAC. When a
-    specific adapter gains a verified callback path, flip this flag for that
-    platform only — never globally, and never "to look good".
+    IMPORTANT — honesty guardrail: this is enabled only for Slack in v1.1
+    Phase B. A Slack channel must also opt in and have its signing secret
+    configured before buttons render; every click is signature-verified before
+    execution. Every other platform remains false.
 ``direct_message``
     The platform can deliver a 1:1 direct message (relevant to Personal
     Routing, not Notification Channels, but modelled here for completeness).
@@ -95,16 +92,15 @@ def _cap(
     display_name: str,
     *,
     incident_card: bool = False,
+    interactive_actions: bool = False,
     direct_message: bool = False,
     shared_channel: bool = False,
 ) -> PlatformCapabilities:
-    # interactive_actions is intentionally never passed here: v1 ships with it
-    # False everywhere (see module docstring). Keeping it out of the helper
-    # makes it impossible to flip a platform "on" by accident.
     return PlatformCapabilities(
         platform=platform,
         display_name=display_name,
         incident_card=incident_card,
+        interactive_actions=interactive_actions,
         direct_message=direct_message,
         shared_channel=shared_channel,
     )
@@ -114,7 +110,14 @@ def _cap(
 # frontend platform labels. Twilio is shown as "Twilio (SMS)" per product spec.
 PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
     # Rich chat platforms — can render an incident card and post to channels.
-    "slack": _cap("slack", "Slack", incident_card=True, direct_message=True, shared_channel=True),
+    "slack": _cap(
+        "slack",
+        "Slack",
+        incident_card=True,
+        interactive_actions=True,
+        direct_message=True,
+        shared_channel=True,
+    ),
     "teams": _cap("teams", "Microsoft Teams", incident_card=True, direct_message=True, shared_channel=True),
     "discord": _cap("discord", "Discord", incident_card=True, shared_channel=True),
     "telegram": _cap("telegram", "Telegram", incident_card=True, direct_message=True, shared_channel=True),
@@ -128,6 +131,7 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
     "signal": _cap("signal", "Signal", direct_message=True, shared_channel=True),
     "twilio": _cap("twilio", "Twilio (SMS)", direct_message=True),
     "email": _cap("email", "Mailgun Email", direct_message=True, shared_channel=True),
+    "smtp": _cap("smtp", "SMTP Email", direct_message=True, shared_channel=True),
     "weixin": _cap("weixin", "WeChat (Official Account)"),
     "homeassistant": _cap("homeassistant", "Home Assistant", shared_channel=True),
     "bluebubbles": _cap("bluebubbles", "BlueBubbles (iMessage)", direct_message=True, shared_channel=True),

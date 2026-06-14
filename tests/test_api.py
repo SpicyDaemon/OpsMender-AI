@@ -3600,6 +3600,43 @@ class TestBotConnectorsAPI:
         assert resp.status_code == 400
         assert "Unsupported capabilities" in resp.json()["detail"]
 
+    async def test_slack_native_actions_require_signing_secret_readiness(
+        self, client: AsyncClient, auth_headers
+    ):
+        configured = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "slack-native-ready",
+                "platform": "slack",
+                "credentials": {
+                    "signing_secret": "signed",
+                    "bot_token": "xoxb-test",
+                },
+                "allowed_capabilities": ["notifications"],
+                "is_enabled": True,
+                "native_actions_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert configured.status_code == 201
+        assert configured.json()["native_actions_enabled"] is True
+        assert configured.json()["callback_status"] == "configured"
+
+        missing_secret = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "slack-native-missing-secret",
+                "platform": "slack",
+                "credentials": {"bot_token": "xoxb-test"},
+                "allowed_capabilities": ["notifications"],
+                "is_enabled": True,
+                "native_actions_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert missing_secret.status_code == 201
+        assert missing_secret.json()["callback_status"] == "not_configured"
+
     async def test_bot_connector_duplicate_name_conflict(
         self, client: AsyncClient, auth_headers
     ):
@@ -3706,6 +3743,7 @@ class TestBotConnectorsAPI:
             "weixin",
             "twilio",
             "email",
+            "smtp",
             "homeassistant",
             "bluebubbles",
         ]:
@@ -3752,6 +3790,16 @@ class TestBotConnectorsAPI:
             "from_email",
             "default_chat_id",
         }
+
+        smtp_resp = await client.get(
+            "/bot-connectors/platforms/smtp/schema", headers=auth_headers
+        )
+        assert smtp_resp.status_code == 200
+        smtp = smtp_resp.json()
+        assert smtp["label"] == "SMTP Email"
+        smtp_fields = {field["name"]: field for field in smtp["fields"]}
+        assert smtp_fields["smtp_port"]["default"] == "587"
+        assert smtp_fields["security"]["default"] == "starttls"
 
     async def test_unknown_platform_schema_returns_404(
         self, client: AsyncClient, auth_headers

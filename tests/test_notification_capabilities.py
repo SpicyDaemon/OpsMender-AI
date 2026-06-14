@@ -47,12 +47,10 @@ def test_rich_chat_platforms_support_incident_cards():
         assert caps.delivery_only is False
 
 
-def test_no_platform_advertises_interactive_actions_in_v1():
-    # Honesty guardrail: no adapter ships a verified interactive-callback path
-    # yet, so we must not advertise interactive buttons anywhere.
+def test_only_slack_advertises_interactive_actions_in_phase_b():
     for platform, caps in PLATFORM_CAPABILITIES.items():
-        assert caps.interactive_actions is False, platform
-        assert supports_interactive_actions(platform) is False, platform
+        assert caps.interactive_actions is (platform == "slack"), platform
+        assert supports_interactive_actions(platform) is (platform == "slack"), platform
 
 
 def test_no_platform_advertises_message_updates_in_v1():
@@ -83,6 +81,6 @@ def test_as_dict_round_trip_exposes_delivery_only():
     assert data["display_name"] == "Slack"
     assert data["incident_card"] is True
     assert data["incident_updates"] is True
-    assert data["interactive_actions"] is False
+    assert data["interactive_actions"] is True
     assert data["message_update"] is False
     assert data["delivery_only"] is False

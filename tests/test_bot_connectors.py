@@ -519,6 +519,7 @@ class TestFormSchema:
         "weixin",
         "twilio",
         "email",
+        "smtp",
         "homeassistant",
         "bluebubbles",
     ]
@@ -591,6 +592,85 @@ class TestFormSchema:
         }
         assert fields["mailgun_api_key"].required is True
         assert fields["mailgun_domain"].required is True
+
+    def test_smtp_schema_supports_hosted_and_internal_relays(self):
+        adapter = get_adapter("smtp")
+        fields = {field.name: field for field in adapter.form_schema()}
+        assert set(fields) == {
+            "smtp_host",
+            "smtp_port",
+            "security",
+            "smtp_username",
+            "smtp_password",
+            "from_email",
+            "default_chat_id",
+        }
+        assert fields["smtp_host"].required is True
+        assert fields["smtp_port"].default == "587"
+        assert fields["security"].default == "starttls"
+        assert fields["smtp_password"].kind == "secret"
+
+
+class TestSMTPEmailAdapter:
+    async def test_send_uses_starttls_and_login(self, monkeypatch):
+        events = []
+
+        class FakeSMTP:
+            def __init__(self, host, port, timeout):
+                events.append(("connect", host, port, timeout))
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def starttls(self):
+                events.append(("starttls",))
+
+            def login(self, username, password):
+                events.append(("login", username, password))
+
+            def send_message(self, message):
+                events.append(
+                    ("send", message["From"], message["To"], message["Subject"])
+                )
+
+        monkeypatch.setattr("backend.bots.connectors.smtp.smtplib.SMTP", FakeSMTP)
+        connector = BotConnector(
+            name="smtp-test",
+            platform="smtp",
+            config={},
+            credentials={
+                "smtp_host": "smtp.example.com",
+                "smtp_port": "587",
+                "security": "starttls",
+                "smtp_username": "ops",
+                "smtp_password": "secret",
+                "from_email": "opsmender@example.com",
+            },
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=True,
+        )
+        ok, error = await get_adapter("smtp").send_message(
+            connector,
+            chat_id="oncall@example.com",
+            text="test notification",
+        )
+        assert ok is True
+        assert error is None
+        assert events == [
+            ("connect", "smtp.example.com", 587, 10),
+            ("starttls",),
+            ("login", "ops", "secret"),
+            (
+                "send",
+                "opsmender@example.com",
+                "oncall@example.com",
+                "OpsMender Incident Update",
+            ),
+        ]
 
 
 class TestMailgunEmailAdapter:

@@ -213,6 +213,7 @@ async def _seed_paging_topology(app) -> dict:
             allowed_capabilities=["paging"],
             status="configured",
             is_enabled=True,
+            native_actions_enabled=True,
         )
         await BotUserLinkRepo.create(
             db,

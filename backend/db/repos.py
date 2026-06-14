@@ -3235,6 +3235,7 @@ class BotConnectorRepo:
         allowed_capabilities: list[str],
         status: str = "not_configured",
         is_enabled: bool = False,
+        native_actions_enabled: bool = False,
     ) -> BotConnector:
         connector = BotConnector(
             org_id=org_id,
@@ -3245,6 +3246,7 @@ class BotConnectorRepo:
             allowed_capabilities=allowed_capabilities,
             status=status,
             is_enabled=is_enabled,
+            native_actions_enabled=native_actions_enabled,
         )
         db.add(connector)
         await db.flush()
@@ -3313,6 +3315,7 @@ class BotConnectorRepo:
         allowed_capabilities: list[str],
         status: str,
         is_enabled: bool,
+        native_actions_enabled: bool = False,
     ) -> BotConnector | None:
         stmt = (
             update(BotConnector)
@@ -3328,6 +3331,7 @@ class BotConnectorRepo:
                 allowed_capabilities=allowed_capabilities,
                 status=status,
                 is_enabled=is_enabled,
+                native_actions_enabled=native_actions_enabled,
                 updated_at=datetime.now(timezone.utc),
             )
         )
@@ -3360,6 +3364,27 @@ class BotConnectorRepo:
             )
         )
         await db.execute(stmt)
+
+    @staticmethod
+    async def mark_callback_verified(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        connector_id: uuid.UUID,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        await db.execute(
+            update(BotConnector)
+            .where(
+                BotConnector.id == connector_id,
+                BotConnector.org_id == org_id,
+            )
+            .values(
+                callback_status="verified",
+                callback_last_verified_at=now,
+                callback_last_error=None,
+                updated_at=now,
+            )
+        )
 
     @staticmethod
     async def delete(

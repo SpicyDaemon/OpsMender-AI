@@ -409,9 +409,17 @@ include a valid Mailgun signature.
 
 Identity mapping (RBAC): Use the sender's email address (e.g., `operator@company.com`) as the platform user ID.
 
-Generic SMTP Notification Channel support is a future provider enhancement.
-The separate `OPSMENDER_SMTP_*` settings are only for account invites and
-password-reset delivery.
+### SMTP Email
+
+Use **SMTP Email** for outbound incident notifications through a hosted SMTP
+provider or an infrastructure relay. Configure the SMTP host/port, STARTTLS or
+implicit TLS (or no transport upgrade for a trusted internal relay), optional
+username/password, sender address, and default recipient.
+
+SMTP Email is outbound-only: it does not support IMAP, inbound replies, user
+identity mapping, or native incident actions. Connector-level SMTP settings are
+separate from `OPSMENDER_SMTP_*`, which remains the account invite and
+password-reset mail configuration.
 
 ### Home Assistant
 

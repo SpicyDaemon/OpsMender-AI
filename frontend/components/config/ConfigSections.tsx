@@ -2536,6 +2536,7 @@ type BotConnectorFormState = {
   team_ids: string[];
   status: BotConnectorStatus;
   is_enabled: boolean;
+  native_actions_enabled: boolean;
 };
 
 function formatJson(value: Record<string, unknown> | null): string {
@@ -2559,6 +2560,18 @@ function valuesFromConfig(
   return out;
 }
 
+function defaultValues(
+  schema: BotConnectorPlatformSchema | null,
+  group: "config" | "credentials",
+): Record<string, string> {
+  if (!schema) return {};
+  return Object.fromEntries(
+    schema.fields
+      .filter((field) => field.group === group && field.default != null)
+      .map((field) => [field.name, String(field.default)]),
+  );
+}
+
 function createBotConnectorFormState(
   current: BotConnectorResponse | null | undefined,
   schema: BotConnectorPlatformSchema | null,
@@ -2566,8 +2579,10 @@ function createBotConnectorFormState(
   return {
     name: current?.name ?? "",
     platform: current?.platform ?? "telegram",
-    configValues: valuesFromConfig(schema, current?.config ?? null, "config"),
-    credentialValues: {},
+    configValues: current
+      ? valuesFromConfig(schema, current.config ?? null, "config")
+      : defaultValues(schema, "config"),
+    credentialValues: current ? {} : defaultValues(schema, "credentials"),
     configText: formatJson(current?.config ?? null),
     credentialsText: "",
     credentialMode: current?.has_credentials ? "keep" : "replace",
@@ -2580,6 +2595,7 @@ function createBotConnectorFormState(
     team_ids: current?.team_ids ?? [],
     status: current?.status ?? "not_configured",
     is_enabled: current?.is_enabled ?? true,
+    native_actions_enabled: current?.native_actions_enabled ?? false,
   };
 }
 
@@ -2680,6 +2696,8 @@ function buildBotConnectorPayload(
     team_ids: form.team_scope === "teams" ? form.team_ids : [],
     status: form.status,
     is_enabled: form.is_enabled,
+    native_actions_enabled:
+      form.platform === "slack" ? form.native_actions_enabled : false,
   };
 
   if (form.credentialMode === "clear") {
@@ -2725,6 +2743,7 @@ const PLATFORM_LABELS: Record<BotConnectorPlatform, string> = {
   weixin: "WeChat (Official Account)",
   twilio: "Twilio (SMS)",
   email: "Mailgun Email",
+  smtp: "SMTP Email",
   homeassistant: "Home Assistant",
   bluebubbles: "BlueBubbles (iMessage)",
   custom: "Custom Adapter",
@@ -2764,6 +2783,20 @@ function platformCapabilityLabels(
   if (caps.direct_message) out.push("DM");
   if (caps.shared_channel) out.push("Channel post");
   return out;
+}
+
+function connectorPlatformCapabilities(
+  connector: BotConnectorResponse,
+): PlatformCapabilities | null {
+  if (!connector.platform_capabilities) return null;
+  return {
+    ...connector.platform_capabilities,
+    interactive_actions: Boolean(
+      connector.platform_capabilities.interactive_actions &&
+        connector.native_actions_enabled &&
+        ["configured", "verified"].includes(connector.callback_status ?? ""),
+    ),
+  };
 }
 
 function DynamicFieldInput({
@@ -3045,8 +3078,12 @@ function BotConnectorModal({
         platform: next,
         configValues: sameAsInitial
           ? valuesFromConfig(nextSchema, initialConnector?.config ?? null, "config")
-          : {},
-        credentialValues: {},
+          : defaultValues(nextSchema, "config"),
+        credentialValues: defaultValues(nextSchema, "credentials"),
+        native_actions_enabled:
+          next === "slack" && sameAsInitial
+            ? Boolean(initialConnector?.native_actions_enabled)
+            : false,
       };
     });
   }
@@ -3165,6 +3202,41 @@ function BotConnectorModal({
             </Select>
           </div>
         </div>
+
+        {form.platform === "slack" && (
+          <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-3">
+            <label className="flex items-start gap-2 text-sm text-fg-primary">
+              <input
+                type="checkbox"
+                checked={form.native_actions_enabled}
+                onChange={(e) =>
+                  setField("native_actions_enabled", e.target.checked)
+                }
+                className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+              />
+              <span>
+                <span className="font-medium">Enable verified Slack actions</span>
+                <span className="mt-1 block text-xs text-fg-muted">
+                  Allows Acknowledge, Resolve, Escalate, and Start AI Session
+                  only after Slack signs a callback and the Slack user is linked
+                  to an active Admin or Operator account.
+                </span>
+              </span>
+            </label>
+            {initialConnector && (
+              <p className="mt-2 text-xs text-fg-secondary">
+                Callback verification:{" "}
+                <span className="font-medium">
+                  {initialConnector.callback_status === "verified"
+                    ? "Verified by a signed callback"
+                    : initialConnector.callback_status === "configured"
+                      ? "Configured; first signed action will verify it"
+                      : "Waiting for a signing secret"}
+                </span>
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-2.5 text-xs text-fg-secondary">
           <span className="font-medium text-fg-primary">
@@ -3881,7 +3953,9 @@ export function BotConnectorSection({
                     </td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex max-w-xs flex-wrap gap-1.5">
-                        {platformCapabilityLabels(connector.platform_capabilities).map(
+                        {platformCapabilityLabels(
+                          connectorPlatformCapabilities(connector),
+                        ).map(
                           (label) => (
                             <Badge
                               key={label}
@@ -3899,6 +3973,17 @@ export function BotConnectorSection({
                             .join(", ")}
                         </p>
                       )}
+                      {connector.platform === "slack" &&
+                        connector.native_actions_enabled && (
+                          <p className="mt-1.5 text-xs text-fg-muted">
+                            Slack callbacks:{" "}
+                            {connector.callback_status === "verified"
+                              ? "verified"
+                              : connector.callback_status === "configured"
+                                ? "configured"
+                                : "waiting for a signing secret"}
+                          </p>
+                        )}
                     </td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex max-w-xs flex-wrap gap-1.5">

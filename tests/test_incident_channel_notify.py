@@ -215,7 +215,15 @@ class TestIncidentEventFanOut:
                 self.sent = []
                 self.updated = []
 
-            async def send_incident_update(self, connector, *, chat_id, text):
+            async def send_incident_update(
+                self,
+                connector,
+                *,
+                chat_id,
+                text,
+                incident=None,
+                native_actions_ready=False,
+            ):
                 self.sent.append((chat_id, text))
                 return DeliveryReceipt(
                     external_channel_id=chat_id,

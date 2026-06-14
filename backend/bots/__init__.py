@@ -9,6 +9,7 @@ from backend.bots.connectors import (
     MattermostAdapter,
     SignalAdapter,
     SlackAdapter,
+    SMTPEmailAdapter,
     TeamsAdapter,
     TelegramAdapter,
     TwilioAdapter,
@@ -22,6 +23,7 @@ register_adapter(TelegramAdapter())
 register_adapter(SignalAdapter())
 register_adapter(WhatsAppAdapter())
 register_adapter(SlackAdapter())
+register_adapter(SMTPEmailAdapter())
 register_adapter(DiscordAdapter())
 register_adapter(MattermostAdapter())
 register_adapter(MatrixAdapter())

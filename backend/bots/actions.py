@@ -219,6 +219,26 @@ async def _authorized_operator(
     return user
 
 
+async def resolve_authorized_external_actor(
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    connector: BotConnector,
+    identity: ExternalActorIdentity,
+) -> User:
+    """Resolve a verified external identity and enforce active operator RBAC."""
+
+    actor = await resolve_external_actor(
+        db,
+        org_id=org_id,
+        connector=connector,
+        identity=identity,
+    )
+    if actor is None:
+        raise IncidentActionError("actor_not_linked")
+    return await _authorized_operator(db, org_id=org_id, user_id=actor.id)
+
+
 async def execute_incident_action(
     db: AsyncSession,
     *,
@@ -285,6 +305,11 @@ async def execute_incident_action(
                 incident_id=claims.incident_id,
                 actor_user_id=actor_user_id,
             )
+        await _escalation.cancel_chain(
+            db,
+            claims.org_id,
+            incident_id=claims.incident_id,
+        )
         await IncidentRepo.update_status(
             db, claims.org_id, claims.incident_id, "resolved"
         )
@@ -298,7 +323,7 @@ async def execute_incident_action(
     if claims.action == "escalate":
         if channel_factory is None:
             raise IncidentActionError("channel_factory_required")
-        outcome = await _escalation.tick(
+        outcome = await _escalation.escalate_now(
             db,
             claims.org_id,
             incident_id=claims.incident_id,

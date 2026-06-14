@@ -533,6 +533,55 @@ async def tick(
     return result
 
 
+async def escalate_now(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident_id: uuid.UUID,
+    at: datetime | None = None,
+    channel_factory: ChannelFactory | None = None,
+) -> StepFireResult | None:
+    """Immediately fire the next configured step for an active chain."""
+
+    now = at or _utcnow()
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id
+    )
+    if state is None or state.status != "running":
+        return None
+
+    steps = list(
+        await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id)
+    )
+    next_idx = state.current_step_index + 1
+    next_step = next((step for step in steps if step.step_index == next_idx), None)
+    if next_step is None:
+        state.status = "exhausted"
+        state.finished_at = now
+        state.next_step_due_at = None
+        await db.flush()
+        return None
+
+    result = await _fire_step(
+        db,
+        org_id,
+        incident_id=incident_id,
+        chain_id=state.chain_id,
+        step=next_step,
+        at=now,
+        channel_factory=channel_factory,
+    )
+    state.current_step_index = next_step.step_index
+    has_more = any(step.step_index > next_step.step_index for step in steps)
+    state.next_step_due_at = (
+        now + timedelta(seconds=next_step.timeout_seconds) if has_more else None
+    )
+    await db.flush()
+    if result.step_index >= 1 and result.users_paged:
+        await _notify_escalation(db, org_id, incident_id)
+    return result
+
+
 async def handle_ack(
     db: AsyncSession,
     org_id: uuid.UUID,

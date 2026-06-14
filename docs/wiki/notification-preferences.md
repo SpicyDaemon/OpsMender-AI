@@ -4,7 +4,7 @@ When an incident reaches OpsMender's paging engine, it has to know **how** to re
 
 - **My Routing** — your personal priority-based routing and quiet hours.
 - **Routing Summary** — a read-only view of how incidents are routed (derived from services → escalation chains → rosters → channels). Editable team-level routing defaults are planned for v1.1.
-- **Notification Channels** — the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMS, custom). Configure these once; operators route to them.
+- **Notification Channels** — the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, custom). Configure these once; operators route to them.
 - **Viewer Notifications** — read-only/status updates to Viewer audiences and external/downstream recipients (formerly "Outbound Hooks").
 
 Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
@@ -14,13 +14,14 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > - **Notification Channels** — shared team/workspace channels that receive incident + AI-session lifecycle updates (not a paging target).
 > - **Viewer Notifications** — read-only updates for viewers/stakeholders/downstream systems; never paging.
 
-> **How chat notifications work during the v1.1 rollout.** Notification
-> Channels send a **formatted message with an authenticated OpsMender link** — you
-> click through, sign in, and act inside OpsMender under normal Admin/Operator
-> RBAC. There are **no native in-chat buttons** and **no message edit-in-place**
-> yet. v1.1 Phase A added the common idempotency, identity, RBAC, receipt, and
-> audit foundation, but each platform still needs its own verified callback path
-> before actions can be enabled
+> **How chat notifications work during the v1.1 rollout.** Every Notification
+> Channel sends a formatted message with an authenticated OpsMender link.
+> Slack channels can additionally opt into native **Acknowledge, Resolve,
+> Escalate, and Start AI Session** buttons after a signing secret is configured.
+> Each click is Slack-signature verified, mapped to an active OpsMender user,
+> checked for Admin/Operator RBAC, deduplicated, and audited. Other chat
+> platforms still use the link fallback, and message edit-in-place remains
+> deferred
 > (see [`ROADMAP.md`](../ROADMAP.md) → "Native Chat Buttons Are Deferred From v1").
 > The foundation is intentionally dormant — tokens alone never mutate incidents, and OpsMender
 > never posts a public, unauthenticated action URL. The capability chips on the
@@ -55,7 +56,7 @@ Per stage you pick a **channel** and (for non-final stages) a **wait** before th
 
 If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
 
-**Chat-capable vs delivery-only:** Slack, Teams, Discord, Telegram, Mattermost, Matrix, and WhatsApp are chat-capable and may host interactive incident actions after a verified callback implementation ships. Mailgun Email and SMS are delivery-only.
+**Chat-capable vs delivery-only:** Slack is the first chat-capable platform with verified incident actions. Teams, Discord, Telegram, Mattermost, Matrix, and WhatsApp currently use authenticated-link fallback. Mailgun Email, SMTP Email, and SMS are delivery-only.
 
 Click **Test notification** (top-right) to send a one-off test to your routed channels. Channels without credentials or a destination are reported as skipped rather than failing.
 
@@ -124,7 +125,7 @@ After saving:
 
 ## Notification Channels (configured delivery adapters)
 
-The **Notification Channels** tab (Admin) is where every delivery adapter is configured: Telegram, Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Mailgun Email, SMS, Home Assistant, BlueBubbles (iMessage), and a custom adapter. Each channel has a friendly **name** (what routing displays) and its provider details live here only. The current email adapter is Mailgun-specific and requires a Mailgun API key and sending domain; it does not provide generic SMTP or IMAP support. Routing screens show the channel name you chose (for example, "SMS Primary" or "Mailgun On-call").
+The **Notification Channels** tab (Admin) is where every delivery adapter is configured: Telegram, Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Mailgun Email, SMTP Email, SMS, Home Assistant, BlueBubbles (iMessage), and a custom adapter. Each channel has a friendly **name** (what routing displays) and its provider details live here only. Mailgun uses its API key/domain; SMTP Email supports hosted providers and internal relays with configurable TLS and optional authentication. Neither email provider supports IMAP/inbound actions. Routing screens show the channel name you chose (for example, "SMS Primary", "Mailgun On-call", or "SMTP NOC").
 
 Adding a channel here makes it immediately routable in **My Routing** with no further changes — the routing layer routes to *configured channels*, not to platform types, so new providers never require routing changes.
 
@@ -133,21 +134,23 @@ Each channel has a **Team Scope**:
 - **Workspace-wide** channels receive every incident lifecycle post and every incident-linked AI session lifecycle post.
 - **Specific teams** channels receive only matching incidents and sessions. OpsMender resolves the incident team deterministically from the incident Service's team, then the active escalation chain's team. If neither exists, only workspace-wide channels receive the post.
 
-Channels with the `notifications` capability receive incident **created / acknowledged / escalated / resolved** messages. Incident-linked AI sessions also post when they **start**, **complete**, **fail**, or **time out**. Messages include authenticated OpsMender links only; responders act after signing in to OpsMender under their normal role permissions. v1 does not send public action URLs or in-chat buttons.
+Channels with the `notifications` capability receive incident **created / acknowledged / escalated / resolved** messages. Incident-linked AI sessions also post when they **start**, **complete**, **fail**, or **time out**. Messages always include authenticated OpsMender links. Opted-in Slack channels also render verified native incident actions; other providers keep the link fallback. No provider receives a public action URL.
 
 ---
 
-## Future direction (not implemented yet)
+## Future direction
 
 > The full long-term model — Personal Operator Routing vs. Team Channels vs. Viewer Notifications, interactive incident cards, and the end-to-end incident flow — lives in [Future Incident Communication Model](../future-incident-communication.md).
 
 The staged-routing architecture is intentionally channel-agnostic so the following can be layered on without changing routing:
 
-- **Rich incident cards on chat-capable channels** (Slack, Teams, Discord, Telegram, Mattermost, Matrix, WhatsApp) with inline actions: **Acknowledge**, **Resolve**, **Escalate**, **Start Session**.
+- Extend verified native actions from Slack to Teams, Discord, and Telegram.
+- Add message update-in-place with follow-up fallback using stored provider message IDs.
 - Pressing an action will post an incident comment automatically:
   - Acknowledge → "Incident acknowledged by &lt;user&gt;"
   - Resolve → "Incident resolved by &lt;user&gt;"
   - Escalate → "Incident escalated by &lt;user&gt;"
   - Start Session → "Session started. Session ID: &lt;id&gt;"
 
-These actions are **documented as direction only** and are not part of the current release. Acknowledge/resolve from the web UI already stop staged escalation today.
+Slack actions are implemented. The remaining platform and message-update items
+are later v1.1 phases.

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.1 Notification Collaboration Phase B — Slack verified native actions.**
+  Slack Notification Channels can opt into Block Kit actions for Acknowledge,
+  Resolve, Escalate, and Start AI Session once a signing secret is configured.
+  Every callback is Slack-signature/timestamp verified, normalized through the
+  Phase A coordinator, durably deduplicated, mapped to an active OpsMender
+  identity, checked for Admin/Operator RBAC, and audited. Valid callbacks
+  promote channel readiness from configured to verified; unmapped users,
+  Viewers, disabled channels, invalid signatures, and replays remain
+  fail-closed. Resolve cancels escalation, and the Escalate action immediately
+  advances to the next configured level.
+
+- **SMTP Email Notification Channel.** Added an outbound-only generic SMTP
+  provider for cloud email services and infrastructure relays. Operators can
+  configure host/port, STARTTLS or implicit TLS, trusted plain relay mode,
+  optional username/password, sender address, and default recipient. SMTP does
+  not expose inbound callbacks or interactive actions.
+
 - **v1.1 Notification Collaboration Phase A — common verified-action foundation.** Added migration `w2x3y4z5a6b7` with per-channel native-action/callback readiness state, richer external identity metadata, delivery/update receipt status fields, enriched bot action audit context, and durable `native_action_invocations` idempotency records. The common verified-action coordinator now deduplicates callback action IDs, resolves only verified external identity mappings, applies existing active-user + Admin/Operator RBAC, invokes the existing incident action path, and audits verified/applied/rejected/deduplicated outcomes.
 
 ### Fixed

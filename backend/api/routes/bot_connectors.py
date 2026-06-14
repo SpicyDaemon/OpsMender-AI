@@ -47,6 +47,7 @@ REQUIRED_CREDENTIAL_KEYS = {
     "discord": ("public_key", "bot_token"),
     "teams": ("tenant_id", "client_id", "client_secret"),
     "email": ("mailgun_api_key", "mailgun_domain"),
+    "smtp": ("smtp_host", "smtp_port", "from_email"),
     "custom": (),
 }
 
@@ -78,6 +79,28 @@ def _resolve_credentials(
     if body.credentials is None:
         return None if existing is None else existing.credentials
     return body.credentials
+
+
+def _callback_status(
+    body: BotConnectorUpsert,
+    credentials: dict | None,
+    existing: BotConnector | None = None,
+) -> str:
+    """Describe Slack callback readiness without claiming a callback ran."""
+
+    enabled = body.platform == "slack" and body.native_actions_enabled
+    signing_secret = str((credentials or {}).get("signing_secret") or "").strip()
+    if not enabled or not signing_secret:
+        return "not_configured"
+    if (
+        existing is not None
+        and existing.platform == "slack"
+        and existing.callback_status == "verified"
+        and str((existing.credentials or {}).get("signing_secret") or "").strip()
+        == signing_secret
+    ):
+        return "verified"
+    return "configured"
 
 
 def _scoped_config(
@@ -306,6 +329,7 @@ async def create_bot_connector(
     user: User = Depends(require_role("admin")),
 ):
     team_ids = await _validate_team_scope(db, org_id, body)
+    credentials = _resolve_credentials(body)
     try:
         connector = await BotConnectorRepo.create(
             db,
@@ -315,11 +339,15 @@ async def create_bot_connector(
             config=_scoped_config(
                 body.config, team_scope=body.team_scope, team_ids=team_ids
             ),
-            credentials=_resolve_credentials(body),
+            credentials=credentials,
             allowed_capabilities=_validate_capabilities(body.allowed_capabilities),
             status="configured" if body.credentials else body.status,
             is_enabled=body.is_enabled,
+            native_actions_enabled=(
+                body.native_actions_enabled if body.platform == "slack" else False
+            ),
         )
+        connector.callback_status = _callback_status(body, credentials)
         await db.commit()
         await db.refresh(connector)
         return await _to_response(db, org_id, connector)
@@ -370,7 +398,12 @@ async def update_bot_connector(
                 else body.status
             ),
             is_enabled=body.is_enabled,
+            native_actions_enabled=(
+                body.native_actions_enabled if body.platform == "slack" else False
+            ),
         )
+        if updated is not None:
+            updated.callback_status = _callback_status(body, credentials, existing)
         await db.commit()
         if updated is None:
             raise HTTPException(

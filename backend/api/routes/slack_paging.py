@@ -1,7 +1,7 @@
 """Slack interactivity + slash command endpoints for paging actions (Sprint 36).
 
-Two endpoints share the same signing-secret verification and bot-user-link
-enforcement:
+Two endpoints share the same signing-secret verification, external identity
+mapping, active-user checks, and Admin/Operator RBAC:
 
 * ``POST /bot/slack/interactions`` — receives ``block_actions`` button
   clicks from the page card built by :mod:`backend.paging.slack_cards`.
@@ -11,7 +11,7 @@ enforcement:
 
 Both routes verify the Slack v0 HMAC against every enabled Slack
 connector's ``signing_secret`` (5-minute replay window) and require the
-clicker to have a ``bot_user_links`` row in the matched org.
+clicker to have a verified ``bot_user_links`` row in the matched org.
 
 Slack app configuration:
 
@@ -38,17 +38,28 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_db
+from backend.bots.actions import (
+    ExternalActorIdentity,
+    IncidentActionError,
+    IncidentActionTokenClaims,
+    VerifiedNativeAction,
+    execute_verified_native_action,
+    resolve_authorized_external_actor,
+)
 from backend.db.models import BotConnector, Incident, IncidentChainState, IncidentPage
 from backend.db.repos import (
-    BotUserLinkRepo,
+    BotConnectorRepo,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentRepo,
 )
+from backend.paging.channel_factory import build_channel_factory
 from backend.paging import escalation as _esc
 from backend.paging.slack_cards import (
     ACTION_ACK,
+    ACTION_ESCALATE,
     ACTION_RESOLVE,
+    ACTION_START_AI_SESSION,
     ACTION_TAKE,
     ACTION_VIEW,
     parse_incident_id_from_action,
@@ -169,68 +180,79 @@ async def slack_interactions(
     if not slack_user_id:
         return _ephemeral("Slack didn't tell us who clicked the button.")
 
-    link = await BotUserLinkRepo.get_by_platform_user(
-        db,
-        connector.org_id,
-        connector_id=connector.id,
-        platform_user_id=str(slack_user_id),
+    action_map = {
+        ACTION_ACK: "acknowledge",
+        ACTION_RESOLVE: "resolve",
+        ACTION_ESCALATE: "escalate",
+        ACTION_START_AI_SESSION: "start_ai_session",
+    }
+    action = action_map.get(str(action_id))
+    if action is None:
+        return _ephemeral(f"Unknown action `{action_id}`.")
+
+    await BotConnectorRepo.mark_callback_verified(db, connector.org_id, connector.id)
+    connector.callback_status = "verified"
+    connector.callback_last_verified_at = datetime.now(timezone.utc)
+    raw_action = actions[0]
+    idempotency_key = str(
+        raw_action.get("action_ts")
+        or payload.get("trigger_id")
+        or hashlib.sha256(raw_body).hexdigest()
     )
-    if link is None:
-        return _ephemeral(
-            "Your Slack account isn't linked to OpsMender. "
-            "Ask an admin to add a Bot User Link for you, then try again."
+    claims = IncidentActionTokenClaims(
+        org_id=connector.org_id,
+        incident_id=incident_id,
+        action=action,
+        channel_id=str((payload.get("channel") or {}).get("id") or "") or None,
+        message_id=str((payload.get("message") or {}).get("ts") or "") or None,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        nonce=idempotency_key,
+    )
+    native_request = VerifiedNativeAction(
+        connector=connector,
+        claims=claims,
+        external_actor=ExternalActorIdentity(
+            platform_user_id=str(slack_user_id),
+            username=(payload.get("user") or {}).get("username")
+            or (payload.get("user") or {}).get("name"),
+            display_name=(payload.get("user") or {}).get("name"),
+        ),
+        idempotency_key=idempotency_key,
+        callback_received_at=datetime.now(timezone.utc),
+        chat_id=claims.channel_id,
+    )
+    try:
+        result = await execute_verified_native_action(
+            db,
+            request=native_request,
+            channel_factory=build_channel_factory(),
         )
+    except IncidentActionError as exc:
+        messages = {
+            "native_actions_disabled": "Native actions are disabled for this channel.",
+            "actor_not_linked": (
+                "Your Slack account isn't linked to OpsMender. "
+                "Ask an admin to add an identity link, then try again."
+            ),
+            "actor_not_active": "Your linked OpsMender account is inactive.",
+            "actor_not_authorized": "Your OpsMender role cannot perform this action.",
+            "incident_not_found": "That incident no longer exists.",
+        }
+        return _ephemeral(messages.get(str(exc), f"Action rejected: {exc}."))
 
     incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
-    if incident is None:
-        return _ephemeral("That incident no longer exists.")
-
-    if action_id == ACTION_ACK:
-        ok = await _esc.handle_ack(
-            db,
-            connector.org_id,
-            incident_id=incident_id,
-            user_id=link.opsmender_user_id,
-            via="button_click",
-        )
-        verb = "acknowledged" if ok else "recorded"
-        return _ephemeral(f"You {verb} incident *{incident.title}*.")
-
-    if action_id == ACTION_TAKE:
-        result = await _esc.handle_takeover_request(
-            db,
-            connector.org_id,
-            incident_id=incident_id,
-            requester_id=link.opsmender_user_id,
-        )
-        if result == "assigned":
-            msg = f"You're now assigned to *{incident.title}*."
-        elif result == "pending":
-            msg = (
-                f"Take-over requested for *{incident.title}*. "
-                "Current owner has 5 minutes to confirm."
-            )
-        elif result == "noop":
-            msg = f"You already own *{incident.title}*."
-        else:
-            msg = (
-                f"Take-over for *{incident.title}* requires an admin "
-                "(chain ended)."
-            )
-        return _ephemeral(msg)
-
-    if action_id == ACTION_RESOLVE:
-        await _esc.cancel_chain(
-            db, connector.org_id, incident_id=incident_id
-        )
-        # Flip the incident status only when the user is permitted: assignee
-        # or any chain participant counts as a permitted resolver here.
-        await IncidentRepo.update_status(
-            db, connector.org_id, incident_id, "resolved"
-        )
-        return _ephemeral(f"Marked *{incident.title}* resolved.")
-
-    return _ephemeral(f"Unknown action `{action_id}`.")
+    title = incident.title if incident is not None else str(incident_id)
+    status_text = {
+        "acknowledged": "acknowledged",
+        "already_acknowledged": "already acknowledged",
+        "resolved": "resolved",
+        "already_resolved": "already resolved",
+        "escalated": "escalated",
+        "no_escalation_target": "no further escalation target for",
+        "session_started": "started an AI session for",
+        "already_active": "an AI session is already active for",
+    }.get(result.status, result.status.replace("_", " ").title())
+    return _ephemeral(f"{status_text} incident *{title}*.")
 
 
 # ---------------------------------------------------------------------------
@@ -319,22 +341,23 @@ async def _handle_slash(
     text: str,
     slack_user_id: str,
 ) -> JSONResponse:
-    link = await BotUserLinkRepo.get_by_platform_user(
-        db,
-        connector.org_id,
-        connector_id=connector.id,
-        platform_user_id=slack_user_id,
-    )
-    if link is None:
+    try:
+        actor = await resolve_authorized_external_actor(
+            db,
+            org_id=connector.org_id,
+            connector=connector,
+            identity=ExternalActorIdentity(platform_user_id=slack_user_id),
+        )
+    except IncidentActionError:
         return _ephemeral(
             "Your Slack account isn't linked to OpsMender. "
-            "Ask an admin to add a Bot User Link for you, then try again."
+            "Ask an admin to verify your identity link and role, then try again."
         )
 
     incident_id = _extract_incident_id(text)
     if incident_id is None:
         incident_id = await _latest_user_incident_id(
-            db, org_id=connector.org_id, user_id=link.opsmender_user_id
+            db, org_id=connector.org_id, user_id=actor.id
         )
     if incident_id is None and command != "/status":
         return _ephemeral(
@@ -374,7 +397,7 @@ async def _handle_slash(
             db,
             connector.org_id,
             incident_id=incident_id,
-            user_id=link.opsmender_user_id,
+            user_id=actor.id,
             via="slash_command",
         )
         verb = "acknowledged" if ok else "recorded"
@@ -385,7 +408,7 @@ async def _handle_slash(
             db,
             connector.org_id,
             incident_id=incident_id,
-            requester_id=link.opsmender_user_id,
+            requester_id=actor.id,
         )
         if result == "assigned":
             msg = f"You're now assigned to *{incident.title}*."

@@ -2,7 +2,8 @@
 
 These lock in the honesty guarantees: every supported platform is modelled,
 delivery-only platforms don't advertise rich/interactive support, and — most
-importantly — no platform claims interactive action buttons in v1.
+importantly — only platforms with verified callback implementations advertise
+interactive action support.
 """
 
 from __future__ import annotations
@@ -47,10 +48,11 @@ def test_rich_chat_platforms_support_incident_cards():
         assert caps.delivery_only is False
 
 
-def test_only_slack_advertises_interactive_actions_in_phase_b():
+def test_slack_and_teams_advertise_interactive_actions_in_phase_c():
     for platform, caps in PLATFORM_CAPABILITIES.items():
-        assert caps.interactive_actions is (platform == "slack"), platform
-        assert supports_interactive_actions(platform) is (platform == "slack"), platform
+        expected = platform in {"slack", "teams"}
+        assert caps.interactive_actions is expected, platform
+        assert supports_interactive_actions(platform) is expected, platform
 
 
 def test_no_platform_advertises_message_updates_in_v1():

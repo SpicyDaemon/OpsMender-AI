@@ -198,6 +198,34 @@ Ensure you subscribe to the `message.channels` bot event. OpsMender verifies eve
 
 Identity mapping (RBAC): Use the Slack User ID (e.g., `U0123456789`) as the platform user ID.
 
+### Microsoft Teams (Graph + Bot Framework)
+
+Teams Notification Channels use Microsoft Graph app-only credentials for
+outbound Adaptive Cards and Microsoft Bot Framework JWTs for native actions.
+
+Configure:
+
+```text
+tenant_id=...               # Azure AD directory ID
+client_id=...               # Graph application ID
+client_secret=...           # Graph application secret value
+bot_app_id=...              # Azure Bot registration app ID
+default_chat_id=...         # Teams chat destination
+```
+
+Set the Azure Bot **Messaging endpoint** to:
+
+```text
+POST https://<your-opsmender-url>/bot/teams/activity
+```
+
+Enable verified Teams actions on the Notification Channel only after the Bot
+Framework app ID is set. OpsMender validates the Microsoft-signed JWT audience,
+issuer, and time claims before processing an action.
+
+Identity mapping (RBAC): Use the user's Azure AD object ID
+(`activity.from.aadObjectId`) as the platform user ID.
+
 ### Discord (Interactions)
 
 Discord integration uses the Interactions API (webhooks) for low-latency command handling and the Bot API for outbound notifications.

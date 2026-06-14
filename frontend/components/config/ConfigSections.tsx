@@ -2697,7 +2697,9 @@ function buildBotConnectorPayload(
     status: form.status,
     is_enabled: form.is_enabled,
     native_actions_enabled:
-      form.platform === "slack" ? form.native_actions_enabled : false,
+      ["slack", "teams"].includes(form.platform)
+        ? form.native_actions_enabled
+        : false,
   };
 
   if (form.credentialMode === "clear") {
@@ -3081,7 +3083,7 @@ function BotConnectorModal({
           : defaultValues(nextSchema, "config"),
         credentialValues: defaultValues(nextSchema, "credentials"),
         native_actions_enabled:
-          next === "slack" && sameAsInitial
+          ["slack", "teams"].includes(next) && sameAsInitial
             ? Boolean(initialConnector?.native_actions_enabled)
             : false,
       };
@@ -3203,7 +3205,7 @@ function BotConnectorModal({
           </div>
         </div>
 
-        {form.platform === "slack" && (
+        {["slack", "teams"].includes(form.platform) && (
           <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-3">
             <label className="flex items-start gap-2 text-sm text-fg-primary">
               <input
@@ -3215,11 +3217,13 @@ function BotConnectorModal({
                 className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
               />
               <span>
-                <span className="font-medium">Enable verified Slack actions</span>
+                <span className="font-medium">
+                  Enable verified {form.platform === "slack" ? "Slack" : "Teams"} actions
+                </span>
                 <span className="mt-1 block text-xs text-fg-muted">
                   Allows Acknowledge, Resolve, Escalate, and Start AI Session
-                  only after Slack signs a callback and the Slack user is linked
-                  to an active Admin or Operator account.
+                  only after {form.platform === "slack" ? "Slack signs" : "Microsoft Bot Framework verifies"} a callback and the external user
+                  is linked to an active Admin or Operator account.
                 </span>
               </span>
             </label>
@@ -3231,7 +3235,9 @@ function BotConnectorModal({
                     ? "Verified by a signed callback"
                     : initialConnector.callback_status === "configured"
                       ? "Configured; first signed action will verify it"
-                      : "Waiting for a signing secret"}
+                      : form.platform === "slack"
+                        ? "Waiting for a signing secret"
+                        : "Waiting for a Bot Framework app ID"}
                 </span>
               </p>
             )}
@@ -3973,15 +3979,17 @@ export function BotConnectorSection({
                             .join(", ")}
                         </p>
                       )}
-                      {connector.platform === "slack" &&
+                      {["slack", "teams"].includes(connector.platform) &&
                         connector.native_actions_enabled && (
                           <p className="mt-1.5 text-xs text-fg-muted">
-                            Slack callbacks:{" "}
+                            {connector.platform === "slack" ? "Slack" : "Teams"} callbacks:{" "}
                             {connector.callback_status === "verified"
                               ? "verified"
                               : connector.callback_status === "configured"
                                 ? "configured"
-                                : "waiting for a signing secret"}
+                                : connector.platform === "slack"
+                                  ? "waiting for a signing secret"
+                                  : "waiting for a Bot Framework app ID"}
                           </p>
                         )}
                     </td>

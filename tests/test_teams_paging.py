@@ -23,10 +23,12 @@ from backend.db.repos import (
     BotConnectorRepo,
     BotUserLinkRepo,
     IncidentRepo,
+    NativeActionInvocationRepo,
     UserRepo,
 )
 from backend.paging.teams_cards import (
     ACTION_ACK,
+    ACTION_START_AI_SESSION,
     ACTION_RESOLVE,
     ACTION_TAKE,
     ACTION_VIEW,
@@ -213,25 +215,38 @@ async def _seed_teams_connector(app, bot_app_id=BOT_APP_ID):
                 "tenant_id": "tenant",
                 "client_id": bot_app_id,
                 "client_secret": "secret",
-                "bot_app_id": bot_app_id,
             },
+            config={"bot_app_id": bot_app_id},
             allowed_capabilities=["paging"],
             status="configured",
             is_enabled=True,
+            native_actions_enabled=True,
         )
         await db.commit()
         return connector
 
 
-async def _seed_user_and_link(app, *, connector_id, aad_oid="aad-user-1"):
+async def _seed_user_and_link(
+    app,
+    *,
+    connector_id,
+    aad_oid="aad-user-1",
+    role="operator",
+):
     async with app.state.session_factory() as db:
         user = await UserRepo.create(
             db,
             username=f"u-{aad_oid}",
             email=f"{aad_oid}@x.com",
             password_hash="x",
-            role="operator",
+            role=role,
             primary_org_id=TEST_ORG_ID,
+        )
+        await UserRepo.add_to_organization(
+            db,
+            user_id=user.id,
+            org_id=TEST_ORG_ID,
+            role=role,
         )
         link = await BotUserLinkRepo.create(
             db,
@@ -263,9 +278,11 @@ def _activity_payload(
     *, action: str, incident_id, aad_oid: str = "aad-user-1"
 ):
     return {
+        "id": "activity-1",
         "type": "invoke",
         "from": {"id": "29:abc", "aadObjectId": aad_oid},
         "recipient": {"id": f"28:{BOT_APP_ID}"},
+        "conversation": {"id": "19:incident-chat@thread.v2"},
         "value": {"action": action, "incident_id": str(incident_id)},
     }
 
@@ -313,6 +330,11 @@ class TestTeamsActivityEndpoint:
         text = resp.json()["text"]
         assert "ack-me" in text
         assert "acknowledged" in text or "recorded" in text
+        async with app.state.session_factory() as db:
+            reloaded = await BotConnectorRepo.get_by_id(
+                db, TEST_ORG_ID, connector.id
+            )
+            assert reloaded.callback_status == "verified"
 
     async def test_unlinked_user_gets_friendly_reply(
         self, client, app, signing_key
@@ -354,6 +376,59 @@ class TestTeamsActivityEndpoint:
                 db, TEST_ORG_ID, incident.id
             )
             assert reloaded.status == "resolved"
+
+    async def test_viewer_cannot_mutate(
+        self, client, app, signing_key
+    ):
+        connector = await _seed_teams_connector(app)
+        await _seed_user_and_link(
+            app,
+            connector_id=connector.id,
+            aad_oid="aad-viewer",
+            role="viewer",
+        )
+        incident = await _seed_incident(app)
+        body = _activity_payload(
+            action=ACTION_RESOLVE,
+            incident_id=incident.id,
+            aad_oid="aad-viewer",
+        )
+        resp = await client.post(
+            "/bot/teams/activity",
+            json=body,
+            headers={"Authorization": f"Bearer {_sign_jwt(signing_key)}"},
+        )
+        assert resp.status_code == 200
+        assert "role cannot perform" in resp.json()["text"]
+        async with app.state.session_factory() as db:
+            reloaded = await IncidentRepo.get_by_id(
+                db, TEST_ORG_ID, incident.id
+            )
+            assert reloaded.status != "resolved"
+
+    async def test_duplicate_activity_is_deduplicated(
+        self, client, app, signing_key
+    ):
+        connector = await _seed_teams_connector(app)
+        await _seed_user_and_link(app, connector_id=connector.id)
+        incident = await _seed_incident(app)
+        body = _activity_payload(
+            action=ACTION_START_AI_SESSION,
+            incident_id=incident.id,
+        )
+        headers = {"Authorization": f"Bearer {_sign_jwt(signing_key)}"}
+        first = await client.post("/bot/teams/activity", json=body, headers=headers)
+        second = await client.post("/bot/teams/activity", json=body, headers=headers)
+        assert first.status_code == second.status_code == 200
+        async with app.state.session_factory() as db:
+            invocation = await NativeActionInvocationRepo.get_by_key(
+                db,
+                TEST_ORG_ID,
+                connector.id,
+                "activity-1",
+            )
+            assert invocation is not None
+            assert invocation.status == "applied"
 
     async def test_view_action_short_circuits(
         self, client, app, signing_key

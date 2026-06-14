@@ -13,7 +13,9 @@ from backend.db.models import Incident
 from backend.paging.channels import TeamsGraphDMChannel
 from backend.paging.teams_cards import (
     ACTION_ACK,
+    ACTION_ESCALATE,
     ACTION_RESOLVE,
+    ACTION_START_AI_SESSION,
     ACTION_TAKE,
     ACTION_VIEW,
     ADAPTIVE_CARD_CONTENT_TYPE,
@@ -48,15 +50,27 @@ class TestAdaptiveCardBuilder:
         inc = _incident(title="boom")
         assert build_page_card_text(inc) == "[P0] OpsMender page: boom"
 
-    def test_card_carries_three_submit_actions(self):
+    def test_card_defaults_to_safe_link_fallback(self):
         card = build_page_card_adaptive(_incident())
         assert card["type"] == "AdaptiveCard"
         assert card["version"] == ADAPTIVE_CARD_VERSION
+        assert card["actions"] == []
+
+    def test_card_carries_four_verified_submit_actions(self):
+        card = build_page_card_adaptive(
+            _incident(),
+            include_native_actions=True,
+        )
         submits = [
             a for a in card["actions"] if a["type"] == "Action.Submit"
         ]
         actions = {a["data"]["action"] for a in submits}
-        assert actions == {ACTION_ACK, ACTION_TAKE, ACTION_RESOLVE}
+        assert actions == {
+            ACTION_ACK,
+            ACTION_RESOLVE,
+            ACTION_ESCALATE,
+            ACTION_START_AI_SESSION,
+        }
         # No View button when base_url is unset.
         assert all(a["type"] != "Action.OpenUrl" for a in card["actions"])
 
@@ -73,7 +87,7 @@ class TestAdaptiveCardBuilder:
 
     def test_incident_id_rides_in_action_data(self):
         inc = _incident()
-        card = build_page_card_adaptive(inc)
+        card = build_page_card_adaptive(inc, include_native_actions=True)
         for action in card["actions"]:
             if action["type"] == "Action.Submit":
                 assert action["data"]["incident_id"] == str(inc.id)
@@ -102,7 +116,10 @@ class TestAdaptiveCardBuilder:
 
 class TestWrappers:
     def test_wrap_card_as_attachment_assigns_unique_id(self):
-        card = build_page_card_adaptive(_incident())
+        card = build_page_card_adaptive(
+            _incident(),
+            include_native_actions=True,
+        )
         a = wrap_card_as_attachment(card)
         b = wrap_card_as_attachment(card)
         assert a["contentType"] == ADAPTIVE_CARD_CONTENT_TYPE

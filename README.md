@@ -66,7 +66,7 @@ Every paged incident walks the same five stages.
    │  3. OPERATOR ACKS                                              │
    │     Page mode → escalation chain fires step 0; on-call user    │
    │     gets a Slack DM / Teams DM / Email / SMS with              │
-   │     Acknowledge / Take Over / Resolve buttons. Click           │
+   │     Acknowledge / Resolve / Escalate / Start Session buttons.  │
    │     Acknowledge (or run /ack in chat) — chain pauses,          │
    │     incident assignment created.                               │
    │                                                                │
@@ -242,10 +242,12 @@ Each of these is configured by adding env vars to `.env` and restarting — noth
 | Feature | Env vars (see `.env.example` for full inline docs) |
 |---|---|
 | **Slack DM paging** | `OPSMENDER_SLACK_BOT_TOKEN` (+ a `bot_connectors` row with `signing_secret`) |
-| **Teams DM paging** | `OPSMENDER_TEAMS_WEBHOOK_URL` |
+| **Teams legacy webhook paging** | `OPSMENDER_TEAMS_WEBHOOK_URL` |
+| **Teams Graph paging** | `OPSMENDER_TEAMS_GRAPH_TENANT_ID`, `OPSMENDER_TEAMS_GRAPH_CLIENT_ID`, `OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET` |
 | **Email paging** | `OPSMENDER_SMTP_HOST`, `OPSMENDER_SMTP_PORT`, `OPSMENDER_SMTP_USER`, `OPSMENDER_SMTP_PASSWORD`, `OPSMENDER_SMTP_FROM`, `OPSMENDER_SMTP_USE_TLS` |
 | **SMS paging** | `OPSMENDER_TWILIO_ACCOUNT_SID`, `OPSMENDER_TWILIO_AUTH_TOKEN`, `OPSMENDER_TWILIO_FROM_NUMBER` |
 | **Slack interactivity (Ack/Resolve/Escalate/Start AI Session + slash commands)** | Add Slack app **Request URL**s for `/bot/slack/interactions` and `/bot/slack/commands`; populate `bot_token` + `signing_secret`, then enable verified Slack actions on the channel |
+| **Teams interactivity (Ack/Resolve/Escalate/Start AI Session)** | Configure Graph app credentials + Bot Framework app ID, set the messaging endpoint to `/bot/teams/activity`, link Azure AD object IDs, then enable verified Teams actions |
 | **Per-incident Slack channels** | Toggle `slack_incident_channels_enabled` per org (`PUT /organizations/{id}/notification-settings`); requires Slack app `channels:manage` + `chat:write` scopes |
 | **Ingest auto-start** | `OPSMENDER_INGEST_AUTO_START_ENABLED=true`, `OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=critical`, optional `OPSMENDER_INGEST_AUTO_START_SOURCE` filter |
 | **SLA poller (HTTP / TCP uptime checks)** | `OPSMENDER_SLA_POLLER_ENABLED=true`, `OPSMENDER_SLA_POLL_INTERVAL_DEFAULT=60` |
@@ -491,7 +493,7 @@ OpsMender has **three distinct notification concepts**. They are separate from i
 | **Notification Channels** | The responder team | Workspace/team channels where responders collaborate — this is where incident updates appear | Paging & On-call → Notification Channels |
 | **Viewer Notifications** | Read-only stakeholders / downstream systems | Read-only session/incident updates to webhooks; never pages an operator | Paging & On-call → Notifications |
 
-Personal Routing pages the owner; Notification Channels keep the responding team in the loop with formatted incident updates and, for opted-in Slack channels, verified native actions; Viewer Notifications fan out read-only status. The expected flow:
+Personal Routing pages the owner; Notification Channels keep the responding team in the loop with formatted incident updates and, for opted-in Slack or Teams channels, verified native actions; Viewer Notifications fan out read-only status. The expected flow:
 
 ```
 Alert intake → Incident created → Service/team/escalation chain resolved
@@ -505,7 +507,7 @@ Alert intake → Incident created → Service/team/escalation chain resolved
 
 Every platform is modelled honestly in [`backend/bots/capabilities.py`](backend/bots/capabilities.py) — the single source of truth for what a channel can actually do (`incident_updates`, `incident_card`, `interactive_actions`, `message_update`, `direct_message`, `shared_channel`, `delivery_only`). The API exposes it per platform and per configured channel, and the UI only advertises what a platform supports — a channel that receives lifecycle posts shows **"Incident updates"**, a future adapter with verified message edits can show **"Message updates"**, and only a verified callback adapter can show **"Interactive actions"**. Delivery-only channels (Twilio SMS, email, custom webhook) stay delivery-only and never claim native actions.
 
-**Interactivity is enabled per verified adapter and channel.** On incident **created / acknowledged / resolved / escalated**, OpsMender posts a formatted incident message with an authenticated incident link. Slack Notification Channels may opt into native **Acknowledge / Resolve / Escalate / Start AI Session** buttons once a signing secret is configured. Every click must pass Slack signature/timestamp verification, durable replay protection, external identity mapping, active-user checks, and Admin/Operator RBAC before mutation. Other platforms continue to use the authenticated OpsMender link. AI session lifecycle posts are sent when an incident-linked session starts, completes, fails, or times out. OpsMender never embeds a public, unauthenticated action URL. Twilio is shown as **Twilio (SMS)**. Delivery is built on [`backend/bots/incident_card.py`](backend/bots/incident_card.py) + `backend/bots/notifier.py`; the escalation card is emitted by the escalation engine when a chain advances to a higher level.
+**Interactivity is enabled per verified adapter and channel.** On incident **created / acknowledged / resolved / escalated**, OpsMender posts a formatted incident message with an authenticated incident link. Slack and Microsoft Teams Notification Channels may opt into native **Acknowledge / Resolve / Escalate / Start AI Session** buttons. Slack clicks require a valid signing-secret HMAC/timestamp; Teams clicks require a valid Bot Framework JWT. Both then pass through the same durable replay protection, external identity mapping, active-user checks, Admin/Operator RBAC, action execution, and audit path. Other platforms continue to use the authenticated OpsMender link. AI session lifecycle posts are sent when an incident-linked session starts, completes, fails, or times out. OpsMender never embeds a public, unauthenticated action URL.
 
 Notification Channels can be **workspace-wide** or scoped to one or more Teams. Incident ownership is resolved deterministically from the incident Service's team, then the active escalation chain's team, otherwise no team. Workspace-wide channels receive all incident/session lifecycle posts; team-scoped channels receive only matching incidents and sessions.
 
@@ -516,7 +518,7 @@ sender, and recipient. This channel configuration is separate from optional
 `OPSMENDER_SMTP_*` settings used for account invites and password resets. IMAP
 and inbound SMTP callbacks are not supported.
 
-**Future enhancements:** Teams/Discord/Telegram verified callbacks; per-adapter message edit-in-place support using stored notification receipts; bi-directional threaded chat and channel-to-OpsMender comment sync; MFA for action authorization; more platforms with first-class action support.
+**Future enhancements:** Discord/Telegram verified callbacks; per-adapter message edit-in-place support using stored notification receipts; bi-directional threaded chat and channel-to-OpsMender comment sync; MFA for action authorization; more platforms with first-class action support.
 
 Legacy summary of the three flows:
 

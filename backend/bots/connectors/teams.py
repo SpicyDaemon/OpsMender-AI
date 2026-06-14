@@ -1,4 +1,4 @@
-"""Microsoft Teams connector adapter (Sprint 37 step 1).
+"""Microsoft Teams connector adapter.
 
 For v1 we use **app-only** auth — the operator registers an Azure AD
 app, grants application permissions in the Azure portal, and pastes
@@ -6,20 +6,22 @@ app, grants application permissions in the Azure portal, and pastes
 redirect. The :mod:`backend.auth.graph_oauth` helper acquires + caches
 Graph tokens from those credentials.
 
-This step lands the connector shape (form schema + typed credentials)
-and a "test connection" path. Outbound DM delivery via
-``chats/{id}/messages`` and the inbound bot-activity endpoint land in
-subsequent Sprint 37 steps.
+Notification delivery uses Microsoft Graph app-only authentication. Verified
+native actions arrive through the Bot Framework activity endpoint.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Any, Mapping
 
 from fastapi import HTTPException, status
+import httpx
 
 from backend.auth.graph_oauth import GraphOAuthError, acquire_app_only_token
+from backend.bots.delivery import DeliveryReceipt
 from backend.db.models import BotConnector
+from backend.paging.teams_cards import build_graph_chat_message
 from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
 
@@ -65,7 +67,7 @@ class TeamsAdapter:
                 kind="text",
                 group="config",
                 required=False,
-                helper="Optional. App ID of the Teams bot registration if you've set one up — needed later for inbound activity callbacks.",
+                helper="App ID of the Teams bot registration. Required for verified native actions.",
             ),
             FieldSpec(
                 name="default_chat_id",
@@ -84,12 +86,9 @@ class TeamsAdapter:
         headers: Mapping[str, str],
         raw_body: bytes,
     ) -> None:
-        # Teams bot-activity verification lands in a later Sprint 37
-        # step. For now we refuse inbound webhooks — the connector is
-        # outbound-only.
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Teams inbound activity endpoint is not yet wired (Sprint 37 step 4)",
+            detail="Teams activities are verified by the Bot Framework activity endpoint",
         )
 
     def parse_inbound(
@@ -112,10 +111,98 @@ class TeamsAdapter:
         chat_id: str,
         text: str,
     ) -> tuple[bool, str | None]:
-        # Outbound delivery lands in Sprint 37 step 2 (Graph
-        # `chats/{id}/messages`). Until then, the connector advertises
-        # itself but explicitly refuses to send.
-        return False, "Teams outbound delivery lands in Sprint 37 step 2"
+        receipt = await self._post_graph_message(
+            connector,
+            chat_id=chat_id,
+            payload={
+                "body": {
+                    "contentType": "text",
+                    "content": text,
+                }
+            },
+        )
+        return receipt.ok, receipt.error
+
+    async def send_incident_update(
+        self,
+        connector: BotConnector,
+        *,
+        chat_id: str,
+        text: str,
+        incident=None,
+        native_actions_ready: bool = False,
+    ) -> DeliveryReceipt:
+        payload = (
+            build_graph_chat_message(
+                incident,
+                base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+                include_native_actions=native_actions_ready,
+            )
+            if incident is not None
+            else {
+                "body": {
+                    "contentType": "text",
+                    "content": text,
+                }
+            }
+        )
+        return await self._post_graph_message(
+            connector,
+            chat_id=chat_id,
+            payload=payload,
+        )
+
+    async def _post_graph_message(
+        self,
+        connector: BotConnector,
+        *,
+        chat_id: str,
+        payload: dict[str, Any],
+    ) -> DeliveryReceipt:
+        credentials = connector.credentials or {}
+        try:
+            token = await acquire_app_only_token(
+                tenant_id=str(credentials.get("tenant_id") or ""),
+                client_id=str(credentials.get("client_id") or ""),
+                client_secret=str(credentials.get("client_secret") or ""),
+            )
+        except GraphOAuthError as exc:
+            return DeliveryReceipt(ok=False, error=f"graph_oauth: {exc}")
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages",
+                    headers={
+                        "Authorization": (
+                            f"{token.token_type} {token.access_token}"
+                        ),
+                        "Content-Type": "application/json; charset=utf-8",
+                    },
+                    json=payload,
+                )
+        except httpx.HTTPError as exc:
+            return DeliveryReceipt(ok=False, error=f"network: {exc}")
+
+        if response.status_code not in {200, 201}:
+            try:
+                error = (response.json().get("error") or {}).get("code")
+            except ValueError:
+                error = None
+            return DeliveryReceipt(
+                ok=False,
+                error=f"graph: {error or f'http {response.status_code}'}",
+            )
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        return DeliveryReceipt(
+            ok=True,
+            external_channel_id=chat_id,
+            external_message_id=str(data.get("id")) if data.get("id") else None,
+            can_update=False,
+        )
 
     async def test_connection(
         self,

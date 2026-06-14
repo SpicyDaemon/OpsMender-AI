@@ -56,9 +56,10 @@ def _utcnow() -> datetime:
 def _allowed_chat_ids(connector: BotConnector) -> list[str]:
     config = connector.config or {}
     raw = config.get("allowed_chat_ids") or []
-    if not isinstance(raw, list):
-        return []
-    return [str(item) for item in raw if item is not None]
+    if isinstance(raw, list) and raw:
+        return [str(item) for item in raw if item is not None]
+    default_chat_id = config.get("default_chat_id")
+    return [str(default_chat_id)] if default_chat_id else []
 
 
 def _has_capability(connector: BotConnector, capability: str) -> bool:
@@ -221,7 +222,7 @@ async def _deliver_via_adapter(
         return DeliveryReceipt(ok=False, error="adapter_not_found")
 
     if hasattr(adapter, "send_incident_update") and command_label.startswith("notify:"):
-        if connector.platform == "slack":
+        if connector.platform in {"slack", "teams"}:
             receipt = await adapter.send_incident_update(
                 connector,
                 chat_id=chat_id,
@@ -600,8 +601,9 @@ async def deliver_incident_event(
     Honest delivery: each platform receives the same useful incident message
     with an authenticated incident link. Interactive action controls are only
     rendered when the platform supports interactive callbacks and the channel
-    has native actions enabled with a configured signing secret. Slack verifies
-    every callback before the shared action coordinator permits a mutation.
+    has native actions enabled with a configured verifier. Slack and Teams
+    verify every callback before the shared action coordinator permits a
+    mutation.
     Delivery-only platforms (SMS, email, custom webhook, …) get the same
     message minus any card framing, which their adapters already handle.
     """
@@ -630,7 +632,7 @@ async def deliver_incident_event(
         if not _connector_matches_team(connector, team_id):
             continue
         native_actions_ready = bool(
-            connector.platform == "slack"
+            connector.platform in {"slack", "teams"}
             and connector.native_actions_enabled
             and connector.callback_status in {"configured", "verified"}
             and supports_interactive_actions(connector.platform)

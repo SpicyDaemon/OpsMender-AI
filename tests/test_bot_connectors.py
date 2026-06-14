@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -671,6 +672,88 @@ class TestSMTPEmailAdapter:
                 "OpsMender Incident Update",
             ),
         ]
+
+
+class TestTeamsAdapter:
+    async def test_incident_delivery_posts_verified_adaptive_card(
+        self, monkeypatch
+    ):
+        captured = {}
+
+        async def fake_token(**kwargs):
+            return SimpleNamespace(token_type="Bearer", access_token="token")
+
+        class FakeResponse:
+            status_code = 201
+
+            @staticmethod
+            def json():
+                return {"id": "teams-message-1"}
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            async def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["json"] = kwargs["json"]
+                return FakeResponse()
+
+        monkeypatch.setattr(
+            "backend.bots.connectors.teams.acquire_app_only_token",
+            fake_token,
+        )
+        monkeypatch.setattr(
+            "backend.bots.connectors.teams.httpx.AsyncClient",
+            FakeClient,
+        )
+        connector = BotConnector(
+            name="teams-test",
+            platform="teams",
+            config={"bot_app_id": "bot-app"},
+            credentials={
+                "tenant_id": "tenant",
+                "client_id": "client",
+                "client_secret": "secret",
+            },
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=True,
+            native_actions_enabled=True,
+        )
+        incident = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000123",
+            title="API outage",
+            description="500s",
+            priority="P1",
+            status="open",
+            severity="high",
+        )
+        receipt = await get_adapter("teams").send_incident_update(
+            connector,
+            chat_id="19:chat@thread.v2",
+            text="fallback",
+            incident=incident,
+            native_actions_ready=True,
+        )
+        assert receipt.ok is True
+        assert receipt.external_message_id == "teams-message-1"
+        assert captured["url"].endswith(
+            "/chats/19:chat@thread.v2/messages"
+        )
+        actions = captured["json"]["attachments"][0]["content"]["actions"]
+        assert {action["title"] for action in actions} == {
+            "Acknowledge",
+            "Resolve",
+            "Escalate",
+            "Start AI Session",
+        }
 
 
 class TestMailgunEmailAdapter:

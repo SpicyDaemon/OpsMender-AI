@@ -10,8 +10,9 @@ actions (Acknowledge / Resolve / Escalate / Start AI Session) happen *inside*
 OpsMender behind login + RBAC. The card therefore carries an **authenticated
 incident link** that opens the incident detail page; the recipient signs in
 and acts there. This is the secure, universally-supported fallback the product
-spec mandates for platforms without verified interactive callbacks. Slack can
-replace that fallback hint with signed native actions when the channel opts in.
+spec mandates for platforms without verified interactive callbacks. Slack and
+Teams can replace that fallback hint with native actions when the channel opts
+in and its platform verifier is configured.
 
 ``build_incident_message`` is deliberately platform-neutral: it returns a
 single markdown-ish string that every adapter's ``send_message`` already knows
@@ -80,9 +81,9 @@ def build_incident_message(
     ``None`` when unavailable.
 
     ``supports_actions`` reflects channel-level readiness, not just the broad
-    platform capability. Slack sets it only when native actions are enabled and
-    callback signing is configured; other platforms keep the OpsMender link
-    fallback.
+    platform capability. Slack and Teams set it only when native actions are
+    enabled and callback verification is configured; other platforms keep the
+    OpsMender link fallback.
     """
     lines: list[str] = [f"*{_headline(event_type)}: {incident.title}*"]
 

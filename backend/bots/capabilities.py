@@ -23,10 +23,10 @@ Capability flags
     (Acknowledge / Resolve / Escalate / Start AI Session) whose callbacks are
     authenticated (signed token or platform signature verification).
 
-    IMPORTANT — honesty guardrail: this is enabled only for Slack in v1.1
-    Phase B. A Slack channel must also opt in and have its signing secret
-    configured before buttons render; every click is signature-verified before
-    execution. Every other platform remains false.
+    IMPORTANT — honesty guardrail: this is enabled only for Slack and Teams.
+    Each channel must opt in and configure its platform verifier before buttons
+    render; every click is cryptographically verified before execution. Every
+    other platform remains false.
 ``direct_message``
     The platform can deliver a 1:1 direct message (relevant to Personal
     Routing, not Notification Channels, but modelled here for completeness).
@@ -118,7 +118,14 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         direct_message=True,
         shared_channel=True,
     ),
-    "teams": _cap("teams", "Microsoft Teams", incident_card=True, direct_message=True, shared_channel=True),
+    "teams": _cap(
+        "teams",
+        "Microsoft Teams",
+        incident_card=True,
+        interactive_actions=True,
+        direct_message=True,
+        shared_channel=True,
+    ),
     "discord": _cap("discord", "Discord", incident_card=True, shared_channel=True),
     "telegram": _cap("telegram", "Telegram", incident_card=True, direct_message=True, shared_channel=True),
     "mattermost": _cap("mattermost", "Mattermost", incident_card=True, direct_message=True, shared_channel=True),

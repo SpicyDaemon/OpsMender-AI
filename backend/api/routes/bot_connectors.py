@@ -86,21 +86,48 @@ def _callback_status(
     credentials: dict | None,
     existing: BotConnector | None = None,
 ) -> str:
-    """Describe Slack callback readiness without claiming a callback ran."""
+    """Describe callback readiness without claiming a callback ran."""
 
-    enabled = body.platform == "slack" and body.native_actions_enabled
-    signing_secret = str((credentials or {}).get("signing_secret") or "").strip()
-    if not enabled or not signing_secret:
+    enabled = (
+        body.platform in {"slack", "teams"} and body.native_actions_enabled
+    )
+    verifier = _callback_verifier(
+        body.platform,
+        config=body.config,
+        credentials=credentials,
+    )
+    if not enabled or not verifier:
         return "not_configured"
     if (
         existing is not None
-        and existing.platform == "slack"
+        and existing.platform == body.platform
         and existing.callback_status == "verified"
-        and str((existing.credentials or {}).get("signing_secret") or "").strip()
-        == signing_secret
+        and _callback_verifier(
+            existing.platform,
+            config=existing.config,
+            credentials=existing.credentials,
+        )
+        == verifier
     ):
         return "verified"
     return "configured"
+
+
+def _callback_verifier(
+    platform: str,
+    *,
+    config: dict | None,
+    credentials: dict | None,
+) -> str:
+    if platform == "slack":
+        return str((credentials or {}).get("signing_secret") or "").strip()
+    if platform == "teams":
+        return str(
+            (config or {}).get("bot_app_id")
+            or (credentials or {}).get("bot_app_id")
+            or ""
+        ).strip()
+    return ""
 
 
 def _scoped_config(
@@ -344,7 +371,9 @@ async def create_bot_connector(
             status="configured" if body.credentials else body.status,
             is_enabled=body.is_enabled,
             native_actions_enabled=(
-                body.native_actions_enabled if body.platform == "slack" else False
+                body.native_actions_enabled
+                if body.platform in {"slack", "teams"}
+                else False
             ),
         )
         connector.callback_status = _callback_status(body, credentials)
@@ -399,7 +428,9 @@ async def update_bot_connector(
             ),
             is_enabled=body.is_enabled,
             native_actions_enabled=(
-                body.native_actions_enabled if body.platform == "slack" else False
+                body.native_actions_enabled
+                if body.platform in {"slack", "teams"}
+                else False
             ),
         )
         if updated is not None:

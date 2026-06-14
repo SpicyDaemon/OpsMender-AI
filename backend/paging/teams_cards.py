@@ -1,4 +1,4 @@
-"""Teams Adaptive Card builder for paging (Sprint 37 step 3).
+"""Teams Adaptive Card builder for paging and Notification Channels.
 
 Parallels :mod:`backend.paging.slack_cards`. A *Teams page card* is an
 adaptive card the dispatcher embeds in a Microsoft Graph chat message
@@ -8,9 +8,10 @@ The card carries the same affordances as the Slack equivalent:
 
 * Header (incident title + priority pill + status badge).
 * Body context (incident id + truncated description).
-* Three action buttons — Acknowledge / Take Over / Resolve — using
-  ``Action.Submit`` with a ``data.action`` field the Sprint 37 step 4
-  bot-activity endpoint will route on.
+* Optional signed actions — Acknowledge / Resolve / Escalate / Start AI
+  Session — using
+  ``Action.Submit`` with a ``data.action`` field the Bot Framework activity
+  endpoint routes through the common verified-action coordinator.
 * An optional "View in OpsMender" ``Action.OpenUrl`` deep-link when
   ``base_url`` is provided (parallels the Slack ``ACTION_VIEW`` button).
 
@@ -28,8 +29,10 @@ from backend.db.models import Incident
 
 
 ACTION_ACK = "opsmender:ack"
-ACTION_TAKE = "opsmender:take"
 ACTION_RESOLVE = "opsmender:resolve"
+ACTION_ESCALATE = "opsmender:escalate"
+ACTION_START_AI_SESSION = "opsmender:start_ai_session"
+ACTION_TAKE = "opsmender:take"
 ACTION_VIEW = "opsmender:view"
 
 
@@ -50,7 +53,10 @@ def build_page_card_text(incident: Incident) -> str:
 
 
 def build_page_card_adaptive(
-    incident: Incident, *, base_url: str | None = None
+    incident: Incident,
+    *,
+    base_url: str | None = None,
+    include_native_actions: bool = False,
 ) -> dict[str, Any]:
     """Return a single adaptive card payload (the value that goes inside
     an attachment's ``content`` field). Use :func:`wrap_card_as_attachment`
@@ -96,34 +102,46 @@ def build_page_card_adaptive(
             }
         )
 
-    actions: list[dict[str, Any]] = [
-        {
-            "type": "Action.Submit",
-            "title": "Acknowledge",
-            "style": "positive",
-            "data": {
-                "action": ACTION_ACK,
-                "incident_id": incident_id_str,
-            },
-        },
-        {
-            "type": "Action.Submit",
-            "title": "Take Over",
-            "data": {
-                "action": ACTION_TAKE,
-                "incident_id": incident_id_str,
-            },
-        },
-        {
-            "type": "Action.Submit",
-            "title": "Resolve",
-            "style": "destructive",
-            "data": {
-                "action": ACTION_RESOLVE,
-                "incident_id": incident_id_str,
-            },
-        },
-    ]
+    actions: list[dict[str, Any]] = []
+    if include_native_actions and incident.status not in {"resolved", "closed"}:
+        actions.extend(
+            [
+                {
+                    "type": "Action.Submit",
+                    "title": "Acknowledge",
+                    "style": "positive",
+                    "data": {
+                        "action": ACTION_ACK,
+                        "incident_id": incident_id_str,
+                    },
+                },
+                {
+                    "type": "Action.Submit",
+                    "title": "Resolve",
+                    "style": "destructive",
+                    "data": {
+                        "action": ACTION_RESOLVE,
+                        "incident_id": incident_id_str,
+                    },
+                },
+                {
+                    "type": "Action.Submit",
+                    "title": "Escalate",
+                    "data": {
+                        "action": ACTION_ESCALATE,
+                        "incident_id": incident_id_str,
+                    },
+                },
+                {
+                    "type": "Action.Submit",
+                    "title": "Start AI Session",
+                    "data": {
+                        "action": ACTION_START_AI_SESSION,
+                        "incident_id": incident_id_str,
+                    },
+                },
+            ]
+        )
     if base_url:
         deep_link = (
             f"{base_url.rstrip('/')}/dashboard/incidents/detail"
@@ -165,13 +183,20 @@ def wrap_card_as_attachment(card: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_graph_chat_message(
-    incident: Incident, *, base_url: str | None = None
+    incident: Incident,
+    *,
+    base_url: str | None = None,
+    include_native_actions: bool = False,
 ) -> dict[str, Any]:
     """Return a complete Graph ``chats/{id}/messages`` payload carrying
     the adaptive card. This is the value the dispatcher posts to Graph.
     """
 
-    card = build_page_card_adaptive(incident, base_url=base_url)
+    card = build_page_card_adaptive(
+        incident,
+        base_url=base_url,
+        include_native_actions=include_native_actions,
+    )
     attachment = wrap_card_as_attachment(card)
     fallback = build_page_card_text(incident)
     return {

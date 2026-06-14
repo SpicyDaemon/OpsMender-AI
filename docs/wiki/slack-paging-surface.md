@@ -1,18 +1,23 @@
 # Slack as your paging surface
 
-Sprint 36 turns Slack into a first-class paging surface for OpsMender. A paged operator can acknowledge, take over, snooze, resolve, and inspect an incident **without leaving Slack** — and click through to the web UI when they need the full session. This page is the end-to-end operator guide for that surface.
+Slack is a first-class paging and incident-collaboration surface for OpsMender.
+Notification Channels can opt into verified Acknowledge, Resolve, Escalate, and
+Start AI Session actions. Slash commands retain acknowledge, take-over,
+release, resolve, snooze, and status operations.
 
-If you only want a single-line tl;dr: **page lands in your Slack DM with three buttons; you reply with `/ack` or click Acknowledge; OpsMender does the rest.**
+If you only want a single-line tl;dr: configure the signing secret, link Slack
+user IDs, enable verified Slack actions, and send incident updates to a channel.
 
 ---
 
 ## 1. What you get
 
-When OpsMender pages you on Slack, you receive a Block Kit card in your DM with:
+When OpsMender posts an incident update to an opted-in Slack Notification
+Channel, the Block Kit card includes:
 
 - The priority and status of the incident.
 - The first line of the incident description.
-- Three action buttons — **Acknowledge**, **Take Over**, **Resolve**.
+- Four action buttons — **Acknowledge**, **Resolve**, **Escalate**, **Start AI Session**.
 - A **View in OpsMender** link button (when `OPSMENDER_PUBLIC_URL` is set) that deep-links to the incident detail page with a `?from=slack` breadcrumb.
 
 Every button click is signed, verified, and authenticated against your `bot_user_links` row before any state change happens. Slack users without a link get a friendly ephemeral "your account isn't linked" message instead of a silent failure.
@@ -24,11 +29,13 @@ Every button click is signed, verified, and authenticated against your `bot_user
 | Button | What it does |
 |--------|--------------|
 | **Acknowledge** | Pauses the chain and assigns the incident to you. Same as the web "Acknowledge" button. |
-| **Take Over** | Requests reassignment. If the current owner has already acked, they get a 5-minute soft-takeover window to confirm; otherwise the assignment swaps immediately. Admin-only force-takeover stays a web-only action. |
 | **Resolve** | Cancels the escalation chain and marks the incident `resolved`. |
+| **Escalate** | Immediately advances to the next configured escalation level. |
+| **Start AI Session** | Starts the advisory Tier 2 incident session, or reports the already-active session. |
 | **View in OpsMender** | Opens `/dashboard/incidents/detail?id=…&from=slack` in your browser. The detail page surfaces a "you opened this from Slack" banner so context is never lost. |
 
-All three actions are recorded in the `incident_pages` audit log so the source surface (Slack vs. web vs. slash command) is traceable later.
+Native actions use durable idempotency records and bot-action audits so the
+source user, channel, incident, and result remain traceable.
 
 ---
 
@@ -85,7 +92,7 @@ In your Slack app's settings:
 
 In OpsMender:
 
-1. **Notification Channels** → either create a new Slack channel or edit the existing one. Paste the bot token and signing secret. Save.
+1. **Notification Channels** → either create a new Slack channel or edit the existing one. Paste the bot token and signing secret, then enable verified Slack actions. Save.
 2. **Bot User Links** → for every operator who should be allowed to click buttons or use slash commands, add a row mapping their Slack user id to their OpsMender user id (`POST /bot-connectors/{id}/user-links`).
 3. (Optional) Set `OPSMENDER_SLACK_BOT_TOKEN` in your environment. This is the same token used by the dispatcher for DMs and by the channel mirror for `conversations.create`.
 
@@ -95,12 +102,13 @@ In OpsMender:
 
 Once the wiring is done, you can drive the full loop end-to-end without inventing a real incident:
 
-1. Make sure your operator user has both a `bot_user_links` row and notification preferences with Slack DM enabled.
-2. POST a synthetic page-mode incident: `POST /incidents` with `priority: "P0"` and a service whose chain has at least one step targeting your user.
-3. You should receive a Slack DM with the page card.
-4. Click **Acknowledge**. The chain should pause; `/dashboard/incidents/detail?id=…` should show you as the assignee.
-5. Run `/status` in any channel. You should see your incident in the active chains list with `paused`.
-6. Run `/resolve`. Incident status flips to `resolved`, the chain is `cancelled`, and the audit log records the slash-command source.
+1. Make sure your operator user has a verified identity link for that Slack connector.
+2. Configure a destination on the Slack Notification Channel.
+3. POST a synthetic incident matching the channel scope.
+4. You should receive a Slack Block Kit incident card.
+5. Click **Acknowledge**. The chain should pause; `/dashboard/incidents/detail?id=…` should show you as the assignee.
+6. Run `/status` in any channel. You should see your incident in the active chains list with `paused`.
+7. Run `/resolve`. Incident status flips to `resolved`, the chain is `cancelled`, and the audit log records the slash-command source.
 
 ---
 

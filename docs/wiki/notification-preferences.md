@@ -16,12 +16,13 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
 > **How chat notifications work during the v1.1 rollout.** Every Notification
 > Channel sends a formatted message with an authenticated OpsMender link.
-> Slack channels can additionally opt into native **Acknowledge, Resolve,
-> Escalate, and Start AI Session** buttons after a signing secret is configured.
-> Each click is Slack-signature verified, mapped to an active OpsMender user,
-> checked for Admin/Operator RBAC, deduplicated, and audited. Other chat
-> platforms still use the link fallback, and message edit-in-place remains
-> deferred
+> Slack and Teams channels can additionally opt into native **Acknowledge,
+> Resolve, Escalate, and Start AI Session** buttons after their platform
+> verifier is configured. Slack uses signing-secret HMAC verification; Teams
+> uses Microsoft Bot Framework JWT verification. Each click is mapped to an
+> active OpsMender user, checked for Admin/Operator RBAC, deduplicated, and
+> audited. Other chat platforms still use the link fallback, and message
+> edit-in-place remains deferred
 > (see [`ROADMAP.md`](../ROADMAP.md) → "Native Chat Buttons Are Deferred From v1").
 > The foundation is intentionally dormant — tokens alone never mutate incidents, and OpsMender
 > never posts a public, unauthenticated action URL. The capability chips on the
@@ -56,7 +57,7 @@ Per stage you pick a **channel** and (for non-final stages) a **wait** before th
 
 If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
 
-**Chat-capable vs delivery-only:** Slack is the first chat-capable platform with verified incident actions. Teams, Discord, Telegram, Mattermost, Matrix, and WhatsApp currently use authenticated-link fallback. Mailgun Email, SMTP Email, and SMS are delivery-only.
+**Chat-capable vs delivery-only:** Slack and Teams support verified incident actions. Discord, Telegram, Mattermost, Matrix, and WhatsApp currently use authenticated-link fallback. Mailgun Email, SMTP Email, and SMS are delivery-only.
 
 Click **Test notification** (top-right) to send a one-off test to your routed channels. Channels without credentials or a destination are reported as skipped rather than failing.
 
@@ -134,7 +135,7 @@ Each channel has a **Team Scope**:
 - **Workspace-wide** channels receive every incident lifecycle post and every incident-linked AI session lifecycle post.
 - **Specific teams** channels receive only matching incidents and sessions. OpsMender resolves the incident team deterministically from the incident Service's team, then the active escalation chain's team. If neither exists, only workspace-wide channels receive the post.
 
-Channels with the `notifications` capability receive incident **created / acknowledged / escalated / resolved** messages. Incident-linked AI sessions also post when they **start**, **complete**, **fail**, or **time out**. Messages always include authenticated OpsMender links. Opted-in Slack channels also render verified native incident actions; other providers keep the link fallback. No provider receives a public action URL.
+Channels with the `notifications` capability receive incident **created / acknowledged / escalated / resolved** messages. Incident-linked AI sessions also post when they **start**, **complete**, **fail**, or **time out**. Messages always include authenticated OpsMender links. Opted-in Slack and Teams channels also render verified native incident actions; other providers keep the link fallback. No provider receives a public action URL.
 
 ---
 
@@ -144,7 +145,7 @@ Channels with the `notifications` capability receive incident **created / acknow
 
 The staged-routing architecture is intentionally channel-agnostic so the following can be layered on without changing routing:
 
-- Extend verified native actions from Slack to Teams, Discord, and Telegram.
+- Extend verified native actions to Discord and Telegram.
 - Add message update-in-place with follow-up fallback using stored provider message IDs.
 - Pressing an action will post an incident comment automatically:
   - Acknowledge → "Incident acknowledged by &lt;user&gt;"
@@ -152,5 +153,5 @@ The staged-routing architecture is intentionally channel-agnostic so the followi
   - Escalate → "Incident escalated by &lt;user&gt;"
   - Start Session → "Session started. Session ID: &lt;id&gt;"
 
-Slack actions are implemented. The remaining platform and message-update items
+Slack and Teams actions are implemented. The remaining platform and message-update items
 are later v1.1 phases.

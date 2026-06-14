@@ -309,6 +309,23 @@ const sms = connector({
   }),
 });
 
+const teamsNative = connector({
+  id: "c-teams",
+  name: "Teams incident room",
+  platform: "teams",
+  platform_label: "Microsoft Teams",
+  platform_capabilities: caps({
+    platform: "teams",
+    display_name: "Microsoft Teams",
+    incident_card: true,
+    interactive_actions: true,
+    shared_channel: true,
+    delivery_only: false,
+  }),
+  native_actions_enabled: true,
+  callback_status: "configured",
+});
+
 describe("Notification Channels capability rendering", () => {
   it("renders friendly platform names including Twilio (SMS)", () => {
     render(
@@ -365,6 +382,20 @@ describe("Notification Channels capability rendering", () => {
     expect(within(row).getByText("Incident updates")).toBeTruthy();
     expect(within(row).getByText("Message updates")).toBeTruthy();
     expect(within(row).getByText("Interactive actions")).toBeTruthy();
+  });
+
+  it("shows configured Teams native actions when the channel opts in", () => {
+    render(
+      <BotConnectorSection
+        connectors={[teamsNative]}
+        onReload={async () => {}}
+        canEdit
+      />,
+    );
+    const row = screen.getByText("Teams incident room").closest("tr")!;
+    expect(within(row).getByText("Interactive actions")).toBeTruthy();
+    expect(within(row).getByText(/Teams callbacks:/)).toBeTruthy();
+    expect(within(row).getByText("configured")).toBeTruthy();
   });
 
   it("shows team scope and defaults old channels to workspace-wide", () => {

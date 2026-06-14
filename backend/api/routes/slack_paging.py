@@ -41,25 +41,24 @@ from backend.api.deps import get_db
 from backend.bots.actions import (
     ExternalActorIdentity,
     IncidentActionError,
-    IncidentActionTokenClaims,
-    VerifiedNativeAction,
-    execute_verified_native_action,
     resolve_authorized_external_actor,
+)
+from backend.bots.native_callbacks import (
+    NormalizedNativeCallback,
+    callback_error_message,
+    callback_result_message,
+    execute_normalized_callback,
 )
 from backend.db.models import BotConnector, Incident, IncidentChainState, IncidentPage
 from backend.db.repos import (
-    BotConnectorRepo,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentRepo,
 )
-from backend.paging.channel_factory import build_channel_factory
 from backend.paging import escalation as _esc
 from backend.paging.slack_cards import (
     ACTION_ACK,
-    ACTION_ESCALATE,
     ACTION_RESOLVE,
-    ACTION_START_AI_SESSION,
     ACTION_TAKE,
     ACTION_VIEW,
     parse_incident_id_from_action,
@@ -180,79 +179,42 @@ async def slack_interactions(
     if not slack_user_id:
         return _ephemeral("Slack didn't tell us who clicked the button.")
 
-    action_map = {
-        ACTION_ACK: "acknowledge",
-        ACTION_RESOLVE: "resolve",
-        ACTION_ESCALATE: "escalate",
-        ACTION_START_AI_SESSION: "start_ai_session",
-    }
-    action = action_map.get(str(action_id))
-    if action is None:
-        return _ephemeral(f"Unknown action `{action_id}`.")
-
-    await BotConnectorRepo.mark_callback_verified(db, connector.org_id, connector.id)
-    connector.callback_status = "verified"
-    connector.callback_last_verified_at = datetime.now(timezone.utc)
     raw_action = actions[0]
     idempotency_key = str(
         raw_action.get("action_ts")
         or payload.get("trigger_id")
         or hashlib.sha256(raw_body).hexdigest()
     )
-    claims = IncidentActionTokenClaims(
-        org_id=connector.org_id,
-        incident_id=incident_id,
-        action=action,
-        channel_id=str((payload.get("channel") or {}).get("id") or "") or None,
-        message_id=str((payload.get("message") or {}).get("ts") or "") or None,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
-        nonce=idempotency_key,
-    )
-    native_request = VerifiedNativeAction(
-        connector=connector,
-        claims=claims,
-        external_actor=ExternalActorIdentity(
-            platform_user_id=str(slack_user_id),
-            username=(payload.get("user") or {}).get("username")
-            or (payload.get("user") or {}).get("name"),
-            display_name=(payload.get("user") or {}).get("name"),
-        ),
-        idempotency_key=idempotency_key,
-        callback_received_at=datetime.now(timezone.utc),
-        chat_id=claims.channel_id,
-    )
     try:
-        result = await execute_verified_native_action(
+        result = await execute_normalized_callback(
             db,
-            request=native_request,
-            channel_factory=build_channel_factory(),
+            connector=connector,
+            callback=NormalizedNativeCallback(
+                incident_id=incident_id,
+                action_id=str(action_id),
+                external_actor=ExternalActorIdentity(
+                    platform_user_id=str(slack_user_id),
+                    username=(payload.get("user") or {}).get("username")
+                    or (payload.get("user") or {}).get("name"),
+                    display_name=(payload.get("user") or {}).get("name"),
+                ),
+                idempotency_key=idempotency_key,
+                channel_id=str((payload.get("channel") or {}).get("id") or "")
+                or None,
+                message_id=str((payload.get("message") or {}).get("ts") or "")
+                or None,
+            ),
         )
     except IncidentActionError as exc:
-        messages = {
-            "native_actions_disabled": "Native actions are disabled for this channel.",
-            "actor_not_linked": (
-                "Your Slack account isn't linked to OpsMender. "
-                "Ask an admin to add an identity link, then try again."
-            ),
-            "actor_not_active": "Your linked OpsMender account is inactive.",
-            "actor_not_authorized": "Your OpsMender role cannot perform this action.",
-            "incident_not_found": "That incident no longer exists.",
-        }
-        return _ephemeral(messages.get(str(exc), f"Action rejected: {exc}."))
+        message = callback_error_message(exc).replace(
+            "Your external account",
+            "Your Slack account",
+        )
+        return _ephemeral(message)
 
     incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
     title = incident.title if incident is not None else str(incident_id)
-    status_text = {
-        "acknowledged": "acknowledged",
-        "already_acknowledged": "already acknowledged",
-        "resolved": "resolved",
-        "already_resolved": "already resolved",
-        "escalated": "escalated",
-        "no_escalation_target": "no further escalation target for",
-        "session_started": "started an AI session for",
-        "already_active": "an AI session is already active for",
-    }.get(result.status, result.status.replace("_", " ").title())
-    return _ephemeral(f"{status_text} incident *{title}*.")
+    return _ephemeral(callback_result_message(result, title))
 
 
 # ---------------------------------------------------------------------------

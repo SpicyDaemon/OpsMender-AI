@@ -1,8 +1,13 @@
 # Teams as your paging surface
 
-Sprint 37 brings Microsoft Teams to parity with the Slack paging surface Sprint 36 shipped. A paged operator can acknowledge, take over, and resolve an incident **without leaving Teams** — adaptive-card actions deep-link straight into OpsMender. This page is the operator-and-admin guide for that surface.
+Microsoft Teams supports verified incident collaboration through Adaptive
+Cards. An opted-in Admin or Operator can acknowledge, resolve, escalate, or
+start an AI session without leaving Teams. This page is the operator-and-admin
+guide for that surface.
 
-If you only want the tl;dr: **page lands in a Teams chat with three buttons; click Acknowledge; OpsMender does the rest.**
+If you only want the tl;dr: configure Graph credentials and a Bot Framework app
+ID, enable verified Teams actions, link Azure AD object IDs, and send to a Teams
+chat.
 
 > v1 uses **app-only authentication** (Azure AD client-credentials). No user-delegated OAuth, no per-user consent. Slash-command parity will follow in a later sprint — for v1 the adaptive card buttons are the canonical surface.
 
@@ -15,10 +20,13 @@ When OpsMender pages you on Teams, the message in the chat carries:
 - A bold title with the incident name.
 - A FactSet — Priority, Status, Severity (if set), and the OpsMender incident id.
 - The first line of the incident description.
-- Three Action.Submit buttons — **Acknowledge**, **Take Over**, **Resolve**.
+- Four optional Action.Submit buttons — **Acknowledge**, **Resolve**,
+  **Escalate**, **Start AI Session**.
 - A **View in OpsMender** `Action.OpenUrl` button (when `OPSMENDER_PUBLIC_URL` is set) that deep-links to `/dashboard/incidents/detail?id=…&from=teams`. The incident detail page surfaces a "you opened this from Teams" breadcrumb so the chat origin is never lost.
 
-Every action click is JWT-verified, routed through the same escalation engine handlers Slack uses, and audited in `incident_pages`.
+Every action click is JWT-verified and routed through the same durable
+idempotency, identity mapping, active-user, Admin/Operator RBAC, action, and
+audit coordinator Slack uses. Viewers and unmapped users cannot mutate.
 
 ---
 
@@ -27,8 +35,9 @@ Every action click is JWT-verified, routed through the same escalation engine ha
 | Button | What it does |
 |--------|--------------|
 | **Acknowledge** | Pauses the chain and assigns the incident to you. Same as the web Acknowledge button. |
-| **Take Over** | Requests reassignment. If the current owner has already acked, they get a 5-minute soft-takeover window to confirm; otherwise the assignment swaps immediately. Admin-only force-takeover stays a web action. |
 | **Resolve** | Cancels the escalation chain and marks the incident `resolved`. |
+| **Escalate** | Immediately advances to the next configured escalation level. |
+| **Start AI Session** | Starts the existing advisory Tier 2 incident session, or reports the already-active session. |
 | **View in OpsMender** | Opens the incident detail page with `?from=teams`. |
 
 Action data shape (sent on the `Action.Submit`):
@@ -37,7 +46,9 @@ Action data shape (sent on the `Action.Submit`):
 { "action": "opsmender:ack", "incident_id": "<incident-uuid>" }
 ```
 
-The `action` strings (`opsmender:ack`, `opsmender:take`, `opsmender:resolve`, `opsmender:view`) are intentionally identical to the Slack ones — the routing helpers are shared.
+The stable action strings are `opsmender:ack`, `opsmender:resolve`,
+`opsmender:escalate`, and `opsmender:start_ai_session`. Slack and Teams
+normalize them through the same callback executor.
 
 ---
 
@@ -62,7 +73,8 @@ Under **API permissions**:
 
 ### 3.3 Bot channel registration (inbound)
 
-Sprint 37 step 4 needs a Bot Framework registration so Teams knows where to deliver card-action invokes.
+Native actions need a Bot Framework registration so Teams knows where to
+deliver card-action invokes.
 
 1. Azure portal → **Azure Bot** → Create. Use the same app id as the registration above (re-use the existing app).
 2. Under **Configuration**, set the **Messaging endpoint** to `https://<your-opsmender-host>/bot/teams/activity`.
@@ -80,7 +92,9 @@ In OpsMender → **Notification Channels** → New Teams channel:
 | Bot framework app ID | Same client id (or the bot registration's app id if different). |
 | Default chat ID | Optional. |
 
-Click **Test connection**. OpsMender runs the OAuth handshake and pings `GET /v1.0/organization` to confirm the credentials are good. A failure here surfaces the Azure error (`invalid_client`, missing scope, …) so you can fix it before going further.
+Enable **verified Teams actions** after entering the Bot Framework app ID.
+OpsMender shows the callback as configured until the first valid Microsoft JWT
+arrives, then promotes it to verified.
 
 ### 3.5 Environment variables
 
@@ -107,11 +121,12 @@ The Azure AD object id is the value that ends up in `activity.from.aadObjectId` 
 
 ## 5. Verification recipe
 
-1. Make sure your operator user has a `bot_user_links` row (Teams platform user id = your AAD object id) and notification preferences with `teams_dm_graph` enabled + a destination chat id.
-2. POST a synthetic page-mode incident: `POST /incidents` with `priority: "P0"` and a service whose chain has at least one step targeting your user.
-3. You should receive a Teams message in the configured chat with the adaptive card and three buttons.
-4. Click **Acknowledge**. The chain should pause; the OpsMender detail page should show you as the assignee. Within Teams you'll see a short text reply confirming the action landed.
-5. Click **Resolve**. Incident status flips to `resolved`, the chain is cancelled, and the audit log records `via=card_action`.
+1. Make sure your operator user has a verified identity link (Teams platform user id = your AAD object id).
+2. Configure the Notification Channel default chat ID or destination list.
+3. POST a synthetic incident that matches the channel scope.
+4. You should receive a Teams message in the configured chat with the adaptive card and four buttons.
+5. Click **Acknowledge**. The chain should pause and OpsMender should show you as the assignee.
+6. Click **Resolve**. Incident status flips to `resolved`, the chain is cancelled, and native-action audit entries are recorded.
 
 ---
 
@@ -125,6 +140,7 @@ The Azure AD object id is the value that ends up in `activity.from.aadObjectId` 
 | Test-connection returns `graph: http 403` | Token exchange worked but `Chat.ReadWrite.All` admin consent wasn't granted. Re-grant in Azure Portal → API permissions. |
 | Cards render but buttons do nothing | The bot's **Messaging endpoint** in Azure isn't pointing at `/bot/teams/activity`, or the path is HTTP instead of HTTPS. |
 | Dispatcher records `channel_unconfigured` for `teams_dm_graph` | One of the three `OPSMENDER_TEAMS_GRAPH_*` env vars is missing. |
+| Notification Channel shows link-only cards | Verified Teams actions are disabled or the Bot Framework app ID is missing. |
 
 ---
 

@@ -105,6 +105,8 @@ class BotConnectorAdapter(Protocol):
         *,
         chat_id: str,
         text: str,
+        incident: Any = None,
+        native_actions_ready: bool = False,
     ) -> DeliveryReceipt: ...
 
     async def update_incident_update(

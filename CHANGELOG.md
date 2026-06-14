@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.1 Notification Collaboration Phase C — shared callback framework and
+  Microsoft Teams verified actions.** Added a platform-neutral normalized
+  callback executor shared by Slack and Teams after platform cryptographic
+  verification. Microsoft Teams Notification Channels now deliver Adaptive
+  Cards through Graph app-only auth and may opt into Acknowledge, Resolve,
+  Escalate, and Start AI Session after a Bot Framework app ID is configured.
+  Teams activities require a valid Microsoft-signed JWT, durable Activity-ID
+  idempotency, a verified Azure AD object-ID mapping, an active user, and
+  Admin/Operator RBAC. The channel UI exposes Teams action readiness; safe
+  authenticated-link fallback remains the default.
+
 - **v1.1 Notification Collaboration Phase B — Slack verified native actions.**
   Slack Notification Channels can opt into Block Kit actions for Acknowledge,
   Resolve, Escalate, and Start AI Session once a signing secret is configured.

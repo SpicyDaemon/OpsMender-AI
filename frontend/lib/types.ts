@@ -632,10 +632,26 @@ export interface BotConnectorUpsert {
   native_actions_enabled?: boolean;
 }
 
+export type BotConnectorTestCheckLevel = "pass" | "warn" | "fail";
+
+export interface BotConnectorTestCheck {
+  name: string;
+  level: BotConnectorTestCheckLevel;
+  detail: string;
+}
+
 export interface BotConnectorTestResponse {
   success: boolean;
   detail: string;
   status: BotConnectorStatus;
+  checks: BotConnectorTestCheck[];
+  live_message_sent: boolean;
+  target_chat_id: string | null;
+}
+
+export interface BotConnectorTestRequest {
+  live?: boolean;
+  chat_id?: string;
 }
 
 export type BotConnectorFieldKind =

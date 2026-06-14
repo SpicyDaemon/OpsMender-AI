@@ -213,9 +213,12 @@ const platformSchemas = vi.hoisted(() => [
 
 // The component pulls in the whole config API surface; only listBotPlatformSchemas
 // runs on mount. Stub the module so the import graph resolves.
+const testBotConnectorMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/api", () => ({
   listBotPlatformSchemas: () =>
     Promise.resolve({ items: platformSchemas, total: platformSchemas.length }),
+  testBotConnector: testBotConnectorMock,
   listTeams: () =>
     Promise.resolve({
       items: [
@@ -425,6 +428,47 @@ describe("Notification Channels capability rendering", () => {
       .querySelector("input") as HTMLInputElement;
     fireEvent.click(payments);
     expect(payments.checked).toBe(true);
+  });
+
+  it("offers config-check and live-test buttons and renders structured checks", async () => {
+    testBotConnectorMock.mockReset();
+    testBotConnectorMock.mockResolvedValue({
+      success: true,
+      detail: "Live test message delivered; configuration looks healthy.",
+      status: "healthy",
+      live_message_sent: true,
+      target_chat_id: "C123",
+      checks: [
+        { name: "enabled", level: "pass", detail: "Connector is enabled." },
+        {
+          name: "destination",
+          level: "warn",
+          detail: "No destination chat configured; lifecycle posts will be skipped.",
+        },
+        { name: "delivery", level: "pass", detail: "Test message delivered to C123." },
+      ],
+    });
+
+    render(
+      <BotConnectorSection connectors={[slack]} onReload={async () => {}} canEdit />,
+    );
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/i }));
+    expect(
+      await screen.findByRole("button", { name: /Check configuration/i }),
+    ).toBeTruthy();
+    const liveButton = screen.getByRole("button", { name: /Send live test/i });
+    fireEvent.click(liveButton);
+
+    await waitFor(() =>
+      expect(testBotConnectorMock).toHaveBeenCalledWith("c1", { live: true }),
+    );
+    expect(await screen.findByText(/live message sent/i)).toBeTruthy();
+    expect(screen.getByText(/Test message delivered to C123\./)).toBeTruthy();
+    expect(
+      screen.getByText(/No destination chat configured/),
+    ).toBeTruthy();
   });
 
   it("uses accurate Discord and Mailgun configuration copy", async () => {

@@ -71,7 +71,11 @@ Workspace-level notification channels are managed under **Paging & On-call** > *
 3. Add platform-specific connector settings as JSON.
 4. Add credentials as `key=value` lines (e.g., `bot_token=...`).
 5. Select allowed capabilities (e.g., `incident_lookup`, `session_status`, `approvals`, `notifications`).
-6. Click **Test** to validate the saved configuration.
+6. Click **Check configuration** to validate the saved configuration (enabled,
+   credentials, capabilities, destination, team scope, and native-action
+   readiness are each graded pass/warn/fail), or **Send live test** to probe the
+   provider connection and post a real test message to the channel's
+   destination.
 
 Telegram webhook URL:
 

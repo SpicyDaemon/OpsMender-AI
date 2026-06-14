@@ -1211,10 +1211,34 @@ class BotConnectorListResponse(BaseModel):
     total: int
 
 
+class BotConnectorTestCheck(BaseModel):
+    """One structured check in a Notification Channel test result."""
+
+    name: str
+    level: str  # "pass" | "warn" | "fail"
+    detail: str
+
+
+class BotConnectorTestRequest(BaseModel):
+    """Optional body for the connector test.
+
+    ``live=False`` (default) runs configuration/readiness checks only — no
+    network call, no message sent. ``live=True`` additionally verifies the
+    provider connection (where the adapter supports it) and **sends a real test
+    message** to ``chat_id`` (or the channel's configured destination).
+    """
+
+    live: bool = False
+    chat_id: Optional[str] = None
+
+
 class BotConnectorTestResponse(BaseModel):
     success: bool
     detail: str
     status: str
+    checks: list[BotConnectorTestCheck] = Field(default_factory=list)
+    live_message_sent: bool = False
+    target_chat_id: Optional[str] = None
 
 
 class BotConnectorFieldOption(BaseModel):

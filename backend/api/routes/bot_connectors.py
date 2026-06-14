@@ -17,6 +17,8 @@ from backend.api.schemas import (
     BotConnectorPlatformListResponse,
     BotConnectorPlatformSchema,
     BotConnectorResponse,
+    BotConnectorTestCheck,
+    BotConnectorTestRequest,
     BotConnectorTestResponse,
     BotConnectorUpsert,
     BotUserLinkCreate,
@@ -227,29 +229,177 @@ async def _to_response(
     )
 
 
-def _test_connector_configuration(
+def _check(name: str, level: str, detail: str) -> BotConnectorTestCheck:
+    return BotConnectorTestCheck(name=name, level=level, detail=detail)
+
+
+def _resolve_test_chat_id(
     connector: BotConnector,
-) -> tuple[bool, str, str, str | None]:
+    requested: str | None,
+) -> str | None:
+    """Pick the destination for a live test: caller-supplied wins, otherwise the
+    channel's default chat, otherwise the first allowlisted chat."""
+    if requested and requested.strip():
+        return requested.strip()
+    config = connector.config or {}
+    default_chat_id = config.get("default_chat_id")
+    if default_chat_id:
+        return str(default_chat_id)
+    allowed = config.get("allowed_chat_ids") or []
+    if isinstance(allowed, list):
+        for item in allowed:
+            if item:
+                return str(item)
+    return None
+
+
+def _connector_config_checks(
+    connector: BotConnector,
+    *,
+    requested_chat_id: str | None = None,
+) -> list[BotConnectorTestCheck]:
+    """Structured, network-free configuration + readiness checks.
+
+    Each check is a ``pass`` / ``warn`` / ``fail``. ``fail`` means the channel
+    cannot work as configured; ``warn`` means it will work but a useful behavior
+    is missing (e.g. no destination, native actions not yet verified).
+    """
+    checks: list[BotConnectorTestCheck] = []
+
     if not connector.is_enabled:
-        return False, "Connector is disabled.", "disabled", "Connector is disabled."
+        checks.append(_check("enabled", "fail", "Connector is disabled."))
+        return checks
+    checks.append(_check("enabled", "pass", "Connector is enabled."))
 
     credentials = connector.credentials or {}
     required_keys = REQUIRED_CREDENTIAL_KEYS.get(connector.platform, ())
     missing = [key for key in required_keys if not credentials.get(key)]
     if missing:
-        detail = f"Missing required credential keys: {', '.join(missing)}."
-        return False, detail, "not_configured", detail
+        checks.append(
+            _check(
+                "credentials",
+                "fail",
+                f"Missing required credential keys: {', '.join(missing)}.",
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "credentials",
+                "pass",
+                "Required stored credentials are present."
+                if required_keys
+                else "No stored credentials required for this platform.",
+            )
+        )
 
-    if not connector.allowed_capabilities:
-        detail = "At least one allowed capability is required."
-        return False, detail, "error", detail
+    capabilities = list(connector.allowed_capabilities or [])
+    if not capabilities:
+        checks.append(
+            _check("capabilities", "fail", "At least one capability is required.")
+        )
+    else:
+        checks.append(
+            _check(
+                "capabilities",
+                "pass",
+                f"Enabled capabilities: {', '.join(sorted(capabilities))}.",
+            )
+        )
 
-    return (
-        True,
-        "Required stored credentials are present. This check validates configuration only; it does not send a message or enable native actions.",
-        "healthy",
-        None,
-    )
+    # Destination — a notifications channel with no chat target silently
+    # delivers nowhere, so surface it as a warning operators can act on.
+    if "notifications" in capabilities:
+        target = _resolve_test_chat_id(connector, requested_chat_id)
+        if target:
+            checks.append(
+                _check("destination", "pass", f"Lifecycle posts target chat {target}.")
+            )
+        else:
+            checks.append(
+                _check(
+                    "destination",
+                    "warn",
+                    "No destination chat configured (set a default channel ID or "
+                    "allowed chat IDs); lifecycle posts will be skipped.",
+                )
+            )
+
+    # Team scope — informational. The resolver collapses an empty/invalid team
+    # list back to workspace, so flag the case where the channel *meant* to be
+    # team-scoped but no valid teams survived (it would silently go workspace-wide).
+    scope, team_ids = _connector_team_scope(connector)
+    raw_team_scope = (connector.config or {}).get("team_scope")
+    if scope == "teams":
+        checks.append(
+            _check("team_scope", "pass", f"Scoped to {len(team_ids)} team(s).")
+        )
+    elif raw_team_scope == "teams":
+        checks.append(
+            _check(
+                "team_scope",
+                "warn",
+                "Team-scoped channel has no valid teams; it will fall back to "
+                "workspace-wide delivery.",
+            )
+        )
+    else:
+        checks.append(_check("team_scope", "pass", "Workspace-wide channel."))
+
+    # Native-action readiness — only meaningful for verified-callback platforms.
+    caps = get_platform_capabilities(connector.platform)
+    if connector.native_actions_enabled:
+        if not (caps and caps.interactive_actions):
+            checks.append(
+                _check(
+                    "native_actions",
+                    "warn",
+                    "Native actions enabled but this platform does not support "
+                    "verified interactive actions; posts use authenticated links.",
+                )
+            )
+        elif connector.callback_status == "verified":
+            checks.append(
+                _check(
+                    "native_actions",
+                    "pass",
+                    "Native actions enabled and a callback has been verified.",
+                )
+            )
+        elif connector.callback_status == "configured":
+            checks.append(
+                _check(
+                    "native_actions",
+                    "warn",
+                    "Native actions configured but not yet verified by a real "
+                    "callback; buttons render and the first valid click verifies.",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "native_actions",
+                    "warn",
+                    "Native actions enabled but no callback verifier is configured; "
+                    "posts fall back to authenticated links.",
+                )
+            )
+
+    return checks
+
+
+def _status_from_checks(checks: list[BotConnectorTestCheck]) -> tuple[bool, str, str]:
+    """Derive (success, status, error_or_none) from structured checks."""
+    failed = [c for c in checks if c.level == "fail"]
+    if failed:
+        # Map the first hard failure to a connector status for the badge.
+        first = failed[0]
+        if first.name == "enabled":
+            return False, "disabled", first.detail
+        if first.name == "credentials":
+            return False, "not_configured", first.detail
+        return False, "error", first.detail
+    return True, "healthy", ""
 
 
 def _field_spec_to_schema(spec: FieldSpec) -> BotConnectorFieldSchema:
@@ -458,6 +608,7 @@ async def update_bot_connector(
 )
 async def test_bot_connector(
     connector_id: uuid.UUID,
+    body: BotConnectorTestRequest | None = None,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
@@ -469,19 +620,102 @@ async def test_bot_connector(
             detail="Bot connector not found",
         )
 
-    success, detail, next_status, error = _test_connector_configuration(connector)
+    request = body or BotConnectorTestRequest()
+    checks = _connector_config_checks(connector, requested_chat_id=request.chat_id)
+    target_chat_id = _resolve_test_chat_id(connector, request.chat_id)
+    live_message_sent = False
+
+    # Only attempt a live check when configuration is sound — no point calling a
+    # provider with missing credentials.
+    config_ok = not any(c.level == "fail" for c in checks)
+    if request.live and config_ok:
+        adapter = get_adapter(connector.platform)
+        if adapter is None:
+            checks.append(
+                _check("connection", "fail", "No adapter is registered for this platform.")
+            )
+        else:
+            # Provider reachability, where the adapter supports a dedicated probe.
+            probe = getattr(adapter, "test_connection", None)
+            if callable(probe):
+                ok, err = await probe(connector)
+                checks.append(
+                    _check("connection", "pass", "Provider credentials accepted.")
+                    if ok
+                    else _check("connection", "fail", f"Connection failed: {err}")
+                )
+            # Live delivery — actually send a message to the resolved destination.
+            if not any(c.level == "fail" for c in checks):
+                if not target_chat_id:
+                    checks.append(
+                        _check(
+                            "delivery",
+                            "fail",
+                            "No destination chat to send a live test message to.",
+                        )
+                    )
+                else:
+                    send = getattr(adapter, "send_message", None)
+                    if not callable(send):
+                        checks.append(
+                            _check(
+                                "delivery",
+                                "warn",
+                                "This adapter does not support an outbound test message.",
+                            )
+                        )
+                    else:
+                        ok, err = await send(
+                            connector,
+                            chat_id=target_chat_id,
+                            text=(
+                                "OpsMender test message — your Notification Channel "
+                                "is configured correctly."
+                            ),
+                        )
+                        if ok:
+                            live_message_sent = True
+                            checks.append(
+                                _check(
+                                    "delivery",
+                                    "pass",
+                                    f"Test message delivered to {target_chat_id}.",
+                                )
+                            )
+                        else:
+                            checks.append(
+                                _check("delivery", "fail", f"Delivery failed: {err}")
+                            )
+
+    success, next_status, error = _status_from_checks(checks)
     await BotConnectorRepo.mark_status(
         db,
         org_id,
         connector_id,
         status=next_status,
-        error=error,
+        error=error or None,
     )
     await db.commit()
+
+    if not success:
+        summary = next(c.detail for c in checks if c.level == "fail")
+    elif live_message_sent:
+        summary = "Live test message delivered; configuration looks healthy."
+    elif request.live:
+        summary = "Configuration checks passed."
+    else:
+        summary = (
+            "Configuration and readiness checks passed. Run a live test to send "
+            "a real message."
+        )
+
     return BotConnectorTestResponse(
         success=success,
-        detail=detail,
+        detail=summary,
         status=next_status,
+        checks=checks,
+        live_message_sent=live_message_sent,
+        target_chat_id=target_chat_id,
     )
 
 

@@ -557,6 +557,7 @@ import type {
   BotConnectorPlatformListResponse,
   BotConnectorPlatformSchema,
   BotConnectorResponse,
+  BotConnectorTestRequest,
   BotConnectorTestResponse,
   BotConnectorUpsert,
 } from "./types";
@@ -593,8 +594,9 @@ export async function deleteBotConnector(id: string): Promise<void> {
 
 export async function testBotConnector(
   id: string,
+  body: BotConnectorTestRequest = {},
 ): Promise<BotConnectorTestResponse> {
-  return api.post<BotConnectorTestResponse>(`/bot-connectors/${id}/test`);
+  return api.post<BotConnectorTestResponse>(`/bot-connectors/${id}/test`, body);
 }
 
 export async function listBotPlatformSchemas(): Promise<BotConnectorPlatformListResponse> {

@@ -10,6 +10,11 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
+from backend.api.routes.bot_connectors import (
+    _connector_config_checks,
+    _resolve_test_chat_id,
+    _status_from_checks,
+)
 from backend.bots.connectors import SignalAdapter, TelegramAdapter, get_adapter
 from backend.db.models import BotConnector
 
@@ -754,6 +759,87 @@ class TestTeamsAdapter:
             "Escalate",
             "Start AI Session",
         }
+
+
+class TestConnectorTestChecks:
+    """Phase E: structured Notification Channel test checks."""
+
+    def _levels(self, checks):
+        return {c.name: c.level for c in checks}
+
+    def _connector(self, **overrides):
+        defaults = dict(
+            name="slack-c",
+            platform="slack",
+            config={"default_chat_id": "C123"},
+            credentials={"signing_secret": "s", "bot_token": "xoxb"},
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=True,
+            native_actions_enabled=False,
+        )
+        defaults.update(overrides)
+        return BotConnector(**defaults)
+
+    def test_healthy_connector_passes_all(self):
+        checks = _connector_config_checks(self._connector())
+        levels = self._levels(checks)
+        assert levels["enabled"] == "pass"
+        assert levels["credentials"] == "pass"
+        assert levels["capabilities"] == "pass"
+        assert levels["destination"] == "pass"
+        success, status_, error = _status_from_checks(checks)
+        assert success is True and status_ == "healthy" and error == ""
+
+    def test_disabled_connector_fails(self):
+        checks = _connector_config_checks(self._connector(is_enabled=False))
+        assert self._levels(checks)["enabled"] == "fail"
+        success, status_, _ = _status_from_checks(checks)
+        assert success is False and status_ == "disabled"
+
+    def test_missing_credentials_fails_not_configured(self):
+        checks = _connector_config_checks(
+            self._connector(credentials={"signing_secret": "s"})
+        )
+        assert self._levels(checks)["credentials"] == "fail"
+        success, status_, _ = _status_from_checks(checks)
+        assert success is False and status_ == "not_configured"
+
+    def test_no_destination_warns_for_notifications(self):
+        checks = _connector_config_checks(self._connector(config={}))
+        assert self._levels(checks)["destination"] == "warn"
+        # Warnings do not fail the overall test.
+        success, status_, _ = _status_from_checks(checks)
+        assert success is True and status_ == "healthy"
+
+    def test_team_scope_without_teams_warns(self):
+        checks = _connector_config_checks(
+            self._connector(config={"default_chat_id": "C1", "team_scope": "teams"})
+        )
+        assert self._levels(checks)["team_scope"] == "warn"
+
+    def test_native_actions_configured_not_verified_warns(self):
+        connector = self._connector(native_actions_enabled=True)
+        connector.callback_status = "configured"
+        checks = _connector_config_checks(connector)
+        assert self._levels(checks)["native_actions"] == "warn"
+
+    def test_native_actions_verified_passes(self):
+        connector = self._connector(native_actions_enabled=True)
+        connector.callback_status = "verified"
+        checks = _connector_config_checks(connector)
+        assert self._levels(checks)["native_actions"] == "pass"
+
+    def test_resolve_chat_id_precedence(self):
+        connector = self._connector(
+            config={"default_chat_id": "C1", "allowed_chat_ids": ["C2"]}
+        )
+        assert _resolve_test_chat_id(connector, "C9") == "C9"
+        assert _resolve_test_chat_id(connector, None) == "C1"
+        connector.config = {"allowed_chat_ids": ["C2", "C3"]}
+        assert _resolve_test_chat_id(connector, None) == "C2"
+        connector.config = {}
+        assert _resolve_test_chat_id(connector, None) is None
 
 
 class TestSlackAdapter:

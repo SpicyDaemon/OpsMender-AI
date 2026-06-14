@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.1 Notification Collaboration Phase E — Notification Channel testing &
+  configuration UX.** The connector test endpoint now returns **structured
+  checks** (enabled · credentials · capabilities · destination · team scope ·
+  native-action readiness), each graded `pass`/`warn`/`fail`, instead of a
+  single pass/fail line. A new opt-in **live test** (`POST
+  /bot-connectors/{id}/test` with `{"live": true}`) probes the provider
+  connection where the adapter supports it and **sends a real test message** to
+  the channel's destination (or a supplied `chat_id`), reporting whether it was
+  delivered — but only after configuration checks pass, so a misconfigured
+  channel never triggers a provider call. The config UI replaces the single
+  "Test connection" button with **Check configuration** and **Send live test**,
+  and renders the per-check results with pass/warn/fail markers. A
+  notifications-capable channel with no destination chat now surfaces a warning
+  (lifecycle posts would otherwise be silently skipped). No schema change.
+
 - **v1.1 Notification Collaboration Phase D — message update-in-place with
   follow-up fallback.** Slack Notification Channels now edit the incident card
   in place via `chat.update` using the stored message timestamp, so lifecycle

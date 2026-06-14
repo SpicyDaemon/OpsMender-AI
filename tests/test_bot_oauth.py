@@ -544,3 +544,138 @@ class TestSchemaExposesOAuth:
 
 def test_supported_platforms_constant():
     assert set(SUPPORTED_PLATFORMS) == {"slack", "discord"}
+
+
+# ---------------------------------------------------------------------------
+# Phase E — Notification Channel testing (structured checks + live send)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def configured_slack_connector_id(client, app, auth_headers):
+    async with app.state.session_factory() as db:
+        connector = BotConnector(
+            org_id=TEST_ORG_ID,
+            name="slack-test-route",
+            platform="slack",
+            config={"default_chat_id": "C123"},
+            credentials={"signing_secret": "s", "bot_token": "xoxb"},
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=True,
+        )
+        db.add(connector)
+        await db.commit()
+        await db.refresh(connector)
+        return connector.id
+
+
+class TestConnectorTestRoute:
+    async def test_config_only_returns_structured_checks(
+        self, client, auth_headers, configured_slack_connector_id
+    ):
+        resp = await client.post(
+            f"/bot-connectors/{configured_slack_connector_id}/test",
+            json={"live": False},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["success"] is True
+        assert body["live_message_sent"] is False
+        names = {c["name"] for c in body["checks"]}
+        assert {"enabled", "credentials", "capabilities", "destination"} <= names
+        # No live call → no connection/delivery checks.
+        assert "delivery" not in names
+
+    async def test_live_test_sends_real_message(
+        self, client, auth_headers, configured_slack_connector_id, monkeypatch
+    ):
+        sent = {}
+
+        async def fake_send(self, connector, *, chat_id, text):
+            sent["chat_id"] = chat_id
+            sent["text"] = text
+            return True, None
+
+        monkeypatch.setattr(
+            "backend.bots.connectors.slack.SlackAdapter.send_message", fake_send
+        )
+
+        resp = await client.post(
+            f"/bot-connectors/{configured_slack_connector_id}/test",
+            json={"live": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["success"] is True
+        assert body["live_message_sent"] is True
+        assert body["target_chat_id"] == "C123"
+        assert sent["chat_id"] == "C123"
+        delivery = next(c for c in body["checks"] if c["name"] == "delivery")
+        assert delivery["level"] == "pass"
+
+    async def test_live_delivery_failure_reports_fail(
+        self, client, auth_headers, configured_slack_connector_id, monkeypatch
+    ):
+        async def fake_send(self, connector, *, chat_id, text):
+            return False, "channel_not_found"
+
+        monkeypatch.setattr(
+            "backend.bots.connectors.slack.SlackAdapter.send_message", fake_send
+        )
+
+        resp = await client.post(
+            f"/bot-connectors/{configured_slack_connector_id}/test",
+            json={"live": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["success"] is False
+        assert body["live_message_sent"] is False
+        delivery = next(c for c in body["checks"] if c["name"] == "delivery")
+        assert delivery["level"] == "fail"
+
+    async def test_live_skipped_when_config_invalid(
+        self, client, auth_headers, app, monkeypatch
+    ):
+        async with app.state.session_factory() as db:
+            connector = BotConnector(
+                org_id=TEST_ORG_ID,
+                name="slack-missing-creds",
+                platform="slack",
+                config={"default_chat_id": "C123"},
+                credentials={"signing_secret": "s"},  # missing bot_token
+                allowed_capabilities=["notifications"],
+                status="not_configured",
+                is_enabled=True,
+            )
+            db.add(connector)
+            await db.commit()
+            await db.refresh(connector)
+            connector_id = connector.id
+
+        called = {"sent": False}
+
+        async def fake_send(self, connector, *, chat_id, text):
+            called["sent"] = True
+            return True, None
+
+        monkeypatch.setattr(
+            "backend.bots.connectors.slack.SlackAdapter.send_message", fake_send
+        )
+
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/test",
+            json={"live": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["success"] is False
+        assert body["status"] == "not_configured"
+        # Live send must NOT be attempted when config fails.
+        assert called["sent"] is False
+        assert body["live_message_sent"] is False

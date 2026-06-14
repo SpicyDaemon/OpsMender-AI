@@ -3122,11 +3122,11 @@ function BotConnectorModal({
     await onSubmit(form);
   }
 
-  async function handleTestConnection() {
+  async function handleTestConnection(live: boolean) {
     if (!initialConnector) return;
     setTestState({ status: "running" });
     try {
-      const result = await testBotConnector(initialConnector.id);
+      const result = await testBotConnector(initialConnector.id, { live });
       setTestState({
         status: result.success ? "success" : "failure",
         result,
@@ -3138,6 +3138,9 @@ function BotConnectorModal({
           success: false,
           detail: err instanceof Error ? err.message : "Request failed",
           status: "error",
+          checks: [],
+          live_message_sent: false,
+          target_chat_id: null,
         },
       });
     }
@@ -3161,6 +3164,9 @@ function BotConnectorModal({
           success: false,
           detail: err instanceof Error ? err.message : "Unable to start OAuth.",
           status: "error",
+          checks: [],
+          live_message_sent: false,
+          target_chat_id: null,
         },
       });
       setOauthStarting(false);
@@ -3455,8 +3461,44 @@ function BotConnectorModal({
                 {testState.status === "success" ? "Test passed" : "Test failed"}
               </span>
               <Badge>{testState.result.status.replace(/_/g, " ")}</Badge>
+              {testState.result.live_message_sent && (
+                <Badge>live message sent</Badge>
+              )}
             </div>
             <p className="mt-1 text-xs">{testState.result.detail}</p>
+            {testState.result.checks.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {testState.result.checks.map((check) => (
+                  <li
+                    key={check.name}
+                    className="flex items-start gap-2 text-xs text-fg-secondary"
+                  >
+                    <span
+                      className={
+                        check.level === "fail"
+                          ? "text-status-critical"
+                          : check.level === "warn"
+                            ? "text-status-medium"
+                            : "text-status-low"
+                      }
+                      aria-hidden
+                    >
+                      {check.level === "fail"
+                        ? "✗"
+                        : check.level === "warn"
+                          ? "!"
+                          : "✓"}
+                    </span>
+                    <span>
+                      <span className="font-medium text-fg-primary">
+                        {check.name.replace(/_/g, " ")}
+                      </span>{" "}
+                      — {check.detail}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
@@ -3492,14 +3534,24 @@ function BotConnectorModal({
             </Button>
           )}
           {initialConnector && (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleTestConnection}
-              loading={testState.status === "running"}
-            >
-              <Plug size={13} /> Test connection
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => handleTestConnection(false)}
+                loading={testState.status === "running"}
+              >
+                <Plug size={13} /> Check configuration
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => handleTestConnection(true)}
+                loading={testState.status === "running"}
+              >
+                <Send size={13} /> Send live test
+              </Button>
+            </>
           )}
           <Button type="submit" loading={saving} disabled={!fillable}>
             <Save size={13} /> {initialConnector ? "Save Changes" : "Create Connector"}
@@ -3888,6 +3940,9 @@ export function BotConnectorSection({
             success: false,
             detail: err instanceof Error ? err.message : "Request failed",
             status: "error",
+            checks: [],
+            live_message_sent: false,
+            target_chat_id: null,
           },
         },
       }));

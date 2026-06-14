@@ -421,6 +421,8 @@ function GenerateModal({
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState(false);
   const [tools, setTools] = useState<EditableTool[]>([]);
+  const [rawTools, setRawTools] = useState<SkillDiscoveredTool[]>([]);
+  const [filter, setFilter] = useState("");
   const [name, setName] = useState("New MCP Skill (generated)");
   const [environment, setEnvironment] = useState("production");
   const [intent, setIntent] = useState("");
@@ -438,6 +440,8 @@ function GenerateModal({
       setDiscovering(false);
       setDiscovered(false);
       setTools([]);
+      setRawTools([]);
+      setFilter("");
       setName("New MCP Skill (generated)");
       setEnvironment("production");
       setIntent("");
@@ -460,7 +464,9 @@ function GenerateModal({
     setError("");
     try {
       const res = await discoverSkillTools(mcpServerId);
+      setRawTools(res.tools);
       setTools(res.tools.map(fromDiscovered));
+      setFilter("");
       setDiscovered(true);
       const serverName = servers.find((s) => s.id === mcpServerId)?.name;
       if (serverName) setName(`${serverName} skill`);
@@ -478,6 +484,16 @@ function GenerateModal({
     setTools((current) =>
       current.map((t, i) => (i === index ? { ...t, ...patch } : t)),
     );
+  }
+
+  function denyAllGeneric() {
+    setTools((current) =>
+      current.map((t) => (t.generic ? { ...t, deny: true } : t)),
+    );
+  }
+
+  function resetToSuggestions() {
+    setTools(rawTools.map(fromDiscovered));
   }
 
   async function handleAiAssist() {
@@ -545,6 +561,18 @@ function GenerateModal({
           `inverse to pass the backend safety floor. Complete or untick Tier 0 ` +
           `for: ${incomplete.join(", ")}.`,
       );
+      return;
+    }
+    // Soft guard: nudge the operator about still-flagged rows (AI downgrades,
+    // unrecognized tools, autonomous-destructive). Not a hard block.
+    const flagged = tools.filter((t) => t.needs_review).length;
+    if (
+      flagged > 0 &&
+      !window.confirm(
+        `${flagged} tool(s) are still flagged for review. Generate the draft ` +
+          `anyway? You can keep editing it before saving.`,
+      )
+    ) {
       return;
     }
     setGenerating(true);
@@ -658,6 +686,26 @@ function GenerateModal({
               decides what can actually run.
             </p>
 
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                aria-label="Filter tools"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter tools…"
+                className="max-w-[16rem]"
+              />
+              <Button variant="secondary" size="sm" onClick={denyAllGeneric}>
+                Deny all generic
+              </Button>
+              <Button variant="secondary" size="sm" onClick={resetToSuggestions}>
+                Reset to suggestions
+              </Button>
+              <span className="ml-auto text-xs text-fg-secondary">
+                {tools.length} tools · {tools.filter((t) => t.needs_review).length}{" "}
+                flagged · {tools.filter((t) => t.deny).length} denied
+              </span>
+            </div>
+
             <div className="max-h-[22rem] overflow-y-auto rounded-md border border-border-subtle">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-bg-elevated text-left text-xs text-fg-secondary">
@@ -669,7 +717,16 @@ function GenerateModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {tools.map((t, i) => (
+                  {tools
+                    .map((t, i) => ({ t, i }))
+                    .filter(({ t }) => {
+                      const q = filter.trim().toLowerCase();
+                      if (!q) return true;
+                      return `${t.name} ${t.description ?? ""}`
+                        .toLowerCase()
+                        .includes(q);
+                    })
+                    .map(({ t, i }) => (
                     <tr key={t.name} className="border-t border-border-subtle align-top">
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-1">

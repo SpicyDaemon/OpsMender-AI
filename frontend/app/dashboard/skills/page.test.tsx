@@ -163,12 +163,15 @@ describe("MCP Skills page", () => {
     expect(screen.getByText("kubectl")).toBeTruthy();
     expect(screen.getAllByText("generic").length).toBeGreaterThan(0);
 
-    // Generate the draft and hand off to the editor.
+    // Generate the draft and hand off to the editor. kubectl is flagged for
+    // review, so confirm past the needs-review guard.
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
     await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByDisplayValue(/GENERATED-CONTENT/)).toBeTruthy(),
     );
+    confirmSpy.mockRestore();
   });
 
   it("Skill Studio: AI assist applies suggestions and per-tier instructions", async () => {
@@ -367,6 +370,64 @@ describe("MCP Skills page", () => {
         ).value,
       ).toBe("restart_service_previous"),
     );
+  });
+
+  it("Skill Studio: filter narrows the tool list", async () => {
+    await openStudioWithTool(CAUTION_TOOL);
+    // Discover only returns one tool in this helper, so add a second via a
+    // dedicated discover mock for this test.
+    expect(screen.getByText("restart_service")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Filter tools"), {
+      target: { value: "zzz-no-match" },
+    });
+    expect(screen.queryByText("restart_service")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Filter tools"), {
+      target: { value: "restart" },
+    });
+    expect(screen.getByText("restart_service")).toBeTruthy();
+  });
+
+  it("Skill Studio: 'Deny all generic' denies generic tools", async () => {
+    await openStudioWithTool({
+      name: "kubectl",
+      description: "run kubectl",
+      suggested_classification: "destructive",
+      generic: true,
+      suggested_deny: false,
+      needs_review: true,
+      rationale: "arbitrary commands",
+    });
+    const denyBox = screen.getByLabelText("Deny kubectl") as HTMLInputElement;
+    expect(denyBox.checked).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /deny all generic/i }));
+    expect(denyBox.checked).toBe(true);
+  });
+
+  it("Skill Studio: needs-review confirm guard before generate", async () => {
+    apiMocks.generateSkill.mockResolvedValue({
+      name: "s",
+      content_md: "---\n---\n# x\nGENERATED",
+    });
+    // A flagged (needs_review) tool triggers a confirm before generation.
+    await openStudioWithTool({
+      name: "frobnicate",
+      description: "unknown verb",
+      suggested_classification: "caution",
+      generic: false,
+      suggested_deny: false,
+      needs_review: true,
+      rationale: "unrecognized",
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(apiMocks.generateSkill).not.toHaveBeenCalled();
+
+    // Accepting the confirm proceeds.
+    confirmSpy.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
+    confirmSpy.mockRestore();
   });
 
   it("create modal explains Unassigned drafts and defaults to unassigned", async () => {

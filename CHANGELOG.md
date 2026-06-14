@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Skill Studio polish.** The Generate-from-MCP wizard gains a tool
+  **search/filter**, bulk **Deny all generic** and **Reset to suggestions**
+  actions, a live **summary** (tools · flagged · denied), and a **needs-review
+  confirm** before generating when any tool is still flagged (AI downgrade,
+  unrecognized verb, autonomous-destructive). The Tier 0-incomplete hard block is
+  unchanged. Frontend-only; no schema or enforcement change.
+
 ### Fixed
 
 - **Skill Studio Tier 0 safety metadata (v1.1 correctness fix).** Generated MCP

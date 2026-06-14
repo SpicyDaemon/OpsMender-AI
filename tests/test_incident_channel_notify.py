@@ -240,6 +240,8 @@ class TestIncidentEventFanOut:
                 text,
                 external_message_id,
                 external_thread_id=None,
+                incident=None,
+                native_actions_ready=False,
             ):
                 self.updated.append((chat_id, external_message_id, external_thread_id, text))
                 return UpdateResult(
@@ -290,6 +292,73 @@ class TestIncidentEventFanOut:
         ]
         assert all(r.external_message_id == "msg-1" for r in receipts)
         assert all(r.can_update is True for r in receipts)
+
+    async def test_update_fallback_posts_followup_message(self, factory, monkeypatch):
+        """When the provider cannot edit (edit window closed, message gone),
+        the notifier posts a fresh follow-up message instead of dropping the
+        update — and records a second receipt."""
+
+        class FallbackAdapter:
+            platform = "slack"
+
+            def __init__(self):
+                self.sent = []
+
+            async def send_incident_update(
+                self, connector, *, chat_id, text, incident=None, native_actions_ready=False
+            ):
+                self.sent.append((chat_id, text))
+                return DeliveryReceipt(
+                    external_channel_id=chat_id,
+                    external_message_id=f"msg-{len(self.sent)}",
+                    can_update=True,
+                )
+
+            async def update_incident_update(
+                self,
+                connector,
+                *,
+                chat_id,
+                text,
+                external_message_id,
+                external_thread_id=None,
+                incident=None,
+                native_actions_ready=False,
+            ):
+                return UpdateResult(
+                    ok=False, error="edit_window_closed", fallback_to_followup=True
+                )
+
+        fake = FallbackAdapter()
+        monkeypatch.setattr(notifier, "get_adapter", lambda platform: fake)
+        monkeypatch.setattr(notifier, "supports_message_update", lambda platform: True)
+
+        await _make_connector(
+            factory,
+            platform="slack",
+            capabilities=["notifications"],
+            allowed_chat_ids=["C123"],
+        )
+        incident_id = await _make_incident(factory)
+
+        await notifier.deliver_incident_event(
+            factory, org_id=TEST_ORG_ID, incident_id=incident_id, event_type="incident.created"
+        )
+        await notifier.deliver_incident_event(
+            factory, org_id=TEST_ORG_ID, incident_id=incident_id, event_type="incident.resolved"
+        )
+
+        # Update failed -> a second message was posted (follow-up), not an edit.
+        assert len(fake.sent) == 2
+        async with factory() as db:
+            receipts = await IncidentNotificationReceiptRepo.list_for_incident(
+                db, TEST_ORG_ID, incident_id
+            )
+        assert [r.lifecycle_event for r in receipts] == [
+            "incident.created",
+            "incident.resolved",
+        ]
+        assert {r.external_message_id for r in receipts} == {"msg-1", "msg-2"}
 
     async def test_resolved_event_delivers(self, factory, monkeypatch):
         sent = []

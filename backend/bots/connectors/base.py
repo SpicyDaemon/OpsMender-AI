@@ -117,4 +117,16 @@ class BotConnectorAdapter(Protocol):
         text: str,
         external_message_id: str,
         external_thread_id: str | None = None,
-    ) -> UpdateResult: ...
+        incident: Any = None,
+        native_actions_ready: bool = False,
+    ) -> UpdateResult:
+        """Edit a previously-posted incident message in place.
+
+        Implementations re-render the incident card (when ``incident`` is
+        supplied) so the edited message reflects the new lifecycle state and
+        retains its native action controls. Return ``UpdateResult`` with
+        ``fallback_to_followup=True`` when the provider cannot edit (e.g. the
+        edit window closed or the message was deleted) so the caller posts a
+        fresh follow-up message instead.
+        """
+        ...

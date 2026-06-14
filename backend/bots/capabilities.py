@@ -95,6 +95,7 @@ def _cap(
     interactive_actions: bool = False,
     direct_message: bool = False,
     shared_channel: bool = False,
+    message_update: bool = False,
 ) -> PlatformCapabilities:
     return PlatformCapabilities(
         platform=platform,
@@ -103,6 +104,7 @@ def _cap(
         interactive_actions=interactive_actions,
         direct_message=direct_message,
         shared_channel=shared_channel,
+        message_update=message_update,
     )
 
 
@@ -117,6 +119,10 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         interactive_actions=True,
         direct_message=True,
         shared_channel=True,
+        # Slack chat.update edits a previously-posted message in place using the
+        # stored message ``ts``. Lifecycle status changes edit the card; the
+        # follow-up path covers edit-window/permission errors.
+        message_update=True,
     ),
     "teams": _cap(
         "teams",
@@ -125,6 +131,10 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         interactive_actions=True,
         direct_message=True,
         shared_channel=True,
+        # NOT message_update: Microsoft Graph app-only auth cannot edit the
+        # content of an already-posted chat message (only policyViolation is
+        # patchable). Teams therefore posts an honest follow-up message for each
+        # lifecycle change rather than claiming an unsupported edit path.
     ),
     "discord": _cap("discord", "Discord", incident_card=True, shared_channel=True),
     "telegram": _cap("telegram", "Telegram", incident_card=True, direct_message=True, shared_channel=True),

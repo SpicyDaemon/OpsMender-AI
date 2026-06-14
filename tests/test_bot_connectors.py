@@ -756,6 +756,130 @@ class TestTeamsAdapter:
         }
 
 
+class TestSlackAdapter:
+    """Phase D: Slack edits the incident message in place via chat.update."""
+
+    def _connector(self) -> BotConnector:
+        return BotConnector(
+            name="slack-test",
+            platform="slack",
+            config={"default_chat_id": "C123"},
+            credentials={"bot_token": "xoxb-test", "signing_secret": "shh"},
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=True,
+            native_actions_enabled=True,
+        )
+
+    def _incident(self):
+        return SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000123",
+            title="API outage",
+            description="500s",
+            priority="P1",
+            status="acknowledged",
+            severity="high",
+        )
+
+    def _patch_client(self, monkeypatch, *, response_json, status_code=200, captured=None):
+        captured = captured if captured is not None else {}
+
+        class FakeResponse:
+            def __init__(self):
+                self.status_code = status_code
+
+            def json(self):
+                return response_json
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            async def post(self, url, **kwargs):
+                captured["url"] = url
+                captured["json"] = kwargs.get("json")
+                return FakeResponse()
+
+        monkeypatch.setattr(
+            "backend.bots.connectors.slack.httpx.AsyncClient", FakeClient
+        )
+        return captured
+
+    async def test_send_incident_update_marks_message_updateable(self, monkeypatch):
+        captured = self._patch_client(
+            monkeypatch,
+            response_json={"ok": True, "channel": "C123", "ts": "1700000000.000100"},
+        )
+        receipt = await get_adapter("slack").send_incident_update(
+            self._connector(),
+            chat_id="C123",
+            text="fallback",
+            incident=self._incident(),
+            native_actions_ready=True,
+        )
+        assert receipt.ok is True
+        assert receipt.external_message_id == "1700000000.000100"
+        assert receipt.can_update is True
+        assert captured["url"].endswith("/chat.postMessage")
+        assert "blocks" in captured["json"]
+
+    async def test_update_incident_update_edits_in_place(self, monkeypatch):
+        captured = self._patch_client(
+            monkeypatch,
+            response_json={"ok": True, "channel": "C123", "ts": "1700000000.000100"},
+        )
+        result = await get_adapter("slack").update_incident_update(
+            self._connector(),
+            chat_id="C123",
+            text="updated",
+            external_message_id="1700000000.000100",
+            incident=self._incident(),
+            native_actions_ready=True,
+        )
+        assert result.ok is True
+        assert result.fallback_to_followup is False
+        assert result.receipt is not None
+        assert result.receipt.can_update is True
+        assert captured["url"].endswith("/chat.update")
+        assert captured["json"]["ts"] == "1700000000.000100"
+        assert "blocks" in captured["json"]
+
+    async def test_update_incident_update_falls_back_when_edit_window_closed(
+        self, monkeypatch
+    ):
+        self._patch_client(
+            monkeypatch,
+            response_json={"ok": False, "error": "edit_window_closed"},
+        )
+        result = await get_adapter("slack").update_incident_update(
+            self._connector(),
+            chat_id="C123",
+            text="updated",
+            external_message_id="1700000000.000100",
+            incident=self._incident(),
+        )
+        assert result.ok is False
+        assert result.fallback_to_followup is True
+
+    async def test_update_incident_update_no_token_is_hard_error(self, monkeypatch):
+        connector = self._connector()
+        connector.credentials = {"signing_secret": "shh"}
+        result = await get_adapter("slack").update_incident_update(
+            connector,
+            chat_id="C123",
+            text="updated",
+            external_message_id="1700000000.000100",
+        )
+        assert result.ok is False
+        assert result.fallback_to_followup is False
+
+
 class TestMailgunEmailAdapter:
     def _connector(
         self,

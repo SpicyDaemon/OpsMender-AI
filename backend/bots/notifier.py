@@ -268,6 +268,8 @@ async def _record_delivery(
     incident_id: uuid.UUID | None,
     lifecycle_event: str | None,
     rendered_status: str | None,
+    delivery_status: str = "delivered",
+    last_updated_at: datetime | None = None,
 ) -> None:
     await BotActionAuditRepo.create(
         db,
@@ -303,6 +305,8 @@ async def _record_delivery(
             rendered_status=rendered_status,
             can_update=receipt.can_update,
             session_id=session_id,
+            delivery_status=delivery_status,
+            last_updated_at=last_updated_at,
         )
 
 
@@ -318,7 +322,21 @@ async def _try_update_incident_notification(
     incident_id: uuid.UUID,
     lifecycle_event: str,
     rendered_status: str | None,
+    incident=None,
+    native_actions_ready: bool = False,
 ) -> bool:
+    """Edit the prior incident message in place when the platform supports it.
+
+    Returns ``True`` only when the message was edited and recorded. Returns
+    ``False`` — leaving the caller to post a fresh follow-up message — when the
+    platform cannot edit, there is no updateable prior message, or the provider
+    reports a recoverable edit failure. A recoverable failure is *not* treated
+    as a connector error; only the follow-up post records the durable receipt.
+    """
+    # Update-in-place needs the incident object to re-render the full card; the
+    # pre-built-text paths (escalation, session events) post a follow-up instead.
+    if incident is None:
+        return False
     if not supports_message_update(connector.platform):
         return False
     adapter = get_adapter(connector.platform)
@@ -343,10 +361,24 @@ async def _try_update_incident_notification(
         text=text,
         external_message_id=prior.external_message_id,
         external_thread_id=prior.external_thread_id,
+        incident=incident,
+        native_actions_ready=native_actions_ready,
     )
+
+    if not (result.ok and not result.fallback_to_followup):
+        # Recoverable failure (or explicit fallback request): let the caller post
+        # a new message. Audit the attempt without marking the connector errored.
+        log.info(
+            "incident notification update fell back to follow-up "
+            "(platform=%s incident=%s): %s",
+            connector.platform,
+            incident_id,
+            result.error,
+        )
+        return False
+
     receipt = result.receipt or DeliveryReceipt(
-        ok=result.ok,
-        error=result.error,
+        ok=True,
         external_message_id=prior.external_message_id,
         external_thread_id=prior.external_thread_id,
         external_channel_id=chat_id,
@@ -364,9 +396,11 @@ async def _try_update_incident_notification(
             incident_id=incident_id,
             lifecycle_event=lifecycle_event,
             rendered_status=rendered_status,
+            delivery_status="updated",
+            last_updated_at=_utcnow(),
         )
         await db.commit()
-    return result.ok and not result.fallback_to_followup
+    return True
 
 
 async def _deliver(
@@ -396,6 +430,8 @@ async def _deliver(
             incident_id=incident_id,
             lifecycle_event=lifecycle_event,
             rendered_status=rendered_status,
+            incident=incident,
+            native_actions_ready=native_actions_ready,
         )
         if updated:
             return

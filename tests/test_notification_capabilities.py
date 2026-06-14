@@ -55,12 +55,14 @@ def test_slack_and_teams_advertise_interactive_actions_in_phase_c():
         assert supports_interactive_actions(platform) is expected, platform
 
 
-def test_no_platform_advertises_message_updates_in_v1():
-    # The receipt/update framework exists, but no adapter currently ships a
-    # verified provider message-edit path.
+def test_only_slack_advertises_message_updates_in_phase_d():
+    # Phase D: Slack edits the incident message in place via chat.update.
+    # Teams stays follow-up-only — Microsoft Graph app-only auth cannot edit a
+    # posted chat message's content — and every other platform is unchanged.
     for platform, caps in PLATFORM_CAPABILITIES.items():
-        assert caps.message_update is False, platform
-        assert supports_message_update(platform) is False, platform
+        expected = platform == "slack"
+        assert caps.message_update is expected, platform
+        assert supports_message_update(platform) is expected, platform
 
 
 def test_delivery_is_the_floor_for_every_platform():
@@ -84,5 +86,5 @@ def test_as_dict_round_trip_exposes_delivery_only():
     assert data["incident_card"] is True
     assert data["incident_updates"] is True
     assert data["interactive_actions"] is True
-    assert data["message_update"] is False
+    assert data["message_update"] is True
     assert data["delivery_only"] is False

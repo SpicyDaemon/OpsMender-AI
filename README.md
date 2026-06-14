@@ -518,7 +518,9 @@ sender, and recipient. This channel configuration is separate from optional
 `OPSMENDER_SMTP_*` settings used for account invites and password resets. IMAP
 and inbound SMTP callbacks are not supported.
 
-**Future enhancements:** Discord/Telegram verified callbacks; per-adapter message edit-in-place support using stored notification receipts; bi-directional threaded chat and channel-to-OpsMender comment sync; MFA for action authorization; more platforms with first-class action support.
+**Message update-in-place (Slack):** as an incident progresses (acknowledged → resolved), Slack Notification Channels **edit the original incident card in place** via `chat.update` using the stored message timestamp, so the channel shows a single evolving card — current state plus action buttons — instead of a stack of messages. If Slack can no longer edit the message (edit window closed, message deleted), OpsMender posts a fresh follow-up message instead. Escalations always post a new message so they re-page. Microsoft Teams stays **follow-up-only**: Microsoft Graph app-only auth cannot edit a posted chat message's content, so Teams honestly posts a new message per lifecycle change rather than advertising an unsupported edit path.
+
+**Future enhancements:** Discord/Telegram verified callbacks; bi-directional threaded chat and channel-to-OpsMender comment sync; MFA for action authorization; more platforms with first-class action support.
 
 Legacy summary of the three flows:
 

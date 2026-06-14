@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.1 Notification Collaboration Phase D — message update-in-place with
+  follow-up fallback.** Slack Notification Channels now edit the incident card
+  in place via `chat.update` using the stored message timestamp, so lifecycle
+  status changes (acknowledged/resolved) refresh the existing card — including
+  its native action buttons — rather than stacking new messages. When Slack
+  cannot edit (edit window closed, message deleted, channel gone) the notifier
+  records the attempt and posts a fresh follow-up message instead. Escalations
+  (and other pre-built-text posts) intentionally post a new message so they
+  re-ping. Microsoft Teams remains follow-up-only and does **not** advertise
+  message updates: Microsoft Graph app-only auth cannot edit a posted
+  chat-message's content. Updated receipts now carry `delivery_status`
+  (`delivered`/`updated`) and `last_updated_at`. No schema change
+  (`w2x3y4z5a6b7` remains the head).
+
 - **v1.1 Notification Collaboration Phase C — shared callback framework and
   Microsoft Teams verified actions.** Added a platform-neutral normalized
   callback executor shared by Slack and Teams after platform cryptographic

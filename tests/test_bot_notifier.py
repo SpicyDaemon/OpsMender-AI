@@ -99,6 +99,70 @@ class TestSessionChatEventFanOut:
         assert all("DB outage" in s["text"] for s in sent)
         assert all(s["token"] == "BOT-TOKEN" for s in sent)
 
+    async def test_completed_post_includes_summary(self, factory, monkeypatch):
+        sent = []
+
+        async def fake_send(**kwargs):
+            sent.append(kwargs)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+        await _make_connector(
+            factory, capabilities=["notifications"], allowed_chat_ids=["-100777"]
+        )
+        async with factory() as db:
+            incident = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="DB outage", description="x", severity="high"
+            )
+            session = await SessionRepo.create(
+                db, TEST_ORG_ID, incident_id=incident.id, tier=1
+            )
+            session.summary = "Restarted the connection pool; service recovered."
+            await db.commit()
+            session_id = session.id
+
+        await notifier.deliver_session_chat_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            event_type="session.completed",
+            session_id=session_id,
+        )
+        assert sent
+        assert all(
+            "Summary: Restarted the connection pool" in s["text"] for s in sent
+        )
+
+    async def test_non_completed_post_omits_summary(self, factory, monkeypatch):
+        sent = []
+
+        async def fake_send(**kwargs):
+            sent.append(kwargs)
+            return True, None
+
+        monkeypatch.setattr("backend.bots.telegram.send_message", fake_send)
+        await _make_connector(
+            factory, capabilities=["notifications"], allowed_chat_ids=["-100777"]
+        )
+        async with factory() as db:
+            incident = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="DB outage", description="x", severity="high"
+            )
+            session = await SessionRepo.create(
+                db, TEST_ORG_ID, incident_id=incident.id, tier=1
+            )
+            session.summary = "should not appear on a created event"
+            await db.commit()
+            session_id = session.id
+
+        await notifier.deliver_session_chat_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            event_type="session.created",
+            session_id=session_id,
+        )
+        assert sent
+        assert all("Summary:" not in s["text"] for s in sent)
+
     async def test_skips_connector_without_notifications_capability(
         self, factory, monkeypatch
     ):

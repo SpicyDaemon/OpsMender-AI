@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.2 Phase 5 — Service-aware AI context + richer session posts.** When an
+  incident belongs to a Service, the AI session now starts grounded in it: the
+  runner injects a `## Service context` block (service name, priority,
+  description, and preferred MCP servers) into the agent's first `observe` pass,
+  so reasoning is anchored to the service it's actually working on. Notification
+  Channel **AI-session-completed** posts now include the session **summary**, so
+  responders see the outcome in-channel rather than just a status change.
+  Backend-only; advisory context that never changes tier/skill enforcement.
+
 - **v1.2 Phase 4 — Incident comments + richer timeline.** Operators can now leave
   **comments** on an incident: new `incident_comments` table (migration
   `y4z5a6b7c8d9`) with `GET/POST/DELETE /incidents/{id}/comments` (admin/operator;

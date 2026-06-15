@@ -22,6 +22,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from backend.agent.graph import build_graph
+from backend.agent.service_context import format_service_context
 from backend.agent.timeouts import Tier0TimeConfig, ainvoke_with_session_timeout
 from backend.api.routes.ws import publish
 from backend.api.schemas import WSMessage
@@ -369,6 +370,27 @@ async def _preferred_mcp_ids_for_incident(
     return ids
 
 
+async def _service_context_for_incident(
+    factory,
+    org_id: uuid.UUID,
+    incident,
+    preferred_mcp_names: list[str],
+) -> str:
+    """Build the agent's ``## Service context`` block for the incident's service."""
+    if incident is None or getattr(incident, "service_id", None) is None:
+        return ""
+    async with factory() as db:
+        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+    if service is None:
+        return ""
+    return format_service_context(
+        name=service.name,
+        priority=getattr(service, "priority", None),
+        description=getattr(service, "description", None),
+        preferred_mcp_names=preferred_mcp_names,
+    )
+
+
 async def _set_session_terminal_state(
     factory,
     org_id: uuid.UUID,
@@ -514,6 +536,13 @@ async def _run_session_workflow_inner(
         )
 
         incident_description = _build_incident_description(incident, pending_messages)
+        # v1.2 Phase 5 — ground the agent in the incident's service (name,
+        # priority, description, preferred MCP servers) from the first observe.
+        service_context = await _service_context_for_incident(
+            factory, org_id, incident, preferred_mcp_server_names
+        )
+        if service_context:
+            incident_description = f"{incident_description}\n\n{service_context}".strip()
         # Normalize the stored tier to the 3-tier model (legacy Tier 3 -> 2)
         # so the gate, sandbox, and logs all use the effective autonomy tier.
         effective_tier = normalize_tier(int(session.tier))

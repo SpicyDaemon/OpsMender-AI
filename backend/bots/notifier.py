@@ -163,6 +163,14 @@ def _format_session_event(
         lines.append(f"Service: `{service_name}`")
     if team_name:
         lines.append(f"Team: `{team_name}`")
+    # Richer completion post: surface the AI's summary so responders get the
+    # outcome in-channel, not just a status change.
+    if event_type == "session.completed" and session is not None:
+        summary = (getattr(session, "summary", None) or "").strip()
+        if summary:
+            if len(summary) > 500:
+                summary = summary[:499].rstrip() + "…"
+            lines.append(f"Summary: {summary}")
     if incident is not None:
         lines.append(
             "Open incident/session: "

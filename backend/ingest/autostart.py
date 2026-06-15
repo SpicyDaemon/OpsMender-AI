@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
+import logging
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,7 @@ _SEVERITY_RANK = {
 }
 
 _ACTIVE_SESSION_STATUSES = {"active", "awaiting_approval"}
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -147,3 +150,64 @@ async def has_active_session_for_incident(
     """Return True when the incident already has a non-terminal session."""
     sessions = await SessionRepo.list_by_incident(db, org_id, incident_id)
     return any(session.status in _ACTIVE_SESSION_STATUSES for session in sessions)
+
+
+async def provision_auto_started_session(
+    app,
+    *,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    tier: int,
+) -> None:
+    """Provision and run an auto-started session outside incident intake."""
+    try:
+        async with app.state.session_factory() as db:
+            if await has_active_session_for_incident(db, org_id, incident_id):
+                logger.info(
+                    "incident.auto_start: skipped existing active session for incident=%s",
+                    incident_id,
+                )
+                return
+            session = await SessionRepo.create(
+                db,
+                org_id,
+                tier=tier,
+                incident_id=incident_id,
+            )
+            await db.commit()
+
+        from backend.api.session_runner import schedule_session_workflow
+
+        logger.info(
+            "incident.auto_start: provisioned incident=%s session=%s tier=%s",
+            incident_id,
+            session.id,
+            tier,
+        )
+        schedule_session_workflow(app, session_id=session.id)
+    except Exception:
+        logger.exception(
+            "incident.auto_start: provisioning_failed incident=%s tier=%s",
+            incident_id,
+            tier,
+        )
+
+
+def schedule_auto_started_session(
+    app,
+    *,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    tier: int,
+) -> None:
+    """Queue session provisioning without blocking the incident request."""
+    task = asyncio.create_task(
+        provision_auto_started_session(
+            app,
+            org_id=org_id,
+            incident_id=incident_id,
+            tier=tier,
+        )
+    )
+    app.state.background_tasks.add(task)
+    task.add_done_callback(app.state.background_tasks.discard)

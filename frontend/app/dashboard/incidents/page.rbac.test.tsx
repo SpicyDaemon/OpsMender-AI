@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const search = { current: "" };
@@ -26,8 +26,25 @@ vi.mock("@/context/auth", () => ({
 const apiMocks = vi.hoisted(() => ({
   bulkIncidentAction: vi.fn(),
   createIncident: vi.fn(),
-  createSession: vi.fn(),
-  getConfig: vi.fn().mockResolvedValue({ tier: 2 }),
+  fireTestIncident: vi.fn().mockResolvedValue({
+    incident: {
+      id: "inc-test",
+      title: "TEST · synthetic alert",
+      description: "Synthetic alert",
+      status: "open",
+      severity: "high",
+      service_id: null,
+      external_id: "test-1",
+      external_source: "opsmender-test",
+      created_at: "2026-06-15T00:00:00Z",
+      updated_at: "2026-06-15T00:00:00Z",
+    },
+    resolved_tier: 2,
+    auto_start_status: "skipped",
+    auto_start_reason: "auto_start_skipped_non_t0",
+    message:
+      "Test incident created. AI session auto-start was skipped because the resolved autonomy tier is T2; only T0 may auto-start.",
+  }),
   listIncidents: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   listServices: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   listTeams: vi.fn().mockResolvedValue({ items: [], total: 0 }),
@@ -55,6 +72,7 @@ beforeEach(() => {
   });
   role.current = "admin";
   search.current = "";
+  vi.clearAllMocks();
 });
 
 async function renderAndSettle() {
@@ -99,6 +117,25 @@ describe("Incidents page RBAC", () => {
       expect(
         screen.queryAllByText(/fire test incident/i).length,
       ).toBeGreaterThan(1),
+    );
+    expect(
+      screen.getByText(/An AI session will only auto-start if the resolved autonomy tier is T0/i),
+    ).toBeTruthy();
+    expect(screen.queryByText(/immediately starts a session/i)).toBeNull();
+  });
+
+  it("submits fire tests through the policy-aware endpoint", async () => {
+    role.current = "admin";
+    search.current = "test=1";
+    await renderAndSettle();
+    const buttons = await screen.findAllByRole("button", {
+      name: /fire test incident/i,
+    });
+    fireEvent.click(buttons[buttons.length - 1]);
+    await waitFor(() =>
+      expect(apiMocks.fireTestIncident).toHaveBeenCalledWith({
+        service_id: undefined,
+      }),
     );
   });
 

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Fire Test Incident now honors T0-only auto-start.** The Incidents-page
+  synthetic alert path no longer creates a session directly from the browser.
+  A dedicated backend endpoint creates the incident, resolves the same
+  service/skill/org tier and auto-start policy as intake, and queues AI work
+  only for an allowed T0 result. T1/T2 responses return
+  `auto_start_skipped_non_t0` and still provide the created incident.
 - **Incident intake auto-start isolation.** Intake now commits and returns the
   incident independently of AI provisioning. When resolved tier is T0, session
   creation and workflow scheduling run in a tracked background task. Enabled

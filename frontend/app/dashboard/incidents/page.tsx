@@ -7,8 +7,7 @@ import { AlertTriangle, ChevronDown, Clock, Plus, RefreshCw, Search, X } from "l
 import {
   bulkIncidentAction,
   createIncident,
-  createSession,
-  getConfig,
+  fireTestIncident,
   listIncidents,
   listServices,
   listTeams,
@@ -18,13 +17,12 @@ import { SetupChecklist } from "@/components/SetupChecklist";
 import { useAuth } from "@/context/auth";
 import { responderDisplay } from "@/lib/responder";
 import type {
-  ConfigResponse,
+  FireTestIncidentResponse,
   IncidentCreate,
   IncidentListResponse,
   IncidentResponse,
   IncidentStatus,
   ServiceResponse,
-  SessionResponse,
   Severity,
   TeamResponse,
 } from "@/lib/types";
@@ -679,11 +677,11 @@ export default function IncidentsPage() {
         open={showTest}
         services={services}
         onClose={() => setShowTest(false)}
-        onCreated={(incident, session) => {
+        onCreated={(result) => {
           setShowTest(false);
-          toast.success("Test incident created and session started.", {
-            label: "Open session",
-            href: `/dashboard/sessions/detail?id=${session.id}`,
+          toast.success(result.message, {
+            label: "Open incident",
+            href: `/dashboard/incidents/detail?id=${result.incident.id}`,
           });
           loadIncidents();
         }}
@@ -1197,20 +1195,12 @@ function FireTestIncidentModal({
   open: boolean;
   services: ServiceResponse[];
   onClose: () => void;
-  onCreated: (incident: IncidentResponse, session: SessionResponse) => void;
+  onCreated: (result: FireTestIncidentResponse) => void;
 }) {
-  const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [serviceId, setServiceId] = useState("");
   const [form, setForm] = useState<IncidentCreate>(() => createSyntheticPayload());
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    getConfig()
-      .then((res) => setConfig(res))
-      .catch(() => setConfig(null));
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -1232,15 +1222,11 @@ function FireTestIncidentModal({
     setError("");
     setLoading(true);
     try {
-      const incident = await createIncident(form);
-      const session = await createSession({
-        incident_id: incident.id,
-        tier: config?.tier ?? 2,
-        initial_briefing:
-          "TEST · synthetic alert. Validate the response path without treating this as a real production incident.",
+      const result = await fireTestIncident({
+        service_id: serviceId || undefined,
       });
       reset();
-      onCreated(incident, session);
+      onCreated(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fire test incident");
     } finally {
@@ -1259,7 +1245,10 @@ function FireTestIncidentModal({
     >
       <div className="space-y-4">
         <div className="rounded-lg border border-status-high-border bg-status-high-bg/40 px-4 py-3 text-sm text-fg-primary">
-          This creates a synthetic high-severity incident and immediately starts a session so you can verify the operator flow end to end.
+          This creates a synthetic high-severity incident so you can verify
+          ingestion, paging, and operator flow. An AI session will only
+          auto-start if the resolved autonomy tier is T0 and auto-start is
+          allowed by policy.
         </div>
 
         <div>

@@ -12,7 +12,7 @@ import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
@@ -23,6 +23,8 @@ from backend.api.schemas import (
     IncidentCommentListResponse,
     IncidentCommentResponse,
     IncidentCreate,
+    FireTestIncidentRequest,
+    FireTestIncidentResponse,
     IncidentListResponse,
     IncidentPostmortemResponse,
     IncidentPostmortemUpdate,
@@ -68,6 +70,11 @@ from backend.paging.service import compute_priority_for_payload
 from backend.paging import escalation as _esc_kickoff
 from backend.skills.parser import loads as load_skill_def_text
 from backend.memory.candidates import candidate_title, extract_memory_candidates
+from backend.ingest.autostart import (
+    auto_start_skip_reason,
+    load_auto_start_policy,
+    schedule_auto_started_session,
+)
 
 import logging
 
@@ -264,17 +271,10 @@ async def _to_incident_list_response(
     return responses
 
 
-@router.post(
-    "",
-    response_model=IncidentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new incident",
-)
-async def create_incident(
+async def _create_incident_record(
+    db: AsyncSession,
+    org_id: uuid.UUID,
     body: IncidentCreate,
-    db: AsyncSession = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
 ):
     if body.service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
@@ -339,9 +339,122 @@ async def create_incident(
                 incident=incident,
                 base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
             )
+    return incident
+
+
+@router.post(
+    "",
+    response_model=IncidentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new incident",
+)
+async def create_incident(
+    body: IncidentCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    incident = await _create_incident_record(db, org_id, body)
     await db.commit()
     await _notify_channels(db, incident.id, org_id, "incident.created")
     return await _to_incident_response(db, org_id, incident)
+
+
+def _fire_test_message(*, tier: int, reason: str | None) -> str:
+    if reason is None:
+        return "Test incident created. A Tier 0 AI session was queued by auto-start policy."
+    if reason == "auto_start_skipped_non_t0":
+        return (
+            "Test incident created. AI session auto-start was skipped because "
+            f"the resolved autonomy tier is T{tier}; only T0 may auto-start."
+        )
+    return (
+        "Test incident created. AI session auto-start was skipped by policy "
+        f"({reason})."
+    )
+
+
+@router.post(
+    "/fire-test",
+    response_model=FireTestIncidentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a synthetic incident and conditionally auto-start Tier 0",
+)
+async def fire_test_incident(
+    body: FireTestIncidentRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    service_name = None
+    if body.service_id is not None:
+        service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
+        if service is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Service not found",
+            )
+        service_name = service.name
+
+    scope = f" for {service_name}" if service_name else ""
+    incident = await _create_incident_record(
+        db,
+        org_id,
+        IncidentCreate(
+            title=f"TEST · synthetic alert{scope}",
+            description=(
+                f"Synthetic alert fired from the Incidents page{scope}. "
+                "Use this to verify ingestion, paging, sessions, and operator "
+                "workflow end to end."
+            ),
+            severity="high",
+            service_id=body.service_id,
+            external_id=f"test-{uuid.uuid4()}",
+            external_source="opsmender-test",
+        ),
+    )
+    policy = await load_auto_start_policy(
+        db,
+        org_id,
+        request.app.state.config,
+        incident=incident,
+    )
+    skip_reason = auto_start_skip_reason(
+        incident,
+        dedup_action="created",
+        policy=policy,
+    )
+    await db.commit()
+    await _notify_channels(db, incident.id, org_id, "incident.created")
+
+    if skip_reason is None:
+        schedule_auto_started_session(
+            request.app,
+            org_id=org_id,
+            incident_id=incident.id,
+            tier=policy.session_tier,
+        )
+        _log.info(
+            "fire_test.auto_start: queued incident=%s resolved_tier=%s",
+            incident.id,
+            policy.session_tier,
+        )
+    else:
+        _log.info(
+            "fire_test.auto_start: %s incident=%s resolved_tier=%s",
+            skip_reason,
+            incident.id,
+            policy.session_tier,
+        )
+
+    return FireTestIncidentResponse(
+        incident=await _to_incident_response(db, org_id, incident),
+        resolved_tier=policy.session_tier,
+        auto_start_status="queued" if skip_reason is None else "skipped",
+        auto_start_reason=skip_reason,
+        message=_fire_test_message(tier=policy.session_tier, reason=skip_reason),
+    )
 
 
 @router.get(

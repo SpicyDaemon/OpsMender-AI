@@ -159,6 +159,8 @@ export async function listUsers(params?: {
 // ---------------------------------------------------------------------------
 
 import type {
+  FireTestIncidentRequest,
+  FireTestIncidentResponse,
   IncidentCreate,
   IncidentListResponse,
   IncidentCommentListResponse,
@@ -214,6 +216,15 @@ export async function getIncident(id: string): Promise<IncidentResponse> {
 
 export async function createIncident(body: IncidentCreate): Promise<IncidentResponse> {
   return api.post<IncidentResponse>("/incidents", body);
+}
+
+export async function fireTestIncident(
+  body: FireTestIncidentRequest,
+): Promise<FireTestIncidentResponse> {
+  return api.post<FireTestIncidentResponse>(
+    "/incidents/fire-test",
+    body,
+  );
 }
 
 export async function updateIncident(

@@ -155,7 +155,9 @@ Supported channels depend on configured adapters, such as Slack, Microsoft Teams
 5. Create one or more roster schedules at `/dashboard/paging/rosters`.
 6. Add maintenance windows for planned work at `/dashboard/paging/maintenance-windows`.
 7. Configure operator delivery, viewer updates, quiet hours, routing, and chat behavior at `/dashboard/paging/notifications`.
-8. Fire a synthetic alert and confirm the incident, AI session, operator routing, and notification flow.
+8. Fire a synthetic alert and confirm incident creation, operator routing, and
+   notification flow. An AI session auto-starts only when the resolved autonomy
+   tier is T0 and auto-start policy allows it; start one manually for T1/T2.
 
 ---
 

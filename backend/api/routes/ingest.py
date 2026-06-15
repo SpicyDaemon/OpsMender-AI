@@ -10,8 +10,6 @@ GET  /ingest-providers       — list available provider adapters
 
 from __future__ import annotations
 
-import asyncio
-import logging
 import uuid
 from typing import Any
 
@@ -21,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
-from backend.api.session_runner import schedule_session_workflow
 from backend.api.schemas import (
     IngestLearnPreview,
     IngestProviderListResponse,
@@ -35,8 +32,8 @@ from backend.api.schemas import (
     IngestTokenResponse,
 )
 from backend.db.models import IngestToken, User
-from backend.db.repos import IngestTokenRepo, ServiceRepo, SessionRepo
-from backend.ingest.autostart import has_active_session_for_incident
+from backend.db.repos import IngestTokenRepo, ServiceRepo
+from backend.ingest.autostart import schedule_auto_started_session
 from backend.ingest.llm_extractor import (
     apply_shape_cache,
     compute_shape_hash,
@@ -52,60 +49,17 @@ from backend.ingest.service import (
 )
 
 router = APIRouter(tags=["ingest"])
-logger = logging.getLogger(__name__)
-
-
-async def _provision_auto_started_session(
-    app,
-    *,
-    org_id: uuid.UUID,
-    incident_id: uuid.UUID,
-    tier: int,
-) -> None:
-    """Provision and run an auto-started session outside the intake request."""
-    try:
-        async with app.state.session_factory() as db:
-            if await has_active_session_for_incident(db, org_id, incident_id):
-                logger.info(
-                    "ingest.auto_start: skipped existing active session for incident=%s",
-                    incident_id,
-                )
-                return
-            session = await SessionRepo.create(
-                db,
-                org_id,
-                tier=tier,
-                incident_id=incident_id,
-            )
-            await db.commit()
-        logger.info(
-            "ingest.auto_start: provisioned incident=%s session=%s tier=%s",
-            incident_id,
-            session.id,
-            tier,
-        )
-        schedule_session_workflow(app, session_id=session.id)
-    except Exception:
-        logger.exception(
-            "ingest.auto_start: provisioning_failed incident=%s tier=%s",
-            incident_id,
-            tier,
-        )
 
 
 def _schedule_auto_start(app, *, org_id: uuid.UUID, result) -> None:
     if result.auto_start_tier is None or result.incident_id is None:
         return
-    task = asyncio.create_task(
-        _provision_auto_started_session(
-            app,
-            org_id=org_id,
-            incident_id=result.incident_id,
-            tier=result.auto_start_tier,
-        )
+    schedule_auto_started_session(
+        app,
+        org_id=org_id,
+        incident_id=result.incident_id,
+        tier=result.auto_start_tier,
     )
-    app.state.background_tasks.add(task)
-    task.add_done_callback(app.state.background_tasks.discard)
 
 
 def _to_token_response(tok: IngestToken) -> IngestTokenResponse:

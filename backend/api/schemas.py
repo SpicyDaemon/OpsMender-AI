@@ -276,6 +276,18 @@ class IncidentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FireTestIncidentRequest(BaseModel):
+    service_id: Optional[uuid.UUID] = None
+
+
+class FireTestIncidentResponse(BaseModel):
+    incident: IncidentResponse
+    resolved_tier: int
+    auto_start_status: str = Field(pattern="^(queued|skipped)$")
+    auto_start_reason: Optional[str] = None
+    message: str
+
+
 class IncidentListResponse(BaseModel):
     items: list[IncidentResponse]
     total: int

@@ -74,6 +74,18 @@ export interface IncidentCreate {
   external_source?: string;
 }
 
+export interface FireTestIncidentRequest {
+  service_id?: string;
+}
+
+export interface FireTestIncidentResponse {
+  incident: IncidentResponse;
+  resolved_tier: number;
+  auto_start_status: "queued" | "skipped";
+  auto_start_reason: string | null;
+  message: string;
+}
+
 export interface IncidentUpdate {
   status?: IncidentStatus;
   severity?: Severity;

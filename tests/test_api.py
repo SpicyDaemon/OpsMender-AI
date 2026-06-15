@@ -967,6 +967,93 @@ class TestIncidents:
         assert data["status"] == "open"
         assert data["severity"] == "high"
 
+    @pytest.mark.parametrize("tier", [1, 2])
+    async def test_fire_test_incident_skips_non_t0_auto_start(
+        self,
+        tier,
+        client: AsyncClient,
+        app,
+        auth_headers,
+        monkeypatch,
+        caplog,
+    ):
+        await client.put(
+            "/config",
+            json={
+                "tier": tier,
+                "ingest_auto_start_enabled": True,
+                "ingest_auto_start_min_severity": "high",
+                "ingest_auto_start_source": "opsmender-test",
+            },
+            headers=auth_headers,
+        )
+
+        async def _unexpected_create(*args, **kwargs):
+            raise AssertionError("non-T0 fire test must not create an AI session")
+
+        monkeypatch.setattr(SessionRepo, "create", _unexpected_create)
+        caplog.set_level("INFO", logger="backend.api.routes.incidents")
+
+        resp = await client.post(
+            "/incidents/fire-test",
+            json={},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert data["incident"]["external_source"] == "opsmender-test"
+        assert data["resolved_tier"] == tier
+        assert data["auto_start_status"] == "skipped"
+        assert data["auto_start_reason"] == "auto_start_skipped_non_t0"
+        assert f"resolved autonomy tier is T{tier}" in data["message"]
+        assert "auto_start_skipped_non_t0" in caplog.text
+
+        async with app.state.session_factory() as db:
+            sessions = await SessionRepo.list_by_incident(
+                db,
+                TEST_ORG_ID,
+                uuid.UUID(data["incident"]["id"]),
+            )
+            assert sessions == []
+
+    async def test_fire_test_incident_queues_only_allowed_t0_auto_start(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        await client.put(
+            "/config",
+            json={
+                "tier": 0,
+                "ingest_auto_start_enabled": True,
+                "ingest_auto_start_min_severity": "high",
+                "ingest_auto_start_source": "opsmender-test",
+            },
+            headers=auth_headers,
+        )
+        scheduled = []
+
+        def _capture_schedule(app, *, org_id, incident_id, tier):
+            scheduled.append((org_id, incident_id, tier))
+
+        monkeypatch.setattr(
+            "backend.api.routes.incidents.schedule_auto_started_session",
+            _capture_schedule,
+        )
+
+        resp = await client.post(
+            "/incidents/fire-test",
+            json={},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert data["resolved_tier"] == 0
+        assert data["auto_start_status"] == "queued"
+        assert data["auto_start_reason"] is None
+        assert len(scheduled) == 1
+        assert scheduled[0][0] == TEST_ORG_ID
+        assert str(scheduled[0][1]) == data["incident"]["id"]
+        assert scheduled[0][2] == 0
+
     async def test_create_test_incident_with_service_and_source(
         self, client: AsyncClient, app, auth_headers
     ):

@@ -100,7 +100,7 @@ const ACTION_ITEMS: Omit<CommandItem, "kind">[] = [
   {
     id: "a-fire-test",
     label: "Fire test incident",
-    hint: "Create a synthetic incident + auto-start a session.",
+    hint: "Create a synthetic incident; AI auto-start requires an allowed T0 policy.",
     icon: Sparkles,
     href: "/dashboard/incidents?test=1",
     keywords: "drill synthetic",

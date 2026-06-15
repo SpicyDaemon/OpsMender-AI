@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.2 Phase 3 — Session Profile templates.** Five built-in presets give
+  operators a quick start for how an AI session runs:
+  **Standard Assisted Response**, **Read-only Investigation**, **Fast Triage**,
+  **Postmortem Builder**, and **High-Risk Change Review**. `GET
+  /workflow-profiles/templates` returns the catalog (name, description, node
+  order), and the Session Profiles editor adds a **"New from template"** picker
+  that prefills a new profile you can tweak before saving. Templates are starting
+  points only — they never change enforcement; the tier gate still governs what
+  may execute, and `tier_gate` still sits immediately before `execute`. No schema
+  change.
+
 - **v1.2 Phase 2 — Postmortem workflow polish + memory-candidate handoff.** The
   postmortem editor's **Memory candidates** bullets now have a real handoff:
   `POST /incidents/{id}/postmortem/memory-candidates` (admin/operator) parses the

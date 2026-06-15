@@ -51,6 +51,7 @@ import {
   listMCPServers,
   listModelConfigs,
   listProvidersWithParams,
+  listSessionProfileTemplates,
   listTeams,
   listWebhookTriggers,
   listWorkflowProfiles,
@@ -111,6 +112,7 @@ import type {
   RetentionStatusResponse,
   WebhookTriggerEventType,
   WebhookTriggerFormat,
+  SessionProfileTemplate,
   WebhookTriggerResponse,
   WebhookTriggerTestResponse,
   WebhookTriggerUpsert,
@@ -5111,6 +5113,7 @@ function WorkflowProfileModal({
   saving,
   error,
   initialProfile,
+  initialForm,
 }: {
   open: boolean;
   onClose: () => void;
@@ -5118,9 +5121,12 @@ function WorkflowProfileModal({
   saving: boolean;
   error: string;
   initialProfile: WorkflowProfileResponse | null;
+  // Seed for "New from template": when present (and not editing), prefills the
+  // form from a built-in Session Profile template.
+  initialForm?: WorkflowProfileFormState | null;
 }) {
-  const [form, setForm] = useState<WorkflowProfileFormState>(() =>
-    createWorkflowProfileFormState(initialProfile),
+  const [form, setForm] = useState<WorkflowProfileFormState>(
+    () => initialForm ?? createWorkflowProfileFormState(initialProfile),
   );
 
   function setField<K extends keyof WorkflowProfileFormState>(
@@ -5277,18 +5283,44 @@ export function WorkflowProfileSection({
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<WorkflowProfileResponse | null>(null);
+  const [prefill, setPrefill] = useState<WorkflowProfileFormState | null>(null);
+  const [templates, setTemplates] = useState<SessionProfileTemplate[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  useEffect(() => {
+    if (!canEdit) return;
+    listSessionProfileTemplates()
+      .then((r) => setTemplates(r.items))
+      .catch(() => setTemplates([]));
+  }, [canEdit]);
+
   function openCreateModal() {
     setEditing(null);
+    setPrefill(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openFromTemplate(key: string) {
+    const t = templates.find((tmpl) => tmpl.key === key);
+    if (!t) return;
+    setEditing(null);
+    setPrefill({
+      name: t.name,
+      description: t.description,
+      node_order: t.node_order,
+      is_active: true,
+      is_default: false,
+    });
     setError("");
     setModalOpen(true);
   }
 
   function openEditModal(profile: WorkflowProfileResponse) {
     setEditing(profile);
+    setPrefill(null);
     setError("");
     setModalOpen(true);
   }
@@ -5297,6 +5329,7 @@ export function WorkflowProfileSection({
     if (saving) return;
     setModalOpen(false);
     setEditing(null);
+    setPrefill(null);
     setError("");
   }
 
@@ -5321,6 +5354,7 @@ export function WorkflowProfileSection({
       }
       setModalOpen(false);
       setEditing(null);
+      setPrefill(null);
       await onReload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -5429,6 +5463,23 @@ export function WorkflowProfileSection({
             <span className="text-sm text-fg-secondary">
               {profiles.length} saved profile{profiles.length === 1 ? "" : "s"}
             </span>
+            {canEdit && templates.length > 0 && (
+              <Select
+                aria-label="New from template"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) openFromTemplate(e.target.value);
+                }}
+                className="w-auto"
+              >
+                <option value="">New from template…</option>
+                {templates.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.name}
+                  </option>
+                ))}
+              </Select>
+            )}
             <Button onClick={openCreateModal} disabled={!canEdit}>
               <Plus size={14} /> Add Session Profile
             </Button>
@@ -5469,6 +5520,7 @@ export function WorkflowProfileSection({
           saving={saving}
           error={error}
           initialProfile={editing}
+          initialForm={prefill}
         />
       )}
     </Section>

@@ -795,6 +795,18 @@ export interface WorkflowProfileListResponse {
   total: number;
 }
 
+export interface SessionProfileTemplate {
+  key: string;
+  name: string;
+  description: string;
+  node_order: WorkflowNode[];
+}
+
+export interface SessionProfileTemplateListResponse {
+  items: SessionProfileTemplate[];
+  total: number;
+}
+
 export interface WorkflowProfileUpsert {
   name: string;
   description?: string | null;

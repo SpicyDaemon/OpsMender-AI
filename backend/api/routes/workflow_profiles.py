@@ -12,14 +12,31 @@ from backend.agent.graph import validate_workflow_node_order
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    SessionProfileTemplate,
+    SessionProfileTemplateListResponse,
     WorkflowProfileListResponse,
     WorkflowProfileResponse,
     WorkflowProfileUpsert,
 )
 from backend.db.models import User
 from backend.db.repos import WorkflowProfileRepo
+from backend.workflow.templates import list_session_profile_templates
 
 router = APIRouter(prefix="/workflow-profiles", tags=["workflow-profiles"])
+
+
+@router.get(
+    "/templates",
+    response_model=SessionProfileTemplateListResponse,
+    summary="List built-in Session Profile templates (starting points)",
+)
+async def list_templates(
+    user: User = Depends(get_current_user),
+):
+    """Return the built-in Session Profile presets. These are not persisted — the
+    caller loads one into the editor, tweaks it, and saves it as a profile."""
+    items = [SessionProfileTemplate(**t) for t in list_session_profile_templates()]
+    return SessionProfileTemplateListResponse(items=items, total=len(items))
 
 
 def _validated_node_order(node_order: list[str]) -> list[str]:

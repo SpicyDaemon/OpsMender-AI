@@ -904,6 +904,20 @@ class WorkflowProfileListResponse(BaseModel):
     total: int
 
 
+class SessionProfileTemplate(BaseModel):
+    """A built-in Session Profile preset (a starting point, not yet saved)."""
+
+    key: str
+    name: str
+    description: str
+    node_order: list[str]
+
+
+class SessionProfileTemplateListResponse(BaseModel):
+    items: list[SessionProfileTemplate]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # Agent team profiles (multi-agent support — Phase 3)
 # ---------------------------------------------------------------------------

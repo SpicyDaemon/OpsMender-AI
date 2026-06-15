@@ -3476,6 +3476,51 @@ class TestWorkflowProfiles:
         )
         assert delete_resp.status_code == 204
 
+    async def test_list_session_profile_templates(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.get(
+            "/workflow-profiles/templates", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        keys = {t["key"] for t in body["items"]}
+        assert keys == {
+            "standard_assisted_response",
+            "read_only_investigation",
+            "fast_triage",
+            "postmortem_builder",
+            "high_risk_change_review",
+        }
+        # Every template has a usable name, description, and node order.
+        for t in body["items"]:
+            assert t["name"]
+            assert t["description"]
+            assert len(t["node_order"]) >= 2
+
+    async def test_template_node_order_creates_a_valid_profile(
+        self, client: AsyncClient, auth_headers
+    ):
+        templates = (
+            await client.get("/workflow-profiles/templates", headers=auth_headers)
+        ).json()["items"]
+        tmpl = next(
+            t for t in templates if t["key"] == "read_only_investigation"
+        )
+        # A template's node order must save cleanly as a real profile.
+        resp = await client.post(
+            "/workflow-profiles",
+            json={
+                "name": "From template",
+                "description": tmpl["description"],
+                "node_order": tmpl["node_order"],
+                "is_active": True,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["node_order"] == tmpl["node_order"]
+
     async def test_create_workflow_profile_validates_node_order(
         self, client: AsyncClient, auth_headers
     ):

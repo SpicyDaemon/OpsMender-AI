@@ -708,6 +708,7 @@ import type {
   AgentTeamProfileListResponse,
   AgentTeamProfileResponse,
   AgentTeamProfileUpsert,
+  SessionProfileTemplateListResponse,
   WorkflowProfileListResponse,
   WorkflowProfileResponse,
   WorkflowProfileUpsert,
@@ -715,6 +716,12 @@ import type {
 
 export async function listWorkflowProfiles(): Promise<WorkflowProfileListResponse> {
   return api.get<WorkflowProfileListResponse>("/workflow-profiles");
+}
+
+export async function listSessionProfileTemplates(): Promise<SessionProfileTemplateListResponse> {
+  return api.get<SessionProfileTemplateListResponse>(
+    "/workflow-profiles/templates",
+  );
 }
 
 export async function createWorkflowProfile(

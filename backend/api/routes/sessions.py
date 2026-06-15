@@ -49,7 +49,7 @@ from backend.db.repos import (
 from backend.mcp.client import list_tools as mcp_list_tools
 from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import loads as load_skill_def
-from backend.tiers.enforcement import normalize_tier
+from backend.tiers.resolution import resolve_session_tier_for_incident
 from backend.tiers.sandbox import Tier0Sandbox
 from backend.bots.notifier import schedule_session_chat_event
 from backend.webhooks import schedule_session_event
@@ -100,6 +100,7 @@ async def create_session(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
+    incident = None
     # Validate linked incident exists (if provided)
     if body.incident_id is not None:
         incident = await IncidentRepo.get_by_id(db, org_id, body.incident_id)
@@ -147,11 +148,17 @@ async def create_session(
             None if default_agent_team is None else default_agent_team.id
         )
 
+    resolved_tier = await resolve_session_tier_for_incident(
+        db,
+        org_id,
+        request.app.state.config,
+        incident=incident,
+        requested_tier=body.tier,
+    )
     session = await SessionRepo.create(
         db,
         org_id,
-        # AI Autonomy Tier — default Tier 2 (Advisory) server-side; legacy 3 -> 2.
-        tier=normalize_tier(body.tier),
+        tier=resolved_tier,
         incident_id=body.incident_id,
         workflow_profile_id=workflow_profile_id,
         agent_team_profile_id=agent_team_profile_id,

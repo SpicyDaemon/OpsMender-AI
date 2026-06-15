@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config_loader import AppConfig
 from backend.bots.actions import (
     ExternalActorIdentity,
     IncidentActionError,
@@ -80,6 +81,7 @@ async def execute_normalized_callback(
     *,
     connector: BotConnector,
     callback: NormalizedNativeCallback,
+    config: AppConfig | None = None,
 ) -> IncidentActionResult:
     """Promote callback readiness and invoke the common action coordinator."""
 
@@ -112,4 +114,5 @@ async def execute_normalized_callback(
             chat_id=callback.channel_id,
         ),
         channel_factory=build_channel_factory(),
+        config=config,
     )

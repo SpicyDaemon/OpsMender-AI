@@ -1594,6 +1594,8 @@ class Service(Base):
     preferred_mcp_server_ids: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
     )
+    ai_default_tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ai_auto_start_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     external_refs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

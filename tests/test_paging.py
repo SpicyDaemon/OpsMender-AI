@@ -33,6 +33,7 @@ from backend.db.repos import (
     RosterOverrideRepo,
     RosterRepo,
     ServiceRepo,
+    SkillRepo,
     TeamRepo,
     UserNotificationPrefRepo,
     UserRepo,
@@ -49,6 +50,7 @@ from backend.paging.priority import (
     assign_priority,
     rule_matches,
 )
+from backend.tiers.resolution import resolve_session_tier_for_incident
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
@@ -754,6 +756,8 @@ class TestPagingAPI:
                 "slug": f"aws-prod-critical-{uuid.uuid4().hex[:6]}",
                 "priority": "P0",
                 "preferred_mcp_server_ids": [str(second.id), str(first.id)],
+                "ai_default_tier": 0,
+                "ai_auto_start_enabled": True,
             },
             headers=auth_headers,
         )
@@ -761,15 +765,62 @@ class TestPagingAPI:
         data = service.json()
         assert data["priority"] == "P0"
         assert data["preferred_mcp_server_ids"] == [str(second.id), str(first.id)]
+        assert data["ai_default_tier"] == 0
+        assert data["ai_auto_start_enabled"] is True
         assert data["intake_url"].startswith("/api/v1/intake/svc_")
 
         async with app.state.session_factory() as db:
+            await SkillRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="gitlab policy",
+                content_md=(
+                    "---\nversion: '1'\ndefault_tier: T1\noperations: []\n---\n"
+                ),
+                assignment="server",
+                mcp_server_id=second.id,
+            )
             incident = await IncidentRepo.create(
                 db,
                 TEST_ORG_ID,
                 title="CPU high",
                 description="prod worker",
                 service_id=uuid.UUID(data["id"]),
+            )
+            assert (
+                await resolve_session_tier_for_incident(
+                    db,
+                    TEST_ORG_ID,
+                    app.state.config,
+                    incident=incident,
+                )
+                == 0
+            )
+            assert (
+                await resolve_session_tier_for_incident(
+                    db,
+                    TEST_ORG_ID,
+                    app.state.config,
+                    incident=incident,
+                    requested_tier=2,
+                )
+                == 2
+            )
+            await ServiceRepo.update(
+                db,
+                TEST_ORG_ID,
+                uuid.UUID(data["id"]),
+                ai_default_tier=None,
+                ai_default_tier_provided=True,
+            )
+            assert (
+                await resolve_session_tier_for_incident(
+                    db,
+                    TEST_ORG_ID,
+                    app.state.config,
+                    incident=incident,
+                )
+                == 1
             )
             await db.commit()
 

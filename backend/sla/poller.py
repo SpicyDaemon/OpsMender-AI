@@ -325,7 +325,12 @@ class SLAPoller:
                             slo.name,
                         )
 
-                    policy = await load_auto_start_policy(db, self._config)
+                    policy = await load_auto_start_policy(
+                        db,
+                        org_id,
+                        self._config,
+                        incident=incident,
+                    )
                     if should_auto_start_session(
                         incident, dedup_action=dedup_action, policy=policy
                     ):

@@ -603,6 +603,9 @@ class TestMCPSkillStudio:
         assert "Tier 0 — Autonomous" in md
         assert "Tier 1 — Approval Required" in md
         assert "Tier 2 — Advisory Only" in md
+        assert "require_reversible: false" in md
+        assert "allow_generic: true" in md
+        assert "default_tier: T2" in md
 
     async def test_save_unassigned_then_download(self, client, auth_headers):
         tmpl = (await client.get("/skills/template", headers=auth_headers)).json()

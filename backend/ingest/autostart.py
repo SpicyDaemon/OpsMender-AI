@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config_loader import AppConfig
 from backend.db.models import Incident
-from backend.db.repos import RuntimeConfigRepo, SessionRepo
+from backend.db.repos import RuntimeConfigRepo, ServiceRepo, SessionRepo
+from backend.tiers.resolution import resolve_session_tier_for_incident
 
 _SEVERITY_RANK = {
     "low": 1,
@@ -54,6 +55,8 @@ async def load_auto_start_policy(
     db: AsyncSession,
     org_id: uuid.UUID,
     config: AppConfig,
+    *,
+    incident: Incident | None = None,
 ) -> IngestAutoStartPolicy:
     """Resolve the effective ingest auto-start policy from env + DB overrides."""
     overrides = await RuntimeConfigRepo.get_many(
@@ -67,11 +70,17 @@ async def load_auto_start_policy(
         ],
     )
 
+    enabled = _to_bool(
+        overrides.get("ingest_auto_start_enabled"),
+        config.ingest.auto_start_enabled,
+    )
+    if incident is not None and incident.service_id is not None:
+        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        if service is not None and service.ai_auto_start_enabled is not None:
+            enabled = enabled and service.ai_auto_start_enabled
+
     return IngestAutoStartPolicy(
-        enabled=_to_bool(
-            overrides.get("ingest_auto_start_enabled"),
-            config.ingest.auto_start_enabled,
-        ),
+        enabled=enabled,
         min_severity=_normalize_severity(
             overrides.get("ingest_auto_start_min_severity"),
             config.ingest.auto_start_min_severity,
@@ -79,7 +88,12 @@ async def load_auto_start_policy(
         source=_normalize_source(
             overrides.get("ingest_auto_start_source", config.ingest.auto_start_source)
         ),
-        session_tier=int(overrides.get("tier", config.tiers.get("default", 2))),
+        session_tier=await resolve_session_tier_for_incident(
+            db,
+            org_id,
+            config,
+            incident=incident,
+        ),
     )
 
 
@@ -91,6 +105,8 @@ def should_auto_start_session(
 ) -> bool:
     """Return True when an ingested incident should auto-create a session."""
     if not policy.enabled:
+        return False
+    if policy.session_tier != 0:
         return False
     if dedup_action != "created":
         return False

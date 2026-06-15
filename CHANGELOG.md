@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Skill-defined AI autonomy behavior.** MCP Skill operations may now declare
+  explicit `tiers.T0` / `T1` / `T2` behavior (`autonomous`, `approval`,
+  `blocked`, or `advisory`). Deny rules, unknown-tool fail-closed behavior, and
+  the generic-command guardrail still take precedence. Legacy skills without
+  `tiers` continue through the existing classification matrix and Tier 0
+  reversible floor; explicit T0 policy may set `require_reversible: false`.
+- **Session tier resolution and T0-only auto-start.** New sessions resolve tier
+  from explicit request → service default → effective MCP Skill default →
+  organization default → Tier 2. Incident intake and SLO polling only auto-start
+  when that result is Tier 0. Services can inherit/disable auto-start and define
+  an optional default tier.
+- **MCP Skill template refresh.** The backend template, MCP Skills page fallback,
+  Skill Studio generator, and operator guide now demonstrate enforceable
+  per-operation tier policy, generic-tool opt-in, deny precedence, advisory
+  behavior, and the Tier 0 reversible override.
+
 ### Added
 
 - **v1.2 Phase 5 — Service-aware AI context + richer session posts.** When an

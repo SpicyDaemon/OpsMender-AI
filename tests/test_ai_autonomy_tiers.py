@@ -75,7 +75,7 @@ def test_template_parses_and_classifies():
         build_skill_template()
     )
     assert sd_loaded.classify("get_pods") == "safe"
-    assert sd_loaded.classify("restart_service") == "caution"
+    assert sd_loaded.classify("restart_deployment") == "caution"
     # The template advertises the 3-tier sections.
     md = build_skill_template()
     assert "Tier 0 — Autonomous" in md

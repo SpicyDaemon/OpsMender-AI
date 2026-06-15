@@ -147,6 +147,7 @@ async def teams_activity(
                 channel_id=conversation_id,
                 message_id=message_id,
             ),
+            config=request.app.state.config,
         )
     except IncidentActionError as exc:
         message = callback_error_message(exc).replace(

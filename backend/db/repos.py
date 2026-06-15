@@ -4562,6 +4562,8 @@ class ServiceRepo:
         priority: str = "P2",
         intake_token: str | None = None,
         preferred_mcp_server_ids: list[str] | None = None,
+        ai_default_tier: int | None = None,
+        ai_auto_start_enabled: bool | None = None,
         external_refs: dict | None = None,
         is_active: bool = True,
     ) -> Service:
@@ -4574,6 +4576,8 @@ class ServiceRepo:
             priority=priority,
             intake_token=intake_token,
             preferred_mcp_server_ids=preferred_mcp_server_ids or [],
+            ai_default_tier=ai_default_tier,
+            ai_auto_start_enabled=ai_auto_start_enabled,
             external_refs=external_refs,
             is_active=is_active,
         )
@@ -4640,6 +4644,10 @@ class ServiceRepo:
         intake_token: str | None = None,
         preferred_mcp_server_ids: list[str] | None = None,
         preferred_mcp_server_ids_provided: bool = False,
+        ai_default_tier: int | None = None,
+        ai_default_tier_provided: bool = False,
+        ai_auto_start_enabled: bool | None = None,
+        ai_auto_start_enabled_provided: bool = False,
         external_refs: dict | None = None,
         external_refs_provided: bool = False,
         is_active: bool | None = None,
@@ -4657,6 +4665,10 @@ class ServiceRepo:
             values["intake_token"] = intake_token
         if preferred_mcp_server_ids_provided:
             values["preferred_mcp_server_ids"] = preferred_mcp_server_ids or []
+        if ai_default_tier_provided:
+            values["ai_default_tier"] = ai_default_tier
+        if ai_auto_start_enabled_provided:
+            values["ai_auto_start_enabled"] = ai_auto_start_enabled
         if external_refs_provided:
             values["external_refs"] = external_refs
         if is_active is not None:

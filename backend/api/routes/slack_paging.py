@@ -204,6 +204,7 @@ async def slack_interactions(
                 message_id=str((payload.get("message") or {}).get("ts") or "")
                 or None,
             ),
+            config=request.app.state.config,
         )
     except IncidentActionError as exc:
         message = callback_error_message(exc).replace(

@@ -453,7 +453,7 @@ class TestIngestGeneric:
         config_resp = await client.put(
             "/config",
             json={
-                "tier": 1,
+                "tier": 0,
                 "ingest_auto_start_enabled": True,
                 "ingest_auto_start_min_severity": "high",
                 "ingest_auto_start_source": "generic",
@@ -479,8 +479,42 @@ class TestIngestGeneric:
         async with app.state.session_factory() as db:
             sessions = await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
             assert len(sessions) == 1
-            assert sessions[0].tier == 1
+            assert sessions[0].tier == 0
             assert sessions[0].status == "active"
+
+    @pytest.mark.parametrize("tier", [1, 2])
+    async def test_ingest_auto_start_rejects_non_autonomous_tiers(
+        self, tier, client: AsyncClient, app, admin_headers
+    ):
+        await client.put(
+            "/config",
+            json={
+                "tier": tier,
+                "ingest_auto_start_enabled": True,
+                "ingest_auto_start_min_severity": "high",
+                "ingest_auto_start_source": "generic",
+            },
+            headers=admin_headers,
+        )
+        raw, _ = await _create_token(
+            app, provider="generic", name=f"generic-no-autostart-t{tier}"
+        )
+        resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": f"Tier {tier} incident",
+                "description": "Severity matches, but autonomy does not",
+                "severity": "critical",
+                "id": f"autostart-tier-{tier}",
+            },
+            headers={"X-OpsMender-Token": raw},
+        )
+        assert resp.status_code == 200
+        incident_id = uuid.UUID(resp.json()["incident_id"])
+        async with app.state.session_factory() as db:
+            assert (
+                await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
+            ) == []
 
     async def test_ingest_auto_start_skips_when_rule_does_not_match(
         self, client: AsyncClient, app, admin_headers
@@ -521,6 +555,7 @@ class TestIngestGeneric:
         await client.put(
             "/config",
             json={
+                "tier": 0,
                 "ingest_auto_start_enabled": True,
                 "ingest_auto_start_min_severity": "high",
                 "ingest_auto_start_source": "generic",

@@ -49,6 +49,26 @@ def _normalize_operation(op: dict[str, Any]) -> dict[str, Any]:
         entry["deny"] = True
     if op.get("allow_generic"):
         entry["allow_generic"] = True
+    if not deny:
+        if classification == "safe":
+            entry["tiers"] = {
+                "T0": {"enabled": True, "mode": "autonomous"},
+                "T1": {"enabled": True, "mode": "autonomous"},
+                "T2": {"enabled": True, "mode": "advisory"},
+            }
+        else:
+            tier0_enabled = bool(
+                op.get("reversible") is True and entry.get("compensating_inverse")
+            )
+            entry["tiers"] = {
+                "T0": {
+                    "enabled": tier0_enabled,
+                    "mode": "autonomous" if tier0_enabled else "blocked",
+                    "require_reversible": True,
+                },
+                "T1": {"enabled": True, "mode": "approval"},
+                "T2": {"enabled": False, "mode": "blocked"},
+            }
     notes = op.get("notes")
     if notes:
         entry["notes"] = str(notes).strip()
@@ -79,6 +99,7 @@ def build_skill_from_tools(
     front: dict[str, Any] = {
         "version": "1",
         "environment": (environment or "your-environment").strip() or "your-environment",
+        "default_tier": "T2",
         "operations": norm,
         "focus_areas": [],
     }
@@ -139,11 +160,10 @@ def build_skill_from_tools(
 The AI may execute remediation automatically — **only within this policy, deny
 lists, MCP permissions, and backend guardrails.** Most autonomous, not unlimited.
 
-> **Tier 0 safety floor.** A non-`safe` action only runs autonomously when the
-> policy marks it `reversible: true` **and** declares a `compensating_inverse`
-> (the tool that rolls it back). Skills guide the AI, but the backend tier gate
-> decides what can actually run — an action without this metadata is blocked at
-> Tier 0 and falls to Tier 1 approval instead.
+> **Tier 0 safety floor.** `require_reversible: true` requires
+> `reversible: true` and a `compensating_inverse` for non-safe actions. A skill
+> may explicitly set `require_reversible: false` for an operation whose T0 mode
+> is autonomous. Legacy operations without `tiers` retain the original floor.
 
 ### Safe actions (read-only / low-risk)
 
@@ -213,26 +233,67 @@ def build_skill_template(
     return f"""---
 version: "1"
 environment: {environment}
+default_tier: T2
 operations:
-  # Use EXACT MCP tool/action identifiers here. Classification drives the
-  # backend tier gate: safe -> read/low-risk, caution -> reversible writes,
-  # destructive -> high-risk/irreversible. Unknown tools are denied.
-  - tool: get_*
+  # Unknown tools fail closed. Use exact MCP tool identifiers where possible.
+  - tool: get_pods
     classification: safe
-    notes: "Read-only observation — runs at Tier 0/Tier 1."
-  - tool: restart_service
+    tiers:
+      T0:
+        enabled: true
+        mode: autonomous
+      T1:
+        enabled: true
+        mode: autonomous
+      T2:
+        enabled: true
+        mode: advisory
+  - tool: restart_deployment
     classification: caution
     reversible: true
-    notes: "Example reversible remediation — Tier 0 (if allowed) / Tier 1."
-  - tool: delete_*
+    compensating_inverse: restart_deployment_previous_state
+    tiers:
+      T0:
+        enabled: true
+        mode: autonomous
+        require_reversible: true
+      T1:
+        enabled: true
+        mode: approval
+      T2:
+        enabled: false
+        mode: blocked
+  - tool: delete_stuck_pod
     classification: destructive
-    notes: "Example destructive op — Tier 0 only within policy; Tier 1 approval."
-  # Generic command tools are auto-guarded, but listing them as explicit deny
-  # entries makes the policy self-documenting. deny: true wins at every tier.
-  - tool: shell
+    reversible: false
+    tiers:
+      T0:
+        enabled: true
+        mode: autonomous
+        require_reversible: false
+      T1:
+        enabled: true
+        mode: approval
+      T2:
+        enabled: false
+        mode: blocked
+  - tool: delete_database
     deny: true
-  - tool: run_command
-    deny: true
+  # Generic tools require allow_generic: true before explicit tier policy is
+  # considered. Prefer scoped wrappers over shell/kubectl/run_command.
+  - tool: kubectl
+    classification: caution
+    allow_generic: true
+    tiers:
+      T0:
+        enabled: false
+        mode: blocked
+      T1:
+        enabled: true
+        mode: approval
+      T2:
+        enabled: false
+        mode: blocked
 focus_areas: []
 ---
 
@@ -256,6 +317,11 @@ Action classification (drives the tier gate): `safe` (read-only / low-risk) ·
 `unknown` (unclassified — always denied) · generic-execution (auto-detected
 arbitrary-command tools — conservatively guarded). `deny: true` blocks an entry
 at every tier.
+
+Each operation may declare `tiers.T0` / `T1` / `T2` with `enabled` and `mode`
+(`autonomous`, `approval`, `blocked`, or `advisory`). These structured values
+are enforced by `backend/tiers/enforcement.py`. Operations without `tiers`
+remain backward compatible and use the legacy classification matrix.
 
 ## Metadata
 

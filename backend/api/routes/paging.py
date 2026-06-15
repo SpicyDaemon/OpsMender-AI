@@ -351,6 +351,8 @@ async def create_service(
             priority=body.priority,
             intake_token=intake_token,
             preferred_mcp_server_ids=preferred_mcp_server_ids,
+            ai_default_tier=body.ai_default_tier,
+            ai_auto_start_enabled=body.ai_auto_start_enabled,
             external_refs=body.external_refs,
             is_active=body.is_active,
         )
@@ -406,6 +408,12 @@ async def update_service(
         preferred_mcp_server_ids=preferred_mcp_server_ids,
         preferred_mcp_server_ids_provided=(
             "preferred_mcp_server_ids" in body.model_fields_set
+        ),
+        ai_default_tier=body.ai_default_tier,
+        ai_default_tier_provided="ai_default_tier" in body.model_fields_set,
+        ai_auto_start_enabled=body.ai_auto_start_enabled,
+        ai_auto_start_enabled_provided=(
+            "ai_auto_start_enabled" in body.model_fields_set
         ),
         external_refs=body.external_refs,
         external_refs_provided="external_refs" in body.model_fields_set,

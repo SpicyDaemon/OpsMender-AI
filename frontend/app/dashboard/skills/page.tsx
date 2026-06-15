@@ -52,18 +52,38 @@ const UNASSIGNED_FILTER = "__unassigned";
 const TEMPLATE_SKILL = `---
 version: "1"
 environment: example
+default_tier: T2
 operations:
   - tool: get_pods
     classification: safe
-  - tool: scale_deployment
+    tiers:
+      T0: { enabled: true, mode: autonomous }
+      T1: { enabled: true, mode: autonomous }
+      T2: { enabled: true, mode: advisory }
+  - tool: restart_deployment
     classification: caution
-  - tool: delete_*
+    reversible: true
+    compensating_inverse: restart_deployment_previous_state
+    tiers:
+      T0: { enabled: true, mode: autonomous, require_reversible: true }
+      T1: { enabled: true, mode: approval }
+      T2: { enabled: false, mode: blocked }
+  - tool: delete_stuck_pod
     classification: destructive
+    reversible: false
+    tiers:
+      T0: { enabled: true, mode: autonomous, require_reversible: false }
+      T1: { enabled: true, mode: approval }
+      T2: { enabled: false, mode: blocked }
+  - tool: delete_database
+    deny: true
 ---
 
 # Example skill
 
-Describe the environment and classification policy here.
+Unknown tools fail closed. deny: true always blocks. Generic tools require
+allow_generic: true. Explicit tiers are enforced by the backend; operations
+without tiers retain legacy behavior.
 `;
 
 function fmtDate(iso: string) {

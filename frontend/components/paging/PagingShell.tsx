@@ -752,6 +752,8 @@ function ServicesPanel({
     description: "",
     priority: "P2" as Priority,
     preferred_mcp_server_ids: [] as string[],
+    ai_default_tier: "",
+    ai_auto_start_policy: "inherit",
     escalation_chain_id: "",
     is_active: true,
   };
@@ -875,6 +877,12 @@ function ServicesPanel({
         description: form.description || undefined,
         priority: form.priority,
         preferred_mcp_server_ids: form.preferred_mcp_server_ids,
+        ai_default_tier:
+          form.ai_default_tier === "" ? null : Number(form.ai_default_tier),
+        ai_auto_start_enabled:
+          form.ai_auto_start_policy === "inherit"
+            ? null
+            : form.ai_auto_start_policy === "enabled",
         is_active: form.is_active,
       };
       let serviceId: string;
@@ -921,6 +929,14 @@ function ServicesPanel({
       description: service.description ?? "",
       priority: service.priority,
       preferred_mcp_server_ids: service.preferred_mcp_server_ids ?? [],
+      ai_default_tier:
+        service.ai_default_tier == null ? "" : String(service.ai_default_tier),
+      ai_auto_start_policy:
+        service.ai_auto_start_enabled == null
+          ? "inherit"
+          : service.ai_auto_start_enabled
+            ? "enabled"
+            : "disabled",
       escalation_chain_id: chainId,
       is_active: service.is_active,
     });
@@ -1366,6 +1382,39 @@ function ServicesPanel({
               server manually.
             </p>
           </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>Default AI Autonomy Tier</Label>
+              <Select
+                value={form.ai_default_tier}
+                onChange={(e) =>
+                  setForm({ ...form, ai_default_tier: e.target.value })
+                }
+              >
+                <option value="">Inherit from MCP Skill / organization</option>
+                <option value="0">Tier 0 — Autonomous</option>
+                <option value="1">Tier 1 — Approval Required</option>
+                <option value="2">Tier 2 — Advisory</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Incident auto-start policy</Label>
+              <Select
+                value={form.ai_auto_start_policy}
+                onChange={(e) =>
+                  setForm({ ...form, ai_auto_start_policy: e.target.value })
+                }
+              >
+                <option value="inherit">Inherit organization policy</option>
+                <option value="enabled">Allow when organization allows</option>
+                <option value="disabled">Disable for this service</option>
+              </Select>
+            </div>
+          </div>
+          <p className="-mt-2 text-xs text-fg-muted">
+            Auto-start still requires the resolved session tier to be Tier 0.
+            Tier 1 and Tier 2 never start automatically.
+          </p>
           <div>
             <Label>Description (optional)</Label>
             <Textarea

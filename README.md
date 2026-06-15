@@ -249,7 +249,7 @@ Each of these is configured by adding env vars to `.env` and restarting — noth
 | **Slack interactivity (Ack/Resolve/Escalate/Start AI Session + slash commands)** | Add Slack app **Request URL**s for `/bot/slack/interactions` and `/bot/slack/commands`; populate `bot_token` + `signing_secret`, then enable verified Slack actions on the channel |
 | **Teams interactivity (Ack/Resolve/Escalate/Start AI Session)** | Configure Graph app credentials + Bot Framework app ID, set the messaging endpoint to `/bot/teams/activity`, link Azure AD object IDs, then enable verified Teams actions |
 | **Per-incident Slack channels** | Toggle `slack_incident_channels_enabled` per org (`PUT /organizations/{id}/notification-settings`); requires Slack app `channels:manage` + `chat:write` scopes |
-| **Ingest auto-start** | `OPSMENDER_INGEST_AUTO_START_ENABLED=true`, `OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=critical`, optional `OPSMENDER_INGEST_AUTO_START_SOURCE` filter |
+| **Ingest auto-start** | `OPSMENDER_INGEST_AUTO_START_ENABLED=true`, `OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=critical`, optional `OPSMENDER_INGEST_AUTO_START_SOURCE` filter; only resolved Tier 0 sessions auto-start |
 | **SLA poller (HTTP / TCP uptime checks)** | `OPSMENDER_SLA_POLLER_ENABLED=true`, `OPSMENDER_SLA_POLL_INTERVAL_DEFAULT=60` |
 | **Multi-tenant orgs** | `OPSMENDER_MULTI_ORG_ENABLED=true` (exposes TopBar org switcher + per-invite org picker) |
 | **Per-tenant OIDC / SAML admin UI** | `OPSMENDER_ADVANCED_AUTH_ENABLED=true` (runtime routes work regardless; this just surfaces the admin pages) |
@@ -451,7 +451,7 @@ OpsMender's universal adapter accepts any JSON webhook — Slack, Datadog, Teams
 6. Dedup by `(external_source, external_id)` — repeated alerts update or skip instead of creating duplicates.
 7. Every inbound payload is logged raw in the `ingest_log` table for replay/debugging.
 8. Per-token rate limiting enforced (default: 60 req/min). Returns `429` with `Retry-After` header when exceeded.
-9. Optional auto-start can create one session automatically for newly created incidents that match a configured source + minimum severity rule.
+9. Optional auto-start can create one session automatically for newly created incidents that match a configured source + minimum severity rule, but only when session-tier resolution yields Tier 0. Tier 1 and Tier 2 never auto-start.
 
 ### Supported provider adapters
 

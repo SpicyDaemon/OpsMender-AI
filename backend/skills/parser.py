@@ -30,6 +30,24 @@ from typing import List, Optional
 import yaml
 
 
+_TIER_MODES = ("autonomous", "approval", "blocked", "advisory")
+
+
+@dataclasses.dataclass(frozen=True)
+class OperationTierPolicy:
+    """Explicit behavior for one operation at one autonomy tier."""
+
+    enabled: bool
+    mode: str
+    require_reversible: Optional[bool] = None
+
+    def __post_init__(self) -> None:
+        if self.mode not in _TIER_MODES:
+            raise ValueError(
+                f"tier mode must be one of {_TIER_MODES}, got '{self.mode}'"
+            )
+
+
 @dataclasses.dataclass
 class OperationClassification:
     """A single tool-name → classification mapping.
@@ -54,6 +72,10 @@ class OperationClassification:
     # generic-tool guardrail (operator explicitly accepted the risk); normal
     # tier/classification rules then apply. No effect on non-generic tools.
     allow_generic: bool = False
+    # ``None`` means this is a legacy operation and the global classification
+    # matrix remains authoritative. A mapping (including an empty one) means the
+    # skill explicitly owns per-tier behavior; omitted tiers fail closed.
+    tiers: Optional[dict[int, OperationTierPolicy]] = None
 
     def __post_init__(self) -> None:
         valid = ("safe", "caution", "destructive")
@@ -74,6 +96,11 @@ class OperationClassification:
             return self.reversible
         return self.classification == "safe"
 
+    def policy_for_tier(self, tier: int) -> Optional[OperationTierPolicy]:
+        if self.tiers is None:
+            return None
+        return self.tiers.get(tier)
+
     @property
     def requires_compensating_inverse(self) -> bool:
         """Return True when Tier 0 needs an explicit inverse for this op."""
@@ -87,6 +114,9 @@ class SkillDefinition:
     version: str
     environment: str
     operations: List[OperationClassification]
+    # Optional session-tier default used after explicit request and
+    # service-specific policy, but before the organization default.
+    default_tier: Optional[int] = None
     # Optional free-form list of areas the operator wants Environment Scans
     # to weight (e.g. "crashlooping containers", "tasks stuck in PROVISIONING",
     # "high systemd restart counts"). Platform-agnostic by design — the LLM
@@ -137,6 +167,17 @@ class SkillDefinition:
         op = self._match(tool_name)
         return op.compensating_inverse if op is not None else None
 
+    def tier_policy(
+        self, tool_name: str, tier: int
+    ) -> Optional[OperationTierPolicy]:
+        """Return explicit policy for a declared operation/tier, if present."""
+        op = self._match(tool_name)
+        return op.policy_for_tier(tier) if op is not None else None
+
+    def has_explicit_tiers(self, tool_name: str) -> bool:
+        op = self._match(tool_name)
+        return bool(op is not None and op.tiers is not None)
+
     def tier0_violation_reason(self, tool_name: str) -> Optional[str]:
         """Return the Tier 0 safety-floor violation reason, if any.
 
@@ -150,6 +191,14 @@ class SkillDefinition:
         op = self._match(tool_name)
         if op is None:
             return "unknown operation — not declared in skill definition"
+        policy = op.policy_for_tier(0)
+        require_reversible = (
+            True
+            if op.tiers is None or policy is None
+            else policy.require_reversible is not False
+        )
+        if not require_reversible:
+            return None
         if not op.effective_reversible:
             return "not marked reversible in skill definition"
         if op.requires_compensating_inverse and not op.compensating_inverse:
@@ -181,6 +230,31 @@ def _extract_yaml_front_matter(text: str) -> str:
     return text
 
 
+def _parse_tier(raw: object, *, field: str) -> int:
+    """Parse ``0``/``T0``/``Tier 0`` forms without widening the tier range."""
+    if isinstance(raw, bool):
+        raise ValueError(f"{field} must be T0, T1, or T2")
+    if isinstance(raw, int):
+        tier = raw
+    else:
+        value = str(raw).strip().upper().replace("TIER", "").strip()
+        if value.startswith("T"):
+            value = value[1:]
+        try:
+            tier = int(value)
+        except ValueError as exc:
+            raise ValueError(f"{field} must be T0, T1, or T2") from exc
+    if tier not in (0, 1, 2):
+        raise ValueError(f"{field} must be T0, T1, or T2")
+    return tier
+
+
+def _parse_bool(raw: object, *, field: str) -> bool:
+    if not isinstance(raw, bool):
+        raise ValueError(f"{field} must be true or false")
+    return raw
+
+
 def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
     """Parse a raw skill definition string and return a SkillDefinition.
 
@@ -201,6 +275,39 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
             reversible = None
         else:
             reversible = bool(reversible_raw)
+        tiers: Optional[dict[int, OperationTierPolicy]] = None
+        if "tiers" in entry:
+            tiers = {}
+            raw_tiers = entry.get("tiers") or {}
+            if not isinstance(raw_tiers, dict):
+                raise ValueError(
+                    f"Operation '{entry.get('tool', '')}': tiers must be a mapping"
+                )
+            for raw_tier, raw_policy in raw_tiers.items():
+                tier = _parse_tier(raw_tier, field="operation tier")
+                if not isinstance(raw_policy, dict):
+                    raise ValueError(
+                        f"Operation '{entry.get('tool', '')}': T{tier} policy "
+                        "must be a mapping"
+                    )
+                tiers[tier] = OperationTierPolicy(
+                    enabled=_parse_bool(
+                        raw_policy.get("enabled", False),
+                        field=f"Operation '{entry.get('tool', '')}' T{tier} enabled",
+                    ),
+                    mode=str(raw_policy.get("mode", "blocked")).strip().lower(),
+                    require_reversible=(
+                        None
+                        if "require_reversible" not in raw_policy
+                        else _parse_bool(
+                            raw_policy.get("require_reversible"),
+                            field=(
+                                f"Operation '{entry.get('tool', '')}' T{tier} "
+                                "require_reversible"
+                            ),
+                        )
+                    ),
+                )
         operations.append(
             OperationClassification(
                 tool=entry.get("tool", ""),
@@ -210,6 +317,7 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
                 compensating_inverse=entry.get("compensating_inverse"),
                 deny=bool(entry.get("deny", False)),
                 allow_generic=bool(entry.get("allow_generic", False)),
+                tiers=tiers,
             )
         )
 
@@ -225,6 +333,11 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
         version=str(data.get("version", "1")),
         environment=data.get("environment", "default"),
         operations=operations,
+        default_tier=(
+            None
+            if data.get("default_tier") is None
+            else _parse_tier(data.get("default_tier"), field="default_tier")
+        ),
         focus_areas=focus_areas,
     )
 

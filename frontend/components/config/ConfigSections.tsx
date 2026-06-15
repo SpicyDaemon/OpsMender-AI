@@ -459,7 +459,8 @@ export function IngestAutoStartSection({
       </div>
 
       <div className="rounded-lg border border-status-info-border bg-status-info-bg px-4 py-3 text-sm text-status-info">
-        Auto-start only runs for newly created incidents and reuses the current runtime tier for the session.
+        Auto-start only runs for newly created incidents whose resolved AI
+        Autonomy Tier is Tier 0. Tier 1 and Tier 2 incidents never auto-start.
         Duplicate ingests will not spawn extra active sessions.
       </div>
 

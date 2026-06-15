@@ -179,6 +179,7 @@ async def test_resolve_and_start_ai_session_are_idempotent(factory):
         assert started.status == "session_started"
         active = await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident.id)
         assert len(active) == 1
+        assert active[0].tier == 2
 
         started_again = await execute_incident_action(
             db,

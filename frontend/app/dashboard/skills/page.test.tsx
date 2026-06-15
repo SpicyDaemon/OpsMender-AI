@@ -50,7 +50,7 @@ beforeEach(() => {
   apiMocks.getSkillTemplate.mockResolvedValue({
     name: "New MCP Skill (from template)",
     content_md:
-      "# template\n## Tier 0 — Autonomous\n## Tier 1 — Approval Required\n## Tier 2 — Advisory Only\n",
+      "default_tier: T2\nrequire_reversible: false\nallow_generic: true\n# template\n## Tier 0 — Autonomous\n## Tier 1 — Approval Required\n## Tier 2 — Advisory Only\n",
   });
 });
 
@@ -76,6 +76,7 @@ describe("MCP Skills page", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue(/Tier 2 — Advisory Only/)).toBeTruthy(),
     );
+    expect(screen.getByDisplayValue(/require_reversible: false/)).toBeTruthy();
   });
 
   it("shows an Unassigned badge for a draft skill", async () => {

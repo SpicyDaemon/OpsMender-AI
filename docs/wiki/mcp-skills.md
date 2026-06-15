@@ -161,6 +161,109 @@ Conservative defaults: if **no skill** resolves for a server (no server-specific
 and no global), unclassified write/remediation actions are treated as unknown
 and **denied**.
 
+## Explicit per-operation tier policy
+
+New skills should declare `tiers` for each operation. The structured policy is
+the source of truth enforced by `backend/tiers/enforcement.py`:
+
+- `mode: autonomous` permits execution without an operator ACK.
+- `mode: approval` routes the action through the approval gate.
+- `mode: blocked` denies execution.
+- `mode: advisory` allows guidance but no execution.
+- `require_reversible: true` keeps the Tier 0 requirement for
+  `reversible: true` plus `compensating_inverse`.
+- `require_reversible: false` explicitly allows a T0 operation to bypass that
+  reversible floor. Deny and generic-command guardrails still win.
+
+Skills without `tiers` remain backward compatible: they use the legacy
+classification matrix and the original Tier 0 reversible floor.
+
+```yaml
+---
+version: "1"
+environment: production
+default_tier: T2
+
+operations:
+  - tool: get_pods
+    classification: safe
+    tiers:
+      T0:
+        enabled: true
+        mode: autonomous
+      T1:
+        enabled: true
+        mode: autonomous
+      T2:
+        enabled: true
+        mode: advisory
+
+  - tool: restart_deployment
+    classification: caution
+    reversible: true
+    compensating_inverse: restart_deployment_previous_state
+    tiers:
+      T0:
+        enabled: true
+        mode: autonomous
+        require_reversible: true
+      T1:
+        enabled: true
+        mode: approval
+      T2:
+        enabled: false
+        mode: blocked
+
+  - tool: delete_stuck_pod
+    classification: destructive
+    reversible: false
+    tiers:
+      T0:
+        enabled: true
+        mode: autonomous
+        require_reversible: false
+      T1:
+        enabled: true
+        mode: approval
+      T2:
+        enabled: false
+        mode: blocked
+
+  - tool: delete_database
+    deny: true
+
+  - tool: kubectl
+    classification: caution
+    allow_generic: true
+    tiers:
+      T0:
+        enabled: false
+        mode: blocked
+      T1:
+        enabled: true
+        mode: approval
+      T2:
+        enabled: false
+        mode: blocked
+
+focus_areas:
+  - Kubernetes workload health
+  - deployment rollback safety
+---
+# Skill Guidance
+
+## Tier 0 — Autonomous
+Use only explicitly permitted tools. Execute autonomous actions only when the
+structured operation policy allows it.
+
+## Tier 1 — Approval Required
+Investigate and prepare remediation. Pause for approval before caution or
+destructive actions.
+
+## Tier 2 — Advisory
+Observe, diagnose, and explain what should be done. Do not execute write actions.
+```
+
 ## Backend enforcement (hard safety)
 
 > **What is guaranteed.** OpsMender prevents *execution* beyond the selected tier
@@ -178,9 +281,10 @@ classification, whether approval is required, and whether the action is denied.
 - **Tier 1** — allow-listed/safe actions run; destructive actions route through
   the approval gate; deny-listed and unknown actions are blocked; decisions are
   logged.
-- **Tier 0** — executes only actions permitted by skill policy and not
-  deny-listed, subject to the Tier 0 sandbox floor (only reversible ops);
-  unknown actions blocked; executed/blocked decisions logged.
+- **Tier 0** — executes only actions explicitly permitted by skill policy and
+  not deny-listed. Explicit policy may set `require_reversible: false`;
+  legacy operations retain the reversible sandbox floor. Unknown actions are
+  blocked and every decision is logged.
 
 Every MCP tool call flows through one chokepoint (`audited_tool_call` →
 `tier_check`); the live-rollback path is gated by the Tier 0 sandbox allowlist;

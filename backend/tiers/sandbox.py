@@ -42,6 +42,7 @@ from mcp.types import CallToolResult, Tool
 
 from backend.mcp.client import call_tool
 from backend.skills.parser import SkillDefinition
+from backend.tiers.enforcement import check
 
 
 class Tier0SandboxViolation(RuntimeError):
@@ -89,13 +90,13 @@ class Tier0Sandbox:
             allowed: set[str] = {
                 tool.name
                 for tool in available_tools
-                if skill_def.is_tier0_safe(tool.name)
+                if check(tool.name, 0, skill_def).permitted
             }
         else:
             allowed = {
                 op.tool
                 for op in skill_def.operations
-                if skill_def.is_tier0_safe(op.tool)
+                if check(op.tool, 0, skill_def).permitted
                 and "*" not in op.tool
                 and "?" not in op.tool
             }

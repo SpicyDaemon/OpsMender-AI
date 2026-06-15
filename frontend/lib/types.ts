@@ -182,7 +182,7 @@ export interface SessionCreate {
   incident_id?: string;
   workflow_profile_id?: string;
   agent_team_profile_id?: string;
-  tier: number;
+  tier?: number;
   model_provider?: string;
   model_id?: string;
   initial_briefing?: string;
@@ -1565,6 +1565,8 @@ export interface ServiceResponse {
   description: string | null;
   priority: Priority;
   preferred_mcp_server_ids: string[];
+  ai_default_tier?: number | null;
+  ai_auto_start_enabled?: boolean | null;
   intake_url: string | null;
   external_refs: Record<string, unknown> | null;
   is_active: boolean;
@@ -1583,6 +1585,8 @@ export interface ServiceCreate {
   description?: string;
   priority?: Priority;
   preferred_mcp_server_ids?: string[];
+  ai_default_tier?: number | null;
+  ai_auto_start_enabled?: boolean | null;
   external_refs?: Record<string, unknown>;
   is_active?: boolean;
 }
@@ -1593,6 +1597,8 @@ export interface ServiceUpdate {
   description?: string;
   priority?: Priority;
   preferred_mcp_server_ids?: string[];
+  ai_default_tier?: number | null;
+  ai_auto_start_enabled?: boolean | null;
   external_refs?: Record<string, unknown>;
   is_active?: boolean;
 }

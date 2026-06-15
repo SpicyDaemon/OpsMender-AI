@@ -28,6 +28,17 @@ class EnforcementResult:
     reversible: bool = False
     requires_approval: bool = False
 
+    @property
+    def decision(self) -> str:
+        """Stable decision value for gates, logs, and API presentation."""
+        if self.requires_approval:
+            return "approval"
+        if self.permitted:
+            return "autonomous"
+        if "advisory" in self.reason.lower():
+            return "advisory"
+        return "deny"
+
 
 # AI Autonomy Tiers (3-tier model):
 #   Tier 0 — Autonomous       (may execute remediation, incl. destructive,
@@ -94,7 +105,8 @@ def check(
     reasoning. Legacy Tier 3 is normalized to Tier 2 (advisory).
 
     Enforcement order: deny-list (always wins) → generic-execution guardrail →
-    tier/classification matrix → Tier 0 sandbox floor.
+    explicit operation tier policy (when present) → legacy tier/classification
+    matrix → Tier 0 reversible floor.
     """
     tier = normalize_tier(tier)
     classification = skill_def.classify(tool_name)
@@ -138,10 +150,43 @@ def check(
             reversible=reversible,
         )
 
-    # 3. Tier/classification matrix.
-    permitted, reason = _MATRIX[classification][tier]
+    # 3. Explicit per-operation tier behavior is authoritative when the
+    #    operation declares ``tiers``. Missing tier entries fail closed.
+    if skill_def.has_explicit_tiers(tool_name):
+        policy = skill_def.tier_policy(tool_name, tier)
+        if policy is None:
+            return EnforcementResult(
+                permitted=False,
+                classification=classification,
+                tier=tier,
+                reason=f"operation has no explicit T{tier} policy — denied",
+                reversible=reversible,
+            )
+        if not policy.enabled or policy.mode in {"blocked", "advisory"}:
+            label = "advisory — no execution" if policy.mode == "advisory" else "blocked"
+            return EnforcementResult(
+                permitted=False,
+                classification=classification,
+                tier=tier,
+                reason=f"explicit T{tier} skill policy: {label}",
+                reversible=reversible,
+            )
+        permitted = True
+        requires_approval = policy.mode == "approval"
+        reason = (
+            f"explicit T{tier} skill policy permits autonomous execution"
+            if not requires_approval
+            else f"explicit T{tier} skill policy requires operator approval"
+        )
+    else:
+        # 4. Legacy skills continue to use the classification matrix.
+        permitted, reason = _MATRIX[classification][tier]
+        requires_approval = (
+            tier == 1 and classification == "destructive" and permitted
+        )
 
-    # 4. Tier 0 sandbox floor: only rollback-safe ops execute.
+    # 5. Tier 0 reversible floor. Explicit T0 policy may opt out with
+    #    ``require_reversible: false``; legacy operations retain the old floor.
     if tier == 0 and permitted:
         violation = skill_def.tier0_violation_reason(tool_name)
         if violation is not None:
@@ -150,9 +195,6 @@ def check(
                 f"{classification} operation denied at Tier 0 — {violation} "
                 "(sandbox floor)"
             )
-
-    # Destructive at Tier 1 is permitted only via the approval gate.
-    requires_approval = tier == 1 and classification == "destructive" and permitted
 
     return EnforcementResult(
         permitted=permitted,

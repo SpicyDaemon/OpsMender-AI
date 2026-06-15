@@ -312,7 +312,7 @@ async def ingest_incident(
             )
 
     session_id: uuid.UUID | None = None
-    policy = await load_auto_start_policy(db, org_id, config)
+    policy = await load_auto_start_policy(db, org_id, config, incident=incident)
     if should_auto_start_session(incident, dedup_action=dedup_action, policy=policy):
         if not await has_active_session_for_incident(db, org_id, incident.id):
             session = await SessionRepo.create(

@@ -367,8 +367,8 @@ class SessionCreate(BaseModel):
     workflow_profile_id: Optional[uuid.UUID] = None
     agent_team_profile_id: Optional[uuid.UUID] = None
     # AI Autonomy Tier: 0 Autonomous · 1 Approval Required · 2 Advisory Only.
-    # Defaults to Tier 2 (Advisory Only) server-side when omitted.
-    tier: int = Field(default=2, ge=0, le=2)
+    # When omitted, the resolver applies service → skill → org → Tier 2.
+    tier: Optional[int] = Field(default=None, ge=0, le=2)
     model_provider: Optional[str] = None
     model_id: Optional[str] = None
     initial_briefing: Optional[str] = Field(default=None, max_length=10000)
@@ -1820,6 +1820,8 @@ class ServiceCreate(BaseModel):
     description: Optional[str] = None
     priority: str = Field(default="P2", pattern="^(P0|P1|P2|P3)$")
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
+    ai_default_tier: Optional[int] = Field(default=None, ge=0, le=2)
+    ai_auto_start_enabled: Optional[bool] = None
     external_refs: Optional[dict[str, Any]] = None
     is_active: bool = True
 
@@ -1830,6 +1832,8 @@ class ServiceUpdate(BaseModel):
     description: Optional[str] = None
     priority: Optional[str] = Field(None, pattern="^(P0|P1|P2|P3)$")
     preferred_mcp_server_ids: Optional[list[uuid.UUID]] = None
+    ai_default_tier: Optional[int] = Field(default=None, ge=0, le=2)
+    ai_auto_start_enabled: Optional[bool] = None
     external_refs: Optional[dict[str, Any]] = None
     is_active: Optional[bool] = None
 
@@ -1842,6 +1846,8 @@ class ServiceResponse(BaseModel):
     description: Optional[str]
     priority: str
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
+    ai_default_tier: Optional[int] = None
+    ai_auto_start_enabled: Optional[bool] = None
     intake_url: Optional[str] = None
     external_refs: Optional[dict[str, Any]]
     is_active: bool

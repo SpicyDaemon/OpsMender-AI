@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from backend.config_loader import AppConfig
 from backend.db.models import BotConnector, User, UserOrganization
 from backend.db.repos import (
     BotActionAuditRepo,
@@ -25,6 +26,7 @@ from backend.db.repos import (
     UserRepo,
 )
 from backend.paging import escalation as _escalation
+from backend.tiers.resolution import resolve_session_tier_for_incident
 
 
 SUPPORTED_INCIDENT_ACTIONS = {
@@ -247,6 +249,7 @@ async def execute_incident_action(
     connector: BotConnector | None = None,
     external_actor: ExternalActorIdentity | None = None,
     channel_factory: async_sessionmaker[AsyncSession] | None = None,
+    config: AppConfig | None = None,
 ) -> IncidentActionResult:
     """Execute a verified incident action.
 
@@ -349,10 +352,16 @@ async def execute_incident_action(
                     actor_user_id=actor_user_id,
                     session_id=session.id,
                 )
+        resolved_tier = await resolve_session_tier_for_incident(
+            db,
+            claims.org_id,
+            config,
+            incident=incident,
+        )
         session = await SessionRepo.create(
             db,
             claims.org_id,
-            tier=2,
+            tier=resolved_tier,
             incident_id=claims.incident_id,
         )
         return IncidentActionResult(
@@ -371,6 +380,7 @@ async def execute_verified_native_action(
     *,
     request: VerifiedNativeAction,
     channel_factory: async_sessionmaker[AsyncSession] | None = None,
+    config: AppConfig | None = None,
 ) -> IncidentActionResult:
     """Deduplicate, authorize, execute, and audit a verified chat callback.
 
@@ -457,6 +467,7 @@ async def execute_verified_native_action(
             connector=connector,
             external_actor=request.external_actor,
             channel_factory=channel_factory,
+            config=config,
         )
     except IncidentActionError as exc:
         error_code = str(exc)

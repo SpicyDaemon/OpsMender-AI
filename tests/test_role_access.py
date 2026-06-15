@@ -7,6 +7,8 @@ cannot read admin surfaces like config or the user list.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -122,7 +124,27 @@ async def test_all_roles_can_manage_own_profile(client):
 async def test_incident_create_and_actions_rbac(client):
     """Part 1/8: only admin creates incidents; viewer can't act; operator can."""
     h = await _headers(client)
-    body = {"title": "Outage", "description": "DB down", "severity": "high"}
+    suffix = uuid.uuid4().hex[:8]
+    team = await client.post(
+        "/teams",
+        headers=h["admin"],
+        json={"name": "RBAC Team", "slug": f"rbac-team-{suffix}"},
+    )
+    service = await client.post(
+        "/services",
+        headers=h["admin"],
+        json={
+            "team_id": team.json()["id"],
+            "name": "RBAC Service",
+            "slug": f"rbac-service-{suffix}",
+        },
+    )
+    body = {
+        "title": "Outage",
+        "description": "DB down",
+        "severity": "high",
+        "service_id": service.json()["id"],
+    }
 
     # Create incident — admin only (operator + viewer rejected).
     admin_create = await client.post("/incidents", headers=h["admin"], json=body)

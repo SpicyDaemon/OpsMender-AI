@@ -51,6 +51,7 @@ from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import loads as load_skill_def
 from backend.tiers.resolution import resolve_session_tier_for_incident
 from backend.tiers.sandbox import Tier0Sandbox
+from backend.llm.selection import choose_model_for_incident_service
 from backend.bots.notifier import schedule_session_chat_event
 from backend.webhooks import schedule_session_event
 from backend.workflow.rollback import (
@@ -155,6 +156,14 @@ async def create_session(
         incident=incident,
         requested_tier=body.tier,
     )
+    selected_model = None
+    if body.model_provider is None and body.model_id is None and incident is not None:
+        selected_model = await choose_model_for_incident_service(
+            db,
+            org_id,
+            service_id=incident.service_id,
+            ingestion_model_config_id=incident.ingestion_model_config_id,
+        )
     session = await SessionRepo.create(
         db,
         org_id,
@@ -162,8 +171,12 @@ async def create_session(
         incident_id=body.incident_id,
         workflow_profile_id=workflow_profile_id,
         agent_team_profile_id=agent_team_profile_id,
-        model_provider=body.model_provider,
-        model_id=body.model_id,
+        model_provider=(
+            body.model_provider
+            if selected_model is None
+            else selected_model.provider
+        ),
+        model_id=body.model_id if selected_model is None else selected_model.model_id,
     )
 
     briefing = (body.initial_briefing or "").strip()

@@ -697,6 +697,7 @@ export default function IncidentsPage() {
       {/* Create modal */}
       <CreateIncidentModal
         open={showCreate}
+        services={services}
         onClose={() => setShowCreate(false)}
         onCreated={() => {
           setShowCreate(false);
@@ -1118,10 +1119,12 @@ function ManageIncidentModal({
 
 function CreateIncidentModal({
   open,
+  services,
   onClose,
   onCreated,
 }: {
   open: boolean;
+  services: ServiceResponse[];
   onClose: () => void;
   onCreated: (inc: IncidentResponse) => void;
 }) {
@@ -1129,12 +1132,18 @@ function CreateIncidentModal({
     title: "",
     description: "",
     severity: undefined,
+    service_id: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   function reset() {
-    setForm({ title: "", description: "", severity: undefined });
+    setForm({
+      title: "",
+      description: "",
+      severity: undefined,
+      service_id: "",
+    });
     setError("");
   }
 
@@ -1159,6 +1168,37 @@ function CreateIncidentModal({
       title="Create Incident"
     >
       <div className="space-y-4">
+        <div>
+          <Label htmlFor="ci-service">Service</Label>
+          <Select
+            id="ci-service"
+            value={form.service_id ?? ""}
+            onChange={(e) =>
+              setForm((current) => ({
+                ...current,
+                service_id: e.target.value,
+              }))
+            }
+          >
+            <option value="">Select an active service</option>
+            {services
+              .filter((service) => service.is_active)
+              .map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
+          </Select>
+          {services.some((service) => service.is_active) ? (
+            <p className="mt-1 text-xs text-fg-muted">
+              Manual incidents must be linked to an active service.
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-status-high">
+              Create an active service before creating a manual incident.
+            </p>
+          )}
+        </div>
         <div>
           <Label htmlFor="ci-title">Title</Label>
           <Input
@@ -1202,7 +1242,11 @@ function CreateIncidentModal({
           <Button variant="secondary" onClick={() => { reset(); onClose(); }}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} loading={loading} disabled={!form.title || !form.description}>
+          <Button
+            onClick={handleSubmit}
+            loading={loading}
+            disabled={!form.title || !form.description || !form.service_id}
+          >
             Create
           </Button>
         </div>

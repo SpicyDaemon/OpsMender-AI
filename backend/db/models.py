@@ -380,6 +380,9 @@ class Incident(Base):
     service_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("services.id", ondelete="SET NULL"), nullable=True
     )
+    ingestion_model_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("model_configs.id", ondelete="SET NULL"), nullable=True
+    )
     suppressed_by_maintenance_window_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("maintenance_windows.id", ondelete="SET NULL"), nullable=True
     )
@@ -551,6 +554,7 @@ class ModelConfig(Base):
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096, nullable=False)
     temperature: Mapped[float] = mapped_column(default=0.0, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -1594,8 +1598,10 @@ class Service(Base):
     preferred_mcp_server_ids: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
     )
+    preferred_model_config_ids: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
     ai_default_tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    ai_auto_start_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     external_refs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

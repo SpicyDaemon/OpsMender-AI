@@ -71,6 +71,7 @@ import {
   listEscalationSteps,
   listIncidents,
   listMCPServers,
+  listModelConfigs,
   listRosterMembers,
   listRosters,
   listServiceEscalationChains,
@@ -105,6 +106,7 @@ import type {
   MaintenanceWindowResponse,
   MaintenanceWindowScopeType,
   MCPServerResponse,
+  ModelConfigResponse,
   NotificationChannelKey,
   Priority,
   QuietHoursConfig,
@@ -752,8 +754,8 @@ function ServicesPanel({
     description: "",
     priority: "P2" as Priority,
     preferred_mcp_server_ids: [] as string[],
+    preferred_model_config_ids: [] as string[],
     ai_default_tier: "",
-    ai_auto_start_policy: "inherit",
     escalation_chain_id: "",
     is_active: true,
   };
@@ -767,6 +769,7 @@ function ServicesPanel({
   const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
+  const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
   const [onCallByTeam, setOnCallByTeam] = useState<Map<string, string | null>>(
     new Map(),
   );
@@ -798,18 +801,23 @@ function ServicesPanel({
     let cancelled = false;
     (async () => {
       try {
-        const [incList, uList, mcpList] = await Promise.all([
+        const [incList, uList, mcpList, modelList] = await Promise.all([
           listIncidents({ limit: 200 }).catch(() => ({
             items: [] as IncidentResponse[],
             total: 0,
           })),
           listUsers().catch(() => ({ items: [] as UserResponse[], total: 0 })),
           listMCPServers().catch(() => ({ items: [] as MCPServerResponse[], total: 0 })),
+          listModelConfigs().catch(() => ({
+            items: [] as ModelConfigResponse[],
+            total: 0,
+          })),
         ]);
         if (cancelled) return;
         setIncidents(incList.items);
         setUsers(uList.items);
         setMcpServers(mcpList.items);
+        setModelConfigs(modelList.items);
 
         // Resolve on-call once per team via the team's first roster.
         const teamRoster = new Map<string, string>(); // team_id → roster_id
@@ -877,12 +885,9 @@ function ServicesPanel({
         description: form.description || undefined,
         priority: form.priority,
         preferred_mcp_server_ids: form.preferred_mcp_server_ids,
+        preferred_model_config_ids: form.preferred_model_config_ids,
         ai_default_tier:
           form.ai_default_tier === "" ? null : Number(form.ai_default_tier),
-        ai_auto_start_enabled:
-          form.ai_auto_start_policy === "inherit"
-            ? null
-            : form.ai_auto_start_policy === "enabled",
         is_active: form.is_active,
       };
       let serviceId: string;
@@ -929,14 +934,9 @@ function ServicesPanel({
       description: service.description ?? "",
       priority: service.priority,
       preferred_mcp_server_ids: service.preferred_mcp_server_ids ?? [],
+      preferred_model_config_ids: service.preferred_model_config_ids ?? [],
       ai_default_tier:
         service.ai_default_tier == null ? "" : String(service.ai_default_tier),
-      ai_auto_start_policy:
-        service.ai_auto_start_enabled == null
-          ? "inherit"
-          : service.ai_auto_start_enabled
-            ? "enabled"
-            : "disabled",
       escalation_chain_id: chainId,
       is_active: service.is_active,
     });
@@ -1382,39 +1382,55 @@ function ServicesPanel({
               server manually.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>Default AI Autonomy Tier</Label>
-              <Select
-                value={form.ai_default_tier}
-                onChange={(e) =>
-                  setForm({ ...form, ai_default_tier: e.target.value })
-                }
-              >
-                <option value="">Inherit from MCP Skill / organization</option>
-                <option value="0">Tier 0 — Autonomous</option>
-                <option value="1">Tier 1 — Approval Required</option>
-                <option value="2">Tier 2 — Advisory</option>
-              </Select>
-            </div>
-            <div>
-              <Label>Incident auto-start policy</Label>
-              <Select
-                value={form.ai_auto_start_policy}
-                onChange={(e) =>
-                  setForm({ ...form, ai_auto_start_policy: e.target.value })
-                }
-              >
-                <option value="inherit">Inherit organization policy</option>
-                <option value="enabled">Allow when organization allows</option>
-                <option value="disabled">Disable for this service</option>
-              </Select>
-            </div>
+          <div>
+            <Label>Preferred Models</Label>
+            <MultiSelect
+              ariaLabel="Preferred Models"
+              ordered
+              maxSelections={3}
+              options={modelConfigs.map((model) => ({
+                value: model.id,
+                label: model.name,
+                sublabel: model.is_active
+                  ? `${model.provider} / ${model.model_id}`
+                  : "Unavailable / disabled",
+                disabled: !model.is_active,
+              }))}
+              selected={form.preferred_model_config_ids}
+              onChange={(next) =>
+                setForm({ ...form, preferred_model_config_ids: next })
+              }
+              emptyLabel="No enabled models configured yet."
+            />
+            <p className="mt-1 text-xs text-fg-muted">
+              OpsMender tries these models in order for incidents on this
+              service. If none are available, it falls back to any enabled
+              model.
+            </p>
+            <p className="mt-1 text-xs text-fg-muted">
+              The model that ingests an incident becomes the default model for
+              that incident&apos;s AI session when possible. Operators can
+              still switch models during the session.
+            </p>
           </div>
-          <p className="-mt-2 text-xs text-fg-muted">
-            Auto-start still requires the resolved session tier to be Tier 0.
-            Tier 1 and Tier 2 never start automatically.
-          </p>
+          <div>
+            <Label>Default AI Autonomy Tier</Label>
+            <Select
+              value={form.ai_default_tier}
+              onChange={(e) =>
+                setForm({ ...form, ai_default_tier: e.target.value })
+              }
+            >
+              <option value="">Inherit from MCP Skill / organization</option>
+              <option value="0">Tier 0 — Autonomous</option>
+              <option value="1">Tier 1 — Approval Required</option>
+              <option value="2">Tier 2 — Advisory</option>
+            </Select>
+            <p className="mt-1 text-xs text-fg-muted">
+              Tier 0 may auto-start after acknowledgment when organization
+              policy allows it. Tier 1 and Tier 2 never auto-start.
+            </p>
+          </div>
           <div>
             <Label>Description (optional)</Label>
             <Textarea

@@ -632,9 +632,18 @@ class TestIngestGeneric:
         assert second.status_code == 200
 
         incident_id = uuid.UUID(first.json()["incident_id"])
-        async with app.state.session_factory() as db:
-            sessions = await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
-            assert len(sessions) == 1
+        sessions = []
+        for _ in range(50):
+            async with app.state.session_factory() as db:
+                sessions = list(
+                    await SessionRepo.list_by_incident(
+                        db, TEST_ORG_ID, incident_id
+                    )
+                )
+            if sessions:
+                break
+            await asyncio.sleep(0.01)
+        assert len(sessions) == 1
 
 
 # ===========================================================================
@@ -1344,7 +1353,7 @@ class TestUniversalIngestIntegration:
 
         call_count = {"llm": 0}
 
-        async def fake_llm(db, org_id, *, payload, config):
+        async def fake_llm(db, org_id, *, payload, config, model_cfg=None):
             call_count["llm"] += 1
             return {
                 "title": "weird.name",

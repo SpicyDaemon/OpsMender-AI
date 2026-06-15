@@ -28,6 +28,7 @@ from backend.db.repos import (
     IncidentRepo,
     MCPServerRepo,
     MaintenanceWindowRepo,
+    ModelConfigRepo,
     OrganizationRepo,
     PriorityRuleRepo,
     RosterOverrideRepo,
@@ -44,6 +45,7 @@ from backend.paging.on_call import (
     OnCallOverride,
     on_call_at,
 )
+from backend.llm.selection import choose_model_for_incident_service
 from backend.paging.priority import (
     DEFAULT_MODE_FOR,
     PriorityRuleLike,
@@ -741,6 +743,20 @@ class TestPagingAPI:
                 transport="http",
                 url="http://gitlab-prod.local/mcp",
             )
+            first_model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"preferred-primary-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="llama-primary",
+            )
+            second_model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"preferred-secondary-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="llama-secondary",
+            )
             await db.commit()
 
         team = await client.post(
@@ -756,8 +772,11 @@ class TestPagingAPI:
                 "slug": f"aws-prod-critical-{uuid.uuid4().hex[:6]}",
                 "priority": "P0",
                 "preferred_mcp_server_ids": [str(second.id), str(first.id)],
+                "preferred_model_config_ids": [
+                    str(second_model.id),
+                    str(first_model.id),
+                ],
                 "ai_default_tier": 0,
-                "ai_auto_start_enabled": True,
             },
             headers=auth_headers,
         )
@@ -765,8 +784,11 @@ class TestPagingAPI:
         data = service.json()
         assert data["priority"] == "P0"
         assert data["preferred_mcp_server_ids"] == [str(second.id), str(first.id)]
+        assert data["preferred_model_config_ids"] == [
+            str(second_model.id),
+            str(first_model.id),
+        ]
         assert data["ai_default_tier"] == 0
-        assert data["ai_auto_start_enabled"] is True
         assert data["intake_url"].startswith("/api/v1/intake/svc_")
 
         async with app.state.session_factory() as db:
@@ -856,6 +878,153 @@ class TestPagingAPI:
         assert preferred_names == ["gitlab-prod", "aws-prod"]
         assert selected is not None
         assert selected.name == "gitlab-prod"
+
+    async def test_service_preferred_models_validate_order_and_limits(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            models = [
+                await ModelConfigRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    name=f"ranked-{index}-{uuid.uuid4().hex[:6]}",
+                    provider="ollama",
+                    model_id=f"ranked-{index}",
+                )
+                for index in range(4)
+            ]
+            await db.commit()
+
+        team = await client.post(
+            "/teams",
+            json={"name": "Model Team", "slug": f"model-team-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        ordered_ids = [str(models[2].id), str(models[0].id), str(models[1].id)]
+        service = await client.post(
+            "/services",
+            json={
+                "team_id": team.json()["id"],
+                "name": "Ranked Models",
+                "slug": f"ranked-models-{uuid.uuid4().hex[:6]}",
+                "preferred_model_config_ids": ordered_ids,
+            },
+            headers=auth_headers,
+        )
+        assert service.status_code == 201, service.text
+        assert service.json()["preferred_model_config_ids"] == ordered_ids
+
+        duplicate = await client.put(
+            f"/services/{service.json()['id']}",
+            json={"preferred_model_config_ids": [ordered_ids[0], ordered_ids[0]]},
+            headers=auth_headers,
+        )
+        assert duplicate.status_code == 400
+
+        too_many = await client.put(
+            f"/services/{service.json()['id']}",
+            json={"preferred_model_config_ids": [str(model.id) for model in models]},
+            headers=auth_headers,
+        )
+        assert too_many.status_code == 422
+
+        async with app.state.session_factory() as db:
+            other_org = await OrganizationRepo.create(
+                db,
+                name="Other Model Org",
+                slug=f"other-model-org-{uuid.uuid4().hex[:6]}",
+            )
+            other_model = await ModelConfigRepo.create(
+                db,
+                other_org.id,
+                name="other-org-model",
+                provider="ollama",
+                model_id="other-org-model",
+            )
+            disabled_model = await ModelConfigRepo.get_by_id(
+                db, TEST_ORG_ID, models[3].id
+            )
+            assert disabled_model is not None
+            disabled_model.is_active = False
+            await db.commit()
+
+        cross_org = await client.put(
+            f"/services/{service.json()['id']}",
+            json={"preferred_model_config_ids": [str(other_model.id)]},
+            headers=auth_headers,
+        )
+        assert cross_org.status_code == 400
+
+        disabled = await client.put(
+            f"/services/{service.json()['id']}",
+            json={"preferred_model_config_ids": [str(models[3].id)]},
+            headers=auth_headers,
+        )
+        assert disabled.status_code == 400
+
+    async def test_model_selection_skips_disabled_and_falls_back(
+        self, app
+    ):
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Selection Team",
+                slug=f"selection-team-{uuid.uuid4().hex[:6]}",
+                created_by=uuid.uuid4(),
+            )
+            disabled = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"disabled-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="disabled-model",
+            )
+            enabled = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"enabled-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="enabled-model",
+            )
+            fallback = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"fallback-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="fallback-model",
+                is_default=True,
+            )
+            disabled.is_active = False
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Selection Service",
+                slug=f"selection-service-{uuid.uuid4().hex[:6]}",
+                preferred_model_config_ids=[
+                    str(disabled.id),
+                    str(enabled.id),
+                ],
+            )
+            await db.flush()
+
+            selected = await choose_model_for_incident_service(
+                db,
+                TEST_ORG_ID,
+                service_id=service.id,
+            )
+            assert selected is not None
+            assert selected.id == enabled.id
+
+            enabled.is_active = False
+            selected = await choose_model_for_incident_service(
+                db,
+                TEST_ORG_ID,
+                service_id=service.id,
+            )
+            assert selected is not None
+            assert selected.id == fallback.id
 
     async def test_service_intake_uses_service_priority_not_priority_rules(
         self, client: AsyncClient, app, auth_headers
@@ -1658,6 +1827,21 @@ class TestPagingAPI:
             },
             headers=auth_headers,
         )
+        team = await client.post(
+            "/teams",
+            json={"name": "API Team", "slug": f"api-team-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        service = await client.post(
+            "/services",
+            json={
+                "team_id": team.json()["id"],
+                "name": "API Service",
+                "slug": f"api-service-{uuid.uuid4().hex[:6]}",
+                "priority": "P0",
+            },
+            headers=auth_headers,
+        )
 
         create = await client.post(
             "/incidents",
@@ -1665,6 +1849,7 @@ class TestPagingAPI:
                 "title": "API down",
                 "description": "503s rising",
                 "severity": "critical",
+                "service_id": service.json()["id"],
             },
             headers=auth_headers,
         )
@@ -1681,9 +1866,28 @@ class TestPagingAPI:
         assert body["assignment"] is None
 
     async def test_incident_assign_and_release(self, client: AsyncClient, auth_headers):
+        team = await client.post(
+            "/teams",
+            json={"name": "Assign Team", "slug": f"assign-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        service = await client.post(
+            "/services",
+            json={
+                "team_id": team.json()["id"],
+                "name": "Assign Service",
+                "slug": f"assign-service-{uuid.uuid4().hex[:6]}",
+            },
+            headers=auth_headers,
+        )
         create = await client.post(
             "/incidents",
-            json={"title": "x", "description": "y", "severity": "low"},
+            json={
+                "title": "x",
+                "description": "y",
+                "severity": "low",
+                "service_id": service.json()["id"],
+            },
             headers=auth_headers,
         )
         incident_id = create.json()["id"]

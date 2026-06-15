@@ -65,8 +65,32 @@ async def _roles(client: AsyncClient):
 
 
 async def _create_incident(client, headers) -> str:
+    suffix = uuid.uuid4().hex[:8]
+    team = await client.post(
+        "/teams",
+        headers=headers,
+        json={"name": "Responder Team", "slug": f"responder-team-{suffix}"},
+    )
+    assert team.status_code == 201, team.text
+    service = await client.post(
+        "/services",
+        headers=headers,
+        json={
+            "team_id": team.json()["id"],
+            "name": "Responder Service",
+            "slug": f"responder-service-{suffix}",
+        },
+    )
+    assert service.status_code == 201, service.text
     resp = await client.post(
-        "/incidents", headers=headers, json={"title": "T", "description": "D", "severity": "high"}
+        "/incidents",
+        headers=headers,
+        json={
+            "title": "T",
+            "description": "D",
+            "severity": "high",
+            "service_id": service.json()["id"],
+        },
     )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]

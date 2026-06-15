@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config_loader import AppConfig
 from backend.db.models import Incident
-from backend.db.repos import IncidentRepo, RuntimeConfigRepo, ServiceRepo, SessionRepo
+from backend.db.repos import IncidentRepo, RuntimeConfigRepo, SessionRepo
+from backend.llm.selection import choose_model_for_incident_service
 from backend.tiers.resolution import resolve_session_tier_for_incident
 
 _SEVERITY_RANK = {
@@ -77,11 +78,6 @@ async def load_auto_start_policy(
         overrides.get("ingest_auto_start_enabled"),
         config.ingest.auto_start_enabled,
     )
-    if incident is not None and incident.service_id is not None:
-        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
-        if service is not None and service.ai_auto_start_enabled is not None:
-            enabled = enabled and service.ai_auto_start_enabled
-
     return IngestAutoStartPolicy(
         enabled=enabled,
         min_severity=_normalize_severity(
@@ -162,7 +158,8 @@ async def provision_auto_started_session(
     """Provision and run an auto-started session outside incident intake."""
     try:
         async with app.state.session_factory() as db:
-            if await IncidentRepo.get_by_id(db, org_id, incident_id) is None:
+            incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+            if incident is None:
                 logger.info(
                     "incident.auto_start: skipped deleted incident=%s",
                     incident_id,
@@ -174,11 +171,19 @@ async def provision_auto_started_session(
                     incident_id,
                 )
                 return
+            model = await choose_model_for_incident_service(
+                db,
+                org_id,
+                service_id=incident.service_id,
+                ingestion_model_config_id=incident.ingestion_model_config_id,
+            )
             session = await SessionRepo.create(
                 db,
                 org_id,
                 tier=tier,
                 incident_id=incident_id,
+                model_provider=None if model is None else model.provider,
+                model_id=None if model is None else model.model_id,
             )
             await db.commit()
 

@@ -37,6 +37,12 @@ describe("v1 paging IA", () => {
   it("keeps the Services form focused on v1 alert intake", () => {
     expect(pagingShellSource).toContain("Priority");
     expect(pagingShellSource).toContain("Preferred MCP servers");
+    expect(pagingShellSource).toContain("Preferred Models");
+    expect(pagingShellSource).toContain("maxSelections={3}");
+    expect(pagingShellSource).toContain(
+      "The model that ingests an incident becomes the default model",
+    );
+    expect(pagingShellSource).not.toContain("Incident auto-start policy");
     expect(pagingShellSource).toContain("service webhook");
     expect(pagingShellSource).not.toContain(["Source", "account"].join(" "));
     expect(pagingShellSource).not.toContain(["Allowed", "MCP", "servers"].join(" "));

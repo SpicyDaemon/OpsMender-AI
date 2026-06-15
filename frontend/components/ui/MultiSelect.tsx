@@ -8,6 +8,7 @@ export interface MultiSelectOption {
   label: string;
   /** Optional secondary line shown under the label (e.g. role, team). */
   sublabel?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -29,6 +30,7 @@ export function MultiSelect({
   emptyLabel = "No options available.",
   ariaLabel,
   maxHeightClass = "max-h-48",
+  maxSelections,
 }: {
   options: MultiSelectOption[];
   selected: string[];
@@ -39,6 +41,7 @@ export function MultiSelect({
   emptyLabel?: string;
   ariaLabel?: string;
   maxHeightClass?: string;
+  maxSelections?: number;
 }) {
   const [query, setQuery] = useState("");
 
@@ -71,6 +74,7 @@ export function MultiSelect({
   const toggle = (value: string, on: boolean) => {
     if (on) {
       if (selected.includes(value)) return;
+      if (maxSelections !== undefined && selected.length >= maxSelections) return;
       onChange([...selected, value]);
     } else {
       onChange(selected.filter((v) => v !== value));
@@ -164,12 +168,24 @@ export function MultiSelect({
           ) : (
             filtered.map((o) => {
               const checked = selected.includes(o.value);
+              const disabled =
+                o.disabled ||
+                (!checked &&
+                  maxSelections !== undefined &&
+                  selected.length >= maxSelections);
               return (
                 <li key={o.value}>
-                  <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-bg-hover">
+                  <label
+                    className={`flex items-start gap-2 rounded px-2 py-1.5 text-sm ${
+                      disabled
+                        ? "cursor-not-allowed opacity-50"
+                        : "cursor-pointer hover:bg-bg-hover"
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       checked={checked}
+                      disabled={disabled}
                       onChange={(e) => toggle(o.value, e.target.checked)}
                       className="mt-0.5"
                     />

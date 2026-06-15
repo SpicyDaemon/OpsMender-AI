@@ -42,6 +42,7 @@ export interface IncidentResponse {
   status: IncidentStatus;
   severity: Severity | null;
   service_id: string | null;
+  ingestion_model_config_id?: string | null;
   service_name?: string | null;
   team_id?: string | null;
   team_name?: string | null;
@@ -1577,8 +1578,8 @@ export interface ServiceResponse {
   description: string | null;
   priority: Priority;
   preferred_mcp_server_ids: string[];
+  preferred_model_config_ids: string[];
   ai_default_tier?: number | null;
-  ai_auto_start_enabled?: boolean | null;
   intake_url: string | null;
   external_refs: Record<string, unknown> | null;
   is_active: boolean;
@@ -1597,8 +1598,8 @@ export interface ServiceCreate {
   description?: string;
   priority?: Priority;
   preferred_mcp_server_ids?: string[];
+  preferred_model_config_ids?: string[];
   ai_default_tier?: number | null;
-  ai_auto_start_enabled?: boolean | null;
   external_refs?: Record<string, unknown>;
   is_active?: boolean;
 }
@@ -1609,8 +1610,8 @@ export interface ServiceUpdate {
   description?: string;
   priority?: Priority;
   preferred_mcp_server_ids?: string[];
+  preferred_model_config_ids?: string[];
   ai_default_tier?: number | null;
-  ai_auto_start_enabled?: boolean | null;
   external_refs?: Record<string, unknown>;
   is_active?: boolean;
 }

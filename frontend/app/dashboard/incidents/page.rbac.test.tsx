@@ -96,6 +96,68 @@ describe("Incidents page RBAC", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("requires an active service before creating a manual incident", async () => {
+    apiMocks.listServices.mockResolvedValue({
+      items: [
+        {
+          id: "svc-active",
+          team_id: "team-1",
+          name: "Checkout API",
+          slug: "checkout-api",
+          description: null,
+          priority: "P1",
+          preferred_mcp_server_ids: [],
+          preferred_model_config_ids: [],
+          ai_default_tier: null,
+          intake_url: null,
+          external_refs: null,
+          is_active: true,
+          created_at: "2026-06-15T00:00:00Z",
+        },
+        {
+          id: "svc-disabled",
+          team_id: "team-1",
+          name: "Disabled Service",
+          slug: "disabled-service",
+          description: null,
+          priority: "P2",
+          preferred_mcp_server_ids: [],
+          preferred_model_config_ids: [],
+          ai_default_tier: null,
+          intake_url: null,
+          external_refs: null,
+          is_active: false,
+          created_at: "2026-06-15T00:00:00Z",
+        },
+      ],
+      total: 2,
+    });
+    await renderAndSettle();
+    fireEvent.click(screen.getAllByRole("button", { name: /new incident/i })[0]);
+
+    const serviceSelect = await screen.findByLabelText("Service");
+    expect(screen.getByText("Checkout API")).toBeTruthy();
+    expect(screen.queryByText("Disabled Service")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Create" }).hasAttribute("disabled"),
+    ).toBe(true);
+
+    fireEvent.change(serviceSelect, { target: { value: "svc-active" } });
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Database unavailable" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Primary is not responding" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(apiMocks.createIncident).toHaveBeenCalledWith(
+        expect.objectContaining({ service_id: "svc-active" }),
+      ),
+    );
+  });
+
   it("shows row delete only for admins", async () => {
     apiMocks.listIncidents.mockResolvedValue({
       items: [

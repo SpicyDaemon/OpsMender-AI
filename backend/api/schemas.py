@@ -251,6 +251,7 @@ class IncidentResponse(BaseModel):
     status: str
     severity: Optional[str]
     service_id: Optional[uuid.UUID] = None
+    ingestion_model_config_id: Optional[uuid.UUID] = None
     service_name: Optional[str] = None
     team_id: Optional[uuid.UUID] = None
     team_name: Optional[str] = None
@@ -1832,8 +1833,8 @@ class ServiceCreate(BaseModel):
     description: Optional[str] = None
     priority: str = Field(default="P2", pattern="^(P0|P1|P2|P3)$")
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
+    preferred_model_config_ids: list[uuid.UUID] = Field(default_factory=list, max_length=3)
     ai_default_tier: Optional[int] = Field(default=None, ge=0, le=2)
-    ai_auto_start_enabled: Optional[bool] = None
     external_refs: Optional[dict[str, Any]] = None
     is_active: bool = True
 
@@ -1844,8 +1845,10 @@ class ServiceUpdate(BaseModel):
     description: Optional[str] = None
     priority: Optional[str] = Field(None, pattern="^(P0|P1|P2|P3)$")
     preferred_mcp_server_ids: Optional[list[uuid.UUID]] = None
+    preferred_model_config_ids: Optional[list[uuid.UUID]] = Field(
+        default=None, max_length=3
+    )
     ai_default_tier: Optional[int] = Field(default=None, ge=0, le=2)
-    ai_auto_start_enabled: Optional[bool] = None
     external_refs: Optional[dict[str, Any]] = None
     is_active: Optional[bool] = None
 
@@ -1858,8 +1861,8 @@ class ServiceResponse(BaseModel):
     description: Optional[str]
     priority: str
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
+    preferred_model_config_ids: list[uuid.UUID] = Field(default_factory=list)
     ai_default_tier: Optional[int] = None
-    ai_auto_start_enabled: Optional[bool] = None
     intake_url: Optional[str] = None
     external_refs: Optional[dict[str, Any]]
     is_active: bool

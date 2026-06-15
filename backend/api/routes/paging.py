@@ -64,6 +64,7 @@ from backend.db.models import User
 from backend.db.repos import (
     IngestTokenRepo,
     MCPServerRepo,
+    ModelConfigRepo,
     PriorityRuleRepo,
     RosterOverrideRepo,
     RosterRepo,
@@ -106,6 +107,40 @@ async def _validate_preferred_mcp_servers(
                 detail="Preferred MCP server not found",
             )
         ordered.append(str(server_id))
+    return ordered
+
+
+async def _validate_preferred_models(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    ids: list[uuid.UUID],
+    *,
+    existing_ids: set[uuid.UUID] | None = None,
+) -> list[str]:
+    if len(ids) > 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A service can have at most 3 preferred models",
+        )
+    if len(set(ids)) != len(ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Preferred models cannot contain duplicates",
+        )
+    ordered: list[str] = []
+    for config_id in ids:
+        model = await ModelConfigRepo.get_by_id(db, org_id, config_id)
+        if model is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Preferred model not found",
+            )
+        if not model.is_active and config_id not in (existing_ids or set()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Preferred model must be enabled",
+            )
+        ordered.append(str(config_id))
     return ordered
 
 
@@ -339,6 +374,9 @@ async def create_service(
     preferred_mcp_server_ids = await _validate_preferred_mcp_servers(
         db, org_id, body.preferred_mcp_server_ids
     )
+    preferred_model_config_ids = await _validate_preferred_models(
+        db, org_id, body.preferred_model_config_ids
+    )
     intake_token = _new_service_intake_token()
     try:
         svc = await ServiceRepo.create(
@@ -351,8 +389,8 @@ async def create_service(
             priority=body.priority,
             intake_token=intake_token,
             preferred_mcp_server_ids=preferred_mcp_server_ids,
+            preferred_model_config_ids=preferred_model_config_ids,
             ai_default_tier=body.ai_default_tier,
-            ai_auto_start_enabled=body.ai_auto_start_enabled,
             external_refs=body.external_refs,
             is_active=body.is_active,
         )
@@ -396,6 +434,23 @@ async def update_service(
         preferred_mcp_server_ids = await _validate_preferred_mcp_servers(
             db, org_id, body.preferred_mcp_server_ids
         )
+    preferred_model_config_ids = None
+    if body.preferred_model_config_ids is not None:
+        current_service = await ServiceRepo.get_by_id(db, org_id, service_id)
+        if current_service is None:
+            raise HTTPException(status_code=404, detail="Service not found")
+        existing_model_ids: set[uuid.UUID] = set()
+        for raw_id in current_service.preferred_model_config_ids or []:
+            try:
+                existing_model_ids.add(uuid.UUID(str(raw_id)))
+            except (TypeError, ValueError):
+                continue
+        preferred_model_config_ids = await _validate_preferred_models(
+            db,
+            org_id,
+            body.preferred_model_config_ids,
+            existing_ids=existing_model_ids,
+        )
     updated = await ServiceRepo.update(
         db,
         org_id,
@@ -409,12 +464,12 @@ async def update_service(
         preferred_mcp_server_ids_provided=(
             "preferred_mcp_server_ids" in body.model_fields_set
         ),
+        preferred_model_config_ids=preferred_model_config_ids,
+        preferred_model_config_ids_provided=(
+            "preferred_model_config_ids" in body.model_fields_set
+        ),
         ai_default_tier=body.ai_default_tier,
         ai_default_tier_provided="ai_default_tier" in body.model_fields_set,
-        ai_auto_start_enabled=body.ai_auto_start_enabled,
-        ai_auto_start_enabled_provided=(
-            "ai_auto_start_enabled" in body.model_fields_set
-        ),
         external_refs=body.external_refs,
         external_refs_provided="external_refs" in body.model_fields_set,
         is_active=body.is_active,

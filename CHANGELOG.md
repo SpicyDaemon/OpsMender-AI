@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Manual incident service and preferred model cleanup.** Manual incidents now
+  require an active same-organization Service. Services support up to three
+  ranked enabled model configs; OpsMender tries them in order, falls back to
+  another enabled model, and carries the incident's selected model into later
+  AI sessions when available. The unused service-level Incident auto-start
+  policy has been removed; T0 is the only tier eligible for policy-controlled
+  auto-start, while T1/T2 remain manual.
 - **Admin-only permanent incident deletion.** Admins can delete incidents in
   any lifecycle state from the incident table or detail command strip. Deletion
   cancels tracked AI workflows, removes the incident's sessions and operational
@@ -34,8 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Session tier resolution and T0-only auto-start.** New sessions resolve tier
   from explicit request → service default → effective MCP Skill default →
   organization default → Tier 2. Incident intake and SLO polling only auto-start
-  when that result is Tier 0. Services can inherit/disable auto-start and define
-  an optional default tier.
+  when that result is Tier 0. Services may define an optional default tier.
 - **MCP Skill template refresh.** The backend template, MCP Skills page fallback,
   Skill Studio generator, and operator guide now demonstrate enforceable
   per-operation tier policy, generic-tool opt-in, deny precedence, advisory

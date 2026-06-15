@@ -49,4 +49,18 @@ describe("MultiSelect", () => {
     fireEvent.click(screen.getByLabelText("Move Beta up"));
     expect(onChange).toHaveBeenCalledWith(["b", "a"]);
   });
+
+  it("disables additional choices after reaching max selections", () => {
+    render(
+      <MultiSelect
+        options={OPTIONS}
+        selected={["a", "b"]}
+        onChange={() => {}}
+        maxSelections={2}
+      />,
+    );
+    expect(
+      (screen.getByLabelText("Gamma") as HTMLInputElement).disabled,
+    ).toBe(true);
+  });
 });

@@ -77,6 +77,7 @@ from backend.ingest.autostart import (
     load_auto_start_policy,
     schedule_auto_started_session,
 )
+from backend.llm.selection import choose_model_for_incident_service
 
 import logging
 
@@ -278,16 +279,23 @@ async def _create_incident_record(
     org_id: uuid.UUID,
     body: IncidentCreate,
 ):
+    service = None
     if body.service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
-        if service is None:
+        if service is None or not service.is_active:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Service not found",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Manual incidents must be linked to an active service.",
             )
 
-    # v1 priority comes from the selected service when one is present. For
-    # manual incidents without a service, fall back to severity mapping.
+    selected_model = await choose_model_for_incident_service(
+        db,
+        org_id,
+        service_id=body.service_id,
+    )
+
+    # v1 priority comes from the selected service when one is present.
+    # Synthetic test incidents may remain unbound and use severity mapping.
     payload = {
         "title": body.title,
         "description": body.description,
@@ -309,6 +317,9 @@ async def _create_incident_record(
         priority=priority_result.priority,
         response_mode=priority_result.response_mode,
         service_id=body.service_id,
+        ingestion_model_config_id=(
+            None if selected_model is None else selected_model.id
+        ),
         external_id=body.external_id,
         external_source=body.external_source,
     )
@@ -356,6 +367,11 @@ async def create_incident(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
+    if body.service_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Manual incidents must be linked to an active service.",
+        )
     incident = await _create_incident_record(db, org_id, body)
     await db.commit()
     await _notify_channels(db, incident.id, org_id, "incident.created")

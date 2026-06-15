@@ -143,6 +143,27 @@ async def _register_login(
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
+async def _create_service(client: AsyncClient, headers, label: str) -> str:
+    suffix = uuid.uuid4().hex[:8]
+    team = await client.post(
+        "/teams",
+        json={"name": f"{label} Team", "slug": f"{label.lower()}-team-{suffix}"},
+        headers=headers,
+    )
+    assert team.status_code == 201, team.text
+    service = await client.post(
+        "/services",
+        json={
+            "team_id": team.json()["id"],
+            "name": f"{label} Service",
+            "slug": f"{label.lower()}-service-{suffix}",
+        },
+        headers=headers,
+    )
+    assert service.status_code == 201, service.text
+    return service.json()["id"]
+
+
 # ---------------------------------------------------------------------------
 # E2E test
 # ---------------------------------------------------------------------------
@@ -157,6 +178,7 @@ class TestE2EIncidentFlow:
         # 1. Register an admin (first user → auto-promoted) and an operator.
         admin = await _register_login(client, "admin_e2e")
         operator = await _register_login(client, "op_e2e", role="operator")
+        service_id = await _create_service(client, admin, "Checkout")
 
         # 2. Admin files an incident.
         inc_resp = await client.post(
@@ -165,6 +187,7 @@ class TestE2EIncidentFlow:
                 "title": "Checkout 5xx spike",
                 "description": "Error rate at 12% from 14:30",
                 "severity": "high",
+                "service_id": service_id,
             },
             headers=admin,
         )
@@ -302,6 +325,7 @@ class TestE2EIncidentFlow:
 
         admin = await _register_login(client, "admin_reject")
         operator = await _register_login(client, "op_reject", role="operator")
+        service_id = await _create_service(client, admin, "Staging")
 
         inc_resp = await client.post(
             "/incidents",
@@ -309,6 +333,7 @@ class TestE2EIncidentFlow:
                 "title": "Minor alert",
                 "description": "Flapping CPU alarm from staging",
                 "severity": "low",
+                "service_id": service_id,
             },
             headers=admin,
         )

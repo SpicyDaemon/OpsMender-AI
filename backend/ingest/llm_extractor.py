@@ -142,10 +142,12 @@ async def extract_paths_via_llm(
     *,
     payload: dict[str, Any],
     config: AppConfig,
+    model_cfg=None,
 ) -> dict[str, str] | None:
     """Ask the default LLM which paths hold the incident fields."""
     try:
-        model_cfg = await ModelConfigRepo.get_default(db, org_id)
+        if model_cfg is None:
+            model_cfg = await ModelConfigRepo.get_default(db, org_id)
         provider = create_provider(**_resolve_model_kwargs(config, model_cfg))
     except Exception as exc:
         logger.warning("ingest.llm_extract: provider init failed: %s", exc)
@@ -181,6 +183,7 @@ async def apply_shape_cache(
     token: IngestToken,
     payload: dict[str, Any],
     config: AppConfig,
+    model_cfg=None,
 ) -> tuple[dict[str, str] | None, bool]:
     """Return field paths for this payload shape, using cache or LLM."""
     shape = compute_shape_hash(payload)
@@ -188,7 +191,22 @@ async def apply_shape_cache(
     if isinstance(cached, dict):
         return cached, True
 
-    paths = await extract_paths_via_llm(db, org_id, payload=payload, config=config)
+    if model_cfg is None:
+        from backend.llm.selection import choose_model_for_incident_service
+
+        model_cfg = await choose_model_for_incident_service(
+            db,
+            org_id,
+            service_id=token.service_id,
+        )
+
+    paths = await extract_paths_via_llm(
+        db,
+        org_id,
+        payload=payload,
+        config=config,
+        model_cfg=model_cfg,
+    )
     if paths:
         next_cache = dict(token.shape_cache or {})
         next_cache[shape] = paths

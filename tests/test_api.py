@@ -867,6 +867,20 @@ class TestDomainIsolation:
         async with app.state.session_factory() as db:
             org2 = await OrganizationRepo.create(db, name="Org2", slug="org-2")
             user = await UserRepo.get_by_username(db, "testadmin")
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Host Pin Team",
+                slug=f"host-pin-{uuid.uuid4().hex[:6]}",
+                created_by=user.id,
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Host Pin Service",
+                slug=f"host-pin-service-{uuid.uuid4().hex[:6]}",
+            )
             await UserRepo.add_to_organization(
                 db, user_id=user.id, org_id=org2.id, role="admin"
             )
@@ -884,7 +898,11 @@ class TestDomainIsolation:
         # Create an incident under TEST_ORG_ID via the host-pinned route.
         resp = await client.post(
             "/incidents",
-            json={"title": "host-pinned", "description": "x"},
+            json={
+                "title": "host-pinned",
+                "description": "x",
+                "service_id": str(service.id),
+            },
             headers={
                 **auth_headers,
                 "Host": "primary.example.com",
@@ -951,14 +969,153 @@ class TestDomainIsolation:
 # ===========================================================================
 
 
+async def _seed_manual_incident_service(app, label: str = "Manual"):
+    async with app.state.session_factory() as db:
+        suffix = uuid.uuid4().hex[:8]
+        team = await TeamRepo.create(
+            db,
+            TEST_ORG_ID,
+            name=f"{label} Team",
+            slug=f"{label.lower().replace(' ', '-')}-team-{suffix}",
+            created_by=uuid.uuid4(),
+        )
+        service = await ServiceRepo.create(
+            db,
+            TEST_ORG_ID,
+            team_id=team.id,
+            name=f"{label} Service",
+            slug=f"{label.lower().replace(' ', '-')}-service-{suffix}",
+        )
+        await db.commit()
+        return service
+
+
+async def _create_manual_service_via_api(client, headers, label: str = "Manual") -> str:
+    suffix = uuid.uuid4().hex[:8]
+    team = await client.post(
+        "/teams",
+        json={
+            "name": f"{label} Team",
+            "slug": f"{label.lower().replace(' ', '-')}-team-{suffix}",
+        },
+        headers=headers,
+    )
+    assert team.status_code == 201, team.text
+    service = await client.post(
+        "/services",
+        json={
+            "team_id": team.json()["id"],
+            "name": f"{label} Service",
+            "slug": f"{label.lower().replace(' ', '-')}-service-{suffix}",
+        },
+        headers=headers,
+    )
+    assert service.status_code == 201, service.text
+    return service.json()["id"]
+
+
 class TestIncidents:
-    async def test_create_incident(self, client: AsyncClient, auth_headers):
+    async def test_manual_incident_requires_service(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            "/incidents",
+            json={"title": "No service", "description": "Must be rejected"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == (
+            "Manual incidents must be linked to an active service."
+        )
+
+    async def test_manual_incident_rejects_inactive_service(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        service = await _seed_manual_incident_service(app, "Inactive")
+        async with app.state.session_factory() as db:
+            await ServiceRepo.update(
+                db,
+                TEST_ORG_ID,
+                service.id,
+                is_active=False,
+            )
+            await db.commit()
+
+        resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Inactive service",
+                "description": "Must be rejected",
+                "service_id": str(service.id),
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "active service" in resp.json()["detail"]
+
+    async def test_manual_incident_rejects_service_from_another_org(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.db.repos import OrganizationRepo
+
+        async with app.state.session_factory() as db:
+            other = await OrganizationRepo.create(
+                db,
+                name="Other Service Org",
+                slug=f"other-service-{uuid.uuid4().hex[:6]}",
+            )
+            team = await TeamRepo.create(
+                db,
+                other.id,
+                name="Other Team",
+                slug=f"other-team-{uuid.uuid4().hex[:6]}",
+                created_by=uuid.uuid4(),
+            )
+            service = await ServiceRepo.create(
+                db,
+                other.id,
+                team_id=team.id,
+                name="Other Service",
+                slug=f"other-svc-{uuid.uuid4().hex[:6]}",
+            )
+            await db.commit()
+
+        resp = await client.post(
+            "/incidents",
+            json={
+                "title": "Cross-org service",
+                "description": "Must be rejected",
+                "service_id": str(service.id),
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "active service" in resp.json()["detail"]
+
+    async def test_create_incident(self, client: AsyncClient, app, auth_headers):
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Manual Incident Team",
+                slug=f"manual-team-{uuid.uuid4().hex[:6]}",
+                created_by=uuid.uuid4(),
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Manual Incident Service",
+                slug=f"manual-service-{uuid.uuid4().hex[:6]}",
+            )
+            await db.commit()
         resp = await client.post(
             "/incidents",
             json={
                 "title": "High CPU on api-server",
                 "description": "CPU at 95% for 10 minutes",
                 "severity": "high",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1092,9 +1249,29 @@ class TestIncidents:
     ):
         from backend.api.auth import create_access_token
 
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Protected Incident Team",
+                slug=f"protected-team-{uuid.uuid4().hex[:6]}",
+                created_by=uuid.uuid4(),
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Protected Incident Service",
+                slug=f"protected-service-{uuid.uuid4().hex[:6]}",
+            )
+            await db.commit()
         create_resp = await client.post(
             "/incidents",
-            json={"title": "Protected", "description": "Admin only"},
+            json={
+                "title": "Protected",
+                "description": "Admin only",
+                "service_id": str(service.id),
+            },
             headers=auth_headers,
         )
         incident_id = create_resp.json()["id"]
@@ -1294,6 +1471,7 @@ class TestIncidents:
                 "title": "Misclassified alert",
                 "description": "Needs handoff",
                 "severity": "medium",
+                "service_id": str(service_id),
             },
             headers=auth_headers,
         )
@@ -1469,9 +1647,14 @@ class TestIncidents:
 
         monkeypatch.setattr(SessionRepo, "create", staticmethod(_counting_session_create))
 
+        service = await _seed_manual_incident_service(app, "Resolve")
         create_resp = await client.post(
             "/incidents",
-            json={"title": "TEST · synthetic alert", "description": "qa"},
+            json={
+                "title": "TEST · synthetic alert",
+                "description": "qa",
+                "service_id": str(service.id),
+            },
             headers=auth_headers,
         )
         incident_id = create_resp.json()["id"]
@@ -1524,9 +1707,14 @@ class TestIncidents:
 
         monkeypatch.setattr(notifier, "deliver_incident_event", _failing_delivery)
 
+        service = await _seed_manual_incident_service(app, "Notify")
         create_resp = await client.post(
             "/incidents",
-            json={"title": "TEST · synthetic alert", "description": "qa"},
+            json={
+                "title": "TEST · synthetic alert",
+                "description": "qa",
+                "service_id": str(service.id),
+            },
             headers=auth_headers,
         )
         incident_id = create_resp.json()["id"]
@@ -1539,7 +1727,7 @@ class TestIncidents:
         assert resp.status_code == 200, resp.text
         assert resp.json()["status"] == "resolved"
 
-    async def test_create_incident_with_missing_service_returns_404(
+    async def test_create_incident_with_missing_service_returns_400(
         self, client: AsyncClient, auth_headers
     ):
         resp = await client.post(
@@ -1551,8 +1739,10 @@ class TestIncidents:
             },
             headers=auth_headers,
         )
-        assert resp.status_code == 404
-        assert resp.json()["detail"] == "Service not found"
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == (
+            "Manual incidents must be linked to an active service."
+        )
 
     async def test_create_incident_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
@@ -1567,13 +1757,15 @@ class TestIncidents:
         )
         assert resp.status_code == 403
 
-    async def test_list_incidents(self, client: AsyncClient, auth_headers):
+    async def test_list_incidents(self, client: AsyncClient, app, auth_headers):
+        service = await _seed_manual_incident_service(app, "List")
         # Create two incidents
         await client.post(
             "/incidents",
             json={
                 "title": "Inc1",
                 "description": "d1",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1582,6 +1774,7 @@ class TestIncidents:
             json={
                 "title": "Inc2",
                 "description": "d2",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1593,13 +1786,15 @@ class TestIncidents:
         assert len(data["items"]) == 2
 
     async def test_list_incidents_supports_case_insensitive_query(
-        self, client: AsyncClient, auth_headers
+        self, client: AsyncClient, app, auth_headers
     ):
+        service = await _seed_manual_incident_service(app, "Query")
         await client.post(
             "/incidents",
             json={
                 "title": "Database cluster unreachable",
                 "description": "Primary node stopped answering health checks",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1608,6 +1803,7 @@ class TestIncidents:
             json={
                 "title": "Cache pressure",
                 "description": "Redis memory usage climbing",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1621,11 +1817,13 @@ class TestIncidents:
     async def test_list_incidents_query_composes_with_status_filter(
         self, client: AsyncClient, app, auth_headers
     ):
+        service = await _seed_manual_incident_service(app, "Status Query")
         first = await client.post(
             "/incidents",
             json={
                 "title": "API latency spike",
                 "description": "p95 latency exceeded budget",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1634,6 +1832,7 @@ class TestIncidents:
             json={
                 "title": "API latency spike follow-up",
                 "description": "Same subsystem, now resolved",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1655,13 +1854,15 @@ class TestIncidents:
         assert data["items"][0]["id"] == str(second_id)
 
     async def test_list_incidents_with_status_filter(
-        self, client: AsyncClient, auth_headers
+        self, client: AsyncClient, app, auth_headers
     ):
+        service = await _seed_manual_incident_service(app, "Status")
         await client.post(
             "/incidents",
             json={
                 "title": "Open",
                 "description": "d",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1670,6 +1871,7 @@ class TestIncidents:
             json={
                 "title": "Open2",
                 "description": "d",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1682,17 +1884,26 @@ class TestIncidents:
         assert resp.json()["total"] == 0
 
     async def test_list_incidents_multi_value_status_is_or(
-        self, client: AsyncClient, auth_headers
+        self, client: AsyncClient, app, auth_headers
     ):
         """Repeated ?status= params are an OR match (multi-select filter)."""
+        service = await _seed_manual_incident_service(app, "Multi Status")
         a = await client.post(
             "/incidents",
-            json={"title": "Stays open", "description": "d"},
+            json={
+                "title": "Stays open",
+                "description": "d",
+                "service_id": str(service.id),
+            },
             headers=auth_headers,
         )
         b = await client.post(
             "/incidents",
-            json={"title": "Gets resolved", "description": "d"},
+            json={
+                "title": "Gets resolved",
+                "description": "d",
+                "service_id": str(service.id),
+            },
             headers=auth_headers,
         )
         await client.post(
@@ -1785,12 +1996,14 @@ class TestIncidents:
         assert data["total"] == 1
         assert data["items"][0]["title"] == "Platform ingested critical"
 
-    async def test_get_incident(self, client: AsyncClient, auth_headers):
+    async def test_get_incident(self, client: AsyncClient, app, auth_headers):
+        service = await _seed_manual_incident_service(app, "Get")
         create_resp = await client.post(
             "/incidents",
             json={
                 "title": "Look me up",
                 "description": "d",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1800,12 +2013,16 @@ class TestIncidents:
         assert resp.status_code == 200
         assert resp.json()["title"] == "Look me up"
 
-    async def test_list_sessions_for_incident(self, client: AsyncClient, auth_headers):
+    async def test_list_sessions_for_incident(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        service = await _seed_manual_incident_service(app, "Session List")
         incident = await client.post(
             "/incidents",
             json={
                 "title": "Timeline target",
                 "description": "d",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1833,6 +2050,7 @@ class TestIncidents:
             json={
                 "title": "Other",
                 "description": "d",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1865,6 +2083,7 @@ class TestIncidents:
     async def test_get_incident_timeline_interleaves_response_tool_and_evidence(
         self, client: AsyncClient, app, auth_headers
     ):
+        service = await _seed_manual_incident_service(app, "Timeline")
         incident_resp = await client.post(
             "/incidents",
             json={
@@ -1872,6 +2091,7 @@ class TestIncidents:
                 "description": "CPU burn on api",
                 "external_source": "cloudwatch",
                 "external_id": "alarm-123",
+                "service_id": str(service.id),
             },
             headers=auth_headers,
         )
@@ -1977,12 +2197,16 @@ class TestIncidents:
         assert resp.status_code == 404
 
     async def test_list_incidents_pagination(self, client: AsyncClient, auth_headers):
+        service_id = await _create_manual_service_via_api(
+            client, auth_headers, "Pagination"
+        )
         for i in range(5):
             await client.post(
                 "/incidents",
                 json={
                     "title": f"Inc-{i}",
                     "description": "d",
+                    "service_id": service_id,
                 },
                 headers=auth_headers,
             )
@@ -1999,11 +2223,15 @@ class TestIncidentPostmortem:
     async def _create_incident(
         self, client: AsyncClient, auth_headers
     ) -> str:
+        service_id = await _create_manual_service_via_api(
+            client, auth_headers, "Postmortem"
+        )
         resp = await client.post(
             "/incidents",
             json={
                 "title": "Postmortem test incident",
                 "description": "Seeded for postmortem authoring tests.",
+                "service_id": service_id,
             },
             headers=auth_headers,
         )
@@ -2173,9 +2401,16 @@ class TestIncidentComments:
     """v1.2 Phase 4 — operator comments on incidents + timeline surfacing."""
 
     async def _create_incident(self, client: AsyncClient, auth_headers) -> str:
+        service_id = await _create_manual_service_via_api(
+            client, auth_headers, "Comments"
+        )
         resp = await client.post(
             "/incidents",
-            json={"title": "Comment test incident", "description": "x"},
+            json={
+                "title": "Comment test incident",
+                "description": "x",
+                "service_id": service_id,
+            },
             headers=auth_headers,
         )
         assert resp.status_code == 201
@@ -2264,6 +2499,9 @@ class TestIncidentBulkActions:
     async def _seed_incidents(
         self, client: AsyncClient, auth_headers, count: int
     ) -> list[str]:
+        service_id = await _create_manual_service_via_api(
+            client, auth_headers, "Bulk"
+        )
         ids: list[str] = []
         for i in range(count):
             resp = await client.post(
@@ -2271,6 +2509,7 @@ class TestIncidentBulkActions:
                 json={
                     "title": f"Bulk incident {i}",
                     "description": f"#{i}",
+                    "service_id": service_id,
                 },
                 headers=auth_headers,
             )
@@ -2398,11 +2637,15 @@ class TestSessions:
     async def test_create_session_with_incident(
         self, client: AsyncClient, auth_headers
     ):
+        service_id = await _create_manual_service_via_api(
+            client, auth_headers, "Session"
+        )
         inc_resp = await client.post(
             "/incidents",
             json={
                 "title": "T",
                 "description": "d",
+                "service_id": service_id,
             },
             headers=auth_headers,
         )
@@ -2418,6 +2661,55 @@ class TestSessions:
         )
         assert resp.status_code == 201
         assert resp.json()["incident_id"] == inc_id
+
+    async def test_session_defaults_to_incident_ingestion_model(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"incident-default-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="incident-default-model",
+            )
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Model Session Team",
+                slug=f"model-session-team-{uuid.uuid4().hex[:6]}",
+                created_by=uuid.uuid4(),
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Model Session Service",
+                slug=f"model-session-service-{uuid.uuid4().hex[:6]}",
+                preferred_model_config_ids=[str(model.id)],
+            )
+            await db.commit()
+
+        incident = await client.post(
+            "/incidents",
+            json={
+                "title": "Use ingestion model",
+                "description": "Session should inherit it",
+                "service_id": str(service.id),
+            },
+            headers=auth_headers,
+        )
+        assert incident.status_code == 201, incident.text
+        assert incident.json()["ingestion_model_config_id"] == str(model.id)
+
+        session = await client.post(
+            "/sessions",
+            json={"incident_id": incident.json()["id"], "tier": 2},
+            headers=auth_headers,
+        )
+        assert session.status_code == 201, session.text
+        assert session.json()["model_provider"] == "ollama"
+        assert session.json()["model_id"] == "incident-default-model"
 
     async def test_create_session_invalid_incident(
         self, client: AsyncClient, auth_headers
@@ -2562,12 +2854,16 @@ class TestSessions:
 
         monkeypatch.setattr("backend.api.session_runner.publish", _capture_publish)
 
+        service_id = await _create_manual_service_via_api(
+            client, auth_headers, "Workflow"
+        )
         inc_resp = await client.post(
             "/incidents",
             json={
                 "title": "API-launched workflow",
                 "description": "pods restarting in production",
                 "severity": "high",
+                "service_id": service_id,
             },
             headers=auth_headers,
         )

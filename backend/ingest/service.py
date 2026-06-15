@@ -31,6 +31,7 @@ from backend.ingest.autostart import (
 )
 from backend.ingest.llm_extractor import apply_shape_cache, parse_with_paths
 from backend.ingest.registry import get_adapter
+from backend.llm.selection import choose_model_for_incident_service
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,11 @@ async def ingest_incident(
     """
     org_id = token.org_id
     provider = token.provider
+    selected_model = await choose_model_for_incident_service(
+        db,
+        org_id,
+        service_id=token.service_id,
+    )
     # For "auto" tokens, seed the adapter with any pre-learned paths for this payload shape.
     seeded_paths: dict[str, str] | None = None
     if provider == "auto" and isinstance(token.shape_cache, dict):
@@ -223,6 +229,9 @@ async def ingest_incident(
             external_id=parsed.external_id,
             external_source=parsed.external_source,
             service_id=token.service_id,
+            ingestion_model_config_id=(
+                None if selected_model is None else selected_model.id
+            ),
         )
         db.add(incident)
         await db.flush()

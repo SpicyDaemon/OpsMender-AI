@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **v1.2 Phase 1 — Incident-memory review/approval gate.** AI-written incident
+  memories now require human approval before the agent can recall them. The
+  post-session `remember` node writes memories as **`pending`**; only
+  **`approved`** memories are recalled into future sessions (enforced in the
+  recall query and excluded from auto-compaction), and **`rejected`** memories
+  are kept for audit but never recalled. Operator-authored memories are approved
+  on create (the author is the reviewer). New `POST /memories/{id}/review`
+  (admin/operator) and a `review_status` filter on `GET /memories`. The
+  `/dashboard/memories` page gains a review queue: pending badge + banner,
+  Review status column/filter, and approve/reject actions. Migration
+  `x3y4z5a6b7c8` adds `review_status` / `reviewed_by_user_id` / `reviewed_at` and
+  backfills existing memories to `approved` (preserving current behavior). Memory
+  remains advisory-only and still cannot bypass tier or skill enforcement.
+
 ### Fixed
 
 - **Modal overflow / unreachable footer.** A dialog taller than the viewport

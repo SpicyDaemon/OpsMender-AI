@@ -2256,6 +2256,9 @@ class IncidentMemoryResponse(BaseModel):
     helpful_count: int = 0
     unhelpful_count: int = 0
     is_hidden: bool = False
+    review_status: str = "approved"
+    reviewed_by_user_id: Optional[uuid.UUID] = None
+    reviewed_at: Optional[datetime] = None
     created_by_user_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
@@ -2292,6 +2295,13 @@ class IncidentMemoryFeedbackRequest(BaseModel):
 
 class IncidentMemoryHideRequest(BaseModel):
     hidden: bool = True
+
+
+class IncidentMemoryReviewRequest(BaseModel):
+    """Approve or reject an AI-written memory. Only approved memories are
+    recalled into AI sessions."""
+
+    status: str = Field(..., pattern=r"^(approved|rejected|pending)$")
 
 
 class SessionMemoriesUsedItem(BaseModel):

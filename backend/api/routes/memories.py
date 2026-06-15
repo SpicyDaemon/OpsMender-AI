@@ -32,6 +32,7 @@ from backend.api.schemas import (
     IncidentMemoryHideRequest,
     IncidentMemoryListResponse,
     IncidentMemoryResponse,
+    IncidentMemoryReviewRequest,
     IncidentMemoryUpdate,
     SessionMemoriesUsedItem,
     SessionMemoriesUsedResponse,
@@ -60,6 +61,9 @@ def _to_response(memory: IncidentMemory) -> IncidentMemoryResponse:
         helpful_count=memory.helpful_count or 0,
         unhelpful_count=memory.unhelpful_count or 0,
         is_hidden=bool(memory.is_hidden),
+        review_status=getattr(memory, "review_status", "approved") or "approved",
+        reviewed_by_user_id=getattr(memory, "reviewed_by_user_id", None),
+        reviewed_at=getattr(memory, "reviewed_at", None),
         created_by_user_id=memory.created_by_user_id,
         created_at=memory.created_at,
         updated_at=memory.updated_at,
@@ -88,6 +92,7 @@ async def _validate_service(
 async def list_memories(
     service_id: uuid.UUID | None = None,
     include_hidden: bool = False,
+    review_status: str | None = None,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
@@ -97,6 +102,7 @@ async def list_memories(
         org_id,
         service_id=service_id,
         include_hidden=include_hidden,
+        review_status=review_status,
     )
     return IncidentMemoryListResponse(
         items=[_to_response(item) for item in items],
@@ -137,6 +143,8 @@ async def create_memory(
     user: User = Depends(require_role("admin", "operator")),
 ):
     await _validate_service(db, org_id, body.service_id)
+    # Operator-authored memories are approved on create — the author is the
+    # reviewer. (AI-written memories, by contrast, start "pending".)
     memory = await IncidentMemoryRepo.create(
         db,
         org_id=org_id,
@@ -145,7 +153,10 @@ async def create_memory(
         summary_md=body.summary_md,
         tags=[t.strip().lower() for t in body.tags if t and t.strip()],
         created_by_user_id=user.id,
+        review_status="approved",
     )
+    memory.reviewed_by_user_id = user.id
+    memory.reviewed_at = memory.created_at
     await db.commit()
     await db.refresh(memory)
     return _to_response(memory)
@@ -258,6 +269,38 @@ async def memory_hide(
         memory_id=memory_id,
         org_id=org_id,
         hidden=body.hidden,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found",
+        )
+    await db.commit()
+    await db.refresh(updated)
+    return _to_response(updated)
+
+
+@router.post(
+    "/{memory_id}/review",
+    response_model=IncidentMemoryResponse,
+    summary="Approve or reject a memory (gates whether it is recalled by the AI)",
+)
+async def memory_review(
+    memory_id: uuid.UUID,
+    body: IncidentMemoryReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Set a memory's review status. Only ``approved`` memories are recalled
+    into AI sessions; ``pending`` (awaiting review) and ``rejected`` never are.
+    """
+    updated = await IncidentMemoryRepo.set_review_status(
+        db,
+        memory_id=memory_id,
+        org_id=org_id,
+        review_status=body.status,
+        reviewed_by_user_id=user.id,
     )
     if updated is None:
         raise HTTPException(

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Brain,
+  Check,
   EyeOff,
   Pencil,
   Plus,
@@ -10,6 +11,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  X,
 } from "lucide-react";
 
 import {
@@ -18,6 +20,7 @@ import {
   listMemories,
   listServices,
   recordMemoryFeedback,
+  reviewMemory,
   setMemoryHidden,
   updateMemory,
 } from "@/lib/api";
@@ -121,6 +124,33 @@ export default function MemoriesPage() {
     [toast],
   );
 
+  const handleReview = useCallback(
+    async (
+      memory: IncidentMemoryResponse,
+      status: "approved" | "rejected",
+    ) => {
+      try {
+        const updated = await reviewMemory(memory.id, status);
+        setMemories((prev) =>
+          prev.map((m) => (m.id === updated.id ? updated : m)),
+        );
+        toast.success(
+          status === "approved"
+            ? `Approved "${updated.title}" — it can now be recalled by the AI.`
+            : `Rejected "${updated.title}" — it will not be recalled.`,
+        );
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [toast],
+  );
+
+  const pendingCount = useMemo(
+    () => memories.filter((m) => m.review_status === "pending").length,
+    [memories],
+  );
+
   const columns = useMemo<DataTableColumn<IncidentMemoryResponse>[]>(
     () => [
       {
@@ -133,6 +163,12 @@ export default function MemoriesPage() {
               <span className="font-medium text-fg-primary">
                 {memory.title}
               </span>
+              {memory.review_status === "pending" && (
+                <Badge variant="in_progress">Pending review</Badge>
+              )}
+              {memory.review_status === "rejected" && (
+                <Badge variant="default">Rejected</Badge>
+              )}
               {memory.is_hidden && <Badge variant="default">Hidden</Badge>}
             </div>
             <p className="mt-1 line-clamp-2 max-w-xl text-xs text-fg-muted">
@@ -222,6 +258,37 @@ export default function MemoriesPage() {
         hiddenByDefault: true,
       },
       {
+        id: "review",
+        label: "Review",
+        accessor: (memory) => memory.review_status,
+        cell: (memory) => (
+          <Badge
+            variant={
+              memory.review_status === "approved"
+                ? "resolved"
+                : memory.review_status === "pending"
+                  ? "in_progress"
+                  : "default"
+            }
+          >
+            {memory.review_status === "approved"
+              ? "Approved"
+              : memory.review_status === "pending"
+                ? "Pending"
+                : "Rejected"}
+          </Badge>
+        ),
+        filterChips: {
+          options: [
+            { value: "pending", label: "Pending" },
+            { value: "approved", label: "Approved" },
+            { value: "rejected", label: "Rejected" },
+          ],
+          valueOf: (memory) => memory.review_status,
+        },
+        sortable: true,
+      },
+      {
         id: "visibility",
         label: "Visibility",
         accessor: (memory) => (memory.is_hidden ? "hidden" : "visible"),
@@ -246,6 +313,7 @@ export default function MemoriesPage() {
     [
       canEdit,
       handleFeedback,
+      handleReview,
       includeHidden,
       serviceFilterOptions,
       serviceNameById,
@@ -284,7 +352,7 @@ export default function MemoriesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Memories"
-        subtitle="Per-service lessons the agent has learned from prior incidents. Curate them like SKILL.md."
+        subtitle="Per-service lessons the agent has learned from prior incidents. AI-written memories need review before they are recalled into sessions; operator-authored ones are approved on save."
         icon={<Brain size={18} />}
         actions={
           <Button
@@ -298,6 +366,19 @@ export default function MemoriesPage() {
           </Button>
         }
       />
+
+      {canEdit && pendingCount > 0 && (
+        <div className="flex items-center gap-2 rounded-md border border-status-medium-border bg-status-medium-bg px-3 py-2 text-sm text-status-medium">
+          <Brain size={14} />
+          <span>
+            {pendingCount} AI-written{" "}
+            {pendingCount === 1 ? "memory is" : "memories are"} awaiting review.
+            Approve to let the AI recall {pendingCount === 1 ? "it" : "them"};
+            reject to keep but never recall. Filter by{" "}
+            <span className="font-medium">Review → Pending</span>.
+          </span>
+        </div>
+      )}
 
       {loading && memories.length === 0 ? (
         <TableSkeleton rows={4} columns={4} />
@@ -361,6 +442,26 @@ export default function MemoriesPage() {
           }}
           rowActions={(memory) => (
             <div className="flex justify-end gap-1">
+              {canEdit && memory.review_status !== "approved" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleReview(memory, "approved")}
+                  title="Approve — allow the AI to recall this memory"
+                >
+                  <Check size={13} />
+                </Button>
+              )}
+              {canEdit && memory.review_status !== "rejected" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleReview(memory, "rejected")}
+                  title="Reject — keep but never recall into AI sessions"
+                >
+                  <X size={13} />
+                </Button>
+              )}
               {canEdit && (
                 <Button
                   variant="ghost"

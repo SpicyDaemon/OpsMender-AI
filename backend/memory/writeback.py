@@ -277,6 +277,9 @@ async def remember_for_session(
                 title=draft.title,
                 summary_md=draft.summary_md,
                 tags=draft.tags,
+                # AI-written memories require human review before they are
+                # recalled into future sessions (v1.2 memory review gate).
+                review_status="pending",
             )
             await db.commit()
             new_id = memory.id
@@ -335,9 +338,11 @@ async def maybe_compact(
                 "total_after": count,
             }
 
+        # Compaction only dedups approved memories — pending ones await human
+        # review and must not be auto-deleted.
         memories = list(
             await IncidentMemoryRepo.list_for_org(
-                db, org_id, service_id=service_id
+                db, org_id, service_id=service_id, review_status="approved"
             )
         )
 

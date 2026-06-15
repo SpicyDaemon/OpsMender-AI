@@ -68,6 +68,97 @@ async def _make_service(db: AsyncSession, org_id: uuid.UUID, name: str) -> Servi
     return service
 
 
+class TestReviewGate:
+    """v1.2 — only approved memories are recalled; AI writeback is pending."""
+
+    async def test_create_defaults_approved_but_writeback_passes_pending(
+        self, db: AsyncSession
+    ):
+        approved = await IncidentMemoryRepo.create(
+            db, org_id=ORG_A, title="manual", summary_md="x"
+        )
+        pending = await IncidentMemoryRepo.create(
+            db,
+            org_id=ORG_A,
+            title="ai",
+            summary_md="y",
+            review_status="pending",
+        )
+        await db.flush()
+        assert approved.review_status == "approved"
+        assert pending.review_status == "pending"
+
+    async def test_find_relevant_only_returns_approved(self, db: AsyncSession):
+        svc = await _make_service(db, ORG_A, "checkout")
+        approved = await IncidentMemoryRepo.create(
+            db,
+            org_id=ORG_A,
+            service_id=svc.id,
+            title="approved latency",
+            summary_md="pool it",
+            review_status="approved",
+        )
+        await IncidentMemoryRepo.create(
+            db,
+            org_id=ORG_A,
+            service_id=svc.id,
+            title="pending latency",
+            summary_md="pool it",
+            review_status="pending",
+        )
+        await IncidentMemoryRepo.create(
+            db,
+            org_id=ORG_A,
+            service_id=svc.id,
+            title="rejected latency",
+            summary_md="pool it",
+            review_status="rejected",
+        )
+        await db.flush()
+
+        results = await IncidentMemoryRepo.find_relevant(
+            db, org_id=ORG_A, service_id=svc.id, query="latency", tags=None
+        )
+        assert [m.id for m, _ in results] == [approved.id]
+
+    async def test_set_review_status_stamps_reviewer(self, db: AsyncSession):
+        m = await IncidentMemoryRepo.create(
+            db, org_id=ORG_A, title="ai", summary_md="x", review_status="pending"
+        )
+        await db.flush()
+        updated = await IncidentMemoryRepo.set_review_status(
+            db,
+            memory_id=m.id,
+            org_id=ORG_A,
+            review_status="approved",
+            reviewed_by_user_id=None,
+        )
+        assert updated is not None
+        assert updated.review_status == "approved"
+        assert updated.reviewed_at is not None
+
+    async def test_count_for_service_excludes_pending(self, db: AsyncSession):
+        svc = await _make_service(db, ORG_A, "checkout")
+        await IncidentMemoryRepo.create(
+            db,
+            org_id=ORG_A,
+            service_id=svc.id,
+            title="approved",
+            summary_md="x",
+            review_status="approved",
+        )
+        await IncidentMemoryRepo.create(
+            db,
+            org_id=ORG_A,
+            service_id=svc.id,
+            title="pending",
+            summary_md="x",
+            review_status="pending",
+        )
+        await db.flush()
+        assert await IncidentMemoryRepo.count_for_service(db, ORG_A, svc.id) == 1
+
+
 class TestCreateAndGet:
     async def test_create_writes_org_scoped_row(self, db: AsyncSession):
         m = await IncidentMemoryRepo.create(

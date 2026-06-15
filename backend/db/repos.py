@@ -5670,6 +5670,10 @@ class IncidentMemoryRepo:
         source_incident_id: uuid.UUID | None = None,
         tags: list[str] | None = None,
         created_by_user_id: uuid.UUID | None = None,
+        # Default approved: direct/operator-authored creates are trusted. The AI
+        # writeback path explicitly passes "pending" so machine-written memories
+        # require human review before they are recalled.
+        review_status: str = "approved",
     ) -> IncidentMemory:
         row = IncidentMemory(
             org_id=org_id,
@@ -5679,6 +5683,7 @@ class IncidentMemoryRepo:
             summary_md=summary_md,
             tags=list(tags or []),
             created_by_user_id=created_by_user_id,
+            review_status=review_status,
         )
         db.add(row)
         await db.flush()
@@ -5702,12 +5707,15 @@ class IncidentMemoryRepo:
         *,
         service_id: uuid.UUID | None = None,
         include_hidden: bool = False,
+        review_status: str | None = None,
     ) -> Sequence[IncidentMemory]:
         stmt = select(IncidentMemory).where(IncidentMemory.org_id == org_id)
         if service_id is not None:
             stmt = stmt.where(IncidentMemory.service_id == service_id)
         if not include_hidden:
             stmt = stmt.where(IncidentMemory.is_hidden.is_(False))
+        if review_status is not None:
+            stmt = stmt.where(IncidentMemory.review_status == review_status)
         stmt = stmt.order_by(IncidentMemory.updated_at.desc())
         return (await db.execute(stmt)).scalars().all()
 
@@ -5721,6 +5729,9 @@ class IncidentMemoryRepo:
             .where(IncidentMemory.org_id == org_id)
             .where(IncidentMemory.service_id == service_id)
             .where(IncidentMemory.is_hidden.is_(False))
+            # Only approved memories count toward the compaction cap — pending
+            # ones await human review and must not be auto-deduplicated.
+            .where(IncidentMemory.review_status == "approved")
         )
         return int((await db.execute(stmt)).scalar() or 0)
 
@@ -5746,6 +5757,10 @@ class IncidentMemoryRepo:
             select(IncidentMemory)
             .where(IncidentMemory.org_id == org_id)
             .where(IncidentMemory.is_hidden.is_(False))
+            # Human-review gate: only approved memories are recalled into AI
+            # sessions. Pending (awaiting review) and rejected memories never
+            # surface as agent context.
+            .where(IncidentMemory.review_status == "approved")
         )
         rows = (await db.execute(stmt)).scalars().all()
 
@@ -5834,6 +5849,26 @@ class IncidentMemoryRepo:
             return None
         row.is_hidden = hidden
         row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def set_review_status(
+        db: AsyncSession,
+        *,
+        memory_id: uuid.UUID,
+        org_id: uuid.UUID,
+        review_status: str,
+        reviewed_by_user_id: uuid.UUID | None,
+    ) -> IncidentMemory | None:
+        row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+        if row is None:
+            return None
+        now = datetime.now(timezone.utc)
+        row.review_status = review_status
+        row.reviewed_by_user_id = reviewed_by_user_id
+        row.reviewed_at = now
+        row.updated_at = now
         await db.flush()
         return row
 

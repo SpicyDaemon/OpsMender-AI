@@ -13,6 +13,26 @@ OpsMender is an agent harness. Like every other harness — Claude Code, Aider, 
 5. When per-service memory count crosses 50, the next `remember` call runs one bounded auto-compaction pass to keep the store small.
 6. *Coming in Steps 6 + 7:* operators thumbs up / thumbs down each surfaced memory. Retrieval ranking weights `helpful / (helpful + unhelpful)` so unhelpful memories drop out of rotation.
 
+## Review & approval gate (v1.2)
+
+AI-written memories are **not trusted blindly**. The `remember` node writes each
+new memory as **`pending`**, and the `recall` node only surfaces **`approved`**
+memories — a pending or `rejected` memory is never injected into a session and is
+excluded from auto-compaction.
+
+- **Approve** a pending memory (`/dashboard/memories` → approve, or
+  `POST /memories/{id}/review` with `{"status":"approved"}`) to let the agent
+  recall it.
+- **Reject** to keep it for audit but never recall it.
+- **Operator-authored** memories (created by hand via the UI/API) are
+  **approved on create** — the author is the reviewer.
+- Existing memories from before this gate were backfilled to `approved`
+  (migration `x3y4z5a6b7c8`), so recall behavior was preserved on upgrade.
+
+The gate is a governance layer on top of the existing trust boundaries: even an
+approved memory is still advisory-only and cannot bypass the tier gate or
+`SKILL.md`.
+
 ## What a memory looks like
 
 Each memory is one row in `incident_memories`:
@@ -90,13 +110,14 @@ All routes are org-scoped via the active org dependency. Auth follows the same a
 
 | Method | Endpoint | Auth | Notes |
 |---|---|---|---|
-| `GET` | `/memories?service_id=…&include_hidden=true` | any authenticated | Default returns visible memories only |
+| `GET` | `/memories?service_id=…&include_hidden=true&review_status=pending` | any authenticated | Default returns visible memories only; `review_status` filters pending/approved/rejected |
 | `GET` | `/memories/{id}` | any authenticated | 404 if not in active org |
 | `POST` | `/memories` | admin or operator | Tags get lower-cased + trimmed in the route; `service_id` validated against the active org |
 | `PUT` | `/memories/{id}` | admin or operator | Set `service_id_set: true` to explicitly null the service binding (otherwise the field is left untouched) |
 | `DELETE` | `/memories/{id}` | admin only | 204 on success |
 | `POST` | `/memories/{id}/feedback` | admin or operator | Body: `{"helpful": true}` or `{"helpful": false}` |
 | `POST` | `/memories/{id}/hide` | admin only | Body: `{"hidden": true}` (or `false` to un-hide) |
+| `POST` | `/memories/{id}/review` | admin or operator | Body: `{"status": "approved"}` (or `"rejected"`/`"pending"`). Only approved memories are recalled by the AI. |
 | `GET` | `/sessions/{id}/memories-used` | any authenticated | Returns recall trail (memory + surfaced_at + score) for one session |
 
 Operator example — author a memory by hand:

@@ -1851,6 +1851,9 @@ export interface IncidentMemoryResponse {
   helpful_count: number;
   unhelpful_count: number;
   is_hidden: boolean;
+  review_status: "pending" | "approved" | "rejected";
+  reviewed_by_user_id: string | null;
+  reviewed_at: string | null;
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;

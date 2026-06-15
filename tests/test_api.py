@@ -2567,6 +2567,108 @@ class TestIncidentMemoryAPI:
         assert get_resp.status_code == 200
         assert get_resp.json()["id"] == memory_id
 
+    async def test_operator_created_memory_is_approved(
+        self, client: AsyncClient, auth_headers
+    ):
+        # Hand-authored memories are approved on create (the author reviews).
+        resp = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={"title": "manual", "summary_md": "x"},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["review_status"] == "approved"
+        assert body["reviewed_at"] is not None
+
+    async def test_review_approve_then_reject(
+        self, client: AsyncClient, auth_headers
+    ):
+        created = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={"title": "m", "summary_md": "x"},
+        )
+        memory_id = created.json()["id"]
+
+        rejected = await client.post(
+            f"/memories/{memory_id}/review",
+            headers=auth_headers,
+            json={"status": "rejected"},
+        )
+        assert rejected.status_code == 200
+        assert rejected.json()["review_status"] == "rejected"
+
+        approved = await client.post(
+            f"/memories/{memory_id}/review",
+            headers=auth_headers,
+            json={"status": "approved"},
+        )
+        assert approved.status_code == 200
+        assert approved.json()["review_status"] == "approved"
+        assert approved.json()["reviewed_at"] is not None
+
+    async def test_review_rejects_invalid_status(
+        self, client: AsyncClient, auth_headers
+    ):
+        created = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={"title": "m", "summary_md": "x"},
+        )
+        memory_id = created.json()["id"]
+        resp = await client.post(
+            f"/memories/{memory_id}/review",
+            headers=auth_headers,
+            json={"status": "bogus"},
+        )
+        assert resp.status_code == 422
+
+    async def test_review_unknown_memory_404(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            f"/memories/{uuid.uuid4()}/review",
+            headers=auth_headers,
+            json={"status": "approved"},
+        )
+        assert resp.status_code == 404
+
+    async def test_viewer_cannot_review(
+        self, client: AsyncClient, auth_headers, viewer_headers
+    ):
+        created = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={"title": "m", "summary_md": "x"},
+        )
+        memory_id = created.json()["id"]
+        resp = await client.post(
+            f"/memories/{memory_id}/review",
+            headers=viewer_headers,
+            json={"status": "approved"},
+        )
+        assert resp.status_code == 403
+
+    async def test_list_filters_by_review_status(
+        self, client: AsyncClient, auth_headers
+    ):
+        await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={"title": "approved-one", "summary_md": "x"},
+        )
+        # Operator-created memories are approved, so a pending filter is empty.
+        pending = await client.get(
+            "/memories?review_status=pending", headers=auth_headers
+        )
+        assert pending.status_code == 200
+        assert pending.json()["total"] == 0
+        approved = await client.get(
+            "/memories?review_status=approved", headers=auth_headers
+        )
+        assert approved.json()["total"] >= 1
+
     async def test_create_rejects_unknown_service(
         self, client: AsyncClient, auth_headers
     ):

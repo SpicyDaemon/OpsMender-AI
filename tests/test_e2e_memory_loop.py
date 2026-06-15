@@ -220,6 +220,31 @@ class TestEndToEndMemoryLoop:
             assert mem is not None
             assert "payments" in mem.tags
             assert mem.service_id == service_id
+            # v1.2 gate: AI-written memories start "pending" and are NOT recalled
+            # until a human approves them.
+            assert mem.review_status == "pending"
+
+        # A pending memory does not surface in recall yet.
+        async with factory() as db:
+            pending_hits = await IncidentMemoryRepo.find_relevant(
+                db,
+                org_id=ORG,
+                service_id=service_id,
+                query="checkout 500s",
+                tags=None,
+            )
+            assert pending_hits == []
+
+        # Operator approves the memory — now it is eligible for recall.
+        async with factory() as db:
+            await IncidentMemoryRepo.set_review_status(
+                db,
+                memory_id=memorized_id_1,
+                org_id=ORG,
+                review_status="approved",
+                reviewed_by_user_id=None,
+            )
+            await db.commit()
 
         # ---- Session 2: similar incident, memory should surface ------------
         # Recall makes no LLM call. Sequence covers observe → ... → remember

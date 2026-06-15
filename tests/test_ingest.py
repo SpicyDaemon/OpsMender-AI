@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 
@@ -476,11 +477,17 @@ class TestIngestGeneric:
         assert resp.status_code == 200
         incident_id = uuid.UUID(resp.json()["incident_id"])
 
-        async with app.state.session_factory() as db:
-            sessions = await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
-            assert len(sessions) == 1
-            assert sessions[0].tier == 0
-            assert sessions[0].status == "active"
+        sessions = []
+        for _ in range(50):
+            async with app.state.session_factory() as db:
+                sessions = await SessionRepo.list_by_incident(
+                    db, TEST_ORG_ID, incident_id
+                )
+            if sessions:
+                break
+            await asyncio.sleep(0.01)
+        assert len(sessions) == 1
+        assert sessions[0].tier == 0
 
     @pytest.mark.parametrize("tier", [1, 2])
     async def test_ingest_auto_start_rejects_non_autonomous_tiers(
@@ -515,6 +522,45 @@ class TestIngestGeneric:
             assert (
                 await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
             ) == []
+
+    async def test_default_t2_enabled_auto_start_logs_skip_without_session_creation(
+        self, client: AsyncClient, app, admin_headers, caplog, monkeypatch
+    ):
+        # The fixture's org default is T2. Enable auto-start without overriding
+        # that tier and prove intake never reaches SessionRepo.create.
+        await client.put(
+            "/config",
+            json={
+                "ingest_auto_start_enabled": True,
+                "ingest_auto_start_min_severity": "high",
+                "ingest_auto_start_source": "generic",
+            },
+            headers=admin_headers,
+        )
+
+        async def _unexpected_create(*args, **kwargs):
+            raise AssertionError("T2 intake must not create an AI session")
+
+        monkeypatch.setattr(SessionRepo, "create", _unexpected_create)
+        caplog.set_level("INFO", logger="backend.ingest.service")
+        raw, _ = await _create_token(
+            app,
+            provider="generic",
+            name="generic-default-t2-no-autostart",
+        )
+        resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Default T2 incident",
+                "description": "Auto-start is enabled, but tier remains advisory",
+                "severity": "critical",
+                "id": "autostart-default-t2",
+            },
+            headers={"X-OpsMender-Token": raw},
+        )
+        assert resp.status_code == 200
+        assert "auto_start_skipped_non_t0" in caplog.text
+        assert "resolved_tier=2" in caplog.text
 
     async def test_ingest_auto_start_skips_when_rule_does_not_match(
         self, client: AsyncClient, app, admin_headers

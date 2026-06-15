@@ -104,25 +104,39 @@ def should_auto_start_session(
     policy: IngestAutoStartPolicy,
 ) -> bool:
     """Return True when an ingested incident should auto-create a session."""
+    return auto_start_skip_reason(
+        incident,
+        dedup_action=dedup_action,
+        policy=policy,
+    ) is None
+
+
+def auto_start_skip_reason(
+    incident: Incident,
+    *,
+    dedup_action: str,
+    policy: IngestAutoStartPolicy,
+) -> str | None:
+    """Return a stable reason code, or ``None`` when auto-start is allowed."""
     if not policy.enabled:
-        return False
+        return "auto_start_disabled"
     if policy.session_tier != 0:
-        return False
+        return "auto_start_skipped_non_t0"
     if dedup_action != "created":
-        return False
+        return "auto_start_skipped_not_created"
     if incident.status in {"resolved", "closed"}:
-        return False
+        return "auto_start_skipped_terminal_incident"
 
     severity = (incident.severity or "").strip().lower()
     if _SEVERITY_RANK.get(severity, 0) < _SEVERITY_RANK[policy.min_severity]:
-        return False
+        return "auto_start_skipped_below_severity"
 
     if policy.source is not None:
         source = (incident.external_source or "").strip().lower()
         if source != policy.source:
-            return False
+            return "auto_start_skipped_source_mismatch"
 
-    return True
+    return None
 
 
 async def has_active_session_for_incident(

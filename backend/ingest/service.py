@@ -22,14 +22,12 @@ from backend.db.repos import (
     IngestTokenRepo,
     MaintenanceWindowRepo,
     SLATargetRepo,
-    SessionRepo,
     ServiceRepo,
     UptimeSampleRepo,
 )
 from backend.ingest.autostart import (
-    has_active_session_for_incident,
+    auto_start_skip_reason,
     load_auto_start_policy,
-    should_auto_start_session,
 )
 from backend.ingest.llm_extractor import apply_shape_cache, parse_with_paths
 from backend.ingest.registry import get_adapter
@@ -59,6 +57,7 @@ class IngestResult:
     success: bool
     incident_id: uuid.UUID | None = None
     session_id: uuid.UUID | None = None
+    auto_start_tier: int | None = None
     dedup_action: str | None = None  # created | updated | skipped
     error: str | None = None
 
@@ -311,34 +310,31 @@ async def ingest_incident(
                 avail.target_name,
             )
 
-    session_id: uuid.UUID | None = None
     policy = await load_auto_start_policy(db, org_id, config, incident=incident)
-    if should_auto_start_session(incident, dedup_action=dedup_action, policy=policy):
-        if not await has_active_session_for_incident(db, org_id, incident.id):
-            session = await SessionRepo.create(
-                db,
-                org_id,
-                tier=policy.session_tier,
-                incident_id=incident.id,
-            )
-            session_id = session.id
-            logger.info(
-                "ingest.auto_start: incident=%s session=%s tier=%s source=%s severity=%s",
-                incident.id,
-                session.id,
-                policy.session_tier,
-                incident.external_source,
-                incident.severity,
-            )
-        else:
-            logger.info(
-                "ingest.auto_start: skipped existing active session for incident=%s",
-                incident.id,
-            )
+    auto_start_skip = auto_start_skip_reason(
+        incident,
+        dedup_action=dedup_action,
+        policy=policy,
+    )
+    if auto_start_skip is None:
+        logger.info(
+            "ingest.auto_start: queued incident=%s tier=%s source=%s severity=%s",
+            incident.id,
+            policy.session_tier,
+            incident.external_source,
+            incident.severity,
+        )
+    elif policy.enabled:
+        logger.info(
+            "ingest.auto_start: %s incident=%s resolved_tier=%s",
+            auto_start_skip,
+            incident.id,
+            policy.session_tier,
+        )
 
     return IngestResult(
         success=True,
         incident_id=incident.id,
-        session_id=session_id,
+        auto_start_tier=policy.session_tier if auto_start_skip is None else None,
         dedup_action=dedup_action,
     )

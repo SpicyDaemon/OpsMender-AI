@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Incident intake auto-start isolation.** Intake now commits and returns the
+  incident independently of AI provisioning. When resolved tier is T0, session
+  creation and workflow scheduling run in a tracked background task. Enabled
+  auto-start at T1/T2 creates no session and logs
+  `auto_start_skipped_non_t0` with the resolved tier.
 - **Skill-defined AI autonomy behavior.** MCP Skill operations may now declare
   explicit `tiers.T0` / `T1` / `T2` behavior (`autonomous`, `approval`,
   `blocked`, or `advisory`). Deny rules, unknown-tool fail-closed behavior, and

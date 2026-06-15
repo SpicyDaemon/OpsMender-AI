@@ -33,15 +33,15 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-6">
       <div
         className="absolute inset-0 bg-black/70"
         onClick={onClose}
       />
       <div
-        className={`relative z-10 w-full ${maxWidth} mx-4 rounded-lg bg-bg-elevated border border-border-strong shadow-2xl`}
+        className={`relative z-10 my-auto flex max-h-[calc(100vh-3rem)] w-full ${maxWidth} mx-4 flex-col rounded-lg bg-bg-elevated border border-border-strong shadow-2xl`}
       >
-        <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3.5">
+        <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-5 py-3.5">
           <h2 className="text-sm font-semibold text-fg-primary">{title}</h2>
           <div className="flex items-center gap-2">
             {headerExtra}
@@ -53,7 +53,12 @@ export function Modal({
             </button>
           </div>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div
+          data-testid="modal-body"
+          className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+        >
+          {children}
+        </div>
       </div>
     </div>
   );

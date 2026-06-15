@@ -495,7 +495,7 @@ export function DataTable<T>({
                     className="fixed inset-0 z-10"
                     onClick={() => setColumnsMenuOpen(false)}
                   />
-                  <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border-default bg-bg-panel py-1 shadow-lg">
+                  <div className="absolute right-0 top-full z-20 mt-1 max-h-[60vh] w-56 overflow-y-auto rounded-md border border-border-default bg-bg-panel py-1 shadow-lg">
                     {columns.map((col) => {
                       const checked = !hiddenIds.has(col.id);
                       return (
@@ -606,7 +606,7 @@ export function DataTable<T>({
                   className="fixed inset-0 z-10"
                   onClick={() => setColumnsMenuOpen(false)}
                 />
-                <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border-default bg-bg-panel py-1 shadow-lg">
+                <div className="absolute right-0 top-full z-20 mt-1 max-h-[60vh] w-56 overflow-y-auto rounded-md border border-border-default bg-bg-panel py-1 shadow-lg">
                   {columns.map((col) => {
                     const checked = !hiddenIds.has(col.id);
                     return (

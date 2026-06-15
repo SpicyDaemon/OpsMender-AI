@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Modal overflow / unreachable footer.** A dialog taller than the viewport
+  overflowed off-screen with no scroll, hiding the footer actions — e.g. the
+  "Create Connector" button on **Add Notification Channel** at 100% browser zoom
+  (you had to zoom out to 75% to submit). The shared `Modal` now caps the panel
+  to the viewport (`max-h-[calc(100vh-3rem)]`, flex column) and scrolls the body,
+  so the footer is always reachable. This fixes every dialog built on `Modal`.
+  Also capped the DataTable **Columns** dropdown (`max-h-[60vh]` + scroll) for
+  tables with many columns. Audited all other overlays (Command Palette,
+  MultiSelect filters, TopBar menus, incidents date-range, mobile sidebar) — they
+  were already height-capped.
+
 ## [1.1.0] — 2026-06-14
 
 > **Notification Collaboration Upgrade + MCP Skill Studio.** Verified Slack/Teams

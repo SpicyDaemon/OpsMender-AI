@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config_loader import AppConfig
 from backend.db.models import Incident
-from backend.db.repos import RuntimeConfigRepo, ServiceRepo, SessionRepo
+from backend.db.repos import IncidentRepo, RuntimeConfigRepo, ServiceRepo, SessionRepo
 from backend.tiers.resolution import resolve_session_tier_for_incident
 
 _SEVERITY_RANK = {
@@ -162,6 +162,12 @@ async def provision_auto_started_session(
     """Provision and run an auto-started session outside incident intake."""
     try:
         async with app.state.session_factory() as db:
+            if await IncidentRepo.get_by_id(db, org_id, incident_id) is None:
+                logger.info(
+                    "incident.auto_start: skipped deleted incident=%s",
+                    incident_id,
+                )
+                return
             if await has_active_session_for_incident(db, org_id, incident_id):
                 logger.info(
                     "incident.auto_start: skipped existing active session for incident=%s",
@@ -207,7 +213,26 @@ def schedule_auto_started_session(
             org_id=org_id,
             incident_id=incident_id,
             tier=tier,
-        )
+        ),
+        name=f"incident-auto-start:{incident_id}",
     )
     app.state.background_tasks.add(task)
     task.add_done_callback(app.state.background_tasks.discard)
+
+
+async def cancel_auto_start_for_incident(
+    app,
+    *,
+    incident_id: uuid.UUID,
+) -> None:
+    """Cancel queued auto-start provisioning before deleting an incident."""
+    name = f"incident-auto-start:{incident_id}"
+    tasks = [
+        task
+        for task in list(app.state.background_tasks)
+        if not task.done() and task.get_name() == name
+    ]
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)

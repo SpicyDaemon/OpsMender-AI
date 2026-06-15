@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
@@ -733,6 +733,128 @@ class IncidentRepo:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    @staticmethod
+    async def delete_permanently(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+    ) -> bool:
+        """Delete an incident and its operational history in one transaction.
+
+        Independent audit/source records are retained with incident/session
+        references cleared. The caller owns commit/rollback.
+        """
+        incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+        if incident is None:
+            return False
+
+        session_ids = list(
+            (
+                await db.execute(
+                    select(Session.id).where(
+                        Session.org_id == org_id,
+                        Session.incident_id == incident_id,
+                    )
+                )
+            ).scalars()
+        )
+
+        await db.execute(
+            update(IngestLog)
+            .where(IngestLog.org_id == org_id, IngestLog.incident_id == incident_id)
+            .values(incident_id=None)
+        )
+        await db.execute(
+            update(BotActionAudit)
+            .where(
+                BotActionAudit.org_id == org_id,
+                BotActionAudit.incident_id == incident_id,
+            )
+            .values(incident_id=None)
+        )
+        await db.execute(
+            update(IncidentMemory)
+            .where(
+                IncidentMemory.org_id == org_id,
+                IncidentMemory.source_incident_id == incident_id,
+            )
+            .values(source_incident_id=None)
+        )
+
+        if session_ids:
+            await db.execute(
+                update(BotActionAudit)
+                .where(
+                    BotActionAudit.org_id == org_id,
+                    BotActionAudit.session_id.in_(session_ids),
+                )
+                .values(session_id=None)
+            )
+            await db.execute(
+                update(AuditFinding)
+                .where(
+                    AuditFinding.org_id == org_id,
+                    AuditFinding.session_id.in_(session_ids),
+                )
+                .values(session_id=None)
+            )
+            await db.execute(
+                delete(IncidentMemoryRecallLog).where(
+                    IncidentMemoryRecallLog.session_id.in_(session_ids)
+                )
+            )
+            await db.execute(
+                delete(SessionMessage).where(
+                    SessionMessage.org_id == org_id,
+                    SessionMessage.session_id.in_(session_ids),
+                )
+            )
+            await db.execute(
+                delete(ApprovalRequest).where(
+                    ApprovalRequest.org_id == org_id,
+                    ApprovalRequest.session_id.in_(session_ids),
+                )
+            )
+            await db.execute(
+                delete(AuditEntry).where(
+                    AuditEntry.org_id == org_id,
+                    AuditEntry.session_id.in_(session_ids),
+                )
+            )
+
+        for model in (
+            IncidentNotificationReceipt,
+            NativeActionInvocation,
+            PriorityLLMOverrideLog,
+            IncidentComment,
+            IncidentAssignment,
+            IncidentPage,
+            IncidentChainState,
+            NotificationEscalation,
+        ):
+            await db.execute(
+                delete(model).where(
+                    model.org_id == org_id,
+                    model.incident_id == incident_id,
+                )
+            )
+
+        if session_ids:
+            await db.execute(
+                delete(Session).where(
+                    Session.org_id == org_id,
+                    Session.id.in_(session_ids),
+                )
+            )
+        await db.execute(
+            delete(Incident).where(
+                Incident.org_id == org_id,
+                Incident.id == incident_id,
+            )
+        )
+        await db.flush()
+        return True
 
 
 class SessionRepo:

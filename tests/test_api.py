@@ -39,6 +39,7 @@ from backend.db.repos import (
     ModelConfigRepo,
     ServiceRepo,
     ServiceEscalationChainRepo,
+    SessionMessageRepo,
     SessionRepo,
     SkillRepo,
     TeamRepo,
@@ -966,6 +967,169 @@ class TestIncidents:
         assert data["title"] == "High CPU on api-server"
         assert data["status"] == "open"
         assert data["severity"] == "high"
+
+    @pytest.mark.parametrize("incident_status", ["open", "in_progress", "resolved", "closed"])
+    async def test_admin_can_permanently_delete_incident_in_any_status(
+        self, incident_status, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title=f"Delete {incident_status}",
+                description="Permanent deletion coverage",
+                severity="low",
+            )
+            await IncidentRepo.update_status(
+                db,
+                TEST_ORG_ID,
+                incident.id,
+                incident_status,
+            )
+            await db.commit()
+            incident_id = incident.id
+
+        resp = await client.delete(
+            f"/incidents/{incident_id}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 204, resp.text
+
+        async with app.state.session_factory() as db:
+            assert (
+                await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            ) is None
+
+    async def test_delete_incident_removes_session_history_and_detaches_ingest_log(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="Incident with history",
+                description="Delete all operational history",
+                severity="high",
+            )
+            session = await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=1,
+                incident_id=incident.id,
+            )
+            audit = await AuditEntryRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                tier=1,
+                entry_type="session_start",
+            )
+            approval = await ApprovalRequestRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                action={"tool_name": "restart_service"},
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            )
+            message = await SessionMessageRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                role="user",
+                content="Investigate this incident",
+            )
+            token = await IngestTokenRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="delete-history",
+                provider="generic",
+                token_hash="delete-history-hash",
+            )
+            ingest_log = await IngestLogRepo.create(
+                db,
+                TEST_ORG_ID,
+                ingest_token_id=token.id,
+                provider="generic",
+                raw_payload={"title": "Incident with history"},
+                incident_id=incident.id,
+                dedup_action="created",
+            )
+            await db.commit()
+            ids = {
+                "incident": incident.id,
+                "session": session.id,
+                "audit": audit.id,
+                "approval": approval.id,
+                "message": message.id,
+                "ingest_log": ingest_log.id,
+            }
+
+        resp = await client.delete(
+            f"/incidents/{ids['incident']}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 204, resp.text
+
+        async with app.state.session_factory() as db:
+            assert await SessionRepo.get_by_id(
+                db, TEST_ORG_ID, ids["session"]
+            ) is None
+            assert await AuditEntryRepo.list_by_session(
+                db, TEST_ORG_ID, ids["session"]
+            ) == []
+            assert await ApprovalRequestRepo.get_by_id(
+                db, TEST_ORG_ID, ids["approval"]
+            ) is None
+            assert await SessionMessageRepo.get_by_id(
+                db, TEST_ORG_ID, ids["message"]
+            ) is None
+            logs = await IngestLogRepo.list_recent(db, TEST_ORG_ID)
+            retained = next(row for row in logs if row.id == ids["ingest_log"])
+            assert retained.incident_id is None
+
+    async def test_delete_incident_is_admin_only(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        from backend.api.auth import create_access_token
+
+        create_resp = await client.post(
+            "/incidents",
+            json={"title": "Protected", "description": "Admin only"},
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["id"]
+
+        viewer_resp = await client.delete(
+            f"/incidents/{incident_id}",
+            headers=viewer_headers,
+        )
+        assert viewer_resp.status_code == 403
+
+        async with app.state.session_factory() as db:
+            operator = await UserRepo.create(
+                db,
+                username="incident-delete-operator",
+                email="incident-delete-operator@test.com",
+                password_hash="x",
+                role="operator",
+            )
+            operator.primary_org_id = TEST_ORG_ID
+            await db.commit()
+        operator_token = create_access_token(operator.id, operator.role)
+        operator_resp = await client.delete(
+            f"/incidents/{incident_id}",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+        assert operator_resp.status_code == 403
+
+    async def test_delete_incident_returns_404(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.delete(
+            f"/incidents/{uuid.uuid4()}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
 
     @pytest.mark.parametrize("tier", [1, 2])
     async def test_fire_test_incident_skips_non_t0_auto_start(

@@ -1,11 +1,12 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IncidentCommandStrip } from "@/components/incidents/IncidentCommandStrip";
 import type { IncidentAssignmentResponse, IncidentResponse } from "@/lib/types";
 
 const push = vi.fn();
+const role = { current: "operator" };
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
@@ -13,7 +14,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/context/auth", () => ({
   useAuth: () => ({
-    user: { id: "user-me", username: "me", role: "operator" },
+    user: { id: "user-me", username: "me", role: role.current },
   }),
 }));
 
@@ -25,12 +26,14 @@ vi.mock("@/components/ui/Toast", () => ({
   }),
 }));
 
-vi.mock("@/lib/api", () => ({
+const apiMocks = vi.hoisted(() => ({
   ackIncident: vi.fn(),
   assignIncident: vi.fn(),
   bulkIncidentAction: vi.fn(),
+  deleteIncident: vi.fn(),
   releaseIncident: vi.fn(),
 }));
+vi.mock("@/lib/api", () => apiMocks);
 
 function makeIncident(status: IncidentResponse["status"]): IncidentResponse {
   return {
@@ -80,6 +83,12 @@ function renderStrip(
 }
 
 describe("IncidentCommandStrip", () => {
+  beforeEach(() => {
+    role.current = "operator";
+    push.mockReset();
+    vi.clearAllMocks();
+  });
+
   it("shows the open-state action set for an unassigned incident", () => {
     renderStrip("open");
 
@@ -144,5 +153,26 @@ describe("IncidentCommandStrip", () => {
     const strip = screen.getByTestId("incident-command-strip");
     expect(strip.getAttribute("aria-live")).toBe("polite");
     expect(strip.getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("shows permanent delete only to admins", async () => {
+    role.current = "admin";
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderStrip("open");
+
+    fireEvent.click(screen.getByTestId("action-delete"));
+    await waitFor(() =>
+      expect(apiMocks.deleteIncident).toHaveBeenCalledWith("incident-1"),
+    );
+    expect(push).toHaveBeenCalledWith("/dashboard/incidents");
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining("This action cannot be undone"),
+    );
+    confirmSpy.mockRestore();
+  });
+
+  it("hides permanent delete from operators", () => {
+    renderStrip("closed");
+    expect(screen.queryByTestId("action-delete")).toBeNull();
   });
 });

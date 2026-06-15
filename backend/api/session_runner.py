@@ -750,8 +750,29 @@ async def _run_session_workflow_inner(
 
 def schedule_session_workflow(app: FastAPI, *, session_id: uuid.UUID) -> asyncio.Task:
     """Schedule the background task and track it on app state."""
-    task = asyncio.create_task(run_session_workflow(app, session_id=session_id))
+    task = asyncio.create_task(
+        run_session_workflow(app, session_id=session_id),
+        name=f"session-workflow:{session_id}",
+    )
     tasks: set[asyncio.Task] = app.state.session_tasks
     tasks.add(task)
     task.add_done_callback(tasks.discard)
     return task
+
+
+async def cancel_session_workflows(
+    app: FastAPI,
+    *,
+    session_ids: list[uuid.UUID],
+) -> None:
+    """Cancel tracked workflow tasks before their sessions are deleted."""
+    names = {f"session-workflow:{session_id}" for session_id in session_ids}
+    tasks = [
+        task
+        for task in list(app.state.session_tasks)
+        if not task.done() and task.get_name() in names
+    ]
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)

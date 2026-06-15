@@ -218,6 +218,10 @@ export async function createIncident(body: IncidentCreate): Promise<IncidentResp
   return api.post<IncidentResponse>("/incidents", body);
 }
 
+export async function deleteIncident(id: string): Promise<void> {
+  return api.del<void>(`/incidents/${id}`);
+}
+
 export async function fireTestIncident(
   body: FireTestIncidentRequest,
 ): Promise<FireTestIncidentResponse> {

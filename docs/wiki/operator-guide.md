@@ -13,6 +13,16 @@ When an incident is ingested (either manually or via an external alert), it appe
 4. **Start Session:** If an AI session hasn't auto-started, click **Start Session** from the command strip or the timeline header. This provisions a dedicated AI agent context for the incident.
 5. **Investigation:** Use the timeline rows to jump straight into the session sidecar or open the full **Session Details** view when you need the richer chat surface.
 
+### Permanently deleting an incident
+
+Admins see a compact trash icon on every incident row and in the incident
+command strip. It is available for every status, including open incidents.
+After confirmation, OpsMender cancels any tracked AI workflow and permanently
+removes the incident, its sessions, comments, paging state, approvals, and tool
+audit history. Independent ingest, bot-action, finding, and memory records are
+retained with their incident/session references cleared. This action cannot be
+undone. Operators and viewers never see or receive access to this action.
+
 ## 2. Interacting with Session Chat
 
 The Session Chat is your primary interface with the AI agent.
@@ -32,7 +42,9 @@ OpsMender enforces safety through "Tiers". If an AI session is operating in a ti
 
 ## 4. The Audit Log
 
-Every action taken by the AI is immutably recorded in the **Audit Log**.
+Every action taken by the AI is recorded in the **Audit Log** for the lifetime
+of its session. Permanently deleting the owning incident also deletes that
+session and its tool audit history.
 
 - The Audit Log provides a chronological trace of all tool executions, approvals, and system state changes.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Admin-only permanent incident deletion.** Admins can delete incidents in
+  any lifecycle state from the incident table or detail command strip. Deletion
+  cancels tracked AI workflows, removes the incident's sessions and operational
+  history transactionally, and detaches retained ingest, bot-action, audit
+  finding, and memory records. Operators and viewers cannot access the action.
 - **Fire Test Incident now honors T0-only auto-start.** The Incidents-page
   synthetic alert path no longer creates a session directly from the browser.
   A dedicated backend endpoint creates the incident, resolves the same

@@ -26,6 +26,7 @@ vi.mock("@/context/auth", () => ({
 const apiMocks = vi.hoisted(() => ({
   bulkIncidentAction: vi.fn(),
   createIncident: vi.fn(),
+  deleteIncident: vi.fn(),
   fireTestIncident: vi.fn().mockResolvedValue({
     incident: {
       id: "inc-test",
@@ -73,6 +74,7 @@ beforeEach(() => {
   role.current = "admin";
   search.current = "";
   vi.clearAllMocks();
+  apiMocks.listIncidents.mockResolvedValue({ items: [], total: 0 });
 });
 
 async function renderAndSettle() {
@@ -92,6 +94,56 @@ describe("Incidents page RBAC", () => {
     expect(
       screen.queryAllByRole("button", { name: /fire test incident/i }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it("shows row delete only for admins", async () => {
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [
+        {
+          id: "inc-delete",
+          title: "Old incident",
+          description: "cleanup",
+          status: "closed",
+          severity: "low",
+          service_id: null,
+          external_id: null,
+          external_source: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    role.current = "admin";
+    await renderAndSettle();
+    expect(
+      screen.getAllByRole("button", { name: "Delete incident Old incident" }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("hides row delete from operators", async () => {
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [
+        {
+          id: "inc-delete",
+          title: "Old incident",
+          description: "cleanup",
+          status: "closed",
+          severity: "low",
+          service_id: null,
+          external_id: null,
+          external_source: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    role.current = "operator";
+    await renderAndSettle();
+    expect(
+      screen.queryByRole("button", { name: "Delete incident Old incident" }),
+    ).toBeNull();
   });
 
   it("hides them for operator", async () => {

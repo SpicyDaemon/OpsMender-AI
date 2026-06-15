@@ -70,8 +70,10 @@ from backend.paging.service import compute_priority_for_payload
 from backend.paging import escalation as _esc_kickoff
 from backend.skills.parser import loads as load_skill_def_text
 from backend.memory.candidates import candidate_title, extract_memory_candidates
+from backend.api.session_runner import cancel_session_workflows
 from backend.ingest.autostart import (
     auto_start_skip_reason,
+    cancel_auto_start_for_incident,
     load_auto_start_policy,
     schedule_auto_started_session,
 )
@@ -514,6 +516,38 @@ async def list_incidents(
         items=await _to_incident_list_response(db, org_id, items),
         total=total,
     )
+
+
+@router.delete(
+    "/{incident_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Permanently delete an incident",
+)
+async def delete_incident(
+    incident_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+    await cancel_auto_start_for_incident(
+        request.app,
+        incident_id=incident_id,
+    )
+    sessions = await SessionRepo.list_by_incident(db, org_id, incident_id)
+    await cancel_session_workflows(
+        request.app,
+        session_ids=[session.id for session in sessions],
+    )
+    await IncidentRepo.delete_permanently(db, org_id, incident_id)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

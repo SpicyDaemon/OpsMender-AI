@@ -33,6 +33,7 @@ import {
   Loader2,
   Play,
   ScrollText,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -42,6 +43,7 @@ import {
   ackIncident,
   assignIncident,
   bulkIncidentAction,
+  deleteIncident,
   releaseIncident,
 } from "@/lib/api";
 import type {
@@ -126,6 +128,24 @@ export function IncidentCommandStrip({
     );
   const handlePostmortem = () => {
     router.push(`/dashboard/incidents/postmortem?id=${incident.id}`);
+  };
+  const handleDelete = async () => {
+    if (
+      !window.confirm(
+        `Permanently delete incident "${incident.title}"? This also removes its sessions and operational history. This action cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setBusy("delete");
+    try {
+      await deleteIncident(incident.id);
+      toast.success("Incident permanently deleted.");
+      router.push("/dashboard/incidents");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+      setBusy(null);
+    }
   };
 
   // -- Status pill (replaces the existing badge row's status pill) -------
@@ -275,6 +295,24 @@ export function IncidentCommandStrip({
               <ScrollText size={14} />
               Create postmortem
               <ChevronRight size={14} />
+            </Button>
+          )}
+
+          {user?.role === "admin" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!!busy}
+              onClick={() => void handleDelete()}
+              data-testid="action-delete"
+              title={`Delete incident ${incident.title}`}
+              aria-label={`Delete incident ${incident.title}`}
+            >
+              {busy === "delete" ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Trash2 size={14} />
+              )}
             </Button>
           )}
         </div>

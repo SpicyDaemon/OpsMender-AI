@@ -3,10 +3,11 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ChevronDown, Clock, Plus, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, Clock, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import {
   bulkIncidentAction,
   createIncident,
+  deleteIncident,
   fireTestIncident,
   listIncidents,
   listServices,
@@ -481,6 +482,33 @@ export default function IncidentsPage() {
     [selectedIds, toast, loadIncidents],
   );
 
+  const removeIncident = useCallback(
+    async (incident: IncidentResponse) => {
+      if (
+        !window.confirm(
+          `Permanently delete incident "${incident.title}"? This also removes its sessions and operational history. This action cannot be undone.`,
+        )
+      ) {
+        return;
+      }
+      try {
+        await deleteIncident(incident.id);
+        setSelectedIds((current) => {
+          const next = new Set(current);
+          next.delete(incident.id);
+          return next;
+        });
+        toast.success("Incident permanently deleted.");
+        await loadIncidents();
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to delete incident",
+        );
+      }
+    },
+    [loadIncidents, toast],
+  );
+
   const overview = useMemo(() => {
     return [
       {
@@ -626,9 +654,22 @@ export default function IncidentsPage() {
           selectedKeys={selectedIds}
           onSelectionChange={setSelectedIds}
           rowActions={canManage ? (inc) => (
-            <Button size="sm" variant="secondary" onClick={() => setManagingIncident(inc)}>
-              Manage
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="secondary" onClick={() => setManagingIncident(inc)}>
+                Manage
+              </Button>
+              {isAdmin && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void removeIncident(inc)}
+                  title={`Delete incident ${inc.title}`}
+                  aria-label={`Delete incident ${inc.title}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           ) : undefined}
           bulkActions={() => (
             <>

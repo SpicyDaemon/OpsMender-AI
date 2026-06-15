@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.2 Phase 2 — Postmortem workflow polish + memory-candidate handoff.** The
+  postmortem editor's **Memory candidates** bullets now have a real handoff:
+  `POST /incidents/{id}/postmortem/memory-candidates` (admin/operator) parses the
+  saved postmortem's candidate bullets (skipping template scaffolding) and turns
+  each into a **pending** incident memory bound to the incident's service — which
+  then flows through the Phase 1 review queue before the AI can recall it.
+  Re-running is idempotent (existing candidates are skipped, not duplicated).
+  The editor adds a **"Save N to memory"** action and a **section-completeness
+  checklist** (which of the seven recommended sections are filled). No schema
+  change.
+
 - **v1.2 Phase 1 — Incident-memory review/approval gate.** AI-written incident
   memories now require human approval before the agent can recall them. The
   post-session `remember` node writes memories as **`pending`**; only

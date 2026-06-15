@@ -120,6 +120,18 @@ export interface IncidentPostmortemUpdate {
   postmortem_md: string | null;
 }
 
+export interface PostmortemMemoryCandidate {
+  memory_id: string | null;
+  title: string;
+  created: boolean;
+}
+
+export interface PostmortemMemoryCandidatesResponse {
+  created: number;
+  skipped: number;
+  items: PostmortemMemoryCandidate[];
+}
+
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------

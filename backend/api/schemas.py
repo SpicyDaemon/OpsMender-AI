@@ -322,6 +322,22 @@ class IncidentPostmortemUpdate(BaseModel):
     postmortem_md: Optional[str] = Field(default=None, max_length=100_000)
 
 
+class PostmortemMemoryCandidate(BaseModel):
+    """One memory created (or skipped) from the postmortem's candidates."""
+
+    memory_id: Optional[uuid.UUID] = None
+    title: str
+    created: bool
+
+
+class PostmortemMemoryCandidatesResponse(BaseModel):
+    """Result of turning a postmortem's Memory-candidates bullets into memories."""
+
+    created: int = 0
+    skipped: int = 0
+    items: list[PostmortemMemoryCandidate] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Sessions
 # ---------------------------------------------------------------------------

@@ -14,8 +14,9 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Download, Eye, Pencil, Save, ScrollText, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Brain, Check, Circle, Download, Eye, Pencil, Save, ScrollText, Sparkles, Trash2 } from "lucide-react";
 import {
+  extractPostmortemMemoryCandidates,
   getIncident,
   getIncidentPostmortem,
   putIncidentPostmortem,
@@ -116,6 +117,62 @@ const SECTIONS = [
     hint: "Durable lessons to save into OpsMender memory.",
   },
 ];
+
+/** Body of a `## <heading>` section, up to the next `##` heading. */
+function sectionBody(md: string, heading: string): string {
+  const lines = md.split("\n");
+  const headRe = new RegExp(
+    `^#{1,6}\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`,
+    "i",
+  );
+  let inSection = false;
+  const body: string[] = [];
+  for (const line of lines) {
+    if (!inSection) {
+      if (headRe.test(line.trim())) inSection = true;
+      continue;
+    }
+    if (/^#{1,6}\s+/.test(line)) break;
+    body.push(line);
+  }
+  return body.join("\n");
+}
+
+/** A section counts as "filled" once it has real content (not just scaffolding). */
+function isSectionFilled(md: string, heading: string): boolean {
+  const body = sectionBody(md, heading);
+  for (const raw of body.split("\n")) {
+    const line = raw.replace(/<!--.*?-->/g, "").trim();
+    if (!line) continue;
+    if (/^_.*_$/.test(line)) continue; // italic placeholder
+    if (/^[-*]\s*$/.test(line)) continue; // empty bullet
+    if (/^\|[\s|:-]+\|$/.test(line)) continue; // table separator row
+    if (/_\.\.\._/.test(line)) continue; // table placeholder row
+    return true;
+  }
+  return false;
+}
+
+/** Client-side mirror of the backend Memory-candidates extractor (for counts). */
+function parseMemoryCandidates(md: string): string[] {
+  const body = sectionBody(md, "Memory candidates");
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of body.split("\n")) {
+    const m = raw.match(/^\s*[-*]\s+(.*)$/);
+    if (!m) continue;
+    const text = m[1].replace(/\s*<!--.*?-->\s*$/, "").trim();
+    if (!text) continue;
+    if (/^<!--.*-->$/.test(text)) continue;
+    if (/^_.*_$/.test(text)) continue;
+    if (["...", "…", "-", "—"].includes(text)) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
 
 function fmtTimestamp(iso: string | null): string {
   if (!iso) return "Never edited";
@@ -255,6 +312,42 @@ function IncidentPostmortemContent() {
     const stored = postmortem?.postmortem_md ?? "";
     return draft.trim() !== stored.trim();
   }, [draft, postmortem]);
+
+  const candidateCount = useMemo(
+    () => parseMemoryCandidates(draft).length,
+    [draft],
+  );
+
+  const [savingCandidates, setSavingCandidates] = useState(false);
+
+  async function handleSaveCandidates() {
+    if (!id) return;
+    setSavingCandidates(true);
+    setError("");
+    try {
+      // The endpoint reads the *saved* postmortem, so persist any edits first.
+      if (dirty) {
+        const updated = await putIncidentPostmortem(id, { postmortem_md: draft });
+        setPostmortem(updated);
+        setDraft(updated.postmortem_md ?? "");
+      }
+      const result = await extractPostmortemMemoryCandidates(id);
+      if (result.created === 0 && result.skipped === 0) {
+        toast.info("No memory candidates found in the postmortem.");
+      } else {
+        const parts = [`${result.created} memory candidate(s) sent for review`];
+        if (result.skipped > 0) parts.push(`${result.skipped} already existed`);
+        toast.success(parts.join(" · "), {
+          label: "Review",
+          href: "/dashboard/memories",
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save candidates");
+    } finally {
+      setSavingCandidates(false);
+    }
+  }
 
   async function handleSave() {
     if (!id) return;
@@ -416,6 +509,17 @@ function IncidentPostmortemContent() {
                 <Sparkles size={14} /> Generate draft
               </Button>
             )}
+            {canEdit && candidateCount > 0 && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleSaveCandidates}
+                loading={savingCandidates}
+                title="Save the Memory candidates bullets as pending memories for review. Approved memories are recalled by the AI in future incidents."
+              >
+                <Brain size={14} /> Save {candidateCount} to memory
+              </Button>
+            )}
             {canEdit && (
               <Button
                 size="sm"
@@ -483,18 +587,43 @@ function IncidentPostmortemContent() {
 
         <aside className="space-y-3">
           <div className="rounded-xl border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-secondary">
-              Recommended sections
-            </p>
+            {(() => {
+              const filledCount = SECTIONS.filter((s) =>
+                isSectionFilled(draft, s.heading),
+              ).length;
+              return (
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-secondary">
+                  Recommended sections ({filledCount}/{SECTIONS.length})
+                </p>
+              );
+            })()}
             <ul className="space-y-2">
-              {SECTIONS.map((s) => (
-                <li key={s.heading}>
-                  <p className="text-xs font-medium text-fg-primary">
-                    ## {s.heading}
-                  </p>
-                  <p className="text-[11px] text-fg-muted">{s.hint}</p>
-                </li>
-              ))}
+              {SECTIONS.map((s) => {
+                const filled = isSectionFilled(draft, s.heading);
+                return (
+                  <li key={s.heading} className="flex items-start gap-1.5">
+                    {filled ? (
+                      <Check
+                        size={13}
+                        className="mt-0.5 shrink-0 text-status-low"
+                        aria-label="filled"
+                      />
+                    ) : (
+                      <Circle
+                        size={13}
+                        className="mt-0.5 shrink-0 text-fg-muted"
+                        aria-label="empty"
+                      />
+                    )}
+                    <div>
+                      <p className="text-xs font-medium text-fg-primary">
+                        ## {s.heading}
+                      </p>
+                      <p className="text-[11px] text-fg-muted">{s.hint}</p>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
             {canEdit && (
               <button
@@ -510,8 +639,10 @@ function IncidentPostmortemContent() {
               Tip
             </p>
             <p className="text-[11px] text-fg-muted">
-              Memory candidates feed the AI's future incident recall. Keep them
-              short, durable, and project-agnostic — one bullet per memory.
+              Add one bullet per durable lesson under{" "}
+              <span className="font-medium">## Memory candidates</span>, then click{" "}
+              <span className="font-medium">Save to memory</span>. Each becomes a
+              pending memory an admin/operator approves before the AI recalls it.
             </p>
           </div>
         </aside>

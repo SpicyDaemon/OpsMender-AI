@@ -162,6 +162,7 @@ import type {
   IncidentCreate,
   IncidentListResponse,
   IncidentPostmortemResponse,
+  PostmortemMemoryCandidatesResponse,
   IncidentPostmortemUpdate,
   IncidentResponse,
   IncidentTimelineResponse,
@@ -239,6 +240,15 @@ export async function putIncidentPostmortem(
   return api.put<IncidentPostmortemResponse>(
     `/incidents/${id}/postmortem`,
     body,
+  );
+}
+
+export async function extractPostmortemMemoryCandidates(
+  id: string,
+): Promise<PostmortemMemoryCandidatesResponse> {
+  return api.post<PostmortemMemoryCandidatesResponse>(
+    `/incidents/${id}/postmortem/memory-candidates`,
+    {},
   );
 }
 

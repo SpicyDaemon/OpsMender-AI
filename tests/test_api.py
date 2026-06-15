@@ -1835,6 +1835,88 @@ class TestIncidentPostmortem:
         )
         assert resp.status_code == 404
 
+    _PM_WITH_CANDIDATES = (
+        "## Summary\nDB ran out of disk.\n\n"
+        "## Memory candidates\n"
+        "<!-- one bullet per memory -->\n"
+        "- Alert on disk > 80% for the primary.\n"
+        "- _placeholder_\n"
+        "- Vacuum the audit table weekly.\n"
+    )
+
+    async def test_candidates_requires_saved_postmortem(
+        self, client: AsyncClient, auth_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        resp = await client.post(
+            f"/incidents/{incident_id}/postmortem/memory-candidates",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_candidates_create_pending_memories(
+        self, client: AsyncClient, auth_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        await client.put(
+            f"/incidents/{incident_id}/postmortem",
+            json={"postmortem_md": self._PM_WITH_CANDIDATES},
+            headers=auth_headers,
+        )
+        resp = await client.post(
+            f"/incidents/{incident_id}/postmortem/memory-candidates",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["created"] == 2  # placeholder skipped
+        assert body["skipped"] == 0
+
+        # The created memories are pending (await review) and visible in the queue.
+        pending = await client.get(
+            "/memories?review_status=pending", headers=auth_headers
+        )
+        titles = {m["title"] for m in pending.json()["items"]}
+        assert "Alert on disk > 80% for the primary." in titles
+        assert "Vacuum the audit table weekly." in titles
+
+    async def test_candidates_are_idempotent(
+        self, client: AsyncClient, auth_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        await client.put(
+            f"/incidents/{incident_id}/postmortem",
+            json={"postmortem_md": self._PM_WITH_CANDIDATES},
+            headers=auth_headers,
+        )
+        first = await client.post(
+            f"/incidents/{incident_id}/postmortem/memory-candidates",
+            headers=auth_headers,
+        )
+        assert first.json()["created"] == 2
+        # Re-running skips already-created candidates instead of duplicating.
+        second = await client.post(
+            f"/incidents/{incident_id}/postmortem/memory-candidates",
+            headers=auth_headers,
+        )
+        assert second.json()["created"] == 0
+        assert second.json()["skipped"] == 2
+
+    async def test_candidates_viewer_forbidden(
+        self, client: AsyncClient, auth_headers, viewer_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        await client.put(
+            f"/incidents/{incident_id}/postmortem",
+            json={"postmortem_md": self._PM_WITH_CANDIDATES},
+            headers=auth_headers,
+        )
+        resp = await client.post(
+            f"/incidents/{incident_id}/postmortem/memory-candidates",
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
 
 class TestIncidentBulkActions:
     """Sprint 50 — POST /incidents/bulk."""

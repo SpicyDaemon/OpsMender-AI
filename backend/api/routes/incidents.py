@@ -24,6 +24,8 @@ from backend.api.schemas import (
     IncidentPostmortemResponse,
     IncidentPostmortemUpdate,
     IncidentResponse,
+    PostmortemMemoryCandidate,
+    PostmortemMemoryCandidatesResponse,
     IncidentTimelineItemResponse,
     IncidentTimelineResponse,
     IncidentUpdate,
@@ -37,6 +39,7 @@ from backend.db.repos import (
     BotConnectorRepo,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
+    IncidentMemoryRepo,
     IncidentPageRepo,
     IncidentRepo,
     IngestLogRepo,
@@ -59,6 +62,7 @@ from backend.api.schemas import (
 from backend.paging.service import compute_priority_for_payload
 from backend.paging import escalation as _esc_kickoff
 from backend.skills.parser import loads as load_skill_def_text
+from backend.memory.candidates import candidate_title, extract_memory_candidates
 
 import logging
 
@@ -578,6 +582,87 @@ async def put_incident_postmortem(
         postmortem_md=refreshed.postmortem_md,
         postmortem_updated_at=_aware(refreshed.postmortem_updated_at),
         template=DEFAULT_POSTMORTEM_TEMPLATE,
+    )
+
+
+@router.post(
+    "/{incident_id}/postmortem/memory-candidates",
+    response_model=PostmortemMemoryCandidatesResponse,
+    summary="Create pending memories from the postmortem's Memory-candidates bullets",
+)
+async def create_postmortem_memory_candidates(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Turn each bullet under the postmortem's *Memory candidates* heading into a
+    ``pending`` incident memory bound to the incident's service.
+
+    The memories land in the review queue (Phase 1) for approval before the AI
+    can recall them. Re-running is safe: a candidate whose text already matches an
+    existing memory for the service is skipped. Requires a saved postmortem.
+    """
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+    if not (incident.postmortem_md or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Save the postmortem before extracting memory candidates.",
+        )
+
+    candidates = extract_memory_candidates(incident.postmortem_md)
+    if not candidates:
+        return PostmortemMemoryCandidatesResponse(created=0, skipped=0, items=[])
+
+    # Dedup against existing memories for the same service (any review status),
+    # so re-running the extraction doesn't create duplicates.
+    existing = await IncidentMemoryRepo.list_for_org(
+        db, org_id, service_id=incident.service_id, include_hidden=True
+    )
+    existing_titles = {m.title.strip().lower() for m in existing}
+
+    tags: list[str] = []
+    if isinstance(incident.severity, str) and incident.severity:
+        tags.append(incident.severity.lower())
+
+    items: list[PostmortemMemoryCandidate] = []
+    created = 0
+    skipped = 0
+    for candidate in candidates:
+        title = candidate_title(candidate)
+        if title.strip().lower() in existing_titles:
+            skipped += 1
+            items.append(PostmortemMemoryCandidate(title=title, created=False))
+            continue
+        memory = await IncidentMemoryRepo.create(
+            db,
+            org_id=org_id,
+            service_id=incident.service_id,
+            source_incident_id=incident.id,
+            title=title,
+            summary_md=candidate,
+            tags=list(tags),
+            created_by_user_id=user.id,
+            # Postmortem candidates go through the same human-review gate as
+            # AI-written memories before they are recalled.
+            review_status="pending",
+        )
+        existing_titles.add(title.strip().lower())
+        created += 1
+        items.append(
+            PostmortemMemoryCandidate(
+                memory_id=memory.id, title=title, created=True
+            )
+        )
+
+    await db.commit()
+    return PostmortemMemoryCandidatesResponse(
+        created=created, skipped=skipped, items=items
     )
 
 

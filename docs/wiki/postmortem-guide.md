@@ -67,9 +67,9 @@ The default template, returned by `GET /incidents/{id}/postmortem`, ships these 
 
 The **Memory candidates** section is the bridge between a postmortem and OpsMender's AI incident memory ([D-025](../REFERENCE.md), [memory-guide.md](memory-guide.md)). Bullets in that section are intended as *durable lessons* you want the agent to recall the next time a similar incident fires.
 
-In the v1 surface, memory candidates are **operator-curated**: the agent does not automatically scrape this section. After writing the postmortem, copy each candidate over to `/dashboard/memories` as a new memory tied to the relevant service. The session detail page's "Memories used" panel will then show the new lesson the next time it shapes an agent decision.
+**Save candidates to memory (v1.2).** Once the postmortem is saved, click **Save N to memory** in the editor toolbar. OpsMender parses each bullet under `## Memory candidates` (skipping template scaffolding) and creates one memory per bullet, tied to the incident's service. These land as **pending** in `/dashboard/memories` and are recalled by the agent only after an admin/operator **approves** them (the same review gate AI-written memories pass — see [memory-guide.md](memory-guide.md)). Re-running is safe: candidates that already exist as memories for the service are skipped, not duplicated. Backend: `POST /incidents/{id}/postmortem/memory-candidates`.
 
-A future iteration will offer one-click "promote to memory" on each bullet here. Until then, treat memory candidates as your shortlist for the curation surface.
+The editor's right rail also shows a **section-completeness checklist** so you can see at a glance which of the recommended sections still need content before you publish.
 
 **Keep candidates short.** A memory that fits in one line is far more likely to land usefully in a future prompt than a paragraph. Keep them project-agnostic too — "Postgres autovacuum tuning matters under bulk writes" carries across incidents; "the migration on 2026-05-26 failed" doesn't.
 
@@ -89,12 +89,13 @@ Viewers see the postmortem read-only inside the editor (the Save / Clear actions
 
 ## API surface
 
-If you'd rather author postmortems outside the UI (a CI script that generates a draft from the incident's audit log, for example), the REST surface is two routes:
+If you'd rather author postmortems outside the UI (a CI script that generates a draft from the incident's audit log, for example), the REST surface is:
 
 - `GET /incidents/{id}/postmortem` — returns the stored markdown, last-edit timestamp, and the canonical section template.
 - `PUT /incidents/{id}/postmortem` — body `{"postmortem_md": "..."}`. Pass an empty or whitespace-only string to clear.
+- `POST /incidents/{id}/postmortem/memory-candidates` — turns the saved postmortem's Memory-candidates bullets into pending memories (deduped). Returns `{created, skipped, items}`.
 
-Both routes require the same authentication as the rest of the API. PUT requires the `admin` or `operator` role.
+All routes require the same authentication as the rest of the API. PUT and the memory-candidates POST require the `admin` or `operator` role.
 
 ---
 

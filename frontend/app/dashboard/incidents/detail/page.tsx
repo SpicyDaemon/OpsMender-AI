@@ -261,6 +261,22 @@ function IncidentDetailContent() {
     }
   }, [id, toast, isViewer]);
 
+  // Lightweight refresh of sessions + timeline (e.g. after posting a comment)
+  // without flipping the whole page into a loading state.
+  const reloadActivity = useCallback(async () => {
+    if (!id || isViewer) return;
+    try {
+      const [sessionsRes, timelineRes] = await Promise.all([
+        listIncidentSessions(id),
+        getIncidentTimeline(id),
+      ]);
+      setSessions(sessionsRes.items);
+      setTimeline(timelineRes.items);
+    } catch {
+      // Best-effort; keep the existing view if the refresh fails.
+    }
+  }, [id, isViewer]);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -462,6 +478,9 @@ function IncidentDetailContent() {
               activeSessionId={activeSessionId}
               onSelectSession={setActiveSessionId}
               onStartSession={() => setShowSession(true)}
+              incidentId={id}
+              canComment={!isViewer}
+              onCommentAdded={reloadActivity}
             />
 
             {/* Sprint 57 Step 2: unified right-rail panel surfaces severity,

@@ -1755,6 +1755,41 @@ class PriorityLLMOverrideLog(Base):
     )
 
 
+class IncidentComment(Base):
+    """An operator note on an incident (v1.2 — event/comment UX).
+
+    Comments are human notes that surface on the incident command timeline. They
+    are advisory context only — they never affect enforcement or the AI workflow.
+    """
+
+    __tablename__ = "incident_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_incident_comments_org_incident", "org_id", "incident_id"),
+    )
+
+
 class IncidentAssignment(Base):
     __tablename__ = "incident_assignments"
 

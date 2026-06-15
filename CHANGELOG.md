@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.2 Phase 4 — Incident comments + richer timeline.** Operators can now leave
+  **comments** on an incident: new `incident_comments` table (migration
+  `y4z5a6b7c8d9`) with `GET/POST/DELETE /incidents/{id}/comments` (admin/operator;
+  delete restricted to the author or an admin). Comments and the existing v1.1
+  **notification receipts** now surface as first-class events on the incident
+  command timeline — new `comment` and `notification` lanes — so the timeline
+  shows human notes and every channel post alongside alerts, sessions, pages, and
+  tool calls. The incident detail page gains a comment composer. Comments are
+  advisory context only and never affect enforcement or the AI workflow.
+
 - **v1.2 Phase 3 — Session Profile templates.** Five built-in presets give
   operators a quick start for how an AI session runs:
   **Standard Assisted Response**, **Read-only Investigation**, **Fast Triage**,

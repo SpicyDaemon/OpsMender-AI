@@ -1918,6 +1918,95 @@ class TestIncidentPostmortem:
         assert resp.status_code == 403
 
 
+class TestIncidentComments:
+    """v1.2 Phase 4 — operator comments on incidents + timeline surfacing."""
+
+    async def _create_incident(self, client: AsyncClient, auth_headers) -> str:
+        resp = await client.post(
+            "/incidents",
+            json={"title": "Comment test incident", "description": "x"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        return resp.json()["id"]
+
+    async def test_create_and_list_comment(self, client: AsyncClient, auth_headers):
+        incident_id = await self._create_incident(client, auth_headers)
+        resp = await client.post(
+            f"/incidents/{incident_id}/comments",
+            json={"body": "Rolling back the deploy now."},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["body"] == "Rolling back the deploy now."
+        assert body["author_label"]  # admin username
+
+        listed = await client.get(
+            f"/incidents/{incident_id}/comments", headers=auth_headers
+        )
+        assert listed.status_code == 200
+        assert listed.json()["total"] == 1
+
+    async def test_comment_appears_on_timeline(
+        self, client: AsyncClient, auth_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        await client.post(
+            f"/incidents/{incident_id}/comments",
+            json={"body": "Investigating the spike."},
+            headers=auth_headers,
+        )
+        timeline = await client.get(
+            f"/incidents/{incident_id}/timeline", headers=auth_headers
+        )
+        assert timeline.status_code == 200
+        comment_items = [
+            i for i in timeline.json()["items"] if i["lane"] == "comment"
+        ]
+        assert len(comment_items) == 1
+        assert comment_items[0]["body"] == "Investigating the spike."
+
+    async def test_viewer_cannot_comment(
+        self, client: AsyncClient, auth_headers, viewer_headers
+    ):
+        incident_id = await self._create_incident(client, auth_headers)
+        resp = await client.post(
+            f"/incidents/{incident_id}/comments",
+            json={"body": "nope"},
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
+    async def test_delete_comment(self, client: AsyncClient, auth_headers):
+        incident_id = await self._create_incident(client, auth_headers)
+        created = await client.post(
+            f"/incidents/{incident_id}/comments",
+            json={"body": "temp"},
+            headers=auth_headers,
+        )
+        comment_id = created.json()["id"]
+        deleted = await client.delete(
+            f"/incidents/{incident_id}/comments/{comment_id}",
+            headers=auth_headers,
+        )
+        assert deleted.status_code == 204
+        listed = await client.get(
+            f"/incidents/{incident_id}/comments", headers=auth_headers
+        )
+        assert listed.json()["total"] == 0
+
+    async def test_comment_on_missing_incident_404(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            f"/incidents/{uuid.uuid4()}/comments",
+            json={"body": "x"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+
 class TestIncidentBulkActions:
     """Sprint 50 — POST /incidents/bulk."""
 

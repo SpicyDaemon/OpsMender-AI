@@ -1,20 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   Activity,
+  Bell,
   ChevronRight,
   CircleDot,
   Clock3,
+  MessageSquare,
   Play,
+  Send,
   Shield,
   Siren,
   Terminal,
 } from "lucide-react";
+import { createIncidentComment } from "@/lib/api";
 import type { IncidentTimelineItemResponse } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Textarea } from "@/components/ui/Input";
+import { useToast } from "@/components/ui/Toast";
 
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -28,6 +35,8 @@ function fmtDateTime(iso: string) {
 function timelineAccent(item: IncidentTimelineItemResponse) {
   if (item.lane === "tool") return "border-accent/50 bg-accent/5";
   if (item.lane === "evidence") return "border-status-medium-border bg-status-medium-bg/30";
+  if (item.lane === "comment") return "border-accent/40 bg-accent/5";
+  if (item.lane === "notification") return "border-border-subtle bg-bg-elevated";
   if (item.status === "blocked" || item.status === "error") {
     return "border-status-critical-border bg-status-critical-bg/25";
   }
@@ -37,6 +46,10 @@ function timelineAccent(item: IncidentTimelineItemResponse) {
 function timelineIcon(item: IncidentTimelineItemResponse) {
   if (item.lane === "tool") return <Terminal size={14} className="text-accent" />;
   if (item.lane === "evidence") return <Activity size={14} className="text-status-medium" />;
+  if (item.lane === "comment")
+    return <MessageSquare size={14} className="text-accent" />;
+  if (item.lane === "notification")
+    return <Bell size={14} className="text-fg-secondary" />;
   if (item.event_type === "escalation_step_fired") {
     return <Siren size={14} className="text-status-high" />;
   }
@@ -54,13 +67,37 @@ export function IncidentTimeline({
   activeSessionId,
   onSelectSession,
   onStartSession,
+  incidentId,
+  canComment = false,
+  onCommentAdded,
 }: {
   items: IncidentTimelineItemResponse[];
   error: string;
   activeSessionId: string;
   onSelectSession: (sessionId: string) => void;
   onStartSession: () => void;
+  incidentId?: string;
+  canComment?: boolean;
+  onCommentAdded?: () => void | Promise<void>;
 }) {
+  const toast = useToast();
+  const [comment, setComment] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  async function handlePostComment() {
+    if (!incidentId || !comment.trim()) return;
+    setPosting(true);
+    try {
+      await createIncidentComment(incidentId, comment.trim());
+      setComment("");
+      await onCommentAdded?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not post comment");
+    } finally {
+      setPosting(false);
+    }
+  }
+
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
       <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
@@ -78,6 +115,28 @@ export function IncidentTimeline({
           <span className="sm:hidden">New</span>
         </Button>
       </div>
+
+      {canComment && incidentId && (
+        <div className="border-b border-border-subtle px-4 py-3 sm:px-5">
+          <Textarea
+            aria-label="Add a comment"
+            rows={2}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Add a comment to the incident timeline…"
+          />
+          <div className="mt-2 flex justify-end">
+            <Button
+              size="sm"
+              onClick={handlePostComment}
+              loading={posting}
+              disabled={!comment.trim()}
+            >
+              <Send size={13} /> Comment
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="p-3 sm:p-5">
         {error ? (

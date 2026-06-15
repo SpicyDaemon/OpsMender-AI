@@ -33,6 +33,7 @@ from backend.db.models import (
     Incident,
     IncidentAssignment,
     IncidentChainState,
+    IncidentComment,
     NotificationEscalation,
     IncidentNotificationReceipt,
     IncidentMemory,
@@ -5079,6 +5080,64 @@ class PriorityRuleRepo:
         db.add(row)
         await db.flush()
         return row
+
+
+class IncidentCommentRepo:
+    """Operator notes on an incident (v1.2 event/comment UX)."""
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        body: str,
+        author_user_id: uuid.UUID | None,
+    ) -> IncidentComment:
+        row = IncidentComment(
+            org_id=org_id,
+            incident_id=incident_id,
+            body=body,
+            author_user_id=author_user_id,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, comment_id: uuid.UUID
+    ) -> IncidentComment | None:
+        stmt = select(IncidentComment).where(
+            IncidentComment.id == comment_id,
+            IncidentComment.org_id == org_id,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> Sequence[IncidentComment]:
+        stmt = (
+            select(IncidentComment)
+            .where(
+                IncidentComment.org_id == org_id,
+                IncidentComment.incident_id == incident_id,
+            )
+            .order_by(IncidentComment.created_at)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, comment_id: uuid.UUID
+    ) -> bool:
+        row = await IncidentCommentRepo.get_by_id(db, org_id, comment_id)
+        if row is None:
+            return False
+        await db.delete(row)
+        await db.flush()
+        return True
 
 
 class IncidentAssignmentRepo:

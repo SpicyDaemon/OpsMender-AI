@@ -120,6 +120,21 @@ export interface IncidentPostmortemUpdate {
   postmortem_md: string | null;
 }
 
+export interface IncidentCommentResponse {
+  id: string;
+  incident_id: string;
+  body: string;
+  author_user_id: string | null;
+  author_label: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IncidentCommentListResponse {
+  items: IncidentCommentResponse[];
+  total: number;
+}
+
 export interface PostmortemMemoryCandidate {
   memory_id: string | null;
   title: string;

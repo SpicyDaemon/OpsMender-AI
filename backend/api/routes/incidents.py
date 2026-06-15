@@ -12,13 +12,16 @@ import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     DEFAULT_POSTMORTEM_TEMPLATE,
+    IncidentCommentCreate,
+    IncidentCommentListResponse,
+    IncidentCommentResponse,
     IncidentCreate,
     IncidentListResponse,
     IncidentPostmortemResponse,
@@ -39,7 +42,9 @@ from backend.db.repos import (
     BotConnectorRepo,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
+    IncidentCommentRepo,
     IncidentMemoryRepo,
+    IncidentNotificationReceiptRepo,
     IncidentPageRepo,
     IncidentRepo,
     IngestLogRepo,
@@ -666,6 +671,104 @@ async def create_postmortem_memory_candidates(
     )
 
 
+async def _comment_to_response(
+    db: AsyncSession, comment
+) -> IncidentCommentResponse:
+    author_label = None
+    if comment.author_user_id is not None:
+        person = await UserRepo.get_by_id(db, comment.author_user_id)
+        if person is not None:
+            author_label = person.username
+    return IncidentCommentResponse(
+        id=comment.id,
+        incident_id=comment.incident_id,
+        body=comment.body,
+        author_user_id=comment.author_user_id,
+        author_label=author_label,
+        created_at=_aware(comment.created_at) or comment.created_at,
+        updated_at=_aware(comment.updated_at) or comment.updated_at,
+    )
+
+
+@router.get(
+    "/{incident_id}/comments",
+    response_model=IncidentCommentListResponse,
+    summary="List operator comments on an incident",
+)
+async def list_incident_comments(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found"
+        )
+    comments = await IncidentCommentRepo.list_for_incident(db, org_id, incident_id)
+    items = [await _comment_to_response(db, c) for c in comments]
+    return IncidentCommentListResponse(items=items, total=len(items))
+
+
+@router.post(
+    "/{incident_id}/comments",
+    response_model=IncidentCommentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add an operator comment to an incident",
+)
+async def create_incident_comment(
+    incident_id: uuid.UUID,
+    body: IncidentCommentCreate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found"
+        )
+    comment = await IncidentCommentRepo.create(
+        db,
+        org_id,
+        incident_id=incident_id,
+        body=body.body.strip(),
+        author_user_id=user.id,
+    )
+    await db.commit()
+    await db.refresh(comment)
+    return await _comment_to_response(db, comment)
+
+
+@router.delete(
+    "/{incident_id}/comments/{comment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an incident comment (author or admin)",
+)
+async def delete_incident_comment(
+    incident_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    comment = await IncidentCommentRepo.get_by_id(db, org_id, comment_id)
+    if comment is None or comment.incident_id != incident_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
+    # Only the author or an admin may delete a comment.
+    if user.role != "admin" and comment.author_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the author or an admin can delete this comment.",
+        )
+    await IncidentCommentRepo.delete(db, org_id, comment_id)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get(
     "/{incident_id}/timeline",
     response_model=IncidentTimelineResponse,
@@ -946,6 +1049,63 @@ async def get_incident_timeline(
                     else None
                 ),
                 status=incident.status,
+            )
+        )
+
+    # v1.2 — operator comments on the timeline.
+    comments = await IncidentCommentRepo.list_for_incident(db, org_id, incident_id)
+    for comment in comments:
+        author_label = None
+        if comment.author_user_id is not None:
+            author_label = user_lookup.get(comment.author_user_id)
+            if author_label is None:
+                person = await UserRepo.get_by_id(db, comment.author_user_id)
+                author_label = person.username if person is not None else None
+        items.append(
+            IncidentTimelineItemResponse(
+                id=f"comment:{comment.id}",
+                happened_at=_aware(comment.created_at) or comment.created_at,
+                lane="comment",
+                event_type="comment",
+                title=f"{author_label} commented" if author_label else "Comment",
+                body=comment.body,
+                actor_user_id=comment.author_user_id,
+                actor_label=author_label,
+            )
+        )
+
+    # v1.2 — notification history: every incident channel post is a timeline event.
+    receipts = await IncidentNotificationReceiptRepo.list_for_incident(
+        db, org_id, incident_id
+    )
+    for receipt in receipts:
+        platform_label = (receipt.platform or "channel").replace("_", " ").title()
+        lifecycle = (
+            (receipt.lifecycle_event or "")
+            .replace("incident.", "")
+            .replace("session.", "session ")
+            .replace("_", " ")
+            .strip()
+        )
+        body = (
+            f"{lifecycle} → {receipt.external_channel_id}"
+            if receipt.external_channel_id
+            else (lifecycle or None)
+        )
+        items.append(
+            IncidentTimelineItemResponse(
+                id=f"notification:{receipt.id}",
+                happened_at=_aware(receipt.last_sent_at) or receipt.last_sent_at,
+                lane="notification",
+                event_type="notification_sent",
+                title=f"Notified {platform_label}",
+                body=body,
+                status=receipt.delivery_status,
+                metadata={
+                    "platform": receipt.platform,
+                    "lifecycle_event": receipt.lifecycle_event,
+                    "channel": receipt.external_channel_id,
+                },
             )
         )
 

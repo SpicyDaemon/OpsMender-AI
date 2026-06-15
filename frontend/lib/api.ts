@@ -161,6 +161,8 @@ export async function listUsers(params?: {
 import type {
   IncidentCreate,
   IncidentListResponse,
+  IncidentCommentListResponse,
+  IncidentCommentResponse,
   IncidentPostmortemResponse,
   PostmortemMemoryCandidatesResponse,
   IncidentPostmortemUpdate,
@@ -219,6 +221,28 @@ export async function updateIncident(
   body: IncidentUpdate,
 ): Promise<IncidentResponse> {
   return api.patch<IncidentResponse>(`/incidents/${id}`, body);
+}
+
+export async function listIncidentComments(
+  id: string,
+): Promise<IncidentCommentListResponse> {
+  return api.get<IncidentCommentListResponse>(`/incidents/${id}/comments`);
+}
+
+export async function createIncidentComment(
+  id: string,
+  body: string,
+): Promise<IncidentCommentResponse> {
+  return api.post<IncidentCommentResponse>(`/incidents/${id}/comments`, {
+    body,
+  });
+}
+
+export async function deleteIncidentComment(
+  id: string,
+  commentId: string,
+): Promise<void> {
+  return api.del<void>(`/incidents/${id}/comments/${commentId}`);
 }
 
 export async function getIncidentTimeline(

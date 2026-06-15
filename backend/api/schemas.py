@@ -322,6 +322,25 @@ class IncidentPostmortemUpdate(BaseModel):
     postmortem_md: Optional[str] = Field(default=None, max_length=100_000)
 
 
+class IncidentCommentCreate(BaseModel):
+    body: str = Field(..., min_length=1, max_length=5000)
+
+
+class IncidentCommentResponse(BaseModel):
+    id: uuid.UUID
+    incident_id: uuid.UUID
+    body: str
+    author_user_id: Optional[uuid.UUID] = None
+    author_label: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class IncidentCommentListResponse(BaseModel):
+    items: list[IncidentCommentResponse]
+    total: int
+
+
 class PostmortemMemoryCandidate(BaseModel):
     """One memory created (or skipped) from the postmortem's candidates."""
 

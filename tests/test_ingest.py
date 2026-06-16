@@ -559,7 +559,7 @@ class TestIngestGeneric:
             headers={"X-OpsMender-Token": raw},
         )
         assert resp.status_code == 200
-        assert "auto_start_skipped_non_t0" in caplog.text
+        assert "auto_start_deferred_to_ack" in caplog.text
         assert "resolved_tier=2" in caplog.text
 
     async def test_ingest_auto_start_skips_when_rule_does_not_match(

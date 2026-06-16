@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **AI session auto-start now correctly follows the AI Autonomy Tier.** A Tier 0
+  (Autonomous) incident no longer skips auto-start with
+  `auto_start_was_skipped_by_policy (auto_start_disabled)` — the decision was
+  gated by a legacy ingest opt-in flag (default off) *before* the tier check.
+  Auto-start is now **tier-driven**:
+  - **T0** auto-starts an AI session immediately on incident creation — manual,
+    fire-test, and ingested alerts alike (test incidents are not exempt).
+  - **T1/T2** do **not** start on creation; they start after an Admin/Operator
+    **acknowledges** the incident, then run under that tier.
+  Acknowledgment is Admin/Operator-only (Viewers cannot), and acknowledging an
+  incident that already has an active session never creates a duplicate. If
+  auto-start can't run (e.g. no enabled model), incident creation/acknowledgment
+  still succeeds and the reason is surfaced in the toast. The session tier is
+  stored on each session and governs execution. Toast copy was corrected (e.g.
+  "Incident created. AI session auto-started under T0 — Autonomous." /
+  "…will start after acknowledgment." / "…auto-start failed: no enabled model
+  configured."). The legacy `OPSMENDER_INGEST_AUTO_START_*` env vars no longer
+  gate the decision (tier alone decides). `POST /incidents` now returns the
+  auto-start outcome alongside the incident (`auto_start_status`,
+  `auto_start_message`, `resolved_tier`); `POST /incidents/{id}/ack` returns the
+  same.
+
 ### Changed
 
 - **Manual incident service and preferred model cleanup.** Manual incidents now

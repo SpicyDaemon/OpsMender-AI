@@ -108,8 +108,23 @@ export function IncidentCommandStrip({
     }
   }
 
-  const handleAck = () =>
-    run("ack", () => ackIncident(incident.id, "web_ui"), "Acknowledged");
+  async function handleAck() {
+    setBusy("ack");
+    try {
+      const res = await ackIncident(incident.id, "web_ui");
+      const msg = res?.auto_start_message || "Acknowledged";
+      if (res?.auto_start_status === "failed") {
+        toast.warning(msg);
+      } else {
+        toast.success(msg);
+      }
+      await onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
   const handleTake = () =>
     run(
       "take",

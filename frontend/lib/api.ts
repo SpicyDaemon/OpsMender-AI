@@ -162,6 +162,7 @@ import type {
   FireTestIncidentRequest,
   FireTestIncidentResponse,
   IncidentCreate,
+  IncidentCreateResponse,
   IncidentListResponse,
   IncidentCommentListResponse,
   IncidentCommentResponse,
@@ -214,8 +215,10 @@ export async function getIncident(id: string): Promise<IncidentResponse> {
   return api.get<IncidentResponse>(`/incidents/${id}`);
 }
 
-export async function createIncident(body: IncidentCreate): Promise<IncidentResponse> {
-  return api.post<IncidentResponse>("/incidents", body);
+export async function createIncident(
+  body: IncidentCreate,
+): Promise<IncidentCreateResponse> {
+  return api.post<IncidentCreateResponse>("/incidents", body);
 }
 
 export async function deleteIncident(id: string): Promise<void> {

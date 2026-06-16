@@ -1344,10 +1344,10 @@ class TestIncidents:
         data = resp.json()
         assert data["incident"]["external_source"] == "opsmender-test"
         assert data["resolved_tier"] == tier
+        # T1/T2 defer the AI session to acknowledgment.
         assert data["auto_start_status"] == "skipped"
-        assert data["auto_start_reason"] == "auto_start_skipped_non_t0"
-        assert f"resolved autonomy tier is T{tier}" in data["message"]
-        assert "auto_start_skipped_non_t0" in caplog.text
+        assert data["auto_start_reason"] == "auto_start_deferred_to_ack"
+        assert "after acknowledgment" in data["message"]
 
         async with app.state.session_factory() as db:
             sessions = await SessionRepo.list_by_incident(
@@ -1358,16 +1358,23 @@ class TestIncidents:
             assert sessions == []
 
     async def test_fire_test_incident_queues_only_allowed_t0_auto_start(
-        self, client: AsyncClient, auth_headers, monkeypatch
+        self, client: AsyncClient, app, auth_headers, monkeypatch
     ):
+        # T0 requires an enabled model before it queues a session.
+        async with app.state.session_factory() as db:
+            await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"t0-default-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="t0-default-model",
+                is_default=True,
+            )
+            await db.commit()
+
         await client.put(
             "/config",
-            json={
-                "tier": 0,
-                "ingest_auto_start_enabled": True,
-                "ingest_auto_start_min_severity": "high",
-                "ingest_auto_start_source": "opsmender-test",
-            },
+            json={"tier": 0},
             headers=auth_headers,
         )
         scheduled = []
@@ -1390,6 +1397,7 @@ class TestIncidents:
         assert data["resolved_tier"] == 0
         assert data["auto_start_status"] == "queued"
         assert data["auto_start_reason"] is None
+        assert "auto-started under T0" in data["message"]
         assert len(scheduled) == 1
         assert scheduled[0][0] == TEST_ORG_ID
         assert str(scheduled[0][1]) == data["incident"]["id"]
@@ -2491,6 +2499,163 @@ class TestIncidentComments:
             headers=auth_headers,
         )
         assert resp.status_code == 404
+
+
+class TestIncidentAutoStartPolicy:
+    """v1.1 — tier-driven AI session auto-start (T0 on create; T1/T2 on ACK)."""
+
+    async def _seed_service(self, app, *, with_model: bool = True) -> str:
+        from backend.db.repos import ServiceRepo, TeamRepo
+
+        async with app.state.session_factory() as db:
+            if with_model:
+                await ModelConfigRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    name=f"m-{uuid.uuid4().hex[:6]}",
+                    provider="ollama",
+                    model_id="m",
+                    is_default=True,
+                )
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name=f"t-{uuid.uuid4().hex[:6]}", slug=f"t-{uuid.uuid4().hex[:6]}"
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="svc",
+                slug=f"svc-{uuid.uuid4().hex[:6]}",
+            )
+            await db.commit()
+            return str(service.id)
+
+    def _capture_schedule(self, monkeypatch) -> list:
+        scheduled: list = []
+        monkeypatch.setattr(
+            "backend.api.routes.incidents.schedule_auto_started_session",
+            lambda app, *, org_id, incident_id, tier: scheduled.append(
+                (incident_id, tier)
+            ),
+        )
+        return scheduled
+
+    async def _set_tier(self, client, auth_headers, tier: int) -> None:
+        resp = await client.put("/config", json={"tier": tier}, headers=auth_headers)
+        assert resp.status_code == 200, resp.text
+
+    async def _create(self, client, auth_headers, service_id: str):
+        return await client.post(
+            "/incidents",
+            json={"title": "auto-start test", "description": "x", "service_id": service_id},
+            headers=auth_headers,
+        )
+
+    async def test_t0_manual_create_auto_starts(
+        self, client, app, auth_headers, monkeypatch
+    ):
+        service_id = await self._seed_service(app)
+        await self._set_tier(client, auth_headers, 0)
+        scheduled = self._capture_schedule(monkeypatch)
+        resp = await self._create(client, auth_headers, service_id)
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert data["resolved_tier"] == 0
+        assert data["auto_start_status"] == "queued"
+        assert "auto-started under T0" in data["auto_start_message"]
+        assert len(scheduled) == 1
+
+    @pytest.mark.parametrize("tier", [1, 2])
+    async def test_t1_t2_manual_create_defers_to_ack(
+        self, tier, client, app, auth_headers, monkeypatch
+    ):
+        service_id = await self._seed_service(app)
+        await self._set_tier(client, auth_headers, tier)
+        scheduled = self._capture_schedule(monkeypatch)
+        resp = await self._create(client, auth_headers, service_id)
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert data["resolved_tier"] == tier
+        assert data["auto_start_status"] == "skipped"
+        assert data["auto_start_reason"] == "auto_start_deferred_to_ack"
+        assert "after acknowledgment" in data["auto_start_message"]
+        assert scheduled == []
+
+    @pytest.mark.parametrize("tier", [1, 2])
+    async def test_t1_t2_ack_starts_session(
+        self, tier, client, app, auth_headers, monkeypatch
+    ):
+        service_id = await self._seed_service(app)
+        await self._set_tier(client, auth_headers, tier)
+        scheduled = self._capture_schedule(monkeypatch)
+        created = await self._create(client, auth_headers, service_id)
+        incident_id = created.json()["id"]
+        assert scheduled == []  # not started on create
+
+        ack = await client.post(
+            f"/incidents/{incident_id}/ack",
+            json={"via": "web_ui"},
+            headers=auth_headers,
+        )
+        assert ack.status_code == 200, ack.text
+        body = ack.json()
+        assert body["auto_start_status"] == "queued"
+        assert body["resolved_tier"] == tier
+        assert f"auto-started under T{tier}" in body["auto_start_message"]
+        assert len(scheduled) == 1
+
+    async def test_viewer_cannot_ack(
+        self, client, app, auth_headers, viewer_headers
+    ):
+        service_id = await self._seed_service(app)
+        created = await self._create(client, auth_headers, service_id)
+        incident_id = created.json()["id"]
+        resp = await client.post(
+            f"/incidents/{incident_id}/ack",
+            json={"via": "web_ui"},
+            headers=viewer_headers,
+        )
+        assert resp.status_code == 403
+
+    async def test_ack_does_not_duplicate_active_session(
+        self, client, app, auth_headers, monkeypatch
+    ):
+        service_id = await self._seed_service(app)
+        await self._set_tier(client, auth_headers, 1)
+        scheduled = self._capture_schedule(monkeypatch)
+        created = await self._create(client, auth_headers, service_id)
+        incident_id = created.json()["id"]
+        # An active session already exists → ACK must not start another.
+        async with app.state.session_factory() as db:
+            await SessionRepo.create(
+                db, TEST_ORG_ID, tier=1, incident_id=uuid.UUID(incident_id)
+            )
+            await db.commit()
+        ack = await client.post(
+            f"/incidents/{incident_id}/ack",
+            json={"via": "web_ui"},
+            headers=auth_headers,
+        )
+        assert ack.status_code == 200
+        assert ack.json()["auto_start_status"] == "skipped"
+        assert ack.json()["auto_start_reason"] == "session_exists"
+        assert scheduled == []
+
+    async def test_t0_no_model_fails_but_incident_created(
+        self, client, app, auth_headers, monkeypatch
+    ):
+        # No model seeded → T0 auto-start fails, but the incident is still created.
+        service_id = await self._seed_service(app, with_model=False)
+        await self._set_tier(client, auth_headers, 0)
+        scheduled = self._capture_schedule(monkeypatch)
+        resp = await self._create(client, auth_headers, service_id)
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert data["id"]  # creation succeeded
+        assert data["auto_start_status"] == "failed"
+        assert data["auto_start_reason"] == "no_enabled_model"
+        assert "no enabled model" in data["auto_start_message"]
+        assert scheduled == []
 
 
 class TestIncidentBulkActions:

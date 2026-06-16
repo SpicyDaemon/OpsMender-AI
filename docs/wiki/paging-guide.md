@@ -166,8 +166,9 @@ Supported channels depend on configured adapters, such as Slack, Microsoft Teams
 6. Add maintenance windows for planned work at `/dashboard/paging/maintenance-windows`.
 7. Configure operator delivery, viewer updates, quiet hours, routing, and chat behavior at `/dashboard/paging/notifications`.
 8. Fire a synthetic alert and confirm incident creation, operator routing, and
-   notification flow. An AI session auto-starts only when the resolved autonomy
-   tier is T0 and auto-start policy allows it; start one manually for T1/T2.
+   notification flow. An AI session **auto-starts immediately** when the resolved
+   autonomy tier is **T0**; for **T1/T2** the session starts after an
+   Admin/Operator **acknowledges** the incident (or you can start one manually).
 
 ---
 

@@ -23,6 +23,7 @@ from backend.api.schemas import (
     IncidentCommentListResponse,
     IncidentCommentResponse,
     IncidentCreate,
+    IncidentCreateResponse,
     FireTestIncidentRequest,
     FireTestIncidentResponse,
     IncidentListResponse,
@@ -74,6 +75,7 @@ from backend.api.session_runner import cancel_session_workflows
 from backend.ingest.autostart import (
     auto_start_skip_reason,
     cancel_auto_start_for_incident,
+    has_active_session_for_incident,
     load_auto_start_policy,
     schedule_auto_started_session,
 )
@@ -357,12 +359,13 @@ async def _create_incident_record(
 
 @router.post(
     "",
-    response_model=IncidentResponse,
+    response_model=IncidentCreateResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new incident",
+    summary="Create a new incident (auto-starts a T0 session; T1/T2 wait for ACK)",
 )
 async def create_incident(
     body: IncidentCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
@@ -375,21 +378,132 @@ async def create_incident(
     incident = await _create_incident_record(db, org_id, body)
     await db.commit()
     await _notify_channels(db, incident.id, org_id, "incident.created")
-    return await _to_incident_response(db, org_id, incident)
-
-
-def _fire_test_message(*, tier: int, reason: str | None) -> str:
-    if reason is None:
-        return "Test incident created. A Tier 0 AI session was queued by auto-start policy."
-    if reason == "auto_start_skipped_non_t0":
-        return (
-            "Test incident created. AI session auto-start was skipped because "
-            f"the resolved autonomy tier is T{tier}; only T0 may auto-start."
-        )
-    return (
-        "Test incident created. AI session auto-start was skipped by policy "
-        f"({reason})."
+    auto_status, reason, tier = await _resolve_auto_start_on_create(
+        request, db, org_id, incident
     )
+    inc_resp = await _to_incident_response(db, org_id, incident)
+    return IncidentCreateResponse(
+        **inc_resp.model_dump(),
+        resolved_tier=tier,
+        auto_start_status=auto_status,
+        auto_start_reason=reason,
+        auto_start_message=_auto_start_message(
+            context="created", tier=tier, status=auto_status, reason=reason
+        ),
+    )
+
+
+_TIER_LABEL = {
+    0: "T0 — Autonomous",
+    1: "T1 — Approval Required",
+    2: "T2 — Advisory Only",
+}
+_AUTO_START_REASON_PRETTY = {
+    "no_enabled_model": "no enabled model configured",
+}
+
+
+def _auto_start_message(
+    *, context: str, tier: int, status: str, reason: str | None
+) -> str:
+    """User-facing toast copy for an auto-start outcome.
+
+    ``context`` is ``"created"`` (incident creation) or ``"acknowledged"``.
+    """
+    label = _TIER_LABEL.get(tier, f"T{tier}")
+    verb = "created" if context == "created" else "acknowledged"
+    if status == "queued":
+        return f"Incident {verb}. AI session auto-started under {label}."
+    if status == "failed":
+        pretty = _AUTO_START_REASON_PRETTY.get(reason or "", reason or "unknown error")
+        return f"Incident {verb}. AI session auto-start failed: {pretty}."
+    # status == "skipped"
+    if reason == "auto_start_deferred_to_ack":
+        return "Incident created. AI session will start after acknowledgment."
+    return f"Incident {verb}."
+
+
+async def _resolve_auto_start_on_create(
+    request: Request, db: AsyncSession, org_id: uuid.UUID, incident
+) -> tuple[str, str | None, int]:
+    """Decide + (for T0) schedule an AI session for a freshly created incident.
+
+    Returns ``(status, reason, tier)``: ``queued`` (T0 session scheduled),
+    ``skipped`` (T1/T2 → waits for ACK), or ``failed`` (e.g. no model). Never
+    raises — incident creation must succeed regardless of the auto-start outcome.
+    """
+    try:
+        policy = await load_auto_start_policy(
+            db, org_id, request.app.state.config, incident=incident
+        )
+        tier = policy.session_tier
+        skip = auto_start_skip_reason(incident, dedup_action="created", policy=policy)
+        if skip is not None:
+            return ("skipped", skip, tier)
+        model = await choose_model_for_incident_service(
+            db,
+            org_id,
+            service_id=incident.service_id,
+            ingestion_model_config_id=getattr(
+                incident, "ingestion_model_config_id", None
+            ),
+        )
+        if model is None:
+            _log.warning(
+                "incident.auto_start: no_enabled_model incident=%s tier=%s",
+                incident.id,
+                tier,
+            )
+            return ("failed", "no_enabled_model", tier)
+        schedule_auto_started_session(
+            request.app, org_id=org_id, incident_id=incident.id, tier=tier
+        )
+        _log.info(
+            "incident.auto_start: queued incident=%s tier=%s", incident.id, tier
+        )
+        return ("queued", None, tier)
+    except Exception:  # noqa: BLE001 — never block incident creation
+        _log.exception("incident.auto_start: resolve_failed incident=%s", incident.id)
+        return ("failed", "auto_start_error", 2)
+
+
+async def _resolve_auto_start_on_ack(
+    request: Request, db: AsyncSession, org_id: uuid.UUID, incident
+) -> tuple[str, str | None, int]:
+    """Start an AI session when an Admin/Operator acknowledges (T1/T2 start here;
+    a T0 incident already started at creation). Never raises; prevents duplicate
+    sessions."""
+    try:
+        policy = await load_auto_start_policy(
+            db, org_id, request.app.state.config, incident=incident
+        )
+        tier = policy.session_tier
+        if incident.status in {"resolved", "closed"}:
+            return ("skipped", "auto_start_skipped_terminal_incident", tier)
+        if await has_active_session_for_incident(db, org_id, incident.id):
+            return ("skipped", "session_exists", tier)
+        model = await choose_model_for_incident_service(
+            db,
+            org_id,
+            service_id=incident.service_id,
+            ingestion_model_config_id=getattr(
+                incident, "ingestion_model_config_id", None
+            ),
+        )
+        if model is None:
+            return ("failed", "no_enabled_model", tier)
+        schedule_auto_started_session(
+            request.app, org_id=org_id, incident_id=incident.id, tier=tier
+        )
+        _log.info(
+            "incident.ack_auto_start: queued incident=%s tier=%s", incident.id, tier
+        )
+        return ("queued", None, tier)
+    except Exception:  # noqa: BLE001 — never block acknowledgment
+        _log.exception(
+            "incident.ack_auto_start: resolve_failed incident=%s", incident.id
+        )
+        return ("failed", "auto_start_error", 2)
 
 
 @router.post(
@@ -432,46 +546,19 @@ async def fire_test_incident(
             external_source="opsmender-test",
         ),
     )
-    policy = await load_auto_start_policy(
-        db,
-        org_id,
-        request.app.state.config,
-        incident=incident,
-    )
-    skip_reason = auto_start_skip_reason(
-        incident,
-        dedup_action="created",
-        policy=policy,
-    )
     await db.commit()
     await _notify_channels(db, incident.id, org_id, "incident.created")
-
-    if skip_reason is None:
-        schedule_auto_started_session(
-            request.app,
-            org_id=org_id,
-            incident_id=incident.id,
-            tier=policy.session_tier,
-        )
-        _log.info(
-            "fire_test.auto_start: queued incident=%s resolved_tier=%s",
-            incident.id,
-            policy.session_tier,
-        )
-    else:
-        _log.info(
-            "fire_test.auto_start: %s incident=%s resolved_tier=%s",
-            skip_reason,
-            incident.id,
-            policy.session_tier,
-        )
-
+    auto_status, reason, tier = await _resolve_auto_start_on_create(
+        request, db, org_id, incident
+    )
     return FireTestIncidentResponse(
         incident=await _to_incident_response(db, org_id, incident),
-        resolved_tier=policy.session_tier,
-        auto_start_status="queued" if skip_reason is None else "skipped",
-        auto_start_reason=skip_reason,
-        message=_fire_test_message(tier=policy.session_tier, reason=skip_reason),
+        resolved_tier=tier,
+        auto_start_status=auto_status,
+        auto_start_reason=reason,
+        message=_auto_start_message(
+            context="created", tier=tier, status=auto_status, reason=reason
+        ),
     )
 
 
@@ -1567,6 +1654,7 @@ async def get_incident_chain(
 async def ack_incident(
     incident_id: uuid.UUID,
     body: IncidentAckRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
@@ -1583,6 +1671,11 @@ async def ack_incident(
     )
     await db.commit()
     await _notify_channels(db, incident_id, org_id, "incident.acknowledged")
+    # T1/T2 sessions start on acknowledgment (T0 already started at creation).
+    # Duplicate acks are safe — an active session short-circuits this.
+    auto_status, reason, tier = await _resolve_auto_start_on_ack(
+        request, db, org_id, incident
+    )
     state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     pages = await IncidentPageRepo.list_for_incident(db, org_id, incident_id)
     return IncidentChainPanelResponse(
@@ -1593,6 +1686,12 @@ async def ack_incident(
             else None
         ),
         pages=[IncidentPageResponse.model_validate(p) for p in pages],
+        auto_start_status=auto_status,
+        auto_start_reason=reason,
+        resolved_tier=tier,
+        auto_start_message=_auto_start_message(
+            context="acknowledged", tier=tier, status=auto_status, reason=reason
+        ),
     )
 
 

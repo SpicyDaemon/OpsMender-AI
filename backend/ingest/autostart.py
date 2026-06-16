@@ -116,25 +116,26 @@ def auto_start_skip_reason(
     dedup_action: str,
     policy: IngestAutoStartPolicy,
 ) -> str | None:
-    """Return a stable reason code, or ``None`` when auto-start is allowed."""
-    if not policy.enabled:
-        return "auto_start_disabled"
-    if policy.session_tier != 0:
-        return "auto_start_skipped_non_t0"
+    """Return a stable reason code for *not* auto-starting on incident creation,
+    or ``None`` when an AI session should auto-start immediately.
+
+    The decision is **tier-driven**, not gated by the legacy ingest opt-in flag:
+
+    - **T0 (Autonomous)** → auto-start immediately for every newly created
+      incident (manual, fire-test, or ingested). Test incidents are not exempt.
+    - **T1/T2** → defer; the session starts after an Admin/Operator
+      acknowledges the incident (``auto_start_deferred_to_ack``).
+
+    The legacy ``enabled`` / ``min_severity`` / ``source`` ingest controls no
+    longer gate this — tier alone decides.
+    """
     if dedup_action != "created":
         return "auto_start_skipped_not_created"
     if incident.status in {"resolved", "closed"}:
         return "auto_start_skipped_terminal_incident"
-
-    severity = (incident.severity or "").strip().lower()
-    if _SEVERITY_RANK.get(severity, 0) < _SEVERITY_RANK[policy.min_severity]:
-        return "auto_start_skipped_below_severity"
-
-    if policy.source is not None:
-        source = (incident.external_source or "").strip().lower()
-        if source != policy.source:
-            return "auto_start_skipped_source_mismatch"
-
+    if policy.session_tier != 0:
+        # T1/T2 wait for an Admin/Operator acknowledgment before starting.
+        return "auto_start_deferred_to_ack"
     return None
 
 

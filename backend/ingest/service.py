@@ -333,7 +333,7 @@ async def ingest_incident(
             incident.external_source,
             incident.severity,
         )
-    elif policy.enabled:
+    else:
         logger.info(
             "ingest.auto_start: %s incident=%s resolved_tier=%s",
             auto_start_skip,

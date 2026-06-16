@@ -20,6 +20,7 @@ import { responderDisplay } from "@/lib/responder";
 import type {
   FireTestIncidentResponse,
   IncidentCreate,
+  IncidentCreateResponse,
   IncidentListResponse,
   IncidentResponse,
   IncidentStatus,
@@ -699,8 +700,17 @@ export default function IncidentsPage() {
         open={showCreate}
         services={services}
         onClose={() => setShowCreate(false)}
-        onCreated={() => {
+        onCreated={(result) => {
           setShowCreate(false);
+          const opts = {
+            label: "Open incident",
+            href: `/dashboard/incidents/detail?id=${result.id}`,
+          };
+          if (result.auto_start_status === "failed") {
+            toast.warning(result.auto_start_message, opts);
+          } else {
+            toast.success(result.auto_start_message, opts);
+          }
           loadIncidents();
         }}
       />
@@ -721,10 +731,15 @@ export default function IncidentsPage() {
         onClose={() => setShowTest(false)}
         onCreated={(result) => {
           setShowTest(false);
-          toast.success(result.message, {
+          const opts = {
             label: "Open incident",
             href: `/dashboard/incidents/detail?id=${result.incident.id}`,
-          });
+          };
+          if (result.auto_start_status === "failed") {
+            toast.warning(result.message, opts);
+          } else {
+            toast.success(result.message, opts);
+          }
           loadIncidents();
         }}
       />
@@ -1126,7 +1141,7 @@ function CreateIncidentModal({
   open: boolean;
   services: ServiceResponse[];
   onClose: () => void;
-  onCreated: (inc: IncidentResponse) => void;
+  onCreated: (result: IncidentCreateResponse) => void;
 }) {
   const [form, setForm] = useState<IncidentCreate>({
     title: "",
@@ -1151,9 +1166,9 @@ function CreateIncidentModal({
     setError("");
     setLoading(true);
     try {
-      const inc = await createIncident(form);
+      const result = await createIncident(form);
       reset();
-      onCreated(inc);
+      onCreated(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create incident");
     } finally {

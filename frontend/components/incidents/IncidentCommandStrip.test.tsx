@@ -18,12 +18,13 @@ vi.mock("@/context/auth", () => ({
   }),
 }));
 
+const toastSpies = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+}));
 vi.mock("@/components/ui/Toast", () => ({
-  useToast: () => ({
-    success: vi.fn(),
-    error: vi.fn(),
-    warning: vi.fn(),
-  }),
+  useToast: () => toastSpies,
 }));
 
 const apiMocks = vi.hoisted(() => ({
@@ -174,5 +175,46 @@ describe("IncidentCommandStrip", () => {
   it("hides permanent delete from operators", () => {
     renderStrip("closed");
     expect(screen.queryByTestId("action-delete")).toBeNull();
+  });
+
+  it("shows the AI-session auto-start message returned by acknowledge", async () => {
+    apiMocks.ackIncident.mockResolvedValue({
+      incident_id: "incident-1",
+      state: null,
+      pages: [],
+      auto_start_status: "queued",
+      resolved_tier: 1,
+      auto_start_message:
+        "Incident acknowledged. AI session auto-started under T1 — Approval Required.",
+    });
+    renderStrip("open");
+    fireEvent.click(screen.getByTestId("action-acknowledge"));
+    await waitFor(() =>
+      expect(apiMocks.ackIncident).toHaveBeenCalledWith("incident-1", "web_ui"),
+    );
+    await waitFor(() =>
+      expect(toastSpies.success).toHaveBeenCalledWith(
+        "Incident acknowledged. AI session auto-started under T1 — Approval Required.",
+      ),
+    );
+  });
+
+  it("warns when acknowledge reports an auto-start failure", async () => {
+    apiMocks.ackIncident.mockResolvedValue({
+      incident_id: "incident-1",
+      state: null,
+      pages: [],
+      auto_start_status: "failed",
+      resolved_tier: 2,
+      auto_start_message:
+        "Incident acknowledged. AI session auto-start failed: no enabled model configured.",
+    });
+    renderStrip("open");
+    fireEvent.click(screen.getByTestId("action-acknowledge"));
+    await waitFor(() =>
+      expect(toastSpies.warning).toHaveBeenCalledWith(
+        expect.stringContaining("auto-start failed: no enabled model configured"),
+      ),
+    );
   });
 });

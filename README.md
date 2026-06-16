@@ -249,7 +249,7 @@ Each of these is configured by adding env vars to `.env` and restarting — noth
 | **Slack interactivity (Ack/Resolve/Escalate/Start AI Session + slash commands)** | Add Slack app **Request URL**s for `/bot/slack/interactions` and `/bot/slack/commands`; populate `bot_token` + `signing_secret`, then enable verified Slack actions on the channel |
 | **Teams interactivity (Ack/Resolve/Escalate/Start AI Session)** | Configure Graph app credentials + Bot Framework app ID, set the messaging endpoint to `/bot/teams/activity`, link Azure AD object IDs, then enable verified Teams actions |
 | **Per-incident Slack channels** | Toggle `slack_incident_channels_enabled` per org (`PUT /organizations/{id}/notification-settings`); requires Slack app `channels:manage` + `chat:write` scopes |
-| **Ingest auto-start** | `OPSMENDER_INGEST_AUTO_START_ENABLED=true`, `OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=critical`, optional `OPSMENDER_INGEST_AUTO_START_SOURCE` filter; only resolved Tier 0 sessions auto-start |
+| **AI session auto-start** | Tier-driven, no extra config: when the effective AI Autonomy Tier is **T0**, an AI session auto-starts the moment an incident is created (manual, fire-test, or ingested). **T1/T2** start after an Admin/Operator acknowledges. |
 | **SLA poller (HTTP / TCP uptime checks)** | `OPSMENDER_SLA_POLLER_ENABLED=true`, `OPSMENDER_SLA_POLL_INTERVAL_DEFAULT=60` |
 | **Multi-tenant orgs** | `OPSMENDER_MULTI_ORG_ENABLED=true` (exposes TopBar org switcher + per-invite org picker) |
 | **Per-tenant OIDC / SAML admin UI** | `OPSMENDER_ADVANCED_AUTH_ENABLED=true` (runtime routes work regardless; this just surfaces the admin pages) |
@@ -334,6 +334,31 @@ Operators may override the default tier when starting a session; selecting Tier 
 shows a strong red warning. The selected tier is recorded on the session and in
 the audit/activity log. (Legacy installs that stored a fourth "Tier 3 — advise-only"
 value are automatically remapped to Tier 2.)
+
+### When does the AI session start?
+
+Auto-start is driven by the effective AI Autonomy Tier at the moment the
+incident is created (resolved from request → service → effective skill → org
+default → Tier 2 safe fallback):
+
+- **Tier 0 — Autonomous:** the AI session starts **immediately** on incident
+  creation — manual, fire-test, or ingested alert alike. No acknowledgment is
+  required; the AI begins responding within T0 policy, the MCP Skill, deny lists,
+  the tier gate, and generic-tool guardrails.
+- **Tier 1 — Approval Required:** the session does **not** start on creation. It
+  starts after an **Admin/Operator acknowledges**, then runs under T1 (the AI
+  investigates and proposes; execution waits for in-session approval).
+- **Tier 2 — Advisory Only:** also starts after acknowledgment, advisory-only.
+
+Viewers cannot acknowledge or start sessions. Acknowledging an incident that
+already has an active session never creates a duplicate. If auto-start can't run
+(e.g. no enabled model), incident creation/acknowledgment still succeeds and the
+reason is surfaced in the toast and the activity/audit trail.
+
+The tier is **stored on each AI session** and governs its execution. An
+authorized user may change the tier **inside** a running session; that change
+applies only to that session and never alters the global/default tier, service
+config, or org policy.
 
 ### Tier 1 approval flow
 
@@ -451,7 +476,7 @@ OpsMender's universal adapter accepts any JSON webhook — Slack, Datadog, Teams
 6. Dedup by `(external_source, external_id)` — repeated alerts update or skip instead of creating duplicates.
 7. Every inbound payload is logged raw in the `ingest_log` table for replay/debugging.
 8. Per-token rate limiting enforced (default: 60 req/min). Returns `429` with `Retry-After` header when exceeded.
-9. Optional auto-start can create one session automatically for newly created incidents that match a configured source + minimum severity rule, but only when session-tier resolution yields Tier 0. Tier 1 and Tier 2 never auto-start.
+9. AI session auto-start is **tier-driven**: when session-tier resolution yields **Tier 0**, an AI session starts automatically as soon as the incident is created. **Tier 1 / Tier 2** incidents do not auto-start on creation — they start after an Admin/Operator acknowledges, then run under that tier (approval-gated or advisory). If auto-start can't run (e.g. no model configured), incident creation still succeeds and the failure is surfaced.
 
 ### Supported provider adapters
 

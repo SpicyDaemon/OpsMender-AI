@@ -284,9 +284,24 @@ class FireTestIncidentRequest(BaseModel):
 class FireTestIncidentResponse(BaseModel):
     incident: IncidentResponse
     resolved_tier: int
-    auto_start_status: str = Field(pattern="^(queued|skipped)$")
+    auto_start_status: str = Field(pattern="^(queued|skipped|failed)$")
     auto_start_reason: Optional[str] = None
     message: str
+
+
+class IncidentCreateResponse(IncidentResponse):
+    """Manual incident creation result.
+
+    Extends the incident record (so ``id`` etc. stay top-level) with the AI
+    auto-start outcome. ``auto_start_status``: ``queued`` (a T0 session was
+    scheduled), ``skipped`` (T1/T2 — waits for acknowledgment), or ``failed``
+    (e.g. no model configured).
+    """
+
+    resolved_tier: int
+    auto_start_status: str = Field(pattern="^(queued|skipped|failed)$")
+    auto_start_reason: Optional[str] = None
+    auto_start_message: str
 
 
 class IncidentListResponse(BaseModel):
@@ -2299,6 +2314,13 @@ class IncidentChainPanelResponse(BaseModel):
     incident_id: uuid.UUID
     state: Optional[IncidentChainStateResponse]
     pages: list[IncidentPageResponse]
+    # AI auto-start outcome triggered by an acknowledgment (T1/T2 start here;
+    # T0 already started at incident creation). Optional so other callers of the
+    # chain panel are unaffected.
+    auto_start_status: Optional[str] = None
+    auto_start_reason: Optional[str] = None
+    resolved_tier: Optional[int] = None
+    auto_start_message: Optional[str] = None
 
 
 class IncidentAckRequest(BaseModel):

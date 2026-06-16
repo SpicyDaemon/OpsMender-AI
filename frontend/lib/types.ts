@@ -82,9 +82,16 @@ export interface FireTestIncidentRequest {
 export interface FireTestIncidentResponse {
   incident: IncidentResponse;
   resolved_tier: number;
-  auto_start_status: "queued" | "skipped";
+  auto_start_status: "queued" | "skipped" | "failed";
   auto_start_reason: string | null;
   message: string;
+}
+
+export interface IncidentCreateResponse extends IncidentResponse {
+  resolved_tier: number;
+  auto_start_status: "queued" | "skipped" | "failed";
+  auto_start_reason: string | null;
+  auto_start_message: string;
 }
 
 export interface IncidentUpdate {
@@ -1892,6 +1899,10 @@ export interface IncidentChainPanelResponse {
   incident_id: string;
   state: IncidentChainStateRecord | null;
   pages: IncidentPageRecord[];
+  auto_start_status?: "queued" | "skipped" | "failed" | null;
+  auto_start_reason?: string | null;
+  resolved_tier?: number | null;
+  auto_start_message?: string | null;
 }
 
 // ---------------------------------------------------------------------------

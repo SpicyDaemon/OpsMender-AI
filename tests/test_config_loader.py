@@ -41,9 +41,6 @@ def valid_env(tmp_path):
         + "OPSMENDER_TIER=2\n"
         + "OPSMENDER_LOG_LEVEL=DEBUG\n"
         + "OPSMENDER_APPROVAL_TIMEOUT_SECONDS=120\n"
-        + "OPSMENDER_INGEST_AUTO_START_ENABLED=true\n"
-        + "OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=high\n"
-        + "OPSMENDER_INGEST_AUTO_START_SOURCE=cloudwatch\n"
     )
     return env_file
 
@@ -61,9 +58,6 @@ class TestConfigLoad:
         assert cfg.tiers["default"] == 2
         assert cfg.logging["level"] == "DEBUG"
         assert cfg.approvals.timeout_seconds == 120
-        assert cfg.ingest.auto_start_enabled is True
-        assert cfg.ingest.auto_start_min_severity == "high"
-        assert cfg.ingest.auto_start_source == "cloudwatch"
 
     def test_missing_explicit_env_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
@@ -79,9 +73,6 @@ class TestConfigLoad:
         assert cfg.audit.output == "./logs/audit.jsonl"
         assert cfg.approvals.timeout_seconds == 900
         assert cfg.cors.origins == ["*"]
-        assert cfg.ingest.auto_start_enabled is False
-        assert cfg.ingest.auto_start_min_severity == "critical"
-        assert cfg.ingest.auto_start_source is None
 
     def test_invalid_mcp_servers_json_raises(self, tmp_path):
         env_file = tmp_path / ".env"
@@ -95,12 +86,6 @@ class TestConfigLoad:
         monkeypatch.setenv("OPSMENDER_TIER", "3")
         cfg = Config.load(env_file)
         assert cfg.tiers["default"] == 3
-
-    def test_invalid_ingest_auto_start_severity_raises(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY=urgent\n")
-        with pytest.raises(ValueError, match="OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY"):
-            Config.load(env_file)
 
     def test_people_visibility_flags_default_to_false(self, tmp_path):
         """Sprint 64 — both visibility flags default to false so a fresh

@@ -404,9 +404,6 @@ export interface ConfigResponse {
   mcp_servers: Record<string, unknown>[];
   audit_output: string;
   logging_level: string;
-  ingest_auto_start_enabled: boolean;
-  ingest_auto_start_min_severity: Severity;
-  ingest_auto_start_source: string | null;
   // Sprint 56: deployment-level flags the People surface reads to decide
   // whether to show the multi-org affordances and whether to advertise
   // SMTP delivery alongside the copy-paste invite URLs.
@@ -429,9 +426,6 @@ export interface ConfigResponse {
 export interface ConfigUpdate {
   tier?: number;
   logging_level?: string;
-  ingest_auto_start_enabled?: boolean;
-  ingest_auto_start_min_severity?: Severity;
-  ingest_auto_start_source?: string;
 }
 
 export interface SetupChecklistResponse {

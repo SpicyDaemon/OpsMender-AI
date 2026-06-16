@@ -448,16 +448,13 @@ class TestIngestGeneric:
             assert inc is not None
             assert inc.status == "resolved"
 
-    async def test_ingest_auto_start_creates_session_when_rule_matches(
+    async def test_ingest_auto_start_creates_session_for_autonomous_tier(
         self, client: AsyncClient, app, admin_headers
     ):
         config_resp = await client.put(
             "/config",
             json={
                 "tier": 0,
-                "ingest_auto_start_enabled": True,
-                "ingest_auto_start_min_severity": "high",
-                "ingest_auto_start_source": "generic",
             },
             headers=admin_headers,
         )
@@ -497,9 +494,6 @@ class TestIngestGeneric:
             "/config",
             json={
                 "tier": tier,
-                "ingest_auto_start_enabled": True,
-                "ingest_auto_start_min_severity": "high",
-                "ingest_auto_start_source": "generic",
             },
             headers=admin_headers,
         )
@@ -523,17 +517,14 @@ class TestIngestGeneric:
                 await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
             ) == []
 
-    async def test_default_t2_enabled_auto_start_logs_skip_without_session_creation(
+    async def test_default_t2_defers_auto_start_to_ack_without_session_creation(
         self, client: AsyncClient, app, admin_headers, caplog, monkeypatch
     ):
-        # The fixture's org default is T2. Enable auto-start without overriding
-        # that tier and prove intake never reaches SessionRepo.create.
+        # The fixture's org default is T2 (advisory). Prove intake defers the
+        # session to acknowledgment and never reaches SessionRepo.create.
         await client.put(
             "/config",
             json={
-                "ingest_auto_start_enabled": True,
-                "ingest_auto_start_min_severity": "high",
-                "ingest_auto_start_source": "generic",
             },
             headers=admin_headers,
         )
@@ -552,7 +543,7 @@ class TestIngestGeneric:
             "/incidents/ingest",
             json={
                 "title": "Default T2 incident",
-                "description": "Auto-start is enabled, but tier remains advisory",
+                "description": "Tier remains advisory, so the session defers to ack",
                 "severity": "critical",
                 "id": "autostart-default-t2",
             },
@@ -562,15 +553,12 @@ class TestIngestGeneric:
         assert "auto_start_deferred_to_ack" in caplog.text
         assert "resolved_tier=2" in caplog.text
 
-    async def test_ingest_auto_start_skips_when_rule_does_not_match(
+    async def test_ingest_auto_start_skips_for_advisory_tier(
         self, client: AsyncClient, app, admin_headers
     ):
         await client.put(
             "/config",
             json={
-                "ingest_auto_start_enabled": True,
-                "ingest_auto_start_min_severity": "critical",
-                "ingest_auto_start_source": "cloudwatch",
             },
             headers=admin_headers,
         )
@@ -602,9 +590,6 @@ class TestIngestGeneric:
             "/config",
             json={
                 "tier": 0,
-                "ingest_auto_start_enabled": True,
-                "ingest_auto_start_min_severity": "high",
-                "ingest_auto_start_source": "generic",
             },
             headers=admin_headers,
         )

@@ -24,20 +24,11 @@ def _config(
     secret: str = "x" * 64,
     static_dir: str = "./frontend/out",
     audit_path: str = "./logs/audit.jsonl",
-    ingest_enabled: bool = False,
-    ingest_severity: str = "critical",
-    ingest_source: str | None = None,
 ) -> AppConfig:
     cfg = AppConfig.__new__(AppConfig)
     cfg.auth = AuthConfig(jwt_secret=secret)
     cfg.audit = AuditConfig(output=audit_path)
-    cfg.ingest = IngestConfig(
-        rate_limit=60,
-        rate_window=60,
-        auto_start_enabled=ingest_enabled,
-        auto_start_min_severity=ingest_severity,
-        auto_start_source=ingest_source,
-    )
+    cfg.ingest = IngestConfig(rate_limit=60, rate_window=60)
     settings = AppSettings.__new__(AppSettings)
     settings.frontend_static_dir = static_dir
     cfg.app = settings
@@ -101,25 +92,6 @@ class TestAuditLogCheck:
         with patch("pathlib.Path.write_text", side_effect=OSError("EACCES")):
             r = doctor.check_audit_log(cfg)
         assert r.status == "fail"
-
-
-class TestIngestConfigCheck:
-    def test_disabled_passes(self):
-        r = doctor.check_ingest_config(_config(ingest_enabled=False))
-        assert r.status == "ok"
-        assert "Disabled" in r.detail
-
-    def test_enabled_with_known_severity_passes(self):
-        r = doctor.check_ingest_config(
-            _config(ingest_enabled=True, ingest_severity="critical")
-        )
-        assert r.status == "ok"
-
-    def test_enabled_with_bad_severity_warns(self):
-        r = doctor.check_ingest_config(
-            _config(ingest_enabled=True, ingest_severity="catastrophic")
-        )
-        assert r.status == "warn"
 
 
 class TestExitCode:
@@ -220,14 +192,13 @@ class TestRunAllChecks:
         )
         results = await doctor.run_all_checks(cfg, factory)
         names = [r.name for r in results]
-        # First five are the deterministic pure + DB checks
-        assert names[:5] == [
+        # First four are the deterministic pure + DB checks
+        assert names[:4] == [
             "JWT secret",
             "Frontend static mount",
             "Audit log",
-            "Ingest auto-start",
             "Database",
         ]
         # Then MCP-servers placeholder (no servers seeded) then paging chains
-        assert any(n.startswith("MCP") for n in names[5:])
+        assert any(n.startswith("MCP") for n in names[4:])
         assert names[-1] == "Paging chains"

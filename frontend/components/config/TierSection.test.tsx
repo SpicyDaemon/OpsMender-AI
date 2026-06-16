@@ -15,9 +15,6 @@ import type { ConfigResponse } from "@/lib/types";
 const CONFIG = {
   tier: 2,
   logging_level: "INFO",
-  ingest_auto_start_enabled: false,
-  ingest_auto_start_min_severity: "critical",
-  ingest_auto_start_source: null,
   audit_output: "stdout",
 } as unknown as ConfigResponse;
 

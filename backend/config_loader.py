@@ -183,9 +183,6 @@ class IngestConfig:
 
     rate_limit: int = 60
     rate_window: int = 60
-    auto_start_enabled: bool = False
-    auto_start_min_severity: str = "critical"
-    auto_start_source: str | None = None
 
 
 @dataclasses.dataclass
@@ -452,16 +449,6 @@ class AppConfig:
         ingest = IngestConfig(
             rate_limit=_env_int(env, "OPSMENDER_INGEST_RATE_LIMIT", 60),
             rate_window=_env_int(env, "OPSMENDER_INGEST_RATE_WINDOW", 60),
-            auto_start_enabled=_env_bool(
-                env, "OPSMENDER_INGEST_AUTO_START_ENABLED", False
-            ),
-            auto_start_min_severity=_env_severity(
-                env, "OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY", "critical"
-            ),
-            auto_start_source=(
-                (_env_str(env, "OPSMENDER_INGEST_AUTO_START_SOURCE", "") or "").strip().lower()
-                or None
-            ),
         )
         sla = SLAConfig(
             poller_enabled=_env_bool(env, "OPSMENDER_SLA_POLLER_ENABLED", True),

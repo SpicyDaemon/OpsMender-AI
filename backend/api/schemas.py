@@ -520,9 +520,6 @@ class ConfigResponse(BaseModel):
     mcp_servers: list[dict[str, Any]]
     audit_output: str
     logging_level: str
-    ingest_auto_start_enabled: bool
-    ingest_auto_start_min_severity: str
-    ingest_auto_start_source: Optional[str] = None
     # Sprint 56: surface the deployment-level booleans the UI needs to
     # render the People surface correctly. Read from env at process
     # start; not editable from the UI.
@@ -572,12 +569,6 @@ class ConfigUpdate(BaseModel):
             "DEBUG keeps everything; CRITICAL only keeps fatal events."
         ),
     )
-    ingest_auto_start_enabled: Optional[bool] = None
-    ingest_auto_start_min_severity: Optional[str] = Field(
-        default=None,
-        pattern="^(critical|high|medium|low)$",
-    )
-    ingest_auto_start_source: Optional[str] = Field(default=None, max_length=100)
 
 
 class ModelConfigResponse(BaseModel):

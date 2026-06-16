@@ -1320,12 +1320,7 @@ class TestIncidents:
     ):
         await client.put(
             "/config",
-            json={
-                "tier": tier,
-                "ingest_auto_start_enabled": True,
-                "ingest_auto_start_min_severity": "high",
-                "ingest_auto_start_source": "opsmender-test",
-            },
+            json={"tier": tier},
             headers=auth_headers,
         )
 
@@ -3311,9 +3306,6 @@ class TestConfig:
         assert "mcp_servers" in data
         assert "audit_output" in data
         assert "logging_level" in data
-        assert data["ingest_auto_start_enabled"] is False
-        assert data["ingest_auto_start_min_severity"] == "critical"
-        assert data["ingest_auto_start_source"] is None
 
     async def test_get_config_exposes_public_base_url(
         self, client: AsyncClient, auth_headers
@@ -4453,38 +4445,13 @@ class TestAgentTeamProfiles:
     async def test_update_config_admin(self, client: AsyncClient, auth_headers):
         resp = await client.put(
             "/config",
-            json={
-                "tier": 2,
-                "logging_level": "DEBUG",
-                "ingest_auto_start_enabled": True,
-                "ingest_auto_start_min_severity": "high",
-                "ingest_auto_start_source": "cloudwatch",
-            },
+            json={"tier": 2, "logging_level": "DEBUG"},
             headers=auth_headers,
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["tier"] == 2
         assert data["logging_level"] == "DEBUG"
-        assert data["ingest_auto_start_enabled"] is True
-        assert data["ingest_auto_start_min_severity"] == "high"
-        assert data["ingest_auto_start_source"] == "cloudwatch"
-
-    async def test_update_config_allows_clearing_ingest_auto_start_source(
-        self, client: AsyncClient, auth_headers
-    ):
-        await client.put(
-            "/config",
-            json={"ingest_auto_start_source": "azure_monitor"},
-            headers=auth_headers,
-        )
-        resp = await client.put(
-            "/config",
-            json={"ingest_auto_start_source": ""},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        assert resp.json()["ingest_auto_start_source"] is None
 
     async def test_update_config_viewer_forbidden(
         self, client: AsyncClient, viewer_headers

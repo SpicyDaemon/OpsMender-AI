@@ -108,24 +108,6 @@ def check_audit_log(config: AppConfig) -> CheckResult:
     return CheckResult("Audit log", "ok", f"{target} writeable.")
 
 
-def check_ingest_config(config: AppConfig) -> CheckResult:
-    """Ingest auto-start is fine off; warn if on but mis-configured."""
-    if not config.ingest.auto_start_enabled:
-        return CheckResult("Ingest auto-start", "ok", "Disabled (default).")
-    severity = (config.ingest.auto_start_min_severity or "").strip().lower()
-    if severity not in {"low", "medium", "high", "critical"}:
-        return CheckResult(
-            "Ingest auto-start",
-            "warn",
-            f"Enabled but OPSMENDER_INGEST_AUTO_START_MIN_SEVERITY={severity!r} is unrecognized.",
-        )
-    return CheckResult(
-        "Ingest auto-start",
-        "ok",
-        f"Enabled at severity={severity} (source={config.ingest.auto_start_source or 'any'}).",
-    )
-
-
 async def check_database(factory: async_sessionmaker | None) -> CheckResult:
     """Open a session and run a trivial SELECT to confirm reachability."""
     if factory is None:
@@ -227,7 +209,6 @@ async def run_all_checks(
         check_jwt_secret(config),
         check_frontend_static(config),
         check_audit_log(config),
-        check_ingest_config(config),
         await check_database(factory),
     ]
     results.extend(await check_mcp_servers(factory))

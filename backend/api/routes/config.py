@@ -51,9 +51,6 @@ def _config_to_response(
     *,
     tier: int,
     logging_level: str,
-    ingest_auto_start_enabled: bool,
-    ingest_auto_start_min_severity: str,
-    ingest_auto_start_source: str | None,
     sso_configured: bool = False,
     saml_configured: bool = False,
 ) -> ConfigResponse:
@@ -73,9 +70,6 @@ def _config_to_response(
         mcp_servers=servers,
         audit_output=cfg.audit.output,
         logging_level=logging_level,
-        ingest_auto_start_enabled=ingest_auto_start_enabled,
-        ingest_auto_start_min_severity=ingest_auto_start_min_severity,
-        ingest_auto_start_source=ingest_auto_start_source,
         multi_org_enabled=cfg.people.multi_org_enabled,
         smtp_configured=cfg.smtp.configured,
         advanced_auth_enabled=cfg.people.advanced_auth_enabled,
@@ -94,9 +88,6 @@ async def _read_runtime_config(
         [
             "tier",
             "logging_level",
-            "ingest_auto_start_enabled",
-            "ingest_auto_start_min_severity",
-            "ingest_auto_start_source",
         ],
     )
 
@@ -127,19 +118,6 @@ async def get_config(
     overrides = await _read_runtime_config(db, org_id)
     tier = normalize_tier(int(overrides.get("tier", cfg.tiers.get("default", 2))))
     logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
-    ingest_auto_start_enabled = overrides.get(
-        "ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled)
-    ).strip().lower() in {"1", "true", "yes", "on"}
-    ingest_auto_start_min_severity = overrides.get(
-        "ingest_auto_start_min_severity",
-        cfg.ingest.auto_start_min_severity,
-    )
-    ingest_auto_start_source = (
-        overrides.get("ingest_auto_start_source", cfg.ingest.auto_start_source or "")
-        .strip()
-        .lower()
-        or None
-    )
     # Sprint 64: per-tenant lookup for the SSO/SAML "configured" booleans
     # so the frontend can keep settings visible for orgs that already
     # have a provider wired up, even when ``advanced_auth_enabled`` is
@@ -150,9 +128,6 @@ async def get_config(
         cfg,
         tier=tier,
         logging_level=logging_level,
-        ingest_auto_start_enabled=ingest_auto_start_enabled,
-        ingest_auto_start_min_severity=ingest_auto_start_min_severity,
-        ingest_auto_start_source=ingest_auto_start_source,
         sso_configured=sso_row is not None,
         saml_configured=saml_row is not None,
     )
@@ -231,27 +206,6 @@ async def update_config(
         # save here takes effect immediately without a restart (single-workspace
         # assumption — see backend/logging_config.py).
         configure_logging(body.logging_level)
-    if body.ingest_auto_start_enabled is not None:
-        await RuntimeConfigRepo.set(
-            db,
-            org_id,
-            key="ingest_auto_start_enabled",
-            value="true" if body.ingest_auto_start_enabled else "false",
-        )
-    if body.ingest_auto_start_min_severity is not None:
-        await RuntimeConfigRepo.set(
-            db,
-            org_id,
-            key="ingest_auto_start_min_severity",
-            value=body.ingest_auto_start_min_severity,
-        )
-    if body.ingest_auto_start_source is not None:
-        await RuntimeConfigRepo.set(
-            db,
-            org_id,
-            key="ingest_auto_start_source",
-            value=body.ingest_auto_start_source.strip().lower(),
-        )
     await db.commit()
 
     try:
@@ -264,19 +218,6 @@ async def update_config(
     overrides = await _read_runtime_config(db, org_id)
     tier = normalize_tier(int(overrides.get("tier", cfg.tiers.get("default", 2))))
     logging_level = overrides.get("logging_level", cfg.logging.get("level", "INFO"))
-    ingest_auto_start_enabled = overrides.get(
-        "ingest_auto_start_enabled", str(cfg.ingest.auto_start_enabled)
-    ).strip().lower() in {"1", "true", "yes", "on"}
-    ingest_auto_start_min_severity = overrides.get(
-        "ingest_auto_start_min_severity",
-        cfg.ingest.auto_start_min_severity,
-    )
-    ingest_auto_start_source = (
-        overrides.get("ingest_auto_start_source", cfg.ingest.auto_start_source or "")
-        .strip()
-        .lower()
-        or None
-    )
     # Sprint 64: per-tenant lookup for the SSO/SAML "configured" booleans
     # so the frontend can keep settings visible for orgs that already
     # have a provider wired up, even when ``advanced_auth_enabled`` is
@@ -287,9 +228,6 @@ async def update_config(
         cfg,
         tier=tier,
         logging_level=logging_level,
-        ingest_auto_start_enabled=ingest_auto_start_enabled,
-        ingest_auto_start_min_severity=ingest_auto_start_min_severity,
-        ingest_auto_start_source=ingest_auto_start_source,
         sso_configured=sso_row is not None,
         saml_configured=saml_row is not None,
     )

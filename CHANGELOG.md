@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Legacy ingest auto-start controls.** Now that AI session auto-start is purely
+  tier-driven, the obsolete `OPSMENDER_INGEST_AUTO_START_ENABLED` /
+  `_MIN_SEVERITY` / `_SOURCE` env vars, their per-org runtime-config overrides,
+  the `ingest_auto_start_*` fields on `GET/PUT /config`, the Config-page
+  "Ingest Auto-Start" section, and the `doctor` preflight check were removed.
+  `IngestAutoStartPolicy` now carries only the resolved session tier. Auto-start
+  behavior is unchanged (T0 starts on creation; T1/T2 on acknowledgment) — this
+  just deletes the dead configuration surface. Existing stored
+  `ingest_auto_start_*` runtime-config rows are simply ignored (no migration
+  needed).
+
 ### Fixed
 
 - **AI session auto-start now correctly follows the AI Autonomy Tier.** A Tier 0

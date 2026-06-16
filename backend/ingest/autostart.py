@@ -11,16 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config_loader import AppConfig
 from backend.db.models import Incident
-from backend.db.repos import IncidentRepo, RuntimeConfigRepo, SessionRepo
+from backend.db.repos import IncidentRepo, SessionRepo
 from backend.llm.selection import choose_model_for_incident_service
 from backend.tiers.resolution import resolve_session_tier_for_incident
-
-_SEVERITY_RANK = {
-    "low": 1,
-    "medium": 2,
-    "high": 3,
-    "critical": 4,
-}
 
 _ACTIVE_SESSION_STATUSES = {"active", "awaiting_approval"}
 logger = logging.getLogger(__name__)
@@ -28,31 +21,13 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass(frozen=True)
 class IngestAutoStartPolicy:
-    enabled: bool
-    min_severity: str
-    source: str | None
+    """The effective AI session auto-start decision input.
+
+    Auto-start is purely tier-driven, so the only input is the resolved session
+    tier for the incident.
+    """
+
     session_tier: int
-
-
-def _to_bool(raw: str | None, default: bool) -> bool:
-    if raw is None:
-        return default
-    value = raw.strip().lower()
-    if value in {"1", "true", "yes", "on"}:
-        return True
-    if value in {"0", "false", "no", "off"}:
-        return False
-    return default
-
-
-def _normalize_severity(raw: str | None, default: str) -> str:
-    value = (raw or default).strip().lower()
-    return value if value in _SEVERITY_RANK else default
-
-
-def _normalize_source(raw: str | None) -> str | None:
-    value = (raw or "").strip().lower()
-    return value or None
 
 
 async def load_auto_start_policy(
@@ -62,31 +37,8 @@ async def load_auto_start_policy(
     *,
     incident: Incident | None = None,
 ) -> IngestAutoStartPolicy:
-    """Resolve the effective ingest auto-start policy from env + DB overrides."""
-    overrides = await RuntimeConfigRepo.get_many(
-        db,
-        org_id,
-        [
-            "tier",
-            "ingest_auto_start_enabled",
-            "ingest_auto_start_min_severity",
-            "ingest_auto_start_source",
-        ],
-    )
-
-    enabled = _to_bool(
-        overrides.get("ingest_auto_start_enabled"),
-        config.ingest.auto_start_enabled,
-    )
+    """Resolve the effective auto-start policy (the session tier for the incident)."""
     return IngestAutoStartPolicy(
-        enabled=enabled,
-        min_severity=_normalize_severity(
-            overrides.get("ingest_auto_start_min_severity"),
-            config.ingest.auto_start_min_severity,
-        ),
-        source=_normalize_source(
-            overrides.get("ingest_auto_start_source", config.ingest.auto_start_source)
-        ),
         session_tier=await resolve_session_tier_for_incident(
             db,
             org_id,

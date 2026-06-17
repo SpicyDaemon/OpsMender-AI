@@ -941,6 +941,11 @@ class SLATarget(Base):
         JSON, nullable=True
     )  # url, method, expected_status, etc.
     owner_team: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Optional link to the owning Service so SLO-breach recommendations can
+    # route to the service's team / on-call (v1.2 Phase 6).
+    service_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("services.id", ondelete="SET NULL"), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

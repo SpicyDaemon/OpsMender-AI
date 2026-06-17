@@ -16,6 +16,8 @@ from backend.api.schemas import (
     MaintenanceWindowListResponse,
     MaintenanceWindowResponse,
     MaintenanceWindowUpdate,
+    SLORecommendation,
+    SLORecommendationsResponse,
     SLASummaryResponse,
     SLATargetCreate,
     SLATargetListResponse,
@@ -32,12 +34,15 @@ from backend.api.schemas import (
 from backend.db.models import SLATarget as SLATargetModel, User
 from backend.db.repos import (
     MaintenanceWindowRepo,
+    ServiceRepo,
     SLATargetRepo,
     SLORepo,
+    TeamRepo,
     UptimeSampleRepo,
 )
 from backend.sla import metrics
 from backend.sla.poller import validate_expected_status_config
+from backend.sla.recommendations import evaluate_slo_recommendation
 
 router = APIRouter(tags=["reliability"])
 
@@ -53,6 +58,21 @@ def _derive_url_and_type(target: SLATargetModel) -> tuple[str | None, str | None
         return url, None
     monitor_type = "https" if str(url).lower().startswith("https") else "http"
     return url, monitor_type
+
+
+async def _resolve_service_meta(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    service_id: uuid.UUID | None,
+) -> tuple[str | None, uuid.UUID | None, str | None]:
+    """Return (service_name, team_id, team_name) for a target's service link."""
+    if service_id is None:
+        return None, None, None
+    service = await ServiceRepo.get_by_id(db, org_id, service_id)
+    if service is None:
+        return None, None, None
+    team = await TeamRepo.get_by_id(db, org_id, service.team_id)
+    return service.name, service.team_id, (team.name if team is not None else None)
 
 
 async def _enrich_target(
@@ -77,6 +97,9 @@ async def _enrich_target(
         db, org_id, target.id, since=now - timedelta(days=30), until=now
     )
     uptime_30d = stats["uptime_pct"] if latest is not None else None
+    service_name, team_id, team_name = await _resolve_service_meta(
+        db, org_id, target.service_id
+    )
 
     return SLATargetResponse.model_validate(target).model_copy(
         update={
@@ -86,8 +109,48 @@ async def _enrich_target(
             "last_check_at": last_check_at,
             "uptime_30d_pct": uptime_30d,
             "active_slo_count": slo_count,
+            "service_name": service_name,
+            "team_id": team_id,
+            "team_name": team_name,
         }
     )
+
+
+def _compute_slo_status(slo, stats: dict) -> dict:
+    """Compute SLO compliance fields from a stats dict (shared by status +
+    recommendations). Returns actual_pct, error_budget_remaining_pct,
+    burn_rate, compliant."""
+    actual_pct = stats["uptime_pct"]
+    objective = slo.objective_pct
+    error_budget_total = 100.0 - objective
+    error_used = 100.0 - actual_pct
+    if error_budget_total > 0:
+        error_budget_remaining_pct = max(
+            0.0, ((error_budget_total - error_used) / error_budget_total) * 100.0
+        )
+        burn_rate = error_used / error_budget_total
+    else:
+        error_budget_remaining_pct = 0.0 if error_used > 0 else 100.0
+        burn_rate = float("inf") if error_used > 0 else 0.0
+    return {
+        "actual_pct": round(actual_pct, 4),
+        "error_budget_remaining_pct": round(error_budget_remaining_pct, 4),
+        "burn_rate": round(burn_rate, 4),
+        "compliant": actual_pct >= objective,
+    }
+
+
+async def _service_validated(
+    db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID | None
+) -> None:
+    """Raise 400 when a provided service_id doesn't belong to the org."""
+    if service_id is None:
+        return
+    service = await ServiceRepo.get_by_id(db, org_id, service_id)
+    if service is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"Service {service_id} not found"
+        )
 
 # ======================================================================
 # SLA Targets
@@ -168,6 +231,7 @@ async def create_sla_target(
     user: User = Depends(require_role("admin")),
 ):
     _validate_sla_target_payload(body.kind, body.config)
+    await _service_validated(db, org_id, body.service_id)
     try:
         target = await SLATargetRepo.create(
             db,
@@ -176,11 +240,14 @@ async def create_sla_target(
             kind=body.kind,
             config=body.config,
             owner_team=body.owner_team,
+            service_id=body.service_id,
             is_active=body.is_active,
         )
         await db.commit()
         await db.refresh(target)
-        return SLATargetResponse.model_validate(target)
+        return await _enrich_target(
+            db, org_id, target, now=datetime.now(timezone.utc), slo_count=0
+        )
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
@@ -208,6 +275,8 @@ async def update_sla_target(
     next_kind = body.kind if body.kind is not None else existing.kind
     next_config = body.config if "config" in body.model_fields_set else existing.config
     _validate_sla_target_payload(next_kind, next_config)
+    if "service_id" in body.model_fields_set:
+        await _service_validated(db, org_id, body.service_id)
 
     try:
         updated = await SLATargetRepo.update(
@@ -220,13 +289,18 @@ async def update_sla_target(
             config_provided="config" in body.model_fields_set,
             owner_team=body.owner_team,
             owner_team_provided="owner_team" in body.model_fields_set,
+            service_id=body.service_id,
+            service_id_provided="service_id" in body.model_fields_set,
             is_active=body.is_active,
         )
         await db.commit()
         if updated is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
         await db.refresh(updated)
-        return SLATargetResponse.model_validate(updated)
+        slos = await SLORepo.list_by_target(db, org_id, target_id, active_only=True)
+        return await _enrich_target(
+            db, org_id, updated, now=datetime.now(timezone.utc), slo_count=len(slos)
+        )
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
@@ -597,41 +671,106 @@ async def get_slo_status(
     stats = await UptimeSampleRepo.compute_uptime(
         db, org_id, slo.target_id, since=since, until=now
     )
-
-    actual_pct = stats["uptime_pct"]
-    objective = slo.objective_pct
-
-    # Error budget: how much downtime is allowed
-    # e.g. 99.9% SLO means 0.1% error budget
-    error_budget_total = 100.0 - objective
-    error_used = 100.0 - actual_pct
-    if error_budget_total > 0:
-        error_budget_remaining_pct = max(
-            0.0, ((error_budget_total - error_used) / error_budget_total) * 100.0
-        )
-    else:
-        error_budget_remaining_pct = 0.0 if error_used > 0 else 100.0
-
-    # Burn rate: ratio of actual error rate to allowed error rate
-    # burn_rate = 1.0 means consuming budget at exactly the expected pace
-    # burn_rate > 1.0 means consuming faster than allowed
-    if error_budget_total > 0:
-        burn_rate = error_used / error_budget_total
-    else:
-        burn_rate = float("inf") if error_used > 0 else 0.0
-
-    compliant = actual_pct >= objective
+    computed = _compute_slo_status(slo, stats)
 
     return SLOStatusResponse(
         slo_id=slo.id,
         target_id=slo.target_id,
         name=slo.name,
-        objective_pct=objective,
-        actual_pct=round(actual_pct, 4),
-        error_budget_remaining_pct=round(error_budget_remaining_pct, 4),
-        burn_rate=round(burn_rate, 4),
-        compliant=compliant,
+        objective_pct=slo.objective_pct,
+        actual_pct=computed["actual_pct"],
+        error_budget_remaining_pct=computed["error_budget_remaining_pct"],
+        burn_rate=computed["burn_rate"],
+        compliant=computed["compliant"],
     )
+
+
+@router.get(
+    "/sla-recommendations",
+    response_model=SLORecommendationsResponse,
+    summary="Advisory recommendations for breaching / at-risk SLOs",
+)
+async def get_slo_recommendations(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    """Deterministic, advisory-only recommendations for active SLOs that are
+    breaching or at risk. Never creates incidents or pages anyone — it surfaces
+    what to look at and (when the target is linked to a Service) who owns it.
+    """
+    now = datetime.now(timezone.utc)
+    slos = await SLORepo.list_all(db, org_id, active_only=True)
+    # Cache target + service lookups so a busy org isn't N+1'd.
+    target_cache: dict[uuid.UUID, SLATargetModel | None] = {}
+    items: list[SLORecommendation] = []
+
+    for slo in slos:
+        if slo.target_id not in target_cache:
+            target_cache[slo.target_id] = await SLATargetRepo.get_by_id(
+                db, org_id, slo.target_id
+            )
+        target = target_cache[slo.target_id]
+        if target is None:
+            continue
+
+        stats = await UptimeSampleRepo.compute_uptime(
+            db,
+            org_id,
+            slo.target_id,
+            since=now - timedelta(seconds=slo.window_seconds),
+            until=now,
+        )
+        computed = _compute_slo_status(slo, stats)
+
+        latest = await UptimeSampleRepo.latest_sample(db, org_id, slo.target_id)
+        target_status = (
+            "unknown" if latest is None else ("up" if latest.up else "down")
+        )
+        service_name, team_id, team_name = await _resolve_service_meta(
+            db, org_id, target.service_id
+        )
+
+        verdict = evaluate_slo_recommendation(
+            slo_name=slo.name,
+            target_name=target.name,
+            objective_pct=slo.objective_pct,
+            actual_pct=computed["actual_pct"],
+            error_budget_remaining_pct=computed["error_budget_remaining_pct"],
+            burn_rate=computed["burn_rate"],
+            compliant=computed["compliant"],
+            target_status=target_status,
+            service_name=service_name,
+            team_name=team_name,
+        )
+        if verdict is None:
+            continue
+
+        items.append(
+            SLORecommendation(
+                slo_id=slo.id,
+                slo_name=slo.name,
+                target_id=target.id,
+                target_name=target.name,
+                severity=verdict.severity,
+                objective_pct=slo.objective_pct,
+                actual_pct=computed["actual_pct"],
+                error_budget_remaining_pct=computed["error_budget_remaining_pct"],
+                burn_rate=computed["burn_rate"],
+                target_status=target_status,
+                service_id=target.service_id,
+                service_name=service_name,
+                team_id=team_id,
+                team_name=team_name,
+                headline=verdict.headline,
+                actions=verdict.actions,
+            )
+        )
+
+    # Critical first, then warnings; stable within severity.
+    order = {"critical": 0, "warning": 1}
+    items.sort(key=lambda r: order.get(r.severity, 99))
+    return SLORecommendationsResponse(items=items, total=len(items), generated_at=now)
 
 
 # ======================================================================

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Plus, ServerCrash, Calendar, Trash2, Pencil, Shield } from "lucide-react";
+import { Activity, Plus, ServerCrash, Calendar, Trash2, Pencil, Shield, Lightbulb } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -14,12 +14,14 @@ import {
   listMaintenanceWindows,
   deleteMaintenanceWindow,
   deleteSLATarget,
+  getSLORecommendations,
 } from "@/lib/api_reliability";
 import { formatUptimePct, STATUS_LABEL, statusColors } from "@/lib/uptime";
 import type {
   SLATargetResponse,
   SLASummaryResponse,
   MaintenanceWindowResponse,
+  SLORecommendation,
 } from "@/lib/types";
 
 function fmtLastCheck(iso: string | null): string {
@@ -46,6 +48,7 @@ export default function ReliabilityPage() {
   const [targets, setTargets] = useState<SLATargetResponse[]>([]);
   const [summary, setSummary] = useState<SLASummaryResponse | null>(null);
   const [maintenanceWindows, setMaintenanceWindows] = useState<MaintenanceWindowResponse[]>([]);
+  const [recommendations, setRecommendations] = useState<SLORecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showMWModal, setShowMWModal] = useState(false);
   const [editingMW, setEditingMW] = useState<MaintenanceWindowResponse | null>(null);
@@ -55,14 +58,16 @@ export default function ReliabilityPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [targetsData, summaryData, mwData] = await Promise.all([
+      const [targetsData, summaryData, mwData, recsData] = await Promise.all([
         listSLATargets(),
         getSLASummary().catch(() => null),
         listMaintenanceWindows(),
+        getSLORecommendations().catch(() => null),
       ]);
       setTargets(targetsData.items);
       setSummary(summaryData);
       setMaintenanceWindows(mwData.items);
+      setRecommendations(recsData?.items ?? []);
     } catch (err) {
       console.error("Failed to load reliability data:", err);
     } finally {
@@ -125,6 +130,56 @@ export default function ReliabilityPage() {
                 value={String(summary.active_slo_warnings)}
                 tone={summary.active_slo_warnings > 0 ? "text-status-warning" : undefined}
               />
+            </div>
+          )}
+
+          {/* SLO-breach recommendations (advisory only) */}
+          {!loading && recommendations.length > 0 && (
+            <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-3">
+                <Lightbulb size={16} className="text-status-warning" />
+                <h2 className="text-sm font-semibold text-fg-primary">
+                  SLO recommendations
+                </h2>
+                <span className="text-xs text-fg-muted">
+                  {recommendations.length} breaching / at-risk · advisory only
+                </span>
+              </div>
+              <ul className="divide-y divide-border-subtle">
+                {recommendations.map((rec) => (
+                  <li key={rec.slo_id} className="px-5 py-4">
+                    <div className="flex items-start gap-3">
+                      <Badge
+                        variant={rec.severity === "critical" ? "critical" : "medium"}
+                        className="mt-0.5 shrink-0"
+                      >
+                        {rec.severity}
+                      </Badge>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Link
+                            href={`/dashboard/reliability/detail?id=${rec.target_id}`}
+                            className="font-medium text-fg-primary hover:text-accent"
+                          >
+                            {rec.headline}
+                          </Link>
+                          {rec.service_name ? (
+                            <Badge variant="default" className="text-[10px]">
+                              {rec.service_name}
+                              {rec.team_name ? ` · ${rec.team_name}` : ""}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-fg-secondary">
+                          {rec.actions.map((action, i) => (
+                            <li key={i}>{action}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -210,6 +265,12 @@ export default function ReliabilityPage() {
                         <Shield size={12} /> {target.active_slo_count} SLO{target.active_slo_count === 1 ? "" : "s"}
                       </span>
                     </div>
+                    {target.service_name ? (
+                      <p className="-mt-1 truncate text-[11px] text-fg-muted" title={target.service_name}>
+                        Service: <span className="text-fg-secondary">{target.service_name}</span>
+                        {target.team_name ? ` · ${target.team_name}` : ""}
+                      </p>
+                    ) : null}
                   </Link>
                 );
               })}

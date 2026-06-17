@@ -2839,6 +2839,7 @@ class SLATargetRepo:
         kind: str,
         config: dict[str, Any] | None = None,
         owner_team: str | None = None,
+        service_id: uuid.UUID | None = None,
         is_active: bool = True,
     ) -> SLATarget:
         target = SLATarget(
@@ -2847,6 +2848,7 @@ class SLATargetRepo:
             kind=kind,
             config=config,
             owner_team=owner_team,
+            service_id=service_id,
             is_active=is_active,
         )
         db.add(target)
@@ -2909,6 +2911,8 @@ class SLATargetRepo:
         config_provided: bool = False,
         owner_team: str | None = None,
         owner_team_provided: bool = False,
+        service_id: uuid.UUID | None = None,
+        service_id_provided: bool = False,
         is_active: bool | None = None,
     ) -> SLATarget | None:
         values: dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
@@ -2920,6 +2924,8 @@ class SLATargetRepo:
             values["config"] = config
         if owner_team_provided:
             values["owner_team"] = owner_team
+        if service_id_provided:
+            values["service_id"] = service_id
         if is_active is not None:
             values["is_active"] = is_active
         stmt = (

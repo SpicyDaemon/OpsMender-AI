@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createSLATarget, updateSLATarget } from "@/lib/api_reliability";
-import type { SLATargetResponse, SLATargetKind } from "@/lib/types";
+import { listServices } from "@/lib/api";
+import type { SLATargetResponse, SLATargetKind, ServiceResponse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FormError } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
@@ -40,6 +41,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
     name: "",
     kind: "http" as SLATargetKind,
     owner_team: "",
+    service_id: "",
     is_active: true,
     // HTTP config
     http_url: "",
@@ -49,8 +51,16 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
     tcp_host: "",
     tcp_port: "",
   });
+  const [services, setServices] = useState<ServiceResponse[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    listServices()
+      .then((res) => setServices(res.items))
+      .catch(() => setServices([]));
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -60,6 +70,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
           name: initialData.name,
           kind: initialData.kind,
           owner_team: initialData.owner_team || "",
+          service_id: initialData.service_id || "",
           is_active: initialData.is_active,
           http_url: initialData.kind === "http" ? (config.url as string || "") : "",
           http_method: initialData.kind === "http" ? (config.method as string || "GET") : "GET",
@@ -72,6 +83,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
           name: "",
           kind: "http",
           owner_team: "",
+          service_id: "",
           is_active: true,
           http_url: "",
           http_method: "GET",
@@ -126,6 +138,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
         name: form.name.trim(),
         kind: form.kind,
         owner_team: form.owner_team.trim() || null,
+        service_id: form.service_id || null,
         is_active: form.is_active,
         config: Object.keys(config).length > 0 ? config : null,
       };
@@ -185,6 +198,25 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
               placeholder="Platform"
             />
           </div>
+        </div>
+
+        <div>
+          <Label htmlFor="target-service">Owning Service</Label>
+          <Select
+            id="target-service"
+            value={form.service_id}
+            onChange={(e) => setForm({ ...form, service_id: e.target.value })}
+          >
+            <option value="">— None —</option>
+            {services.map((svc) => (
+              <option key={svc.id} value={svc.id}>
+                {svc.name}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1 text-[11px] text-fg-muted">
+            Links breaches to a service so SLO recommendations route to its team.
+          </p>
         </div>
 
         {form.kind === "http" && (

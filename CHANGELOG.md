@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.2 Phase 6 — Reliability target → Service linkage + SLO-breach
+  recommendations.** SLA targets can now link to an owning **Service**
+  (`sla_targets.service_id`, migration `c8d9e0f1a2b3`); the target editor gains
+  a Service picker and the Reliability page shows the linked service/team on
+  each target. New **advisory** endpoint `GET /sla-recommendations` returns
+  deterministic (no-LLM, no auto-incident, no auto-page) recommendations for
+  active SLOs that are breaching or at risk — severity (critical/warning) by
+  burn rate + error budget, the owning service/team for routing, and concrete
+  next steps. The Reliability page renders these in an "SLO recommendations"
+  panel. Pure engine `backend/sla/recommendations.py`.
+
 - **Ingest clearing-alerts stop in-progress AI sessions.** When an external
   alert with `status=resolved` resolves an existing incident (the dedup
   "updated" path), its `active`/`awaiting_approval` AI sessions are now stopped

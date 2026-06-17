@@ -857,3 +857,111 @@ class TestReliabilityV1:
 
         incidents = await IncidentRepo.list_all(db, TEST_ORG_ID)
         assert all("SLO" not in (i.title or "") for i in incidents)
+
+
+class TestSLATargetServiceLink:
+    """v1.2 Phase 6 — SLA target ↔ Service linkage + SLO recommendations."""
+
+    async def _seed_service(self, db: AsyncSession) -> uuid.UUID:
+        from backend.db.models import Service, Team
+
+        team = Team(org_id=TEST_ORG_ID, name="Payments", slug="payments")
+        db.add(team)
+        await db.flush()
+        service = Service(
+            org_id=TEST_ORG_ID, team_id=team.id, name="Checkout", slug="checkout"
+        )
+        db.add(service)
+        await db.commit()
+        return service.id
+
+    @pytest.mark.asyncio
+    async def test_create_target_with_service_resolves_names(
+        self, client: AsyncClient, db: AsyncSession
+    ):
+        service_id = await self._seed_service(db)
+        resp = await client.post(
+            "/sla-targets",
+            json={"name": "api", "kind": "http", "service_id": str(service_id)},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["service_id"] == str(service_id)
+        assert data["service_name"] == "Checkout"
+        assert data["team_name"] == "Payments"
+
+    @pytest.mark.asyncio
+    async def test_create_target_rejects_unknown_service(self, client: AsyncClient):
+        resp = await client.post(
+            "/sla-targets",
+            json={"name": "api", "kind": "http", "service_id": str(uuid.uuid4())},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_recommendations_for_breaching_linked_slo(
+        self, client: AsyncClient, db: AsyncSession
+    ):
+        service_id = await self._seed_service(db)
+        target_id = (
+            await client.post(
+                "/sla-targets",
+                json={"name": "api", "kind": "http", "service_id": str(service_id)},
+            )
+        ).json()["id"]
+        await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "avail",
+                "objective_pct": 99.0,
+                "window_seconds": 3600,
+            },
+        )
+        # Breach hard: mostly-down window.
+        from backend.db.repos import UptimeSampleRepo
+
+        for i in range(10):
+            await UptimeSampleRepo.create(
+                db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=(i < 2),
+                source="poller",
+            )
+        await db.commit()
+
+        resp = await client.get("/sla-recommendations")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        rec = data["items"][0]
+        assert rec["severity"] == "critical"
+        assert rec["service_name"] == "Checkout"
+        assert rec["team_name"] == "Payments"
+        assert any("Checkout" in a for a in rec["actions"])
+
+    @pytest.mark.asyncio
+    async def test_recommendations_empty_when_healthy(
+        self, client: AsyncClient, db: AsyncSession
+    ):
+        target_id = (
+            await client.post("/sla-targets", json={"name": "ok", "kind": "http"})
+        ).json()["id"]
+        await client.post(
+            "/slos",
+            json={
+                "target_id": target_id,
+                "name": "avail",
+                "objective_pct": 99.0,
+                "window_seconds": 3600,
+            },
+        )
+        from backend.db.repos import UptimeSampleRepo
+
+        for _ in range(10):
+            await UptimeSampleRepo.create(
+                db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=True,
+                source="poller",
+            )
+        await db.commit()
+
+        resp = await client.get("/sla-recommendations")
+        assert resp.json()["total"] == 0

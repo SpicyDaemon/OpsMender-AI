@@ -1113,6 +1113,7 @@ class SLATargetCreate(BaseModel):
     kind: str = Field(..., pattern="^(http|tcp|external)$")
     config: Optional[dict[str, Any]] = None
     owner_team: Optional[str] = Field(default=None, max_length=100)
+    service_id: Optional[uuid.UUID] = None
     is_active: bool = True
 
 
@@ -1121,6 +1122,7 @@ class SLATargetUpdate(BaseModel):
     kind: Optional[str] = Field(None, pattern="^(http|tcp|external)$")
     config: Optional[dict[str, Any]] = None
     owner_team: Optional[str] = Field(default=None, max_length=100)
+    service_id: Optional[uuid.UUID] = None
     is_active: Optional[bool] = None
 
 
@@ -1130,6 +1132,7 @@ class SLATargetResponse(BaseModel):
     kind: str
     config: Optional[dict[str, Any]]
     owner_team: Optional[str]
+    service_id: Optional[uuid.UUID] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -1142,6 +1145,10 @@ class SLATargetResponse(BaseModel):
     last_check_at: Optional[datetime] = None
     uptime_30d_pct: Optional[float] = None
     active_slo_count: int = 0
+    # Resolved from service_id (Phase 6) so the UI can show the owning service/team.
+    service_name: Optional[str] = None
+    team_id: Optional[uuid.UUID] = None
+    team_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -1213,6 +1220,39 @@ class SLOStatusResponse(BaseModel):
     error_budget_remaining_pct: float
     burn_rate: float
     compliant: bool
+
+
+class SLORecommendation(BaseModel):
+    """An advisory recommendation for a breaching / at-risk SLO.
+
+    Read-only guidance only — recommendations never create incidents or page
+    anyone automatically (that stays an operator decision, per ROADMAP).
+    """
+
+    slo_id: uuid.UUID
+    slo_name: str
+    target_id: uuid.UUID
+    target_name: str
+    severity: str  # "critical" | "warning"
+    objective_pct: float
+    actual_pct: float
+    error_budget_remaining_pct: float
+    burn_rate: float
+    target_status: str  # "up" | "down" | "unknown"
+    # Owning service (when the target is linked) so the recommendation is
+    # actionable / routable.
+    service_id: Optional[uuid.UUID] = None
+    service_name: Optional[str] = None
+    team_id: Optional[uuid.UUID] = None
+    team_name: Optional[str] = None
+    headline: str
+    actions: list[str]
+
+
+class SLORecommendationsResponse(BaseModel):
+    items: list[SLORecommendation]
+    total: int
+    generated_at: datetime
 
 
 # ---------------------------------------------------------------------------

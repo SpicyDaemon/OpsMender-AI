@@ -1102,6 +1102,7 @@ export interface SLATargetResponse {
   kind: SLATargetKind;
   config: Record<string, unknown> | null;
   owner_team: string | null;
+  service_id: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -1112,6 +1113,35 @@ export interface SLATargetResponse {
   last_check_at: string | null;
   uptime_30d_pct: number | null;
   active_slo_count: number;
+  // Resolved from service_id (Phase 6)
+  service_name: string | null;
+  team_id: string | null;
+  team_name: string | null;
+}
+
+export interface SLORecommendation {
+  slo_id: string;
+  slo_name: string;
+  target_id: string;
+  target_name: string;
+  severity: "critical" | "warning";
+  objective_pct: number;
+  actual_pct: number;
+  error_budget_remaining_pct: number;
+  burn_rate: number;
+  target_status: UptimeStatus;
+  service_id: string | null;
+  service_name: string | null;
+  team_id: string | null;
+  team_name: string | null;
+  headline: string;
+  actions: string[];
+}
+
+export interface SLORecommendationsResponse {
+  items: SLORecommendation[];
+  total: number;
+  generated_at: string;
 }
 
 export interface SLASummaryResponse {

@@ -9,6 +9,7 @@ import {
   SLASummaryResponse,
   SLATargetUptimeResponse,
   SLOStatusResponse,
+  SLORecommendationsResponse,
   IncidentResponse,
 } from "./types";
 
@@ -49,6 +50,10 @@ export async function getSLATargetUptime(
 
 export async function getSLASummary(): Promise<SLASummaryResponse> {
   return api.get("/sla-summary");
+}
+
+export async function getSLORecommendations(): Promise<SLORecommendationsResponse> {
+  return api.get("/sla-recommendations");
 }
 
 export async function probeSLATarget(

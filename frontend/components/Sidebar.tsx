@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -444,18 +444,26 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     setHydrated(true);
   }, []);
 
-  useEffect(() => {
+  const loadConfig = useCallback(() => {
     if (!user) return;
-    let cancelled = false;
     getConfig()
       .then((c) => {
-        if (cancelled) return;
         setTier(c.tier);
         setMultiOrgEnabled(c.multi_org_enabled ?? false);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
-  }, [user, pathname]);
+  }, [user]);
+
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig, pathname]);
+
+  // Refresh the tier badge the moment runtime config is saved (e.g. on the
+  // Config page) instead of waiting for the next navigation.
+  useEffect(() => {
+    window.addEventListener("opsmender:config-updated", loadConfig);
+    return () => window.removeEventListener("opsmender:config-updated", loadConfig);
+  }, [loadConfig]);
 
   useEffect(() => {
     if (hydrated) localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");

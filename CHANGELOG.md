@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sidebar tier badge updates immediately after saving runtime config.**
+  Saving the Default AI Autonomy Tier on the Config page now refreshes the
+  sidebar tier badge right away instead of only on the next navigation. The
+  Config save dispatches an `opsmender:config-updated` window event that the
+  sidebar listens for and re-fetches `/config`.
+
 ### Added
 
 - **Resolved incidents auto-close after a cooldown.** A new background scheduler

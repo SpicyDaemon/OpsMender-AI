@@ -273,6 +273,11 @@ export function TierSection({
     try {
       await updateConfig({ tier: Number(tier), logging_level: logLevel });
       setSuccess(true);
+      // Notify the sidebar (and any other listener) so the tier badge updates
+      // immediately instead of only on the next navigation.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("opsmender:config-updated"));
+      }
       await onSaved();
       setTimeout(() => setSuccess(false), 2000);
     } catch (err) {

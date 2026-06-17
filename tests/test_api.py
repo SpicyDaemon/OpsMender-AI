@@ -1850,6 +1850,99 @@ class TestIncidents:
         assert item["ai_session_active"] is False
         assert item["ai_session_status"] == "completed"
 
+    async def test_resolving_incident_stops_in_progress_sessions(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        service = await _seed_manual_incident_service(app, "ResolveStops")
+        resp = await client.post(
+            "/incidents",
+            json={"title": "Inc", "description": "d", "service_id": str(service.id)},
+            headers=auth_headers,
+        )
+        incident_id = uuid.UUID(resp.json()["id"])
+        async with app.state.session_factory() as db:
+            running = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=0, incident_id=incident_id
+            )  # defaults to "active"
+            terminal = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=0, incident_id=incident_id
+            )
+            await SessionRepo.set_status(
+                db, TEST_ORG_ID, terminal.id, status="completed"
+            )
+            await db.commit()
+
+        patch = await client.patch(
+            f"/incidents/{incident_id}",
+            json={"status": "resolved"},
+            headers=auth_headers,
+        )
+        assert patch.status_code == 200
+
+        async with app.state.session_factory() as db:
+            running_after = await SessionRepo.get_by_id(db, TEST_ORG_ID, running.id)
+            terminal_after = await SessionRepo.get_by_id(db, TEST_ORG_ID, terminal.id)
+        # The in-progress session is stopped; the already-terminal one is left as-is.
+        assert running_after.status == "stopped"
+        assert running_after.ended_at is not None
+        assert terminal_after.status == "completed"
+
+    async def test_closing_incident_directly_stops_in_progress_sessions(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        # Setting status straight to "closed" (skipping resolved) must also stop
+        # the AI session.
+        service = await _seed_manual_incident_service(app, "CloseStops")
+        resp = await client.post(
+            "/incidents",
+            json={"title": "Inc", "description": "d", "service_id": str(service.id)},
+            headers=auth_headers,
+        )
+        incident_id = uuid.UUID(resp.json()["id"])
+        async with app.state.session_factory() as db:
+            running = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=0, incident_id=incident_id
+            )
+            await db.commit()
+
+        patch = await client.patch(
+            f"/incidents/{incident_id}",
+            json={"status": "closed"},
+            headers=auth_headers,
+        )
+        assert patch.status_code == 200
+
+        async with app.state.session_factory() as db:
+            running_after = await SessionRepo.get_by_id(db, TEST_ORG_ID, running.id)
+        assert running_after.status == "stopped"
+
+    async def test_bulk_resolve_stops_in_progress_sessions(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        service = await _seed_manual_incident_service(app, "BulkResolveStops")
+        resp = await client.post(
+            "/incidents",
+            json={"title": "Inc", "description": "d", "service_id": str(service.id)},
+            headers=auth_headers,
+        )
+        incident_id = uuid.UUID(resp.json()["id"])
+        async with app.state.session_factory() as db:
+            running = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=0, incident_id=incident_id
+            )
+            await db.commit()
+
+        bulk = await client.post(
+            "/incidents/bulk",
+            json={"action": "resolve", "incident_ids": [str(incident_id)]},
+            headers=auth_headers,
+        )
+        assert bulk.status_code == 200
+
+        async with app.state.session_factory() as db:
+            running_after = await SessionRepo.get_by_id(db, TEST_ORG_ID, running.id)
+        assert running_after.status == "stopped"
+
     async def test_list_incidents_supports_case_insensitive_query(
         self, client: AsyncClient, app, auth_headers
     ):

@@ -71,7 +71,10 @@ from backend.paging.service import compute_priority_for_payload
 from backend.paging import escalation as _esc_kickoff
 from backend.skills.parser import loads as load_skill_def_text
 from backend.memory.candidates import candidate_title, extract_memory_candidates
-from backend.api.session_runner import cancel_session_workflows
+from backend.api.session_runner import (
+    cancel_session_workflows,
+    stop_incident_sessions,
+)
 from backend.ingest.autostart import (
     auto_start_skip_reason,
     cancel_auto_start_for_incident,
@@ -742,6 +745,7 @@ async def get_incident(
 async def update_incident(
     incident_id: uuid.UUID,
     body: IncidentUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
@@ -802,6 +806,16 @@ async def update_incident(
                     channel_factory=build_channel_factory(),
                 )
 
+    _TERMINAL = ("resolved", "closed")
+    if body.status in _TERMINAL and prior_status not in _TERMINAL:
+        # Resolving/closing an incident stops any AI sessions still working it.
+        await stop_incident_sessions(
+            request.app,
+            db,
+            org_id,
+            incident_id,
+            reason=f"Incident {body.status} by {user.username}",
+        )
     await db.commit()
     if body.status == "resolved" and prior_status != "resolved":
         await _notify_channels(db, incident_id, org_id, "incident.resolved")
@@ -1531,6 +1545,7 @@ async def release_incident(
 )
 async def bulk_incident_action(
     body: IncidentBulkActionRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
@@ -1577,9 +1592,17 @@ async def bulk_incident_action(
                 continue
 
             if action == "resolve":
-                if incident.status != "closed":
+                if incident.status not in ("closed", "resolved"):
                     await IncidentRepo.update_status(
                         db, org_id, incident_id, "resolved"
+                    )
+                    # Resolving stops any AI sessions still working it.
+                    await stop_incident_sessions(
+                        request.app,
+                        db,
+                        org_id,
+                        incident_id,
+                        reason=f"Incident resolved by {user.username}",
                     )
             elif action == "acknowledge":
                 target = body.user_id or user.id

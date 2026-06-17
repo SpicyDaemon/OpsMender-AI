@@ -32,6 +32,7 @@ from backend.config_loader import AppConfig, MCPServerConfig
 from backend.db.models import Session as SessionModel
 from backend.db.repos import (
     AgentTeamProfileRepo,
+    ApprovalRequestRepo,
     AuditEntryRepo,
     IncidentRepo,
     ModelConfigRepo,
@@ -833,3 +834,71 @@ def cancel_session_workflow(app: FastAPI, *, session_id: uuid.UUID) -> bool:
             task.cancel()
             cancelled = True
     return cancelled
+
+
+# Session statuses that count as "in progress" (mirrors the sessions route).
+_RUNNING_SESSION_STATUSES = {"active", "awaiting_approval"}
+
+
+async def stop_incident_sessions(
+    app: FastAPI,
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    *,
+    reason: str,
+) -> int:
+    """Hard-abort every in-progress AI session linked to an incident.
+
+    Used when an incident is resolved: there's no value (and, at Tier 0, real
+    risk) in the agent continuing to work a closed-out incident. Mirrors the
+    ``/sessions/{id}/stop`` intercept for each running session — cancels the
+    workflow task, expires dangling pending approvals, sets the session to
+    ``stopped`` (with ``ended_at``), and emits a ``session_end`` WS event.
+
+    Does not commit — the caller commits as part of the resolve transaction.
+    Never raises: stopping sessions must not block the resolve. Returns the
+    number of sessions stopped.
+    """
+    stopped = 0
+    try:
+        sessions = await SessionRepo.list_by_incident(db, org_id, incident_id)
+    except Exception:
+        log.exception(
+            "incident.resolve_stop_sessions: list_failed incident=%s", incident_id
+        )
+        return 0
+    for session in sessions:
+        if session.status not in _RUNNING_SESSION_STATUSES:
+            continue
+        try:
+            cancel_session_workflow(app, session_id=session.id)
+            pending = await ApprovalRequestRepo.list_pending(
+                db, org_id, session_id=session.id
+            )
+            for req in pending:
+                await ApprovalRequestRepo.resolve(
+                    db, org_id, req.id, status="expired"
+                )
+            await SessionRepo.set_status(
+                db,
+                org_id,
+                session.id,
+                status="stopped",
+                ended_at=datetime.now(timezone.utc),
+            )
+            stopped += 1
+            await publish(
+                session.id,
+                WSMessage(
+                    type="session_end",
+                    data={"status": "stopped", "summary": reason},
+                ),
+            )
+        except Exception:
+            log.exception(
+                "incident.resolve_stop_sessions: stop_failed incident=%s session=%s",
+                incident_id,
+                session.id,
+            )
+    return stopped

@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Resolved incidents auto-close after a cooldown.** A new background scheduler
+  (`backend/incidents/autoclose.py`, started in the app lifespan) transitions a
+  `resolved` incident to `closed` once it has stayed untouched for
+  `OPSMENDER_INCIDENT_AUTO_CLOSE_HOURS` (default **72h / 3 days**) — so operators
+  don't have to close incidents by hand. "Untouched" is measured by
+  `updated_at`, so any edit/activity resets the clock. Enabled by default
+  (mirrors the retention scheduler); disable with
+  `OPSMENDER_INCIDENT_AUTO_CLOSE_ENABLED=false`. Invalid/non-positive hour values
+  fall back to the default so a typo can't collapse the window. Reuses the
+  idempotent `IncidentRepo.update_status` (which also stops staged escalation).
+- **Resolving an incident stops its in-progress AI sessions.** Resolving an
+  incident (single `PATCH /incidents/{id}` status→resolved, or `POST
+  /incidents/bulk` action=resolve) now hard-aborts every `active` /
+  `awaiting_approval` session linked to that incident — there's no value (and,
+  at Tier 0, real risk) in the agent continuing to work a closed-out incident.
+  Mirrors the `/sessions/{id}/stop` intercept per session (cancels the workflow
+  task, expires dangling pending approvals, sets the session to `stopped` with
+  `ended_at`, emits a `session_end` WS event) via the new
+  `session_runner.stop_incident_sessions`. Already-terminal sessions are left
+  untouched; failures never block the resolve.
 - **Incidents list shows in-progress AI sessions + live refresh.** The incidents
   list/detail responses now carry `ai_session_active` / `ai_session_status`
   (an `active`/`awaiting_approval` session wins; otherwise the latest session's

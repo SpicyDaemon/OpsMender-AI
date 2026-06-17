@@ -138,6 +138,15 @@ async def _lifespan(app: FastAPI):
     app.state.retention_scheduler = retention_scheduler
     await retention_scheduler.start()
 
+    # Incident auto-close scheduler. Enabled by default — resolved incidents
+    # left untouched for OPSMENDER_INCIDENT_AUTO_CLOSE_HOURS (default 72h)
+    # archive to `closed`. Disable with OPSMENDER_INCIDENT_AUTO_CLOSE_ENABLED=false.
+    from backend.incidents.autoclose import IncidentAutoCloseScheduler
+
+    incident_autoclose_scheduler = IncidentAutoCloseScheduler(factory)
+    app.state.incident_autoclose_scheduler = incident_autoclose_scheduler
+    await incident_autoclose_scheduler.start()
+
     # mcp.json file mirror (Sprint 42 step 6). Opt-in via OPSMENDER_MCP_JSON_SYNC.
     # When enabled, reconcile the file against every org's MCP servers on
     # startup so file edits made while the service was down are applied.
@@ -197,6 +206,7 @@ async def _lifespan(app: FastAPI):
     await escalation_scheduler.stop()
     await audit_scheduler.stop()
     await retention_scheduler.stop()
+    await incident_autoclose_scheduler.stop()
     await engine.dispose()
 
 

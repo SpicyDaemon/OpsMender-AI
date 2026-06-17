@@ -511,7 +511,11 @@ class ApprovalRequest(Base):
     justification: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
-    )  # pending | approved | rejected | expired
+    )  # pending | approved | rejected | redirected | expired
+    # Free-text operator note captured at resolution time. Used by the Tier 1
+    # "redirect" decision to carry the operator's steering guidance back into
+    # the workflow so the plan node can re-plan; may also annotate a reject.
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
-from backend.api.schemas import ApprovalListResponse, ApprovalRequestResponse, WSMessage
+from backend.api.schemas import (
+    ApprovalListResponse,
+    ApprovalRedirectRequest,
+    ApprovalRequestResponse,
+    WSMessage,
+)
 from backend.api.routes.ws import publish
 from backend.db.models import User
 from backend.db.repos import ApprovalRequestRepo, SessionRepo
@@ -39,6 +44,7 @@ def _to_ws_message(request) -> WSMessage:
             "action": request.action,
             "justification": request.justification,
             "status": request.status,
+            "resolution_note": request.resolution_note,
             "requested_at": request.requested_at.isoformat(),
             "resolved_at": (
                 request.resolved_at.isoformat() if request.resolved_at else None
@@ -56,6 +62,7 @@ async def _resolve_request(
     *,
     decision: str,
     resolver: User,
+    resolution_note: str | None = None,
 ):
     request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
     if request is None:
@@ -98,6 +105,7 @@ async def _resolve_request(
         request.id,
         status=decision,
         resolved_by=resolver.id,
+        resolution_note=resolution_note,
     )
     if not updated:
         raise HTTPException(
@@ -166,3 +174,31 @@ async def reject_request(
     user: User = Depends(require_role("admin", "operator")),
 ):
     return await _resolve_request(db, org_id, request_id, decision="rejected", resolver=user)
+
+
+@router.post(
+    "/{request_id}/redirect",
+    response_model=ApprovalRequestResponse,
+    summary="Redirect a pending request with free-text steering (Tier 1)",
+)
+async def redirect_request(
+    request_id: uuid.UUID,
+    body: ApprovalRedirectRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Decline the proposed action and steer the AI.
+
+    The operator's ``guidance`` is stored on the request and fed back into the
+    workflow, which loops to the plan node and re-proposes with the steering in
+    context (the Tier 1 interactive co-pilot loop).
+    """
+    return await _resolve_request(
+        db,
+        org_id,
+        request_id,
+        decision="redirected",
+        resolver=user,
+        resolution_note=body.guidance.strip(),
+    )

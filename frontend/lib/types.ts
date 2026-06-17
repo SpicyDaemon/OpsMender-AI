@@ -176,7 +176,8 @@ export type SessionStatus =
   | "awaiting_approval"
   | "completed"
   | "failed"
-  | "timed_out";
+  | "timed_out"
+  | "stopped";
 
 export interface SessionResponse {
   id: string;
@@ -206,6 +207,11 @@ export interface SessionCreate {
   model_provider?: string;
   model_id?: string;
   initial_briefing?: string;
+}
+
+export interface SessionOverrideRequest {
+  // Target tier for an intercept-override: 1 (Approval Required) or 2 (Advisory).
+  tier: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +289,12 @@ export interface AuditListResponse {
 // Approvals
 // ---------------------------------------------------------------------------
 
-export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
+export type ApprovalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "redirected"
+  | "expired";
 
 export interface ApprovalRequestResponse {
   id: string;
@@ -291,6 +302,7 @@ export interface ApprovalRequestResponse {
   action: Record<string, unknown>;
   justification: string | null;
   status: ApprovalStatus;
+  resolution_note: string | null;
   requested_at: string;
   resolved_at: string | null;
   resolved_by: string | null;
@@ -1064,7 +1076,8 @@ export type WSMessageType =
   | "chat_message_user"
   | "chat_message_assistant"
   | "error"
-  | "session_end";
+  | "session_end"
+  | "session_overridden";
 
 export interface WSMessage {
   type: WSMessageType;

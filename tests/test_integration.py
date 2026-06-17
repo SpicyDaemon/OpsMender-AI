@@ -78,8 +78,9 @@ class TestSimulatedEndToEnd:
     """Full pipeline with mocked MCP + StubLLM — validates wiring."""
 
     async def test_full_pipeline_with_safe_actions(self, tmp_path):
-        """Safe actions at Tier 1 should be approved and executed (no approval
-        needed for safe; advisory Tier 2 would block them)."""
+        """At Tier 1, every write — including a safe action — is routed through
+        the approval gate; once the operator approves, it executes. (Advisory
+        Tier 2 would block it outright.)"""
         audit_path = tmp_path / "audit.jsonl"
         skill_def = load_skill_def("examples/SKILL.md")
 
@@ -97,8 +98,27 @@ class TestSimulatedEndToEnd:
                 },
             ]
         )
+        sid = "11111111-1111-1111-1111-111111111111"
         logger = AuditLogger(audit_path)
-        logger.log_session_start("integration-test-001", 1)
+        logger.log_session_start(sid, 1)
+
+        # Tier 1 is interactive — supply an approval service that approves so
+        # the safe action proceeds to execution.
+        import uuid as _uuid
+        from datetime import datetime as _dt
+        from types import SimpleNamespace
+        from backend.approvals.service import ApprovalResolution
+
+        class _AutoApprove:
+            async def request_and_wait(self, *, session_id, action, justification=None):
+                req = SimpleNamespace(
+                    id=_uuid.uuid4(),
+                    status="approved",
+                    action=action,
+                    expires_at=_dt(2030, 1, 1),
+                    resolution_note=None,
+                )
+                return ApprovalResolution(request=req)
 
         graph = build_graph(
             tier=1,
@@ -106,21 +126,22 @@ class TestSimulatedEndToEnd:
             llm=llm,
             mcp_session=session,
             audit_logger=logger,
+            approval_service=_AutoApprove(),
         )
 
         result = await graph.ainvoke(
             {
-                "session_id": "integration-test-001",
+                "session_id": sid,
                 "tier": 1,
                 "incident_description": "Pods crashing in namespace default",
             }
         )
 
-        logger.log_session_end("integration-test-001", 1)
+        logger.log_session_end(sid, 1)
 
         # Assertions on workflow state
         assert result["status"] == "completed"
-        assert result["session_id"] == "integration-test-001"
+        assert result["session_id"] == sid
         assert result["observations"] != ""
         assert result["diagnosis"] != ""
         assert len(result["approved_actions"]) == 1

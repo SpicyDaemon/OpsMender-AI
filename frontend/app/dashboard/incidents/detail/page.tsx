@@ -507,6 +507,7 @@ function IncidentDetailContent() {
         open={showSession}
         onClose={() => setShowSession(false)}
         incidentId={incident.id}
+        isAcknowledged={!!pagingPanel?.assignment?.assigned_to}
         onStarted={(session) => {
           setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
           setActiveSessionId(session.id);
@@ -564,11 +565,13 @@ function StartSessionModal({
   open,
   onClose,
   incidentId,
+  isAcknowledged,
   onStarted,
 }: {
   open: boolean;
   onClose: () => void;
   incidentId: string;
+  isAcknowledged: boolean;
   onStarted: (session: SessionResponse) => void;
 }) {
   const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
@@ -601,6 +604,11 @@ function StartSessionModal({
   }, [open]);
 
   const selectedProvider = providers.find((p) => p.provider === form.model_provider);
+  // Tier 1 / Tier 2 sessions can only be started once the incident is
+  // acknowledged (the backend enforces this; we surface it up-front). A Tier 0
+  // session does not require an ack.
+  const ackRequired = form.tier === 1 || form.tier === 2;
+  const blockedOnAck = ackRequired && !isAcknowledged;
 
   async function handleStart() {
     setError("");
@@ -680,6 +688,12 @@ function StartSessionModal({
               trust the connected MCP server, skill policy, and environment.
             </p>
           )}
+          {blockedOnAck && (
+            <p className="mt-1.5 text-xs font-medium text-status-medium">
+              Acknowledge the incident first — Tier {form.tier} sessions can only
+              be started after an operator acknowledges it.
+            </p>
+          )}
         </div>
 
         <div>
@@ -740,7 +754,7 @@ function StartSessionModal({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleStart} loading={loading}>
+          <Button onClick={handleStart} loading={loading} disabled={blockedOnAck}>
             <Play size={13} /> Start
           </Button>
         </div>

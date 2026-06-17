@@ -304,6 +304,7 @@ import type {
   SessionMessageCreate,
   SessionMessageListResponse,
   SessionMessageResponse,
+  SessionOverrideRequest,
   SessionRollbackRequest,
   SessionRollbackResponse,
   SessionResponse,
@@ -315,6 +316,17 @@ export async function getSession(id: string): Promise<SessionResponse> {
 
 export async function createSession(body: SessionCreate): Promise<SessionResponse> {
   return api.post<SessionResponse>("/sessions", body);
+}
+
+export async function stopSession(id: string): Promise<SessionResponse> {
+  return api.post<SessionResponse>(`/sessions/${id}/stop`);
+}
+
+export async function overrideSession(
+  id: string,
+  body: SessionOverrideRequest,
+): Promise<SessionResponse> {
+  return api.post<SessionResponse>(`/sessions/${id}/override`, body);
 }
 
 export async function listSessions(params?: {
@@ -447,6 +459,13 @@ export async function approveRequest(id: string): Promise<ApprovalRequestRespons
 
 export async function rejectRequest(id: string): Promise<ApprovalRequestResponse> {
   return api.post<ApprovalRequestResponse>(`/approvals/${id}/reject`);
+}
+
+export async function redirectRequest(
+  id: string,
+  guidance: string,
+): Promise<ApprovalRequestResponse> {
+  return api.post<ApprovalRequestResponse>(`/approvals/${id}/redirect`, { guidance });
 }
 
 // ---------------------------------------------------------------------------

@@ -75,7 +75,6 @@ from backend.api.session_runner import cancel_session_workflows
 from backend.ingest.autostart import (
     auto_start_skip_reason,
     cancel_auto_start_for_incident,
-    has_active_session_for_incident,
     load_auto_start_policy,
     schedule_auto_started_session,
 )
@@ -419,7 +418,12 @@ def _auto_start_message(
         return f"Incident {verb}. AI session auto-start failed: {pretty}."
     # status == "skipped"
     if reason == "auto_start_deferred_to_ack":
-        return "Incident created. AI session will start after acknowledgment."
+        return (
+            "Incident created. Acknowledge it, then start the AI session "
+            f"(starts under {label})."
+        )
+    if reason == "auto_start_deferred_to_manual_start":
+        return f"Incident acknowledged. Start the AI session when ready ({label})."
     return f"Incident {verb}."
 
 
@@ -470,40 +474,23 @@ async def _resolve_auto_start_on_create(
 async def _resolve_auto_start_on_ack(
     request: Request, db: AsyncSession, org_id: uuid.UUID, incident
 ) -> tuple[str, str | None, int]:
-    """Start an AI session when an Admin/Operator acknowledges (T1/T2 start here;
-    a T0 incident already started at creation). Never raises; prevents duplicate
-    sessions."""
+    """Acknowledgment no longer auto-starts the AI session.
+
+    Tier 1/2 sessions are started explicitly by an operator *after* acknowledging
+    (the ACK gate in ``create_session`` enforces ack-first). A Tier 0 incident
+    already started its session at creation. This returns a ``skipped`` status so
+    the ACK response carries clear "now start the session" copy. Never raises.
+    """
     try:
         policy = await load_auto_start_policy(
             db, org_id, request.app.state.config, incident=incident
         )
-        tier = policy.session_tier
-        if incident.status in {"resolved", "closed"}:
-            return ("skipped", "auto_start_skipped_terminal_incident", tier)
-        if await has_active_session_for_incident(db, org_id, incident.id):
-            return ("skipped", "session_exists", tier)
-        model = await choose_model_for_incident_service(
-            db,
-            org_id,
-            service_id=incident.service_id,
-            ingestion_model_config_id=getattr(
-                incident, "ingestion_model_config_id", None
-            ),
-        )
-        if model is None:
-            return ("failed", "no_enabled_model", tier)
-        schedule_auto_started_session(
-            request.app, org_id=org_id, incident_id=incident.id, tier=tier
-        )
-        _log.info(
-            "incident.ack_auto_start: queued incident=%s tier=%s", incident.id, tier
-        )
-        return ("queued", None, tier)
+        return ("skipped", "auto_start_deferred_to_manual_start", policy.session_tier)
     except Exception:  # noqa: BLE001 — never block acknowledgment
         _log.exception(
             "incident.ack_auto_start: resolve_failed incident=%s", incident.id
         )
-        return ("failed", "auto_start_error", 2)
+        return ("skipped", "auto_start_deferred_to_manual_start", 2)
 
 
 @router.post(

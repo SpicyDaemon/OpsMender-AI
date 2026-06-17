@@ -1154,7 +1154,15 @@ class ApprovalRequestRepo:
         *,
         status: str,
         resolved_by: uuid.UUID | None = None,
+        resolution_note: str | None = None,
     ) -> bool:
+        values: dict[str, Any] = {
+            "status": status,
+            "resolved_at": datetime.now(timezone.utc),
+            "resolved_by": resolved_by,
+        }
+        if resolution_note is not None:
+            values["resolution_note"] = resolution_note
         stmt = (
             update(ApprovalRequest)
             .where(ApprovalRequest.org_id == org_id)
@@ -1163,11 +1171,7 @@ class ApprovalRequestRepo:
             .where(
                 ApprovalRequest.id == request_id, ApprovalRequest.status == "pending"
             )
-            .values(
-                status=status,
-                resolved_at=datetime.now(timezone.utc),
-                resolved_by=resolved_by,
-            )
+            .values(**values)
         )
         result = await db.execute(stmt)
         return bool(result.rowcount)

@@ -218,6 +218,20 @@ async def _create_approval_request(
         return session, request
 
 
+async def _ack_incident(
+    client: AsyncClient, incident_id: str, headers: dict[str, str]
+) -> None:
+    """Acknowledge an incident so a Tier 1/2 AI session may be started.
+
+    The ACK gate (sessions route) requires an active assignment before a
+    Tier 1/2 session linked to an incident can start.
+    """
+    resp = await client.post(
+        f"/incidents/{incident_id}/ack", json={"via": "web_ui"}, headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+
+
 async def _wait_for_session_status(
     client: AsyncClient,
     session_id: str,
@@ -1339,10 +1353,10 @@ class TestIncidents:
         data = resp.json()
         assert data["incident"]["external_source"] == "opsmender-test"
         assert data["resolved_tier"] == tier
-        # T1/T2 defer the AI session to acknowledgment.
+        # T1/T2 defer the AI session — an operator acknowledges, then starts it.
         assert data["auto_start_status"] == "skipped"
         assert data["auto_start_reason"] == "auto_start_deferred_to_ack"
-        assert "after acknowledgment" in data["message"]
+        assert "start the AI session" in data["message"]
 
         async with app.state.session_factory() as db:
             sessions = await SessionRepo.list_by_incident(
@@ -2031,23 +2045,6 @@ class TestIncidents:
         )
         incident_id = incident.json()["id"]
 
-        await client.post(
-            "/sessions",
-            json={
-                "tier": 2,
-                "incident_id": incident_id,
-            },
-            headers=auth_headers,
-        )
-        await client.post(
-            "/sessions",
-            json={
-                "tier": 1,
-                "incident_id": incident_id,
-            },
-            headers=auth_headers,
-        )
-
         other_incident = await client.post(
             "/incidents",
             json={
@@ -2057,14 +2054,22 @@ class TestIncidents:
             },
             headers=auth_headers,
         )
-        await client.post(
-            "/sessions",
-            json={
-                "tier": 2,
-                "incident_id": other_incident.json()["id"],
-            },
-            headers=auth_headers,
-        )
+        other_id = other_incident.json()["id"]
+
+        # Seed session rows directly — this test only exercises the listing
+        # endpoint, so we skip the start gates (ack + tier) and the background
+        # workflows that POST /sessions would otherwise spawn.
+        async with app.state.session_factory() as db:
+            await SessionRepo.create(
+                db, TEST_ORG_ID, tier=2, incident_id=uuid.UUID(incident_id)
+            )
+            await SessionRepo.create(
+                db, TEST_ORG_ID, tier=1, incident_id=uuid.UUID(incident_id)
+            )
+            await SessionRepo.create(
+                db, TEST_ORG_ID, tier=2, incident_id=uuid.UUID(other_id)
+            )
+            await db.commit()
 
         resp = await client.get(
             f"/incidents/{incident_id}/sessions", headers=auth_headers
@@ -2573,13 +2578,15 @@ class TestIncidentAutoStartPolicy:
         assert data["resolved_tier"] == tier
         assert data["auto_start_status"] == "skipped"
         assert data["auto_start_reason"] == "auto_start_deferred_to_ack"
-        assert "after acknowledgment" in data["auto_start_message"]
+        assert "start the AI session" in data["auto_start_message"]
         assert scheduled == []
 
     @pytest.mark.parametrize("tier", [1, 2])
-    async def test_t1_t2_ack_starts_session(
+    async def test_t1_t2_ack_defers_to_manual_start(
         self, tier, client, app, auth_headers, monkeypatch
     ):
+        # New model (ACK then separate Start): acknowledging takes ownership but
+        # does NOT auto-start the AI session — the operator starts it explicitly.
         service_id = await self._seed_service(app)
         await self._set_tier(client, auth_headers, tier)
         scheduled = self._capture_schedule(monkeypatch)
@@ -2594,10 +2601,11 @@ class TestIncidentAutoStartPolicy:
         )
         assert ack.status_code == 200, ack.text
         body = ack.json()
-        assert body["auto_start_status"] == "queued"
+        assert body["auto_start_status"] == "skipped"
+        assert body["auto_start_reason"] == "auto_start_deferred_to_manual_start"
         assert body["resolved_tier"] == tier
-        assert f"auto-started under T{tier}" in body["auto_start_message"]
-        assert len(scheduled) == 1
+        assert "Start the AI session" in body["auto_start_message"]
+        assert scheduled == []  # ACK never auto-starts
 
     async def test_viewer_cannot_ack(
         self, client, app, auth_headers, viewer_headers
@@ -2612,15 +2620,16 @@ class TestIncidentAutoStartPolicy:
         )
         assert resp.status_code == 403
 
-    async def test_ack_does_not_duplicate_active_session(
+    async def test_ack_never_auto_starts_a_session(
         self, client, app, auth_headers, monkeypatch
     ):
+        # New model: ACK never auto-starts (deferred to a manual Start), so it
+        # also never spawns a duplicate when a session already exists.
         service_id = await self._seed_service(app)
         await self._set_tier(client, auth_headers, 1)
         scheduled = self._capture_schedule(monkeypatch)
         created = await self._create(client, auth_headers, service_id)
         incident_id = created.json()["id"]
-        # An active session already exists → ACK must not start another.
         async with app.state.session_factory() as db:
             await SessionRepo.create(
                 db, TEST_ORG_ID, tier=1, incident_id=uuid.UUID(incident_id)
@@ -2633,7 +2642,7 @@ class TestIncidentAutoStartPolicy:
         )
         assert ack.status_code == 200
         assert ack.json()["auto_start_status"] == "skipped"
-        assert ack.json()["auto_start_reason"] == "session_exists"
+        assert ack.json()["auto_start_reason"] == "auto_start_deferred_to_manual_start"
         assert scheduled == []
 
     async def test_t0_no_model_fails_but_incident_created(
@@ -2810,6 +2819,8 @@ class TestSessions:
             headers=auth_headers,
         )
         inc_id = inc_resp.json()["id"]
+        # Tier 1 sessions require the incident to be acknowledged first.
+        await _ack_incident(client, inc_id, auth_headers)
 
         resp = await client.post(
             "/sessions",
@@ -2861,6 +2872,7 @@ class TestSessions:
         )
         assert incident.status_code == 201, incident.text
         assert incident.json()["ingestion_model_config_id"] == str(model.id)
+        await _ack_incident(client, incident.json()["id"], auth_headers)
 
         session = await client.post(
             "/sessions",
@@ -3029,6 +3041,7 @@ class TestSessions:
         )
         assert inc_resp.status_code == 201
         inc_id = inc_resp.json()["id"]
+        await _ack_incident(client, inc_id, auth_headers)
 
         resp = await client.post(
             "/sessions",
@@ -3148,6 +3161,7 @@ class TestSessions:
             await db.commit()
             incident_id = incident.id
 
+        await _ack_incident(client, str(incident_id), auth_headers)
         resp = await client.post(
             "/sessions",
             json={"incident_id": str(incident_id), "tier": 2},
@@ -3225,6 +3239,7 @@ class TestSessions:
             await db.commit()
             incident_id = incident.id
 
+        await _ack_incident(client, str(incident_id), auth_headers)
         resp = await client.post(
             "/sessions",
             json={"incident_id": str(incident_id), "tier": 1},
@@ -3246,6 +3261,85 @@ class TestSessions:
             and payload["session"]["id"] == session_id
             for payload in deliveries
         )
+
+    # -- ACK gate + intercept (Stop / Override) -----------------------------
+
+    async def test_create_session_tier12_requires_ack(
+        self, client: AsyncClient, auth_headers
+    ):
+        service_id = await _create_manual_service_via_api(
+            client, auth_headers, "AckGate"
+        )
+        inc_resp = await client.post(
+            "/incidents",
+            json={"title": "needs ack", "description": "d", "service_id": service_id},
+            headers=auth_headers,
+        )
+        inc_id = inc_resp.json()["id"]
+
+        # Tier 2 + incident, not acknowledged → 409.
+        resp = await client.post(
+            "/sessions",
+            json={"incident_id": inc_id, "tier": 2},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        assert "acknowledge" in resp.json()["detail"].lower()
+
+        # After acknowledging, the start succeeds.
+        await _ack_incident(client, inc_id, auth_headers)
+        ok = await client.post(
+            "/sessions",
+            json={"incident_id": inc_id, "tier": 2},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 201
+
+    async def test_stop_running_session(self, client: AsyncClient, auth_headers):
+        # No-incident session is created "active" without a background workflow.
+        created = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
+        sid = created.json()["id"]
+
+        resp = await client.post(f"/sessions/{sid}/stop", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "stopped"
+
+        # Stopping an already-stopped session is a conflict.
+        again = await client.post(f"/sessions/{sid}/stop", headers=auth_headers)
+        assert again.status_code == 409
+
+    async def test_override_session_converts_tier_in_place(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        app.state.workflow_start_delay_seconds = 0
+        # A no-incident Tier 0 session (requested_tier wins) created "active".
+        created = await client.post("/sessions", json={"tier": 0}, headers=auth_headers)
+        sid = created.json()["id"]
+
+        resp = await client.post(
+            f"/sessions/{sid}/override", json={"tier": 1}, headers=auth_headers
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] == sid
+        assert body["tier"] == 1
+        assert body["status"] == "active"
+
+    async def test_override_cannot_increase_autonomy(
+        self, client: AsyncClient, auth_headers
+    ):
+        created = await client.post("/sessions", json={"tier": 1}, headers=auth_headers)
+        sid = created.json()["id"]
+        # Tier 0 target is rejected by the schema (tier must be 1 or 2) → 422.
+        resp = await client.post(
+            f"/sessions/{sid}/override", json={"tier": 0}, headers=auth_headers
+        )
+        assert resp.status_code == 422
+        # Tier 1 → Tier 1 (no reduction) is a 400.
+        same = await client.post(
+            f"/sessions/{sid}/override", json={"tier": 1}, headers=auth_headers
+        )
+        assert same.status_code == 400
 
 
 # ===========================================================================
@@ -6914,6 +7008,31 @@ class TestApprovals:
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "rejected"
+
+    async def test_redirect_request_stores_guidance(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        _, request = await _create_approval_request(app)
+        resp = await client.post(
+            f"/approvals/{request.id}/redirect",
+            json={"guidance": "drain the node first, then restart the pod"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "redirected"
+        assert data["resolution_note"] == "drain the node first, then restart the pod"
+
+    async def test_redirect_requires_guidance(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        _, request = await _create_approval_request(app)
+        resp = await client.post(
+            f"/approvals/{request.id}/redirect",
+            json={"guidance": ""},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
 
     async def test_viewer_cannot_approve(
         self, client: AsyncClient, app, viewer_headers

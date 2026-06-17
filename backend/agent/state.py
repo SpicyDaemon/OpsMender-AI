@@ -90,6 +90,16 @@ class IncidentState(TypedDict, total=False):
     blocked_actions: list[dict[str, Any]]    # actions that were blocked
     approval_requests: list[dict[str, Any]]  # approval records created at Tier 1
 
+    # -- Tier 1 interactive redirect loop ------------------------------------
+    # When an operator resolves an approval with "redirect" + free-text
+    # guidance, the tier_gate stops the current plan pass and the graph loops
+    # back to the plan node. ``operator_guidance`` accumulates the steering so
+    # the re-plan incorporates every redirect; ``redirect_requested`` is the
+    # per-pass routing flag; ``redirect_count`` bounds the loop.
+    operator_guidance: Annotated[list[str], operator.add]
+    redirect_requested: bool
+    redirect_count: int
+
     # -- execution -----------------------------------------------------------
     tool_calls: Annotated[list[ToolCallRecord], operator.add]
 

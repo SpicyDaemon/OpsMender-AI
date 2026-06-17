@@ -194,13 +194,18 @@ class TestE2EIncidentFlow:
         assert inc_resp.status_code == 201
         incident_id = inc_resp.json()["id"]
 
-        # 3. Operator starts a Tier 1 session on that incident.
+        # 3. Operator acknowledges (required before a Tier 1/2 start) and then
+        #    starts a Tier 1 session on that incident.
+        ack_resp = await client.post(
+            f"/incidents/{incident_id}/ack", json={"via": "web_ui"}, headers=operator
+        )
+        assert ack_resp.status_code == 200
         sess_resp = await client.post(
             "/sessions",
             json={"incident_id": incident_id, "tier": 1},
             headers=operator,
         )
-        assert sess_resp.status_code == 201
+        assert sess_resp.status_code == 201, sess_resp.text
         session_id = uuid.UUID(sess_resp.json()["id"])
 
         # 4. Drive the tier gate — a destructive action requires approval.
@@ -228,34 +233,37 @@ class TestE2EIncidentFlow:
         }
         gate_task = asyncio.create_task(gate(state))
 
-        # 5. Operator sees the pending approval via the REST API.
-        # Poll briefly since the gate task creates the row asynchronously.
-        approval_id: str | None = None
-        for _ in range(100):
-            if gate_task.done() and gate_task.exception():
-                raise gate_task.exception()
+        # 5-6. At Tier 1 EVERY write requires approval, so the gate surfaces one
+        # request per action (get_pods, then delete_pod). Approve each as it
+        # appears until the gate task completes.
+        approved_ids: set[str] = set()
+        for _ in range(300):
+            if gate_task.done():
+                if gate_task.exception():
+                    raise gate_task.exception()
+                break
             resp = await client.get(
                 "/approvals", params={"status": "pending"}, headers=operator
             )
             assert resp.status_code == 200, resp.text
-            items = resp.json()["items"]
-            session_approvals = [a for a in items if a["session_id"] == str(session_id)]
-            if session_approvals:
-                approval_id = session_approvals[0]["id"]
-                break
+            items = [
+                a
+                for a in resp.json()["items"]
+                if a["session_id"] == str(session_id) and a["id"] not in approved_ids
+            ]
+            for a in items:
+                approve_resp = await client.post(
+                    f"/approvals/{a['id']}/approve", headers=admin
+                )
+                assert approve_resp.status_code == 200
+                assert approve_resp.json()["status"] == "approved"
+                approved_ids.add(a["id"])
             await asyncio.sleep(0.02)
-        assert approval_id, "approval row never appeared via the API"
 
-        # 6. Admin approves via the REST endpoint.
-        approve_resp = await client.post(
-            f"/approvals/{approval_id}/approve", headers=admin
-        )
-        assert approve_resp.status_code == 200
-        assert approve_resp.json()["status"] == "approved"
-
-        # 7. Gate resumes and reports the action as approved.
+        # 7. Gate resumes and reports both actions as approved.
         result = await gate_task
-        assert len(result["approved_actions"]) == 2  # safe + approved destructive
+        assert len(approved_ids) == 2  # both safe and destructive required approval
+        assert len(result["approved_actions"]) == 2
         assert len(result["blocked_actions"]) == 0
 
         # 8. Execute the approved plan with a mock MCP session, writing
@@ -340,11 +348,17 @@ class TestE2EIncidentFlow:
         assert inc_resp.status_code == 201, inc_resp.text
         incident_id = inc_resp.json()["id"]
 
+        # Tier 1 start requires the incident acknowledged first.
+        ack_resp = await client.post(
+            f"/incidents/{incident_id}/ack", json={"via": "web_ui"}, headers=operator
+        )
+        assert ack_resp.status_code == 200
         sess_resp = await client.post(
             "/sessions",
             json={"incident_id": incident_id, "tier": 1},
             headers=operator,
         )
+        assert sess_resp.status_code == 201, sess_resp.text
         session_id = uuid.UUID(sess_resp.json()["id"])
 
         skill_def = load_skill_def(SKILL_MD)

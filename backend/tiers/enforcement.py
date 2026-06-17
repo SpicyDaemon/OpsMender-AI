@@ -181,9 +181,12 @@ def check(
     else:
         # 4. Legacy skills continue to use the classification matrix.
         permitted, reason = _MATRIX[classification][tier]
-        requires_approval = (
-            tier == 1 and classification == "destructive" and permitted
-        )
+        # Tier 1 is interactive: for classification-only (legacy) skills EVERY
+        # permitted write — safe, caution, and destructive alike — routes
+        # through the operator approval gate. Skills that declare explicit
+        # per-operation tier policies keep their declared mode (handled in the
+        # explicit-tiers branch above, where ``policy.mode == "approval"``).
+        requires_approval = tier == 1 and permitted
 
     # 5. Tier 0 reversible floor. Explicit T0 policy may opt out with
     #    ``require_reversible: false``; legacy operations retain the old floor.

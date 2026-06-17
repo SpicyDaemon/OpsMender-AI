@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Interactive Tier 1 — every write needs approval, with operator "redirect".**
+  For classification-only (legacy) MCP Skills, Tier 1 now routes **every**
+  permitted write (safe/caution/destructive) through the operator approval gate,
+  not just destructive (Skills that declare explicit per-operation tier policies
+  keep their declared `mode`). Beyond approve/reject, the operator can
+  **redirect** with free-text steering: `POST /approvals/{id}/redirect` stores the
+  guidance in the new `approval_requests.resolution_note` column (migration
+  `b7c8d9e0f1a2`), and the LangGraph workflow loops `tier_gate → plan` to
+  re-propose with the guidance in context (bounded by `MAX_TIER1_REDIRECTS=15`;
+  non-Tier-0 sessions run with recursion_limit 60).
+- **Live session intercept — Stop / Override.** Admins (any incident) and
+  operators can intercept a running session: `POST /sessions/{id}/stop`
+  hard-aborts the workflow task (status → `stopped`) and `POST /sessions/{id}/override`
+  converts the session **in place** to a less-autonomous Tier 1/2, assigns the
+  incident to the operator, and re-runs under supervision. Backed by a
+  single-session `cancel_session_workflow` over the existing named-task registry.
+  The session page gains Stop / Override controls and a per-approval **Redirect**
+  box; the Start Session modal disables Start until a Tier 1/2 incident is
+  acknowledged.
+
+### Changed
+
+- **Tier 1/2 sessions are ACK-then-Start (no auto-start on acknowledge).**
+  Acknowledging a Tier 1/2 incident now records ownership but **no longer
+  auto-starts** the AI session — an operator starts it explicitly, and
+  `POST /sessions` rejects a Tier 1/2 start with `409` until the incident is
+  acknowledged. (Tier 0 still auto-starts on incident creation.) The ACK toast
+  copy now reads "Start the AI session when ready."
+
 ### Removed
 
 - **Legacy ingest auto-start controls.** Now that AI session auto-start is purely

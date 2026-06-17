@@ -53,6 +53,12 @@ from backend.workflow.rollback import reconstruct_tool_calls, replay_compensatin
 
 log = logging.getLogger(__name__)
 
+# Graph recursion limit for non-Tier-0 sessions. Tier 1 is interactive: each
+# operator redirect loops plan -> tier_gate once, so the limit must sit
+# comfortably above ``MAX_TIER1_REDIRECTS`` worth of loop steps plus the base
+# pipeline. Tier 0 uses its own wall-clock timeout instead.
+_INTERACTIVE_RECURSION_LIMIT = 60
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -572,6 +578,10 @@ async def _run_session_workflow_inner(
                 }
                 for msg in pending_messages
             ],
+            # Tier 1 interactive redirect loop state (seeded empty).
+            "operator_guidance": [],
+            "redirect_requested": False,
+            "redirect_count": 0,
         }
 
         graph_kwargs: dict[str, Any] = {
@@ -647,7 +657,10 @@ async def _run_session_workflow_inner(
                     seconds=config.tier0.max_session_seconds,
                 )
             else:
-                result = await graph.ainvoke(initial_state)
+                result = await graph.ainvoke(
+                    initial_state,
+                    {"recursion_limit": _INTERACTIVE_RECURSION_LIMIT},
+                )
 
         rollback_summary = None
         final_status = result.get("status", "completed")
@@ -776,3 +789,21 @@ async def cancel_session_workflows(
         task.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def cancel_session_workflow(app: FastAPI, *, session_id: uuid.UUID) -> bool:
+    """Hard-abort the running workflow task for *session_id* (intercept).
+
+    Returns True if a live (not-yet-finished) task was found and cancelled.
+    Cancellation raises ``CancelledError`` inside the workflow, which — unlike a
+    normal exception — is **not** caught by the runner's ``except Exception``
+    block, so the runner does not overwrite the terminal status the caller sets
+    (e.g. ``stopped``). Does not await: the caller sets state authoritatively.
+    """
+    name = f"session-workflow:{session_id}"
+    cancelled = False
+    for task in list(app.state.session_tasks):
+        if not task.done() and task.get_name() == name:
+            task.cancel()
+            cancelled = True
+    return cancelled

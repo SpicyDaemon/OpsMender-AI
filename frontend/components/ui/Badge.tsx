@@ -19,10 +19,12 @@ const VARIANTS = {
   failed: "bg-status-critical-bg text-status-critical border-status-critical-border",
   timed_out: "bg-status-high-bg text-status-high border-status-high-border",
   paused: "bg-status-high-bg text-status-high border-status-high-border",
+  stopped: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
   // approval status
   pending: "bg-status-high-bg text-status-high border-status-high-border",
   approved: "bg-status-low-bg text-status-low border-status-low-border",
   rejected: "bg-status-critical-bg text-status-critical border-status-critical-border",
+  redirected: "bg-status-info-bg text-status-info border-status-info-border",
   expired: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
   // generic
   default: "bg-status-neutral-bg text-fg-secondary border-status-neutral-border",

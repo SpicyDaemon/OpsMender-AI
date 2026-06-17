@@ -402,6 +402,14 @@ class SessionCreate(BaseModel):
     initial_briefing: Optional[str] = Field(default=None, max_length=10000)
 
 
+class SessionOverrideRequest(BaseModel):
+    """Intercept a running session: stop the AI and continue under operator
+    control at a less-autonomous tier (Tier 1 Approval Required or Tier 2
+    Advisory Only). Cannot override into Tier 0."""
+
+    tier: int = Field(..., ge=1, le=2)
+
+
 class SessionResponse(BaseModel):
     id: uuid.UUID
     incident_id: Optional[uuid.UUID]
@@ -497,12 +505,19 @@ class ApprovalRequestResponse(BaseModel):
     action: dict[str, Any]
     justification: Optional[str]
     status: str
+    resolution_note: Optional[str] = None
     requested_at: datetime
     resolved_at: Optional[datetime]
     resolved_by: Optional[uuid.UUID]
     expires_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ApprovalRedirectRequest(BaseModel):
+    """Tier 1 redirect — free-text steering the AI folds into its next plan."""
+
+    guidance: str = Field(..., min_length=1, max_length=4000)
 
 
 class ApprovalListResponse(BaseModel):

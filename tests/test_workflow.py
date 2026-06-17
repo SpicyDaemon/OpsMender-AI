@@ -411,7 +411,10 @@ class TestTierGate:
     """The tier gate is the most critical node — it MUST enforce the
     tier/skill matrix programmatically, not via LLM reasoning."""
 
-    def test_safe_action_permitted_at_tier_1(self):
+    def test_safe_action_requires_approval_at_tier_1(self):
+        # New model: Tier 1 is interactive — EVERY write (incl. safe) routes to
+        # the approval gate. With no approval service wired (sync gate), the
+        # action is blocked pending one rather than auto-approved.
         gate = _build_tier_gate(tier=1, skill_def=_skill_def())
         state = _base_state(
             plan=[
@@ -419,10 +422,11 @@ class TestTierGate:
             ]
         )
         result = gate(state)
-        assert len(result["approved_actions"]) == 1
-        assert len(result["blocked_actions"]) == 0
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 1
+        assert "approval service" in result["blocked_actions"][0]["block_reason"]
 
-    def test_caution_action_permitted_at_tier_1(self):
+    def test_caution_action_requires_approval_at_tier_1(self):
         gate = _build_tier_gate(tier=1, skill_def=_skill_def())
         state = _base_state(
             plan=[
@@ -430,8 +434,9 @@ class TestTierGate:
             ]
         )
         result = gate(state)
-        assert len(result["approved_actions"]) == 1
-        assert len(result["blocked_actions"]) == 0
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 1
+        assert "approval service" in result["blocked_actions"][0]["block_reason"]
 
     def test_tier_2_advisory_blocks_safe_and_caution(self):
         # New model: Tier 2 is advisory — even safe/caution actions are blocked.
@@ -480,9 +485,9 @@ class TestTierGate:
         assert len(result["blocked_actions"]) == 1
         assert result["blocked_actions"][0]["classification"] == "unknown"
 
-    def test_mixed_actions_split_correctly(self):
-        # At Tier 1: safe + caution auto-approve; destructive is blocked by the
-        # sync gate (it needs an approval service).
+    def test_mixed_actions_all_require_approval_at_tier_1(self):
+        # New model: at Tier 1 every write (safe, caution, AND destructive)
+        # routes to approval; the sync gate (no approval service) blocks all.
         gate = _build_tier_gate(tier=1, skill_def=_skill_def())
         state = _base_state(
             plan=[
@@ -492,8 +497,8 @@ class TestTierGate:
             ]
         )
         result = gate(state)
-        assert len(result["approved_actions"]) == 2
-        assert len(result["blocked_actions"]) == 1
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 3
 
     def test_empty_plan(self):
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
@@ -860,10 +865,15 @@ class TestFullGraphWithLLM:
                 "incident_description": "test",
             }
         )
-        # Tier 1: get_pods (safe) approved, delete_pod (destructive) blocked
-        assert len(result["approved_actions"]) == 1
-        assert len(result["blocked_actions"]) == 1
-        assert result["blocked_actions"][0]["tool_name"] == "delete_pod"
+        # New model: Tier 1 routes every write to approval. With no approval
+        # service wired (sync gate), both get_pods (safe) and delete_pod
+        # (destructive) are blocked pending approval.
+        assert len(result["approved_actions"]) == 0
+        assert len(result["blocked_actions"]) == 2
+        assert {a["tool_name"] for a in result["blocked_actions"]} == {
+            "get_pods",
+            "delete_pod",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -1011,22 +1021,48 @@ class TestFullGraphWithMCP:
         session.call_tool = AsyncMock(return_value=_mock_mcp_result("pods ok"))
         logger = AuditLogger(tmp_path / "audit.jsonl")
 
+        # New model: Tier 1 routes every write to the approval gate. Use an
+        # approval service that approves get_pods and rejects the rest so the
+        # pipeline still exercises one approved → executed action and one
+        # blocked action.
+        import uuid as _uuid
+        from datetime import datetime as _dt
+        from types import SimpleNamespace
+        from backend.approvals.service import ApprovalResolution
+
+        class _ApproveSafeRejectRest:
+            async def request_and_wait(self, *, session_id, action, justification=None):
+                approve = action.get("tool_name") == "get_pods"
+                req = SimpleNamespace(
+                    id=_uuid.uuid4(),
+                    status="approved" if approve else "rejected",
+                    action=action,
+                    expires_at=_dt(2030, 1, 1),
+                    resolution_note=None,
+                )
+                return ApprovalResolution(
+                    request=req,
+                    block_reason=None if approve else "rejected by test",
+                )
+
         graph = build_graph(
             tier=1,
             skill_def=_skill_def(),
             llm=PlanningLLM(),
             mcp_session=session,
             audit_logger=logger,
+            approval_service=_ApproveSafeRejectRest(),
         )
         result = await graph.ainvoke(
             {
-                "session_id": "e2e-mcp-001",
+                # Async tier_gate parses session_id as a UUID (approval rows).
+                "session_id": "11111111-1111-1111-1111-111111111111",
                 "tier": 1,
                 "incident_description": "pods crashing",
             }
         )
 
-        # Tier 1: get_pods (safe) approved + executed, delete_pod (destructive) blocked
+        # get_pods (approved) executes; delete_pod (rejected) is blocked.
         assert len(result["approved_actions"]) == 1
         assert len(result["blocked_actions"]) == 1
         assert len(result["tool_calls"]) == 1

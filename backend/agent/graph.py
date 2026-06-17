@@ -105,6 +105,22 @@ def validate_workflow_node_order(node_order: list[str] | None) -> list[str]:
     return cleaned
 
 
+def _make_redirect_router(*, next_node: str):
+    """Build the conditional router used on the ``tier_gate`` edge.
+
+    Returns ``"plan"`` when the gate flagged a Tier 1 redirect (loop back to
+    re-plan with operator guidance), otherwise ``next_node`` (continue the
+    pipeline, normally ``execute``).
+    """
+
+    def _route(state) -> str:
+        if state.get("redirect_requested"):
+            return "plan"
+        return next_node
+
+    return _route
+
+
 def _wrap_node_with_events(fn, *, node_name: str, publisher):
     async def _run(state):
         await publisher(node_name, "started", state)
@@ -282,10 +298,24 @@ def build_graph(
     for node_name in node_order:
         builder.add_node(node_name, node_impls[node_name])
 
-    # -- wire edges (linear pipeline) ----------------------------------------
+    # -- wire edges ----------------------------------------------------------
+    # Mostly a linear pipeline. The one exception is ``tier_gate``: at Tier 1
+    # an operator can "redirect" a proposed action with free-text guidance, in
+    # which case the gate sets ``redirect_requested`` and the conditional edge
+    # routes back to the ``plan`` node so the agent re-plans with the steering
+    # in context. Without a plan node there is nothing to loop back to, so the
+    # edge stays linear.
     builder.add_edge(START, node_order[0])
+    can_loop = "plan" in node_order
     for current, nxt in zip(node_order, node_order[1:]):
-        builder.add_edge(current, nxt)
+        if current == "tier_gate" and can_loop:
+            builder.add_conditional_edges(
+                "tier_gate",
+                _make_redirect_router(next_node=nxt),
+                {"plan": "plan", nxt: nxt},
+            )
+        else:
+            builder.add_edge(current, nxt)
     builder.add_edge(node_order[-1], END)
 
     return builder.compile()

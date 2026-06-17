@@ -26,10 +26,15 @@ def _as_utc(dt: datetime) -> datetime:
 
 @dataclass
 class ApprovalResolution:
-    """Final resolution for one approval request."""
+    """Final resolution for one approval request.
+
+    ``guidance`` carries the operator's free-text steering when the request was
+    resolved with the Tier 1 ``redirected`` decision; ``None`` otherwise.
+    """
 
     request: ApprovalRequest
     block_reason: str | None = None
+    guidance: str | None = None
 
 
 class ApprovalService:
@@ -115,6 +120,11 @@ class ApprovalService:
                     return ApprovalResolution(
                         request=request,
                         block_reason=self._block_reason(request.status),
+                        guidance=(
+                            request.resolution_note
+                            if request.status == "redirected"
+                            else None
+                        ),
                     )
 
                 if self._now_fn() >= _as_utc(request.expires_at):
@@ -158,6 +168,9 @@ class ApprovalService:
             )
             return "timed_out"
 
+        # approved / rejected / redirected all return the session to "active":
+        # the workflow keeps running (execute the approved action, skip the
+        # rejected one, or loop back to plan with redirect guidance).
         await SessionRepo.set_status(db, self._org_id, request.session_id, status="active")
         return "active"
 
@@ -176,6 +189,7 @@ class ApprovalService:
             "action": request.action,
             "justification": request.justification,
             "status": request.status,
+            "resolution_note": request.resolution_note,
             "requested_at": request.requested_at.isoformat(),
             "resolved_at": (
                 request.resolved_at.isoformat() if request.resolved_at else None
@@ -190,4 +204,5 @@ class ApprovalService:
             return "Approval rejected by human operator"
         if status == "expired":
             return "Approval timed out before human response"
+        # "redirected" is not a block — the workflow re-plans with guidance.
         return None

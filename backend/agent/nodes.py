@@ -84,6 +84,9 @@ Available tools (from skill definition):
 Preferred MCP servers for this incident:
 {preferred_mcp_servers}
 
+Operator guidance (the operator redirected your previous plan — follow this):
+{operator_guidance}
+
 Current tier: {tier} (determines what actions are allowed)
 
 Propose a list of remediation actions.  For each action, provide:
@@ -415,6 +418,21 @@ def diagnose(state: IncidentState) -> dict:
 # plan
 # ---------------------------------------------------------------------------
 
+# Defensive bound on the Tier 1 interactive redirect loop. Each redirect loops
+# plan -> tier_gate once; this caps how many times the operator can redirect a
+# single session before the gate stops looping (the graph recursion_limit is
+# set comfortably above this in the session runner).
+MAX_TIER1_REDIRECTS = 15
+
+
+def _format_operator_guidance(state: IncidentState) -> str:
+    """Render accumulated operator redirect guidance for the plan prompt."""
+    guidance = state.get("operator_guidance", []) or []
+    if not guidance:
+        return "(none — this is your first plan for the incident)"
+    return "\n".join(f"- {item}" for item in guidance)
+
+
 def _build_plan(
     llm: LLM,
     tier: int,
@@ -441,6 +459,7 @@ def _build_plan(
                 f"- {name}" for name in state.get("preferred_mcp_servers", [])
             )
             or "(none configured)",
+            operator_guidance=_format_operator_guidance(state),
             tier=tier,
         )
         raw = _invoke_multi_agent(
@@ -493,6 +512,7 @@ def _build_plan_with_tool_names(
                 f"- {name}" for name in state.get("preferred_mcp_servers", [])
             )
             or "(none configured)",
+            operator_guidance=_format_operator_guidance(state),
             tier=tier,
         )
         raw = _invoke_multi_agent(
@@ -594,6 +614,7 @@ def _build_tier_gate(
         status = state.get("status")
         error = state.get("error")
         session_id = uuid.UUID(state["session_id"])
+        redirect_count = int(state.get("redirect_count", 0) or 0)
 
         for action in proposed:
             tool_name = action.get("tool_name", "")
@@ -605,26 +626,55 @@ def _build_tier_gate(
                     action=action,
                     justification=action.get("justification"),
                 )
+                req_status = resolution.request.status
                 approval_requests.append({
                     "request_id": str(resolution.request.id),
-                    "status": resolution.request.status,
+                    "status": req_status,
                     "action": resolution.request.action,
                     "expires_at": resolution.request.expires_at.isoformat(),
                 })
-                if resolution.request.status == "approved":
+                if req_status == "approved":
                     approved.append({
                         **action,
                         "approval_request_id": str(resolution.request.id),
                     })
+                elif req_status == "redirected" and redirect_count < MAX_TIER1_REDIRECTS:
+                    # Operator steered the AI. Abandon the rest of this plan
+                    # pass and loop back to the plan node with the guidance in
+                    # context — the conditional edge after tier_gate routes on
+                    # ``redirect_requested``. Already-approved actions from this
+                    # same pass are intentionally dropped (the operator chose a
+                    # different course of action).
+                    guidance = (resolution.guidance or "").strip()
+                    update: dict[str, Any] = {
+                        "approved_actions": [],
+                        "blocked_actions": [],
+                        "approval_requests": approval_requests,
+                        "redirect_requested": True,
+                        "redirect_count": redirect_count + 1,
+                        "status": status,
+                        "error": error,
+                    }
+                    if guidance:
+                        update["operator_guidance"] = [guidance]
+                    return update
                 else:
+                    # rejected, expired, or a redirect past the loop cap.
+                    block_reason = resolution.block_reason or _tier_block_reason(
+                        req_status
+                    )
+                    if req_status == "redirected":
+                        block_reason = (
+                            f"Maximum Tier 1 redirects reached "
+                            f"({MAX_TIER1_REDIRECTS}); redirect loop stopped."
+                        )
                     blocked.append({
                         **action,
-                        "block_reason": resolution.block_reason
-                        or _tier_block_reason(resolution.request.status),
+                        "block_reason": block_reason,
                         "classification": enforcement.classification,
                         "approval_request_id": str(resolution.request.id),
                     })
-                    if resolution.request.status == "expired":
+                    if req_status == "expired":
                         status = "timed_out"
                         error = resolution.block_reason
                 continue
@@ -642,6 +692,8 @@ def _build_tier_gate(
             "approved_actions": approved,
             "blocked_actions": blocked,
             "approval_requests": approval_requests,
+            "redirect_requested": False,
+            "redirect_count": redirect_count,
             "status": status,
             "error": error,
         }

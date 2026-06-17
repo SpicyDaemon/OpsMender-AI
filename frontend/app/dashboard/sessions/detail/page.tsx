@@ -10,12 +10,15 @@ import {
   CircleDot,
   Clock,
   ClipboardCopy,
+  CornerUpRight,
   Eye,
   GitBranch,
   MessageSquare,
   Search,
   Send,
   Shield,
+  Split,
+  StopCircle,
   Terminal,
   Wrench,
   XCircle,
@@ -29,9 +32,12 @@ import {
   listApprovals,
   listMCPServers,
   listSessionMessages,
+  overrideSession,
+  redirectRequest,
   rollbackSession,
   rejectRequest,
   sendSessionMessage,
+  stopSession,
 } from "@/lib/api";
 import type {
   ApprovalRequestResponse,
@@ -369,6 +375,10 @@ function SessionPageContent() {
   const [sendError, setSendError] = useState("");
   const [timerTick, setTimerTick] = useState(0);
   const [showRollback, setShowRollback] = useState(false);
+  // Intercept (Stop / Override) + Tier 1 redirect steering.
+  const [intercepting, setIntercepting] = useState(false);
+  const [interceptError, setInterceptError] = useState("");
+  const [redirectDrafts, setRedirectDrafts] = useState<Record<string, string>>({});
   // Sprint 58 Step 3: loaded once for ToolCallCard's best-effort
   // tool-name → MCP-server-name lookup. A miss just renders "—".
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
@@ -471,6 +481,20 @@ function SessionPageContent() {
           });
           refreshApprovals();
         }
+        if (msg.type === "session_overridden") {
+          const newTier = msg.data.tier as number | undefined;
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: "active",
+                  tier: typeof newTier === "number" ? newTier : prev.tier,
+                  ended_at: null,
+                }
+              : prev,
+          );
+          refreshApprovals();
+        }
         if (msg.type === "session_end") {
           setSession((prev) =>
             prev
@@ -534,6 +558,71 @@ function SessionPageContent() {
       ...prev,
       { id: idGen(), kind: "approval", label: "Approval rejected (by you)", ts: new Date() },
     ]);
+  }
+
+  async function handleRedirect(approvalId: string) {
+    const guidance = (redirectDrafts[approvalId] ?? "").trim();
+    if (!guidance) return;
+    await redirectRequest(approvalId, guidance);
+    setPendingApprovals((prev) => prev.filter((a) => a.id !== approvalId));
+    setRedirectDrafts((prev) => {
+      const next = { ...prev };
+      delete next[approvalId];
+      return next;
+    });
+    setEvents((prev) => [
+      ...prev,
+      {
+        id: idGen(),
+        kind: "approval",
+        label: "Redirected the AI (by you)",
+        detail: guidance,
+        ts: new Date(),
+      },
+    ]);
+  }
+
+  async function handleStop() {
+    if (!id || intercepting) return;
+    setInterceptError("");
+    setIntercepting(true);
+    try {
+      const updated = await stopSession(id);
+      setSession(updated);
+      setPendingApprovals([]);
+      setEvents((prev) => [
+        ...prev,
+        { id: idGen(), kind: "end", label: "Session stopped (by you)", ts: new Date() },
+      ]);
+    } catch (err) {
+      setInterceptError(err instanceof Error ? err.message : "Failed to stop session");
+    } finally {
+      setIntercepting(false);
+    }
+  }
+
+  async function handleOverride(targetTier: number) {
+    if (!id || intercepting) return;
+    setInterceptError("");
+    setIntercepting(true);
+    try {
+      const updated = await overrideSession(id, { tier: targetTier });
+      setSession(updated);
+      setPendingApprovals([]);
+      setEvents((prev) => [
+        ...prev,
+        {
+          id: idGen(),
+          kind: "approval",
+          label: `Overridden to Tier ${targetTier} (by you)`,
+          ts: new Date(),
+        },
+      ]);
+    } catch (err) {
+      setInterceptError(err instanceof Error ? err.message : "Failed to override session");
+    } finally {
+      setIntercepting(false);
+    }
   }
 
   async function handleSend() {
@@ -667,6 +756,47 @@ function SessionPageContent() {
               {connected ? "Live" : "Disconnected"}
             </span>
           </div>
+          {canChat && (session.status === "active" || session.status === "awaiting_approval") && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-3">
+              <p className="text-xs text-fg-secondary">
+                Intercept this running session — stop the AI, or override into a
+                less-autonomous tier and take control.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={handleStop}
+                  loading={intercepting}
+                >
+                  <StopCircle size={14} /> Stop
+                </Button>
+                {session.tier < 1 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleOverride(1)}
+                    disabled={intercepting}
+                  >
+                    <Split size={14} /> Override → Tier 1
+                  </Button>
+                )}
+                {session.tier < 2 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleOverride(2)}
+                    disabled={intercepting}
+                  >
+                    <Split size={14} /> Override → Tier 2
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+          {interceptError && (
+            <p className="mt-2 text-xs text-status-critical">{interceptError}</p>
+          )}
           {canRollback && session.tier === 0 && (
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-border-subtle pt-3">
               <p className="text-xs text-fg-secondary">
@@ -725,8 +855,23 @@ function SessionPageContent() {
                 <p className="text-xs text-fg-muted mt-1.5 tabular-nums font-mono">
                   Expires {new Date(a.expires_at).toLocaleTimeString()}
                 </p>
+                <div className="mt-2.5">
+                  <Label htmlFor={`redirect-${a.id}`} className="text-[11px]">
+                    Redirect (steer the AI instead of approving)
+                  </Label>
+                  <textarea
+                    id={`redirect-${a.id}`}
+                    value={redirectDrafts[a.id] ?? ""}
+                    onChange={(e) =>
+                      setRedirectDrafts((prev) => ({ ...prev, [a.id]: e.target.value }))
+                    }
+                    placeholder="e.g. drain the node first, then restart the pod"
+                    rows={2}
+                    className="mt-1 w-full resize-none rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-xs shadow-sm placeholder:text-fg-muted focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+                  />
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-col sm:shrink-0">
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-col sm:shrink-0">
                 <Button
                   size="sm"
                   variant="success"
@@ -744,6 +889,16 @@ function SessionPageContent() {
                 >
                   <XCircle size={14} />
                   Reject
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleRedirect(a.id)}
+                  disabled={!(redirectDrafts[a.id] ?? "").trim()}
+                  className="justify-center sm:min-w-[100px]"
+                >
+                  <CornerUpRight size={14} />
+                  Redirect
                 </Button>
               </div>
             </div>

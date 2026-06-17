@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_current_session_factory, get_db, get_mcp_pool
 from backend.api.routes.ws import publish
-from backend.api.session_runner import schedule_session_workflow
+from backend.api.session_runner import (
+    cancel_session_workflow,
+    schedule_session_workflow,
+)
 from backend.api.schemas import (
     RollbackStepResponse,
     SessionCreate,
@@ -27,6 +31,7 @@ from backend.api.schemas import (
     SessionMessageCreate,
     SessionMessageListResponse,
     SessionMessageResponse,
+    SessionOverrideRequest,
     SessionResponse,
     SessionRollbackRequest,
     SessionRollbackResponse,
@@ -38,7 +43,9 @@ from backend.config_loader import Config
 from backend.db.models import User
 from backend.db.repos import (
     AgentTeamProfileRepo,
+    ApprovalRequestRepo,
     AuditEntryRepo,
+    IncidentAssignmentRepo,
     IncidentRepo,
     MCPServerRepo,
     SessionMessageRepo,
@@ -49,6 +56,7 @@ from backend.db.repos import (
 from backend.mcp.client import list_tools as mcp_list_tools
 from backend.mcp.pool import MCPServerPool
 from backend.skills.parser import loads as load_skill_def
+from backend.tiers.enforcement import normalize_tier
 from backend.tiers.resolution import resolve_session_tier_for_incident
 from backend.tiers.sandbox import Tier0Sandbox
 from backend.llm.selection import choose_model_for_incident_service
@@ -60,6 +68,10 @@ from backend.workflow.rollback import (
 )
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _tier0_max_session_seconds() -> int:
@@ -156,6 +168,23 @@ async def create_session(
         incident=incident,
         requested_tier=body.tier,
     )
+
+    # ACK gate: a Tier 1 / Tier 2 session linked to an incident may only be
+    # started once an operator has acknowledged the incident (which records an
+    # active assignment). Tier 0 sessions auto-start without an ack.
+    if incident is not None and resolved_tier in (1, 2):
+        assignment = await IncidentAssignmentRepo.get_active(
+            db, org_id, incident.id
+        )
+        if assignment is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Acknowledge the incident before starting a Tier "
+                    f"{resolved_tier} AI session."
+                ),
+            )
+
     selected_model = None
     if body.model_provider is None and body.model_id is None and incident is not None:
         selected_model = await choose_model_for_incident_service(
@@ -278,6 +307,150 @@ async def get_session(
             detail="Session not found",
         )
     return _to_session_response(session)
+
+
+# ---------------------------------------------------------------------------
+# Intercept — Stop / Override a running session (admin or operator)
+# ---------------------------------------------------------------------------
+
+_RUNNING_STATUSES = {"active", "awaiting_approval"}
+
+
+async def _expire_pending_approvals(
+    db: AsyncSession, org_id: uuid.UUID, session_id: uuid.UUID
+) -> None:
+    """Resolve any dangling pending approval requests for a session.
+
+    Used when a session is intercepted so a paused approval prompt does not
+    linger as ``pending`` after the workflow it belonged to has been aborted.
+    """
+    pending = await ApprovalRequestRepo.list_pending(db, org_id, session_id=session_id)
+    for req in pending:
+        await ApprovalRequestRepo.resolve(db, org_id, req.id, status="expired")
+
+
+@router.post(
+    "/{session_id}/stop",
+    response_model=SessionResponse,
+    summary="Stop a running session (intercept)",
+)
+async def stop_session(
+    session_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Hard-abort a live AI session. The AI stops immediately and the operator
+    takes over manually elsewhere. An in-flight tool call may still complete
+    server-side — use the Tier 0 auto-rollback / manual rollback paths if it
+    must be reverted."""
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.status not in _RUNNING_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Session is not running (status={session.status})",
+        )
+
+    cancel_session_workflow(request.app, session_id=session_id)
+    await _expire_pending_approvals(db, org_id, session_id)
+    await SessionRepo.set_status(
+        db, org_id, session_id, status="stopped", ended_at=_utcnow()
+    )
+    await db.commit()
+
+    await publish(
+        session_id,
+        WSMessage(
+            type="session_end",
+            data={
+                "status": "stopped",
+                "summary": f"Session stopped by {user.username}",
+                "stopped_by": str(user.id),
+            },
+        ),
+    )
+    refreshed = await SessionRepo.get_by_id(db, org_id, session_id)
+    return _to_session_response(refreshed if refreshed is not None else session)
+
+
+@router.post(
+    "/{session_id}/override",
+    response_model=SessionResponse,
+    summary="Override a running session into Tier 1 / Tier 2 (intercept)",
+)
+async def override_session(
+    session_id: uuid.UUID,
+    body: SessionOverrideRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Stop the AI's current autonomy and continue the *same* session under
+    operator control at a less-autonomous tier (convert in place).
+
+    The session row is reused — its tier flips to the chosen Tier 1 (Approval
+    Required) or Tier 2 (Advisory Only) and the workflow is re-run under
+    operator supervision. Override can only *reduce* autonomy, so the target
+    tier must be strictly less autonomous than the current tier (a larger tier
+    number); Tier 2 sessions cannot be overridden further.
+    """
+    target_tier = normalize_tier(body.tier)
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.status not in _RUNNING_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Session is not running (status={session.status})",
+        )
+    if target_tier <= normalize_tier(int(session.tier)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Override can only reduce autonomy. Choose a tier less "
+                f"autonomous than the current Tier {normalize_tier(int(session.tier))}."
+            ),
+        )
+
+    cancel_session_workflow(request.app, session_id=session_id)
+    await _expire_pending_approvals(db, org_id, session_id)
+
+    # Convert in place: same session row, new tier, back to active so the
+    # re-run workflow drives under operator supervision.
+    await SessionRepo.set_status(db, org_id, session_id, status="active")
+    session.tier = target_tier
+
+    # A human is now in control — record them as the incident assignee so the
+    # incident is acknowledged/owned (mirrors the Tier 1/2 ack-then-start gate).
+    if session.incident_id is not None:
+        await IncidentAssignmentRepo.assign(
+            db,
+            org_id,
+            incident_id=session.incident_id,
+            user_id=user.id,
+            assigned_by="override",
+        )
+    await db.commit()
+
+    await publish(
+        session_id,
+        WSMessage(
+            type="session_overridden",
+            data={
+                "status": "active",
+                "tier": target_tier,
+                "overridden_by": str(user.id),
+            },
+        ),
+    )
+
+    schedule_session_workflow(request.app, session_id=session_id)
+    refreshed = await SessionRepo.get_by_id(db, org_id, session_id)
+    return _to_session_response(refreshed if refreshed is not None else session)
 
 
 # ---------------------------------------------------------------------------

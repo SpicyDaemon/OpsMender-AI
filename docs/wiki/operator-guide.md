@@ -31,16 +31,32 @@ The Session Chat is your primary interface with the AI agent.
 - **Transparency:** The chat interface displays exactly which MCP tools the AI is calling, the parameters it passes, and the results returned by your infrastructure.
 - **Guidance:** If the AI gets stuck or makes an incorrect assumption, simply correct it in the chat. The AI maintains full context of the conversation.
 
-## 3. Approvals
+## 3. Starting a session by tier
 
-OpsMender enforces safety through "Tiers". If an AI session is operating in a tier that requires human approval for state-mutating actions (e.g., executing a database write or restarting a pod), the AI will pause.
+The AI Autonomy Tier governs both what the AI may do and **how a session starts**:
 
-1. Navigate to the **Approvals** dashboard or look for the prompt in the Session Chat.
-2. Review the exact command or tool the AI intends to run.
-3. Click **Approve** to allow execution, or **Reject** to block it.
-4. If rejected, you can provide a reason in the chat so the AI can adjust its approach.
+- **Tier 0 — Autonomous:** a session auto-starts the moment the incident is created.
+- **Tier 1 / Tier 2:** **no** session auto-starts. **Acknowledge** the incident first (this records you as the owner), then click **Start Session**. Starting a Tier 1/2 session is blocked until the incident is acknowledged.
 
-## 4. The Audit Log
+## 4. Approvals (Tier 1 is interactive)
+
+At **Tier 1**, the AI pauses on **every** state-mutating action it proposes (not just destructive ones); read-only investigation runs freely, and deny-listed actions are never offered. (For MCP Skills that declare an explicit per-operation Tier 1 policy, that policy decides.)
+
+1. Find the prompt in the **Session Chat** (or the **Approvals** dashboard).
+2. Review the exact tool + parameters the AI intends to run.
+3. Choose one:
+   - **Approve** — the action executes.
+   - **Reject** — the action is blocked.
+   - **Redirect** — type free-text guidance (e.g. "drain the node first, then restart") and the AI **re-plans** with your steering in context.
+
+## 5. Intercept a running session (Stop / Override)
+
+You can take control of any running session from the session page:
+
+- **Stop** — immediately halts the AI (use this to take over manually elsewhere; an action already in flight may still finish on the target system).
+- **Override** — stops the AI's current autonomy and **continues the same session** under your control at a less-autonomous tier (**Tier 1** approval-driven or **Tier 2** advisory). Overriding assigns the incident to you.
+
+## 6. The Audit Log
 
 Every action taken by the AI is recorded in the **Audit Log** for the lifetime
 of its session. Permanently deleting the owning incident also deletes that
@@ -50,11 +66,11 @@ session and its tool audit history.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
 - It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it. The Audit Log feeds the **Timeline** section of the dedicated postmortem editor — see [postmortem-guide.md](postmortem-guide.md).
 
-## 5. Writing Postmortems
+## 7. Writing Postmortems
 
 Once an incident reaches `resolved` or `closed`, the Incident Command Strip surfaces a **Create postmortem** action that opens a dedicated editor at `/dashboard/incidents/postmortem?id=<incident_id>`. The editor ships with an Edit/Preview toggle, the seven recommended sections (Summary · Impact · Timeline · Root cause · Resolution · Lessons learned · Memory candidates), Save / Clear / Reset-to-template actions, and a one-line tip for each section. Memory candidates are intended as the shortlist you'll later promote into `/dashboard/memories`. Admins and operators can edit; viewers see the editor read-only. The full walkthrough lives in [postmortem-guide.md](postmortem-guide.md).
 
-## 6. Keyboard quick access
+## 8. Keyboard quick access
 
 Press **Cmd+K** (Mac) / **Ctrl+K** (everywhere else) to open the **Command Palette** from anywhere in the dashboard. The palette has two categories:
 
@@ -63,7 +79,7 @@ Press **Cmd+K** (Mac) / **Ctrl+K** (everywhere else) to open the **Command Palet
 
 Keyboard model: `↑` / `↓` move the highlight, `Enter` executes, `Esc` closes. The shortcut is reserved — it works even when an input is focused, which is the point. The existing `?` overlay (keyboard shortcut help) lists `Cmd K` for discovery.
 
-## 7. Rollback Behavior
+## 9. Rollback Behavior
 
 If the AI takes an action that worsens the incident, or if you need to revert a configuration change made during triage:
 

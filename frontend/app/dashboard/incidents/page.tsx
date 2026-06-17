@@ -157,6 +157,23 @@ function timeRangeForPreset(preset: TimePreset) {
   return { from: from.toISOString(), to: now.toISOString() };
 }
 
+/** In-progress AI-session pill for the incidents list. Renders only while a
+ * session is `active` or `awaiting_approval`; terminal/absent sessions show
+ * nothing so the list stays uncluttered. */
+function AiSessionBadge({ incident }: { incident: IncidentResponse }) {
+  if (!incident.ai_session_active || !incident.ai_session_status) return null;
+  const awaiting = incident.ai_session_status === "awaiting_approval";
+  return (
+    <Badge
+      variant={awaiting ? "awaiting_approval" : "active"}
+      className="gap-1"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+      {awaiting ? "AI · approval" : "AI · running"}
+    </Badge>
+  );
+}
+
 function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
   return [
     {
@@ -165,12 +182,15 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
       accessor: (inc) => inc.title,
       cell: (inc) => (
         <div>
-          <Link
-            href={`/dashboard/incidents/detail?id=${inc.id}`}
-            className="font-medium text-fg-primary hover:text-accent"
-          >
-            {inc.title}
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/dashboard/incidents/detail?id=${inc.id}`}
+              className="font-medium text-fg-primary hover:text-accent"
+            >
+              {inc.title}
+            </Link>
+            <AiSessionBadge incident={inc} />
+          </div>
           <p className="mt-0.5 max-w-md truncate text-xs text-fg-muted">
             {inc.description}
           </p>
@@ -304,6 +324,7 @@ function IncidentPhoneCard({
           <Badge variant={incident.severity}>{incident.severity}</Badge>
         ) : null}
         {teamName ? <Badge>{teamName}</Badge> : null}
+        <AiSessionBadge incident={incident} />
       </div>
       <div className="grid gap-3 text-sm sm:grid-cols-2">
         <div>
@@ -334,11 +355,23 @@ function IncidentPhoneCard({
   );
 }
 
+// Stale-while-revalidate cache: the last successful incidents payload survives
+// navigation away/back so returning to the page renders instantly with the
+// previous rows while a fresh fetch runs in the background, instead of showing
+// a full skeleton on every visit. Refreshed on each successful load.
+let incidentsCache: IncidentListResponse | null = null;
+
+// Auto-refresh cadence (ms) while the tab is visible — keeps the AI-session
+// badges (and the rest of the list) reasonably live without a dedicated
+// org-wide WebSocket broadcast channel. Cheap now that the list endpoint is
+// batched; paused entirely when the tab is hidden.
+const INCIDENTS_REFRESH_MS = 15_000;
+
 export default function IncidentsPage() {
-  const [data, setData] = useState<IncidentListResponse | null>(null);
+  const [data, setData] = useState<IncidentListResponse | null>(() => incidentsCache);
   const [services, setServices] = useState<ServiceResponse[]>([]);
   const [teams, setTeams] = useState<TeamResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(incidentsCache === null);
   const [showCreate, setShowCreate] = useState(false);
   const [showTest, setShowTest] = useState(false);
   const [managingIncident, setManagingIncident] = useState<IncidentResponse | null>(null);
@@ -398,8 +431,10 @@ export default function IncidentsPage() {
     }
   }, []);
 
-  const loadIncidents = useCallback(async () => {
-    setLoading(true);
+  const loadIncidents = useCallback(async ({ silent = false } = {}) => {
+    // Background (auto-refresh / SWR) loads don't flip the spinner so the
+    // table doesn't flash; explicit loads do.
+    if (!silent) setLoading(true);
     try {
       const presetRange = timeRangeForPreset(timePreset);
       const updatedFrom =
@@ -421,10 +456,14 @@ export default function IncidentsPage() {
         updated_to: updatedTo || undefined,
       });
       setData(inc);
+      incidentsCache = inc;
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load incidents");
+      // Background refreshes fail silently — the last good data stays on screen.
+      if (!silent) {
+        toast.error(err instanceof Error ? err.message : "Failed to load incidents");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [
     customFrom,
@@ -449,6 +488,39 @@ export default function IncidentsPage() {
 
   useEffect(() => {
     loadIncidents();
+  }, [loadIncidents]);
+
+  // Live-ish refresh: silently re-fetch on an interval while the tab is
+  // visible, and immediately on regaining visibility, so AI-session badges and
+  // statuses stay current without a manual refresh. Paused while hidden to
+  // avoid needless load.
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer === null) {
+        timer = setInterval(() => void loadIncidents({ silent: true }), INCIDENTS_REFRESH_MS);
+      }
+    };
+    const stop = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void loadIncidents({ silent: true });
+        start();
+      } else {
+        stop();
+      }
+    };
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [loadIncidents]);
 
   const items = data?.items ?? [];

@@ -915,6 +915,32 @@ class SessionRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def list_for_incidents(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_ids: Sequence[uuid.UUID],
+    ) -> dict[uuid.UUID, list[Session]]:
+        """Sessions grouped by incident, newest-first within each incident.
+
+        Used to surface AI-session state on the incidents list without an N+1
+        per-incident lookup.
+        """
+        if not incident_ids:
+            return {}
+        stmt = (
+            select(Session)
+            .where(
+                Session.org_id == org_id,
+                Session.incident_id.in_(incident_ids),
+            )
+            .order_by(Session.started_at.desc())
+        )
+        grouped: dict[uuid.UUID, list[Session]] = {}
+        for row in (await db.execute(stmt)).scalars().all():
+            grouped.setdefault(row.incident_id, []).append(row)
+        return grouped
+
+    @staticmethod
     async def list_all(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -5297,6 +5323,34 @@ class IncidentAssignmentRepo:
         return (await db.execute(stmt)).scalars().first()
 
     @staticmethod
+    async def get_active_for_incidents(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_ids: Sequence[uuid.UUID],
+    ) -> dict[uuid.UUID, IncidentAssignment]:
+        """Batch variant of ``get_active``: latest active assignment per incident.
+
+        Returns a mapping of incident_id → assignment for the incidents that have
+        an active (unreleased) assignment. Rows are ordered newest-first so the
+        first row seen for each incident wins.
+        """
+        if not incident_ids:
+            return {}
+        stmt = (
+            select(IncidentAssignment)
+            .where(
+                IncidentAssignment.org_id == org_id,
+                IncidentAssignment.incident_id.in_(incident_ids),
+                IncidentAssignment.released_at.is_(None),
+            )
+            .order_by(IncidentAssignment.assigned_at.desc())
+        )
+        result: dict[uuid.UUID, IncidentAssignment] = {}
+        for row in (await db.execute(stmt)).scalars().all():
+            result.setdefault(row.incident_id, row)
+        return result
+
+    @staticmethod
     async def assign(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -5685,6 +5739,32 @@ class IncidentPageRepo:
             .order_by(IncidentPage.sent_at)
         )
         return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def list_for_incidents(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_ids: Sequence[uuid.UUID],
+    ) -> dict[uuid.UUID, list[IncidentPage]]:
+        """Batch variant of ``list_for_incident``: pages grouped by incident.
+
+        Each incident's pages are ordered by ``sent_at`` (oldest-first), matching
+        ``list_for_incident`` so ``responder`` resolution sees the latest page last.
+        """
+        if not incident_ids:
+            return {}
+        stmt = (
+            select(IncidentPage)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id.in_(incident_ids),
+            )
+            .order_by(IncidentPage.sent_at)
+        )
+        grouped: dict[uuid.UUID, list[IncidentPage]] = {}
+        for row in (await db.execute(stmt)).scalars().all():
+            grouped.setdefault(row.incident_id, []).append(row)
+        return grouped
 
     @staticmethod
     async def has_recent_delivery(

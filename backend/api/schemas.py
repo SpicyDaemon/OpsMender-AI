@@ -274,6 +274,16 @@ class IncidentResponse(BaseModel):
     escalated_to_user_id: Optional[uuid.UUID] = None
     escalated_to_display_name: Optional[str] = None
 
+    # -- AI session state --------------------------------------------------
+    # Computed by the route from the incident's linked sessions so the list can
+    # show an "AI in progress" indicator without a detail fetch.
+    # ai_session_active is True when a session is `active` or `awaiting_approval`;
+    # ai_session_status carries the representative session status (an in-progress
+    # session wins, otherwise the latest by start time), or null when the
+    # incident has never had a session.
+    ai_session_active: bool = False
+    ai_session_status: Optional[str] = None
+
     model_config = {"from_attributes": True}
 
 

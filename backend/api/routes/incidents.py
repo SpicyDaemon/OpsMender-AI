@@ -192,19 +192,40 @@ def _user_display(user) -> tuple[str | None, str | None]:
     return (full or user.username), user.email
 
 
-async def _resolve_responder(
-    db: AsyncSession,
-    org_id: uuid.UUID,
-    incident_id: uuid.UUID,
+# AI session statuses that count as "in progress" for the list indicator.
+_IN_PROGRESS_SESSION_STATUSES = {"active", "awaiting_approval"}
+
+
+def _resolve_ai_session(sessions) -> tuple[bool, str | None]:
+    """Pick the representative AI-session state for an incident.
+
+    ``sessions`` is the incident's sessions newest-first. An in-progress session
+    (`active` / `awaiting_approval`) wins; otherwise the most recent session's
+    status is reported. Returns ``(ai_session_active, ai_session_status)`` —
+    ``(False, None)`` when the incident has never had a session.
+    """
+    if not sessions:
+        return False, None
+    in_progress = next(
+        (s for s in sessions if s.status in _IN_PROGRESS_SESSION_STATUSES),
+        None,
+    )
+    if in_progress is not None:
+        return True, in_progress.status
+    return False, sessions[0].status
+
+
+def _resolve_responder_from(
+    assignment,
+    pages,
     user_by_id: dict,
 ) -> dict:
-    """Resolve the current responder/assignment state for an incident.
+    """Resolve responder/assignment state from already-fetched rows.
 
     Acknowledged (active assignment) wins; otherwise the latest escalation page
     is the current target — ``awaiting`` at the first level, ``escalated`` after.
+    ``pages`` must be ordered oldest-first (latest page last).
     """
-    assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
-    pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))
     latest = pages[-1] if pages else None
 
     ack_uid = assignment.assigned_to if assignment is not None else None
@@ -248,7 +269,13 @@ async def _to_incident_response(
     # include_deleted=True: historical responder references must render a
     # fallback display (e.g. "deleted_user-<id>") rather than crashing.
     user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000, include_deleted=True)}
-    data.update(await _resolve_responder(db, org_id, incident.id, user_by_id))
+    assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
+    pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident.id))
+    data.update(_resolve_responder_from(assignment, pages, user_by_id))
+    sessions = await SessionRepo.list_by_incident(db, org_id, incident.id)
+    active, status = _resolve_ai_session(sessions)
+    data["ai_session_active"] = active
+    data["ai_session_status"] = status
     return IncidentResponse(**data)
 
 
@@ -260,6 +287,17 @@ async def _to_incident_list_response(
     service_by_id = {service.id: service for service in services}
     team_by_id = {team.id: team for team in teams}
     user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000, include_deleted=True)}
+    # Batch all per-incident lookups into one query each instead of N+1.
+    incident_ids = [incident.id for incident in incidents]
+    assignment_by_incident = await IncidentAssignmentRepo.get_active_for_incidents(
+        db, org_id, incident_ids
+    )
+    pages_by_incident = await IncidentPageRepo.list_for_incidents(
+        db, org_id, incident_ids
+    )
+    sessions_by_incident = await SessionRepo.list_for_incidents(
+        db, org_id, incident_ids
+    )
     responses: list[IncidentResponse] = []
     for incident in incidents:
         data = IncidentResponse.model_validate(incident).model_dump()
@@ -270,7 +308,18 @@ async def _to_incident_list_response(
                 data["team_id"] = service.team_id
                 team = team_by_id.get(service.team_id)
                 data["team_name"] = team.name if team is not None else None
-        data.update(await _resolve_responder(db, org_id, incident.id, user_by_id))
+        data.update(
+            _resolve_responder_from(
+                assignment_by_incident.get(incident.id),
+                pages_by_incident.get(incident.id, []),
+                user_by_id,
+            )
+        )
+        active, status = _resolve_ai_session(
+            sessions_by_incident.get(incident.id, [])
+        )
+        data["ai_session_active"] = active
+        data["ai_session_status"] = status
         responses.append(IncidentResponse(**data))
     return responses
 

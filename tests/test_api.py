@@ -1801,6 +1801,54 @@ class TestIncidents:
         data = resp.json()
         assert data["total"] == 2
         assert len(data["items"]) == 2
+        # No sessions yet → no AI-session indicator.
+        for item in data["items"]:
+            assert item["ai_session_active"] is False
+            assert item["ai_session_status"] is None
+
+    async def test_list_incidents_surfaces_ai_session_state(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        service = await _seed_manual_incident_service(app, "AISession")
+        resp = await client.post(
+            "/incidents",
+            json={"title": "Inc", "description": "d", "service_id": str(service.id)},
+            headers=auth_headers,
+        )
+        incident_id = uuid.UUID(resp.json()["id"])
+
+        # An in-progress session wins over an earlier terminal one.
+        async with app.state.session_factory() as db:
+            old = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=0, incident_id=incident_id
+            )
+            await SessionRepo.set_status(
+                db, TEST_ORG_ID, old.id, status="failed"
+            )
+            active = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=0, incident_id=incident_id
+            )
+            await SessionRepo.set_status(
+                db, TEST_ORG_ID, active.id, status="awaiting_approval"
+            )
+            await db.commit()
+
+        data = (await client.get("/incidents", headers=auth_headers)).json()
+        item = next(i for i in data["items"] if i["id"] == str(incident_id))
+        assert item["ai_session_active"] is True
+        assert item["ai_session_status"] == "awaiting_approval"
+
+        # When no session is in progress, the latest status is reported.
+        async with app.state.session_factory() as db:
+            await SessionRepo.set_status(
+                db, TEST_ORG_ID, active.id, status="completed"
+            )
+            await db.commit()
+
+        data = (await client.get("/incidents", headers=auth_headers)).json()
+        item = next(i for i in data["items"] if i["id"] == str(incident_id))
+        assert item["ai_session_active"] is False
+        assert item["ai_session_status"] == "completed"
 
     async def test_list_incidents_supports_case_insensitive_query(
         self, client: AsyncClient, app, auth_headers

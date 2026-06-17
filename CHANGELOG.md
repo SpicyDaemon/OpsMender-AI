@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Incidents list shows in-progress AI sessions + live refresh.** The incidents
+  list/detail responses now carry `ai_session_active` / `ai_session_status`
+  (an `active`/`awaiting_approval` session wins; otherwise the latest session's
+  status), computed from the incident's linked sessions. The incidents table
+  renders an animated **"AI · running"** / **"AI · approval"** pill on rows with
+  an in-progress session. The page now caches the last list payload across
+  navigation (stale-while-revalidate — returning to the page renders instantly
+  instead of a full skeleton) and silently auto-refreshes every 15s while the
+  tab is visible so the badges stay current.
+
+### Changed
+
+- **Incidents list endpoint no longer issues per-incident queries (N+1).**
+  `GET /incidents` now batches assignment/escalation-page/session lookups into
+  one query each (`IncidentAssignmentRepo.get_active_for_incidents`,
+  `IncidentPageRepo.list_for_incidents`, `SessionRepo.list_for_incidents`)
+  instead of two-plus queries per incident, so list cost is roughly constant in
+  the number of incidents.
+
 ### Fixed
 
 - **AI session start dropped provider connection settings (base_url / API key).**

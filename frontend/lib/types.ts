@@ -59,6 +59,10 @@ export interface IncidentResponse {
   acknowledged_by_display_name?: string | null;
   escalated_to_user_id?: string | null;
   escalated_to_display_name?: string | null;
+  // AI session state — computed by the list/detail route so the table can show
+  // an "AI in progress" indicator without a per-incident fetch.
+  ai_session_active?: boolean;
+  ai_session_status?: SessionStatus | null;
 }
 
 export interface IncidentListResponse {

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Ingest clearing-alerts stop in-progress AI sessions.** When an external
+  alert with `status=resolved` resolves an existing incident (the dedup
+  "updated" path), its `active`/`awaiting_approval` AI sessions are now stopped
+  too — matching the operator resolve/close behavior. `IngestResult` carries a
+  new `resolved_existing` flag; both ingest routes call `stop_incident_sessions`
+  after committing the resolve. (v1.2)
+
 ### Fixed
 
 - **Sidebar tier badge updates immediately after saving runtime config.**

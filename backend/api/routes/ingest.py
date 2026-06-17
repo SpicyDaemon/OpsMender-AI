@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
+from backend.api.session_runner import stop_incident_sessions
 from backend.api.schemas import (
     IngestLearnPreview,
     IngestProviderListResponse,
@@ -60,6 +61,27 @@ def _schedule_auto_start(app, *, org_id: uuid.UUID, result) -> None:
         incident_id=result.incident_id,
         tier=result.auto_start_tier,
     )
+
+
+async def _stop_sessions_on_resolve(
+    app, db: AsyncSession, *, org_id: uuid.UUID, result
+) -> None:
+    """Stop in-progress AI sessions when a clearing alert resolved an incident.
+
+    Mirrors the operator resolve path — a resolved incident has nothing left
+    for the agent to work. Commits the session-stop separately from the ingest
+    transaction (which is already committed by the caller)."""
+    if not getattr(result, "resolved_existing", False) or result.incident_id is None:
+        return
+    stopped = await stop_incident_sessions(
+        app,
+        db,
+        org_id,
+        result.incident_id,
+        reason="Incident resolved by clearing alert",
+    )
+    if stopped:
+        await db.commit()
 
 
 def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
@@ -163,6 +185,7 @@ async def service_intake_webhook(
     # Persist the incident before background AI provisioning reads it. Intake
     # does not wait for session creation or workflow/model execution.
     await db.commit()
+    await _stop_sessions_on_resolve(request.app, db, org_id=service.org_id, result=result)
     _schedule_auto_start(request.app, org_id=service.org_id, result=result)
     return IngestResponse(
         success=result.success,
@@ -261,6 +284,7 @@ async def ingest_webhook(
         )
 
     await db.commit()
+    await _stop_sessions_on_resolve(request.app, db, org_id=token.org_id, result=result)
     _schedule_auto_start(request.app, org_id=token.org_id, result=result)
     return IngestResponse(
         success=result.success,

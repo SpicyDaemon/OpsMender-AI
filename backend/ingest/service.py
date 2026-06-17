@@ -60,6 +60,9 @@ class IngestResult:
     session_id: uuid.UUID | None = None
     auto_start_tier: int | None = None
     dedup_action: str | None = None  # created | updated | skipped
+    # True when this call transitioned an existing incident to ``resolved``
+    # (a clearing alert). The route uses it to stop the incident's AI sessions.
+    resolved_existing: bool = False
     error: str | None = None
 
 
@@ -198,6 +201,7 @@ async def ingest_incident(
 
     # ── Dedup by external fingerprint ──────────────────────────────────
     dedup_action = "created"
+    resolved_existing = False
     incident: Incident | None = None
 
     if parsed.external_id and parsed.external_source:
@@ -212,6 +216,7 @@ async def ingest_incident(
             if parsed.status == "resolved" and existing.status != "resolved":
                 await IncidentRepo.update_status(db, org_id, existing.id, "resolved")
                 dedup_action = "updated"
+                resolved_existing = True
             else:
                 dedup_action = "skipped"
             incident = existing
@@ -346,4 +351,5 @@ async def ingest_incident(
         incident_id=incident.id,
         auto_start_tier=policy.session_tier if auto_start_skip is None else None,
         dedup_action=dedup_action,
+        resolved_existing=resolved_existing,
     )

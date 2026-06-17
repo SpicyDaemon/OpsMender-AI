@@ -448,6 +448,50 @@ class TestIngestGeneric:
             assert inc is not None
             assert inc.status == "resolved"
 
+    async def test_ingest_resolve_stops_in_progress_sessions(
+        self, client: AsyncClient, app
+    ):
+        raw, tok = await _create_token(
+            app, provider="generic", name="generic-resolve-stops"
+        )
+
+        # Create an incident via ingest, then attach a running AI session.
+        created = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Service Down",
+                "description": "HTTP 503",
+                "severity": "critical",
+                "id": "svc-down-stop",
+            },
+            headers={"X-OpsMender-Token": raw},
+        )
+        incident_id = uuid.UUID(created.json()["incident_id"])
+        async with app.state.session_factory() as db:
+            running = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=0, incident_id=incident_id
+            )  # defaults to "active"
+            await db.commit()
+
+        # A clearing alert resolves the incident → its session is stopped.
+        resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Service Down",
+                "description": "Recovered",
+                "severity": "low",
+                "id": "svc-down-stop",
+                "status": "resolved",
+            },
+            headers={"X-OpsMender-Token": raw},
+        )
+        assert resp.json()["dedup_action"] == "updated"
+
+        async with app.state.session_factory() as db:
+            running_after = await SessionRepo.get_by_id(db, TEST_ORG_ID, running.id)
+            assert running_after.status == "stopped"
+            assert running_after.ended_at is not None
+
     async def test_ingest_auto_start_creates_session_for_autonomous_tier(
         self, client: AsyncClient, app, admin_headers
     ):

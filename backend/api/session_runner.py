@@ -236,24 +236,50 @@ async def _await_maybe(value: Any) -> Any:
     return value
 
 
+def _llm_from_config(cfg) -> LLM:  # type: ignore[no-untyped-def]
+    """Build an LLM client from a full ModelConfig row.
+
+    Carries through provider connection settings (``base_url``,
+    ``api_key_env_var``, ``api_version``, ``provider_meta``) that providers like
+    ``openai_compatible`` / ``azure_openai`` require.
+    """
+    return create_llm(
+        provider=cfg.provider,
+        model_id=cfg.model_id,
+        max_tokens=cfg.max_tokens,
+        api_key_env_var=cfg.api_key_env_var,
+        base_url=cfg.base_url,
+        api_version=cfg.api_version,
+        provider_meta=cfg.provider_meta,
+    )
+
+
 async def _resolve_llm(factory, session) -> LLM:  # type: ignore[no-untyped-def]
     async with factory() as db:
         if not session.model_provider:
             default_cfg = await ModelConfigRepo.get_default(db, session.org_id)
             if default_cfg is not None:
-                return create_llm(
-                    provider=default_cfg.provider,
-                    model_id=default_cfg.model_id,
-                    max_tokens=default_cfg.max_tokens,
-                    api_key_env_var=default_cfg.api_key_env_var,
-                    base_url=default_cfg.base_url,
-                    api_version=default_cfg.api_version,
-                    provider_meta=default_cfg.provider_meta,
-                )
+                return _llm_from_config(default_cfg)
             return create_llm(
                 provider="stub",
                 response="[workflow offline: no model configured]",
             )
+
+        # The session persists only provider + model_id, so recover the full
+        # ModelConfig (base_url, api keys, version, provider_meta) by matching
+        # the stored provider/model_id. Without this, providers that need a
+        # base_url (openai_compatible, azure_openai) fail at workflow start.
+        matched = next(
+            (
+                cfg
+                for cfg in await ModelConfigRepo.list_all(db, session.org_id)
+                if cfg.provider == session.model_provider
+                and cfg.model_id == session.model_id
+            ),
+            None,
+        )
+        if matched is not None:
+            return _llm_from_config(matched)
 
     return create_llm(
         provider=session.model_provider,

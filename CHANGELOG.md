@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **AI session start dropped provider connection settings (base_url / API key).**
+  When a session was created with an explicit model (the auto-start path and any
+  incident-linked session — provider + `model_id` are persisted on the session
+  row, but `base_url` / `api_key_env_var` / `api_version` / `provider_meta` are
+  not), `session_runner._resolve_llm` rebuilt the provider from only provider +
+  `model_id`, so `openai_compatible` (LM Studio, vLLM, llama.cpp) and
+  `azure_openai` failed at workflow start with "openai_compatible provider
+  requires a base_url". `_resolve_llm` now recovers the full `ModelConfig` by
+  matching the stored provider/`model_id` and passes the connection settings
+  through (shared `_llm_from_config` helper). Regression test
+  `TestResolveLLM::test_resolve_llm_recovers_base_url_for_openai_compatible`.
+
 ### Added
 
 - **Interactive Tier 1 — every write needs approval, with operator "redirect".**

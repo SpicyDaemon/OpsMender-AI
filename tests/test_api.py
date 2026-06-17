@@ -7121,3 +7121,36 @@ class TestWebSocket:
             assert msg["data"]["status"] == "approved"
         finally:
             remove_channel(session.id, queue)
+
+
+class TestResolveLLM:
+    """Regression coverage for session_runner._resolve_llm."""
+
+    async def test_resolve_llm_recovers_base_url_for_openai_compatible(self, app):
+        """A session storing only provider+model_id must recover the full
+        ModelConfig (base_url etc.) so openai_compatible doesn't fail at start."""
+        from backend.api.session_runner import _resolve_llm
+        from backend.llm.providers import OpenAICompatibleProvider
+
+        factory = app.state.session_factory
+        async with factory() as db:
+            await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="LM Studio",
+                provider="openai_compatible",
+                model_id="local-model",
+                base_url="http://localhost:1234/v1",
+            )
+            session = await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=0,
+                model_provider="openai_compatible",
+                model_id="local-model",
+            )
+            await db.commit()
+
+        llm = await _resolve_llm(factory, session)
+        assert isinstance(llm.provider, OpenAICompatibleProvider)
+        assert llm.provider.base_url == "http://localhost:1234/v1"

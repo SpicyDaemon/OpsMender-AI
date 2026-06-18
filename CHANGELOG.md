@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Reliability response-time history + cleaner uptime chart.** Uptime History
+  no longer renders a Y axis. SLA target detail now adds **Response Time**
+  (15m–24h) and **Response Time History** (7d–365d) charts with an average line,
+  min–max band, hover details, and aggregate avg/min/max values. New
+  `GET /sla-targets/{id}/response-time`; migration `e0f1a2b3c4d5` preserves
+  avg/min/max latency plus the latency-bearing sample count in 5m/1h rollups,
+  so yearly latency history survives 30-day raw-sample pruning. Existing
+  rollups cannot be backfilled and show gaps until new post-migration data
+  accumulates.
 - **Reliability detail: Outage history table + enlarged uptime chart** (replaces
   "Linked Incidents"). A new **Outage history** table lists discrete downtime
   episodes derived from the monitor's own uptime checks — **Started / Ended (or
@@ -18,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a new `episodes` field on `GET /sla-targets/{id}/uptime`. The "Uptime History"
   strip is replaced by a larger up/down bar chart (`UptimeBarChart`,
   hand-rolled SVG/CSS — no charting dependency) with a dated X axis, an Up/Down
-  Y axis, and a hover tooltip showing the date/time + status of each bucket.
+  hover tooltip showing the date/time + status of each bucket. The Y axis was
+  subsequently removed for a cleaner status-only presentation.
 
 ### Added
 

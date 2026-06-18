@@ -28,6 +28,8 @@ from backend.api.schemas import (
     SLOResponse,
     SLOStatusResponse,
     SLOUpdate,
+    ResponseTimeResponse,
+    ResponseTimeSeriesPoint,
     UptimeEpisode,
     UptimeResponse,
     UptimeSeriesPoint,
@@ -42,6 +44,7 @@ from backend.db.repos import (
     UptimeSampleRepo,
 )
 from backend.sla import metrics
+from backend.sla import response_time
 from backend.sla.poller import validate_expected_status_config
 from backend.sla.recommendations import evaluate_slo_recommendation
 
@@ -427,6 +430,32 @@ _WINDOW_BUCKETS = {
     "1y": 52,
 }
 
+RESPONSE_TIME_WINDOWS = {
+    "15m": timedelta(minutes=15),
+    "30m": timedelta(minutes=30),
+    "1h": timedelta(hours=1),
+    "6h": timedelta(hours=6),
+    "12h": timedelta(hours=12),
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+    "90d": timedelta(days=90),
+    "365d": timedelta(days=365),
+}
+
+_RESPONSE_TIME_BUCKETS = {
+    "15m": 15,
+    "30m": 30,
+    "1h": 30,
+    "6h": 36,
+    "12h": 48,
+    "24h": 48,
+    "7d": 56,
+    "30d": 60,
+    "90d": 60,
+    "365d": 73,
+}
+
 
 @router.get(
     _targets_prefix + "/{target_id}/uptime",
@@ -484,6 +513,109 @@ async def get_target_uptime(
         down_events=metrics.count_down_events(samples),
         series=[UptimeSeriesPoint(**p) for p in series],
         episodes=[UptimeEpisode(**e) for e in episodes],
+    )
+
+
+@router.get(
+    _targets_prefix + "/{target_id}/response-time",
+    response_model=ResponseTimeResponse,
+    summary="Get response-time history for an SLA target",
+)
+async def get_target_response_time(
+    target_id: uuid.UUID,
+    window: str = Query(
+        "24h",
+        pattern="^(15m|30m|1h|6h|12h|24h|7d|30d|90d|365d)$",
+    ),
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    target = await SLATargetRepo.get_by_id(db, org_id, target_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "SLA target not found")
+
+    until = datetime.now(timezone.utc)
+    since = until - RESPONSE_TIME_WINDOWS[window]
+    points: list[response_time.LatencyPoint] = []
+
+    if window in {"90d", "365d"}:
+        rollups = await UptimeSampleRepo.query_1h_window(
+            db, org_id, target_id, since=since, until=until
+        )
+        points.extend(
+            {
+                "ts": row.bucket_start,
+                "avg_latency_ms": float(row.avg_latency_ms),
+                "min_latency_ms": row.min_latency_ms,
+                "max_latency_ms": row.max_latency_ms,
+                "samples": row.latency_samples,
+            }
+            for row in rollups
+            if row.avg_latency_ms is not None
+            and row.min_latency_ms is not None
+            and row.max_latency_ms is not None
+            and row.latency_samples > 0
+        )
+        # Hourly rollups intentionally exclude the current partial hour. Add
+        # its raw samples so the right edge of the graph stays fresh.
+        raw_since = max(since, until.replace(minute=0, second=0, microsecond=0))
+    elif window in {"7d", "30d"}:
+        rollups_5m = await UptimeSampleRepo.query_5m_window(
+            db, org_id, target_id, since=since, until=until
+        )
+        points.extend(
+            {
+                "ts": row.bucket_start,
+                "avg_latency_ms": float(row.avg_latency_ms),
+                "min_latency_ms": row.min_latency_ms,
+                "max_latency_ms": row.max_latency_ms,
+                "samples": row.latency_samples,
+            }
+            for row in rollups_5m
+            if row.avg_latency_ms is not None
+            and row.min_latency_ms is not None
+            and row.max_latency_ms is not None
+            and row.latency_samples > 0
+        )
+        raw_since = max(
+            since,
+            until.replace(
+                minute=(until.minute // 5) * 5,
+                second=0,
+                microsecond=0,
+            ),
+        )
+    else:
+        raw_since = since
+
+    raw_samples = await UptimeSampleRepo.query_window(
+        db, org_id, target_id, since=raw_since, until=until
+    )
+    points.extend(
+        {
+            "ts": sample.observed_at,
+            "avg_latency_ms": float(sample.latency_ms),
+            "min_latency_ms": sample.latency_ms,
+            "max_latency_ms": sample.latency_ms,
+            "samples": 1,
+        }
+        for sample in raw_samples
+        if sample.latency_ms is not None
+    )
+
+    series = response_time.bucket_series(
+        points,
+        since=since,
+        until=until,
+        buckets=_RESPONSE_TIME_BUCKETS[window],
+    )
+    summary = response_time.summarize(series)
+    return ResponseTimeResponse(
+        target_id=target_id,
+        window=window,
+        **summary,
+        series=[ResponseTimeSeriesPoint(**point) for point in series],
     )
 
 

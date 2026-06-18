@@ -108,6 +108,13 @@ Four configurable surfaces drive the behavior under the loop above:
 
 **AI incident memory — carrying lessons forward.** Each successfully resolved session writes one short markdown lesson into the per-org `incident_memories` table, scoped to the service that owned the incident. On the next incident for that service, a `recall` node runs *before* `observe` — pure SQL match on service + tag overlap + keyword match, weighted by operator thumbs up/down. The top 5 matches get injected into the agent's system prompt as a `### Past lessons from similar incidents` block. Memory is per-org isolated, advisory only (cannot bypass tier gates), written via a strict JSON-schema-validated post-session `remember` node (no prompt-injection path from chat or tool output), skipped on failed sessions, bounded by auto-compaction at 50 memories per service, and operator-curated via `/dashboard/memories`. Postmortem authors curate the next batch of memories from the per-incident editor — see [docs/wiki/postmortem-guide.md](docs/wiki/postmortem-guide.md).
 
+**Reliability — uptime and response time.** Reliability targets continuously
+record availability and latency. Target detail includes uptime summaries,
+outage history, a status-only uptime chart, recent Response Time views from 15
+minutes through 24 hours, and Response Time History through 365 days. Long-term
+latency uses 5-minute/hourly avg/min/max rollups so it survives raw-sample
+pruning. See [docs/wiki/reliability-guide.md](docs/wiki/reliability-guide.md).
+
 ### Where each concept lives in the dashboard
 
 | Sidebar group | Frequency | What's in it |

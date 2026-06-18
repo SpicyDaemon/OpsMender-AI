@@ -5,10 +5,10 @@ import type { UptimeSeriesPoint } from "@/lib/types";
 
 /**
  * Enlarged up/down uptime chart (v1.2). One bar per series bucket with a
- * labeled X axis (dates) and a binary Y axis (Up / Down): up buckets rise to
- * the "Up" line (green), down buckets sit low at the "Down" line (red), no-data
- * buckets show a faint sliver. Hovering a bucket pops a tooltip with the
- * date/time and status. Hand-rolled (no charting dependency).
+ * labeled X axis (dates) and no Y axis: up buckets rise fully (green), down
+ * buckets sit low (red), and no-data buckets show a faint sliver. Hovering a
+ * bucket pops a tooltip with the date/time and status. Hand-rolled (no charting
+ * dependency).
  */
 
 const PLOT_HEIGHT = 150; // px
@@ -57,33 +57,8 @@ export function UptimeBarChart({
   return (
     <div className={className}>
       <div className="flex">
-        {/* Y axis */}
-        <div
-          className="relative mr-2 w-8 shrink-0 text-[10px] text-fg-muted"
-          style={{ height: PLOT_HEIGHT }}
-          aria-hidden
-        >
-          <span className="absolute right-0 top-0 -translate-y-1/2">Up</span>
-          <span
-            className="absolute right-0 -translate-y-1/2"
-            style={{ top: `${(1 - DOWN_LEVEL) * 100}%` }}
-          >
-            Down
-          </span>
-        </div>
-
-        {/* Plot */}
+        {/* Plot (no Y axis — status is conveyed by colour/height + tooltip) */}
         <div className="relative flex-1">
-          {/* gridlines */}
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute left-0 right-0 top-0 border-t border-border-subtle" />
-            <div
-              className="absolute left-0 right-0 border-t border-dashed border-border-subtle"
-              style={{ top: `${(1 - DOWN_LEVEL) * 100}%` }}
-            />
-            <div className="absolute bottom-0 left-0 right-0 border-t border-border-subtle" />
-          </div>
-
           <div
             className="flex items-end gap-px"
             style={{ height: PLOT_HEIGHT }}

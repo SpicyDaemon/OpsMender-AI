@@ -128,6 +128,41 @@ class TestRollTo5m:
         assert rows[1].total_samples == 5
 
     @pytest.mark.asyncio
+    async def test_preserves_latency_statistics(
+        self, factory, db: AsyncSession, target: SLATarget
+    ):
+        downsampler = UptimeDownsampler(factory)
+        bucket_start = _floor_5m(datetime.now(timezone.utc) - timedelta(hours=1))
+        for index, latency in enumerate((100, 200, None, 400)):
+            db.add(
+                UptimeSample(
+                    org_id=TEST_ORG_ID,
+                    target_id=target.id,
+                    observed_at=bucket_start + timedelta(seconds=30 * index),
+                    up=True,
+                    latency_ms=latency,
+                    source="poller",
+                )
+            )
+        await db.commit()
+
+        await downsampler.run_once()
+
+        async with factory() as check_db:
+            row = (
+                await check_db.execute(
+                    select(UptimeSample5m).where(
+                        UptimeSample5m.target_id == target.id
+                    )
+                )
+            ).scalar_one()
+
+        assert row.avg_latency_ms == pytest.approx(233.33, abs=0.01)
+        assert row.min_latency_ms == 100
+        assert row.max_latency_ms == 400
+        assert row.latency_samples == 3
+
+    @pytest.mark.asyncio
     async def test_idempotent(self, factory, db: AsyncSession, target: SLATarget):
         """Running the downsampler twice should not create duplicate buckets."""
         downsampler = UptimeDownsampler(factory)
@@ -253,6 +288,56 @@ class TestRollTo1h:
         assert rows[0].total_samples == 60
         assert rows[1].up_pct == 1.0
         assert rows[1].total_samples == 60
+
+    @pytest.mark.asyncio
+    async def test_hourly_latency_average_uses_latency_sample_counts(
+        self, factory, db: AsyncSession, target: SLATarget
+    ):
+        downsampler = UptimeDownsampler(factory)
+        hour_start = _floor_1h(datetime.now(timezone.utc) - timedelta(hours=3))
+        db.add_all(
+            [
+                UptimeSample5m(
+                    org_id=TEST_ORG_ID,
+                    target_id=target.id,
+                    bucket_start=hour_start,
+                    up_pct=1.0,
+                    total_samples=5,
+                    avg_latency_ms=100,
+                    min_latency_ms=80,
+                    max_latency_ms=120,
+                    latency_samples=1,
+                ),
+                UptimeSample5m(
+                    org_id=TEST_ORG_ID,
+                    target_id=target.id,
+                    bucket_start=hour_start + timedelta(minutes=5),
+                    up_pct=1.0,
+                    total_samples=5,
+                    avg_latency_ms=300,
+                    min_latency_ms=200,
+                    max_latency_ms=500,
+                    latency_samples=3,
+                ),
+            ]
+        )
+        await db.commit()
+
+        await downsampler.run_once()
+
+        async with factory() as check_db:
+            row = (
+                await check_db.execute(
+                    select(UptimeSample1h).where(
+                        UptimeSample1h.target_id == target.id
+                    )
+                )
+            ).scalar_one()
+
+        assert row.avg_latency_ms == 250
+        assert row.min_latency_ms == 80
+        assert row.max_latency_ms == 500
+        assert row.latency_samples == 4
 
 
 class TestPruneRaw:

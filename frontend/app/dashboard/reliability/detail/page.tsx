@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { SLOModal } from "@/components/reliability/SLOModal";
 import { UptimeStrip } from "@/components/reliability/UptimeStrip";
 import { UptimeBarChart } from "@/components/reliability/UptimeBarChart";
+import { ResponseTimeChart } from "@/components/reliability/ResponseTimeChart";
 import {
   getSLATarget,
   getSLATargetUptime,
@@ -16,6 +17,7 @@ import {
   getSLOStatus,
   deleteSLO,
   probeSLATarget,
+  getSLATargetResponseTime,
 } from "@/lib/api_reliability";
 import {
   formatUptimePct,
@@ -30,6 +32,7 @@ import type {
   SLATargetUptimeResponse,
   SLOResponse,
   SLOStatusResponse,
+  ResponseTimeResponse,
 } from "@/lib/types";
 
 export default function TargetDetailPage() {
@@ -41,6 +44,11 @@ export default function TargetDetailPage() {
 }
 
 type Uptime = SLATargetUptimeResponse | null;
+
+function formatLatency(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
+}
 
 function UptimeSummaryCard({ label, uptime }: { label: string; uptime: Uptime }) {
   return (
@@ -69,6 +77,10 @@ function TargetDetailContent() {
   const [d365, setD365] = useState<Uptime>(null);
   const [historyWindow, setHistoryWindow] = useState("30d");
   const [history, setHistory] = useState<Uptime>(null);
+  const [responseWindow, setResponseWindow] = useState("24h");
+  const [responseTime, setResponseTime] = useState<ResponseTimeResponse | null>(null);
+  const [responseHistoryWindow, setResponseHistoryWindow] = useState("30d");
+  const [responseHistory, setResponseHistory] = useState<ResponseTimeResponse | null>(null);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [customUptime, setCustomUptime] = useState<Uptime>(null);
@@ -120,6 +132,20 @@ function TargetDetailContent() {
     if (!id) return;
     getSLATargetUptime(id, historyWindow).then(setHistory).catch(() => setHistory(null));
   }, [id, historyWindow]);
+
+  useEffect(() => {
+    if (!id) return;
+    getSLATargetResponseTime(id, responseWindow)
+      .then(setResponseTime)
+      .catch(() => setResponseTime(null));
+  }, [id, responseWindow]);
+
+  useEffect(() => {
+    if (!id) return;
+    getSLATargetResponseTime(id, responseHistoryWindow)
+      .then(setResponseHistory)
+      .catch(() => setResponseHistory(null));
+  }, [id, responseHistoryWindow]);
 
   async function handleProbe() {
     setProbing(true);
@@ -325,6 +351,80 @@ function TargetDetailContent() {
               <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-border-subtle" /> No data</span>
             </span>
             <span>{formatUptimePct(history?.uptime_pct)} over {historyWindow}</span>
+          </div>
+        </div>
+
+        {/* Response time */}
+        <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium uppercase tracking-wide text-fg-secondary">Response Time</h2>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-muted">
+                <span>Avg <strong className="text-fg-primary">{formatLatency(responseTime?.avg_latency_ms)}</strong></span>
+                <span>Min {formatLatency(responseTime?.min_latency_ms)}</span>
+                <span>Max {formatLatency(responseTime?.max_latency_ms)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              {["15m", "30m", "1h", "6h", "12h", "24h"].map((window) => (
+                <button
+                  key={window}
+                  onClick={() => setResponseWindow(window)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    responseWindow === window
+                      ? "border border-border-strong bg-bg-elevated text-fg-primary"
+                      : "text-fg-secondary hover:bg-bg-hover hover:text-fg-primary"
+                  }`}
+                >
+                  {window}
+                </button>
+              ))}
+            </div>
+          </div>
+          <ResponseTimeChart
+            series={responseTime?.series ?? []}
+            windowValue={responseWindow}
+          />
+          <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
+            <span><span className="text-accent">Line</span> average · shaded area min–max</span>
+            <span>{responseTime?.total_samples ?? 0} samples</span>
+          </div>
+        </div>
+
+        {/* Response time history */}
+        <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium uppercase tracking-wide text-fg-secondary">Response Time History</h2>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-muted">
+                <span>Avg <strong className="text-fg-primary">{formatLatency(responseHistory?.avg_latency_ms)}</strong></span>
+                <span>Min {formatLatency(responseHistory?.min_latency_ms)}</span>
+                <span>Max {formatLatency(responseHistory?.max_latency_ms)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              {["7d", "30d", "90d", "365d"].map((window) => (
+                <button
+                  key={window}
+                  onClick={() => setResponseHistoryWindow(window)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    responseHistoryWindow === window
+                      ? "border border-border-strong bg-bg-elevated text-fg-primary"
+                      : "text-fg-secondary hover:bg-bg-hover hover:text-fg-primary"
+                  }`}
+                >
+                  {window}
+                </button>
+              ))}
+            </div>
+          </div>
+          <ResponseTimeChart
+            series={responseHistory?.series ?? []}
+            windowValue={responseHistoryWindow}
+          />
+          <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
+            <span><span className="text-accent">Line</span> average · shaded area min–max</span>
+            <span>{responseHistory?.total_samples ?? 0} samples</span>
           </div>
         </div>
 

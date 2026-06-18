@@ -11,6 +11,7 @@ import {
   SLOStatusResponse,
   SLORecommendationsResponse,
   IncidentResponse,
+  ResponseTimeResponse,
 } from "./types";
 
 export async function listSLATargets(): Promise<SLATargetListResponse> {
@@ -46,6 +47,15 @@ export async function getSLATargetUptime(
     qs.set("window", window);
   }
   return api.get(`/sla-targets/${id}/uptime?${qs.toString()}`);
+}
+
+export async function getSLATargetResponseTime(
+  id: string,
+  window: string = "24h",
+): Promise<ResponseTimeResponse> {
+  return api.get(
+    `/sla-targets/${id}/response-time?${new URLSearchParams({ window }).toString()}`,
+  );
 }
 
 export async function getSLASummary(): Promise<SLASummaryResponse> {

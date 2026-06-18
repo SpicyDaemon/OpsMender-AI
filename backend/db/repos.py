@@ -66,6 +66,8 @@ from backend.db.models import (
     WorkflowProfile,
     SLATarget,
     UptimeSample,
+    UptimeSample1h,
+    UptimeSample5m,
     SLO,
     MaintenanceWindow,
     Organization,
@@ -3071,6 +3073,48 @@ class UptimeSampleRepo:
             .limit(1)
         )
         return (await db.execute(stmt)).scalars().first()
+
+    @staticmethod
+    async def query_5m_window(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        target_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+    ) -> Sequence[UptimeSample5m]:
+        stmt = (
+            select(UptimeSample5m)
+            .where(
+                UptimeSample5m.org_id == org_id,
+                UptimeSample5m.target_id == target_id,
+                UptimeSample5m.bucket_start >= since,
+                UptimeSample5m.bucket_start <= until,
+            )
+            .order_by(UptimeSample5m.bucket_start)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def query_1h_window(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        target_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+    ) -> Sequence[UptimeSample1h]:
+        stmt = (
+            select(UptimeSample1h)
+            .where(
+                UptimeSample1h.org_id == org_id,
+                UptimeSample1h.target_id == target_id,
+                UptimeSample1h.bucket_start >= since,
+                UptimeSample1h.bucket_start <= until,
+            )
+            .order_by(UptimeSample1h.bucket_start)
+        )
+        return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
     async def compute_uptime(

@@ -1419,6 +1419,26 @@ class UptimeResponse(BaseModel):
     episodes: list[UptimeEpisode] = Field(default_factory=list)
 
 
+class ResponseTimeSeriesPoint(BaseModel):
+    ts: datetime
+    avg_latency_ms: Optional[float] = None
+    min_latency_ms: Optional[int] = None
+    max_latency_ms: Optional[int] = None
+    samples: int = 0
+
+
+class ResponseTimeResponse(BaseModel):
+    """Latency statistics and fixed-width chart series for an SLA target."""
+
+    target_id: uuid.UUID
+    window: str
+    avg_latency_ms: Optional[float] = None
+    min_latency_ms: Optional[int] = None
+    max_latency_ms: Optional[int] = None
+    total_samples: int = 0
+    series: list[ResponseTimeSeriesPoint] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Bot connectors (Sprint 27)
 # ---------------------------------------------------------------------------

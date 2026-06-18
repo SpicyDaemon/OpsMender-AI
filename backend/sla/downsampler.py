@@ -164,12 +164,19 @@ class UptimeDownsampler:
             else:
                 up_pct = sum(1 for s in non_suppressed if s.up) / total
 
+            latencies = [s.latency_ms for s in group if s.latency_ms is not None]
+            avg_latency = round(sum(latencies) / len(latencies), 2) if latencies else None
+
             row = UptimeSample5m(
                 org_id=group[0].org_id,
                 target_id=target_id,
                 bucket_start=bucket_start,
                 up_pct=round(up_pct, 4),
                 total_samples=len(group),
+                avg_latency_ms=avg_latency,
+                min_latency_ms=min(latencies) if latencies else None,
+                max_latency_ms=max(latencies) if latencies else None,
+                latency_samples=len(latencies),
             )
             db.add(row)
             inserted += 1
@@ -222,12 +229,41 @@ class UptimeDownsampler:
                 weighted_sum = sum(b.up_pct * b.total_samples for b in group)
                 up_pct = weighted_sum / total_samples
 
+            # Weight each 5m average by the number of latency-bearing raw
+            # samples. This keeps the hourly average exact even when an ingest
+            # source reports availability without latency.
+            lat_buckets = [
+                b
+                for b in group
+                if b.avg_latency_ms is not None and b.latency_samples > 0
+            ]
+            if lat_buckets:
+                latency_samples = sum(b.latency_samples for b in lat_buckets)
+                avg_latency = round(
+                    sum(b.avg_latency_ms * b.latency_samples for b in lat_buckets)
+                    / latency_samples,
+                    2,
+                )
+                min_latency = min(
+                    b.min_latency_ms for b in lat_buckets if b.min_latency_ms is not None
+                )
+                max_latency = max(
+                    b.max_latency_ms for b in lat_buckets if b.max_latency_ms is not None
+                )
+            else:
+                avg_latency = min_latency = max_latency = None
+                latency_samples = 0
+
             row = UptimeSample1h(
                 org_id=group[0].org_id,
                 target_id=target_id,
                 bucket_start=hour_start,
                 up_pct=round(up_pct, 4),
                 total_samples=total_samples,
+                avg_latency_ms=avg_latency,
+                min_latency_ms=min_latency,
+                max_latency_ms=max_latency,
+                latency_samples=latency_samples,
             )
             db.add(row)
             inserted += 1

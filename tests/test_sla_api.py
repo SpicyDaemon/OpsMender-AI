@@ -766,6 +766,88 @@ class TestReliabilityV1:
         assert bad.status_code == 400
 
     @pytest.mark.asyncio
+    async def test_response_time_recent_window(
+        self, client: AsyncClient, db: AsyncSession
+    ):
+        target_resp = await client.post(
+            "/sla-targets", json={"name": "response-recent", "kind": "http"}
+        )
+        target_id = uuid.UUID(target_resp.json()["id"])
+
+        from backend.db.models import UptimeSample
+
+        now = datetime.now(timezone.utc)
+        db.add_all(
+            [
+                UptimeSample(
+                    org_id=TEST_ORG_ID,
+                    target_id=target_id,
+                    observed_at=now - timedelta(minutes=10),
+                    up=True,
+                    latency_ms=100,
+                    source="poller",
+                ),
+                UptimeSample(
+                    org_id=TEST_ORG_ID,
+                    target_id=target_id,
+                    observed_at=now - timedelta(minutes=5),
+                    up=True,
+                    latency_ms=300,
+                    source="poller",
+                ),
+            ]
+        )
+        await db.commit()
+
+        resp = await client.get(
+            f"/sla-targets/{target_id}/response-time?window=15m"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["avg_latency_ms"] == 200
+        assert data["min_latency_ms"] == 100
+        assert data["max_latency_ms"] == 300
+        assert data["total_samples"] == 2
+        assert len(data["series"]) == 15
+
+    @pytest.mark.asyncio
+    async def test_response_time_365d_uses_hourly_rollups(
+        self, client: AsyncClient, db: AsyncSession
+    ):
+        target_resp = await client.post(
+            "/sla-targets", json={"name": "response-history", "kind": "http"}
+        )
+        target_id = uuid.UUID(target_resp.json()["id"])
+
+        from backend.db.models import UptimeSample1h
+
+        db.add(
+            UptimeSample1h(
+                org_id=TEST_ORG_ID,
+                target_id=target_id,
+                bucket_start=datetime.now(timezone.utc) - timedelta(days=180),
+                up_pct=1.0,
+                total_samples=60,
+                avg_latency_ms=240,
+                min_latency_ms=120,
+                max_latency_ms=420,
+                latency_samples=60,
+            )
+        )
+        await db.commit()
+
+        resp = await client.get(
+            f"/sla-targets/{target_id}/response-time?window=365d"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["avg_latency_ms"] == 240
+        assert data["min_latency_ms"] == 120
+        assert data["max_latency_ms"] == 420
+        assert data["total_samples"] == 60
+        assert len(data["series"]) == 73
+
+    @pytest.mark.asyncio
     async def test_slo_allows_three_decimal_objective(self, client: AsyncClient):
         target_resp = await client.post(
             "/sla-targets", json={"name": "five-nines", "kind": "http"}

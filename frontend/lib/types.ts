@@ -1302,6 +1302,24 @@ export interface SLATargetUptimeResponse {
   episodes: UptimeEpisode[];
 }
 
+export interface ResponseTimeSeriesPoint {
+  ts: string;
+  avg_latency_ms: number | null;
+  min_latency_ms: number | null;
+  max_latency_ms: number | null;
+  samples: number;
+}
+
+export interface ResponseTimeResponse {
+  target_id: string;
+  window: string;
+  avg_latency_ms: number | null;
+  min_latency_ms: number | null;
+  max_latency_ms: number | null;
+  total_samples: number;
+  series: ResponseTimeSeriesPoint[];
+}
+
 export interface SLOStatusResponse {
   objective_pct: number;
   actual_pct: number;

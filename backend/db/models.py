@@ -1016,6 +1016,15 @@ class UptimeSample5m(Base):
         Numeric(5, 4, asdecimal=False), nullable=False
     )
     total_samples: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Response-time rollups (v1.2) — preserved past raw-sample pruning so the
+    # response-time history can span up to 365d. Null when no probe in the
+    # bucket reported a latency.
+    avg_latency_ms: Mapped[float | None] = mapped_column(
+        Numeric(10, 2, asdecimal=False), nullable=True
+    )
+    min_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latency_samples: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class UptimeSample1h(Base):
@@ -1041,6 +1050,13 @@ class UptimeSample1h(Base):
         Numeric(5, 4, asdecimal=False), nullable=False
     )
     total_samples: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Response-time rollups (v1.2) — see UptimeSample5m.
+    avg_latency_ms: Mapped[float | None] = mapped_column(
+        Numeric(10, 2, asdecimal=False), nullable=True
+    )
+    min_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latency_samples: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 # ---------------------------------------------------------------------------

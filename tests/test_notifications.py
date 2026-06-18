@@ -276,3 +276,78 @@ def test_muted_categories_parsing():
     assert _muted_categories(
         {"in_app": {"muted_categories": ["incident", "session"]}}
     ) == {"incident", "session"}
+
+
+# --- approval.requested hook -------------------------------------------------
+
+
+async def test_org_user_ids_with_roles(factory):
+    from backend.db.repos import UserRepo
+    from backend.notifications.service import org_user_ids_with_roles
+
+    async with factory() as db:
+        await UserRepo.add_to_organization(db, USER_A, ORG, role="operator")
+        await UserRepo.add_to_organization(db, USER_B, ORG, role="viewer")
+        await db.commit()
+    async with factory() as db:
+        approvers = await org_user_ids_with_roles(db, ORG, ("admin", "operator"))
+        assert approvers == [USER_A]
+
+
+async def test_approval_request_notifies_approvers(factory, monkeypatch):
+    import asyncio
+
+    import backend.api.routes.ws as ws
+    from backend.db.models import Incident, Session as SessionModel
+    from backend.db.repos import ApprovalRequestRepo, UserRepo
+
+    async def fake_push(user_id, message):
+        return None
+
+    monkeypatch.setattr(ws, "publish_user", fake_push)
+
+    inc_id = uuid.uuid4()
+    sess_id = uuid.uuid4()
+    async with factory() as db:
+        await UserRepo.add_to_organization(db, USER_A, ORG, role="operator")
+        await UserRepo.add_to_organization(db, USER_B, ORG, role="viewer")
+        db.add(Incident(id=inc_id, org_id=ORG, title="DB down", description="x"))
+        db.add(
+            SessionModel(id=sess_id, org_id=ORG, incident_id=inc_id, tier=1)
+        )
+        await db.commit()
+
+    from backend.approvals.service import ApprovalService
+
+    service = ApprovalService(
+        factory, org_id=ORG, timeout_seconds=5, poll_interval_seconds=0.02
+    )
+    task = asyncio.create_task(
+        service.request_and_wait(
+            session_id=sess_id,
+            action={"tool": "kubectl_delete"},
+            justification="Deleting a stuck pod",
+        )
+    )
+    # Let it create the request + emit, then resolve so the task can finish.
+    await asyncio.sleep(0.15)
+    async with factory() as db:
+        # The operator was notified; the viewer was not.
+        assert (
+            await InAppNotificationRepo.count_for_user(db, ORG, USER_A) == 1
+        )
+        assert (
+            await InAppNotificationRepo.count_for_user(db, ORG, USER_B) == 0
+        )
+        items = await InAppNotificationRepo.list_for_user(db, ORG, USER_A)
+        assert items[0].event_type == "approval.requested"
+        assert items[0].category == "approval"
+        assert items[0].link == f"/dashboard/incidents/{inc_id}"
+        assert items[0].incident_id == inc_id
+        # resolve the pending request so request_and_wait returns
+        pending = await ApprovalRequestRepo.list_pending(db, ORG, session_id=sess_id)
+        await ApprovalRequestRepo.resolve(
+            db, ORG, pending[0].id, status="approved", resolved_by=USER_A
+        )
+        await db.commit()
+    await asyncio.wait_for(task, timeout=2)

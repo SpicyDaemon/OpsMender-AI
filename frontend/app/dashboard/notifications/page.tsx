@@ -1,0 +1,299 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  AlertTriangle,
+  Bell,
+  CheckCheck,
+  CheckCircle2,
+  Circle,
+  MessageSquare,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  UserCog,
+} from "lucide-react";
+import {
+  deleteNotification,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type Notification,
+} from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterChips } from "@/components/ui/FilterChips";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TableSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
+
+const PAGE_SIZE = 25;
+
+const CATEGORY_ICON: Record<string, typeof Bell> = {
+  incident: AlertTriangle,
+  approval: ShieldCheck,
+  session: Sparkles,
+  mention: MessageSquare,
+  reliability: CheckCircle2,
+  account: UserCog,
+};
+
+function categoryIcon(category: string) {
+  return CATEGORY_ICON[category] ?? Bell;
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const TABS = [
+  { value: "all" as const, label: "All" },
+  { value: "unread" as const, label: "Unread" },
+];
+
+type Tab = (typeof TABS)[number]["value"];
+
+export default function NotificationsPage() {
+  const router = useRouter();
+  const toast = useToast();
+  const [tab, setTab] = useState<Tab>("all");
+  const [items, setItems] = useState<Notification[]>([]);
+  const [total, setTotal] = useState(0);
+  const [unread, setUnread] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const load = useCallback(
+    async (reset: boolean) => {
+      if (reset) setLoading(true);
+      else setLoadingMore(true);
+      try {
+        const offset = reset ? 0 : items.length;
+        const res = await listNotifications({
+          unread_only: tab === "unread",
+          limit: PAGE_SIZE,
+          offset,
+        });
+        setItems((prev) => (reset ? res.items : [...prev, ...res.items]));
+        setTotal(res.total);
+        setUnread(res.unread);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to load notifications",
+        );
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    // items.length is read inside but we intentionally drive reloads via tab.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tab, toast],
+  );
+
+  useEffect(() => {
+    load(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  async function handleToggleRead(item: Notification) {
+    const makeRead = !item.read_at;
+    const now = new Date().toISOString();
+    setItems((prev) =>
+      prev.map((p) =>
+        p.id === item.id ? { ...p, read_at: makeRead ? now : null } : p,
+      ),
+    );
+    setUnread((u) => Math.max(0, u + (makeRead ? -1 : 1)));
+    try {
+      await markNotificationRead(item.id, makeRead);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
+      load(true);
+    }
+  }
+
+  async function handleDelete(item: Notification) {
+    const prevItems = items;
+    setItems((prev) => prev.filter((p) => p.id !== item.id));
+    setTotal((t) => Math.max(0, t - 1));
+    if (!item.read_at) setUnread((u) => Math.max(0, u - 1));
+    try {
+      await deleteNotification(item.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
+      setItems(prevItems);
+    }
+  }
+
+  async function handleMarkAll() {
+    const prevItems = items;
+    const prevUnread = unread;
+    const now = new Date().toISOString();
+    setItems((prev) => prev.map((p) => (p.read_at ? p : { ...p, read_at: now })));
+    setUnread(0);
+    try {
+      await markAllNotificationsRead();
+      toast.success("All notifications marked read");
+      if (tab === "unread") load(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to mark all read");
+      setItems(prevItems);
+      setUnread(prevUnread);
+    }
+  }
+
+  function handleOpen(item: Notification) {
+    if (!item.read_at) {
+      const now = new Date().toISOString();
+      setItems((prev) =>
+        prev.map((p) => (p.id === item.id ? { ...p, read_at: now } : p)),
+      );
+      setUnread((u) => Math.max(0, u - 1));
+      markNotificationRead(item.id, true).catch(() => load(true));
+    }
+    if (item.link) router.push(item.link);
+  }
+
+  const hasMore = items.length < total;
+
+  return (
+    <div>
+      <div className="mb-6">
+        <PageHeader
+          title="Notifications"
+          subtitle={`${total} total · ${unread} unread`}
+          icon={<Bell size={18} />}
+          actions={
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => load(true)}
+                disabled={loading}
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                Refresh
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleMarkAll}
+                disabled={unread === 0}
+              >
+                <CheckCheck size={14} />
+                Mark all read
+              </Button>
+            </>
+          }
+        />
+      </div>
+
+      <div className="mb-5">
+        <FilterChips
+          ariaLabel="Filter notifications"
+          options={TABS}
+          value={tab}
+          onChange={(v) => setTab(v)}
+        />
+      </div>
+
+      {loading ? (
+        <TableSkeleton rows={6} columns={3} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={Bell}
+          title={tab === "unread" ? "No unread notifications" : "No notifications yet"}
+          description={
+            tab === "unread"
+              ? "You're all caught up."
+              : "Updates about incidents, approvals, sessions, and mentions will show up here."
+          }
+        />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+          <ul className="divide-y divide-border-subtle">
+            {items.map((item) => {
+              const Icon = categoryIcon(item.category);
+              const isUnread = !item.read_at;
+              return (
+                <li
+                  key={item.id}
+                  className={`flex items-start gap-3 px-4 py-3 transition-colors ${
+                    isUnread ? "bg-accent-bg/30" : ""
+                  }`}
+                >
+                  <Icon size={16} className="mt-0.5 shrink-0 text-fg-muted" />
+                  <button
+                    type="button"
+                    onClick={() => handleOpen(item)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <p className="flex items-center gap-2 text-sm font-medium text-fg-primary">
+                      {isUnread && (
+                        <span
+                          aria-label="unread"
+                          className="h-2 w-2 shrink-0 rounded-full bg-status-info"
+                        />
+                      )}
+                      <span className="truncate">{item.title}</span>
+                    </p>
+                    {item.body && (
+                      <p className="mt-0.5 text-xs text-fg-secondary">{item.body}</p>
+                    )}
+                    <p className="mt-1 font-mono text-[11px] text-fg-muted">
+                      {fmtDate(item.created_at)}
+                    </p>
+                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleRead(item)}
+                      title={isUnread ? "Mark as read" : "Mark as unread"}
+                      aria-label={isUnread ? "Mark as read" : "Mark as unread"}
+                      className="rounded-md p-1.5 text-fg-muted hover:bg-bg-hover hover:text-fg-primary transition-colors"
+                    >
+                      {isUnread ? (
+                        <Circle size={14} />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(item)}
+                      title="Delete"
+                      aria-label="Delete notification"
+                      className="rounded-md p-1.5 text-fg-muted hover:bg-status-critical-bg hover:text-status-critical transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {hasMore && (
+            <div className="border-t border-border-subtle p-3 text-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => load(false)}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

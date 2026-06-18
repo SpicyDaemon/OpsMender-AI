@@ -15,6 +15,7 @@ from backend.notifications.service import (
     CATEGORY_SESSION,
     emit_notification,
     emit_to_users,
+    org_user_ids_with_roles,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "CATEGORY_SESSION",
     "emit_notification",
     "emit_to_users",
+    "org_user_ids_with_roles",
 ]

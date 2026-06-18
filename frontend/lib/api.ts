@@ -1857,6 +1857,105 @@ export async function updateOrgNotificationSettings(
 }
 
 // ---------------------------------------------------------------------------
+// Notification center (per-user bell)
+// ---------------------------------------------------------------------------
+
+export interface Notification {
+  id: string;
+  event_type: string;
+  category: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  incident_id: string | null;
+  session_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  items: Notification[];
+  total: number;
+  unread: number;
+}
+
+export async function listNotifications(opts?: {
+  unread_only?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<NotificationListResponse> {
+  const qs = new URLSearchParams();
+  if (opts?.unread_only !== undefined) qs.set("unread_only", String(opts.unread_only));
+  if (opts?.limit !== undefined) qs.set("limit", String(opts.limit));
+  if (opts?.offset !== undefined) qs.set("offset", String(opts.offset));
+  const q = qs.toString();
+  return api.get<NotificationListResponse>(`/notifications${q ? `?${q}` : ""}`);
+}
+
+export async function getUnreadCount(): Promise<{ unread: number }> {
+  return api.get<{ unread: number }>("/notifications/unread-count");
+}
+
+export async function markNotificationRead(
+  id: string,
+  read = true,
+): Promise<void> {
+  return api.post<void>(`/notifications/${id}/read?read=${read}`);
+}
+
+export async function markAllNotificationsRead(): Promise<{ updated: number }> {
+  return api.post<{ updated: number }>("/notifications/read-all");
+}
+
+export async function deleteNotification(id: string): Promise<void> {
+  return api.del<void>(`/notifications/${id}`);
+}
+
+export interface NotificationStreamMessage {
+  type: "notification" | "ping";
+  data: Notification | Record<string, unknown>;
+}
+
+/**
+ * Open the per-user notification WebSocket. Mirrors {@link connectSessionStream}:
+ * derives the ws(s):// base from BASE_URL or the current page origin and passes
+ * the JWT as a query param. Returns the socket so callers can close it on
+ * unmount.
+ */
+export function connectNotificationStream(handlers: {
+  onNotification: (n: Notification) => void;
+  onClose?: () => void;
+}): WebSocket {
+  let wsBase: string;
+  if (BASE_URL) {
+    wsBase = BASE_URL.replace(/^http/, "ws");
+  } else if (typeof window !== "undefined") {
+    const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+    wsBase = `${scheme}//${window.location.host}`;
+  } else {
+    wsBase = "";
+  }
+  const token = getToken();
+  const url = `${wsBase}/notifications/stream${token ? `?token=${token}` : ""}`;
+  const ws = new WebSocket(url);
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data) as NotificationStreamMessage;
+      if (msg.type === "notification") {
+        handlers.onNotification(msg.data as Notification);
+      }
+    } catch {
+      // ignore malformed frames
+    }
+  };
+
+  ws.onclose = () => handlers.onClose?.();
+
+  return ws;
+}
+
+// ---------------------------------------------------------------------------
 // AI incident memory (Sprint 45 Step 6)
 // ---------------------------------------------------------------------------
 

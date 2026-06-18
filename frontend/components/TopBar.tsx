@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
-  Bell,
   Building2,
   Check,
   ChevronDown,
@@ -15,10 +14,10 @@ import {
 import { useAuth } from "@/context/auth";
 import { Avatar, userDisplayName } from "@/components/ui/Avatar";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { NotificationBell } from "@/components/NotificationBell";
 import {
   getConfig,
   getOrgId,
-  listApprovals,
   listMyOrganizations,
   resolveTenant,
   setMyPrimaryOrganization,
@@ -32,15 +31,12 @@ const ROLE_STYLES: Record<string, string> = {
   viewer: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
 };
 
-const POLL_MS = 30_000;
-
 export function TopBar({
   onOpenMobileNav,
 }: {
   onOpenMobileNav?: () => void;
 }) {
   const { user, logout } = useAuth();
-  const [pending, setPending] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [orgs, setOrgs] = useState<MyOrganizationResponse[]>([]);
@@ -52,22 +48,6 @@ export function TopBar({
   // Sprint 64 Step 2: gate the org switcher on multi_org_enabled.
   // Default false = single-workspace mode (don't show the switcher).
   const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await listApprovals({ status: "pending", limit: 100 });
-        if (!cancelled) setPending(res.items.length);
-      } catch {
-        if (!cancelled) setPending(null);
-      }
-    }
-    load();
-    const t = setInterval(load, POLL_MS);
-    return () => { cancelled = true; clearInterval(t); };
-  }, [user]);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -149,7 +129,6 @@ export function TopBar({
     : "";
 
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
-  const pendingLabel = pending === null ? "?" : pending > 99 ? "99+" : String(pending);
 
   return (
     <header className="relative z-40 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-elevated px-4">
@@ -267,18 +246,7 @@ export function TopBar({
           <Keyboard size={16} />
         </button>
 
-        <Link
-          href="/dashboard/approvals"
-          title={`${pending ?? 0} pending approvals`}
-          className="relative flex h-9 w-9 items-center justify-center rounded-md text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
-        >
-          <Bell size={16} />
-          {pending !== null && pending > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex min-w-[18px] items-center justify-center rounded-pill border border-bg-elevated bg-status-critical px-1 font-mono text-[10px] font-semibold leading-4 text-fg-primary">
-              {pendingLabel}
-            </span>
-          )}
-        </Link>
+        <NotificationBell />
 
         {user && (
           <div ref={menuRef} className="relative">

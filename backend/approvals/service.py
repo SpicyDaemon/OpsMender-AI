@@ -12,10 +12,23 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.db.models import ApprovalRequest
 from backend.db.repos import ApprovalRequestRepo, SessionRepo
+from backend.notifications import (
+    CATEGORY_APPROVAL,
+    emit_to_users,
+    org_user_ids_with_roles,
+)
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _action_summary(action: dict[str, Any]) -> str:
+    """Short human label for an approval action dict (notification body)."""
+    if not isinstance(action, dict):
+        return "Review the proposed action."
+    tool = action.get("tool") or action.get("name") or action.get("action")
+    return f"Tool: {tool}" if tool else "Review the proposed action."
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -81,6 +94,27 @@ class ApprovalService:
                 expires_at=expires_at,
             )
             await SessionRepo.set_status(db, self._org_id, session_id, status="awaiting_approval")
+            # Notify everyone who can act on it (admins + operators) that a
+            # Tier 1 action is waiting. Best-effort; never blocks the approval.
+            session = await SessionRepo.get_by_id(db, self._org_id, session_id)
+            incident_id = session.incident_id if session else None
+            approver_ids = await org_user_ids_with_roles(
+                db, self._org_id, ("admin", "operator")
+            )
+            await emit_to_users(
+                db,
+                self._org_id,
+                approver_ids,
+                event_type="approval.requested",
+                category=CATEGORY_APPROVAL,
+                title="Approval needed for an AI action",
+                body=justification or _action_summary(action),
+                link=(
+                    f"/dashboard/incidents/{incident_id}" if incident_id else None
+                ),
+                incident_id=incident_id,
+                session_id=session_id,
+            )
             await db.commit()
             persisted_request = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
             if persisted_request is None:

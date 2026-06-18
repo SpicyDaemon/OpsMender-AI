@@ -46,6 +46,10 @@ const apiMocks = vi.hoisted(() => ({
   resolveTenant: vi.fn().mockResolvedValue({ pinned: false }),
   setMyPrimaryOrganization: vi.fn().mockResolvedValue(undefined),
   setOrgId: vi.fn(),
+  // NotificationBell (rendered inside TopBar) calls these on mount.
+  getUnreadCount: vi.fn().mockResolvedValue({ unread: 0 }),
+  listNotifications: vi.fn().mockResolvedValue({ items: [], total: 0, unread: 0 }),
+  connectNotificationStream: vi.fn().mockReturnValue({ close: vi.fn() }),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 

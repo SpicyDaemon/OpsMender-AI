@@ -178,6 +178,17 @@ async def emit_notification(
         return None
 
 
+async def org_user_ids_with_roles(
+    db: AsyncSession, org_id: uuid.UUID, roles: Iterable[str]
+) -> list[uuid.UUID]:
+    """User ids in *org_id* whose org role is one of *roles* (e.g. approvers)."""
+    from backend.db.repos import UserRepo
+
+    wanted = {str(r) for r in roles}
+    members = await UserRepo.list_by_org(db, org_id)
+    return [m["user_id"] for m in members if str(m.get("role")) in wanted]
+
+
 async def emit_to_users(
     db: AsyncSession,
     org_id: uuid.UUID,

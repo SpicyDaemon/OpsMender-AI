@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-user notification center (the 🔔 bell).** Every signed-in user now has
+  an in-app notification center: a bell in the top bar with an unread badge, a
+  dropdown of recent items (per-category icon, deep link, relative time), a
+  full archive page (`/dashboard/notifications`) with mark-read / delete /
+  load-more, and live updates over a new per-user WebSocket
+  (`WS /notifications/stream`). New `in_app_notifications` table (migration
+  `a7b8c9d0e1f2`), `InAppNotificationRepo`, REST routes
+  (`/notifications` list · `/unread-count` · `{id}/read` · `/read-all` ·
+  `DELETE {id}`), and a central `backend/notifications` emit service that
+  persists, honors preferences, and best-effort live-pushes. Wired into events
+  that already fire:
+  - **incident.assigned** — assigning an incident to someone else (per-incident
+    and bulk acknowledge/reassign); self-ack stays silent.
+  - **incident.combined** — a secondary's assignee is told their incident was
+    folded into the primary.
+  - **approval.requested** — every admin/operator is notified when a Tier 1
+    action awaits approval.
+  - **mention.comment** — `@username` in an incident comment notifies the
+    mentioned user (email-safe parsing; self-mentions skipped).
+  - **account.role_changed** — a user is told when an admin changes their role.
+- **Notification preferences.** A per-user preferences page
+  (`/dashboard/notifications/preferences`) and API
+  (`GET/PUT /notifications/preferences`): mute notifications per category and
+  set **quiet hours** (which suppress only the live pop/badge — items still
+  land in the center). Stored on the existing `user_notification_prefs` row.
+
+### Notes
+
+- **SLO-breach notifications are deferred.** SLO breaches are computed
+  on-demand (`/sla-recommendations`) with no persisted breach-state, so
+  notifying correctly needs transition tracking — a follow-up rather than a
+  per-poll emit.
+
 ## [1.2.0] — 2026-06-18
 
 ### Added

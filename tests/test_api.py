@@ -7294,13 +7294,14 @@ class TestApprovals:
 class TestWebSocket:
     async def test_ws_endpoint_exists(self, app):
         """Verify the WebSocket route is registered in the app."""
-        ws_routes = [
-            r
+        ws_paths = {
+            getattr(r, "path", "")
             for r in app.routes
             if hasattr(r, "path") and "/stream" in getattr(r, "path", "")
-        ]
-        assert len(ws_routes) == 1
-        assert ws_routes[0].path == "/sessions/{session_id}/stream"
+        }
+        # Per-session session stream + per-user notification stream.
+        assert "/sessions/{session_id}/stream" in ws_paths
+        assert "/notifications/stream" in ws_paths
 
     async def test_ws_publish_channel(self):
         """Test the in-memory pub/sub channel."""

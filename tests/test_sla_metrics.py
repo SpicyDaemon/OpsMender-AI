@@ -84,3 +84,62 @@ def test_history_series_marks_unknown_buckets():
     assert len(series) == 4
     assert series[0]["status"] == "down"  # contains a down sample
     assert series[-1]["status"] == "unknown"  # no samples
+
+
+# ---------------------------------------------------------------------------
+# downtime_episodes (v1.2 — outage history)
+# ---------------------------------------------------------------------------
+
+
+def test_downtime_episodes_groups_runs_with_recovery():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    # UU DDD UU D U  → two episodes (3-sample run, then 1-sample run)
+    samples = _series("UUDDDUUDU", start=start)
+    eps = metrics.downtime_episodes(samples)
+    assert len(eps) == 2
+    assert eps[0]["duration_seconds"] == 3 * 60
+    assert eps[0]["started_at"] == start + timedelta(minutes=2)
+    assert eps[0]["ended_at"] == start + timedelta(minutes=5)
+    assert eps[0]["maintenance"] is False
+    assert eps[1]["duration_seconds"] == 60
+
+
+def test_downtime_episodes_ongoing_has_no_end():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    samples = _series("UUDD", start=start)  # still down at the end
+    eps = metrics.downtime_episodes(samples)
+    assert len(eps) == 1
+    assert eps[0]["ended_at"] is None
+    assert eps[0]["duration_seconds"] >= 60
+
+
+def test_downtime_episodes_flags_maintenance_when_fully_suppressed():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    # Two suppressed-down samples bracketed by up samples → a maintenance outage.
+    samples = [
+        FakeSample(observed_at=start, up=True),
+        FakeSample(observed_at=start + timedelta(minutes=1), up=False, suppressed=True),
+        FakeSample(observed_at=start + timedelta(minutes=2), up=False, suppressed=True),
+        FakeSample(observed_at=start + timedelta(minutes=3), up=True),
+    ]
+    eps = metrics.downtime_episodes(samples)
+    assert len(eps) == 1
+    assert eps[0]["maintenance"] is True
+
+
+def test_downtime_episodes_partial_suppression_is_real_outage():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    # One real down + one suppressed down in the same run → counts as a real outage.
+    samples = [
+        FakeSample(observed_at=start, up=False),
+        FakeSample(observed_at=start + timedelta(minutes=1), up=False, suppressed=True),
+        FakeSample(observed_at=start + timedelta(minutes=2), up=True),
+    ]
+    eps = metrics.downtime_episodes(samples)
+    assert len(eps) == 1
+    assert eps[0]["maintenance"] is False
+
+
+def test_downtime_episodes_none_when_all_up():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert metrics.downtime_episodes(_series("UUUU", start=start)) == []

@@ -105,6 +105,58 @@ def mtbf_seconds(samples: Sequence[_Sample]) -> float | None:
     return round(up_seconds / failures, 1)
 
 
+def downtime_episodes(samples: Sequence[_Sample]) -> list[dict[str, Any]]:
+    """Collapse consecutive down samples into discrete outage episodes.
+
+    Each episode carries:
+      - ``started_at`` — observed_at of the first down sample in the run
+      - ``ended_at``   — observed_at of the recovery (first up) sample, or
+        ``None`` when the outage is still ongoing (run reaches the last sample)
+      - ``duration_seconds`` — ``count_of_down_samples * SAMPLE_INTERVAL_SECONDS``
+        (consistent with ``uptime_stats`` downtime), or for an ongoing outage the
+        elapsed time from the start to the last observed sample
+      - ``maintenance`` — True when *every* down sample in the run was suppressed
+        (the outage fell entirely inside a maintenance window). Maintenance
+        episodes are surfaced for visibility but are excluded from the SLA/SLO
+        uptime math (``uptime_stats`` already drops suppressed samples).
+
+    Down samples are grouped regardless of suppression so a maintenance window
+    that begins mid-outage doesn't split one outage into two; the episode is
+    only flagged ``maintenance`` when it is wholly suppressed. An ``up`` sample
+    (suppressed or not) ends a run.
+    """
+    episodes: list[dict[str, Any]] = []
+    run: list[_Sample] = []
+
+    def _finalize(run: list[_Sample], recovery: _Sample | None) -> dict[str, Any]:
+        started = _aware(run[0].observed_at)
+        if recovery is not None:
+            ended: datetime | None = _aware(recovery.observed_at)
+            duration = len(run) * SAMPLE_INTERVAL_SECONDS
+        else:
+            ended = None
+            # Ongoing: measure to the last observed down sample (plus one
+            # interval so a single-sample ongoing outage isn't reported as 0s).
+            last = _aware(run[-1].observed_at)
+            duration = int((last - started).total_seconds()) + SAMPLE_INTERVAL_SECONDS
+        return {
+            "started_at": started,
+            "ended_at": ended,
+            "duration_seconds": int(duration),
+            "maintenance": all(s.suppressed for s in run),
+        }
+
+    for s in samples:
+        if not s.up:
+            run.append(s)
+        elif run:
+            episodes.append(_finalize(run, recovery=s))
+            run = []
+    if run:
+        episodes.append(_finalize(run, recovery=None))
+    return episodes
+
+
 def history_series(
     samples: Sequence[_Sample],
     *,

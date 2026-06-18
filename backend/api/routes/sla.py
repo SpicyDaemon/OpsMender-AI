@@ -28,6 +28,7 @@ from backend.api.schemas import (
     SLOResponse,
     SLOStatusResponse,
     SLOUpdate,
+    UptimeEpisode,
     UptimeResponse,
     UptimeSeriesPoint,
 )
@@ -469,6 +470,8 @@ async def get_target_uptime(
     series = metrics.history_series(
         samples, since=since, until=until, buckets=buckets
     )
+    # Newest outage first for the table.
+    episodes = list(reversed(metrics.downtime_episodes(samples)))
 
     return UptimeResponse(
         target_id=target_id,
@@ -480,6 +483,7 @@ async def get_target_uptime(
         mtbf_seconds=metrics.mtbf_seconds(samples),
         down_events=metrics.count_down_events(samples),
         series=[UptimeSeriesPoint(**p) for p in series],
+        episodes=[UptimeEpisode(**e) for e in episodes],
     )
 
 

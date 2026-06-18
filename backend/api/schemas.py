@@ -1389,6 +1389,19 @@ class UptimeSeriesPoint(BaseModel):
     status: str = "unknown"  # "up" | "down" | "unknown"
 
 
+class UptimeEpisode(BaseModel):
+    """A discrete outage episode (a run of down probes) for the outage history.
+
+    ``maintenance`` episodes fell inside a maintenance window — shown for
+    visibility but excluded from the SLA/SLO uptime math.
+    """
+
+    started_at: datetime
+    ended_at: Optional[datetime] = None  # None == still ongoing
+    duration_seconds: int
+    maintenance: bool = False
+
+
 class UptimeResponse(BaseModel):
     """Aggregated uptime statistics for a target over a window."""
 
@@ -1402,7 +1415,8 @@ class UptimeResponse(BaseModel):
     mtbf_seconds: Optional[float] = None
     down_events: int = 0
     series: list[UptimeSeriesPoint] = Field(default_factory=list)
-    series: list[UptimeSeriesPoint] = Field(default_factory=list)
+    # Outage history (v1.2): discrete down episodes for the table.
+    episodes: list[UptimeEpisode] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Reliability detail: Outage history table + enlarged uptime chart** (replaces
+  "Linked Incidents"). A new **Outage history** table lists discrete downtime
+  episodes derived from the monitor's own uptime checks — **Started / Ended (or
+  "Ongoing") / Duration / Type** — with maintenance-window outages shown in a
+  distinct color and tagged "Maintenance" (and, as before, excluded from
+  SLA/SLO math). Backend `downtime_episodes` (in `backend/sla/metrics.py`) feeds
+  a new `episodes` field on `GET /sla-targets/{id}/uptime`. The "Uptime History"
+  strip is replaced by a larger up/down bar chart (`UptimeBarChart`,
+  hand-rolled SVG/CSS — no charting dependency) with a dated X axis, an Up/Down
+  Y axis, and a hover tooltip showing the date/time + status of each bucket.
+
 ### Added
 
 - **v1.2 — Combine incidents (incident merge).** Operators can fold several

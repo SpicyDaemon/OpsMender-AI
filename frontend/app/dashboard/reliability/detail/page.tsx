@@ -3,17 +3,17 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Clock, ServerCrash, ShieldAlert, Zap, Plus, Trash2, Pencil, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowLeft, ServerCrash, ShieldAlert, CalendarX, Plus, Trash2, Pencil, ExternalLink, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SLOModal } from "@/components/reliability/SLOModal";
 import { UptimeStrip } from "@/components/reliability/UptimeStrip";
+import { UptimeBarChart } from "@/components/reliability/UptimeBarChart";
 import {
   getSLATarget,
   getSLATargetUptime,
   listSLOs,
   getSLOStatus,
-  getSLATargetIncidents,
   deleteSLO,
   probeSLATarget,
 } from "@/lib/api_reliability";
@@ -30,7 +30,6 @@ import type {
   SLATargetUptimeResponse,
   SLOResponse,
   SLOStatusResponse,
-  IncidentResponse,
 } from "@/lib/types";
 
 export default function TargetDetailPage() {
@@ -73,7 +72,6 @@ function TargetDetailContent() {
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [customUptime, setCustomUptime] = useState<Uptime>(null);
-  const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [slos, setSlos] = useState<(SLOResponse & { status: SLOStatusResponse | null })[]>([]);
   const [loading, setLoading] = useState(true);
   const [probing, setProbing] = useState(false);
@@ -84,13 +82,12 @@ function TargetDetailContent() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [targetData, u24, u7, u30, u365, incData, allSlos] = await Promise.all([
+      const [targetData, u24, u7, u30, u365, allSlos] = await Promise.all([
         getSLATarget(id),
         getSLATargetUptime(id, "24h").catch(() => null),
         getSLATargetUptime(id, "7d").catch(() => null),
         getSLATargetUptime(id, "30d").catch(() => null),
         getSLATargetUptime(id, "365d").catch(() => null),
-        getSLATargetIncidents(id).catch(() => []),
         listSLOs().catch(() => ({ items: [] })),
       ]);
 
@@ -107,7 +104,6 @@ function TargetDetailContent() {
       setD7(u7);
       setD30(u30);
       setD365(u365);
-      setIncidents(incData);
       setSlos(slosWithStatus);
     } catch (err) {
       console.error("Failed to load target details:", err);
@@ -321,7 +317,7 @@ function TargetDetailContent() {
               ))}
             </div>
           </div>
-          <UptimeStrip series={history?.series ?? []} height={40} />
+          <UptimeBarChart series={history?.series ?? []} windowValue={historyWindow} />
           <div className="mt-3 flex items-center justify-between text-xs text-fg-muted">
             <span className="inline-flex items-center gap-3">
               <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-status-success" /> Up</span>
@@ -393,36 +389,73 @@ function TargetDetailContent() {
             </p>
           </div>
 
-          {/* Linked incidents */}
+          {/* Outage history */}
           <div className="flex flex-col rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm">
-            <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-fg-secondary">Linked Incidents</h2>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-medium uppercase tracking-wide text-fg-secondary">Outage History</h2>
+              <span className="text-[11px] text-fg-muted">over {historyWindow}</span>
+            </div>
             <div className="flex-1">
-              {incidents.length === 0 ? (
+              {(history?.episodes?.length ?? 0) === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center py-8 text-center text-fg-muted">
-                  <Zap className="mb-2 h-8 w-8" />
-                  <p className="text-sm">No incidents linked to this target</p>
+                  <ShieldAlert className="mb-2 h-8 w-8" />
+                  <p className="text-sm">No outages in this window</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {incidents.slice(0, 5).map((inc) => (
-                    <Link
-                      key={inc.id}
-                      href={`/dashboard/incidents/detail?id=${inc.id}`}
-                      className="block rounded-lg border border-border-subtle bg-bg-elevated p-3 transition-colors hover:border-border-strong"
-                    >
-                      <div className="flex items-start justify-between">
-                        <h3 className="line-clamp-1 flex-1 pr-2 text-sm font-medium text-fg-primary">{inc.title}</h3>
-                        <Badge variant="default" className="shrink-0 text-[10px]">{inc.status}</Badge>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
-                        <span className="flex items-center gap-1"><Clock size={12} /> {new Date(inc.created_at).toLocaleString()}</span>
-                        <span className="uppercase">{inc.external_source || "manual"}</span>
-                      </div>
-                    </Link>
-                  ))}
+                <div className="overflow-hidden rounded-lg border border-border-subtle">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border-subtle bg-bg-elevated text-left text-[11px] font-medium uppercase tracking-wide text-fg-secondary">
+                        <th className="px-3 py-2">Started</th>
+                        <th className="px-3 py-2">Ended</th>
+                        <th className="px-3 py-2 text-right">Duration</th>
+                        <th className="px-3 py-2 text-right">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-subtle">
+                      {(history?.episodes ?? []).map((ep, i) => (
+                        <tr
+                          key={`${ep.started_at}-${i}`}
+                          className={ep.maintenance ? "bg-status-info-bg/40" : ""}
+                        >
+                          <td className="px-3 py-2 text-fg-primary">
+                            {new Date(ep.started_at).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-fg-secondary">
+                            {ep.ended_at ? (
+                              new Date(ep.ended_at).toLocaleString()
+                            ) : (
+                              <span className="text-status-critical">Ongoing</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-fg-primary">
+                            {formatDuration(ep.duration_seconds)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {ep.maintenance ? (
+                              <Badge variant="info" className="gap-1 text-[10px]">
+                                <CalendarX size={11} /> Maintenance
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="critical"
+                                className="text-[10px]"
+                              >
+                                Outage
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
+            <p className="mt-3 border-t border-border-subtle pt-3 text-[11px] text-fg-muted">
+              Outages are derived from uptime checks. Maintenance-window outages
+              are shown separately and excluded from SLA/SLO calculations.
+            </p>
           </div>
         </div>
 

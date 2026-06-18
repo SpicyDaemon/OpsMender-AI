@@ -1283,6 +1283,13 @@ export interface UptimeSeriesPoint {
   status: UptimeStatus;
 }
 
+export interface UptimeEpisode {
+  started_at: string;
+  ended_at: string | null; // null == ongoing
+  duration_seconds: number;
+  maintenance: boolean;
+}
+
 export interface SLATargetUptimeResponse {
   uptime_pct: number;
   total_samples: number;
@@ -1292,6 +1299,7 @@ export interface SLATargetUptimeResponse {
   mtbf_seconds: number | null;
   down_events: number;
   series: UptimeSeriesPoint[];
+  episodes: UptimeEpisode[];
 }
 
 export interface SLOStatusResponse {

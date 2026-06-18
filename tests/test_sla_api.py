@@ -544,6 +544,10 @@ class TestUptimeAPI:
         assert data["total_samples"] == 10
         assert data["up_samples"] == 9
         assert data["uptime_pct"] == 90.0
+        # Outage history: the trailing down sample is one (ongoing) episode.
+        assert len(data["episodes"]) == 1
+        assert data["episodes"][0]["maintenance"] is False
+        assert data["episodes"][0]["ended_at"] is None
 
     @pytest.mark.asyncio
     async def test_slo_status_with_data(self, client: AsyncClient, db: AsyncSession):

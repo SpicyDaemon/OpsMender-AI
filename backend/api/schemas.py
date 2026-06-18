@@ -636,6 +636,15 @@ class ModelBootstrapStatusResponse(BaseModel):
     default_config: Optional[ModelConfigResponse] = None
 
 
+class ModelConfigTestResponse(BaseModel):
+    """Result of a live connection test against a saved model config."""
+
+    ok: bool
+    latency_ms: Optional[int] = None
+    detail: Optional[str] = None  # short success note (e.g. echoed response head)
+    error: Optional[str] = None  # failure reason when ok is False
+
+
 class ModelConfigUpdate(BaseModel):
     name: Optional[str] = None
     provider: str = Field(

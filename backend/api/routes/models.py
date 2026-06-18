@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -15,6 +17,7 @@ from backend.api.schemas import (
     ModelConfigListResponse,
     ModelConfigResponse,
     ModelConfigSaveResponse,
+    ModelConfigTestResponse,
     ModelConfigValidationIssue,
     ModelConfigUpdate,
     ProviderModelsListResponse,
@@ -22,8 +25,13 @@ from backend.api.schemas import (
 from backend.db.models import User
 from backend.db.repos import ModelConfigRepo
 from backend.llm import ProviderRegistry
+from backend.llm.factory import create_provider
 
 router = APIRouter(prefix="/models", tags=["models"])
+
+# Hard ceiling for a live model connection test so a hung provider can't pin a
+# request open. Local models can be slow on first token, so allow some room.
+_MODEL_TEST_TIMEOUT_SECONDS = 20.0
 
 
 def _save_response(config, warnings) -> ModelConfigSaveResponse:
@@ -244,6 +252,65 @@ async def delete_model_config(
         )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/configs/{config_id}/test",
+    response_model=ModelConfigTestResponse,
+    summary="Live-test a saved model config's connection (admin/operator)",
+)
+async def test_model_config(
+    config_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Actually exercise a saved model config: build the provider from its
+    stored settings and send a tiny prompt. Surfaces real failures (bad
+    base_url, missing API key, wrong model id, unreachable endpoint) that
+    config validation can only warn about. Read-only — never mutates the config.
+    """
+    cfg = await ModelConfigRepo.get_by_id(db, org_id, config_id)
+    if cfg is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Model config not found"
+        )
+
+    def _probe() -> str:
+        provider = create_provider(
+            provider=cfg.provider,
+            model_id=cfg.model_id,
+            max_tokens=16,
+            api_key_env_var=cfg.api_key_env_var,
+            base_url=cfg.base_url,
+            api_version=cfg.api_version,
+            provider_meta=cfg.provider_meta,
+        )
+        # A minimal real completion verifies auth + endpoint + model id end to end.
+        return provider.complete("ping")
+
+    start = time.monotonic()
+    try:
+        reply = await asyncio.wait_for(
+            asyncio.to_thread(_probe), timeout=_MODEL_TEST_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        return ModelConfigTestResponse(
+            ok=False,
+            error=(
+                f"No response within {int(_MODEL_TEST_TIMEOUT_SECONDS)}s — the "
+                "provider endpoint may be unreachable or overloaded."
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any provider error to the operator
+        return ModelConfigTestResponse(ok=False, error=str(exc))
+
+    latency_ms = int((time.monotonic() - start) * 1000)
+    head = (reply or "").strip().replace("\n", " ")
+    detail = f"Model responded in {latency_ms}ms."
+    if head:
+        detail += f' Reply: "{head[:80]}".'
+    return ModelConfigTestResponse(ok=True, latency_ms=latency_ms, detail=detail)
 
 
 @router.post(

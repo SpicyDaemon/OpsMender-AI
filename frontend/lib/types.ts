@@ -488,6 +488,13 @@ export interface ModelConfigSaveResponse {
   warnings: ModelConfigValidationIssue[];
 }
 
+export interface ModelConfigTestResponse {
+  ok: boolean;
+  latency_ms: number | null;
+  detail: string | null;
+  error: string | null;
+}
+
 export interface ModelBootstrapStatusResponse {
   needs_setup: boolean;
   has_configs: boolean;

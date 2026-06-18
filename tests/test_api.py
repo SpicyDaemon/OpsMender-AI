@@ -6590,6 +6590,82 @@ class TestModelConfigAPI:
         assert data["model_id"] == "gpt-4o-mini"
         assert data["max_tokens"] == 2048
 
+    async def _seed_config(self, app) -> uuid.UUID:
+        async with app.state.session_factory() as db:
+            cfg = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="lm-studio",
+                provider="openai_compatible",
+                model_id="local-model",
+                base_url="http://localhost:1234/v1",
+            )
+            await db.commit()
+            await db.refresh(cfg)
+            return cfg.id
+
+    async def test_model_config_test_connection_ok(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        config_id = await self._seed_config(app)
+
+        class _FakeProvider:
+            def complete(self, prompt):
+                return "pong"
+
+        monkeypatch.setattr(
+            "backend.api.routes.models.create_provider",
+            lambda **kwargs: _FakeProvider(),
+        )
+
+        resp = await client.post(
+            f"/models/configs/{config_id}/test", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["latency_ms"] is not None
+        assert "pong" in (data["detail"] or "")
+
+    async def test_model_config_test_connection_surfaces_failure(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        config_id = await self._seed_config(app)
+
+        class _FakeProvider:
+            def complete(self, prompt):
+                raise RuntimeError("Connection refused to http://localhost:1234/v1")
+
+        monkeypatch.setattr(
+            "backend.api.routes.models.create_provider",
+            lambda **kwargs: _FakeProvider(),
+        )
+
+        resp = await client.post(
+            f"/models/configs/{config_id}/test", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        assert "Connection refused" in data["error"]
+
+    async def test_model_config_test_connection_viewer_forbidden(
+        self, client: AsyncClient, app, viewer_headers
+    ):
+        config_id = await self._seed_config(app)
+        resp = await client.post(
+            f"/models/configs/{config_id}/test", headers=viewer_headers
+        )
+        assert resp.status_code == 403
+
+    async def test_model_config_test_connection_missing_404(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await client.post(
+            f"/models/configs/{uuid.uuid4()}/test", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
     async def test_delete_saved_model_config_admin(
         self, client: AsyncClient, app, auth_headers
     ):

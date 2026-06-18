@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.2 Phase 7 — Model/provider UX: live "Test connection".** New endpoint
+  `POST /models/configs/{id}/test` (admin/operator) builds the provider from a
+  saved config's stored settings and sends a tiny prompt, surfacing real
+  failures (bad `base_url`, missing API key, wrong model id, unreachable
+  endpoint) that config-time validation can only warn about. Runs off the event
+  loop with a 20s ceiling; never mutates the config. The Models page Model
+  Manager gains a **Test** button per saved config that reports OK + latency or
+  the failure reason.
 - **v1.2 Phase 6 — Reliability target → Service linkage + SLO-breach
   recommendations.** SLA targets can now link to an owning **Service**
   (`sla_targets.service_id`, migration `c8d9e0f1a2b3`); the target editor gains

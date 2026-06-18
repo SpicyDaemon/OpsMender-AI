@@ -57,6 +57,7 @@ import {
   listWorkflowProfiles,
   revokeIngestToken,
   setDefaultModelConfig,
+  testModelConfig,
   toggleModelConfigActive,
   startBotOAuth,
   startMCPOAuth,
@@ -813,7 +814,27 @@ export function ModelSection({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [warningNotice, setWarningNotice] = useState("");
+  const [testingId, setTestingId] = useState<string | null>(null);
   const providerById = new Map(providers.map((provider) => [provider.provider, provider]));
+
+  async function handleTest(config: ModelConfigResponse) {
+    setTestingId(config.id);
+    setError("");
+    setNotice("");
+    setWarningNotice("");
+    try {
+      const result = await testModelConfig(config.id);
+      if (result.ok) {
+        setNotice(`${config.name}: ${result.detail ?? "Connection OK."}`);
+      } else {
+        setError(`${config.name}: ${result.error ?? "Connection test failed."}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connection test failed");
+    } finally {
+      setTestingId(null);
+    }
+  }
 
   function openCreateModal() {
     setEditing(null);
@@ -1103,6 +1124,16 @@ export function ModelSection({
         }
         rowActions={(config) => (
           <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => handleTest(config)}
+              loading={testingId === config.id}
+              disabled={!canEdit || testingId !== null}
+              title="Send a tiny prompt to verify this model actually responds"
+            >
+              <Plug size={13} /> Test
+            </Button>
             {!config.is_default && (
               <Button
                 variant="secondary"

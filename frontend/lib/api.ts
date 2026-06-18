@@ -499,6 +499,7 @@ import type {
   ModelConfigListResponse,
   ModelConfigResponse,
   ModelConfigSaveResponse,
+  ModelConfigTestResponse,
   ModelConfigUpdate,
   ProviderModelsListResponse,
 } from "./types";
@@ -567,6 +568,10 @@ export async function toggleModelConfigActive(
   id: string,
 ): Promise<ModelConfigResponse> {
   return api.post<ModelConfigResponse>(`/models/configs/${id}/toggle-active`);
+}
+
+export async function testModelConfig(id: string): Promise<ModelConfigTestResponse> {
+  return api.post<ModelConfigTestResponse>(`/models/configs/${id}/test`);
 }
 
 // ---------------------------------------------------------------------------

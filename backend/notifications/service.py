@@ -21,6 +21,7 @@ Design notes:
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime, time, timezone
 from typing import Iterable
@@ -80,6 +81,20 @@ def _in_quiet_hours(quiet_hours: dict | None, now: datetime) -> bool:
     if start <= end:
         return start <= local_now < end
     return local_now >= start or local_now < end
+
+
+# Matches "@username" mentions in free text. Usernames start alphanumeric and
+# may contain dots/underscores/hyphens (matching the username charset). The
+# lookbehind rejects "@" preceded by a word char so emails ("me@host.com")
+# aren't mistaken for mentions.
+_MENTION_RE = re.compile(r"(?<![A-Za-z0-9_])@([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def parse_mentions(text: str | None) -> set[str]:
+    """Extract lower-cased @mention handles from *text* (without the leading @)."""
+    if not text:
+        return set()
+    return {m.lower() for m in _MENTION_RE.findall(text)}
 
 
 def _muted_categories(routing: dict | None) -> set[str]:

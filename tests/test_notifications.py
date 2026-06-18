@@ -351,3 +351,21 @@ async def test_approval_request_notifies_approvers(factory, monkeypatch):
         )
         await db.commit()
     await asyncio.wait_for(task, timeout=2)
+
+
+# --- @mention parsing --------------------------------------------------------
+
+
+def test_parse_mentions_basic():
+    from backend.notifications import parse_mentions
+
+    assert parse_mentions("hey @alice and @Bob_1, ping @alice") == {"alice", "bob_1"}
+    assert parse_mentions("nothing here") == set()
+    assert parse_mentions(None) == set()
+
+
+def test_parse_mentions_ignores_emails():
+    from backend.notifications import parse_mentions
+
+    # "me@host.com" must not be read as a mention of "host.com".
+    assert parse_mentions("mail me@host.com but ping @real") == {"real"}

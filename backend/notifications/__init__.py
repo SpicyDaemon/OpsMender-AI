@@ -16,6 +16,7 @@ from backend.notifications.service import (
     emit_notification,
     emit_to_users,
     org_user_ids_with_roles,
+    parse_mentions,
 )
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "emit_notification",
     "emit_to_users",
     "org_user_ids_with_roles",
+    "parse_mentions",
 ]

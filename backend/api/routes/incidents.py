@@ -58,7 +58,12 @@ from backend.db.repos import (
     TeamRepo,
     UserRepo,
 )
-from backend.notifications import CATEGORY_INCIDENT, emit_notification
+from backend.notifications import (
+    CATEGORY_INCIDENT,
+    CATEGORY_MENTION,
+    emit_notification,
+    parse_mentions,
+)
 from backend.api.schemas import (
     IncidentAssignmentResponse,
     IncidentAssignRequest,
@@ -1045,6 +1050,26 @@ async def create_incident_comment(
         body=body.body.strip(),
         author_user_id=user.id,
     )
+    # Notify anyone @mentioned in the comment (resolve handles → org users).
+    mentions = parse_mentions(comment.body)
+    if mentions:
+        members = await UserRepo.list_by_org(db, org_id)
+        by_username = {m["username"].lower(): m["user_id"] for m in members}
+        for handle in mentions:
+            target_id = by_username.get(handle)
+            if target_id is None or target_id == user.id:
+                continue
+            await emit_notification(
+                db,
+                org_id,
+                target_id,
+                event_type="mention.comment",
+                category=CATEGORY_MENTION,
+                title=f"{user.username} mentioned you",
+                body=comment.body[:200],
+                link=f"/dashboard/incidents/{incident_id}",
+                incident_id=incident_id,
+            )
     await db.commit()
     await db.refresh(comment)
     return await _comment_to_response(db, comment)

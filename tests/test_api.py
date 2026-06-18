@@ -7714,3 +7714,51 @@ class TestNotificationEventHooks:
         assert len(items) == 1
         assert items[0]["event_type"] == "incident.combined"
         assert items[0]["link"] == f"/dashboard/incidents/{primary}"
+
+
+class TestNotificationMentions:
+    """Phase 3: @mention in an incident comment notifies the mentioned user."""
+
+    async def test_mention_notifies(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        from backend.db.repos import IncidentRepo
+
+        async with app.state.session_factory() as db:
+            inc = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="Latency spike", description="x"
+            )
+            await db.commit()
+            inc_id = inc.id
+        # admin comments mentioning viewer1
+        r = await client.post(
+            f"/incidents/{inc_id}/comments",
+            json={"body": "Can you take a look @viewer1?"},
+            headers=auth_headers,
+        )
+        assert r.status_code in (200, 201)
+        nr = await client.get("/notifications", headers=viewer_headers)
+        items = nr.json()["items"]
+        assert len(items) == 1
+        assert items[0]["event_type"] == "mention.comment"
+        assert items[0]["category"] == "mention"
+        assert items[0]["link"] == f"/dashboard/incidents/{inc_id}"
+
+    async def test_no_self_mention(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.db.repos import IncidentRepo
+
+        async with app.state.session_factory() as db:
+            inc = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="Self", description="x"
+            )
+            await db.commit()
+            inc_id = inc.id
+        await client.post(
+            f"/incidents/{inc_id}/comments",
+            json={"body": "note to self @testadmin"},
+            headers=auth_headers,
+        )
+        nr = await client.get("/notifications/unread-count", headers=auth_headers)
+        assert nr.json()["unread"] == 0

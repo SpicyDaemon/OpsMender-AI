@@ -62,6 +62,40 @@ async def publish(session_id: uuid.UUID, message: WSMessage) -> None:
 
 
 # ---------------------------------------------------------------------------
+# In-memory channel registry (per user) — powers the notification bell
+# ---------------------------------------------------------------------------
+
+_user_channels: dict[uuid.UUID, set[asyncio.Queue]] = {}
+
+
+def get_user_channel(user_id: uuid.UUID) -> asyncio.Queue:
+    """Create and register a new subscriber queue for *user_id*."""
+    q: asyncio.Queue = asyncio.Queue()
+    _user_channels.setdefault(user_id, set()).add(q)
+    return q
+
+
+def remove_user_channel(user_id: uuid.UUID, q: asyncio.Queue) -> None:
+    """Unregister a per-user subscriber queue."""
+    subs = _user_channels.get(user_id)
+    if subs:
+        subs.discard(q)
+        if not subs:
+            del _user_channels[user_id]
+
+
+async def publish_user(user_id: uuid.UUID, message: WSMessage) -> None:
+    """Broadcast a message to every live connection of *user_id*.
+
+    Best-effort and in-memory: if the user has no open tab the message is
+    simply dropped — the persisted notification still shows on next load.
+    """
+    subs = _user_channels.get(user_id, set())
+    for q in subs:
+        await q.put(message.model_dump())
+
+
+# ---------------------------------------------------------------------------
 # WebSocket route
 # ---------------------------------------------------------------------------
 
@@ -103,3 +137,41 @@ async def session_stream(
         pass
     finally:
         remove_channel(session_id, queue)
+
+
+@router.websocket("/notifications/stream")
+async def notifications_stream(
+    websocket: WebSocket,
+    token: str = Query(...),
+):
+    """Live per-user notification stream powering the bell.
+
+    Subscribes the connection to the authenticated user's channel (keyed by
+    the token's ``sub``), so a client can only ever receive its own
+    notifications. Emits ``notification`` messages and ``ping`` keep-alives.
+    """
+    try:
+        payload = decode_access_token(token)
+        sub = payload.get("sub")
+        if sub is None:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        user_id = uuid.UUID(str(sub))
+    except (JWTError, ValueError):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await websocket.accept()
+
+    queue = get_user_channel(user_id)
+    try:
+        while True:
+            try:
+                msg = await asyncio.wait_for(queue.get(), timeout=30.0)
+                await websocket.send_json(msg)
+            except asyncio.TimeoutError:
+                await websocket.send_json({"type": "ping", "data": {}})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        remove_user_channel(user_id, queue)

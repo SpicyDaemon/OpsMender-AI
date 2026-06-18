@@ -7524,3 +7524,110 @@ class TestIncidentCombine:
             headers=viewer_headers,
         )
         assert r.status_code == 403
+
+
+class TestNotifications:
+    """In-app notification center (the bell) HTTP endpoints."""
+
+    @staticmethod
+    async def _seed(app, user_username: str, *, count: int, title_prefix: str = "N"):
+        """Create *count* notifications directly for the named user."""
+        from backend.db.repos import InAppNotificationRepo, UserRepo
+
+        async with app.state.session_factory() as db:
+            user = await UserRepo.get_by_username(db, user_username)
+            ids = []
+            for i in range(count):
+                n = await InAppNotificationRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    user.id,
+                    event_type="incident.assigned",
+                    category="incident",
+                    title=f"{title_prefix}{i}",
+                    link="/dashboard/incidents/x",
+                )
+                ids.append(n.id)
+            await db.commit()
+            return ids
+
+    async def test_list_empty(self, client: AsyncClient, auth_headers):
+        r = await client.get("/notifications", headers=auth_headers)
+        assert r.status_code == 200
+        body = r.json()
+        assert body == {"items": [], "total": 0, "unread": 0}
+
+    async def test_list_and_unread_count(self, client: AsyncClient, app, auth_headers):
+        await self._seed(app, "testadmin", count=3)
+        r = await client.get("/notifications", headers=auth_headers)
+        body = r.json()
+        assert body["total"] == 3
+        assert body["unread"] == 3
+        assert len(body["items"]) == 3
+        # newest first
+        assert body["items"][0]["title"] == "N2"
+
+        rc = await client.get("/notifications/unread-count", headers=auth_headers)
+        assert rc.json() == {"unread": 3}
+
+    async def test_mark_read_then_unread(self, client: AsyncClient, app, auth_headers):
+        ids = await self._seed(app, "testadmin", count=2)
+        r = await client.post(f"/notifications/{ids[0]}/read", headers=auth_headers)
+        assert r.status_code == 204
+        rc = await client.get("/notifications/unread-count", headers=auth_headers)
+        assert rc.json()["unread"] == 1
+        # unread_only filter
+        r = await client.get(
+            "/notifications", params={"unread_only": True}, headers=auth_headers
+        )
+        assert r.json()["total"] == 2  # total ignores the filter
+        assert len(r.json()["items"]) == 1
+        # flip back to unread
+        r = await client.post(
+            f"/notifications/{ids[0]}/read",
+            params={"read": False},
+            headers=auth_headers,
+        )
+        assert r.status_code == 204
+        rc = await client.get("/notifications/unread-count", headers=auth_headers)
+        assert rc.json()["unread"] == 2
+
+    async def test_mark_all_read(self, client: AsyncClient, app, auth_headers):
+        await self._seed(app, "testadmin", count=4)
+        r = await client.post("/notifications/read-all", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json() == {"updated": 4}
+        rc = await client.get("/notifications/unread-count", headers=auth_headers)
+        assert rc.json()["unread"] == 0
+
+    async def test_delete(self, client: AsyncClient, app, auth_headers):
+        ids = await self._seed(app, "testadmin", count=2)
+        r = await client.delete(f"/notifications/{ids[0]}", headers=auth_headers)
+        assert r.status_code == 204
+        r = await client.get("/notifications", headers=auth_headers)
+        assert r.json()["total"] == 1
+
+    async def test_mark_read_missing_404(self, client: AsyncClient, auth_headers):
+        import uuid as _uuid
+
+        r = await client.post(
+            f"/notifications/{_uuid.uuid4()}/read", headers=auth_headers
+        )
+        assert r.status_code == 404
+
+    async def test_user_isolation(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        # Notifications belong to the admin; the viewer must not see or touch them.
+        ids = await self._seed(app, "testadmin", count=2)
+        r = await client.get("/notifications", headers=viewer_headers)
+        assert r.json()["total"] == 0
+        # viewer cannot mark the admin's notification read (scoped → 404)
+        r = await client.post(f"/notifications/{ids[0]}/read", headers=viewer_headers)
+        assert r.status_code == 404
+        r = await client.delete(f"/notifications/{ids[0]}", headers=viewer_headers)
+        assert r.status_code == 404
+
+    async def test_requires_auth(self, client: AsyncClient):
+        r = await client.get("/notifications")
+        assert r.status_code == 401

@@ -1194,6 +1194,67 @@ class UserNotificationPref(Base):
 
 
 # ---------------------------------------------------------------------------
+# In-app notifications (v1.2 — per-user notification center / bell)
+# ---------------------------------------------------------------------------
+
+
+class InAppNotification(Base):
+    """A single per-user in-app notification surfaced by the bell / center.
+
+    Persists the same lifecycle events OpsMender already pushes to external
+    chat connectors (assignment, paging, approvals, incident state changes,
+    AI-session lifecycle, @mentions, reliability) so an operator can catch up
+    in-product. Scoped per (org, user); ``read_at`` drives the unread badge.
+    """
+
+    __tablename__ = "in_app_notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    # Fine-grained event key, e.g. "incident.assigned", "approval.requested".
+    event_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    # Coarse grouping the user mutes against:
+    # incident | approval | session | mention | reliability | account
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # In-app deep link, e.g. "/dashboard/incidents/<id>".
+    link: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=True
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True
+    )
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_in_app_notifications_user_created",
+            "org_id",
+            "user_id",
+            "created_at",
+        ),
+        Index(
+            "ix_in_app_notifications_user_unread",
+            "org_id",
+            "user_id",
+            "read_at",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Bot connectors (Sprint 27)
 # ---------------------------------------------------------------------------
 

@@ -556,6 +556,40 @@ class ApprovalListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# In-app notifications (v1.2 — notification center / bell)
+# ---------------------------------------------------------------------------
+
+
+class InAppNotificationResponse(BaseModel):
+    id: uuid.UUID
+    event_type: str
+    category: str
+    title: str
+    body: Optional[str] = None
+    link: Optional[str] = None
+    incident_id: Optional[uuid.UUID] = None
+    session_id: Optional[uuid.UUID] = None
+    read_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class InAppNotificationListResponse(BaseModel):
+    items: list[InAppNotificationResponse]
+    total: int
+    unread: int
+
+
+class UnreadCountResponse(BaseModel):
+    unread: int
+
+
+class MarkReadResponse(BaseModel):
+    updated: int
+
+
+# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 

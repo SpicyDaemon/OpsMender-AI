@@ -297,6 +297,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         admin_router as invites_admin_router,
         public_router as invites_public_router,
     )
+    from backend.api.routes.notifications import router as notifications_router
 
     app.include_router(auth_router)
     app.include_router(incidents_router)
@@ -329,6 +330,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(retention_router)
     app.include_router(invites_admin_router)
     app.include_router(invites_public_router)
+    app.include_router(notifications_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])

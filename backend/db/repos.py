@@ -34,6 +34,7 @@ from backend.db.models import (
     IncidentAssignment,
     IncidentChainState,
     IncidentComment,
+    InAppNotification,
     NotificationEscalation,
     IncidentNotificationReceipt,
     IncidentMemory,
@@ -3498,6 +3499,144 @@ class UserNotificationPrefRepo:
         pref.updated_at = datetime.now(timezone.utc)
         await db.flush()
         return pref
+
+
+class InAppNotificationRepo:
+    """Per-user in-app notifications (the bell / notification center)."""
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        event_type: str,
+        category: str,
+        title: str,
+        body: str | None = None,
+        link: str | None = None,
+        incident_id: uuid.UUID | None = None,
+        session_id: uuid.UUID | None = None,
+    ) -> InAppNotification:
+        notification = InAppNotification(
+            org_id=org_id,
+            user_id=user_id,
+            event_type=event_type,
+            category=category,
+            title=title,
+            body=body,
+            link=link,
+            incident_id=incident_id,
+            session_id=session_id,
+        )
+        db.add(notification)
+        await db.flush()
+        return notification
+
+    @staticmethod
+    async def list_for_user(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        unread_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Sequence[InAppNotification]:
+        stmt = select(InAppNotification).where(
+            InAppNotification.org_id == org_id,
+            InAppNotification.user_id == user_id,
+        )
+        if unread_only:
+            stmt = stmt.where(InAppNotification.read_at.is_(None))
+        stmt = (
+            stmt.order_by(InAppNotification.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def count_for_user(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        unread_only: bool = False,
+    ) -> int:
+        stmt = select(func.count(InAppNotification.id)).where(
+            InAppNotification.org_id == org_id,
+            InAppNotification.user_id == user_id,
+        )
+        if unread_only:
+            stmt = stmt.where(InAppNotification.read_at.is_(None))
+        return int((await db.execute(stmt)).scalar_one())
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+        notification_id: uuid.UUID,
+    ) -> InAppNotification | None:
+        stmt = select(InAppNotification).where(
+            InAppNotification.org_id == org_id,
+            InAppNotification.user_id == user_id,
+            InAppNotification.id == notification_id,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def mark_read(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+        notification_id: uuid.UUID,
+        *,
+        read: bool = True,
+    ) -> bool:
+        """Mark a single notification (un)read. Returns False if not found."""
+        notification = await InAppNotificationRepo.get_by_id(
+            db, org_id, user_id, notification_id
+        )
+        if notification is None:
+            return False
+        notification.read_at = datetime.now(timezone.utc) if read else None
+        await db.flush()
+        return True
+
+    @staticmethod
+    async def mark_all_read(
+        db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID
+    ) -> int:
+        """Mark every unread notification for a user read. Returns the count."""
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(InAppNotification)
+            .where(
+                InAppNotification.org_id == org_id,
+                InAppNotification.user_id == user_id,
+                InAppNotification.read_at.is_(None),
+            )
+            .values(read_at=now)
+        )
+        result = await db.execute(stmt)
+        return int(result.rowcount or 0)
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+        notification_id: uuid.UUID,
+    ) -> bool:
+        stmt = delete(InAppNotification).where(
+            InAppNotification.org_id == org_id,
+            InAppNotification.user_id == user_id,
+            InAppNotification.id == notification_id,
+        )
+        result = await db.execute(stmt)
+        return bool(result.rowcount or 0)
 
 
 class BotConnectorRepo:

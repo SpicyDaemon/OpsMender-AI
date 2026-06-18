@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -11,6 +12,7 @@ import {
   MessageSquare,
   RefreshCw,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   UserCog,
@@ -173,6 +175,12 @@ export default function NotificationsPage() {
           icon={<Bell size={18} />}
           actions={
             <>
+              <Link
+                href="/dashboard/notifications/preferences"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-surface px-3 py-1.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
+              >
+                <SlidersHorizontal size={14} /> Preferences
+              </Link>
               <Button
                 variant="ghost"
                 size="sm"

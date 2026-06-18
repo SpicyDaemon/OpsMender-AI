@@ -7847,3 +7847,44 @@ class TestNotificationPreferences:
         )
         nr = await client.get("/notifications/unread-count", headers=viewer_headers)
         assert nr.json()["unread"] == 0
+
+
+class TestNotificationAccountEvents:
+    """Phase 4: account events (role change) notify the affected user."""
+
+    async def test_role_change_notifies(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        from backend.db.repos import UserRepo
+
+        async with app.state.session_factory() as db:
+            viewer = await UserRepo.get_by_username(db, "viewer1")
+            viewer_id = viewer.id
+        r = await client.patch(
+            f"/auth/users/{viewer_id}",
+            json={"role": "operator"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        nr = await client.get("/notifications", headers=viewer_headers)
+        items = nr.json()["items"]
+        assert len(items) == 1
+        assert items[0]["event_type"] == "account.role_changed"
+        assert items[0]["category"] == "account"
+
+    async def test_no_op_role_change_silent(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        from backend.db.repos import UserRepo
+
+        async with app.state.session_factory() as db:
+            viewer_id = (await UserRepo.get_by_username(db, "viewer1")).id
+        # set the same role (viewer) → no change, no notification
+        r = await client.patch(
+            f"/auth/users/{viewer_id}",
+            json={"role": "viewer"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        nr = await client.get("/notifications/unread-count", headers=viewer_headers)
+        assert nr.json()["unread"] == 0

@@ -1911,6 +1911,30 @@ export async function deleteNotification(id: string): Promise<void> {
   return api.del<void>(`/notifications/${id}`);
 }
 
+export interface NotificationQuietHours {
+  enabled: boolean;
+  start: string | null;
+  end: string | null;
+  tz: string;
+}
+
+export interface NotificationPreferences {
+  muted_categories: string[];
+  quiet_hours: NotificationQuietHours | null;
+  categories: string[];
+}
+
+export async function getNotificationPreferences(): Promise<NotificationPreferences> {
+  return api.get<NotificationPreferences>("/notifications/preferences");
+}
+
+export async function updateNotificationPreferences(body: {
+  muted_categories?: string[];
+  quiet_hours?: { enabled: boolean; start: string; end: string; tz: string };
+}): Promise<NotificationPreferences> {
+  return api.put<NotificationPreferences>("/notifications/preferences", body);
+}
+
 export interface NotificationStreamMessage {
   type: "notification" | "ping";
   data: Notification | Record<string, unknown>;

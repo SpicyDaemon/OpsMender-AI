@@ -48,6 +48,7 @@ from backend.db.repos import (
     PasswordResetTokenRepo,
     UserRepo,
 )
+from backend.notifications import CATEGORY_ACCOUNT, emit_notification
 from backend.people import smtp as smtp_helper
 from backend.people import tokens as people_tokens
 
@@ -426,6 +427,7 @@ async def update_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provide at least one of: role, is_active, first_name, last_name",
         )
+    prev_role = target.role
     updated = await UserRepo.update_fields(
         db,
         user_id,
@@ -434,6 +436,22 @@ async def update_user(
         first_name=body.first_name,
         last_name=body.last_name,
     )
+    # Tell the user when an admin changes their access level.
+    if (
+        body.role is not None
+        and body.role != prev_role
+        and target.primary_org_id is not None
+    ):
+        await emit_notification(
+            db,
+            target.primary_org_id,
+            user_id,
+            event_type="account.role_changed",
+            category=CATEGORY_ACCOUNT,
+            title=f"Your role is now “{body.role}”",
+            body="An administrator updated your access level.",
+            link="/dashboard",
+        )
     # Deactivation removes the user from on-call rosters: they stop paging and
     # no longer block deletion with stale roster references (Part 5).
     if body.is_active is False:

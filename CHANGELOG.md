@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Python 3.11 compatibility (`backend/skills/template.py`).** The generated
+  skill template's deny-list rows used a nested f-string with a `\n` inside the
+  outer f-string expression, which is a `SyntaxError` on Python 3.11 (only legal
+  on 3.12+) and broke importing the skills route — and thus the whole backend —
+  on the project's stated minimum interpreter. Hoisted the row-building into a
+  plain statement so the literal newline is valid again. The repo now imports
+  and tests cleanly on Python 3.11.
+- **Test teardown race ("Cannot operate on a closed database").** The `app`
+  test fixture in `tests/test_api.py` disposed the SQLite engine without first
+  cancelling in-flight session / background workflow tasks (it doesn't run the
+  app lifespan, where that cancellation normally happens). A Tier 0 session
+  could leave an orphaned workflow task that queried `model_configs` after the
+  DB closed, surfacing as an intermittent teardown `ERROR`. The fixture now
+  mirrors the lifespan shutdown — cancel + gather `session_tasks` and
+  `background_tasks` before `engine.dispose()`.
+
 ### Changed
 
 - **Reliability response-time history + cleaner uptime chart.** Uptime History

@@ -110,6 +110,17 @@ async def app(tmp_path):
     yield application
 
     set_env_path(None)
+    # Mirror the lifespan shutdown: cancel any in-flight session / background
+    # workflow tasks before disposing the engine. Tests don't run the app
+    # lifespan, so without this an orphaned Tier 0 workflow task can touch the
+    # DB after it's closed ("Cannot operate on a closed database").
+    pending = list(getattr(application.state, "session_tasks", set())) + list(
+        getattr(application.state, "background_tasks", set())
+    )
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
     await engine.dispose()
 
 

@@ -133,6 +133,16 @@ def build_skill_from_tools(
     t1 = tier1_instructions.strip() or "_Freeform guidance for approval-gated response._"
     t2 = tier2_instructions.strip() or "_Freeform advisory guidance._"
 
+    # Build the deny-list rows outside the return f-string: nesting an f-string
+    # (with its `\n`) inside an outer f-string expression is a SyntaxError on
+    # Python 3.11. As a standalone statement the `\n` is plain literal text.
+    deny_rows = (
+        "".join(
+            f"| `{o['tool']}` | {o.get('notes', '') or ''} |\n" for o in denied
+        )
+        or "| _(none)_ | |\n"
+    )
+
     return f"""---
 {fm_yaml}
 ---
@@ -214,7 +224,7 @@ and may perform read-only observation. Tier 2 is the **default** for new session
 
 | MCP tool/action | Notes |
 |---|---|
-{"".join(f"| `{o['tool']}` | {o.get('notes', '') or ''} |\n" for o in denied) or "| _(none)_ | |\n"}"""
+{deny_rows}"""
 
 
 def build_skill_template(

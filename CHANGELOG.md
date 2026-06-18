@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-06-18
+
+### Added
+
+- **Manual-QA Playwright walkthrough (`qa/`).** A standalone, dependency-light
+  Playwright runner (`node qa/run-qa.mjs`) that drives the real operator console
+  end-to-end — login → team → service → escalation policy → roster → roster
+  calendar → notifications → incident create/ack/resolve → SLA target → model
+  test-connection → logout — capturing console/page/5xx errors per step with
+  soft assertions and writing `qa/report/qa-report.{md,json}` plus failure
+  screenshots. Parameterized via env vars / `qa.config.json`, with optional
+  best-effort cleanup of QA-prefixed entities. See `qa/README.md`.
+
 ### Fixed
+
+- **Incident-merge external-id re-dedup.** `IncidentRepo.get_by_external_fingerprint`
+  now follows the `merged_into_incident_id` chain, so a re-firing alert (ingest
+  webhook or SLA poller) deduplicates onto the surviving primary instead of the
+  merged-away secondary; the secondary is never reopened. Cyclic/broken pointers
+  fall back to the last reachable incident. Closes the documented v1.2
+  incident-merge follow-up.
 
 - **Python 3.11 compatibility (`backend/skills/template.py`).** The generated
   skill template's deny-list rows used a nested f-string with a `\n` inside the

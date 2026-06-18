@@ -10,5 +10,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    setupFiles: ["./vitest.setup.ts"],
+    // Give individual tests headroom beyond the 5s asyncUtilTimeout so a slow
+    // render under parallel load can't trip vitest's own per-test timeout.
+    testTimeout: 15000,
   },
 });

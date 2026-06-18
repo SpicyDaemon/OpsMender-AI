@@ -93,7 +93,7 @@ describe("MCP Skills page", () => {
 
   it("warns about generic command tools + guide/enforce distinction in the editor", async () => {
     await renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /^new skill$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^new skill$/i }));
     await waitFor(() => expect(screen.getByLabelText("Assignment")).toBeTruthy());
     // High-risk generic-tool warning + the skills-guide / backend-enforces line.
     expect(screen.getByText(/Generic command tools/i)).toBeTruthy();
@@ -153,8 +153,9 @@ describe("MCP Skills page", () => {
 
     // Pick the server and discover its tools.
     const select = await screen.findByLabelText("MCP server");
+    await screen.findByRole("option", { name: /k8s-prod/i });
     fireEvent.change(select, { target: { value: "srv-1" } });
-    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /discover tools/i }));
 
     await waitFor(() =>
       expect(apiMocks.discoverSkillTools).toHaveBeenCalledWith("srv-1"),
@@ -167,7 +168,7 @@ describe("MCP Skills page", () => {
     // Generate the draft and hand off to the editor. kubectl is flagged for
     // review, so confirm past the needs-review guard.
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /generate draft/i }));
     await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByDisplayValue(/GENERATED-CONTENT/)).toBeTruthy(),
@@ -228,14 +229,14 @@ describe("MCP Skills page", () => {
 
     await renderPage();
     fireEvent.click(screen.getAllByRole("button", { name: /generate from mcp/i })[0]);
-    fireEvent.change(await screen.findByLabelText("MCP server"), {
-      target: { value: "srv-1" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+    const aiSelect = await screen.findByLabelText("MCP server");
+    await screen.findByRole("option", { name: /k8s-prod/i });
+    fireEvent.change(aiSelect, { target: { value: "srv-1" } });
+    fireEvent.click(await screen.findByRole("button", { name: /discover tools/i }));
     await screen.findByText("get_pods");
 
     // Run AI assist.
-    fireEvent.click(screen.getByRole("button", { name: /ai assist/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /ai assist/i }));
     await waitFor(() => expect(apiMocks.aiSuggestSkill).toHaveBeenCalled());
 
     // Classification select updated and per-tier instructions filled in.
@@ -272,10 +273,12 @@ describe("MCP Skills page", () => {
     });
     await renderPage();
     fireEvent.click(screen.getAllByRole("button", { name: /generate from mcp/i })[0]);
-    fireEvent.change(await screen.findByLabelText("MCP server"), {
-      target: { value: "srv-1" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+    const select = await screen.findByLabelText("MCP server");
+    // Wait for the server list to populate before selecting, otherwise the
+    // change sets a value with no matching <option> and discovery never fires.
+    await screen.findByRole("option", { name: /k8s-prod/i });
+    fireEvent.change(select, { target: { value: "srv-1" } });
+    fireEvent.click(await screen.findByRole("button", { name: /discover tools/i }));
     await screen.findByText(tool.name as string);
   }
 
@@ -298,14 +301,14 @@ describe("MCP Skills page", () => {
 
     // Tier 0 fields are hidden until the tool is opted into autonomous run.
     expect(screen.queryByLabelText("Reversible restart_service")).toBeNull();
-    fireEvent.click(screen.getByLabelText("Allow restart_service at Tier 0"));
+    fireEvent.click(await screen.findByLabelText("Allow restart_service at Tier 0"));
     expect(screen.getByLabelText("Reversible restart_service")).toBeTruthy();
     expect(
       screen.getByLabelText("Compensating inverse for restart_service"),
     ).toBeTruthy();
 
     // Generate is blocked while the inverse is missing.
-    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /generate draft/i }));
     await waitFor(() =>
       expect(screen.getByText(/Tier 0 \(autonomous\) actions need/i)).toBeTruthy(),
     );
@@ -316,7 +319,7 @@ describe("MCP Skills page", () => {
       screen.getByLabelText("Compensating inverse for restart_service"),
       { target: { value: "restart_service_previous" } },
     );
-    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /generate draft/i }));
     await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
     const payload = apiMocks.generateSkill.mock.calls[0][0];
     const op = payload.operations[0];
@@ -331,7 +334,7 @@ describe("MCP Skills page", () => {
     });
     await openStudioWithTool(CAUTION_TOOL);
     // Leave Tier 0 unticked (tool stays Tier 1/2) → generate succeeds, no metadata.
-    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /generate draft/i }));
     await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
     const op = apiMocks.generateSkill.mock.calls[0][0].operations[0];
     expect(op.reversible).toBeNull();
@@ -359,7 +362,7 @@ describe("MCP Skills page", () => {
       environment: "production",
     });
     await openStudioWithTool(CAUTION_TOOL);
-    fireEvent.click(screen.getByRole("button", { name: /ai assist/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /ai assist/i }));
     await waitFor(() => expect(apiMocks.aiSuggestSkill).toHaveBeenCalled());
     // The model's reversible+inverse turned on Tier 0 and filled the inverse.
     await waitFor(() =>
@@ -378,11 +381,11 @@ describe("MCP Skills page", () => {
     // Discover only returns one tool in this helper, so add a second via a
     // dedicated discover mock for this test.
     expect(screen.getByText("restart_service")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Filter tools"), {
+    fireEvent.change(await screen.findByLabelText("Filter tools"), {
       target: { value: "zzz-no-match" },
     });
     expect(screen.queryByText("restart_service")).toBeNull();
-    fireEvent.change(screen.getByLabelText("Filter tools"), {
+    fireEvent.change(await screen.findByLabelText("Filter tools"), {
       target: { value: "restart" },
     });
     expect(screen.getByText("restart_service")).toBeTruthy();
@@ -400,7 +403,7 @@ describe("MCP Skills page", () => {
     });
     const denyBox = screen.getByLabelText("Deny kubectl") as HTMLInputElement;
     expect(denyBox.checked).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: /deny all generic/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /deny all generic/i }));
     expect(denyBox.checked).toBe(true);
   });
 
@@ -420,20 +423,20 @@ describe("MCP Skills page", () => {
       rationale: "unrecognized",
     });
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /generate draft/i }));
     expect(confirmSpy).toHaveBeenCalled();
     expect(apiMocks.generateSkill).not.toHaveBeenCalled();
 
     // Accepting the confirm proceeds.
     confirmSpy.mockReturnValue(true);
-    fireEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /generate draft/i }));
     await waitFor(() => expect(apiMocks.generateSkill).toHaveBeenCalled());
     confirmSpy.mockRestore();
   });
 
   it("create modal explains Unassigned drafts and defaults to unassigned", async () => {
     await renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /^new skill$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^new skill$/i }));
     // The assignment select defaults to "unassigned" for new skills.
     await waitFor(() =>
       expect(screen.getByLabelText("Assignment")).toBeTruthy(),

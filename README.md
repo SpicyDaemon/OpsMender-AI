@@ -111,9 +111,10 @@ Four configurable surfaces drive the behavior under the loop above:
 **Reliability — uptime and response time.** Reliability targets continuously
 record availability and latency. Target detail includes uptime summaries,
 outage history, a status-only uptime chart, recent Response Time views from 15
-minutes through 24 hours, and Response Time History through 365 days. Long-term
-latency uses 5-minute/hourly avg/min/max rollups so it survives raw-sample
-pruning. See [docs/wiki/reliability-guide.md](docs/wiki/reliability-guide.md).
+minutes through 24 hours, and Response Time History through 365 days. Both
+response-time panels use a single solid average-latency line. Long-term latency
+uses 5-minute/hourly rollups so it survives raw-sample pruning. See
+[docs/wiki/reliability-guide.md](docs/wiki/reliability-guide.md).
 
 ### Where each concept lives in the dashboard
 

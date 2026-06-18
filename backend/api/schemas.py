@@ -589,6 +589,26 @@ class MarkReadResponse(BaseModel):
     updated: int
 
 
+class QuietHours(BaseModel):
+    enabled: bool = False
+    start: Optional[str] = None  # "HH:MM"
+    end: Optional[str] = None  # "HH:MM"
+    tz: str = "UTC"
+
+
+class NotificationPreferencesResponse(BaseModel):
+    # Categories the user has muted (no in-app notification is created).
+    muted_categories: list[str] = Field(default_factory=list)
+    quiet_hours: Optional[QuietHours] = None
+    # All mutable categories, so the UI can render a toggle per category.
+    categories: list[str] = Field(default_factory=list)
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    muted_categories: Optional[list[str]] = None
+    quiet_hours: Optional[QuietHours] = None
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------

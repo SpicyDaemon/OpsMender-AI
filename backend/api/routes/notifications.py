@@ -17,12 +17,36 @@ from backend.api.deps import get_db
 from backend.api.schemas import (
     InAppNotificationListResponse,
     MarkReadResponse,
+    NotificationPreferencesResponse,
+    NotificationPreferencesUpdate,
     UnreadCountResponse,
 )
 from backend.db.models import User
-from backend.db.repos import InAppNotificationRepo
+from backend.db.repos import InAppNotificationRepo, UserNotificationPrefRepo
+from backend.notifications import ALL_CATEGORIES
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+
+def _validate_quiet_hours(qh) -> None:
+    """Reject malformed quiet-hours times so the stored shape stays clean."""
+    if qh is None or not qh.enabled:
+        return
+    for label, value in (("start", qh.start), ("end", qh.end)):
+        if not value:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"quiet_hours.{label} is required when enabled",
+            )
+        try:
+            h, m = (int(x) for x in str(value).split(":"))
+            if not (0 <= h < 24 and 0 <= m < 60):
+                raise ValueError
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"quiet_hours.{label} must be HH:MM",
+            )
 
 
 @router.get("", response_model=InAppNotificationListResponse, summary="List notifications")
@@ -58,6 +82,76 @@ async def unread_count(
         db, org_id, user.id, unread_only=True
     )
     return UnreadCountResponse(unread=unread)
+
+
+@router.get(
+    "/preferences",
+    response_model=NotificationPreferencesResponse,
+    summary="Get the user's in-app notification preferences",
+)
+async def get_preferences(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+) -> NotificationPreferencesResponse:
+    pref = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
+    muted: list[str] = []
+    quiet = None
+    if pref is not None:
+        in_app = (pref.routing or {}).get("in_app") or {}
+        muted = list(in_app.get("muted_categories") or [])
+        quiet = pref.quiet_hours
+    return NotificationPreferencesResponse(
+        muted_categories=muted,
+        quiet_hours=quiet,
+        categories=list(ALL_CATEGORIES),
+    )
+
+
+@router.put(
+    "/preferences",
+    response_model=NotificationPreferencesResponse,
+    summary="Update in-app notification mute + quiet-hours",
+)
+async def update_preferences(
+    body: NotificationPreferencesUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+) -> NotificationPreferencesResponse:
+    existing = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
+    routing = dict(existing.routing) if existing and existing.routing else {}
+
+    if body.muted_categories is not None:
+        invalid = set(body.muted_categories) - set(ALL_CATEGORIES)
+        if invalid:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown categories: {sorted(invalid)}",
+            )
+        in_app = dict(routing.get("in_app") or {})
+        # de-dupe while preserving the canonical category order
+        in_app["muted_categories"] = [
+            c for c in ALL_CATEGORIES if c in set(body.muted_categories)
+        ]
+        routing["in_app"] = in_app
+
+    quiet_provided = body.quiet_hours is not None
+    if quiet_provided:
+        _validate_quiet_hours(body.quiet_hours)
+
+    await UserNotificationPrefRepo.upsert(
+        db,
+        org_id,
+        user.id,
+        routing=routing if body.muted_categories is not None else None,
+        quiet_hours=(
+            body.quiet_hours.model_dump() if body.quiet_hours is not None else None
+        ),
+        quiet_hours_provided=quiet_provided,
+    )
+    await db.commit()
+    return await get_preferences(db=db, org_id=org_id, user=user)
 
 
 @router.post(

@@ -7762,3 +7762,88 @@ class TestNotificationMentions:
         )
         nr = await client.get("/notifications/unread-count", headers=auth_headers)
         assert nr.json()["unread"] == 0
+
+
+class TestNotificationPreferences:
+    """Phase 5: per-category mute + quiet-hours preferences."""
+
+    async def test_defaults(self, client: AsyncClient, auth_headers):
+        r = await client.get("/notifications/preferences", headers=auth_headers)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["muted_categories"] == []
+        assert body["quiet_hours"] is None
+        assert set(body["categories"]) == {
+            "incident",
+            "approval",
+            "session",
+            "mention",
+            "reliability",
+            "account",
+        }
+
+    async def test_set_mute_and_quiet_hours(self, client: AsyncClient, auth_headers):
+        r = await client.put(
+            "/notifications/preferences",
+            json={
+                "muted_categories": ["session", "incident"],
+                "quiet_hours": {
+                    "enabled": True,
+                    "start": "22:00",
+                    "end": "07:00",
+                    "tz": "UTC",
+                },
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        body = r.json()
+        # canonical order preserved (incident before session)
+        assert body["muted_categories"] == ["incident", "session"]
+        assert body["quiet_hours"]["enabled"] is True
+        # persists
+        r = await client.get("/notifications/preferences", headers=auth_headers)
+        assert r.json()["muted_categories"] == ["incident", "session"]
+
+    async def test_invalid_category_422(self, client: AsyncClient, auth_headers):
+        r = await client.put(
+            "/notifications/preferences",
+            json={"muted_categories": ["bogus"]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+
+    async def test_bad_quiet_hours_422(self, client: AsyncClient, auth_headers):
+        r = await client.put(
+            "/notifications/preferences",
+            json={"quiet_hours": {"enabled": True, "start": "9am", "end": "5pm"}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+
+    async def test_mute_suppresses_notification(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        # viewer mutes the "incident" category, then admin assigns them an incident
+        r = await client.put(
+            "/notifications/preferences",
+            json={"muted_categories": ["incident"]},
+            headers=viewer_headers,
+        )
+        assert r.status_code == 200
+        from backend.db.repos import IncidentRepo, UserRepo
+
+        async with app.state.session_factory() as db:
+            viewer = await UserRepo.get_by_username(db, "viewer1")
+            inc = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="Muted", description="x"
+            )
+            await db.commit()
+            inc_id, viewer_id = inc.id, viewer.id
+        await client.post(
+            f"/incidents/{inc_id}/assign",
+            json={"user_id": str(viewer_id)},
+            headers=auth_headers,
+        )
+        nr = await client.get("/notifications/unread-count", headers=viewer_headers)
+        assert nr.json()["unread"] == 0

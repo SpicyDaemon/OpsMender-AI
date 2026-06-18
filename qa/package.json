@@ -1,0 +1,12 @@
+{
+  "name": "opsmender-qa-walkthrough",
+  "private": true,
+  "type": "module",
+  "description": "Playwright-driven manual-QA walkthrough of the OpsMender operator console.",
+  "scripts": {
+    "qa": "node run-qa.mjs"
+  },
+  "dependencies": {
+    "playwright": "file:../frontend/node_modules/playwright"
+  }
+}

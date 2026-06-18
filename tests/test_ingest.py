@@ -448,6 +448,69 @@ class TestIngestGeneric:
             assert inc is not None
             assert inc.status == "resolved"
 
+    async def test_ingest_redirects_dedup_onto_merged_primary(
+        self, client: AsyncClient, app
+    ):
+        """A re-firing alert whose original incident was merged should act on
+        the surviving primary, not the merged-away secondary."""
+        raw, _ = await _create_token(app, provider="generic", name="generic-merge")
+
+        # First fire creates the secondary; a separate fire creates the primary.
+        sec_resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Disk filling",
+                "description": "Disk at 90%",
+                "severity": "high",
+                "id": "disk-sec-001",
+            },
+            headers={"X-OpsMender-Token": raw},
+        )
+        secondary_id = uuid.UUID(sec_resp.json()["incident_id"])
+        primary_resp = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Disk filling (primary)",
+                "description": "Same root cause",
+                "severity": "high",
+                "id": "disk-primary-001",
+            },
+            headers={"X-OpsMender-Token": raw},
+        )
+        primary_id = uuid.UUID(primary_resp.json()["incident_id"])
+
+        # Fold the secondary into the primary.
+        async with app.state.session_factory() as db:
+            await IncidentRepo.combine_into(
+                db, TEST_ORG_ID, secondary_id, primary_id=primary_id
+            )
+            await db.commit()
+
+        # Re-firing the secondary's alert resolves onto the PRIMARY, leaving
+        # the merged-away secondary untouched.
+        refire = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Disk filling",
+                "description": "Recovered",
+                "severity": "low",
+                "id": "disk-sec-001",
+                "status": "resolved",
+            },
+            headers={"X-OpsMender-Token": raw},
+        )
+        data = refire.json()
+        assert data["dedup_action"] == "updated"
+        assert uuid.UUID(data["incident_id"]) == primary_id
+
+        async with app.state.session_factory() as db:
+            primary = await IncidentRepo.get_by_id(db, TEST_ORG_ID, primary_id)
+            secondary = await IncidentRepo.get_by_id(db, TEST_ORG_ID, secondary_id)
+            assert primary.status == "resolved"
+            # The secondary stays merged — it is never reopened or re-resolved.
+            assert secondary.status == "merged"
+            assert secondary.merged_into_incident_id == primary_id
+
     async def test_ingest_resolve_stops_in_progress_sessions(
         self, client: AsyncClient, app
     ):

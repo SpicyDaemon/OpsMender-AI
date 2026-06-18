@@ -1,0 +1,6 @@
+# Playwright browsers are linked from ../frontend/node_modules
+node_modules
+
+# Local overrides + generated reports
+qa.config.json
+report/

@@ -1,0 +1,16 @@
+{
+  "_comment": "Copy to qa.config.json (gitignored) and edit. Env vars override these.",
+  "baseUrl": "http://localhost:8000",
+  "username": "admin",
+  "password": "admin123",
+  "headless": true,
+  "slowMo": 0,
+  "cleanup": false,
+  "fireTestIncident": true,
+  "sendTestNotification": false,
+  "createModel": false,
+  "testModelConnection": true,
+  "modelProvider": "openai",
+  "modelId": "gpt-4o-mini",
+  "modelKeyEnv": "OPENAI_API_KEY"
+}

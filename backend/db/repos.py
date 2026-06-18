@@ -754,11 +754,16 @@ class IncidentRepo:
     async def get_by_external_fingerprint(
         db: AsyncSession, org_id: uuid.UUID, *, external_source: str, external_id: str
     ) -> Incident | None:
-        """Look up an incident by its external fingerprint for dedup."""
+        """Look up an incident by its external fingerprint for dedup.
+
+        When the matched incident was folded into a primary via ``combine``
+        (status ``merged``, ``merged_into_incident_id`` set), the merge chain
+        is followed so a re-firing alert acts on the surviving primary instead
+        of the merged-away secondary. Cyclic/broken pointers fall back to the
+        last reachable incident.
+        """
         stmt = (
             select(Incident)
-            .where(Incident.org_id == org_id)
-            .where(Incident.org_id == org_id)
             .where(Incident.org_id == org_id)
             .where(
                 Incident.external_source == external_source,
@@ -767,8 +772,22 @@ class IncidentRepo:
             .order_by(Incident.created_at.desc())
             .limit(1)
         )
-        result = await db.execute(stmt)
-        return result.scalar_one_or_none()
+        incident = (await db.execute(stmt)).scalar_one_or_none()
+        if incident is None:
+            return None
+        seen: set[uuid.UUID] = set()
+        while (
+            incident.merged_into_incident_id is not None
+            and incident.id not in seen
+        ):
+            seen.add(incident.id)
+            primary = await IncidentRepo.get_by_id(
+                db, org_id, incident.merged_into_incident_id
+            )
+            if primary is None:
+                break
+            incident = primary
+        return incident
 
     @staticmethod
     async def list_by_target(

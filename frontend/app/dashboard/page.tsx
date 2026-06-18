@@ -163,6 +163,36 @@ function medianResolveTime(
   return { medianMs: median, count: durations.length };
 }
 
+/**
+ * Median millisecond acknowledgment time (MTTA) for incidents that were
+ * first acknowledged within the last `windowMs` milliseconds. Uses the
+ * `acknowledged_at` stamp (time from `created_at` to first ack/take).
+ * Returns null when the window has no acknowledged incidents.
+ */
+function medianAckTime(
+  incidents: IncidentResponse[],
+  windowMs: number,
+): { medianMs: number; count: number } | null {
+  const cutoff = Date.now() - windowMs;
+  const durations: number[] = [];
+  for (const inc of incidents) {
+    if (!inc.acknowledged_at) continue;
+    const ackedAt = new Date(inc.acknowledged_at).getTime();
+    if (ackedAt < cutoff) continue;
+    const createdAt = new Date(inc.created_at).getTime();
+    const dur = ackedAt - createdAt;
+    if (dur >= 0) durations.push(dur);
+  }
+  if (durations.length === 0) return null;
+  durations.sort((a, b) => a - b);
+  const mid = durations.length >> 1;
+  const median =
+    durations.length % 2 === 1
+      ? durations[mid]
+      : (durations[mid - 1] + durations[mid]) / 2;
+  return { medianMs: median, count: durations.length };
+}
+
 function fmtRelative(iso: string | null | undefined): string {
   if (!iso) return "—";
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -356,17 +386,25 @@ export default function DashboardIndex() {
       .slice(0, 5);
   }, [serviceStats]);
 
-  // Sprint 59 Step 5 — MTTR rolling-window medians. MTTA is deferred:
-  // we don't currently store a clean ack timestamp on the incident
-  // row, and computing it would mean joining IncidentAssignment +
-  // chain-ack events into a derived view. Tracked as a Sprint 59
-  // follow-up. MTTR uses `updated_at - created_at` for incidents that
-  // hit `resolved` or `closed` within each window.
+  // Sprint 59 Step 5 — MTTR rolling-window medians. MTTR uses
+  // `updated_at - created_at` for incidents that hit `resolved` or
+  // `closed` within each window.
   const mttr = useMemo(() => {
     return {
       d1: medianResolveTime(incidents, 86_400_000), // 24h
       d7: medianResolveTime(incidents, 7 * 86_400_000),
       d30: medianResolveTime(incidents, 30 * 86_400_000),
+    };
+  }, [incidents]);
+
+  // MTTA rolling-window medians (Sprint 59 follow-up). Time from
+  // `created_at` to the `acknowledged_at` stamp, for incidents first
+  // acknowledged within each window.
+  const mtta = useMemo(() => {
+    return {
+      d1: medianAckTime(incidents, 86_400_000), // 24h
+      d7: medianAckTime(incidents, 7 * 86_400_000),
+      d30: medianAckTime(incidents, 30 * 86_400_000),
     };
   }, [incidents]);
 
@@ -583,8 +621,49 @@ export default function DashboardIndex() {
         />
       </section>
 
+      {/* MTTA rolling-window tiles — Sprint 59 follow-up. Three tiles for
+          24h / 7d / 30d, mirroring the MTTR family below. */}
+      <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+        <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-secondary">
+              MTTA · median time to acknowledge
+            </p>
+            <p className="text-[10px] text-fg-muted">
+              Time from `created_at` to first acknowledgment, by ack window.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-3 px-4 py-4 sm:grid-cols-3 sm:px-5 sm:py-5">
+          {(
+            [
+              { label: "Last 24h", stat: mtta.d1 },
+              { label: "Last 7 days", stat: mtta.d7 },
+              { label: "Last 30 days", stat: mtta.d30 },
+            ] as const
+          ).map(({ label, stat }) => (
+            <div
+              key={label}
+              className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3"
+            >
+              <p className="text-[10px] font-medium uppercase tracking-wide text-fg-muted">
+                {label}
+              </p>
+              <p className="mt-1.5 text-2xl font-semibold tabular-nums text-fg-primary">
+                {stat ? fmtDuration(stat.medianMs) : "—"}
+              </p>
+              <p className="mt-0.5 text-[11px] text-fg-muted">
+                {stat
+                  ? `${stat.count} incident${stat.count === 1 ? "" : "s"} acknowledged`
+                  : "No acknowledged incidents"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* MTTR rolling-window tiles — Sprint 59 Step 5. Three tiles for
-          24h / 7d / 30d. MTTA is deferred — see the useMemo above. */}
+          24h / 7d / 30d. */}
       <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
         <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
           <div>

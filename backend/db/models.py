@@ -408,6 +408,12 @@ class Incident(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+    # First-acknowledgment timestamp (Sprint 59 follow-up — MTTA). Stamped once,
+    # the first time the incident gains an assignee (self-ack / chain-ack /
+    # takeover); never overwritten. Powers MTTA (created_at → acknowledged_at).
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Sprint 61 Step 4 — operator-authored postmortem markdown plus its
     # own edit timestamp so the UI can show "last edited" without
     # conflating with the incident's own lifecycle clock.

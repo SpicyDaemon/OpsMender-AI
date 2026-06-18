@@ -937,6 +937,49 @@ class TestEscalationAPI:
         body = resp.json()
         assert body["state"]["status"] == "acked"
 
+    async def test_ack_stamps_acknowledged_at_once(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """MTTA: the first ack stamps ``acknowledged_at``; a later ack must
+        not overwrite it."""
+        async with app.state.session_factory() as db:
+            inc = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="t", description="d"
+            )
+            await db.commit()
+            incident_id = inc.id
+            assert inc.acknowledged_at is None
+
+        resp = await client.post(
+            f"/incidents/{incident_id}/ack",
+            json={"via": "web_ui"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+
+        async with app.state.session_factory() as db:
+            inc = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            first_ack = inc.acknowledged_at
+            assert first_ack is not None
+
+        # The incident detail/list surface exposes the stamp.
+        detail = await client.get(
+            f"/incidents/{incident_id}", headers=auth_headers
+        )
+        assert detail.status_code == 200
+        assert detail.json()["acknowledged_at"] is not None
+
+        # A second ack must be idempotent on the stamp.
+        resp2 = await client.post(
+            f"/incidents/{incident_id}/ack",
+            json={"via": "web_ui"},
+            headers=auth_headers,
+        )
+        assert resp2.status_code == 200
+        async with app.state.session_factory() as db:
+            inc = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            assert inc.acknowledged_at == first_ack
+
     async def test_force_takeover_requires_admin_role(
         self, client: AsyncClient, app, auth_headers
     ):

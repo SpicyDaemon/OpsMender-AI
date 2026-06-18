@@ -262,6 +262,9 @@ class IncidentResponse(BaseModel):
     merged_into_incident_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
+    # First-acknowledgment timestamp (MTTA). Null until someone takes/acks the
+    # incident; set once and never overwritten.
+    acknowledged_at: Optional[datetime] = None
 
     # -- Responder / assignment state (Part 6) -----------------------------
     # Computed by the route so the list doesn't infer from detail-only state.

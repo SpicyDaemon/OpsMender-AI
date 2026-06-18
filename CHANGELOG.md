@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MTTA dashboard tiles (median time to acknowledge).** The dashboard now
+  shows an **MTTA · median time to acknowledge** tile family (24h / 7d / 30d)
+  above the existing MTTR tiles. Backed by a new `incidents.acknowledged_at`
+  column (migration `a1b2c3mtta01`) stamped once the first time an incident
+  gains an assignee (self-ack / chain-ack / takeover) and never overwritten;
+  existing incidents are backfilled from the earliest assignment. Exposed on
+  `IncidentResponse.acknowledged_at`. Closes the Sprint 59 MTTA follow-up
+  (option 1 — clean ack timestamp on the incident row).
+
 - **v1.2 — Combine incidents (incident merge).** Operators can fold several
   incidents describing the same problem into one canonical incident:
   `POST /incidents/{primary_id}/combine` (admin/operator) moves each secondary's

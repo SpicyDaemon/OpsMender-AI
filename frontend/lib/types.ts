@@ -51,6 +51,8 @@ export interface IncidentResponse {
   merged_into_incident_id?: string | null;
   created_at: string;
   updated_at: string;
+  // First-acknowledgment timestamp (MTTA). Null until taken/acked.
+  acknowledged_at?: string | null;
   // Responder / assignment state (Part 6)
   responder_user_id?: string | null;
   responder_display_name?: string | null;

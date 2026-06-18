@@ -5497,6 +5497,13 @@ class IncidentAssignmentRepo:
         )
         db.add(row)
         await db.flush()
+        # MTTA: stamp the incident's first-acknowledgment time once. Any
+        # assignment (self-ack / chain-ack / takeover) counts as the first
+        # human acknowledgment; never overwrite an earlier stamp.
+        incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+        if incident is not None and incident.acknowledged_at is None:
+            incident.acknowledged_at = row.assigned_at
+            await db.flush()
         return row
 
     @staticmethod

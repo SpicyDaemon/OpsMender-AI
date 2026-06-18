@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Reliability response-time history + cleaner uptime chart.** Uptime History
   no longer renders a Y axis. SLA target detail now adds **Response Time**
-  (15m–24h) and **Response Time History** (7d–365d) charts with an average line,
-  min–max band, hover details, and aggregate avg/min/max values. New
+  (15m–24h) and **Response Time History** (7d–365d) charts with a solid average
+  line, hover details, and an aggregate average. New
   `GET /sla-targets/{id}/response-time`; migration `e0f1a2b3c4d5` preserves
   avg/min/max latency plus the latency-bearing sample count in 5m/1h rollups,
   so yearly latency history survives 30-day raw-sample pruning. Existing

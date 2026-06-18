@@ -22,12 +22,12 @@ const SERIES: ResponseTimeSeriesPoint[] = [
 ];
 
 describe("ResponseTimeChart", () => {
-  it("renders the average line and min-max band", () => {
+  it("renders the average line without a min-max band", () => {
     const { container } = render(
       <ResponseTimeChart series={SERIES} windowValue="24h" />,
     );
-    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/minimum to maximum/i);
-    expect(container.querySelectorAll("path")).toHaveLength(2);
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/response time average/i);
+    expect(container.querySelectorAll("path")).toHaveLength(1);
   });
 
   it("shows an empty state when no latency was recorded", () => {

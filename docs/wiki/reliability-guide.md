@@ -14,9 +14,8 @@ dashboard.
 - Response Time for 15m, 30m, 1h, 6h, 12h, or 24h.
 - Response Time History for 7d, 30d, 90d, or 365d.
 
-Response-time charts use a line for average latency and a shaded min–max band.
-The panel header also shows aggregate average, minimum, maximum, and sample
-count for the selected window.
+Response-time charts use a solid line for average latency. The panel header also
+shows the aggregate average and sample count for the selected window.
 
 ## Retention
 

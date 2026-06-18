@@ -361,8 +361,6 @@ function TargetDetailContent() {
               <h2 className="text-sm font-medium uppercase tracking-wide text-fg-secondary">Response Time</h2>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-muted">
                 <span>Avg <strong className="text-fg-primary">{formatLatency(responseTime?.avg_latency_ms)}</strong></span>
-                <span>Min {formatLatency(responseTime?.min_latency_ms)}</span>
-                <span>Max {formatLatency(responseTime?.max_latency_ms)}</span>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -386,7 +384,7 @@ function TargetDetailContent() {
             windowValue={responseWindow}
           />
           <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
-            <span><span className="text-accent">Line</span> average · shaded area min–max</span>
+            <span><span className="text-accent">Line</span> average response time</span>
             <span>{responseTime?.total_samples ?? 0} samples</span>
           </div>
         </div>
@@ -398,8 +396,6 @@ function TargetDetailContent() {
               <h2 className="text-sm font-medium uppercase tracking-wide text-fg-secondary">Response Time History</h2>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-muted">
                 <span>Avg <strong className="text-fg-primary">{formatLatency(responseHistory?.avg_latency_ms)}</strong></span>
-                <span>Min {formatLatency(responseHistory?.min_latency_ms)}</span>
-                <span>Max {formatLatency(responseHistory?.max_latency_ms)}</span>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -423,7 +419,7 @@ function TargetDetailContent() {
             windowValue={responseHistoryWindow}
           />
           <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
-            <span><span className="text-accent">Line</span> average · shaded area min–max</span>
+            <span><span className="text-accent">Line</span> average response time</span>
             <span>{responseHistory?.total_samples ?? 0} samples</span>
           </div>
         </div>

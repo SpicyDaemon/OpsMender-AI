@@ -47,7 +47,7 @@ export function ResponseTimeChart({
   windowValue: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
-  const populated = series.filter((point) => point.max_latency_ms != null);
+  const populated = series.filter((point) => point.avg_latency_ms != null);
 
   if (!populated.length) {
     return (
@@ -60,7 +60,7 @@ export function ResponseTimeChart({
     );
   }
 
-  const maxLatency = Math.max(...populated.map((point) => point.max_latency_ms ?? 0), 1);
+  const maxLatency = Math.max(...populated.map((point) => point.avg_latency_ms ?? 0), 1);
   const ceiling = maxLatency * 1.1;
   const x = (index: number) =>
     series.length <= 1 ? WIDTH / 2 : (index / (series.length - 1)) * WIDTH;
@@ -77,7 +77,7 @@ export function ResponseTimeChart({
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="h-[202px] w-full overflow-visible"
         role="img"
-        aria-label="Response time average with minimum to maximum range"
+        aria-label="Response time average"
       >
         {[0.25, 0.5, 0.75, 1].map((ratio) => (
           <line
@@ -92,19 +92,11 @@ export function ResponseTimeChart({
         ))}
 
         {segments.map((segment, segmentIndex) => {
-          const upper = segment
-            .map(({ point, index }) => `${x(index)},${y(point.max_latency_ms ?? 0)}`)
-            .join(" L ");
-          const lower = [...segment]
-            .reverse()
-            .map(({ point, index }) => `${x(index)},${y(point.min_latency_ms ?? 0)}`)
-            .join(" L ");
           const average = segment
             .map(({ point, index }) => `${x(index)},${y(point.avg_latency_ms ?? 0)}`)
             .join(" L ");
           return (
             <g key={segmentIndex}>
-              <path d={`M ${upper} L ${lower} Z`} className="fill-accent opacity-15" />
               <path
                 d={`M ${average}`}
                 fill="none"
@@ -185,9 +177,8 @@ export function ResponseTimeChart({
           {series[hover].avg_latency_ms == null ? (
             <div className="mt-1 text-fg-muted">No data</div>
           ) : (
-            <div className="mt-1 flex gap-3 text-fg-secondary">
+            <div className="mt-1 text-fg-secondary">
               <span>Avg <strong className="text-accent">{formatLatency(series[hover].avg_latency_ms)}</strong></span>
-              <span>Range {formatLatency(series[hover].min_latency_ms)}–{formatLatency(series[hover].max_latency_ms)}</span>
             </div>
           )}
         </div>

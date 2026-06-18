@@ -7631,3 +7631,86 @@ class TestNotifications:
     async def test_requires_auth(self, client: AsyncClient):
         r = await client.get("/notifications")
         assert r.status_code == 401
+
+
+class TestNotificationEventHooks:
+    """Phase 2: incident events raise in-app notifications for recipients."""
+
+    @staticmethod
+    async def _seed_incident(app, title="Disk pressure"):
+        from backend.db.repos import IncidentRepo
+
+        async with app.state.session_factory() as db:
+            inc = await IncidentRepo.create(
+                db, TEST_ORG_ID, title=title, description="seeded"
+            )
+            await db.commit()
+            return inc.id
+
+    @staticmethod
+    async def _viewer_id(app):
+        from backend.db.repos import UserRepo
+
+        async with app.state.session_factory() as db:
+            return (await UserRepo.get_by_username(db, "viewer1")).id
+
+    async def test_assign_to_other_notifies(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        inc_id = await self._seed_incident(app)
+        viewer_id = await self._viewer_id(app)
+        r = await client.post(
+            f"/incidents/{inc_id}/assign",
+            json={"user_id": str(viewer_id)},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        nr = await client.get("/notifications", headers=viewer_headers)
+        body = nr.json()
+        assert body["unread"] == 1
+        item = body["items"][0]
+        assert item["event_type"] == "incident.assigned"
+        assert item["category"] == "incident"
+        assert item["link"] == f"/dashboard/incidents/{inc_id}"
+        assert item["incident_id"] == str(inc_id)
+
+    async def test_self_ack_is_silent(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        inc_id = await self._seed_incident(app)
+        # admin assigns themselves → no self-notification
+        r = await client.post(
+            f"/incidents/{inc_id}/assign", json={}, headers=auth_headers
+        )
+        assert r.status_code == 200
+        nr = await client.get("/notifications/unread-count", headers=auth_headers)
+        assert nr.json()["unread"] == 0
+
+    async def test_combine_notifies_secondary_assignee(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        primary = await self._seed_incident(app, "Primary")
+        secondary = await self._seed_incident(app, "Secondary")
+        viewer_id = await self._viewer_id(app)
+        # assign the secondary to the viewer
+        await client.post(
+            f"/incidents/{secondary}/assign",
+            json={"user_id": str(viewer_id)},
+            headers=auth_headers,
+        )
+        # drain the assignment notification
+        await client.post("/notifications/read-all", headers=viewer_headers)
+        # admin combines secondary into primary
+        r = await client.post(
+            f"/incidents/{primary}/combine",
+            json={"secondary_ids": [str(secondary)]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        nr = await client.get(
+            "/notifications", params={"unread_only": True}, headers=viewer_headers
+        )
+        items = nr.json()["items"]
+        assert len(items) == 1
+        assert items[0]["event_type"] == "incident.combined"
+        assert items[0]["link"] == f"/dashboard/incidents/{primary}"

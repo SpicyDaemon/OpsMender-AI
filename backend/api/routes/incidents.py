@@ -58,6 +58,7 @@ from backend.db.repos import (
     TeamRepo,
     UserRepo,
 )
+from backend.notifications import CATEGORY_INCIDENT, emit_notification
 from backend.api.schemas import (
     IncidentAssignmentResponse,
     IncidentAssignRequest,
@@ -1517,6 +1518,19 @@ async def assign_incident(
         user_id=target_user_id,
         assigned_by=assigned_by,
     )
+    # Notify the assignee when someone else assigns them (self-ack is silent).
+    if target_user_id != user.id:
+        await emit_notification(
+            db,
+            org_id,
+            target_user_id,
+            event_type="incident.assigned",
+            category=CATEGORY_INCIDENT,
+            title=f"You were assigned: {incident.title}",
+            body=f"{user.username} assigned this incident to you.",
+            link=f"/dashboard/incidents/{incident_id}",
+            incident_id=incident_id,
+        )
     await db.commit()
     await db.refresh(assignment)
     return IncidentAssignmentResponse.model_validate(assignment)
@@ -1631,6 +1645,18 @@ async def bulk_incident_action(
                     user_id=target,
                     assigned_by="self_ack" if target == user.id else "manual",
                 )
+                if target != user.id:
+                    await emit_notification(
+                        db,
+                        org_id,
+                        target,
+                        event_type="incident.assigned",
+                        category=CATEGORY_INCIDENT,
+                        title=f"You were assigned: {incident.title}",
+                        body=f"{user.username} assigned this incident to you.",
+                        link=f"/dashboard/incidents/{incident_id}",
+                        incident_id=incident_id,
+                    )
                 if incident.status == "open":
                     await IncidentRepo.update_status(
                         db, org_id, incident_id, "in_progress"
@@ -1643,6 +1669,18 @@ async def bulk_incident_action(
                     user_id=body.user_id,  # already validated above
                     assigned_by="manual",
                 )
+                if body.user_id != user.id:
+                    await emit_notification(
+                        db,
+                        org_id,
+                        body.user_id,
+                        event_type="incident.assigned",
+                        category=CATEGORY_INCIDENT,
+                        title=f"You were assigned: {incident.title}",
+                        body=f"{user.username} assigned this incident to you.",
+                        link=f"/dashboard/incidents/{incident_id}",
+                        incident_id=incident_id,
+                    )
             items.append(
                 IncidentBulkActionResult(incident_id=incident_id, ok=True)
             )
@@ -1736,8 +1774,27 @@ async def combine_incidents(
         moved_comments += await IncidentCommentRepo.repoint(
             db, org_id, from_incident_id=sec.id, to_incident_id=primary_id
         )
+        # Capture the secondary's assignee before releasing, so we can tell
+        # them their incident was folded into the primary.
+        sec_assignment = await IncidentAssignmentRepo.get_active(db, org_id, sec.id)
+        sec_assignee = sec_assignment.assigned_to if sec_assignment else None
         await IncidentAssignmentRepo.release(db, org_id, sec.id)
         await IncidentRepo.combine_into(db, org_id, sec.id, primary_id=primary_id)
+        if sec_assignee is not None and sec_assignee != user.id:
+            await emit_notification(
+                db,
+                org_id,
+                sec_assignee,
+                event_type="incident.combined",
+                category=CATEGORY_INCIDENT,
+                title=f"Incident combined: {sec.title}",
+                body=(
+                    f"{user.username} combined this incident into "
+                    f"“{primary.title}”."
+                ),
+                link=f"/dashboard/incidents/{primary_id}",
+                incident_id=primary_id,
+            )
         await IncidentCommentRepo.create(
             db,
             org_id,

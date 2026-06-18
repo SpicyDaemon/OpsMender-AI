@@ -11,6 +11,7 @@ const VARIANTS = {
   in_progress: "bg-status-info-bg text-status-info border-status-info-border",
   resolved: "bg-status-low-bg text-status-low border-status-low-border",
   closed: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
+  merged: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
   // session status
   active: "bg-status-info-bg text-status-info border-status-info-border",
   awaiting_approval: "bg-status-high-bg text-status-high border-status-high-border",

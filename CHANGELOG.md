@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v1.2 — Combine incidents (incident merge).** Operators can fold several
+  incidents describing the same problem into one canonical incident:
+  `POST /incidents/{primary_id}/combine` (admin/operator) moves each secondary's
+  comments to the primary, stops the secondary's in-progress AI sessions,
+  releases its assignment, and transitions it to a terminal `merged` state
+  pointing at the primary via `incidents.merged_into_incident_id` (migration
+  `d9e0f1a2b3c4`) — nothing is deleted, so audit trail + external fingerprint
+  survive. Merged incidents are hidden from the default incidents list (shown
+  only with `?status=merged`); `GET /incidents/{primary_id}/merged` lists a
+  primary's folded-in secondaries. Frontend: a **Combine** bulk action (select
+  2+ incidents → pick the primary → optional note) and a "combined into …"
+  banner on a merged incident's detail page.
 - **v1.2 Phase 7 — Model/provider UX: live "Test connection".** New endpoint
   `POST /models/configs/{id}/test` (admin/operator) builds the provider from a
   saved config's stored settings and sends a tiny prompt, surfacing real

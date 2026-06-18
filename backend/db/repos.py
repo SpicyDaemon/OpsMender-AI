@@ -507,6 +507,7 @@ class IncidentRepo:
         updated_from: datetime | None = None,
         updated_to: datetime | None = None,
         query: str | None = None,
+        exclude_statuses: "Sequence[str] | None" = None,
         limit: int = 100,
         offset: int = 0,
     ) -> Sequence[Incident]:
@@ -520,6 +521,7 @@ class IncidentRepo:
             updated_from=updated_from,
             updated_to=updated_to,
             query=query,
+            exclude_statuses=exclude_statuses,
         ).order_by(Incident.updated_at.desc(), Incident.created_at.desc())
         stmt = stmt.limit(limit).offset(offset)
         result = await db.execute(stmt)
@@ -537,6 +539,7 @@ class IncidentRepo:
         updated_from: datetime | None = None,
         updated_to: datetime | None = None,
         query: str | None = None,
+        exclude_statuses: "Sequence[str] | None" = None,
     ):
         # Each categorical filter accepts a scalar (backward compatible) or a
         # list — a list is an OR match (IN). An empty list means "no filter".
@@ -553,6 +556,11 @@ class IncidentRepo:
         sources = {str(s) for s in _as_list(source)}
 
         stmt = select(Incident).where(Incident.org_id == org_id)
+        # Exclude statuses (e.g. "merged") unless explicitly requested via the
+        # status filter — merged incidents are folded away by default.
+        excluded = [s for s in (exclude_statuses or []) if s not in statuses]
+        if excluded:
+            stmt = stmt.where(Incident.status.not_in(excluded))
         if team_ids:
             stmt = stmt.join(Service, Service.id == Incident.service_id).where(
                 Service.org_id == org_id,
@@ -599,6 +607,7 @@ class IncidentRepo:
         updated_from: datetime | None = None,
         updated_to: datetime | None = None,
         query: str | None = None,
+        exclude_statuses: "Sequence[str] | None" = None,
     ) -> int:
         filtered = IncidentRepo._filtered_select(
             org_id,
@@ -610,6 +619,7 @@ class IncidentRepo:
             updated_from=updated_from,
             updated_to=updated_to,
             query=query,
+            exclude_statuses=exclude_statuses,
         ).subquery()
         stmt = select(func.count()).select_from(filtered)
         result = await db.execute(stmt)
@@ -668,6 +678,50 @@ class IncidentRepo:
             await _ne.stop_escalation(
                 db, org_id, incident_id=incident_id, status="resolved"
             )
+
+    @staticmethod
+    async def combine_into(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        secondary_id: uuid.UUID,
+        *,
+        primary_id: uuid.UUID,
+    ) -> None:
+        """Fold *secondary_id* into *primary_id*: status→``merged`` + pointer.
+
+        The row is kept (never deleted) so the audit trail and external
+        fingerprint survive. Also stops any staged notification escalation, the
+        same as resolve/close.
+        """
+        stmt = (
+            update(Incident)
+            .where(Incident.org_id == org_id)
+            .where(Incident.id == secondary_id)
+            .values(
+                status="merged",
+                merged_into_incident_id=primary_id,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        await db.execute(stmt)
+        from backend.paging import notification_escalation as _ne
+
+        await _ne.stop_escalation(
+            db, org_id, incident_id=secondary_id, status="resolved"
+        )
+
+    @staticmethod
+    async def list_merged_into(
+        db: AsyncSession, org_id: uuid.UUID, primary_id: uuid.UUID
+    ) -> Sequence[Incident]:
+        """Secondaries folded into *primary_id* (for the combined-from panel)."""
+        stmt = (
+            select(Incident)
+            .where(Incident.org_id == org_id)
+            .where(Incident.merged_into_incident_id == primary_id)
+            .order_by(Incident.created_at)
+        )
+        return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
     async def set_postmortem(
@@ -5275,6 +5329,28 @@ class IncidentCommentRepo:
         db.add(row)
         await db.flush()
         return row
+
+    @staticmethod
+    async def repoint(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        from_incident_id: uuid.UUID,
+        to_incident_id: uuid.UUID,
+    ) -> int:
+        """Move all comments from one incident to another (incident combine).
+
+        Returns the number of comments moved so the combined timeline reads as
+        one coherent story on the primary incident.
+        """
+        stmt = (
+            update(IncidentComment)
+            .where(IncidentComment.org_id == org_id)
+            .where(IncidentComment.incident_id == from_incident_id)
+            .values(incident_id=to_incident_id)
+        )
+        result = await db.execute(stmt)
+        return result.rowcount or 0
 
     @staticmethod
     async def get_by_id(

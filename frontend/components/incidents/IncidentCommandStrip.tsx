@@ -170,6 +170,7 @@ export function IncidentCommandStrip({
     in_progress: "In progress",
     resolved: "Resolved",
     closed: "Closed",
+    merged: "Merged",
   };
 
   return (

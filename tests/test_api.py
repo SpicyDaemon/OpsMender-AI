@@ -7371,3 +7371,145 @@ class TestResolveLLM:
         llm = await _resolve_llm(factory, session)
         assert isinstance(llm.provider, OpenAICompatibleProvider)
         assert llm.provider.base_url == "http://localhost:1234/v1"
+
+
+class TestIncidentCombine:
+    """v1.2 — Combine (merge) incidents."""
+
+    async def _mk_incident(self, client, headers, service_id, title):
+        resp = await client.post(
+            "/incidents",
+            json={"title": title, "description": "d", "service_id": str(service_id)},
+            headers=headers,
+        )
+        assert resp.status_code == 201
+        return resp.json()["id"]
+
+    async def test_combine_folds_secondaries_into_primary(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        service = await _seed_manual_incident_service(app, "Combine")
+        primary = await self._mk_incident(client, auth_headers, service.id, "Primary")
+        sec1 = await self._mk_incident(client, auth_headers, service.id, "Dup A")
+        sec2 = await self._mk_incident(client, auth_headers, service.id, "Dup B")
+
+        # A comment on a secondary should move to the primary.
+        await client.post(
+            f"/incidents/{sec1}/comments",
+            json={"body": "note on dup A"},
+            headers=auth_headers,
+        )
+        # A running session on a secondary should be stopped by the combine.
+        async with app.state.session_factory() as db:
+            running = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=0, incident_id=uuid.UUID(sec1)
+            )
+            await db.commit()
+
+        resp = await client.post(
+            f"/incidents/{primary}/combine",
+            json={"secondary_ids": [sec1, sec2], "note": "same root cause"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data["merged_incident_ids"]) == {sec1, sec2}
+        assert data["moved_comments"] == 1
+        assert data["stopped_sessions"] == 1
+
+        async with app.state.session_factory() as db:
+            for sid in (sec1, sec2):
+                inc = await IncidentRepo.get_by_id(db, TEST_ORG_ID, uuid.UUID(sid))
+                assert inc.status == "merged"
+                assert str(inc.merged_into_incident_id) == primary
+            running_after = await SessionRepo.get_by_id(
+                db, TEST_ORG_ID, running.id
+            )
+            assert running_after.status == "stopped"
+
+        # The moved comment + two system notes + the operator note live on primary.
+        comments = (
+            await client.get(f"/incidents/{primary}/comments", headers=auth_headers)
+        ).json()
+        bodies = [c["body"] for c in comments["items"]]
+        assert any("note on dup A" in b for b in bodies)
+        assert any("Combined incident" in b for b in bodies)
+        assert any("same root cause" in b for b in bodies)
+
+    async def test_merged_incidents_hidden_from_default_list(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        service = await _seed_manual_incident_service(app, "CombineHide")
+        primary = await self._mk_incident(client, auth_headers, service.id, "Primary")
+        sec = await self._mk_incident(client, auth_headers, service.id, "Dup")
+        await client.post(
+            f"/incidents/{primary}/combine",
+            json={"secondary_ids": [sec]},
+            headers=auth_headers,
+        )
+
+        default_list = (await client.get("/incidents", headers=auth_headers)).json()
+        ids = {i["id"] for i in default_list["items"]}
+        assert sec not in ids
+        assert primary in ids
+
+        # Explicitly requesting merged surfaces them.
+        merged_list = (
+            await client.get("/incidents?status=merged", headers=auth_headers)
+        ).json()
+        assert sec in {i["id"] for i in merged_list["items"]}
+
+        # The primary's merged-children endpoint lists the secondary.
+        children = (
+            await client.get(f"/incidents/{primary}/merged", headers=auth_headers)
+        ).json()
+        assert {i["id"] for i in children["items"]} == {sec}
+
+    async def test_combine_rejects_self_and_unknown_and_merged(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        service = await _seed_manual_incident_service(app, "CombineBad")
+        primary = await self._mk_incident(client, auth_headers, service.id, "Primary")
+        sec = await self._mk_incident(client, auth_headers, service.id, "Dup")
+
+        # self
+        r = await client.post(
+            f"/incidents/{primary}/combine",
+            json={"secondary_ids": [primary]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+
+        # unknown secondary
+        r = await client.post(
+            f"/incidents/{primary}/combine",
+            json={"secondary_ids": [str(uuid.uuid4())]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 404
+
+        # already-merged secondary → 409 on a second combine
+        await client.post(
+            f"/incidents/{primary}/combine",
+            json={"secondary_ids": [sec]},
+            headers=auth_headers,
+        )
+        r = await client.post(
+            f"/incidents/{primary}/combine",
+            json={"secondary_ids": [sec]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 409
+
+    async def test_combine_viewer_forbidden(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        service = await _seed_manual_incident_service(app, "CombineRbac")
+        primary = await self._mk_incident(client, auth_headers, service.id, "Primary")
+        sec = await self._mk_incident(client, auth_headers, service.id, "Dup")
+        r = await client.post(
+            f"/incidents/{primary}/combine",
+            json={"secondary_ids": [sec]},
+            headers=viewer_headers,
+        )
+        assert r.status_code == 403

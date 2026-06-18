@@ -33,7 +33,7 @@ export interface UserListResponse {
 // ---------------------------------------------------------------------------
 
 export type Severity = "critical" | "high" | "medium" | "low";
-export type IncidentStatus = "open" | "in_progress" | "resolved" | "closed";
+export type IncidentStatus = "open" | "in_progress" | "resolved" | "closed" | "merged";
 
 export interface IncidentResponse {
   id: string;
@@ -48,6 +48,7 @@ export interface IncidentResponse {
   team_name?: string | null;
   external_id: string | null;
   external_source: string | null;
+  merged_into_incident_id?: string | null;
   created_at: string;
   updated_at: string;
   // Responder / assignment state (Part 6)
@@ -68,6 +69,13 @@ export interface IncidentResponse {
 export interface IncidentListResponse {
   items: IncidentResponse[];
   total: number;
+}
+
+export interface IncidentCombineResponse {
+  primary: IncidentResponse;
+  merged_incident_ids: string[];
+  moved_comments: number;
+  stopped_sessions: number;
 }
 
 export interface IncidentCreate {

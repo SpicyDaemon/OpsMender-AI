@@ -370,7 +370,7 @@ class Incident(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="open"
-    )  # open | investigating | resolved | closed
+    )  # open | investigating | resolved | closed | merged
     severity: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Paging surface (Sprint 33). Priority + response mode set at creation
     # time and locked thereafter; service_id ties the incident to its owning
@@ -393,6 +393,12 @@ class Incident(Base):
     # External ingestion fingerprint — dedup by (external_source, external_id)
     external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Combine incidents (v1.2): when this incident was merged into another, it
+    # gets status="merged" and points at the surviving (primary) incident. Never
+    # deleted — the audit trail and external ids survive.
+    merged_into_incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="SET NULL"), nullable=True
+    )
     target_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("sla_targets.id", ondelete="SET NULL"), nullable=True
     )

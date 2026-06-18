@@ -320,6 +320,18 @@ function IncidentDetailContent() {
         ownerLabel={ownerLabel}
       />
 
+      {incident.merged_into_incident_id && (
+        <div className="mb-4 rounded-lg border border-status-info-border bg-status-info-bg px-4 py-3 text-sm text-status-info">
+          This incident was <strong>combined</strong> into another incident.{" "}
+          <Link
+            href={`/dashboard/incidents/detail?id=${incident.merged_into_incident_id}`}
+            className="font-medium underline hover:no-underline"
+          >
+            Open the primary incident →
+          </Link>
+        </div>
+      )}
+
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
           Responder

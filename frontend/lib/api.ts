@@ -163,6 +163,7 @@ import type {
   FireTestIncidentResponse,
   IncidentCreate,
   IncidentCreateResponse,
+  IncidentCombineResponse,
   IncidentListResponse,
   IncidentCommentListResponse,
   IncidentCommentResponse,
@@ -223,6 +224,23 @@ export async function createIncident(
 
 export async function deleteIncident(id: string): Promise<void> {
   return api.del<void>(`/incidents/${id}`);
+}
+
+export async function combineIncidents(
+  primaryId: string,
+  secondaryIds: string[],
+  note?: string,
+): Promise<IncidentCombineResponse> {
+  return api.post<IncidentCombineResponse>(`/incidents/${primaryId}/combine`, {
+    secondary_ids: secondaryIds,
+    note: note || null,
+  });
+}
+
+export async function listMergedIncidents(
+  primaryId: string,
+): Promise<IncidentListResponse> {
+  return api.get<IncidentListResponse>(`/incidents/${primaryId}/merged`);
 }
 
 export async function fireTestIncident(

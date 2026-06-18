@@ -257,6 +257,9 @@ class IncidentResponse(BaseModel):
     team_name: Optional[str] = None
     external_id: Optional[str] = None
     external_source: Optional[str] = None
+    # Combine incidents (v1.2): set on a secondary that was folded into a
+    # primary (status then == "merged").
+    merged_into_incident_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -317,6 +320,20 @@ class IncidentCreateResponse(IncidentResponse):
 class IncidentListResponse(BaseModel):
     items: list[IncidentResponse]
     total: int
+
+
+class IncidentCombineRequest(BaseModel):
+    """Fold one or more secondary incidents into a primary (incident merge)."""
+
+    secondary_ids: list[uuid.UUID] = Field(..., min_length=1)
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class IncidentCombineResponse(BaseModel):
+    primary: IncidentResponse
+    merged_incident_ids: list[uuid.UUID]
+    moved_comments: int
+    stopped_sessions: int
 
 
 # Sprint 61 Step 4 — postmortem authoring surface. The default template

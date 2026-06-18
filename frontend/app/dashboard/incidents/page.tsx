@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ChevronDown, Clock, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import {
   bulkIncidentAction,
+  combineIncidents,
   createIncident,
   deleteIncident,
   fireTestIncident,
@@ -374,6 +375,7 @@ export default function IncidentsPage() {
   const [loading, setLoading] = useState(incidentsCache === null);
   const [showCreate, setShowCreate] = useState(false);
   const [showTest, setShowTest] = useState(false);
+  const [showCombine, setShowCombine] = useState(false);
   const [managingIncident, setManagingIncident] = useState<IncidentResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -762,6 +764,19 @@ export default function IncidentsPage() {
               >
                 Resolve
               </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={bulkBusy || selectedIds.size < 2}
+                onClick={() => setShowCombine(true)}
+                title={
+                  selectedIds.size < 2
+                    ? "Select two or more incidents to combine"
+                    : "Combine the selected incidents into one"
+                }
+              >
+                Combine
+              </Button>
             </>
           )}
         />
@@ -812,6 +827,20 @@ export default function IncidentsPage() {
           } else {
             toast.success(result.message, opts);
           }
+          loadIncidents();
+        }}
+      />
+      <CombineIncidentsModal
+        open={showCombine}
+        incidents={items.filter((inc) => selectedIds.has(inc.id))}
+        onClose={() => setShowCombine(false)}
+        onCombined={(primaryId, mergedCount) => {
+          setShowCombine(false);
+          setSelectedIds(new Set());
+          toast.success(`Combined ${mergedCount} incident${mergedCount === 1 ? "" : "s"}.`, {
+            label: "Open primary",
+            href: `/dashboard/incidents/detail?id=${primaryId}`,
+          });
           loadIncidents();
         }}
       />
@@ -1474,6 +1503,121 @@ function FireTestIncidentModal({
           </Button>
           <Button onClick={handleSubmit} loading={loading}>
             Fire Test Incident
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CombineIncidentsModal({
+  open,
+  incidents,
+  onClose,
+  onCombined,
+}: {
+  open: boolean;
+  incidents: IncidentResponse[];
+  onClose: () => void;
+  onCombined: (primaryId: string, mergedCount: number) => void;
+}) {
+  const [primaryId, setPrimaryId] = useState<string>("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Default the primary to the oldest selected incident (the original report)
+  // whenever the selection changes.
+  useEffect(() => {
+    if (!open) return;
+    const oldest = [...incidents].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    )[0];
+    setPrimaryId(oldest?.id ?? "");
+    setNote("");
+    setError("");
+  }, [open, incidents]);
+
+  async function handleSubmit() {
+    if (!primaryId) {
+      setError("Pick a primary incident to keep.");
+      return;
+    }
+    const secondaryIds = incidents.map((i) => i.id).filter((id) => id !== primaryId);
+    if (secondaryIds.length === 0) {
+      setError("Select at least one other incident to combine in.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      await combineIncidents(primaryId, secondaryIds, note.trim() || undefined);
+      onCombined(primaryId, secondaryIds.length);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to combine incidents");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Combine incidents">
+      <div className="space-y-4">
+        <p className="text-sm text-fg-secondary">
+          Pick the <strong>primary</strong> incident to keep. The others are folded
+          into it: their comments move over, their AI sessions stop, and they move
+          to a <code>merged</code> state pointing at the primary (nothing is deleted).
+        </p>
+
+        <div className="space-y-2">
+          {incidents.map((inc) => (
+            <label
+              key={inc.id}
+              className="flex cursor-pointer items-start gap-3 rounded-lg border border-border-subtle p-3 hover:border-border-strong"
+            >
+              <input
+                type="radio"
+                name="combine-primary"
+                className="mt-1"
+                checked={primaryId === inc.id}
+                onChange={() => setPrimaryId(inc.id)}
+              />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium text-fg-primary">{inc.title}</span>
+                  {primaryId === inc.id ? (
+                    <Badge variant="info">Primary</Badge>
+                  ) : (
+                    <Badge variant="default">Merge in</Badge>
+                  )}
+                </div>
+                <p className="mt-0.5 font-mono text-[11px] text-fg-muted">
+                  {inc.id.slice(0, 8)}… • {inc.status} • created {fmtDate(inc.created_at)}
+                </p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div>
+          <Label htmlFor="combine-note">Note (optional)</Label>
+          <Textarea
+            id="combine-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Why these are the same incident…"
+            rows={2}
+          />
+        </div>
+
+        {error && <FormError message={error} />}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} loading={loading}>
+            Combine {Math.max(0, incidents.length - 1)} into primary
           </Button>
         </div>
       </div>

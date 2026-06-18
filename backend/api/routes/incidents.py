@@ -64,6 +64,8 @@ from backend.api.schemas import (
     IncidentBulkActionRequest,
     IncidentBulkActionResponse,
     IncidentBulkActionResult,
+    IncidentCombineRequest,
+    IncidentCombineResponse,
     IncidentPagingPanelResponse,
     SuppressedByMaintenanceWindow,
 )
@@ -628,6 +630,10 @@ async def list_incidents(
     severity = [s for s in (severity or []) if s in allowed_severities] or None
     source = [s for s in (source or []) if s in allowed_sources] or None
 
+    # Merged (combined) incidents are folded away — hidden from the default list
+    # unless the caller explicitly asks for status=merged.
+    exclude_statuses = ["merged"]
+
     items = await IncidentRepo.list_all(
         db,
         org_id,
@@ -639,6 +645,7 @@ async def list_incidents(
         updated_from=updated_from,
         updated_to=updated_to,
         query=query,
+        exclude_statuses=exclude_statuses,
         limit=limit,
         offset=offset,
     )
@@ -653,6 +660,7 @@ async def list_incidents(
         updated_from=updated_from,
         updated_to=updated_to,
         query=query,
+        exclude_statuses=exclude_statuses,
     )
     return IncidentListResponse(
         items=await _to_incident_list_response(db, org_id, items),
@@ -1660,6 +1668,128 @@ async def bulk_incident_action(
         await db.commit()
     return IncidentBulkActionResponse(
         action=action, succeeded=succeeded, failed=failed, items=items
+    )
+
+
+@router.post(
+    "/{primary_id}/combine",
+    response_model=IncidentCombineResponse,
+    summary="Combine (merge) secondary incidents into a primary",
+)
+async def combine_incidents(
+    primary_id: uuid.UUID,
+    body: IncidentCombineRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Fold one or more *secondary* incidents into a *primary* incident.
+
+    Each secondary's comments move to the primary (so the combined timeline
+    reads as one), its in-progress AI sessions are stopped, its active
+    assignment is released, and it transitions to a terminal ``merged`` state
+    pointing at the primary — it is never deleted, so the audit trail and
+    external fingerprint survive. A system note is added to the primary for each
+    folded incident, plus the operator's optional ``note``.
+    """
+    primary = await IncidentRepo.get_by_id(db, org_id, primary_id)
+    if primary is None:
+        raise HTTPException(status_code=404, detail="Primary incident not found")
+    if primary.status == "merged":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Primary incident is itself merged into another incident.",
+        )
+
+    secondary_ids = [sid for sid in dict.fromkeys(body.secondary_ids)]
+    if primary_id in secondary_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An incident cannot be combined into itself.",
+        )
+
+    secondaries = []
+    for sid in secondary_ids:
+        sec = await IncidentRepo.get_by_id(db, org_id, sid)
+        if sec is None:
+            raise HTTPException(
+                status_code=404, detail=f"Secondary incident {sid} not found"
+            )
+        if sec.status == "merged":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Incident {sid} is already merged.",
+            )
+        secondaries.append(sec)
+
+    moved_comments = 0
+    stopped_sessions = 0
+    for sec in secondaries:
+        stopped_sessions += await stop_incident_sessions(
+            request.app,
+            db,
+            org_id,
+            sec.id,
+            reason=f"Combined into incident {primary_id} by {user.username}",
+        )
+        moved_comments += await IncidentCommentRepo.repoint(
+            db, org_id, from_incident_id=sec.id, to_incident_id=primary_id
+        )
+        await IncidentAssignmentRepo.release(db, org_id, sec.id)
+        await IncidentRepo.combine_into(db, org_id, sec.id, primary_id=primary_id)
+        await IncidentCommentRepo.create(
+            db,
+            org_id,
+            incident_id=primary_id,
+            body=(
+                f"Combined incident “{sec.title}” "
+                f"({str(sec.id)[:8]}…) into this incident."
+            ),
+            author_user_id=user.id,
+        )
+
+    if body.note and body.note.strip():
+        await IncidentCommentRepo.create(
+            db,
+            org_id,
+            incident_id=primary_id,
+            body=body.note.strip(),
+            author_user_id=user.id,
+        )
+
+    await db.commit()
+    for sid in secondary_ids:
+        await _notify_channels(db, sid, org_id, "incident.resolved")
+
+    refreshed = await IncidentRepo.get_by_id(db, org_id, primary_id)
+    assert refreshed is not None
+    return IncidentCombineResponse(
+        primary=await _to_incident_response(db, org_id, refreshed),
+        merged_incident_ids=secondary_ids,
+        moved_comments=moved_comments,
+        stopped_sessions=stopped_sessions,
+    )
+
+
+@router.get(
+    "/{primary_id}/merged",
+    response_model=IncidentListResponse,
+    summary="List secondary incidents combined into this one",
+)
+async def list_merged_incidents(
+    primary_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    primary = await IncidentRepo.get_by_id(db, org_id, primary_id)
+    if primary is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    merged = await IncidentRepo.list_merged_into(db, org_id, primary_id)
+    return IncidentListResponse(
+        items=await _to_incident_list_response(db, org_id, merged),
+        total=len(merged),
     )
 
 

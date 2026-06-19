@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Memory table selection and bulk actions.** The Memories page now has row
+  checkboxes, a current-page select-all checkbox, and a dynamic Actions menu.
+  One selected memory can be edited or deleted; multiple selections expose
+  confirmed **Delete all** with the exact count. Bulk deletion is atomic.
+- **Team-scoped memory management.** Admins may edit/delete any memory.
+  Operators may edit/delete only memories belonging to services owned by their
+  teams; global memories are admin-only for mutation. The API exposes
+  per-memory `can_edit`/`can_delete` and adds `POST /memories/bulk-delete`.
+
 - **Per-user notification center (the 🔔 bell).** Every signed-in user now has
   an in-app notification center: a bell in the top bar with an unread badge, a
   dropdown of recent items (per-category icon, deep link, relative time), a
@@ -36,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   land in the center). Stored on the existing `user_notification_prefs` row.
 
 ### Notes
+
+- **Memory is now continuous, not approval-gated.** Approval/rejection and
+  hidden/unhidden states were removed from the schema, API, recall path, and UI.
+  Existing rows become ordinary immediately recallable memories. Auto-compaction
+  still starts above 50 memories and now has explicit service isolation;
+  global memories compact only with other global memories. Migration
+  `b8c9d0e1f2a3`.
 
 - **SLO-breach notifications are deferred.** SLO breaches are computed
   on-demand (`/sla-recommendations`) with no persisted breach-state, so

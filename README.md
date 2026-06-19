@@ -92,6 +92,12 @@ flowchart TD
   PM --> MEM[("AI incident memory")]
 ```
 
+Resolved sessions feed a continuous memory loop: validated lessons are
+immediately recallable in later sessions, with no approval or hidden state.
+Memories compact independently per service after the 50-memory threshold.
+Admins can manage every memory; operators can edit/delete memories owned by
+their teams, including confirmed bulk deletion from the Memories table.
+
 ## Quickstart (5 minutes)
 
 Requires [Docker](https://docs.docker.com/get-docker/) with Compose.

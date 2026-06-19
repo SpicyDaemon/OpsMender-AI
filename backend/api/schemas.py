@@ -2520,10 +2520,8 @@ class IncidentMemoryResponse(BaseModel):
     tags: list[str] = Field(default_factory=list)
     helpful_count: int = 0
     unhelpful_count: int = 0
-    is_hidden: bool = False
-    review_status: str = "approved"
-    reviewed_by_user_id: Optional[uuid.UUID] = None
-    reviewed_at: Optional[datetime] = None
+    can_edit: bool = False
+    can_delete: bool = False
     created_by_user_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
@@ -2558,15 +2556,12 @@ class IncidentMemoryFeedbackRequest(BaseModel):
     helpful: bool
 
 
-class IncidentMemoryHideRequest(BaseModel):
-    hidden: bool = True
+class IncidentMemoryBulkDeleteRequest(BaseModel):
+    memory_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
 
 
-class IncidentMemoryReviewRequest(BaseModel):
-    """Approve or reject an AI-written memory. Only approved memories are
-    recalled into AI sessions."""
-
-    status: str = Field(..., pattern=r"^(approved|rejected|pending)$")
+class IncidentMemoryBulkDeleteResponse(BaseModel):
+    deleted: int
 
 
 class SessionMemoriesUsedItem(BaseModel):

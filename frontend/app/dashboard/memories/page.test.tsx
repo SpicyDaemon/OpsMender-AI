@@ -1,20 +1,19 @@
-/**
- * Memories page — v1.2 review gate UI.
- *
- * AI-written memories arrive "pending" and must be approved before the AI can
- * recall them. The page surfaces a pending badge + banner and approve/reject
- * actions.
- */
-
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/context/auth", () => ({
   useAuth: () => ({ user: { id: "u", username: "admin", role: "admin" } }),
 }));
+
+const toastSpies = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
 vi.mock("@/components/ui/Toast", () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
+  useToast: () => toastSpies,
 }));
 
 const apiMocks = vi.hoisted(() => ({
@@ -23,44 +22,61 @@ const apiMocks = vi.hoisted(() => ({
   createMemory: vi.fn(),
   updateMemory: vi.fn(),
   deleteMemory: vi.fn(),
+  bulkDeleteMemories: vi.fn(),
   recordMemoryFeedback: vi.fn(),
-  setMemoryHidden: vi.fn(),
-  reviewMemory: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
 import MemoriesPage from "@/app/dashboard/memories/page";
 
-function memory(over: Partial<Record<string, unknown>> = {}) {
+function memory(id: string, title: string, canManage = true) {
   return {
-    id: "m1",
+    id,
     org_id: "o1",
-    service_id: null,
+    service_id: "svc1",
     source_incident_id: null,
-    title: "Pending lesson",
+    title,
     summary_md: "Roll the deployment.",
     tags: [],
     helpful_count: 0,
     unhelpful_count: 0,
-    is_hidden: false,
-    review_status: "pending",
-    reviewed_by_user_id: null,
-    reviewed_at: null,
+    can_edit: canManage,
+    can_delete: canManage,
     created_by_user_id: null,
     created_at: "2026-06-14T00:00:00Z",
     updated_at: "2026-06-14T00:00:00Z",
     last_used_at: null,
-    ...over,
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  apiMocks.listServices.mockResolvedValue({ items: [], total: 0 });
-  apiMocks.listMemories.mockResolvedValue({ items: [memory()], total: 1 });
-  apiMocks.reviewMemory.mockResolvedValue(
-    memory({ review_status: "approved", reviewed_at: "2026-06-14T01:00:00Z" }),
-  );
+  apiMocks.listServices.mockResolvedValue({
+    items: [
+      {
+        id: "svc1",
+        team_id: "team1",
+        name: "Checkout",
+        slug: "checkout",
+        description: null,
+        priority: "P2",
+        preferred_mcp_server_ids: [],
+        preferred_model_config_ids: [],
+        ai_default_tier: null,
+        intake_url: null,
+        external_refs: null,
+        is_active: true,
+        created_at: "2026-06-14T00:00:00Z",
+      },
+    ],
+    total: 1,
+  });
+  apiMocks.listMemories.mockResolvedValue({
+    items: [memory("m1", "First lesson"), memory("m2", "Second lesson")],
+    total: 2,
+  });
+  apiMocks.bulkDeleteMemories.mockResolvedValue({ deleted: 2 });
+  apiMocks.deleteMemory.mockResolvedValue(undefined);
 });
 
 async function renderPage() {
@@ -68,31 +84,79 @@ async function renderPage() {
   await waitFor(() => expect(apiMocks.listMemories).toHaveBeenCalled());
 }
 
-describe("Memories review gate", () => {
-  it("shows a pending badge and review banner for AI-written memories", async () => {
+describe("Memories selection and actions", () => {
+  it("has no approval or hidden controls", async () => {
     await renderPage();
-    expect(screen.getAllByText(/Pending review/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/awaiting review/i)).toBeTruthy();
+    expect(screen.queryByText(/pending review/i)).toBeNull();
+    expect(screen.queryByText(/include hidden/i)).toBeNull();
+    expect(screen.queryByText(/^review$/i)).toBeNull();
   });
 
-  it("approves a pending memory via the row action", async () => {
+  it("selects the current page from the header checkbox", async () => {
     await renderPage();
-    const approve = (await screen.findAllByTitle(/Approve/i))[0];
-    fireEvent.click(approve);
+    fireEvent.click(
+      screen.getAllByRole("checkbox", {
+        name: "Select all rows on this page",
+      })[0],
+    );
+    expect(screen.getByText("2 selected")).toBeTruthy();
+  });
+
+  it("offers Edit and Delete for one selected memory", async () => {
+    await renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select row" })[0]);
+    fireEvent.click(screen.getByTestId("memory-actions-trigger"));
+    expect(
+      screen.getByTestId("memory-action-edit").hasAttribute("disabled"),
+    ).toBe(false);
+    expect(screen.getByTestId("memory-action-delete")).toBeTruthy();
+  });
+
+  it("greys Edit and offers Delete all for multiple memories", async () => {
+    await renderPage();
+    fireEvent.click(
+      screen.getAllByRole("checkbox", {
+        name: "Select all rows on this page",
+      })[0],
+    );
+    fireEvent.click(screen.getByTestId("memory-actions-trigger"));
+    expect(
+      screen.getByTestId("memory-action-edit").hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(screen.getByTestId("memory-action-delete"));
+    expect(
+      screen.getByText(/Are you sure you want to delete 2 memories\?/),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByTestId("confirm-memory-delete"));
     await waitFor(() =>
-      expect(apiMocks.reviewMemory).toHaveBeenCalledWith("m1", "approved"),
+      expect(apiMocks.bulkDeleteMemories).toHaveBeenCalledWith(["m1", "m2"]),
     );
   });
 
-  it("rejects a pending memory via the row action", async () => {
-    apiMocks.reviewMemory.mockResolvedValue(
-      memory({ review_status: "rejected" }),
-    );
+  it("disables deletion for a mixed unauthorized selection", async () => {
+    apiMocks.listMemories.mockResolvedValue({
+      items: [
+        memory("m1", "Owned lesson"),
+        memory("m2", "Other team lesson", false),
+      ],
+      total: 2,
+    });
     await renderPage();
-    const reject = (await screen.findAllByTitle(/Reject/i))[0];
-    fireEvent.click(reject);
-    await waitFor(() =>
-      expect(apiMocks.reviewMemory).toHaveBeenCalledWith("m1", "rejected"),
+    fireEvent.click(
+      screen.getAllByRole("checkbox", {
+        name: "Select all rows on this page",
+      })[0],
     );
+    fireEvent.click(screen.getByTestId("memory-actions-trigger"));
+    expect(
+      screen.getByTestId("memory-action-delete").hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("keeps single-row delete", async () => {
+    await renderPage();
+    fireEvent.click(screen.getAllByTitle("Delete")[0]);
+    fireEvent.click(screen.getByTestId("confirm-memory-delete"));
+    await waitFor(() => expect(apiMocks.deleteMemory).toHaveBeenCalledWith("m1"));
   });
 });

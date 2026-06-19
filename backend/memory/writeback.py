@@ -277,9 +277,6 @@ async def remember_for_session(
                 title=draft.title,
                 summary_md=draft.summary_md,
                 tags=draft.tags,
-                # AI-written memories require human review before they are
-                # recalled into future sessions (v1.2 memory review gate).
-                review_status="pending",
             )
             await db.commit()
             new_id = memory.id
@@ -288,13 +285,12 @@ async def remember_for_session(
         return None
 
     # Auto-compaction is best-effort; failures must never propagate.
-    if service_id is not None:
-        try:
-            await maybe_compact(
-                factory, llm=llm, org_id=org_id, service_id=service_id
-            )
-        except Exception:
-            logger.exception("memory auto-compaction failed; continuing")
+    try:
+        await maybe_compact(
+            factory, llm=llm, org_id=org_id, service_id=service_id
+        )
+    except Exception:
+        logger.exception("memory auto-compaction failed; continuing")
 
     return new_id
 
@@ -316,7 +312,7 @@ async def maybe_compact(
     *,
     llm: LLM | None,
     org_id: uuid.UUID,
-    service_id: uuid.UUID,
+    service_id: uuid.UUID | None,
     threshold: int = COMPACTION_THRESHOLD,
 ) -> dict[str, Any]:
     """Run one bounded compaction pass for a single service.
@@ -338,11 +334,12 @@ async def maybe_compact(
                 "total_after": count,
             }
 
-        # Compaction only dedups approved memories — pending ones await human
-        # review and must not be auto-deleted.
         memories = list(
             await IncidentMemoryRepo.list_for_org(
-                db, org_id, service_id=service_id, review_status="approved"
+                db,
+                org_id,
+                service_id=service_id,
+                global_only=service_id is None,
             )
         )
 

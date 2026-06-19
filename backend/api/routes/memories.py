@@ -1,17 +1,16 @@
-"""Sprint 45 Step 6 — AI incident memory CRUD + feedback API.
+"""AI incident memory CRUD, feedback, and recall-history API.
 
 All endpoints are org-scoped via :func:`get_current_org`. Memory is operator-
-owned the same way SKILL.md is: read is broad, write is operator-or-admin,
-delete + hide are admin-only.
+and mutation is team-scoped for Operators. Admins may manage every memory.
 
 Routes (prefix ``/memories``):
-- ``GET    /memories``                — list (filter by service_id, include_hidden)
+- ``GET    /memories``                — list (filter by service_id)
 - ``GET    /memories/{id}``           — detail
 - ``POST   /memories``                — operator manual create
-- ``PUT    /memories/{id}``           — operator manual edit
-- ``DELETE /memories/{id}``           — admin only
+- ``PUT    /memories/{id}``           — team-scoped operator edit
+- ``DELETE /memories/{id}``           — team-scoped operator delete
+- ``POST   /memories/bulk-delete``    — atomic bulk delete
 - ``POST   /memories/{id}/feedback``  — thumbs up/down (operator + admin)
-- ``POST   /memories/{id}/hide``      — admin hides without deleting
 
 Also adds (no prefix mounting collision with `/sessions`):
 - ``GET    /sessions/{id}/memories-used`` — surfaced memories for a session
@@ -27,12 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    IncidentMemoryBulkDeleteRequest,
+    IncidentMemoryBulkDeleteResponse,
     IncidentMemoryCreate,
     IncidentMemoryFeedbackRequest,
-    IncidentMemoryHideRequest,
     IncidentMemoryListResponse,
     IncidentMemoryResponse,
-    IncidentMemoryReviewRequest,
     IncidentMemoryUpdate,
     SessionMemoriesUsedItem,
     SessionMemoriesUsedResponse,
@@ -43,13 +42,16 @@ from backend.db.repos import (
     IncidentMemoryRepo,
     ServiceRepo,
     SessionRepo,
+    TeamRepo,
 )
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 sessions_memory_router = APIRouter(prefix="/sessions", tags=["memories"])
 
 
-def _to_response(memory: IncidentMemory) -> IncidentMemoryResponse:
+def _to_response(
+    memory: IncidentMemory, *, can_manage: bool = False
+) -> IncidentMemoryResponse:
     return IncidentMemoryResponse(
         id=memory.id,
         org_id=memory.org_id,
@@ -60,15 +62,81 @@ def _to_response(memory: IncidentMemory) -> IncidentMemoryResponse:
         tags=list(memory.tags or []),
         helpful_count=memory.helpful_count or 0,
         unhelpful_count=memory.unhelpful_count or 0,
-        is_hidden=bool(memory.is_hidden),
-        review_status=getattr(memory, "review_status", "approved") or "approved",
-        reviewed_by_user_id=getattr(memory, "reviewed_by_user_id", None),
-        reviewed_at=getattr(memory, "reviewed_at", None),
+        can_edit=can_manage,
+        can_delete=can_manage,
         created_by_user_id=memory.created_by_user_id,
         created_at=memory.created_at,
         updated_at=memory.updated_at,
         last_used_at=memory.last_used_at,
     )
+
+
+async def _manageable_memory_ids(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    user: User,
+    memories: list[IncidentMemory],
+) -> set[uuid.UUID]:
+    if user.role == "admin":
+        return {memory.id for memory in memories}
+    if user.role != "operator":
+        return set()
+    team_ids = await TeamRepo.team_ids_for_user(db, org_id, user.id)
+    service_ids = {
+        memory.service_id for memory in memories if memory.service_id is not None
+    }
+    services = {
+        service.id: service
+        for service in await ServiceRepo.list_all(db, org_id)
+        if service.id in service_ids
+    }
+    return {
+        memory.id
+        for memory in memories
+        if memory.service_id is not None
+        and memory.service_id in services
+        and services[memory.service_id].team_id in team_ids
+    }
+
+
+async def _require_memory_management(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    user: User,
+    memory: IncidentMemory,
+) -> None:
+    manageable = await _manageable_memory_ids(db, org_id, user, [memory])
+    if memory.id not in manageable:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Operators can edit or delete only memories owned by their teams. "
+                "Global memories require an Admin."
+            ),
+        )
+
+
+async def _require_operator_service_access(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    user: User,
+    service_id: uuid.UUID | None,
+) -> None:
+    if user.role == "admin":
+        return
+    if service_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Global memories require an Admin.",
+        )
+    service = await ServiceRepo.get_by_id(db, org_id, service_id)
+    if service is None or not await TeamRepo.is_member(
+        db, org_id, service.team_id, user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operators can assign memories only to services owned by their teams.",
+        )
 
 
 async def _validate_service(
@@ -91,8 +159,6 @@ async def _validate_service(
 )
 async def list_memories(
     service_id: uuid.UUID | None = None,
-    include_hidden: bool = False,
-    review_status: str | None = None,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
@@ -101,11 +167,12 @@ async def list_memories(
         db,
         org_id,
         service_id=service_id,
-        include_hidden=include_hidden,
-        review_status=review_status,
     )
+    manageable = await _manageable_memory_ids(db, org_id, user, list(items))
     return IncidentMemoryListResponse(
-        items=[_to_response(item) for item in items],
+        items=[
+            _to_response(item, can_manage=item.id in manageable) for item in items
+        ],
         total=len(items),
     )
 
@@ -127,7 +194,8 @@ async def get_memory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Memory not found",
         )
-    return _to_response(memory)
+    manageable = await _manageable_memory_ids(db, org_id, user, [memory])
+    return _to_response(memory, can_manage=memory.id in manageable)
 
 
 @router.post(
@@ -143,8 +211,6 @@ async def create_memory(
     user: User = Depends(require_role("admin", "operator")),
 ):
     await _validate_service(db, org_id, body.service_id)
-    # Operator-authored memories are approved on create — the author is the
-    # reviewer. (AI-written memories, by contrast, start "pending".)
     memory = await IncidentMemoryRepo.create(
         db,
         org_id=org_id,
@@ -153,13 +219,11 @@ async def create_memory(
         summary_md=body.summary_md,
         tags=[t.strip().lower() for t in body.tags if t and t.strip()],
         created_by_user_id=user.id,
-        review_status="approved",
     )
-    memory.reviewed_by_user_id = user.id
-    memory.reviewed_at = memory.created_at
     await db.commit()
     await db.refresh(memory)
-    return _to_response(memory)
+    manageable = await _manageable_memory_ids(db, org_id, user, [memory])
+    return _to_response(memory, can_manage=memory.id in manageable)
 
 
 @router.put(
@@ -174,8 +238,18 @@ async def update_memory(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
+    memory = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+    if memory is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found",
+        )
+    await _require_memory_management(db, org_id, user, memory)
     if body.service_id_set:
         await _validate_service(db, org_id, body.service_id)
+        await _require_operator_service_access(
+            db, org_id, user, body.service_id
+        )
 
     tags: list[str] | None = None
     if body.tags is not None:
@@ -198,20 +272,28 @@ async def update_memory(
         )
     await db.commit()
     await db.refresh(updated)
-    return _to_response(updated)
+    manageable = await _manageable_memory_ids(db, org_id, user, [updated])
+    return _to_response(updated, can_manage=updated.id in manageable)
 
 
 @router.delete(
     "/{memory_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a memory (admin only)",
+    summary="Delete a memory",
 )
 async def delete_memory(
     memory_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_role("admin", "operator")),
 ):
+    memory = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+    if memory is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found",
+        )
+    await _require_memory_management(db, org_id, user, memory)
     deleted = await IncidentMemoryRepo.delete(
         db, memory_id=memory_id, org_id=org_id
     )
@@ -222,6 +304,45 @@ async def delete_memory(
         )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/bulk-delete",
+    response_model=IncidentMemoryBulkDeleteResponse,
+    summary="Delete multiple memories atomically",
+)
+async def bulk_delete_memories(
+    body: IncidentMemoryBulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    unique_ids = list(dict.fromkeys(body.memory_ids))
+    memories: list[IncidentMemory] = []
+    for memory_id in unique_ids:
+        memory = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+        if memory is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Memory {memory_id} not found",
+            )
+        memories.append(memory)
+    manageable = await _manageable_memory_ids(db, org_id, user, memories)
+    unauthorized = [memory for memory in memories if memory.id not in manageable]
+    if unauthorized:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Selection includes memories the Operator cannot delete. "
+                "Operators can delete only memories owned by their teams; "
+                "global memories require an Admin."
+            ),
+        )
+    deleted = await IncidentMemoryRepo.delete_many(
+        db, memory_ids=unique_ids, org_id=org_id
+    )
+    await db.commit()
+    return IncidentMemoryBulkDeleteResponse(deleted=deleted)
 
 
 @router.post(
@@ -249,67 +370,8 @@ async def memory_feedback(
         )
     await db.commit()
     await db.refresh(updated)
-    return _to_response(updated)
-
-
-@router.post(
-    "/{memory_id}/hide",
-    response_model=IncidentMemoryResponse,
-    summary="Hide or unhide a memory (admin only)",
-)
-async def memory_hide(
-    memory_id: uuid.UUID,
-    body: IncidentMemoryHideRequest,
-    db: AsyncSession = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
-):
-    updated = await IncidentMemoryRepo.set_hidden(
-        db,
-        memory_id=memory_id,
-        org_id=org_id,
-        hidden=body.hidden,
-    )
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory not found",
-        )
-    await db.commit()
-    await db.refresh(updated)
-    return _to_response(updated)
-
-
-@router.post(
-    "/{memory_id}/review",
-    response_model=IncidentMemoryResponse,
-    summary="Approve or reject a memory (gates whether it is recalled by the AI)",
-)
-async def memory_review(
-    memory_id: uuid.UUID,
-    body: IncidentMemoryReviewRequest,
-    db: AsyncSession = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin", "operator")),
-):
-    """Set a memory's review status. Only ``approved`` memories are recalled
-    into AI sessions; ``pending`` (awaiting review) and ``rejected`` never are.
-    """
-    updated = await IncidentMemoryRepo.set_review_status(
-        db,
-        memory_id=memory_id,
-        org_id=org_id,
-        review_status=body.status,
-        reviewed_by_user_id=user.id,
-    )
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory not found",
-        )
-    await db.commit()
-    await db.refresh(updated)
-    return _to_response(updated)
+    manageable = await _manageable_memory_ids(db, org_id, user, [updated])
+    return _to_response(updated, can_manage=updated.id in manageable)
 
 
 @sessions_memory_router.get(

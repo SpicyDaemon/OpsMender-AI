@@ -2003,10 +2003,8 @@ export interface IncidentMemoryResponse {
   tags: string[];
   helpful_count: number;
   unhelpful_count: number;
-  is_hidden: boolean;
-  review_status: "pending" | "approved" | "rejected";
-  reviewed_by_user_id: string | null;
-  reviewed_at: string | null;
+  can_edit: boolean;
+  can_delete: boolean;
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
@@ -2016,6 +2014,10 @@ export interface IncidentMemoryResponse {
 export interface IncidentMemoryListResponse {
   items: IncidentMemoryResponse[];
   total: number;
+}
+
+export interface IncidentMemoryBulkDeleteResponse {
+  deleted: number;
 }
 
 export interface IncidentMemoryCreate {

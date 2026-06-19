@@ -1985,6 +1985,7 @@ export function connectNotificationStream(handlers: {
 
 import type {
   IncidentMemoryCreate,
+  IncidentMemoryBulkDeleteResponse,
   IncidentMemoryListResponse,
   IncidentMemoryResponse,
   IncidentMemoryUpdate,
@@ -1993,13 +1994,9 @@ import type {
 
 export async function listMemories(params?: {
   service_id?: string;
-  include_hidden?: boolean;
-  review_status?: "pending" | "approved" | "rejected";
 }): Promise<IncidentMemoryListResponse> {
   const qs = new URLSearchParams();
   if (params?.service_id) qs.set("service_id", params.service_id);
-  if (params?.include_hidden) qs.set("include_hidden", "true");
-  if (params?.review_status) qs.set("review_status", params.review_status);
   const q = qs.toString();
   return api.get<IncidentMemoryListResponse>(`/memories${q ? `?${q}` : ""}`);
 }
@@ -2025,6 +2022,14 @@ export async function deleteMemory(id: string): Promise<void> {
   return api.del<void>(`/memories/${id}`);
 }
 
+export async function bulkDeleteMemories(
+  memoryIds: string[],
+): Promise<IncidentMemoryBulkDeleteResponse> {
+  return api.post<IncidentMemoryBulkDeleteResponse>("/memories/bulk-delete", {
+    memory_ids: memoryIds,
+  });
+}
+
 export async function recordMemoryFeedback(
   id: string,
   helpful: boolean,
@@ -2032,20 +2037,6 @@ export async function recordMemoryFeedback(
   return api.post<IncidentMemoryResponse>(`/memories/${id}/feedback`, {
     helpful,
   });
-}
-
-export async function setMemoryHidden(
-  id: string,
-  hidden: boolean,
-): Promise<IncidentMemoryResponse> {
-  return api.post<IncidentMemoryResponse>(`/memories/${id}/hide`, { hidden });
-}
-
-export async function reviewMemory(
-  id: string,
-  status: "approved" | "rejected" | "pending",
-): Promise<IncidentMemoryResponse> {
-  return api.post<IncidentMemoryResponse>(`/memories/${id}/review`, { status });
 }
 
 export async function getSessionMemoriesUsed(

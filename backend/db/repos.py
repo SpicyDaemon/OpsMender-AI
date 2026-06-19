@@ -4964,6 +4964,16 @@ class TeamRepo:
         )
         return (await db.execute(stmt)).first() is not None
 
+    @staticmethod
+    async def team_ids_for_user(
+        db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID
+    ) -> set[uuid.UUID]:
+        stmt = select(TeamMember.team_id).where(
+            TeamMember.org_id == org_id,
+            TeamMember.user_id == user_id,
+        )
+        return set((await db.execute(stmt)).scalars().all())
+
 
 class ServiceRepo:
     @staticmethod
@@ -6240,10 +6250,6 @@ class IncidentMemoryRepo:
         source_incident_id: uuid.UUID | None = None,
         tags: list[str] | None = None,
         created_by_user_id: uuid.UUID | None = None,
-        # Default approved: direct/operator-authored creates are trusted. The AI
-        # writeback path explicitly passes "pending" so machine-written memories
-        # require human review before they are recalled.
-        review_status: str = "approved",
     ) -> IncidentMemory:
         row = IncidentMemory(
             org_id=org_id,
@@ -6253,7 +6259,6 @@ class IncidentMemoryRepo:
             summary_md=summary_md,
             tags=list(tags or []),
             created_by_user_id=created_by_user_id,
-            review_status=review_status,
         )
         db.add(row)
         await db.flush()
@@ -6276,32 +6281,29 @@ class IncidentMemoryRepo:
         org_id: uuid.UUID,
         *,
         service_id: uuid.UUID | None = None,
-        include_hidden: bool = False,
-        review_status: str | None = None,
+        global_only: bool = False,
     ) -> Sequence[IncidentMemory]:
         stmt = select(IncidentMemory).where(IncidentMemory.org_id == org_id)
-        if service_id is not None:
+        if global_only:
+            stmt = stmt.where(IncidentMemory.service_id.is_(None))
+        elif service_id is not None:
             stmt = stmt.where(IncidentMemory.service_id == service_id)
-        if not include_hidden:
-            stmt = stmt.where(IncidentMemory.is_hidden.is_(False))
-        if review_status is not None:
-            stmt = stmt.where(IncidentMemory.review_status == review_status)
         stmt = stmt.order_by(IncidentMemory.updated_at.desc())
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
     async def count_for_service(
-        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
+        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID | None
     ) -> int:
         stmt = (
             select(func.count())
             .select_from(IncidentMemory)
             .where(IncidentMemory.org_id == org_id)
-            .where(IncidentMemory.service_id == service_id)
-            .where(IncidentMemory.is_hidden.is_(False))
-            # Only approved memories count toward the compaction cap — pending
-            # ones await human review and must not be auto-deduplicated.
-            .where(IncidentMemory.review_status == "approved")
+        )
+        stmt = (
+            stmt.where(IncidentMemory.service_id.is_(None))
+            if service_id is None
+            else stmt.where(IncidentMemory.service_id == service_id)
         )
         return int((await db.execute(stmt)).scalar() or 0)
 
@@ -6323,15 +6325,7 @@ class IncidentMemoryRepo:
           - 0.5 if query keyword matches title or summary (ILIKE)
           - plus helpful_ratio_boost = helpful / (helpful + unhelpful + 1)
         """
-        stmt = (
-            select(IncidentMemory)
-            .where(IncidentMemory.org_id == org_id)
-            .where(IncidentMemory.is_hidden.is_(False))
-            # Human-review gate: only approved memories are recalled into AI
-            # sessions. Pending (awaiting review) and rejected memories never
-            # surface as agent context.
-            .where(IncidentMemory.review_status == "approved")
-        )
+        stmt = select(IncidentMemory).where(IncidentMemory.org_id == org_id)
         rows = (await db.execute(stmt)).scalars().all()
 
         normalized_query = (query or "").strip().lower()
@@ -6407,42 +6401,6 @@ class IncidentMemoryRepo:
         return row
 
     @staticmethod
-    async def set_hidden(
-        db: AsyncSession,
-        *,
-        memory_id: uuid.UUID,
-        org_id: uuid.UUID,
-        hidden: bool,
-    ) -> IncidentMemory | None:
-        row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
-        if row is None:
-            return None
-        row.is_hidden = hidden
-        row.updated_at = datetime.now(timezone.utc)
-        await db.flush()
-        return row
-
-    @staticmethod
-    async def set_review_status(
-        db: AsyncSession,
-        *,
-        memory_id: uuid.UUID,
-        org_id: uuid.UUID,
-        review_status: str,
-        reviewed_by_user_id: uuid.UUID | None,
-    ) -> IncidentMemory | None:
-        row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
-        if row is None:
-            return None
-        now = datetime.now(timezone.utc)
-        row.review_status = review_status
-        row.reviewed_by_user_id = reviewed_by_user_id
-        row.reviewed_at = now
-        row.updated_at = now
-        await db.flush()
-        return row
-
-    @staticmethod
     async def update(
         db: AsyncSession,
         *,
@@ -6479,6 +6437,24 @@ class IncidentMemoryRepo:
         await db.delete(row)
         await db.flush()
         return True
+
+    @staticmethod
+    async def delete_many(
+        db: AsyncSession,
+        *,
+        memory_ids: list[uuid.UUID],
+        org_id: uuid.UUID,
+    ) -> int:
+        if not memory_ids:
+            return 0
+        result = await db.execute(
+            delete(IncidentMemory).where(
+                IncidentMemory.org_id == org_id,
+                IncidentMemory.id.in_(memory_ids),
+            )
+        )
+        await db.flush()
+        return int(result.rowcount or 0)
 
 
 class IncidentMemoryRecallLogRepo:

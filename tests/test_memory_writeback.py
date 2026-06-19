@@ -391,6 +391,42 @@ class TestAutoCompaction:
             assert len(dupes) == 1
             assert dupes[0].summary_md == "newer"
 
+    async def test_global_compaction_does_not_touch_service_memories(
+        self, factory
+    ):
+        service = await _seed_service(factory)
+        async with factory() as db:
+            await IncidentMemoryRepo.create(
+                db, org_id=ORG_A, service_id=None,
+                title="DUPE", summary_md="older global",
+            )
+            await IncidentMemoryRepo.create(
+                db, org_id=ORG_A, service_id=None,
+                title="DUPE", summary_md="newer global",
+            )
+            service_memory = await IncidentMemoryRepo.create(
+                db, org_id=ORG_A, service_id=service.id,
+                title="DUPE", summary_md="service-specific",
+            )
+            await db.commit()
+            service_memory_id = service_memory.id
+
+        report = await maybe_compact(
+            factory, llm=None, org_id=ORG_A, service_id=None, threshold=1
+        )
+        assert report["exact_deleted"] == 1
+
+        async with factory() as db:
+            global_rows = await IncidentMemoryRepo.list_for_org(
+                db, ORG_A, global_only=True
+            )
+            service_rows = await IncidentMemoryRepo.list_for_org(
+                db, ORG_A, service_id=service.id
+            )
+        assert len(global_rows) == 1
+        assert global_rows[0].summary_md == "newer global"
+        assert [row.id for row in service_rows] == [service_memory_id]
+
     async def test_llm_compaction_applies_deletes_within_cap(self, factory):
         service = await _seed_service(factory)
         ids: list[uuid.UUID] = []

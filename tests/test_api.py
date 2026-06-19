@@ -2511,11 +2511,9 @@ class TestIncidentPostmortem:
         assert body["created"] == 2  # placeholder skipped
         assert body["skipped"] == 0
 
-        # The created memories are pending (await review) and visible in the queue.
-        pending = await client.get(
-            "/memories?review_status=pending", headers=auth_headers
-        )
-        titles = {m["title"] for m in pending.json()["items"]}
+        # Created memories are immediately available in the normal memory pool.
+        listed = await client.get("/memories", headers=auth_headers)
+        titles = {m["title"] for m in listed.json()["items"]}
         assert "Alert on disk > 80% for the primary." in titles
         assert "Vacuum the audit table weekly." in titles
 
@@ -3638,6 +3636,10 @@ class TestIncidentMemoryAPI:
     """Sprint 45 Step 6 — /memories CRUD + feedback + per-session memories-used."""
 
     async def _seed_service(self, app) -> uuid.UUID:
+        _, service_id = await self._seed_team_service(app)
+        return service_id
+
+    async def _seed_team_service(self, app) -> tuple[uuid.UUID, uuid.UUID]:
         from backend.db.repos import ServiceRepo, TeamRepo
 
         async with app.state.session_factory() as db:
@@ -3652,7 +3654,28 @@ class TestIncidentMemoryAPI:
                 slug=f"api-{uuid.uuid4().hex[:6]}",
             )
             await db.commit()
-            return service.id
+            return team.id, service.id
+
+    async def _operator_headers_for_team(
+        self, client: AsyncClient, app, team_id: uuid.UUID
+    ) -> dict[str, str]:
+        from backend.api.auth import create_access_token
+
+        async with app.state.session_factory() as db:
+            operator = await UserRepo.create(
+                db,
+                username=f"memory-op-{uuid.uuid4().hex[:6]}",
+                email=f"memory-op-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="operator",
+            )
+            operator.primary_org_id = TEST_ORG_ID
+            await TeamRepo.add_member(
+                db, TEST_ORG_ID, team_id, user_id=operator.id
+            )
+            await db.commit()
+        token = create_access_token(operator.id, operator.role)
+        return {"Authorization": f"Bearer {token}"}
 
     async def test_list_empty(self, client: AsyncClient, auth_headers):
         resp = await client.get("/memories", headers=auth_headers)
@@ -3680,6 +3703,10 @@ class TestIncidentMemoryAPI:
         assert body["tags"] == ["k8s", "oom"]
         assert body["helpful_count"] == 0
         assert body["unhelpful_count"] == 0
+        assert body["can_edit"] is True
+        assert body["can_delete"] is True
+        assert "review_status" not in body
+        assert "is_hidden" not in body
 
         memory_id = body["id"]
         get_resp = await client.get(
@@ -3687,108 +3714,6 @@ class TestIncidentMemoryAPI:
         )
         assert get_resp.status_code == 200
         assert get_resp.json()["id"] == memory_id
-
-    async def test_operator_created_memory_is_approved(
-        self, client: AsyncClient, auth_headers
-    ):
-        # Hand-authored memories are approved on create (the author reviews).
-        resp = await client.post(
-            "/memories",
-            headers=auth_headers,
-            json={"title": "manual", "summary_md": "x"},
-        )
-        assert resp.status_code == 201
-        body = resp.json()
-        assert body["review_status"] == "approved"
-        assert body["reviewed_at"] is not None
-
-    async def test_review_approve_then_reject(
-        self, client: AsyncClient, auth_headers
-    ):
-        created = await client.post(
-            "/memories",
-            headers=auth_headers,
-            json={"title": "m", "summary_md": "x"},
-        )
-        memory_id = created.json()["id"]
-
-        rejected = await client.post(
-            f"/memories/{memory_id}/review",
-            headers=auth_headers,
-            json={"status": "rejected"},
-        )
-        assert rejected.status_code == 200
-        assert rejected.json()["review_status"] == "rejected"
-
-        approved = await client.post(
-            f"/memories/{memory_id}/review",
-            headers=auth_headers,
-            json={"status": "approved"},
-        )
-        assert approved.status_code == 200
-        assert approved.json()["review_status"] == "approved"
-        assert approved.json()["reviewed_at"] is not None
-
-    async def test_review_rejects_invalid_status(
-        self, client: AsyncClient, auth_headers
-    ):
-        created = await client.post(
-            "/memories",
-            headers=auth_headers,
-            json={"title": "m", "summary_md": "x"},
-        )
-        memory_id = created.json()["id"]
-        resp = await client.post(
-            f"/memories/{memory_id}/review",
-            headers=auth_headers,
-            json={"status": "bogus"},
-        )
-        assert resp.status_code == 422
-
-    async def test_review_unknown_memory_404(
-        self, client: AsyncClient, auth_headers
-    ):
-        resp = await client.post(
-            f"/memories/{uuid.uuid4()}/review",
-            headers=auth_headers,
-            json={"status": "approved"},
-        )
-        assert resp.status_code == 404
-
-    async def test_viewer_cannot_review(
-        self, client: AsyncClient, auth_headers, viewer_headers
-    ):
-        created = await client.post(
-            "/memories",
-            headers=auth_headers,
-            json={"title": "m", "summary_md": "x"},
-        )
-        memory_id = created.json()["id"]
-        resp = await client.post(
-            f"/memories/{memory_id}/review",
-            headers=viewer_headers,
-            json={"status": "approved"},
-        )
-        assert resp.status_code == 403
-
-    async def test_list_filters_by_review_status(
-        self, client: AsyncClient, auth_headers
-    ):
-        await client.post(
-            "/memories",
-            headers=auth_headers,
-            json={"title": "approved-one", "summary_md": "x"},
-        )
-        # Operator-created memories are approved, so a pending filter is empty.
-        pending = await client.get(
-            "/memories?review_status=pending", headers=auth_headers
-        )
-        assert pending.status_code == 200
-        assert pending.json()["total"] == 0
-        approved = await client.get(
-            "/memories?review_status=approved", headers=auth_headers
-        )
-        assert approved.json()["total"] >= 1
 
     async def test_create_rejects_unknown_service(
         self, client: AsyncClient, auth_headers
@@ -3891,49 +3816,7 @@ class TestIncidentMemoryAPI:
         assert body["helpful_count"] == 3
         assert body["unhelpful_count"] == 1
 
-    async def test_hide_admin_only(
-        self, client: AsyncClient, auth_headers, viewer_headers, app
-    ):
-        service_id = await self._seed_service(app)
-        create = await client.post(
-            "/memories",
-            headers=auth_headers,
-            json={
-                "title": "x",
-                "summary_md": "y",
-                "service_id": str(service_id),
-            },
-        )
-        memory_id = create.json()["id"]
-
-        # Viewer is denied (route requires admin).
-        resp = await client.post(
-            f"/memories/{memory_id}/hide",
-            headers=viewer_headers,
-            json={"hidden": True},
-        )
-        assert resp.status_code in {401, 403}
-
-        # Admin succeeds.
-        resp = await client.post(
-            f"/memories/{memory_id}/hide",
-            headers=auth_headers,
-            json={"hidden": True},
-        )
-        assert resp.status_code == 200
-        assert resp.json()["is_hidden"] is True
-
-        # And the hidden memory drops out of the default list.
-        listing = await client.get("/memories", headers=auth_headers)
-        assert all(m["id"] != memory_id for m in listing.json()["items"])
-
-        # include_hidden=true brings it back.
-        listing = await client.get(
-            "/memories?include_hidden=true", headers=auth_headers
-        )
-        assert any(m["id"] == memory_id for m in listing.json()["items"])
-
-    async def test_delete_admin_only(
+    async def test_delete_admin_and_viewer_permissions(
         self, client: AsyncClient, auth_headers, viewer_headers, app
     ):
         service_id = await self._seed_service(app)
@@ -3965,6 +3848,122 @@ class TestIncidentMemoryAPI:
             f"/memories/{memory_id}", headers=auth_headers
         )
         assert get_resp.status_code == 404
+
+    async def test_operator_can_edit_and_delete_own_team_memory(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        team_id, service_id = await self._seed_team_service(app)
+        operator_headers = await self._operator_headers_for_team(
+            client, app, team_id
+        )
+        created = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "team memory",
+                "summary_md": "x",
+                "service_id": str(service_id),
+            },
+        )
+        memory_id = created.json()["id"]
+
+        listed = await client.get("/memories", headers=operator_headers)
+        row = next(m for m in listed.json()["items"] if m["id"] == memory_id)
+        assert row["can_edit"] is True
+        assert row["can_delete"] is True
+        edited = await client.put(
+            f"/memories/{memory_id}",
+            headers=operator_headers,
+            json={"title": "updated by operator"},
+        )
+        assert edited.status_code == 200
+        deleted = await client.delete(
+            f"/memories/{memory_id}", headers=operator_headers
+        )
+        assert deleted.status_code == 204
+
+    async def test_operator_cannot_manage_other_team_or_global_memory(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        operator_team, _ = await self._seed_team_service(app)
+        _, other_service = await self._seed_team_service(app)
+        operator_headers = await self._operator_headers_for_team(
+            client, app, operator_team
+        )
+        other = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "other",
+                "summary_md": "x",
+                "service_id": str(other_service),
+            },
+        )
+        global_memory = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={"title": "global", "summary_md": "x"},
+        )
+        for memory_id in (other.json()["id"], global_memory.json()["id"]):
+            assert (
+                await client.put(
+                    f"/memories/{memory_id}",
+                    headers=operator_headers,
+                    json={"title": "blocked"},
+                )
+            ).status_code == 403
+            assert (
+                await client.delete(
+                    f"/memories/{memory_id}", headers=operator_headers
+                )
+            ).status_code == 403
+
+    async def test_bulk_delete_is_atomic_and_team_scoped(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        team_id, service_id = await self._seed_team_service(app)
+        _, other_service_id = await self._seed_team_service(app)
+        operator_headers = await self._operator_headers_for_team(
+            client, app, team_id
+        )
+        own_ids = []
+        for title in ("one", "two"):
+            created = await client.post(
+                "/memories",
+                headers=auth_headers,
+                json={
+                    "title": title,
+                    "summary_md": "x",
+                    "service_id": str(service_id),
+                },
+            )
+            own_ids.append(created.json()["id"])
+        other = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "other",
+                "summary_md": "x",
+                "service_id": str(other_service_id),
+            },
+        )
+        blocked = await client.post(
+            "/memories/bulk-delete",
+            headers=operator_headers,
+            json={"memory_ids": [own_ids[0], other.json()["id"]]},
+        )
+        assert blocked.status_code == 403
+        assert (
+            await client.get(f"/memories/{own_ids[0]}", headers=auth_headers)
+        ).status_code == 200
+
+        deleted = await client.post(
+            "/memories/bulk-delete",
+            headers=operator_headers,
+            json={"memory_ids": own_ids},
+        )
+        assert deleted.status_code == 200
+        assert deleted.json() == {"deleted": 2}
 
     async def test_unauthenticated_rejected(self, client: AsyncClient):
         resp = await client.get("/memories")

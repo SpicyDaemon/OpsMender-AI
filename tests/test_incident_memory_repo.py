@@ -1,6 +1,6 @@
 """Sprint 45 Step 1 — IncidentMemoryRepo tests.
 
-Covers per-org isolation, retrieval scoring, feedback counters, hide/delete,
+Covers per-org isolation, retrieval scoring, feedback counters, delete, and
 recall logging.
 """
 
@@ -68,97 +68,6 @@ async def _make_service(db: AsyncSession, org_id: uuid.UUID, name: str) -> Servi
     return service
 
 
-class TestReviewGate:
-    """v1.2 — only approved memories are recalled; AI writeback is pending."""
-
-    async def test_create_defaults_approved_but_writeback_passes_pending(
-        self, db: AsyncSession
-    ):
-        approved = await IncidentMemoryRepo.create(
-            db, org_id=ORG_A, title="manual", summary_md="x"
-        )
-        pending = await IncidentMemoryRepo.create(
-            db,
-            org_id=ORG_A,
-            title="ai",
-            summary_md="y",
-            review_status="pending",
-        )
-        await db.flush()
-        assert approved.review_status == "approved"
-        assert pending.review_status == "pending"
-
-    async def test_find_relevant_only_returns_approved(self, db: AsyncSession):
-        svc = await _make_service(db, ORG_A, "checkout")
-        approved = await IncidentMemoryRepo.create(
-            db,
-            org_id=ORG_A,
-            service_id=svc.id,
-            title="approved latency",
-            summary_md="pool it",
-            review_status="approved",
-        )
-        await IncidentMemoryRepo.create(
-            db,
-            org_id=ORG_A,
-            service_id=svc.id,
-            title="pending latency",
-            summary_md="pool it",
-            review_status="pending",
-        )
-        await IncidentMemoryRepo.create(
-            db,
-            org_id=ORG_A,
-            service_id=svc.id,
-            title="rejected latency",
-            summary_md="pool it",
-            review_status="rejected",
-        )
-        await db.flush()
-
-        results = await IncidentMemoryRepo.find_relevant(
-            db, org_id=ORG_A, service_id=svc.id, query="latency", tags=None
-        )
-        assert [m.id for m, _ in results] == [approved.id]
-
-    async def test_set_review_status_stamps_reviewer(self, db: AsyncSession):
-        m = await IncidentMemoryRepo.create(
-            db, org_id=ORG_A, title="ai", summary_md="x", review_status="pending"
-        )
-        await db.flush()
-        updated = await IncidentMemoryRepo.set_review_status(
-            db,
-            memory_id=m.id,
-            org_id=ORG_A,
-            review_status="approved",
-            reviewed_by_user_id=None,
-        )
-        assert updated is not None
-        assert updated.review_status == "approved"
-        assert updated.reviewed_at is not None
-
-    async def test_count_for_service_excludes_pending(self, db: AsyncSession):
-        svc = await _make_service(db, ORG_A, "checkout")
-        await IncidentMemoryRepo.create(
-            db,
-            org_id=ORG_A,
-            service_id=svc.id,
-            title="approved",
-            summary_md="x",
-            review_status="approved",
-        )
-        await IncidentMemoryRepo.create(
-            db,
-            org_id=ORG_A,
-            service_id=svc.id,
-            title="pending",
-            summary_md="x",
-            review_status="pending",
-        )
-        await db.flush()
-        assert await IncidentMemoryRepo.count_for_service(db, ORG_A, svc.id) == 1
-
-
 class TestCreateAndGet:
     async def test_create_writes_org_scoped_row(self, db: AsyncSession):
         m = await IncidentMemoryRepo.create(
@@ -175,7 +84,6 @@ class TestCreateAndGet:
         assert m.tags == ["k8s", "oom"]
         assert m.helpful_count == 0
         assert m.unhelpful_count == 0
-        assert m.is_hidden is False
 
     async def test_get_respects_org_boundary(self, db: AsyncSession):
         m = await IncidentMemoryRepo.create(
@@ -190,7 +98,7 @@ class TestCreateAndGet:
 
 
 class TestList:
-    async def test_list_filters_by_service_and_hidden(self, db: AsyncSession):
+    async def test_list_filters_by_service(self, db: AsyncSession):
         svc = await _make_service(db, ORG_A, "checkout")
         other_svc = await _make_service(db, ORG_A, "billing")
 
@@ -208,25 +116,15 @@ class TestList:
             db, org_id=ORG_A, service_id=svc.id, title="c", summary_md="x"
         )
         await db.flush()
-        await IncidentMemoryRepo.set_hidden(
-            db, memory_id=m3.id, org_id=ORG_A, hidden=True
-        )
-        await db.flush()
 
-        visible = await IncidentMemoryRepo.list_for_org(
+        listed = await IncidentMemoryRepo.list_for_org(
             db, ORG_A, service_id=svc.id
         )
-        with_hidden = await IncidentMemoryRepo.list_for_org(
-            db, ORG_A, service_id=svc.id, include_hidden=True
-        )
 
-        assert {m.id for m in visible} == {m1.id}
-        assert {m.id for m in with_hidden} == {m1.id, m3.id}
-        # m2 is on a different service, must not appear either way.
-        assert all(m.id != m2.id for m in visible)
-        assert all(m.id != m2.id for m in with_hidden)
+        assert {m.id for m in listed} == {m1.id, m3.id}
+        assert all(m.id != m2.id for m in listed)
 
-    async def test_count_excludes_hidden(self, db: AsyncSession):
+    async def test_count_is_scoped_per_service_and_global(self, db: AsyncSession):
         svc = await _make_service(db, ORG_A, "checkout")
         for i in range(3):
             await IncidentMemoryRepo.create(
@@ -236,18 +134,13 @@ class TestList:
                 title=f"t{i}",
                 summary_md="x",
             )
-        await db.flush()
-
-        rows = await IncidentMemoryRepo.list_for_org(
-            db, ORG_A, service_id=svc.id
-        )
-        await IncidentMemoryRepo.set_hidden(
-            db, memory_id=rows[0].id, org_id=ORG_A, hidden=True
+        await IncidentMemoryRepo.create(
+            db, org_id=ORG_A, title="global", summary_md="x"
         )
         await db.flush()
 
-        count = await IncidentMemoryRepo.count_for_service(db, ORG_A, svc.id)
-        assert count == 2
+        assert await IncidentMemoryRepo.count_for_service(db, ORG_A, svc.id) == 3
+        assert await IncidentMemoryRepo.count_for_service(db, ORG_A, None) == 1
 
 
 class TestFindRelevant:
@@ -353,31 +246,6 @@ class TestFindRelevant:
         )
         assert results[0][0].id == liked.id
 
-    async def test_hidden_memories_never_surface(self, db: AsyncSession):
-        svc = await _make_service(db, ORG_A, "checkout")
-        m = await IncidentMemoryRepo.create(
-            db,
-            org_id=ORG_A,
-            service_id=svc.id,
-            title="t",
-            summary_md="payload",
-        )
-        await db.flush()
-        await IncidentMemoryRepo.set_hidden(
-            db, memory_id=m.id, org_id=ORG_A, hidden=True
-        )
-        await db.flush()
-
-        results = await IncidentMemoryRepo.find_relevant(
-            db,
-            org_id=ORG_A,
-            service_id=svc.id,
-            query=None,
-            tags=None,
-            limit=5,
-        )
-        assert results == []
-
     async def test_cross_org_memories_never_surface(self, db: AsyncSession):
         svc_a = await _make_service(db, ORG_A, "checkout")
         svc_b = await _make_service(db, ORG_B, "checkout")
@@ -477,6 +345,24 @@ class TestUpdateAndDelete:
         )
         assert ok is False
         assert await IncidentMemoryRepo.get_by_id(db, m.id, ORG_A) is not None
+
+    async def test_delete_many_is_org_scoped(self, db: AsyncSession):
+        a1 = await IncidentMemoryRepo.create(
+            db, org_id=ORG_A, title="a1", summary_md="x"
+        )
+        a2 = await IncidentMemoryRepo.create(
+            db, org_id=ORG_A, title="a2", summary_md="x"
+        )
+        b1 = await IncidentMemoryRepo.create(
+            db, org_id=ORG_B, title="b1", summary_md="x"
+        )
+        await db.flush()
+
+        deleted = await IncidentMemoryRepo.delete_many(
+            db, memory_ids=[a1.id, a2.id, b1.id], org_id=ORG_A
+        )
+        assert deleted == 2
+        assert await IncidentMemoryRepo.get_by_id(db, b1.id, ORG_B) is not None
 
 
 class TestRecallLog:

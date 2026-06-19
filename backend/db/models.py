@@ -2163,22 +2163,6 @@ class IncidentMemory(Base):
     unhelpful_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )
-    is_hidden: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
-    # v1.2 memory review gate: AI-written memories start "pending" and are only
-    # recalled into sessions once "approved". Operator-authored memories are
-    # approved on create. "rejected" memories are kept (for audit) but never
-    # recalled. Values: "pending" | "approved" | "rejected".
-    review_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
-    )
-    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    reviewed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -2194,8 +2178,6 @@ class IncidentMemory(Base):
 
     __table_args__ = (
         Index("ix_incident_memories_org_service", "org_id", "service_id"),
-        Index("ix_incident_memories_org_hidden", "org_id", "is_hidden"),
-        Index("ix_incident_memories_org_review", "org_id", "review_status"),
     )
 
 

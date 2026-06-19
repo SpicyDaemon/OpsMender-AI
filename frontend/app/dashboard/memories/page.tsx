@@ -3,25 +3,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Brain,
-  Check,
-  EyeOff,
+  ChevronDown,
   Pencil,
   Plus,
   RefreshCw,
   ThumbsDown,
   ThumbsUp,
   Trash2,
-  X,
 } from "lucide-react";
 
 import {
+  bulkDeleteMemories,
   createMemory,
   deleteMemory,
   listMemories,
   listServices,
   recordMemoryFeedback,
-  reviewMemory,
-  setMemoryHidden,
   updateMemory,
 } from "@/lib/api";
 import type {
@@ -56,36 +53,38 @@ function fmtDate(iso: string | null) {
 export default function MemoriesPage() {
   const toast = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
-  const canEdit = isAdmin || user?.role === "operator";
+  const canEdit = user?.role === "admin" || user?.role === "operator";
 
   const [memories, setMemories] = useState<IncidentMemoryResponse[]>([]);
   const [services, setServices] = useState<ServiceResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [includeHidden, setIncludeHidden] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<IncidentMemoryResponse | null>(null);
-  const [deleting, setDeleting] = useState<IncidentMemoryResponse | null>(null);
+  const [deleting, setDeleting] = useState<IncidentMemoryResponse[]>([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const params: { include_hidden?: boolean } = {};
-      if (includeHidden) params.include_hidden = true;
       const [memResp, svcResp] = await Promise.all([
-        listMemories(params),
+        listMemories(),
         listServices(),
       ]);
       setMemories(memResp.items);
+      setSelectedKeys((current) => {
+        const valid = new Set(memResp.items.map((memory) => memory.id));
+        return new Set([...current].filter((id) => valid.has(id)));
+      });
       setServices(svcResp.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [includeHidden, toast]);
+  }, [toast]);
 
   useEffect(() => {
     refresh();
@@ -124,33 +123,6 @@ export default function MemoriesPage() {
     [toast],
   );
 
-  const handleReview = useCallback(
-    async (
-      memory: IncidentMemoryResponse,
-      status: "approved" | "rejected",
-    ) => {
-      try {
-        const updated = await reviewMemory(memory.id, status);
-        setMemories((prev) =>
-          prev.map((m) => (m.id === updated.id ? updated : m)),
-        );
-        toast.success(
-          status === "approved"
-            ? `Approved "${updated.title}" — it can now be recalled by the AI.`
-            : `Rejected "${updated.title}" — it will not be recalled.`,
-        );
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [toast],
-  );
-
-  const pendingCount = useMemo(
-    () => memories.filter((m) => m.review_status === "pending").length,
-    [memories],
-  );
-
   const columns = useMemo<DataTableColumn<IncidentMemoryResponse>[]>(
     () => [
       {
@@ -163,13 +135,6 @@ export default function MemoriesPage() {
               <span className="font-medium text-fg-primary">
                 {memory.title}
               </span>
-              {memory.review_status === "pending" && (
-                <Badge variant="in_progress">Pending review</Badge>
-              )}
-              {memory.review_status === "rejected" && (
-                <Badge variant="default">Rejected</Badge>
-              )}
-              {memory.is_hidden && <Badge variant="default">Hidden</Badge>}
             </div>
             <p className="mt-1 line-clamp-2 max-w-xl text-xs text-fg-muted">
               {memory.summary_md}
@@ -257,102 +222,53 @@ export default function MemoriesPage() {
         sortable: true,
         hiddenByDefault: true,
       },
-      {
-        id: "review",
-        label: "Review",
-        accessor: (memory) => memory.review_status,
-        cell: (memory) => (
-          <Badge
-            variant={
-              memory.review_status === "approved"
-                ? "resolved"
-                : memory.review_status === "pending"
-                  ? "in_progress"
-                  : "default"
-            }
-          >
-            {memory.review_status === "approved"
-              ? "Approved"
-              : memory.review_status === "pending"
-                ? "Pending"
-                : "Rejected"}
-          </Badge>
-        ),
-        filterChips: {
-          options: [
-            { value: "pending", label: "Pending" },
-            { value: "approved", label: "Approved" },
-            { value: "rejected", label: "Rejected" },
-          ],
-          valueOf: (memory) => memory.review_status,
-        },
-        sortable: true,
-      },
-      {
-        id: "visibility",
-        label: "Visibility",
-        accessor: (memory) => (memory.is_hidden ? "hidden" : "visible"),
-        cell: (memory) => (
-          <Badge variant={memory.is_hidden ? "default" : "resolved"}>
-            {memory.is_hidden ? "Hidden" : "Visible"}
-          </Badge>
-        ),
-        filterChips: includeHidden
-          ? {
-              options: [
-                { value: "visible", label: "Visible" },
-                { value: "hidden", label: "Hidden" },
-              ],
-              valueOf: (memory) =>
-                memory.is_hidden ? "hidden" : "visible",
-            }
-          : undefined,
-        hiddenByDefault: true,
-      },
     ],
     [
       canEdit,
       handleFeedback,
-      handleReview,
-      includeHidden,
       serviceFilterOptions,
       serviceNameById,
     ],
   );
 
-  const handleHide = async (memory: IncidentMemoryResponse) => {
+  const handleDelete = async () => {
+    if (deleting.length === 0) return;
     try {
-      const updated = await setMemoryHidden(memory.id, !memory.is_hidden);
-      if (!includeHidden && updated.is_hidden) {
-        setMemories((prev) => prev.filter((m) => m.id !== updated.id));
+      const ids = deleting.map((memory) => memory.id);
+      if (ids.length === 1) {
+        await deleteMemory(ids[0]);
       } else {
-        setMemories((prev) =>
-          prev.map((m) => (m.id === updated.id ? updated : m)),
-        );
+        await bulkDeleteMemories(ids);
       }
-      toast.success(updated.is_hidden ? "Memory hidden" : "Memory shown");
+      const deletedIds = new Set(ids);
+      setMemories((prev) => prev.filter((m) => !deletedIds.has(m.id)));
+      setSelectedKeys(new Set());
+      toast.success(
+        ids.length === 1 ? "Memory deleted" : `${ids.length} memories deleted`,
+      );
+      setDeleting([]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleting) return;
-    try {
-      await deleteMemory(deleting.id);
-      setMemories((prev) => prev.filter((m) => m.id !== deleting.id));
-      toast.success("Memory deleted");
-      setDeleting(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  };
+  const selectedMemories = useMemo(
+    () => memories.filter((memory) => selectedKeys.has(memory.id)),
+    [memories, selectedKeys],
+  );
+  const selectionManageable =
+    selectedMemories.length > 0 &&
+    selectedMemories.every((memory) => memory.can_edit && memory.can_delete);
+  const selectionBlockedReason =
+    selectedMemories.length > 0 && !selectionManageable
+      ? "Selection includes global memories or memories owned by another team."
+      : undefined;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Memories"
-        subtitle="Per-service lessons the agent has learned from prior incidents. AI-written memories need review before they are recalled into sessions; operator-authored ones are approved on save."
+        subtitle="Per-service lessons the agent continuously learns from resolved incidents and recalls automatically in future sessions."
         icon={<Brain size={18} />}
         actions={
           <Button
@@ -366,19 +282,6 @@ export default function MemoriesPage() {
           </Button>
         }
       />
-
-      {canEdit && pendingCount > 0 && (
-        <div className="flex items-center gap-2 rounded-md border border-status-medium-border bg-status-medium-bg px-3 py-2 text-sm text-status-medium">
-          <Brain size={14} />
-          <span>
-            {pendingCount} AI-written{" "}
-            {pendingCount === 1 ? "memory is" : "memories are"} awaiting review.
-            Approve to let the AI recall {pendingCount === 1 ? "it" : "them"};
-            reject to keep but never recall. Filter by{" "}
-            <span className="font-medium">Review → Pending</span>.
-          </span>
-        </div>
-      )}
 
       {loading && memories.length === 0 ? (
         <TableSkeleton rows={4} columns={4} />
@@ -402,20 +305,70 @@ export default function MemoriesPage() {
           rows={memories}
           columns={columns}
           rowKey={(memory) => memory.id}
+          selectable={canEdit}
+          selectedKeys={selectedKeys}
+          onSelectionChange={setSelectedKeys}
           storageKey="opsmender:memories-table"
           filterBar
           searchPlaceholder="Search title, summary, tag, or service…"
           toolbarRight={
-            <div className="flex items-center gap-3">
-              {isAdmin && (
-                <label className="flex items-center gap-2 text-xs text-fg-secondary">
-                  <input
-                    type="checkbox"
-                    checked={includeHidden}
-                    onChange={(e) => setIncludeHidden(e.target.checked)}
-                  />
-                  Include hidden
-                </label>
+            <div className="flex items-center gap-2">
+              {canEdit && (
+                <div className="relative">
+                  <Button
+                    data-testid="memory-actions-trigger"
+                    size="sm"
+                    variant={selectedKeys.size > 0 ? "primary" : "secondary"}
+                    disabled={selectedKeys.size === 0}
+                    onClick={() => setActionsOpen((open) => !open)}
+                    title={selectionBlockedReason}
+                  >
+                    Actions <ChevronDown size={13} />
+                  </Button>
+                  {actionsOpen && selectedKeys.size > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className="fixed inset-0 z-10 cursor-default"
+                        aria-label="Close memory actions"
+                        onClick={() => setActionsOpen(false)}
+                      />
+                      <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-md border border-border-default bg-bg-panel p-1 shadow-lg">
+                        <button
+                          data-testid="memory-action-edit"
+                          type="button"
+                          disabled={
+                            selectedMemories.length !== 1 ||
+                            !selectedMemories[0]?.can_edit
+                          }
+                          onClick={() => {
+                            setEditing(selectedMemories[0]);
+                            setActionsOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Pencil size={14} /> Edit
+                        </button>
+                        <button
+                          data-testid="memory-action-delete"
+                          type="button"
+                          disabled={!selectionManageable}
+                          title={selectionBlockedReason}
+                          onClick={() => {
+                            setDeleting(selectedMemories);
+                            setActionsOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-status-critical hover:bg-status-critical-bg disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Trash2 size={14} />{" "}
+                          {selectedMemories.length === 1
+                            ? "Delete"
+                            : "Delete all"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
               {canEdit && (
                 <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -442,27 +395,7 @@ export default function MemoriesPage() {
           }}
           rowActions={(memory) => (
             <div className="flex justify-end gap-1">
-              {canEdit && memory.review_status !== "approved" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleReview(memory, "approved")}
-                  title="Approve — allow the AI to recall this memory"
-                >
-                  <Check size={13} />
-                </Button>
-              )}
-              {canEdit && memory.review_status !== "rejected" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleReview(memory, "rejected")}
-                  title="Reject — keep but never recall into AI sessions"
-                >
-                  <X size={13} />
-                </Button>
-              )}
-              {canEdit && (
+              {memory.can_edit && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -472,25 +405,15 @@ export default function MemoriesPage() {
                   <Pencil size={13} />
                 </Button>
               )}
-              {isAdmin && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleHide(memory)}
-                    title={memory.is_hidden ? "Unhide" : "Hide"}
-                  >
-                    <EyeOff size={13} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setDeleting(memory)}
-                    title="Delete"
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </>
+              {memory.can_delete && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeleting([memory])}
+                  title="Delete"
+                >
+                  <Trash2 size={13} />
+                </Button>
               )}
             </div>
           )}
@@ -537,24 +460,38 @@ export default function MemoriesPage() {
           }}
         />
       )}
-      {deleting && (
+      {deleting.length > 0 && (
         <Modal
           open={true}
-          onClose={() => setDeleting(null)}
-          title="Delete memory?"
+          onClose={() => setDeleting([])}
+          title={deleting.length === 1 ? "Delete memory?" : "Delete memories?"}
         >
           <p className="text-sm text-fg-secondary">
-            This permanently removes &ldquo;
-            <span className="font-medium text-fg-primary">{deleting.title}</span>
-            &rdquo;. Future sessions on this service will no longer see this
-            lesson. Consider hiding instead — it preserves the audit trail.
+            {deleting.length === 1 ? (
+              <>
+                This permanently removes &ldquo;
+                <span className="font-medium text-fg-primary">
+                  {deleting[0].title}
+                </span>
+                &rdquo;. Future sessions will no longer recall this lesson.
+              </>
+            ) : (
+              <>
+                Are you sure you want to delete {deleting.length} memories?
+                This cannot be undone.
+              </>
+            )}
           </p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setDeleting(null)}>
+            <Button variant="ghost" onClick={() => setDeleting([])}>
               Cancel
             </Button>
-            <Button variant="danger" onClick={handleDelete}>
-              Delete
+            <Button
+              data-testid="confirm-memory-delete"
+              variant="danger"
+              onClick={handleDelete}
+            >
+              {deleting.length === 1 ? "Delete" : "Delete all"}
             </Button>
           </div>
         </Modal>

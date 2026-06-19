@@ -907,7 +907,7 @@ async def put_incident_postmortem(
 @router.post(
     "/{incident_id}/postmortem/memory-candidates",
     response_model=PostmortemMemoryCandidatesResponse,
-    summary="Create pending memories from the postmortem's Memory-candidates bullets",
+    summary="Create memories from the postmortem's Memory-candidates bullets",
 )
 async def create_postmortem_memory_candidates(
     incident_id: uuid.UUID,
@@ -915,12 +915,10 @@ async def create_postmortem_memory_candidates(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    """Turn each bullet under the postmortem's *Memory candidates* heading into a
-    ``pending`` incident memory bound to the incident's service.
+    """Turn each bullet under *Memory candidates* into a recallable memory.
 
-    The memories land in the review queue (Phase 1) for approval before the AI
-    can recall them. Re-running is safe: a candidate whose text already matches an
-    existing memory for the service is skipped. Requires a saved postmortem.
+    Re-running is safe: a candidate whose text already matches an existing
+    memory for the service is skipped. Requires a saved postmortem.
     """
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
@@ -938,10 +936,12 @@ async def create_postmortem_memory_candidates(
     if not candidates:
         return PostmortemMemoryCandidatesResponse(created=0, skipped=0, items=[])
 
-    # Dedup against existing memories for the same service (any review status),
-    # so re-running the extraction doesn't create duplicates.
+    # Dedup against existing memories for the same service.
     existing = await IncidentMemoryRepo.list_for_org(
-        db, org_id, service_id=incident.service_id, include_hidden=True
+        db,
+        org_id,
+        service_id=incident.service_id,
+        global_only=incident.service_id is None,
     )
     existing_titles = {m.title.strip().lower() for m in existing}
 
@@ -967,9 +967,6 @@ async def create_postmortem_memory_candidates(
             summary_md=candidate,
             tags=list(tags),
             created_by_user_id=user.id,
-            # Postmortem candidates go through the same human-review gate as
-            # AI-written memories before they are recalled.
-            review_status="pending",
         )
         existing_titles.add(title.strip().lower())
         created += 1

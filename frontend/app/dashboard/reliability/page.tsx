@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Plus, ServerCrash, Calendar, Trash2, Pencil, Shield, Lightbulb } from "lucide-react";
+import { Activity, Plus, ServerCrash, Calendar, Trash2, Pencil, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -159,10 +159,11 @@ export default function ReliabilityPage() {
                 // A target is "red" (SLO not satisfied) when it has any
                 // breaching / at-risk SLO recommendation. Green when it has
                 // SLOs and none are flagged; neutral when no SLOs are defined.
-                const targetRecs = recommendations.filter(
+                // The recommendation detail itself now lives on the target's
+                // detail page as a brief pill.
+                const breaching = recommendations.some(
                   (rec) => rec.target_id === target.id,
                 );
-                const breaching = targetRecs.length > 0;
                 const uptimeColor = breaching
                   ? "text-status-critical"
                   : target.active_slo_count > 0
@@ -232,36 +233,6 @@ export default function ReliabilityPage() {
                         Service: <span className="text-fg-secondary">{target.service_name}</span>
                         {target.team_name ? ` · ${target.team_name}` : ""}
                       </p>
-                    ) : null}
-
-                    {breaching ? (
-                      <div className="space-y-2 rounded-lg border border-status-critical-border bg-status-critical-bg/30 p-3">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-status-critical">
-                          <Lightbulb size={12} className="shrink-0" />
-                          SLO recommendations
-                          <span className="font-normal text-fg-muted">· advisory only</span>
-                        </div>
-                        {targetRecs.map((rec) => (
-                          <div key={rec.slo_id} className="space-y-1">
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <Badge
-                                variant={rec.severity === "critical" ? "critical" : "medium"}
-                                className="shrink-0 text-[10px]"
-                              >
-                                {rec.severity}
-                              </Badge>
-                              <span className="text-xs font-medium text-fg-primary">
-                                {rec.headline}
-                              </span>
-                            </div>
-                            <ul className="list-disc space-y-0.5 pl-4 text-[11px] text-fg-secondary">
-                              {rec.actions.map((action, i) => (
-                                <li key={i}>{action}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
                     ) : null}
                   </Link>
                 );

@@ -18,6 +18,7 @@ import {
   deleteSLO,
   probeSLATarget,
   getSLATargetResponseTime,
+  getSLORecommendations,
 } from "@/lib/api_reliability";
 import {
   formatUptimePct,
@@ -33,7 +34,15 @@ import type {
   SLOResponse,
   SLOStatusResponse,
   ResponseTimeResponse,
+  SLORecommendation,
 } from "@/lib/types";
+
+/** One short, non-wordy next step per severity for the recommendation pill. */
+function briefRecommendation(rec: SLORecommendation): string {
+  return rec.severity === "critical"
+    ? "Open an incident to coordinate the response."
+    : "Review recent deploys and monitor closely.";
+}
 
 export default function TargetDetailPage() {
   return (
@@ -85,6 +94,7 @@ function TargetDetailContent() {
   const [customEnd, setCustomEnd] = useState("");
   const [customUptime, setCustomUptime] = useState<Uptime>(null);
   const [slos, setSlos] = useState<(SLOResponse & { status: SLOStatusResponse | null })[]>([]);
+  const [recommendations, setRecommendations] = useState<SLORecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<string | null>(null);
@@ -94,13 +104,14 @@ function TargetDetailContent() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [targetData, u24, u7, u30, u365, allSlos] = await Promise.all([
+      const [targetData, u24, u7, u30, u365, allSlos, recs] = await Promise.all([
         getSLATarget(id),
         getSLATargetUptime(id, "24h").catch(() => null),
         getSLATargetUptime(id, "7d").catch(() => null),
         getSLATargetUptime(id, "30d").catch(() => null),
         getSLATargetUptime(id, "365d").catch(() => null),
         listSLOs().catch(() => ({ items: [] })),
+        getSLORecommendations().catch(() => null),
       ]);
 
       const targetSlos = allSlos.items.filter((s) => s.target_id === id);
@@ -117,12 +128,12 @@ function TargetDetailContent() {
       setD30(u30);
       setD365(u365);
       setSlos(slosWithStatus);
+      setRecommendations((recs?.items ?? []).filter((r) => r.target_id === id));
     } catch (err) {
       console.error("Failed to load target details:", err);
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
@@ -243,6 +254,37 @@ function TargetDetailContent() {
       </header>
 
       <main className="flex-1 space-y-6 p-6">
+        {/* Brief SLO warning + recommendation pill (advisory only) */}
+        {!loading && recommendations.length > 0
+          ? recommendations.map((rec) => {
+              const critical = rec.severity === "critical";
+              return (
+                <div
+                  key={rec.slo_id}
+                  className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-full border px-4 py-2 text-sm ${
+                    critical
+                      ? "border-status-critical-border bg-status-critical-bg/40"
+                      : "border-status-warning-border bg-status-warning-bg/40"
+                  }`}
+                >
+                  <ShieldAlert
+                    size={14}
+                    className={`shrink-0 ${critical ? "text-status-critical" : "text-status-warning"}`}
+                  />
+                  <span className={`font-semibold ${critical ? "text-status-critical" : "text-status-warning"}`}>
+                    {critical ? "SLO breaching" : "SLO at risk"}
+                  </span>
+                  <span className="text-fg-secondary">
+                    {rec.slo_name}: {formatUptimePct(rec.actual_pct)} vs{" "}
+                    {formatUptimePct(rec.objective_pct)} objective.
+                  </span>
+                  <span className="text-fg-primary">{briefRecommendation(rec)}</span>
+                  <span className="text-fg-muted">· advisory only</span>
+                </div>
+              );
+            })
+          : null}
+
         {/* Top status cards */}
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm">

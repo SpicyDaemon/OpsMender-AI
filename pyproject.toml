@@ -43,6 +43,7 @@ dependencies = [
     "alembic>=1.15.0",
     "python-dotenv>=1.0.1",
     "python-jose[cryptography]>=3.3",
+    "pyjwt[crypto]>=2.10",
     "passlib[bcrypt]>=1.7",
     # passlib 1.7.4 is unmaintained and breaks on bcrypt >= 4.1 (its init
     # probe sends a >72-byte test password that bcrypt 5.x rejects with

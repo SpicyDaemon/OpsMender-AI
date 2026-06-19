@@ -35,6 +35,7 @@ from backend.db.models import (
     IncidentAssignment,
     IncidentChainState,
     IncidentComment,
+    IncidentIntegrationLink,
     InAppNotification,
     NotificationEscalation,
     IncidentNotificationReceipt,
@@ -4471,6 +4472,74 @@ class IntegrationConnectorRepo:
         await db.delete(row)
         await db.flush()
         return True
+
+
+class IncidentIntegrationLinkRepo:
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        connector_id: uuid.UUID,
+        reference_type: str,
+        external_id: str,
+        url: str,
+        title: str | None,
+        reference_meta: dict[str, Any] | None = None,
+    ) -> IncidentIntegrationLink | None:
+        incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+        connector = await IntegrationConnectorRepo.get_by_id(
+            db, org_id, connector_id
+        )
+        if incident is None or connector is None:
+            return None
+        row = (
+            await db.execute(
+                select(IncidentIntegrationLink).where(
+                    IncidentIntegrationLink.org_id == org_id,
+                    IncidentIntegrationLink.incident_id == incident_id,
+                    IncidentIntegrationLink.connector_id == connector_id,
+                    IncidentIntegrationLink.reference_type == reference_type,
+                    IncidentIntegrationLink.external_id == external_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            row = IncidentIntegrationLink(
+                org_id=org_id,
+                incident_id=incident_id,
+                connector_id=connector_id,
+                reference_type=reference_type,
+                external_id=external_id,
+                url=url,
+                title=title,
+                reference_meta=reference_meta or {},
+            )
+            db.add(row)
+        else:
+            row.url = url
+            row.title = title
+            row.reference_meta = reference_meta or {}
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def list_for_incident(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+    ) -> Sequence[IncidentIntegrationLink]:
+        return (
+            await db.execute(
+                select(IncidentIntegrationLink)
+                .where(
+                    IncidentIntegrationLink.org_id == org_id,
+                    IncidentIntegrationLink.incident_id == incident_id,
+                )
+                .order_by(IncidentIntegrationLink.created_at)
+            )
+        ).scalars().all()
 
 
 class OrganizationDomainRepo:

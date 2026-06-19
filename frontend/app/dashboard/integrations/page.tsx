@@ -19,6 +19,21 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 
 const EMPTY_OBJECT = "{}";
+const SOURCE_CONTROL_HELP: Record<
+  string,
+  { base: string; auth: string; config: string }
+> = {
+  github: {
+    base: "Hosted default: https://api.github.com. For Enterprise Server, enter its API base or instance root.",
+    auth: 'PAT: {"token":"…"}. App: {"app_id":"…","installation_id":"…","private_key":"-----BEGIN PRIVATE KEY-----…"}',
+    config: '{"owner":"acme","repo":"service","api_version":"2022-11-28"}',
+  },
+  gitlab: {
+    base: "Hosted default: https://gitlab.com/api/v4. For self-managed, enter its API base or instance root.",
+    auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
+    config: '{"project":"group/project"}',
+  },
+};
 
 function parseObject(value: string, label: string): Record<string, unknown> {
   const parsed = JSON.parse(value || EMPTY_OBJECT);
@@ -67,6 +82,7 @@ export default function IntegrationsPage() {
     () => kinds.find((item) => item.kind === kind),
     [kind, kinds],
   );
+  const sourceControlHelp = SOURCE_CONTROL_HELP[kind];
 
   function resetForm() {
     setEditing(null);
@@ -194,6 +210,7 @@ export default function IntegrationsPage() {
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
             />
+            {sourceControlHelp && <p className="mt-1 text-xs text-fg-muted">{sourceControlHelp.base}</p>}
           </div>
           <div>
             <Label htmlFor="integration-auth-type">Authentication</Label>
@@ -213,6 +230,7 @@ export default function IntegrationsPage() {
               spellCheck={false}
             />
             <p className="mt-1 text-xs text-fg-muted">Example: {`{"token":"…"}`}. Saved values are write-only.</p>
+            {sourceControlHelp && <p className="mt-1 text-xs text-fg-muted">{sourceControlHelp.auth}</p>}
           </div>
           <div>
             <Label htmlFor="integration-config">Configuration JSON</Label>
@@ -224,8 +242,21 @@ export default function IntegrationsPage() {
               spellCheck={false}
             />
             <p className="mt-1 text-xs text-fg-muted">Repository, project, organization, or adapter-specific options.</p>
+            {sourceControlHelp && <p className="mt-1 text-xs text-fg-muted">Example: {sourceControlHelp.config}</p>}
           </div>
         </div>
+        {selectedKind && selectedKind.capabilities.length > 0 && (
+          <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Available capabilities</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {selectedKind.capabilities.map((capability) => (
+                <span key={capability.action} className="rounded-full border border-border-subtle px-2 py-1 text-xs text-fg-secondary">
+                  {capability.action}{capability.mutating ? " · approval-gated write" : " · read"}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <label className="flex items-center gap-2 text-sm text-fg-secondary">
           <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
           Enabled for operator use and tier-governed agent tools

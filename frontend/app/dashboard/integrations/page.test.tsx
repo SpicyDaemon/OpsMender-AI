@@ -39,6 +39,29 @@ beforeEach(() => {
   apiMocks.listIntegrationKinds.mockResolvedValue({
     items: [
       {
+        kind: "github",
+        label: "GitHub",
+        supports_base_url: true,
+        auth_types: ["pat", "app"],
+        adapter_available: true,
+        capabilities: [
+          {
+            action: "get_file",
+            description: "Read file",
+            classification: "safe",
+            mutating: false,
+            always_requires_approval: false,
+          },
+          {
+            action: "create_pull_request",
+            description: "Create pull request",
+            classification: "caution",
+            mutating: true,
+            always_requires_approval: false,
+          },
+        ],
+      },
+      {
         kind: "custom",
         label: "Custom HTTP",
         supports_base_url: true,
@@ -55,7 +78,7 @@ beforeEach(() => {
         ],
       },
     ],
-    total: 1,
+    total: 2,
   });
   apiMocks.listIntegrationConnectors.mockResolvedValue({
     items: [connector],
@@ -109,5 +132,15 @@ describe("Integrations page", () => {
         }),
       ),
     );
+  });
+
+  it("shows source-control auth guidance and capability policy", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    await screen.findByRole("heading", { name: "Add integration" });
+    await user.selectOptions(screen.getByLabelText("Kind"), "github");
+    expect(screen.getByText(/Hosted default: https:\/\/api.github.com/)).toBeTruthy();
+    expect(screen.getByText(/App: \{"app_id"/)).toBeTruthy();
+    expect(screen.getByText(/create_pull_request · approval-gated write/)).toBeTruthy();
   });
 });

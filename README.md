@@ -41,6 +41,9 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   and versioned AWS EventBridge lifecycle events.
 - **Incident reporting** — on-demand CSV/PDF metrics plus scheduled
   weekly/monthly/quarterly email reports from organization SMTP.
+- **Source-control integrations** — GitHub and GitLab repository/file reads,
+  issue actions, PR/MR creation, approval-locked merges, self-hosted API URLs,
+  and durable incident links.
 - **Inbox** — per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
 - **Universal alert ingest** — JSON webhooks from Prometheus, Datadog, CloudWatch, Azure Monitor, GCP, OCI, Grafana, and more.
 - **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, per-org, operator-curated.

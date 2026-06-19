@@ -34,6 +34,8 @@ from backend.api.schemas import (
     PostmortemMemoryCandidatesResponse,
     IncidentTimelineItemResponse,
     IncidentTimelineResponse,
+    IncidentIntegrationLinkListResponse,
+    IncidentIntegrationLinkResponse,
     IncidentUpdate,
     SessionListResponse,
     SessionResponse,
@@ -47,6 +49,7 @@ from backend.db.repos import (
     IncidentChainStateRepo,
     IncidentCommentRepo,
     IncidentMemoryRepo,
+    IncidentIntegrationLinkRepo,
     IncidentNotificationReceiptRepo,
     IncidentPageRepo,
     IncidentRepo,
@@ -96,6 +99,32 @@ import logging
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
 _log = logging.getLogger(__name__)
+
+
+@router.get(
+    "/{incident_id}/integration-links",
+    response_model=IncidentIntegrationLinkListResponse,
+    summary="List external commits, pull requests, and merge requests linked to an incident",
+)
+async def list_incident_integration_links(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(get_current_user),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    rows = await IncidentIntegrationLinkRepo.list_for_incident(
+        db, org_id, incident_id
+    )
+    return IncidentIntegrationLinkListResponse(
+        items=[
+            IncidentIntegrationLinkResponse.model_validate(row)
+            for row in rows
+        ],
+        total=len(rows),
+    )
 
 
 async def _notify_channels(

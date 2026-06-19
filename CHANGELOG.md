@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GitHub and GitLab source-control integrations.** Added encrypted PAT,
+  OAuth, and GitHub App authentication; hosted/self-managed API base URLs;
+  repository/file reads; issue listing, creation, and comments; PR/MR creation
+  and merge; and durable commit/PR/MR links to incidents. Merge tools always
+  require operator approval.
 - **Encrypted integration connector foundation.** Added tenant-scoped
   `integration_connectors`, an adapter/capability registry, non-fatal connection
   probes, and an admin Integrations page for create/edit/test/enable/disable.

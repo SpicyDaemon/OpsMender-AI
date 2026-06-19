@@ -1113,6 +1113,25 @@ class IntegrationTestResponse(BaseModel):
     latency_ms: Optional[int] = None
 
 
+class IncidentIntegrationLinkResponse(BaseModel):
+    id: uuid.UUID
+    incident_id: uuid.UUID
+    connector_id: uuid.UUID
+    reference_type: str
+    external_id: str
+    url: str
+    title: Optional[str]
+    reference_meta: dict[str, Any]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class IncidentIntegrationLinkListResponse(BaseModel):
+    items: list[IncidentIntegrationLinkResponse]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # Workflow profiles (custom workflow builder — Phase 3)
 # ---------------------------------------------------------------------------

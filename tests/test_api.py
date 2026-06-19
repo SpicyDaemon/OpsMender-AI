@@ -4194,6 +4194,20 @@ class TestIntegrationConnectors:
         )
         assert custom["adapter_available"] is True
         assert custom["capabilities"][0]["action"] == "test_connection"
+        github = next(
+            item for item in kinds.json()["items"] if item["kind"] == "github"
+        )
+        gitlab = next(
+            item for item in kinds.json()["items"] if item["kind"] == "gitlab"
+        )
+        assert github["adapter_available"] is True
+        assert gitlab["adapter_available"] is True
+        assert "merge_pull_request" in {
+            item["action"] for item in github["capabilities"]
+        }
+        assert "merge_merge_request" in {
+            item["action"] for item in gitlab["capabilities"]
+        }
 
         created = await client.post(
             "/integrations",
@@ -4226,6 +4240,58 @@ class TestIntegrationConnectors:
         assert tested.status_code == 200
         assert tested.json()["success"] is True
         assert "Mock provider" in tested.json()["detail"]
+
+    async def test_incident_integration_links_are_tenant_scoped_and_readable(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.db.repos import (
+            IncidentIntegrationLinkRepo,
+            IntegrationConnectorRepo,
+        )
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="Source link",
+                description="Link a commit",
+                severity="high",
+            )
+            connector = await IntegrationConnectorRepo.create(
+                db,
+                TEST_ORG_ID,
+                kind="github",
+                name="Repo",
+                base_url=None,
+                auth_type="pat",
+                auth={"token": "secret"},
+                config={"owner": "acme", "repo": "api"},
+                is_enabled=True,
+            )
+            await IncidentIntegrationLinkRepo.upsert(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                connector_id=connector.id,
+                reference_type="commit",
+                external_id="abc123",
+                url="https://example.test/commit/abc123",
+                title="Fix deploy",
+                reference_meta={"owner": "acme", "repo": "api"},
+            )
+            await db.commit()
+            incident_id = incident.id
+
+        response = await client.get(
+            f"/incidents/{incident_id}/integration-links",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+        item = response.json()["items"][0]
+        assert item["reference_type"] == "commit"
+        assert item["external_id"] == "abc123"
+        assert item["reference_meta"]["repo"] == "api"
 
 
 class TestReportsAndEmail:

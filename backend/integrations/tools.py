@@ -9,7 +9,10 @@ from typing import Any
 
 from mcp.types import CallToolResult, TextContent
 
-from backend.db.repos import IntegrationConnectorRepo
+from backend.db.repos import (
+    IncidentIntegrationLinkRepo,
+    IntegrationConnectorRepo,
+)
 from backend.integrations.base import IntegrationCapability
 from backend.integrations.registry import get_adapter
 from backend.skills.parser import (
@@ -37,12 +40,10 @@ def _operation_for(
     capability = descriptor.capability
     tiers = {
         0: OperationTierPolicy(
-            enabled=not capability.mutating
-            and not capability.always_requires_approval,
+            enabled=not capability.mutating and not capability.always_requires_approval,
             mode=(
                 "autonomous"
-                if not capability.mutating
-                and not capability.always_requires_approval
+                if not capability.mutating and not capability.always_requires_approval
                 else "blocked"
             ),
             require_reversible=False,
@@ -51,8 +52,7 @@ def _operation_for(
             enabled=True,
             mode=(
                 "approval"
-                if capability.mutating
-                or capability.always_requires_approval
+                if capability.mutating or capability.always_requires_approval
                 else "autonomous"
             ),
         ),
@@ -132,8 +132,7 @@ class IntegrationToolRuntime:
     @property
     def descriptions(self) -> dict[str, str]:
         return {
-            descriptor.name: descriptor.description
-            for descriptor in self.descriptors
+            descriptor.name: descriptor.description for descriptor in self.descriptors
         }
 
     async def call_tool(
@@ -184,6 +183,41 @@ class IntegrationToolRuntime:
                 auth,
                 parameters or {},
             )
+            link_payload = result.data.get("integration_link")
+            if result.ok and isinstance(link_payload, dict):
+                try:
+                    incident_id = uuid.UUID(str(link_payload["incident_id"]))
+                    link = await IncidentIntegrationLinkRepo.upsert(
+                        db,
+                        self._org_id,
+                        incident_id=incident_id,
+                        connector_id=connector.id,
+                        reference_type=str(link_payload["reference_type"]),
+                        external_id=str(link_payload["external_id"]),
+                        url=str(link_payload["url"]),
+                        title=(
+                            str(link_payload["title"])
+                            if link_payload.get("title")
+                            else None
+                        ),
+                        reference_meta=link_payload.get("reference_meta") or {},
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    result = dataclasses.replace(
+                        result,
+                        ok=False,
+                        error=f"Invalid integration link payload: {exc}",
+                    )
+                else:
+                    if link is None:
+                        result = dataclasses.replace(
+                            result,
+                            ok=False,
+                            error=(
+                                "Incident or integration connector was not "
+                                "found in this organization"
+                            ),
+                        )
             if descriptor.capability.action == "test_connection":
                 await IntegrationConnectorRepo.mark_status(
                     db,
@@ -191,7 +225,7 @@ class IntegrationToolRuntime:
                     status="healthy" if result.ok else "error",
                     error=result.error,
                 )
-                await db.commit()
+            await db.commit()
         payload = {
             "ok": result.ok,
             "data": result.data,
@@ -199,7 +233,5 @@ class IntegrationToolRuntime:
         }
         return CallToolResult(
             isError=not result.ok,
-            content=[
-                TextContent(type="text", text=json.dumps(payload, default=str))
-            ],
+            content=[TextContent(type="text", text=json.dumps(payload, default=str))],
         )

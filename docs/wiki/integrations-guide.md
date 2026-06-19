@@ -20,8 +20,35 @@ infrastructure connectors at **Admin → Integrations**.
   safety tier, approval queue, and audit trail as MCP tools. Mutating actions
   require Tier 1 approval by default.
 
-The **Custom HTTP** kind is the reference adapter in the foundation. Provider
-adapters are added in the following Wave 1 phases.
+The **Custom HTTP** kind is the reference adapter in the foundation.
+
+### GitHub
+
+- Hosted base URL: leave blank (`https://api.github.com`).
+- Enterprise Server: enter the API base or instance root; roots normalize to
+  `/api/v3`.
+- PAT credentials: `{"token":"..."}`.
+- App credentials:
+  `{"app_id":"...","installation_id":"...","private_key":"-----BEGIN PRIVATE KEY-----..."}`.
+- Common config: `{"owner":"acme","repo":"service","api_version":"2022-11-28"}`.
+
+Capabilities include repository/file reads, issue list/create/comment,
+pull-request create/merge, and commit/pull-request links to incidents.
+
+### GitLab
+
+- Hosted base URL: leave blank (`https://gitlab.com/api/v4`).
+- Self-managed: enter the API base or instance root; roots normalize to
+  `/api/v4`.
+- PAT credentials: `{"token":"..."}`.
+- OAuth credentials: `{"access_token":"..."}`.
+- Common config: `{"project":"group/project"}`.
+
+Capabilities include project/file reads, issue list/create/comment,
+merge-request create/merge, and commit/merge-request links to incidents.
+
+PR/MR merge capabilities always require explicit Operator Approval regardless
+of the workspace's autonomous tier.
 
 ## 2. Incident Ingest Adapters
 

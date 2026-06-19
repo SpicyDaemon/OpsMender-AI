@@ -872,6 +872,51 @@ class IntegrationConnector(Base):
     )
 
 
+class IncidentIntegrationLink(Base):
+    """Durable relation between an incident and an external provider object."""
+
+    __tablename__ = "incident_integration_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False
+    )
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("integration_connectors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reference_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    url: Mapped[str] = mapped_column(String(2000), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reference_meta: Mapped[dict] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "incident_id",
+            "connector_id",
+            "reference_type",
+            "external_id",
+            name="uq_incident_integration_reference",
+        ),
+        Index(
+            "ix_incident_integration_links_incident",
+            "org_id",
+            "incident_id",
+            "created_at",
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Workflow profiles (custom workflow builder — Phase 3)
 # ---------------------------------------------------------------------------

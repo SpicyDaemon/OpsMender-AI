@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 2 Phase 2 — observability and error-ingest breadth.** Added native
+  webhook parsers for Rollbar, BugSnag, Elastic/OpenSearch Watcher, Honeycomb,
+  Dynatrace, AppDynamics, and Grafana Loki. Each adapter maps provider severity,
+  a stable deduplication fingerprint, and resolved/clearing state into the
+  existing incident create/update pipeline.
 - **Wave 2 Phase 1 — ITSM/support integrations.** Added native Zendesk,
   Freshservice, and Asana connectors: ticket/task read, list, create, update,
   comment, and incident-link capabilities. Mutating actions are tier-governed

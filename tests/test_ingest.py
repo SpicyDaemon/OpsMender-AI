@@ -28,7 +28,6 @@ from backend.db.models import Base
 from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo, SessionRepo
 from backend.ingest.service import generate_token, hash_token
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -45,6 +44,7 @@ async def app(tmp_path):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         session.add(org)
         await session.commit()
@@ -631,8 +631,7 @@ class TestIngestGeneric:
         # session to acknowledgment and never reaches SessionRepo.create.
         await client.put(
             "/config",
-            json={
-            },
+            json={},
             headers=admin_headers,
         )
 
@@ -665,8 +664,7 @@ class TestIngestGeneric:
     ):
         await client.put(
             "/config",
-            json={
-            },
+            json={},
             headers=admin_headers,
         )
 
@@ -728,9 +726,7 @@ class TestIngestGeneric:
         for _ in range(50):
             async with app.state.session_factory() as db:
                 sessions = list(
-                    await SessionRepo.list_by_incident(
-                        db, TEST_ORG_ID, incident_id
-                    )
+                    await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
                 )
             if sessions:
                 break
@@ -1589,9 +1585,7 @@ class TestWaveOneAlertSources:
     async def test_newrelic_state_change_creates_then_resolves_incident(
         self, client: AsyncClient, app
     ):
-        raw, _ = await _create_token(
-            app, provider="newrelic", name="newrelic-workflow"
-        )
+        raw, _ = await _create_token(app, provider="newrelic", name="newrelic-workflow")
         headers = {"X-OpsMender-Token": raw}
         opened = await client.post(
             "/incidents/ingest",
@@ -1633,3 +1627,28 @@ class TestWaveOneAlertSources:
         response = await client.get("/ingest-providers", headers=admin_headers)
         keys = {item["key"] for item in response.json()["items"]}
         assert {"sentry", "newrelic", "splunk"} <= keys
+
+
+class TestWaveTwoAlertSources:
+    @pytest.mark.parametrize(
+        "provider",
+        [
+            "rollbar",
+            "bugsnag",
+            "elastic_watcher",
+            "honeycomb",
+            "dynatrace",
+            "appdynamics",
+            "loki",
+        ],
+    )
+    async def test_create_token_accepts_phase2_provider(
+        self, client: AsyncClient, admin_headers, provider
+    ):
+        response = await client.post(
+            "/ingest-tokens",
+            headers=admin_headers,
+            json={"name": f"{provider}-production", "provider": provider},
+        )
+        assert response.status_code == 201
+        assert response.json()["provider"] == provider

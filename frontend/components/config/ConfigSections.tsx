@@ -4350,6 +4350,15 @@ const PROVIDER_COLORS: Record<string, string> = {
     "border-status-critical-border bg-status-critical-bg text-status-critical",
   newrelic: "border-status-info-border bg-status-info-bg text-status-info",
   splunk: "border-status-high-border bg-status-high-bg text-status-high",
+  rollbar:
+    "border-status-critical-border bg-status-critical-bg text-status-critical",
+  bugsnag: "border-status-high-border bg-status-high-bg text-status-high",
+  elastic_watcher:
+    "border-status-info-border bg-status-info-bg text-status-info",
+  honeycomb: "border-status-low-border bg-status-low-bg text-status-low",
+  dynatrace: "border-status-info-border bg-status-info-bg text-status-info",
+  appdynamics: "border-status-high-border bg-status-high-bg text-status-high",
+  loki: "border-status-medium-border bg-status-medium-bg text-status-medium",
   generic: "border-border-subtle bg-bg-elevated text-fg-secondary",
 };
 

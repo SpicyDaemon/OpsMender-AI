@@ -1215,7 +1215,11 @@ class IngestTokenCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     provider: str = Field(
         default="auto",
-        pattern="^(auto|cloudwatch|azure_monitor|gcp_monitoring|oci_monitoring|sentry|newrelic|splunk|generic)$",
+        pattern=(
+            "^(auto|cloudwatch|azure_monitor|gcp_monitoring|oci_monitoring|"
+            "sentry|newrelic|splunk|rollbar|bugsnag|elastic_watcher|honeycomb|"
+            "dynatrace|appdynamics|loki|generic)$"
+        ),
     )
     # Optional sample payload from the source tool — if supplied, the
     # server parses it on create so future payloads with the same shape

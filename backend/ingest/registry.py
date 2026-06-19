@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from backend.ingest.adapters.base import IngestAdapter
+from backend.ingest.adapters.appdynamics import AppDynamicsAdapter
 from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
 from backend.ingest.adapters.azure_monitor import AzureMonitorAdapter
+from backend.ingest.adapters.bugsnag import BugsnagAdapter
+from backend.ingest.adapters.dynatrace import DynatraceAdapter
+from backend.ingest.adapters.elastic_watcher import ElasticWatcherAdapter
 from backend.ingest.adapters.gcp_monitoring import GCPMonitoringAdapter
+from backend.ingest.adapters.honeycomb import HoneycombAdapter
+from backend.ingest.adapters.loki import LokiAdapter
 from backend.ingest.adapters.oci_monitoring import OCIMonitoringAdapter
 from backend.ingest.adapters.newrelic import NewRelicAdapter
+from backend.ingest.adapters.rollbar import RollbarAdapter
 from backend.ingest.adapters.sentry import SentryAdapter
 from backend.ingest.adapters.splunk import SplunkAdapter
 from backend.ingest.adapters.generic import GenericAdapter
@@ -22,6 +29,13 @@ _ADAPTERS: dict[str, type[IngestAdapter]] = {
     "sentry": SentryAdapter,
     "newrelic": NewRelicAdapter,
     "splunk": SplunkAdapter,
+    "rollbar": RollbarAdapter,
+    "bugsnag": BugsnagAdapter,
+    "elastic_watcher": ElasticWatcherAdapter,
+    "honeycomb": HoneycombAdapter,
+    "dynatrace": DynatraceAdapter,
+    "appdynamics": AppDynamicsAdapter,
+    "loki": LokiAdapter,
     "generic": GenericAdapter,
 }
 

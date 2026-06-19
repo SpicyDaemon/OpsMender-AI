@@ -132,6 +132,21 @@ OpsMender natively supports several popular monitoring tools:
 - **New Relic:** Parses alert-workflow issue fields and activated/closed state.
 - **Splunk:** Parses standard webhook alert payloads containing the search SID,
   results link, owner/app, and first result row.
+- **Rollbar:** Uses the item ID as the incident fingerprint and clears on a
+  `resolved_item` notification.
+- **BugSnag:** Uses `error.errorId`; fixed, snoozed, or ignored error states
+  clear the matching incident.
+- **Elastic / OpenSearch:** Accepts explicit Watcher templates and OpenSearch
+  monitor/trigger payloads. Configure the webhook body to include the watch or
+  monitor ID, title, state, severity, and useful context.
+- **Honeycomb:** Uses the Trigger/SLO `ID` as the stable fingerprint and maps
+  `Alert.Status=OK` to resolved.
+- **Dynatrace:** Uses `ProblemID`/`PID` and maps `State=RESOLVED` to resolved.
+- **AppDynamics:** Configure an HTTP Request Action template with a stable
+  `incident_id`, event type/name, severity, application, policy, and summary.
+  Ended health-rule events clear the matching incident.
+- **Loki:** Accepts the Grafana webhook payload, using the first alert's
+  fingerprint and firing/resolved status.
 
 **Universal (Auto) Adapter:**
 If your tool is not listed above, OpsMender provides an `auto` provider option. The Universal Adapter uses an LLM to dynamically inspect the incoming JSON payload, learn its structure, and extract the title, description, and severity automatically. It caches the structural mapping for performance on subsequent alerts.

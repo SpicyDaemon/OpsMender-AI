@@ -49,8 +49,9 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   events, logs, and deployments; rollout restarts and pod deletion remain
   approval-gated.
 - **Inbox** — per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
-- **Universal alert ingest** — native Sentry, New Relic, Splunk, CloudWatch,
-  Azure Monitor, GCP, and OCI parsing plus auto-learned JSON webhooks.
+- **Universal alert ingest** — native Sentry, New Relic, Splunk, Rollbar,
+  BugSnag, Elastic/OpenSearch, Honeycomb, Dynatrace, AppDynamics, Loki, and
+  cloud-monitor parsing plus auto-learned JSON webhooks.
 - **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, per-org, operator-curated.
 - **Reliability / SLA** — HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.
 - **Audit everything** — every tool call, approval, rollback, and state transition recorded.

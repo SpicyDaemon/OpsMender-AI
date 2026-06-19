@@ -1057,6 +1057,13 @@ export type IngestProvider =
   | "sentry"
   | "newrelic"
   | "splunk"
+  | "rollbar"
+  | "bugsnag"
+  | "elastic_watcher"
+  | "honeycomb"
+  | "dynatrace"
+  | "appdynamics"
+  | "loki"
   | "generic";
 
 export interface IngestTokenResponse {

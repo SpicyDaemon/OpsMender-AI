@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 2 Phase 1 — ITSM/support integrations.** Added native Zendesk,
+  Freshservice, and Asana connectors: ticket/task read, list, create, update,
+  comment, and incident-link capabilities. Mutating actions are tier-governed
+  (caution-classified). Three new integration kinds with admin-page auth
+  guidance; no schema migration required.
 - **Wave 1 observability, infrastructure, and ChatOps breadth.** Added native
   Sentry issue/metric-alert, New Relic workflow, and Splunk webhook ingest
   adapters with source-specific severity, fingerprint, and resolved-state

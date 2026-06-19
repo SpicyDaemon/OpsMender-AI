@@ -9,6 +9,7 @@ from backend.integrations import kubernetes as kubernetes  # noqa: F401
 from backend.integrations import linear as linear  # noqa: F401
 from backend.integrations import notion as notion  # noqa: F401
 from backend.integrations import servicenow as servicenow  # noqa: F401
+from backend.integrations import support as support  # noqa: F401
 from backend.integrations.base import (
     IntegrationAdapter,
     IntegrationCapability,

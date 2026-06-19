@@ -31,6 +31,9 @@ _KINDS = {
         IntegrationKind("newrelic", "New Relic", False, ("api_key",)),
         IntegrationKind("splunk", "Splunk", True, ("pat", "basic")),
         IntegrationKind("kubernetes", "Kubernetes", True, ("pat", "custom")),
+        IntegrationKind("zendesk", "Zendesk", True, ("basic", "oauth")),
+        IntegrationKind("freshservice", "Freshservice", True, ("api_key",)),
+        IntegrationKind("asana", "Asana", False, ("pat", "oauth")),
         IntegrationKind("custom", "Custom HTTP", True, ("none", "pat", "api_key", "basic", "custom")),
     )
 }

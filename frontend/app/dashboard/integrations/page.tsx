@@ -77,6 +77,21 @@ const INTEGRATION_HELP: Record<
     auth: 'Service account: {"token":"…","ca_cert":"-----BEGIN CERTIFICATE-----…"}. Custom headers: {"headers":{"Authorization":"…"}}.',
     config: '{"namespace":"production","verify_tls":true}',
   },
+  zendesk: {
+    base: "Required: your subdomain URL, such as https://acme.zendesk.com.",
+    auth: 'API token: {"email":"agent@acme.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
+    config: "No extra config required.",
+  },
+  freshservice: {
+    base: "Required: your portal URL, such as https://acme.freshservice.com.",
+    auth: 'API key: {"api_key":"…"}.',
+    config: "No extra config required.",
+  },
+  asana: {
+    base: "Uses https://app.asana.com/api/1.0 by default.",
+    auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}.',
+    config: '{"project_id":"…"} (default project for create/list tasks).',
+  },
 };
 
 function parseObject(value: string, label: string): Record<string, unknown> {

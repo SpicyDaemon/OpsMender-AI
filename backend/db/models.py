@@ -370,7 +370,7 @@ class Incident(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="open"
-    )  # open | investigating | resolved | closed | merged
+    )  # open | in_progress | resolved | merged
     severity: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Paging surface (Sprint 33). Priority + response mode set at creation
     # time and locked thereafter; service_id ties the incident to its owning

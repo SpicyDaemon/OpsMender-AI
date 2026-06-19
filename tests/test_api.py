@@ -1150,7 +1150,7 @@ class TestIncidents:
         assert data["status"] == "open"
         assert data["severity"] == "high"
 
-    @pytest.mark.parametrize("incident_status", ["open", "in_progress", "resolved", "closed"])
+    @pytest.mark.parametrize("incident_status", ["open", "in_progress", "resolved"])
     async def test_admin_can_permanently_delete_incident_in_any_status(
         self, incident_status, client: AsyncClient, app, auth_headers
     ):
@@ -1898,34 +1898,21 @@ class TestIncidents:
         assert running_after.ended_at is not None
         assert terminal_after.status == "completed"
 
-    async def test_closing_incident_directly_stops_in_progress_sessions(
+    async def test_closed_incident_status_is_rejected(
         self, client: AsyncClient, app, auth_headers
     ):
-        # Setting status straight to "closed" (skipping resolved) must also stop
-        # the AI session.
-        service = await _seed_manual_incident_service(app, "CloseStops")
+        service = await _seed_manual_incident_service(app, "NoClosedState")
         resp = await client.post(
             "/incidents",
             json={"title": "Inc", "description": "d", "service_id": str(service.id)},
             headers=auth_headers,
         )
-        incident_id = uuid.UUID(resp.json()["id"])
-        async with app.state.session_factory() as db:
-            running = await SessionRepo.create(
-                db, TEST_ORG_ID, tier=0, incident_id=incident_id
-            )
-            await db.commit()
-
         patch = await client.patch(
-            f"/incidents/{incident_id}",
+            f"/incidents/{resp.json()['id']}",
             json={"status": "closed"},
             headers=auth_headers,
         )
-        assert patch.status_code == 200
-
-        async with app.state.session_factory() as db:
-            running_after = await SessionRepo.get_by_id(db, TEST_ORG_ID, running.id)
-        assert running_after.status == "stopped"
+        assert patch.status_code == 422
 
     async def test_bulk_resolve_stops_in_progress_sessions(
         self, client: AsyncClient, app, auth_headers
@@ -2815,6 +2802,25 @@ class TestIncidentAutoStartPolicy:
 class TestIncidentBulkActions:
     """Sprint 50 — POST /incidents/bulk."""
 
+    async def _operator_headers(self, app) -> dict[str, str]:
+        from backend.api.auth import create_access_token
+
+        async with app.state.session_factory() as db:
+            operator = await UserRepo.create(
+                db,
+                username=f"bulk-op-{uuid.uuid4().hex[:6]}",
+                email=f"bulk-op-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="operator",
+            )
+            operator.primary_org_id = TEST_ORG_ID
+            await db.commit()
+        return {
+            "Authorization": (
+                f"Bearer {create_access_token(operator.id, operator.role)}"
+            )
+        }
+
     async def _seed_incidents(
         self, client: AsyncClient, auth_headers, count: int
     ) -> list[str]:
@@ -2880,8 +2886,8 @@ class TestIncidentBulkActions:
                 # ack flipped open -> in_progress.
                 assert incident.status == "in_progress"
 
-    async def test_bulk_reports_per_row_not_found_without_aborting(
-        self, client: AsyncClient, auth_headers
+    async def test_bulk_resolve_is_atomic_when_an_incident_is_missing(
+        self, client: AsyncClient, auth_headers, app
     ):
         ids = await self._seed_incidents(client, auth_headers, count=2)
         ghost = str(uuid.uuid4())
@@ -2890,13 +2896,107 @@ class TestIncidentBulkActions:
             json={"action": "resolve", "incident_ids": [ids[0], ghost, ids[1]]},
             headers=auth_headers,
         )
+        assert resp.status_code == 404
+        async with app.state.session_factory() as db:
+            for incident_id in ids:
+                incident = await IncidentRepo.get_by_id(
+                    db, TEST_ORG_ID, uuid.UUID(incident_id)
+                )
+                assert incident.status == "open"
+
+    async def test_bulk_resolve_rejects_mixed_states_atomically(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        ids = await self._seed_incidents(client, auth_headers, count=2)
+        async with app.state.session_factory() as db:
+            await IncidentRepo.update_status(
+                db, TEST_ORG_ID, uuid.UUID(ids[1]), "resolved"
+            )
+            await db.commit()
+        resp = await client.post(
+            "/incidents/bulk",
+            json={"action": "resolve", "incident_ids": ids},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        async with app.state.session_factory() as db:
+            first = await IncidentRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(ids[0])
+            )
+            assert first.status == "open"
+
+    async def test_bulk_reopen_requires_all_resolved(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        ids = await self._seed_incidents(client, auth_headers, count=2)
+        async with app.state.session_factory() as db:
+            for incident_id in ids:
+                await IncidentRepo.update_status(
+                    db, TEST_ORG_ID, uuid.UUID(incident_id), "resolved"
+                )
+            await db.commit()
+        resp = await client.post(
+            "/incidents/bulk",
+            json={"action": "reopen", "incident_ids": ids},
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
-        body = resp.json()
-        assert body["succeeded"] == 2
-        assert body["failed"] == 1
-        ghost_row = next(item for item in body["items"] if item["incident_id"] == ghost)
-        assert ghost_row["ok"] is False
-        assert "not found" in ghost_row["error"].lower()
+        async with app.state.session_factory() as db:
+            for incident_id in ids:
+                incident = await IncidentRepo.get_by_id(
+                    db, TEST_ORG_ID, uuid.UUID(incident_id)
+                )
+                assert incident.status == "open"
+
+    async def test_operator_lifecycle_actions_require_one_service(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        operator_headers = await self._operator_headers(app)
+        same_service_ids = await self._seed_incidents(
+            client, auth_headers, count=2
+        )
+        allowed = await client.post(
+            "/incidents/bulk",
+            json={"action": "resolve", "incident_ids": same_service_ids},
+            headers=operator_headers,
+        )
+        assert allowed.status_code == 200
+
+        first = await self._seed_incidents(client, auth_headers, count=1)
+        second = await self._seed_incidents(client, auth_headers, count=1)
+        blocked = await client.post(
+            "/incidents/bulk",
+            json={"action": "resolve", "incident_ids": [first[0], second[0]]},
+            headers=operator_headers,
+        )
+        assert blocked.status_code == 403
+
+    async def test_bulk_delete_is_admin_only(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        operator_headers = await self._operator_headers(app)
+        ids = await self._seed_incidents(client, auth_headers, count=2)
+        blocked = await client.post(
+            "/incidents/bulk",
+            json={"action": "delete", "incident_ids": ids},
+            headers=operator_headers,
+        )
+        assert blocked.status_code == 403
+        deleted = await client.post(
+            "/incidents/bulk",
+            json={"action": "delete", "incident_ids": ids},
+            headers=auth_headers,
+        )
+        assert deleted.status_code == 200
+        assert deleted.json()["succeeded"] == 2
+        async with app.state.session_factory() as db:
+            for incident_id in ids:
+                assert (
+                    await IncidentRepo.get_by_id(
+                        db, TEST_ORG_ID, uuid.UUID(incident_id)
+                    )
+                    is None
+                )
 
     async def test_bulk_reassign_requires_user_id(
         self, client: AsyncClient, auth_headers
@@ -3890,6 +3990,17 @@ class TestIncidentMemoryAPI:
         operator_headers = await self._operator_headers_for_team(
             client, app, operator_team
         )
+        assert (
+            await client.post(
+                "/memories",
+                headers=operator_headers,
+                json={
+                    "title": "blocked create",
+                    "summary_md": "x",
+                    "service_id": str(other_service),
+                },
+            )
+        ).status_code == 403
         other = await client.post(
             "/memories",
             headers=auth_headers,
@@ -3904,6 +4015,22 @@ class TestIncidentMemoryAPI:
             headers=auth_headers,
             json={"title": "global", "summary_md": "x"},
         )
+        listed = await client.get("/memories", headers=operator_headers)
+        listed_ids = {item["id"] for item in listed.json()["items"]}
+        assert global_memory.json()["id"] in listed_ids
+        assert other.json()["id"] not in listed_ids
+        assert (
+            await client.get(
+                f"/memories/{other.json()['id']}", headers=operator_headers
+            )
+        ).status_code == 404
+        global_detail = await client.get(
+            f"/memories/{global_memory.json()['id']}",
+            headers=operator_headers,
+        )
+        assert global_detail.status_code == 200
+        assert global_detail.json()["can_edit"] is False
+        assert global_detail.json()["can_delete"] is False
         for memory_id in (other.json()["id"], global_memory.json()["id"]):
             assert (
                 await client.put(

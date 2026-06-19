@@ -673,9 +673,9 @@ class IncidentRepo:
             .values(status=status, updated_at=datetime.now(timezone.utc))
         )
         await db.execute(stmt)
-        # Resolving/closing an incident stops any staged notification
+        # Resolving an incident stops any staged notification
         # escalation still in flight (single chokepoint for every resolve path).
-        if status in ("resolved", "closed"):
+        if status == "resolved":
             from backend.paging import notification_escalation as _ne
 
             await _ne.stop_escalation(

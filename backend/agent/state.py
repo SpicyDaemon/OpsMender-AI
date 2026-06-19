@@ -39,7 +39,7 @@ class IncidentContext(TypedDict, total=False):
     id: str
     title: str
     description: str
-    status: str                  # open | investigating | resolved | closed
+    status: str                  # open | in_progress | resolved
     severity: str | None         # critical | high | medium | low | None
 
 

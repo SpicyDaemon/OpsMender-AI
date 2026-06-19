@@ -87,7 +87,6 @@ flowchart TD
   EX --> R["Resolve"]
   AP --> R
   MAN --> R
-  R --> AC["Auto-close after cooldown (72h default)"]
   R --> PM["Postmortem + memory candidates"]
   PM --> MEM[("AI incident memory")]
 ```
@@ -97,6 +96,9 @@ immediately recallable in later sessions, with no approval or hidden state.
 Memories compact independently per service after the 50-memory threshold.
 Admins can manage every memory; operators can edit/delete memories owned by
 their teams, including confirmed bulk deletion from the Memories table.
+Resolved is the final incident status. The Incidents table provides
+selection-driven Actions for confirmed resolve, reopen, combine, and
+admin-only permanent deletion.
 
 ## Quickstart (5 minutes)
 

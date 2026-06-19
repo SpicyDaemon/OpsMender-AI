@@ -68,7 +68,7 @@ session and its tool audit history.
 
 ## 7. Writing Postmortems
 
-Once an incident reaches `resolved` or `closed`, the Incident Command Strip surfaces a **Create postmortem** action that opens a dedicated editor at `/dashboard/incidents/postmortem?id=<incident_id>`. The editor ships with an Edit/Preview toggle, the seven recommended sections (Summary · Impact · Timeline · Root cause · Resolution · Lessons learned · Memory candidates), Save / Clear / Reset-to-template actions, and a one-line tip for each section. Memory candidates are intended as the shortlist you'll later promote into `/dashboard/memories`. Admins and operators can edit; viewers see the editor read-only. The full walkthrough lives in [postmortem-guide.md](postmortem-guide.md).
+Once an incident reaches its final `resolved` status, the Incident Command Strip surfaces a **Create postmortem** action that opens a dedicated editor at `/dashboard/incidents/postmortem?id=<incident_id>`. The editor ships with an Edit/Preview toggle, the seven recommended sections (Summary · Impact · Timeline · Root cause · Resolution · Lessons learned · Memory candidates), Save / Clear / Reset-to-template actions, and a one-line tip for each section. Memory candidates are intended as the shortlist you'll later promote into `/dashboard/memories`. Admins and operators can edit; viewers see the editor read-only. The full walkthrough lives in [postmortem-guide.md](postmortem-guide.md).
 
 ## 8. Keyboard quick access
 

@@ -192,7 +192,7 @@ export function IncidentTimeline({
                                   ? "completed"
                                   : item.status === "active"
                                     ? "active"
-                                    : item.status === "resolved" || item.status === "closed"
+                                    : item.status === "resolved"
                                       ? "completed"
                                       : "default"
                             }

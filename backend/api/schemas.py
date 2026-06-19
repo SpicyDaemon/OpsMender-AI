@@ -234,7 +234,7 @@ class IncidentCreate(BaseModel):
 
 class IncidentUpdate(BaseModel):
     status: Optional[str] = Field(
-        default=None, pattern="^(open|in_progress|resolved|closed)$"
+        default=None, pattern="^(open|in_progress|resolved)$"
     )
     severity: Optional[str] = Field(
         default=None, pattern="^(critical|high|medium|low)$"
@@ -2251,7 +2251,9 @@ class IncidentBulkActionRequest(BaseModel):
     failed, never aborting on the first error.
     """
 
-    action: str = Field(..., pattern="^(acknowledge|resolve|reassign)$")
+    action: str = Field(
+        ..., pattern="^(acknowledge|resolve|reopen|reassign|delete)$"
+    )
     incident_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
     # For action="reassign" (also used to set the assignee when acknowledging).
     user_id: Optional[uuid.UUID] = None

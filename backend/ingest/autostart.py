@@ -83,7 +83,7 @@ def auto_start_skip_reason(
     """
     if dedup_action != "created":
         return "auto_start_skipped_not_created"
-    if incident.status in {"resolved", "closed"}:
+    if incident.status == "resolved":
         return "auto_start_skipped_terminal_incident"
     if policy.session_tier != 0:
         # T1/T2 wait for an Admin/Operator acknowledgment before starting.

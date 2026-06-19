@@ -3,7 +3,18 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ChevronDown, Clock, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   bulkIncidentAction,
   combineIncidents,
@@ -101,7 +112,6 @@ const STATUS_OPTIONS: { value: IncidentStatus | ""; label: string }[] = [
   { value: "open", label: "Open" },
   { value: "in_progress", label: "In progress" },
   { value: "resolved", label: "Resolved" },
-  { value: "closed", label: "Closed" },
 ];
 
 const SEVERITY_OPTIONS: { value: Severity | ""; label: string }[] = [
@@ -367,6 +377,7 @@ let incidentsCache: IncidentListResponse | null = null;
 // org-wide WebSocket broadcast channel. Cheap now that the list endpoint is
 // batched; paused entirely when the tab is hidden.
 const INCIDENTS_REFRESH_MS = 15_000;
+type ConfirmedBulkAction = "resolve" | "reopen" | "delete";
 
 export default function IncidentsPage() {
   const [data, setData] = useState<IncidentListResponse | null>(() => incidentsCache);
@@ -379,6 +390,9 @@ export default function IncidentsPage() {
   const [managingIncident, setManagingIncident] = useState<IncidentResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [confirmingAction, setConfirmingAction] =
+    useState<ConfirmedBulkAction | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
@@ -525,13 +539,38 @@ export default function IncidentsPage() {
     };
   }, [loadIncidents]);
 
-  const items = data?.items ?? [];
+  const items = useMemo(() => data?.items ?? [], [data]);
+  const selectedIncidents = useMemo(
+    () => items.filter((incident) => selectedIds.has(incident.id)),
+    [items, selectedIds],
+  );
+  const selectedServiceCount = new Set(
+    selectedIncidents.map((incident) => incident.service_id ?? "__global__"),
+  ).size;
+  const sameServiceSelection =
+    selectedIncidents.length > 0 &&
+    selectedServiceCount === 1 &&
+    selectedIncidents[0]?.service_id != null;
+  const canRunLifecycleAction =
+    isAdmin || (user?.role === "operator" && sameServiceSelection);
+  const allOpenOrInProgress =
+    selectedIncidents.length > 0 &&
+    selectedIncidents.every(
+      (incident) =>
+        incident.status === "open" || incident.status === "in_progress",
+    );
+  const allOpen =
+    selectedIncidents.length > 0 &&
+    selectedIncidents.every((incident) => incident.status === "open");
+  const allResolved =
+    selectedIncidents.length > 0 &&
+    selectedIncidents.every((incident) => incident.status === "resolved");
 
   const columns = useMemo(() => buildIncidentColumns(), []);
 
   const runBulk = useCallback(
     async (
-      action: "acknowledge" | "resolve" | "reassign",
+      action: "acknowledge" | "resolve" | "reopen" | "reassign" | "delete",
       userId?: string,
     ) => {
       if (selectedIds.size === 0) return;
@@ -544,9 +583,20 @@ export default function IncidentsPage() {
             `${res.action}: ${res.succeeded} ok, ${res.failed} failed`,
           );
         } else {
-          toast.success(`${res.action}: ${res.succeeded} updated`);
+          const noun = res.succeeded === 1 ? "incident" : "incidents";
+          const message =
+            action === "delete"
+              ? `${res.succeeded} ${noun} permanently deleted`
+              : action === "resolve"
+                ? `${res.succeeded} ${noun} marked as resolved`
+                : action === "reopen"
+                  ? `${res.succeeded} ${noun} reopened`
+                  : `${res.action}: ${res.succeeded} updated`;
+          toast.success(message);
         }
         setSelectedIds(new Set());
+        setActionsOpen(false);
+        setConfirmingAction(null);
         await loadIncidents();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
@@ -725,7 +775,7 @@ export default function IncidentsPage() {
           )}
           storageKey="opsmender:incidents-table"
           hideToolbar
-          selectable
+          selectable={canManage}
           selectedKeys={selectedIds}
           onSelectionChange={setSelectedIds}
           rowActions={canManage ? (inc) => (
@@ -747,37 +797,108 @@ export default function IncidentsPage() {
             </div>
           ) : undefined}
           bulkActions={() => (
-            <>
+            <div className="relative">
               <Button
+                data-testid="incident-actions-trigger"
                 size="sm"
-                variant="secondary"
-                disabled={bulkBusy}
-                onClick={() => runBulk("acknowledge")}
+                variant="primary"
+                disabled={bulkBusy || selectedIds.size === 0}
+                onClick={() => setActionsOpen((open) => !open)}
               >
-                Acknowledge
+                Actions <ChevronDown size={13} />
               </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={bulkBusy}
-                onClick={() => runBulk("resolve")}
-              >
-                Resolve
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={bulkBusy || selectedIds.size < 2}
-                onClick={() => setShowCombine(true)}
-                title={
-                  selectedIds.size < 2
-                    ? "Select two or more incidents to combine"
-                    : "Combine the selected incidents into one"
-                }
-              >
-                Combine
-              </Button>
-            </>
+              {actionsOpen ? (
+                <>
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-10 cursor-default"
+                    aria-label="Close incident actions"
+                    onClick={() => setActionsOpen(false)}
+                  />
+                  <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-md border border-border-default bg-bg-panel p-1 shadow-lg">
+                    <button
+                      type="button"
+                      data-testid="incident-action-acknowledge"
+                      disabled={bulkBusy || !allOpen}
+                      onClick={() => void runBulk("acknowledge")}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <CheckCircle2 size={14} /> Acknowledge
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="incident-action-resolve"
+                      disabled={
+                        bulkBusy ||
+                        !canRunLifecycleAction ||
+                        !allOpenOrInProgress
+                      }
+                      title={
+                        !allOpenOrInProgress
+                          ? "Only open or in-progress incidents can be resolved."
+                          : !canRunLifecycleAction
+                            ? "Operators must select incidents from one service."
+                            : undefined
+                      }
+                      onClick={() => {
+                        setConfirmingAction("resolve");
+                        setActionsOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <CheckCircle2 size={14} /> Mark as resolved
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="incident-action-reopen"
+                      disabled={
+                        bulkBusy || !canRunLifecycleAction || !allResolved
+                      }
+                      title={
+                        !allResolved
+                          ? "Reopen is available only when every selected incident is resolved."
+                          : !canRunLifecycleAction
+                            ? "Operators must select incidents from one service."
+                            : undefined
+                      }
+                      onClick={() => {
+                        setConfirmingAction("reopen");
+                        setActionsOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <RotateCcw size={14} /> Reopen
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkBusy || selectedIds.size < 2}
+                      onClick={() => {
+                        setShowCombine(true);
+                        setActionsOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Combine
+                    </button>
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        data-testid="incident-action-delete"
+                        disabled={bulkBusy}
+                        onClick={() => {
+                          setConfirmingAction("delete");
+                          setActionsOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-status-critical hover:bg-status-critical-bg disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 size={14} />{" "}
+                        {selectedIds.size === 1 ? "Delete" : "Delete all"}
+                      </button>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+            </div>
           )}
         />
       )}
@@ -844,6 +965,61 @@ export default function IncidentsPage() {
           loadIncidents();
         }}
       />
+      <Modal
+        open={confirmingAction !== null}
+        onClose={() => setConfirmingAction(null)}
+        title={
+          confirmingAction === "delete"
+            ? selectedIds.size === 1
+              ? "Delete incident?"
+              : "Delete incidents?"
+            : confirmingAction === "reopen"
+              ? selectedIds.size === 1
+                ? "Reopen incident?"
+                : "Reopen incidents?"
+              : selectedIds.size === 1
+                ? "Mark incident as resolved?"
+                : "Mark incidents as resolved?"
+        }
+      >
+        <p className="text-sm text-fg-secondary">
+          {confirmingAction === "delete"
+            ? `Are you sure you want to permanently delete ${selectedIds.size} ${
+                selectedIds.size === 1 ? "incident" : "incidents"
+              }? This removes their sessions and operational history and cannot be undone.`
+            : confirmingAction === "reopen"
+              ? `Are you sure you want to reopen ${selectedIds.size} ${
+                  selectedIds.size === 1 ? "incident" : "incidents"
+                }?`
+              : `Are you sure you want to mark ${selectedIds.size} ${
+                  selectedIds.size === 1 ? "incident" : "incidents"
+                } as resolved? Any running AI sessions will be stopped.`}
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => setConfirmingAction(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            data-testid="confirm-incident-bulk-action"
+            variant={confirmingAction === "delete" ? "danger" : "primary"}
+            disabled={bulkBusy || confirmingAction === null}
+            onClick={() => {
+              if (confirmingAction) void runBulk(confirmingAction);
+            }}
+          >
+            {confirmingAction === "delete"
+              ? selectedIds.size === 1
+                ? "Delete"
+                : "Delete all"
+              : confirmingAction === "reopen"
+                ? "Reopen"
+                : "Mark as resolved"}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1154,7 +1330,7 @@ function ManageIncidentModal({
           <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3">
             <p className="font-medium text-fg-primary">{incident.title}</p>
             <p className="mt-1 text-sm text-fg-muted">
-              Updating the service moves ownership to that service's team and restarts paging for its escalation chain when one is configured.
+              Updating the service moves ownership to that service&apos;s team and restarts paging for its escalation chain when one is configured.
             </p>
           </div>
         ) : null}

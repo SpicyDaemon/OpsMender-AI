@@ -1629,7 +1629,7 @@ export interface IncidentBulkActionResponse {
 }
 
 export async function bulkIncidentAction(
-  action: "acknowledge" | "resolve" | "reassign",
+  action: "acknowledge" | "resolve" | "reopen" | "reassign" | "delete",
   incidentIds: string[],
   userId?: string,
 ): Promise<IncidentBulkActionResponse> {

@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Operators may edit/delete only memories belonging to services owned by their
   teams; global memories are admin-only for mutation. The API exposes
   per-memory `can_edit`/`can_delete` and adds `POST /memories/bulk-delete`.
+- **Incident selection Actions.** Selecting incident rows activates an Actions
+  menu with Acknowledge, confirmed Mark as resolved, state-gated Reopen,
+  Combine, and dynamic admin-only Delete/Delete all. Admins may resolve/reopen
+  across services; Operators may do so only when the selection belongs to one
+  service. Lifecycle and delete batches validate atomically before mutation.
 
 - **Per-user notification center (the 🔔 bell).** Every signed-in user now has
   an in-app notification center: a bell in the top bar with an unread badge, a
@@ -46,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
+- **Operator memory visibility is service-scoped.** Operators now see global
+  memories plus memories associated with services owned by their teams.
+
 - **Memory is now continuous, not approval-gated.** Approval/rejection and
   hidden/unhidden states were removed from the schema, API, recall path, and UI.
   Existing rows become ordinary immediately recallable memories. Auto-compaction
@@ -57,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on-demand (`/sla-recommendations`) with no persisted breach-state, so
   notifying correctly needs transition tracking — a follow-up rather than a
   per-poll emit.
+
+### Removed
+
+- **Incident `closed` status and auto-close scheduler.** `resolved` is now the
+  final incident status. Migration `c9d0e1f2a3b4` normalizes existing closed
+  rows to resolved. The resolved-to-closed scheduler, its environment
+  variables, UI filters, API acceptance, and status handling were removed.
 
 ## [1.2.0] — 2026-06-18
 

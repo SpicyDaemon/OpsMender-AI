@@ -15,7 +15,6 @@
  * | open         | Acknowledge, Take/Release, Start session, Resolve    |
  * | in_progress  | Take/Release, Start session, Resolve                 |
  * | resolved     | Create postmortem                                    |
- * | closed       | Create postmortem                                    |
  *
  * Approve / Reject + Escalate land in Sprint A step 2 (right-rail
  * context) and Sprint B (governed AI) — they need state the detail
@@ -81,7 +80,7 @@ export function IncidentCommandStrip({
 
   const status = incident.status as Status;
   const isOpen = status === "open";
-  const isResolved = status === "resolved" || status === "closed";
+  const isResolved = status === "resolved";
 
   const isAssignedToMe =
     assignment !== null &&
@@ -169,7 +168,6 @@ export function IncidentCommandStrip({
     open: "Open",
     in_progress: "In progress",
     resolved: "Resolved",
-    closed: "Closed",
     merged: "Merged",
   };
 

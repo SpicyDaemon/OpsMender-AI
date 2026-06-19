@@ -630,6 +630,16 @@ async def list_incidents(
     user: User = Depends(get_current_user),
 ):
     # Multi-value OR filters: repeated query params (e.g. ?status=open&status=in_progress).
+    # Closed is no longer a lifecycle state; an all-invalid status query
+    # intentionally returns no rows instead of broadening to the full list.
+    requested_statuses = status_filter
+    allowed_statuses = {"open", "in_progress", "resolved", "merged"}
+    status_filter = [
+        value for value in (status_filter or []) if value in allowed_statuses
+    ] or None
+    if requested_statuses and status_filter is None:
+        return IncidentListResponse(items=[], total=0)
+
     # Drop unknown values so a stray value can't make the result empty.
     allowed_severities = {"critical", "high", "medium", "low"}
     allowed_sources = {"manual", "ingested"}
@@ -820,9 +830,8 @@ async def update_incident(
                     channel_factory=build_channel_factory(),
                 )
 
-    _TERMINAL = ("resolved", "closed")
-    if body.status in _TERMINAL and prior_status not in _TERMINAL:
-        # Resolving/closing an incident stops any AI sessions still working it.
+    if body.status == "resolved" and prior_status != "resolved":
+        # Resolving an incident stops any AI sessions still working it.
         await stop_incident_sessions(
             request.app,
             db,
@@ -1366,7 +1375,7 @@ async def get_incident_timeline(
             )
         )
 
-    if incident.status in ("resolved", "closed"):
+    if incident.status == "resolved":
         items.append(
             IncidentTimelineItemResponse(
                 id=f"incident:{incident.id}:final",
@@ -1594,19 +1603,117 @@ async def bulk_incident_action(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    """Apply ``action`` to every id in ``incident_ids``. Per-row failures
-    don't abort the batch — each result reports its own ``ok`` + optional
-    ``error``. Self-only enforcement on reassign matches the per-incident
-    `/assign` route: only admin/operator can target someone else.
+    """Apply ``action`` to every id in ``incident_ids``.
+
+    Lifecycle and delete actions are atomic. Legacy acknowledge/reassign
+    actions retain per-row result reporting. Self-only enforcement on reassign
+    matches the per-incident `/assign` route.
 
     Acknowledge = assign the current user (or ``user_id``) AND advance status
     from ``open`` → ``in_progress`` if it's still ``open``. The ack payload
     is incident-local; we don't poke the chain engine here (that path is
     via ``/incidents/{id}/ack`` for chain-driven sessions).
 
-    Resolve = set status to ``resolved``. Idempotent.
+    Resolve/reopen/delete are validated atomically before any row is changed.
+    Admins may run them across services. Operators may resolve or reopen only
+    when every selected incident belongs to the same service.
     """
     action = body.action
+    unique_ids = list(dict.fromkeys(body.incident_ids))
+
+    if action in {"resolve", "reopen", "delete"}:
+        incidents = []
+        for incident_id in unique_ids:
+            incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+            if incident is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Incident {incident_id} not found",
+                )
+            incidents.append(incident)
+
+        if action == "delete":
+            if user.role != "admin":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only Admins can permanently delete incidents.",
+                )
+        elif user.role == "operator":
+            service_ids = {incident.service_id for incident in incidents}
+            if len(service_ids) != 1 or None in service_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "Operators can update incident status only when every "
+                        "selected incident belongs to the same service."
+                    ),
+                )
+
+        allowed_statuses = (
+            {"open", "in_progress"} if action == "resolve" else {"resolved"}
+        )
+        if action != "delete":
+            invalid = [
+                incident
+                for incident in incidents
+                if incident.status not in allowed_statuses
+            ]
+            if invalid:
+                expected = (
+                    "open or in progress" if action == "resolve" else "resolved"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"All selected incidents must be {expected} for "
+                        f"the {action} action."
+                    ),
+                )
+
+        if action == "delete":
+            session_ids: list[uuid.UUID] = []
+            for incident in incidents:
+                await cancel_auto_start_for_incident(
+                    request.app, incident_id=incident.id
+                )
+                sessions = await SessionRepo.list_by_incident(
+                    db, org_id, incident.id
+                )
+                session_ids.extend(session.id for session in sessions)
+            await cancel_session_workflows(request.app, session_ids=session_ids)
+            for incident in incidents:
+                await IncidentRepo.delete_permanently(db, org_id, incident.id)
+        else:
+            next_status = "resolved" if action == "resolve" else "open"
+            for incident in incidents:
+                await IncidentRepo.update_status(
+                    db, org_id, incident.id, next_status
+                )
+                if action == "resolve":
+                    await stop_incident_sessions(
+                        request.app,
+                        db,
+                        org_id,
+                        incident.id,
+                        reason=f"Incident resolved by {user.username}",
+                    )
+
+        await db.commit()
+        if action == "resolve":
+            for incident in incidents:
+                await _notify_channels(
+                    db, incident.id, org_id, "incident.resolved"
+                )
+        return IncidentBulkActionResponse(
+            action=action,
+            succeeded=len(incidents),
+            failed=0,
+            items=[
+                IncidentBulkActionResult(incident_id=incident.id, ok=True)
+                for incident in incidents
+            ],
+        )
+
     # Role gate for reassign — match the per-incident /assign route.
     if action == "reassign":
         if body.user_id is None:
@@ -1635,20 +1742,7 @@ async def bulk_incident_action(
                 failed += 1
                 continue
 
-            if action == "resolve":
-                if incident.status not in ("closed", "resolved"):
-                    await IncidentRepo.update_status(
-                        db, org_id, incident_id, "resolved"
-                    )
-                    # Resolving stops any AI sessions still working it.
-                    await stop_incident_sessions(
-                        request.app,
-                        db,
-                        org_id,
-                        incident_id,
-                        reason=f"Incident resolved by {user.username}",
-                    )
-            elif action == "acknowledge":
+            if action == "acknowledge":
                 target = body.user_id or user.id
                 if target != user.id and user.role not in ("admin", "operator"):
                     items.append(

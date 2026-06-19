@@ -291,7 +291,7 @@ class SLAPoller:
                         external_id=external_id,
                     )
 
-                    if existing and existing.status not in ("resolved", "closed"):
+                    if existing and existing.status != "resolved":
                         continue
 
                     dedup_action = "created"

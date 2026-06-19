@@ -1,1 +1,1 @@
-"""Incident lifecycle helpers (auto-close scheduler, …)."""
+"""Incident lifecycle helpers."""

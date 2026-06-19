@@ -268,8 +268,8 @@ async def _advance(
         state.next_stage_due_at = None
         await db.flush()
         return False
-    # Stop if the incident is already resolved/closed.
-    if incident.status in ("resolved", "closed"):
+    # Stop if the incident is already resolved.
+    if incident.status == "resolved":
         state.status = "resolved"
         state.finished_at = at
         state.next_stage_due_at = None

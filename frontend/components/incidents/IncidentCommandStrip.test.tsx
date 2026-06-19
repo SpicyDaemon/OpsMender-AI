@@ -120,8 +120,8 @@ describe("IncidentCommandStrip", () => {
     expect(screen.getByTestId("action-resolve")).toBeTruthy();
   });
 
-  it("shows only postmortem in resolved and closed states", () => {
-    const { rerender } = render(
+  it("shows only postmortem in the resolved state", () => {
+    render(
       <IncidentCommandStrip
         incident={makeIncident("resolved")}
         assignment={null}
@@ -134,17 +134,6 @@ describe("IncidentCommandStrip", () => {
     expect(screen.queryByTestId("action-acknowledge")).toBeNull();
     expect(screen.queryByTestId("action-start-session")).toBeNull();
     expect(screen.queryByTestId("action-resolve")).toBeNull();
-
-    rerender(
-      <IncidentCommandStrip
-        incident={makeIncident("closed")}
-        assignment={null}
-        onStartSession={vi.fn()}
-        onChanged={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByTestId("action-postmortem")).toBeTruthy();
     expect(screen.queryByTestId("action-take")).toBeNull();
   });
 
@@ -173,7 +162,7 @@ describe("IncidentCommandStrip", () => {
   });
 
   it("hides permanent delete from operators", () => {
-    renderStrip("closed");
+    renderStrip("resolved");
     expect(screen.queryByTestId("action-delete")).toBeNull();
   });
 

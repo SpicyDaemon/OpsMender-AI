@@ -33,7 +33,7 @@ export interface UserListResponse {
 // ---------------------------------------------------------------------------
 
 export type Severity = "critical" | "high" | "medium" | "low";
-export type IncidentStatus = "open" | "in_progress" | "resolved" | "closed" | "merged";
+export type IncidentStatus = "open" | "in_progress" | "resolved" | "merged";
 
 export interface IncidentResponse {
   id: string;

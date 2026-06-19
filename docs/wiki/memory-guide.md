@@ -44,6 +44,8 @@ The retained signal is “this session produced a useful outcome,” not merely
   cross tenants.
 - **Service scoped.** Service memories are recalled and compacted within their
   service. Global memories are handled as a separate group.
+- **Operator visibility is scoped.** Operators see global memories plus
+  memories associated with services owned by their teams.
 - **Advisory only.** Memory never grants authority or weakens the tier gate.
 - **Structured writeback.** A dedicated post-session node validates the
   generated memory before persistence.

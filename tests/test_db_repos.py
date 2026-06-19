@@ -168,11 +168,11 @@ class TestIncidentRepo:
         inc = await IncidentRepo.create(db, TEST_ORG_ID, title="T", description="d")
         await db.flush()
 
-        await IncidentRepo.update_status(db, TEST_ORG_ID, inc.id, "closed")
+        await IncidentRepo.update_status(db, TEST_ORG_ID, inc.id, "resolved")
         await db.flush()
 
         fetched = await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)
-        assert fetched.status == "closed"
+        assert fetched.status == "resolved"
 
 
 # ---------------------------------------------------------------------------

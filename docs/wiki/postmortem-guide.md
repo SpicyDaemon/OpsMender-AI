@@ -1,6 +1,6 @@
 # Postmortems
 
-Every resolved or closed incident in OpsMender has a postmortem surface attached to it. The button lives on the **Incident Command Strip** at the top of each incident detail page, labelled **Create postmortem** — clicking it opens a per-incident editor at `/dashboard/incidents/postmortem?id=<incident_id>`.
+Every resolved incident in OpsMender has a postmortem surface attached to it. The button lives on the **Incident Command Strip** at the top of each incident detail page, labelled **Create postmortem** — clicking it opens a per-incident editor at `/dashboard/incidents/postmortem?id=<incident_id>`.
 
 This guide covers how the editor works, the recommended section structure, who is allowed to edit, and how postmortems feed back into the AI's incident memory.
 
@@ -8,7 +8,7 @@ This guide covers how the editor works, the recommended section structure, who i
 
 ## When the button shows up
 
-The **Create postmortem** action is part of the Incident Command Strip and is **only visible once the incident reaches `resolved` or `closed`**. While an incident is still `open` or `in_progress`, the strip shows lifecycle actions (Acknowledge / Take over / Start session / Resolve) instead. This keeps the surface focused on what the operator needs in the moment: live response while it's happening, retrospective once the bleeding has stopped.
+The **Create postmortem** action is part of the Incident Command Strip and is **only visible once the incident reaches `resolved`**, the final lifecycle status. While an incident is still `open` or `in_progress`, the strip shows lifecycle actions (Acknowledge / Take over / Start session / Resolve) instead. This keeps the surface focused on what the operator needs in the moment: live response while it's happening, retrospective once the bleeding has stopped.
 
 The editor itself remains reachable by direct URL on any incident regardless of status — the visibility rule is just a UX nudge, not a backend gate.
 

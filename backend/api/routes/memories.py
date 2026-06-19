@@ -36,7 +36,7 @@ from backend.api.schemas import (
     SessionMemoriesUsedItem,
     SessionMemoriesUsedResponse,
 )
-from backend.db.models import IncidentMemory, User
+from backend.db.models import IncidentMemory, IncidentMemoryRecallLog, User
 from backend.db.repos import (
     IncidentMemoryRecallLogRepo,
     IncidentMemoryRepo,
@@ -97,6 +97,49 @@ async def _manageable_memory_ids(
         and memory.service_id in services
         and services[memory.service_id].team_id in team_ids
     }
+
+
+async def _visible_memory_ids(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    user: User,
+    memories: list[IncidentMemory],
+) -> set[uuid.UUID]:
+    """Return memories visible to the current user.
+
+    Operators see global memories plus memories tied to services owned by one
+    of their teams. Admins and viewers retain organization-wide read access.
+    """
+    if user.role != "operator":
+        return {memory.id for memory in memories}
+    team_ids = await TeamRepo.team_ids_for_user(db, org_id, user.id)
+    service_ids = {
+        memory.service_id for memory in memories if memory.service_id is not None
+    }
+    visible_service_ids = {
+        service.id
+        for service in await ServiceRepo.list_all(db, org_id)
+        if service.id in service_ids and service.team_id in team_ids
+    }
+    return {
+        memory.id
+        for memory in memories
+        if memory.service_id is None or memory.service_id in visible_service_ids
+    }
+
+
+async def _require_memory_visibility(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    user: User,
+    memory: IncidentMemory,
+) -> None:
+    visible = await _visible_memory_ids(db, org_id, user, [memory])
+    if memory.id not in visible:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found",
+        )
 
 
 async def _require_memory_management(
@@ -168,7 +211,9 @@ async def list_memories(
         org_id,
         service_id=service_id,
     )
-    manageable = await _manageable_memory_ids(db, org_id, user, list(items))
+    visible = await _visible_memory_ids(db, org_id, user, list(items))
+    items = [item for item in items if item.id in visible]
+    manageable = await _manageable_memory_ids(db, org_id, user, items)
     return IncidentMemoryListResponse(
         items=[
             _to_response(item, can_manage=item.id in manageable) for item in items
@@ -194,6 +239,7 @@ async def get_memory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Memory not found",
         )
+    await _require_memory_visibility(db, org_id, user, memory)
     manageable = await _manageable_memory_ids(db, org_id, user, [memory])
     return _to_response(memory, can_manage=memory.id in manageable)
 
@@ -211,6 +257,10 @@ async def create_memory(
     user: User = Depends(require_role("admin", "operator")),
 ):
     await _validate_service(db, org_id, body.service_id)
+    if user.role == "operator" and body.service_id is not None:
+        await _require_operator_service_access(
+            db, org_id, user, body.service_id
+        )
     memory = await IncidentMemoryRepo.create(
         db,
         org_id=org_id,
@@ -357,6 +407,13 @@ async def memory_feedback(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
+    memory = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
+    if memory is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found",
+        )
+    await _require_memory_visibility(db, org_id, user, memory)
     updated = await IncidentMemoryRepo.record_feedback(
         db,
         memory_id=memory_id,
@@ -394,11 +451,17 @@ async def session_memories_used(
         )
     logs = await IncidentMemoryRecallLogRepo.list_for_session(db, session_id)
 
-    items: list[SessionMemoriesUsedItem] = []
+    memories: list[tuple[IncidentMemoryRecallLog, IncidentMemory]] = []
     for log in logs:
         memory = await IncidentMemoryRepo.get_by_id(db, log.memory_id, org_id)
-        if memory is None:
-            # Memory deleted after recall — skip rather than leaking a stale row.
+        if memory is not None:
+            memories.append((log, memory))
+    visible = await _visible_memory_ids(
+        db, org_id, user, [memory for _, memory in memories]
+    )
+    items: list[SessionMemoriesUsedItem] = []
+    for log, memory in memories:
+        if memory.id not in visible:
             continue
         items.append(
             SessionMemoriesUsedItem(

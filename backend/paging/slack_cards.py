@@ -97,7 +97,7 @@ def build_page_card_blocks(
     ]
 
     elements: list[dict[str, Any]] = []
-    if include_native_actions and incident.status not in {"resolved", "closed"}:
+    if include_native_actions and incident.status != "resolved":
         elements.extend(
             [
                 {

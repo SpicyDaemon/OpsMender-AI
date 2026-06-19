@@ -136,7 +136,7 @@ function fmtDuration(ms: number): string {
 
 /**
  * Median millisecond resolution time for incidents that were
- * resolved (or closed) within the last `windowMs` milliseconds.
+ * resolved within the last `windowMs` milliseconds.
  * Returns null when the window has no resolved incidents.
  */
 function medianResolveTime(
@@ -146,7 +146,7 @@ function medianResolveTime(
   const cutoff = Date.now() - windowMs;
   const durations: number[] = [];
   for (const inc of incidents) {
-    if (inc.status !== "resolved" && inc.status !== "closed") continue;
+    if (inc.status !== "resolved") continue;
     const resolvedAt = new Date(inc.updated_at).getTime();
     if (resolvedAt < cutoff) continue;
     const createdAt = new Date(inc.created_at).getTime();
@@ -388,7 +388,7 @@ export default function DashboardIndex() {
 
   // Sprint 59 Step 5 — MTTR rolling-window medians. MTTR uses
   // `updated_at - created_at` for incidents that hit `resolved` or
-  // `closed` within each window.
+  // `resolved` within each window.
   const mttr = useMemo(() => {
     return {
       d1: medianResolveTime(incidents, 86_400_000), // 24h
@@ -433,7 +433,7 @@ export default function DashboardIndex() {
         detail: inc.severity ? `Severity ${inc.severity}` : "Severity not set",
         href: `/dashboard/incidents/detail?id=${inc.id}`,
       });
-      if (inc.status === "resolved" || inc.status === "closed") {
+      if (inc.status === "resolved") {
         items.push({
           id: `inc-resolved-${inc.id}`,
           ts: inc.updated_at,
@@ -671,7 +671,7 @@ export default function DashboardIndex() {
               MTTR · median time to resolve
             </p>
             <p className="text-[10px] text-fg-muted">
-              Time from `created_at` to `resolved` / `closed`, by resolution window.
+              Time from `created_at` to `resolved`, by resolution window.
             </p>
           </div>
         </div>

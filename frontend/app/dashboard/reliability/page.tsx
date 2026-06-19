@@ -133,56 +133,6 @@ export default function ReliabilityPage() {
             </div>
           )}
 
-          {/* SLO-breach recommendations (advisory only) */}
-          {!loading && recommendations.length > 0 && (
-            <div className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-3">
-                <Lightbulb size={16} className="text-status-warning" />
-                <h2 className="text-sm font-semibold text-fg-primary">
-                  SLO recommendations
-                </h2>
-                <span className="text-xs text-fg-muted">
-                  {recommendations.length} breaching / at-risk · advisory only
-                </span>
-              </div>
-              <ul className="divide-y divide-border-subtle">
-                {recommendations.map((rec) => (
-                  <li key={rec.slo_id} className="px-5 py-4">
-                    <div className="flex items-start gap-3">
-                      <Badge
-                        variant={rec.severity === "critical" ? "critical" : "medium"}
-                        className="mt-0.5 shrink-0"
-                      >
-                        {rec.severity}
-                      </Badge>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <Link
-                            href={`/dashboard/reliability/detail?id=${rec.target_id}`}
-                            className="font-medium text-fg-primary hover:text-accent"
-                          >
-                            {rec.headline}
-                          </Link>
-                          {rec.service_name ? (
-                            <Badge variant="default" className="text-[10px]">
-                              {rec.service_name}
-                              {rec.team_name ? ` · ${rec.team_name}` : ""}
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-fg-secondary">
-                          {rec.actions.map((action, i) => (
-                            <li key={i}>{action}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           <div>
             <h2 className="text-base font-semibold text-fg-primary">Monitored Targets</h2>
             <p className="text-sm text-fg-secondary">HTTP/HTTPS endpoints OpsMender checks for availability.</p>
@@ -206,6 +156,18 @@ export default function ReliabilityPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {targets.map((target) => {
                 const colors = statusColors(target.current_status);
+                // A target is "red" (SLO not satisfied) when it has any
+                // breaching / at-risk SLO recommendation. Green when it has
+                // SLOs and none are flagged; neutral when no SLOs are defined.
+                const targetRecs = recommendations.filter(
+                  (rec) => rec.target_id === target.id,
+                );
+                const breaching = targetRecs.length > 0;
+                const uptimeColor = breaching
+                  ? "text-status-critical"
+                  : target.active_slo_count > 0
+                    ? "text-status-success"
+                    : "text-fg-primary";
                 return (
                   <Link
                     key={target.id}
@@ -248,7 +210,7 @@ export default function ReliabilityPage() {
 
                     <div className="flex items-end justify-between gap-2">
                       <div>
-                        <span className="text-3xl font-light tracking-tight text-fg-primary">
+                        <span className={`text-3xl font-light tracking-tight ${uptimeColor}`}>
                           {formatUptimePct(target.uptime_30d_pct)}
                         </span>
                         <span className="ml-1.5 text-xs text-fg-secondary">30d uptime</span>
@@ -270,6 +232,36 @@ export default function ReliabilityPage() {
                         Service: <span className="text-fg-secondary">{target.service_name}</span>
                         {target.team_name ? ` · ${target.team_name}` : ""}
                       </p>
+                    ) : null}
+
+                    {breaching ? (
+                      <div className="space-y-2 rounded-lg border border-status-critical-border bg-status-critical-bg/30 p-3">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-status-critical">
+                          <Lightbulb size={12} className="shrink-0" />
+                          SLO recommendations
+                          <span className="font-normal text-fg-muted">· advisory only</span>
+                        </div>
+                        {targetRecs.map((rec) => (
+                          <div key={rec.slo_id} className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <Badge
+                                variant={rec.severity === "critical" ? "critical" : "medium"}
+                                className="shrink-0 text-[10px]"
+                              >
+                                {rec.severity}
+                              </Badge>
+                              <span className="text-xs font-medium text-fg-primary">
+                                {rec.headline}
+                              </span>
+                            </div>
+                            <ul className="list-disc space-y-0.5 pl-4 text-[11px] text-fg-secondary">
+                              {rec.actions.map((action, i) => (
+                                <li key={i}>{action}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
                     ) : null}
                   </Link>
                 );

@@ -175,8 +175,8 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={toggleOpen}
-        title={`${unread} unread notification${unread === 1 ? "" : "s"}`}
-        aria-label={`Notifications, ${unread} unread`}
+        title={`Inbox · ${unread} unread`}
+        aria-label={`Inbox, ${unread} unread`}
         aria-haspopup="true"
         aria-expanded={open}
         className="relative flex h-9 w-9 items-center justify-center rounded-md text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
@@ -193,7 +193,7 @@ export function NotificationBell() {
         <div className="absolute right-0 top-full z-50 mt-2 w-96 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border-subtle bg-bg-panel shadow-xl">
           <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2.5">
             <span className="text-sm font-semibold text-fg-primary">
-              Notifications
+              Inbox
             </span>
             <button
               type="button"

@@ -73,7 +73,7 @@ describe("NotificationBell", () => {
   it("opens the dropdown and shows items", async () => {
     render(<NotificationBell />);
     await screen.findByText("3");
-    fireEvent.click(screen.getByRole("button", { name: /notifications/i }));
+    fireEvent.click(screen.getByRole("button", { name: /inbox/i }));
     expect(await screen.findByText("Incident assigned to you")).toBeTruthy();
     expect(screen.getByText("API latency spike")).toBeTruthy();
   });
@@ -81,7 +81,7 @@ describe("NotificationBell", () => {
   it("'Mark all read' calls the API and clears the badge", async () => {
     render(<NotificationBell />);
     await screen.findByText("3");
-    fireEvent.click(screen.getByRole("button", { name: /notifications/i }));
+    fireEvent.click(screen.getByRole("button", { name: /inbox/i }));
 
     const markAll = await screen.findByRole("button", { name: /mark all read/i });
     fireEvent.click(markAll);

@@ -170,7 +170,7 @@ export default function NotificationsPage() {
     <div>
       <div className="mb-6">
         <PageHeader
-          title="Notifications"
+          title="Inbox"
           subtitle={`${total} total · ${unread} unread`}
           icon={<Bell size={18} />}
           actions={

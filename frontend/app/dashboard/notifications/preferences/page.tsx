@@ -132,7 +132,7 @@ export default function NotificationPreferencesPage() {
             href="/dashboard/notifications"
             className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-surface px-3 py-2 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
           >
-            <ArrowLeft size={14} /> Back to notifications
+            <ArrowLeft size={14} /> Back to inbox
           </Link>
         }
       />

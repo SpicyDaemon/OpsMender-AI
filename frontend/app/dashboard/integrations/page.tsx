@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 
 const EMPTY_OBJECT = "{}";
-const SOURCE_CONTROL_HELP: Record<
+const INTEGRATION_HELP: Record<
   string,
   { base: string; auth: string; config: string }
 > = {
@@ -33,6 +33,45 @@ const SOURCE_CONTROL_HELP: Record<
     auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
     config: '{"project":"group/project"}',
   },
+  bitbucket: {
+    base: "Cloud uses https://api.bitbucket.org/2.0 by default. For Data Center, enter the instance root or REST API base.",
+    auth: 'Cloud API token: {"email":"admin@example.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
+    config:
+      'Cloud: {"workspace":"acme","repo":"service"}. Data Center: {"edition":"data_center","project":"OPS","repo":"service"}.',
+  },
+  azure_devops: {
+    base: "Leave blank for Azure DevOps Services, or enter the collection URL for a self-hosted deployment.",
+    auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
+    config:
+      '{"organization":"acme","project":"Operations","repository":"service"}',
+  },
+  jira: {
+    base: "Required: your Jira site or on-premises instance URL.",
+    auth: 'Cloud API token: {"email":"admin@example.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
+    config:
+      'Cloud: {"project_key":"OPS","issue_type":"Task"}. On-premises: {"edition":"on_prem","api_version":"2","project_key":"OPS"}.',
+  },
+  confluence: {
+    base: "Required: your Confluence site or on-premises instance URL.",
+    auth: 'Cloud API token: {"email":"admin@example.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
+    config:
+      'Cloud: {"space_id":"12345"}. On-premises: {"edition":"on_prem","space_id":"OPS"}.',
+  },
+  servicenow: {
+    base: "Required: your instance URL, such as https://acme.service-now.com.",
+    auth: 'Basic: {"username":"…","password":"…"}. OAuth: {"access_token":"…"}',
+    config: '{"table":"incident"}',
+  },
+  linear: {
+    base: "Uses https://api.linear.app/graphql by default.",
+    auth: 'API key: {"api_key":"…"}. OAuth: {"access_token":"…"}',
+    config: '{"team_id":"…"}',
+  },
+  notion: {
+    base: "Uses https://api.notion.com/v1 by default.",
+    auth: 'Integration token: {"api_key":"…"}. OAuth: {"access_token":"…"}',
+    config: '{"parent_page_id":"…","notion_version":"2026-03-11"}',
+  },
 };
 
 function parseObject(value: string, label: string): Record<string, unknown> {
@@ -44,15 +83,21 @@ function parseObject(value: string, label: string): Record<string, unknown> {
 }
 
 function statusClass(status: string): string {
-  if (status === "healthy") return "bg-status-low-bg text-status-low border-status-low-border";
-  if (status === "error") return "bg-status-critical-bg text-status-critical border-status-critical-border";
+  if (status === "healthy")
+    return "bg-status-low-bg text-status-low border-status-low-border";
+  if (status === "error")
+    return "bg-status-critical-bg text-status-critical border-status-critical-border";
   return "bg-status-neutral-bg text-status-neutral border-status-neutral-border";
 }
 
 export default function IntegrationsPage() {
   const [kinds, setKinds] = useState<IntegrationKind[]>([]);
-  const [connectors, setConnectors] = useState<IntegrationConnectorResponse[]>([]);
-  const [editing, setEditing] = useState<IntegrationConnectorResponse | null>(null);
+  const [connectors, setConnectors] = useState<IntegrationConnectorResponse[]>(
+    [],
+  );
+  const [editing, setEditing] = useState<IntegrationConnectorResponse | null>(
+    null,
+  );
   const [name, setName] = useState("");
   const [kind, setKind] = useState("custom");
   const [baseUrl, setBaseUrl] = useState("");
@@ -74,7 +119,9 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     reload().catch((error) => {
-      setNotice(error instanceof Error ? error.message : "Unable to load integrations.");
+      setNotice(
+        error instanceof Error ? error.message : "Unable to load integrations.",
+      );
     });
   }, [reload]);
 
@@ -82,7 +129,7 @@ export default function IntegrationsPage() {
     () => kinds.find((item) => item.kind === kind),
     [kind, kinds],
   );
-  const sourceControlHelp = SOURCE_CONTROL_HELP[kind];
+  const integrationHelp = INTEGRATION_HELP[kind];
 
   function resetForm() {
     setEditing(null);
@@ -165,8 +212,9 @@ export default function IntegrationsPage() {
       <div>
         <h1 className="text-2xl font-bold text-fg-primary">Integrations</h1>
         <p className="mt-1 text-sm text-fg-secondary">
-          Connect source control, ticketing, documentation, observability, and infrastructure systems.
-          Credentials are encrypted and never returned by the API.
+          Connect source control, ticketing, documentation, observability, and
+          infrastructure systems. Credentials are encrypted and never returned
+          by the API.
         </p>
       </div>
 
@@ -175,12 +223,20 @@ export default function IntegrationsPage() {
           <h2 className="font-semibold text-fg-primary">
             {editing ? `Edit ${editing.name}` : "Add integration"}
           </h2>
-          {editing && <Button variant="secondary" size="sm" onClick={resetForm}>Cancel</Button>}
+          {editing && (
+            <Button variant="secondary" size="sm" onClick={resetForm}>
+              Cancel
+            </Button>
+          )}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <Label htmlFor="integration-name">Name</Label>
-            <Input id="integration-name" value={name} onChange={(event) => setName(event.target.value)} />
+            <Input
+              id="integration-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
           </div>
           <div>
             <Label htmlFor="integration-kind">Kind</Label>
@@ -191,15 +247,21 @@ export default function IntegrationsPage() {
                 const next = event.target.value;
                 setKind(next);
                 const definition = kinds.find((item) => item.kind === next);
-                if (definition?.auth_types[0]) setAuthType(definition.auth_types[0]);
+                if (definition?.auth_types[0])
+                  setAuthType(definition.auth_types[0]);
               }}
             >
               {kinds.map((item) => (
-                <option key={item.kind} value={item.kind}>{item.label}</option>
+                <option key={item.kind} value={item.kind}>
+                  {item.label}
+                </option>
               ))}
             </Select>
             {selectedKind && !selectedKind.adapter_available && (
-              <p className="mt-1 text-xs text-fg-muted">Configuration can be saved; the adapter lands in its Wave 1 phase.</p>
+              <p className="mt-1 text-xs text-fg-muted">
+                Configuration can be saved; the adapter lands in its Wave 1
+                phase.
+              </p>
             )}
           </div>
           <div>
@@ -210,13 +272,25 @@ export default function IntegrationsPage() {
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
             />
-            {sourceControlHelp && <p className="mt-1 text-xs text-fg-muted">{sourceControlHelp.base}</p>}
+            {integrationHelp && (
+              <p className="mt-1 text-xs text-fg-muted">
+                {integrationHelp.base}
+              </p>
+            )}
           </div>
           <div>
             <Label htmlFor="integration-auth-type">Authentication</Label>
-            <Select id="integration-auth-type" value={authType} onChange={(event) => setAuthType(event.target.value as IntegrationAuthType)}>
+            <Select
+              id="integration-auth-type"
+              value={authType}
+              onChange={(event) =>
+                setAuthType(event.target.value as IntegrationAuthType)
+              }
+            >
               {(selectedKind?.auth_types ?? ["pat"]).map((item) => (
-                <option key={item} value={item}>{item.replaceAll("_", " ")}</option>
+                <option key={item} value={item}>
+                  {item.replaceAll("_", " ")}
+                </option>
               ))}
             </Select>
           </div>
@@ -229,8 +303,14 @@ export default function IntegrationsPage() {
               onChange={(event) => setAuthJson(event.target.value)}
               spellCheck={false}
             />
-            <p className="mt-1 text-xs text-fg-muted">Example: {`{"token":"…"}`}. Saved values are write-only.</p>
-            {sourceControlHelp && <p className="mt-1 text-xs text-fg-muted">{sourceControlHelp.auth}</p>}
+            <p className="mt-1 text-xs text-fg-muted">
+              Example: {`{"token":"…"}`}. Saved values are write-only.
+            </p>
+            {integrationHelp && (
+              <p className="mt-1 text-xs text-fg-muted">
+                {integrationHelp.auth}
+              </p>
+            )}
           </div>
           <div>
             <Label htmlFor="integration-config">Configuration JSON</Label>
@@ -241,24 +321,40 @@ export default function IntegrationsPage() {
               onChange={(event) => setConfigJson(event.target.value)}
               spellCheck={false}
             />
-            <p className="mt-1 text-xs text-fg-muted">Repository, project, organization, or adapter-specific options.</p>
-            {sourceControlHelp && <p className="mt-1 text-xs text-fg-muted">Example: {sourceControlHelp.config}</p>}
+            <p className="mt-1 text-xs text-fg-muted">
+              Repository, project, organization, or adapter-specific options.
+            </p>
+            {integrationHelp && (
+              <p className="mt-1 text-xs text-fg-muted">
+                Example: {integrationHelp.config}
+              </p>
+            )}
           </div>
         </div>
         {selectedKind && selectedKind.capabilities.length > 0 && (
           <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Available capabilities</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+              Available capabilities
+            </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {selectedKind.capabilities.map((capability) => (
-                <span key={capability.action} className="rounded-full border border-border-subtle px-2 py-1 text-xs text-fg-secondary">
-                  {capability.action}{capability.mutating ? " · approval-gated write" : " · read"}
+                <span
+                  key={capability.action}
+                  className="rounded-full border border-border-subtle px-2 py-1 text-xs text-fg-secondary"
+                >
+                  {capability.action}
+                  {capability.mutating ? " · approval-gated write" : " · read"}
                 </span>
               ))}
             </div>
           </div>
         )}
         <label className="flex items-center gap-2 text-sm text-fg-secondary">
-          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(event) => setEnabled(event.target.checked)}
+          />
           Enabled for operator use and tier-governed agent tools
         </label>
         <Button onClick={save} loading={busy} disabled={!name || !kind}>
@@ -266,35 +362,78 @@ export default function IntegrationsPage() {
         </Button>
       </section>
 
-      {notice && <p className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">{notice}</p>}
+      {notice && (
+        <p className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+          {notice}
+        </p>
+      )}
 
       <section className="space-y-3">
-        <h2 className="font-semibold text-fg-primary">Configured integrations</h2>
+        <h2 className="font-semibold text-fg-primary">
+          Configured integrations
+        </h2>
         {connectors.length === 0 && (
           <div className="rounded-xl border border-dashed border-border-subtle p-8 text-center text-sm text-fg-muted">
             No integrations configured yet.
           </div>
         )}
         {connectors.map((connector) => (
-          <article key={connector.id} className="rounded-xl border border-border-subtle bg-bg-panel p-5">
+          <article
+            key={connector.id}
+            className="rounded-xl border border-border-subtle bg-bg-panel p-5"
+          >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-fg-primary">{connector.name}</h3>
-                  <span className="rounded-full border border-border-subtle px-2 py-0.5 text-xs text-fg-secondary">{connector.kind}</span>
-                  <span className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(connector.status)}`}>{connector.status}</span>
+                  <h3 className="font-semibold text-fg-primary">
+                    {connector.name}
+                  </h3>
+                  <span className="rounded-full border border-border-subtle px-2 py-0.5 text-xs text-fg-secondary">
+                    {connector.kind}
+                  </span>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(connector.status)}`}
+                  >
+                    {connector.status}
+                  </span>
                 </div>
-                <p className="mt-1 text-sm text-fg-secondary">{connector.base_url || "Provider default endpoint"}</p>
-                <p className="mt-1 text-xs text-fg-muted">
-                  {connector.has_auth ? `Credentials configured (${connector.auth_keys.join(", ") || "encrypted"})` : "No credentials stored"}
-                  {connector.last_checked_at ? ` · checked ${new Date(connector.last_checked_at).toLocaleString()}` : ""}
+                <p className="mt-1 text-sm text-fg-secondary">
+                  {connector.base_url || "Provider default endpoint"}
                 </p>
-                {connector.last_error && <p className="mt-1 text-xs text-status-critical">{connector.last_error}</p>}
+                <p className="mt-1 text-xs text-fg-muted">
+                  {connector.has_auth
+                    ? `Credentials configured (${connector.auth_keys.join(", ") || "encrypted"})`
+                    : "No credentials stored"}
+                  {connector.last_checked_at
+                    ? ` · checked ${new Date(connector.last_checked_at).toLocaleString()}`
+                    : ""}
+                </p>
+                {connector.last_error && (
+                  <p className="mt-1 text-xs text-status-critical">
+                    {connector.last_error}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={() => test(connector)}>Test</Button>
-                <Button size="sm" variant="secondary" onClick={() => beginEdit(connector)}>Edit</Button>
-                <Button size="sm" variant="secondary" onClick={() => toggle(connector)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => test(connector)}
+                >
+                  Test
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => beginEdit(connector)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => toggle(connector)}
+                >
                   {connector.is_enabled ? "Disable" : "Enable"}
                 </Button>
                 <Button

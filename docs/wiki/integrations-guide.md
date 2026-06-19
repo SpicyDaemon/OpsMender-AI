@@ -50,6 +50,62 @@ merge-request create/merge, and commit/merge-request links to incidents.
 PR/MR merge capabilities always require explicit Operator Approval regardless
 of the workspace's autonomous tier.
 
+### Bitbucket
+
+- Cloud: leave the base URL blank; use
+  `{"email":"admin@example.com","api_token":"..."}` and
+  `{"workspace":"acme","repo":"service"}`.
+- Data Center: enter the instance URL and use
+  `{"edition":"data_center","project":"OPS","repo":"service"}`.
+
+Capabilities cover repository/file reads and pull-request create/merge. The
+Cloud edition also supports issue list/create. Merge always requires approval.
+
+### Azure DevOps
+
+- Services: leave the base URL blank and configure
+  `{"organization":"acme","project":"Operations","repository":"service"}`.
+- Server: enter the collection base URL.
+- PAT credentials: `{"token":"..."}`; OAuth:
+  `{"access_token":"..."}`.
+
+Capabilities cover Repos repository/file and pull-request workflows plus
+Boards work-item read/create/update. Pull-request completion always requires
+approval.
+
+### Jira and Confluence
+
+Enter the Cloud site or on-premises instance URL. Cloud API-token credentials
+use `{"email":"admin@example.com","api_token":"..."}`; OAuth uses
+`{"access_token":"..."}`. Set `{"edition":"on_prem"}` for an on-premises
+edition.
+
+- Jira config commonly includes `{"project_key":"OPS","issue_type":"Task"}`.
+  It can read/create/comment on issues and list/apply transitions.
+- Confluence config uses `{"space_id":"..."}`. It can read runbooks and
+  create/update postmortem pages.
+
+### ServiceNow
+
+Enter the instance URL and configure a table such as
+`{"table":"incident"}`. Basic credentials are
+`{"username":"...","password":"..."}`; OAuth uses an access token.
+Capabilities read, create, and update Table API records. Wave 1 does not
+perform continuous state synchronization.
+
+### Linear
+
+Use `{"api_key":"..."}` and optionally configure
+`{"team_id":"..."}`. OAuth access tokens are also supported. Capabilities
+read/list/create/update issues through Linear's GraphQL API.
+
+### Notion
+
+Use `{"api_key":"..."}` for an integration token or an OAuth access token.
+Configure a default parent with `{"parent_page_id":"..."}`. Capabilities read
+page markdown, create pages, and append document content using Notion API
+version `2026-03-11`.
+
 ## 2. Incident Ingest Adapters
 
 OpsMender provides inbound alert intake for monitoring tools. In v1, the legacy `/incidents/ingest` token backend remains available, but the product concept is moving toward **Service Webhooks**: each service exposes a unique alert URL with an embedded unguessable secret so external monitors can POST directly without separate API-key headers.

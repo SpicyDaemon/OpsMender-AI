@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Repository, tracker, ITSM, and documentation integration breadth.** Added
+  native adapters for Bitbucket Cloud/Data Center, Azure DevOps Repos/Boards,
+  Jira Cloud/on-premises, Confluence Cloud/on-premises, ServiceNow, Linear,
+  and Notion. Capabilities include repository/file reads, PR workflows,
+  work-item and issue creation/updates/transitions/comments, record
+  create/update, and runbook/postmortem reads and writes. Azure DevOps and
+  Bitbucket merge actions always require operator approval.
 - **GitHub and GitLab source-control integrations.** Added encrypted PAT,
   OAuth, and GitHub App authentication; hosted/self-managed API base URLs;
   repository/file reads; issue listing, creation, and comments; PR/MR creation

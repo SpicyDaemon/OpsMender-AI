@@ -74,6 +74,11 @@ Integration actions reuse the normal Safety Tier, Skill Gate, Operator
 Approval, and Tool Activity audit path. State-changing actions are not a bypass
 around MCP governance.
 
+Native connector coverage includes GitHub, GitLab, Bitbucket, Azure DevOps,
+Jira, Confluence, ServiceNow, Linear, and Notion. Provider-specific setup
+examples appear directly below the base URL, credentials, and configuration
+fields. Repository merges are always routed through Operator Approval.
+
 ## 6. Notification Channels
 
 Workspace-level notification channels are managed under **Paging & On-call** > **Notification Channels**.

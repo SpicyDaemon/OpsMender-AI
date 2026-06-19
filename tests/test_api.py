@@ -534,9 +534,7 @@ class TestSessionDuration:
             await db.commit()
             user_id, role = user.id, user.role
 
-        token = create_access_token(
-            user_id, role, expires_delta=timedelta(days=6)
-        )
+        token = create_access_token(user_id, role, expires_delta=timedelta(days=6))
         resp = await client.get(
             "/auth/me", headers={"Authorization": f"Bearer {token}"}
         )
@@ -560,9 +558,7 @@ class TestSessionDuration:
             await db.commit()
             user_id, role = user.id, user.role
 
-        token = create_access_token(
-            user_id, role, expires_delta=timedelta(seconds=-1)
-        )
+        token = create_access_token(user_id, role, expires_delta=timedelta(seconds=-1))
         resp = await client.get(
             "/auth/me", headers={"Authorization": f"Bearer {token}"}
         )
@@ -1178,9 +1174,7 @@ class TestIncidents:
         assert resp.status_code == 204, resp.text
 
         async with app.state.session_factory() as db:
-            assert (
-                await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
-            ) is None
+            assert (await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)) is None
 
     async def test_delete_incident_removes_session_history_and_detaches_ingest_log(
         self, client: AsyncClient, app, auth_headers
@@ -1253,18 +1247,19 @@ class TestIncidents:
         assert resp.status_code == 204, resp.text
 
         async with app.state.session_factory() as db:
-            assert await SessionRepo.get_by_id(
-                db, TEST_ORG_ID, ids["session"]
-            ) is None
-            assert await AuditEntryRepo.list_by_session(
-                db, TEST_ORG_ID, ids["session"]
-            ) == []
-            assert await ApprovalRequestRepo.get_by_id(
-                db, TEST_ORG_ID, ids["approval"]
-            ) is None
-            assert await SessionMessageRepo.get_by_id(
-                db, TEST_ORG_ID, ids["message"]
-            ) is None
+            assert await SessionRepo.get_by_id(db, TEST_ORG_ID, ids["session"]) is None
+            assert (
+                await AuditEntryRepo.list_by_session(db, TEST_ORG_ID, ids["session"])
+                == []
+            )
+            assert (
+                await ApprovalRequestRepo.get_by_id(db, TEST_ORG_ID, ids["approval"])
+                is None
+            )
+            assert (
+                await SessionMessageRepo.get_by_id(db, TEST_ORG_ID, ids["message"])
+                is None
+            )
             logs = await IngestLogRepo.list_recent(db, TEST_ORG_ID)
             retained = next(row for row in logs if row.id == ids["ingest_log"])
             assert retained.incident_id is None
@@ -1324,9 +1319,7 @@ class TestIncidents:
         )
         assert operator_resp.status_code == 403
 
-    async def test_delete_incident_returns_404(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_delete_incident_returns_404(self, client: AsyncClient, auth_headers):
         resp = await client.delete(
             f"/incidents/{uuid.uuid4()}",
             headers=auth_headers,
@@ -1673,7 +1666,9 @@ class TestIncidents:
             session_create_calls += 1
             return await original_session_create(*args, **kwargs)
 
-        monkeypatch.setattr(SessionRepo, "create", staticmethod(_counting_session_create))
+        monkeypatch.setattr(
+            SessionRepo, "create", staticmethod(_counting_session_create)
+        )
 
         service = await _seed_manual_incident_service(app, "Resolve")
         create_resp = await client.post(
@@ -1833,9 +1828,7 @@ class TestIncidents:
             old = await SessionRepo.create(
                 db, TEST_ORG_ID, tier=0, incident_id=incident_id
             )
-            await SessionRepo.set_status(
-                db, TEST_ORG_ID, old.id, status="failed"
-            )
+            await SessionRepo.set_status(db, TEST_ORG_ID, old.id, status="failed")
             active = await SessionRepo.create(
                 db, TEST_ORG_ID, tier=0, incident_id=incident_id
             )
@@ -1851,9 +1844,7 @@ class TestIncidents:
 
         # When no session is in progress, the latest status is reported.
         async with app.state.session_factory() as db:
-            await SessionRepo.set_status(
-                db, TEST_ORG_ID, active.id, status="completed"
-            )
+            await SessionRepo.set_status(db, TEST_ORG_ID, active.id, status="completed")
             await db.commit()
 
         data = (await client.get("/incidents", headers=auth_headers)).json()
@@ -2367,9 +2358,7 @@ class TestIncidents:
 class TestIncidentPostmortem:
     """Sprint 61 Step 4 — GET / PUT /incidents/{id}/postmortem."""
 
-    async def _create_incident(
-        self, client: AsyncClient, auth_headers
-    ) -> str:
+    async def _create_incident(self, client: AsyncClient, auth_headers) -> str:
         service_id = await _create_manual_service_via_api(
             client, auth_headers, "Postmortem"
         )
@@ -2504,9 +2493,7 @@ class TestIncidentPostmortem:
         assert "Alert on disk > 80% for the primary." in titles
         assert "Vacuum the audit table weekly." in titles
 
-    async def test_candidates_are_idempotent(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_candidates_are_idempotent(self, client: AsyncClient, auth_headers):
         incident_id = await self._create_incident(client, auth_headers)
         await client.put(
             f"/incidents/{incident_id}/postmortem",
@@ -2579,9 +2566,7 @@ class TestIncidentComments:
         assert listed.status_code == 200
         assert listed.json()["total"] == 1
 
-    async def test_comment_appears_on_timeline(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_comment_appears_on_timeline(self, client: AsyncClient, auth_headers):
         incident_id = await self._create_incident(client, auth_headers)
         await client.post(
             f"/incidents/{incident_id}/comments",
@@ -2592,9 +2577,7 @@ class TestIncidentComments:
             f"/incidents/{incident_id}/timeline", headers=auth_headers
         )
         assert timeline.status_code == 200
-        comment_items = [
-            i for i in timeline.json()["items"] if i["lane"] == "comment"
-        ]
+        comment_items = [i for i in timeline.json()["items"] if i["lane"] == "comment"]
         assert len(comment_items) == 1
         assert comment_items[0]["body"] == "Investigating the spike."
 
@@ -2655,7 +2638,10 @@ class TestIncidentAutoStartPolicy:
                     is_default=True,
                 )
             team = await TeamRepo.create(
-                db, TEST_ORG_ID, name=f"t-{uuid.uuid4().hex[:6]}", slug=f"t-{uuid.uuid4().hex[:6]}"
+                db,
+                TEST_ORG_ID,
+                name=f"t-{uuid.uuid4().hex[:6]}",
+                slug=f"t-{uuid.uuid4().hex[:6]}",
             )
             service = await ServiceRepo.create(
                 db,
@@ -2684,7 +2670,11 @@ class TestIncidentAutoStartPolicy:
     async def _create(self, client, auth_headers, service_id: str):
         return await client.post(
             "/incidents",
-            json={"title": "auto-start test", "description": "x", "service_id": service_id},
+            json={
+                "title": "auto-start test",
+                "description": "x",
+                "service_id": service_id,
+            },
             headers=auth_headers,
         )
 
@@ -2744,9 +2734,7 @@ class TestIncidentAutoStartPolicy:
         assert "Start the AI session" in body["auto_start_message"]
         assert scheduled == []  # ACK never auto-starts
 
-    async def test_viewer_cannot_ack(
-        self, client, app, auth_headers, viewer_headers
-    ):
+    async def test_viewer_cannot_ack(self, client, app, auth_headers, viewer_headers):
         service_id = await self._seed_service(app)
         created = await self._create(client, auth_headers, service_id)
         incident_id = created.json()["id"]
@@ -2824,9 +2812,7 @@ class TestIncidentBulkActions:
     async def _seed_incidents(
         self, client: AsyncClient, auth_headers, count: int
     ) -> list[str]:
-        service_id = await _create_manual_service_via_api(
-            client, auth_headers, "Bulk"
-        )
+        service_id = await _create_manual_service_via_api(client, auth_headers, "Bulk")
         ids: list[str] = []
         for i in range(count):
             resp = await client.post(
@@ -2920,9 +2906,7 @@ class TestIncidentBulkActions:
         )
         assert resp.status_code == 409
         async with app.state.session_factory() as db:
-            first = await IncidentRepo.get_by_id(
-                db, TEST_ORG_ID, uuid.UUID(ids[0])
-            )
+            first = await IncidentRepo.get_by_id(db, TEST_ORG_ID, uuid.UUID(ids[0]))
             assert first.status == "open"
 
     async def test_bulk_reopen_requires_all_resolved(
@@ -2952,9 +2936,7 @@ class TestIncidentBulkActions:
         self, client: AsyncClient, auth_headers, app
     ):
         operator_headers = await self._operator_headers(app)
-        same_service_ids = await self._seed_incidents(
-            client, auth_headers, count=2
-        )
+        same_service_ids = await self._seed_incidents(client, auth_headers, count=2)
         allowed = await client.post(
             "/incidents/bulk",
             json={"action": "resolve", "incident_ids": same_service_ids},
@@ -3009,9 +2991,7 @@ class TestIncidentBulkActions:
         )
         assert resp.status_code == 400
 
-    async def test_bulk_rejects_unknown_action(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_bulk_rejects_unknown_action(self, client: AsyncClient, auth_headers):
         ids = await self._seed_incidents(client, auth_headers, count=1)
         resp = await client.post(
             "/incidents/bulk",
@@ -3021,9 +3001,7 @@ class TestIncidentBulkActions:
         # Pydantic enum-pattern validation rejects → 422.
         assert resp.status_code in (400, 422)
 
-    async def test_bulk_caps_at_200_ids(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_bulk_caps_at_200_ids(self, client: AsyncClient, auth_headers):
         ids = [str(uuid.uuid4()) for _ in range(201)]
         resp = await client.post(
             "/incidents/bulk",
@@ -3204,15 +3182,20 @@ class TestSessions:
     ):
         # Two sessions; both start as "active".
         await client.post(
-            "/sessions", json={"tier": 2}, headers=auth_headers,
+            "/sessions",
+            json={"tier": 2},
+            headers=auth_headers,
         )
         await client.post(
-            "/sessions", json={"tier": 2}, headers=auth_headers,
+            "/sessions",
+            json={"tier": 2},
+            headers=auth_headers,
         )
 
         # status_filter=active should return both.
         active = await client.get(
-            "/sessions?status_filter=active", headers=auth_headers,
+            "/sessions?status_filter=active",
+            headers=auth_headers,
         )
         assert active.status_code == 200
         assert active.json()["total"] >= 2
@@ -3221,7 +3204,8 @@ class TestSessions:
 
         # status_filter=failed should return none of them.
         failed = await client.get(
-            "/sessions?status_filter=failed", headers=auth_headers,
+            "/sessions?status_filter=failed",
+            headers=auth_headers,
         )
         assert failed.status_code == 200
         for item in failed.json()["items"]:
@@ -3586,9 +3570,7 @@ class TestIncidentMemoryAPI:
                 role="operator",
             )
             operator.primary_org_id = TEST_ORG_ID
-            await TeamRepo.add_member(
-                db, TEST_ORG_ID, team_id, user_id=operator.id
-            )
+            await TeamRepo.add_member(db, TEST_ORG_ID, team_id, user_id=operator.id)
             await db.commit()
         token = create_access_token(operator.id, operator.role)
         return {"Authorization": f"Bearer {token}"}
@@ -3625,9 +3607,7 @@ class TestIncidentMemoryAPI:
         assert "is_hidden" not in body
 
         memory_id = body["id"]
-        get_resp = await client.get(
-            f"/memories/{memory_id}", headers=auth_headers
-        )
+        get_resp = await client.get(f"/memories/{memory_id}", headers=auth_headers)
         assert get_resp.status_code == 200
         assert get_resp.json()["id"] == memory_id
 
@@ -3668,9 +3648,7 @@ class TestIncidentMemoryAPI:
         titles = {m["title"] for m in resp.json()["items"]}
         assert titles == {"A1"}
 
-    async def test_update_changes_fields(
-        self, client: AsyncClient, auth_headers, app
-    ):
+    async def test_update_changes_fields(self, client: AsyncClient, auth_headers, app):
         service_id = await self._seed_service(app)
         create = await client.post(
             "/memories",
@@ -3748,30 +3726,22 @@ class TestIncidentMemoryAPI:
         memory_id = create.json()["id"]
 
         # Viewer denied.
-        resp = await client.delete(
-            f"/memories/{memory_id}", headers=viewer_headers
-        )
+        resp = await client.delete(f"/memories/{memory_id}", headers=viewer_headers)
         assert resp.status_code in {401, 403}
 
         # Admin succeeds with 204.
-        resp = await client.delete(
-            f"/memories/{memory_id}", headers=auth_headers
-        )
+        resp = await client.delete(f"/memories/{memory_id}", headers=auth_headers)
         assert resp.status_code == 204
 
         # 404 on subsequent GET.
-        get_resp = await client.get(
-            f"/memories/{memory_id}", headers=auth_headers
-        )
+        get_resp = await client.get(f"/memories/{memory_id}", headers=auth_headers)
         assert get_resp.status_code == 404
 
     async def test_operator_can_edit_and_delete_own_team_memory(
         self, client: AsyncClient, auth_headers, app
     ):
         team_id, service_id = await self._seed_team_service(app)
-        operator_headers = await self._operator_headers_for_team(
-            client, app, team_id
-        )
+        operator_headers = await self._operator_headers_for_team(client, app, team_id)
         created = await client.post(
             "/memories",
             headers=auth_headers,
@@ -3856,9 +3826,7 @@ class TestIncidentMemoryAPI:
                 )
             ).status_code == 403
             assert (
-                await client.delete(
-                    f"/memories/{memory_id}", headers=operator_headers
-                )
+                await client.delete(f"/memories/{memory_id}", headers=operator_headers)
             ).status_code == 403
 
     async def test_bulk_delete_is_atomic_and_team_scoped(
@@ -3866,9 +3834,7 @@ class TestIncidentMemoryAPI:
     ):
         team_id, service_id = await self._seed_team_service(app)
         _, other_service_id = await self._seed_team_service(app)
-        operator_headers = await self._operator_headers_for_team(
-            client, app, team_id
-        )
+        operator_headers = await self._operator_headers_for_team(client, app, team_id)
         own_ids = []
         for title in ("one", "two"):
             created = await client.post(
@@ -3912,9 +3878,7 @@ class TestIncidentMemoryAPI:
         resp = await client.get("/memories")
         assert resp.status_code in {401, 403}
 
-    async def test_session_memories_used(
-        self, client: AsyncClient, auth_headers, app
-    ):
+    async def test_session_memories_used(self, client: AsyncClient, auth_headers, app):
         from backend.db.repos import (
             IncidentMemoryRecallLogRepo,
             IncidentMemoryRepo,
@@ -4001,7 +3965,9 @@ class TestRetentionAPI:
         # Storage panel includes memories as non-prunable.
         storage_categories = {s["category"] for s in body["storage"]}
         assert "incident_memories" in storage_categories
-        mem_row = next(s for s in body["storage"] if s["category"] == "incident_memories")
+        mem_row = next(
+            s for s in body["storage"] if s["category"] == "incident_memories"
+        )
         assert mem_row["non_prunable"] is True
 
     async def test_put_persists_per_category_ttl(
@@ -4037,9 +4003,7 @@ class TestRetentionAPI:
         )
         assert resp.status_code == 400
 
-    async def test_put_rejects_zero_ttl(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_put_rejects_zero_ttl(self, client: AsyncClient, auth_headers):
         resp = await client.put(
             "/retention",
             headers=auth_headers,
@@ -4072,9 +4036,7 @@ class TestRetentionAPI:
 
 
 class TestSetupChecklist:
-    async def test_fresh_org_has_all_false(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_fresh_org_has_all_false(self, client: AsyncClient, auth_headers):
         resp = await client.get("/config/setup-checklist", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
@@ -4109,9 +4071,7 @@ class TestSetupChecklist:
         assert data["all_complete"] is False
 
     async def test_viewer_can_read(self, client: AsyncClient, viewer_headers):
-        resp = await client.get(
-            "/config/setup-checklist", headers=viewer_headers
-        )
+        resp = await client.get("/config/setup-checklist", headers=viewer_headers)
         assert resp.status_code == 200
 
     async def test_unauthenticated_rejected(self, client: AsyncClient):
@@ -4174,9 +4134,7 @@ class TestIntegrationConnectors:
         assert updated.json()["status"] == "disabled"
         assert updated.json()["has_auth"] is True
 
-        forbidden = await client.get(
-            "/integrations", headers=viewer_headers
-        )
+        forbidden = await client.get("/integrations", headers=viewer_headers)
         assert forbidden.status_code == 403
 
         deleted = await client.delete(
@@ -4208,6 +4166,27 @@ class TestIntegrationConnectors:
         assert "merge_merge_request" in {
             item["action"] for item in gitlab["capabilities"]
         }
+        phase_four = {
+            item["kind"]: item
+            for item in kinds.json()["items"]
+            if item["kind"]
+            in {
+                "bitbucket",
+                "azure_devops",
+                "jira",
+                "confluence",
+                "servicenow",
+                "linear",
+                "notion",
+            }
+        }
+        assert len(phase_four) == 7
+        assert all(item["adapter_available"] for item in phase_four.values())
+        assert any(
+            capability["always_requires_approval"]
+            for capability in phase_four["bitbucket"]["capabilities"]
+            if capability["action"] == "merge_pull_request"
+        )
 
         created = await client.post(
             "/integrations",
@@ -4228,7 +4207,9 @@ class TestIntegrationConnectors:
         class FakeAdapter:
             async def safe_invoke(self, action, connector, auth, parameters=None):
                 assert action == "test_connection"
-                return IntegrationResult.success(detail="Mock provider accepted credentials.")
+                return IntegrationResult.success(
+                    detail="Mock provider accepted credentials."
+                )
 
         monkeypatch.setattr(
             "backend.api.routes.integrations.get_adapter",
@@ -4373,9 +4354,7 @@ class TestReportsAndEmail:
         assert test_resp.status_code == 200
         assert test_resp.json()["success"] is True
 
-    async def test_report_schedule_crud(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_report_schedule_crud(self, client: AsyncClient, auth_headers):
         create = await client.post(
             "/reports/schedules",
             json={
@@ -4459,9 +4438,7 @@ class TestWorkflowProfiles:
     async def test_list_session_profile_templates(
         self, client: AsyncClient, auth_headers
     ):
-        resp = await client.get(
-            "/workflow-profiles/templates", headers=auth_headers
-        )
+        resp = await client.get("/workflow-profiles/templates", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.json()
         keys = {t["key"] for t in body["items"]}
@@ -4484,9 +4461,7 @@ class TestWorkflowProfiles:
         templates = (
             await client.get("/workflow-profiles/templates", headers=auth_headers)
         ).json()["items"]
-        tmpl = next(
-            t for t in templates if t["key"] == "read_only_investigation"
-        )
+        tmpl = next(t for t in templates if t["key"] == "read_only_investigation")
         # A template's node order must save cleanly as a real profile.
         resp = await client.post(
             "/workflow-profiles",
@@ -6926,7 +6901,9 @@ class TestMCPServerAPI:
             assert refreshed.last_successful_call_at is None
             assert refreshed.last_error == "connection refused"
 
-    async def test_list_mcp_server_statuses(self, client: AsyncClient, app, auth_headers):
+    async def test_list_mcp_server_statuses(
+        self, client: AsyncClient, app, auth_headers
+    ):
         async with app.state.session_factory() as db:
             healthy = await MCPServerRepo.create(
                 db,
@@ -7422,9 +7399,7 @@ class TestIncidentCombine:
                 inc = await IncidentRepo.get_by_id(db, TEST_ORG_ID, uuid.UUID(sid))
                 assert inc.status == "merged"
                 assert str(inc.merged_into_incident_id) == primary
-            running_after = await SessionRepo.get_by_id(
-                db, TEST_ORG_ID, running.id
-            )
+            running_after = await SessionRepo.get_by_id(db, TEST_ORG_ID, running.id)
             assert running_after.status == "stopped"
 
         # The moved comment + two system notes + the operator note live on primary.
@@ -7663,9 +7638,7 @@ class TestNotificationEventHooks:
         assert item["link"] == f"/dashboard/incidents/{inc_id}"
         assert item["incident_id"] == str(inc_id)
 
-    async def test_self_ack_is_silent(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_self_ack_is_silent(self, client: AsyncClient, app, auth_headers):
         inc_id = await self._seed_incident(app)
         # admin assigns themselves → no self-notification
         r = await client.post(
@@ -7733,9 +7706,7 @@ class TestNotificationMentions:
         assert items[0]["category"] == "mention"
         assert items[0]["link"] == f"/dashboard/incidents/{inc_id}"
 
-    async def test_no_self_mention(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_no_self_mention(self, client: AsyncClient, app, auth_headers):
         from backend.db.repos import IncidentRepo
 
         async with app.state.session_factory() as db:

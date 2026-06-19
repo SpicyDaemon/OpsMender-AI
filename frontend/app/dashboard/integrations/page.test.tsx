@@ -77,6 +77,22 @@ beforeEach(() => {
           },
         ],
       },
+      {
+        kind: "azure_devops",
+        label: "Azure DevOps",
+        supports_base_url: true,
+        auth_types: ["pat", "oauth"],
+        adapter_available: true,
+        capabilities: [
+          {
+            action: "create_work_item",
+            description: "Create work item",
+            classification: "caution",
+            mutating: true,
+            always_requires_approval: false,
+          },
+        ],
+      },
     ],
     total: 2,
   });
@@ -121,7 +137,9 @@ describe("Integrations page", () => {
     fireEvent.change(screen.getByLabelText("Configuration JSON"), {
       target: { value: '{"health_path":"/ready"}' },
     });
-    await user.click(screen.getByRole("button", { name: "Create integration" }));
+    await user.click(
+      screen.getByRole("button", { name: "Create integration" }),
+    );
     await waitFor(() =>
       expect(apiMocks.createIntegrationConnector).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -139,8 +157,26 @@ describe("Integrations page", () => {
     render(<IntegrationsPage />);
     await screen.findByRole("heading", { name: "Add integration" });
     await user.selectOptions(screen.getByLabelText("Kind"), "github");
-    expect(screen.getByText(/Hosted default: https:\/\/api.github.com/)).toBeTruthy();
+    expect(
+      screen.getByText(/Hosted default: https:\/\/api.github.com/),
+    ).toBeTruthy();
     expect(screen.getByText(/App: \{"app_id"/)).toBeTruthy();
-    expect(screen.getByText(/create_pull_request · approval-gated write/)).toBeTruthy();
+    expect(
+      screen.getByText(/create_pull_request · approval-gated write/),
+    ).toBeTruthy();
+  });
+
+  it("shows provider-specific setup guidance for phase-four adapters", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    await screen.findByRole("heading", { name: "Add integration" });
+    await user.selectOptions(screen.getByLabelText("Kind"), "azure_devops");
+    expect(
+      screen.getByText(/collection URL for a self-hosted deployment/),
+    ).toBeTruthy();
+    expect(screen.getByText(/"organization":"acme"/)).toBeTruthy();
+    expect(
+      screen.getByText(/create_work_item · approval-gated write/),
+    ).toBeTruthy();
   });
 });

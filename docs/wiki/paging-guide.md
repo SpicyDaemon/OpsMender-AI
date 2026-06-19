@@ -6,7 +6,8 @@ This is the v1 guide to OpsMender's paging and on-call surface. The product mode
 - Teams own services and escalation chains.
 - Rosters define who is on call for coverage windows.
 - Maintenance windows drop matching alerts during planned work.
-- Notifications covers operator delivery, viewer updates, quiet hours, routing by priority, and chat sessions.
+- Notifications covers operator delivery, quiet hours, routing by priority, and
+  chat sessions. Stakeholder updates are delivered through incident reports.
 
 If you only want a one-line summary: create a Team, create its Escalation Chain, add a Service with an intake endpoint, attach a Roster schedule, then configure Notifications.
 
@@ -169,7 +170,8 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 4. Copy the service intake URL and configure your monitor to POST alerts to it.
 5. Create one or more roster schedules at `/dashboard/paging/rosters`.
 6. Add maintenance windows for planned work at `/dashboard/paging/maintenance-windows`.
-7. Configure operator delivery, viewer updates, quiet hours, routing, and chat behavior at `/dashboard/paging/notifications`.
+7. Configure operator delivery, quiet hours, routing, and chat behavior at
+   `/dashboard/paging/notifications`.
 8. Fire a synthetic alert and confirm incident creation, operator routing, and
    notification flow. An AI session **auto-starts immediately** when the resolved
    autonomy tier is **T0**; for **T1/T2** the session starts after an

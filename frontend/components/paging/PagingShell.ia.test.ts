@@ -62,6 +62,7 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain("Routing Summary");
     expect(pagingShellSource).toContain("Notification Channels");
     expect(pagingShellSource).not.toContain("Viewer Notifications");
+    expect(pagingShellSource).not.toContain("viewer updates");
     expect(pagingShellSource).not.toContain("Outbound Hooks");
     // Routing Summary is read-only and explains the derivation + defers
     // editable team routing to v1.1.

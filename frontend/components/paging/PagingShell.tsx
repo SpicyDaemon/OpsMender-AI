@@ -187,7 +187,7 @@ export const TABS: {
   {
     id: "notifications",
     label: "Notifications",
-    description: "Operator delivery, viewer updates, quiet hours, routing, and chat sessions.",
+    description: "Operator delivery, quiet hours, routing, and chat sessions.",
     icon: Bell,
   },
 ];

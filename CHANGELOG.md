@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Removed stale Viewer Notifications wording from the Paging & On-call
+  Notifications subtitle and operator documentation. Stakeholder communication
+  remains report-based; the Notifications surface keeps its existing name.
+
 ### Added
 
 - **Wave 2 Phase 1 — ITSM/support integrations.** Added native Zendesk,

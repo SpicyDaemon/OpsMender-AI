@@ -6,6 +6,8 @@ import Link from "next/link";
 import { ArrowLeft, ServerCrash, ShieldAlert, CalendarX, Plus, Trash2, Pencil, ExternalLink, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { createIncident } from "@/lib/api";
+import { useToast } from "@/components/ui/Toast";
 import { SLOModal } from "@/components/reliability/SLOModal";
 import { UptimeStrip } from "@/components/reliability/UptimeStrip";
 import { UptimeBarChart } from "@/components/reliability/UptimeBarChart";
@@ -36,14 +38,6 @@ import type {
   ResponseTimeResponse,
   SLORecommendation,
 } from "@/lib/types";
-
-/** One short, non-wordy next step per severity for the recommendation pill. */
-function briefRecommendation(rec: SLORecommendation): string {
-  return rec.severity === "critical"
-    ? "Open an incident to coordinate the response."
-    : "Review recent deploys and monitor closely.";
-}
-
 export default function TargetDetailPage() {
   return (
     <Suspense fallback={<div className="p-8 text-center text-fg-muted">Loading target…</div>}>
@@ -78,6 +72,7 @@ function TargetDetailContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") || "";
   const router = useRouter();
+  const toast = useToast();
 
   const [target, setTarget] = useState<SLATargetResponse | null>(null);
   const [last24, setLast24] = useState<Uptime>(null);
@@ -95,6 +90,7 @@ function TargetDetailContent() {
   const [customUptime, setCustomUptime] = useState<Uptime>(null);
   const [slos, setSlos] = useState<(SLOResponse & { status: SLOStatusResponse | null })[]>([]);
   const [recommendations, setRecommendations] = useState<SLORecommendation[]>([]);
+  const [creatingFor, setCreatingFor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<string | null>(null);
@@ -180,6 +176,34 @@ function TargetDetailContent() {
       setCustomUptime(await getSLATargetUptime(id, "30d", { start, end }));
     } catch {
       setCustomUptime(null);
+    }
+  }
+
+  // Open a P0 (critical → P0) incident in the SLO's owning service straight
+  // from the recommendation pill, then jump to the new incident.
+  async function createIncidentFromRec(rec: SLORecommendation) {
+    const serviceId = rec.service_id ?? target?.service_id ?? undefined;
+    setCreatingFor(rec.slo_id);
+    try {
+      const result = await createIncident({
+        title: `SLO breach: ${rec.slo_name}`,
+        description:
+          `${rec.target_name} SLO "${rec.slo_name}" is breaching its ` +
+          `${formatUptimePct(rec.objective_pct)} objective ` +
+          `(actual ${formatUptimePct(rec.actual_pct)}). ` +
+          `Opened from the Reliability detail page.`,
+        severity: "critical",
+        service_id: serviceId,
+      });
+      toast.success("P0 incident created.", {
+        label: "Open incident",
+        href: `/dashboard/incidents/detail?id=${result.id}`,
+      });
+      router.push(`/dashboard/incidents/detail?id=${result.id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create incident");
+    } finally {
+      setCreatingFor(null);
     }
   }
 
@@ -278,8 +302,20 @@ function TargetDetailContent() {
                     {rec.slo_name}: {formatUptimePct(rec.actual_pct)} vs{" "}
                     {formatUptimePct(rec.objective_pct)} objective.
                   </span>
-                  <span className="text-fg-primary">{briefRecommendation(rec)}</span>
-                  <span className="text-fg-muted">· advisory only</span>
+                  {rec.service_id || target?.service_id ? (
+                    <span className="text-fg-secondary">
+                      Click{" "}
+                      <button
+                        type="button"
+                        onClick={() => void createIncidentFromRec(rec)}
+                        disabled={creatingFor !== null}
+                        className="font-medium text-accent underline hover:no-underline disabled:opacity-50 disabled:no-underline"
+                      >
+                        {creatingFor === rec.slo_id ? "creating…" : "here"}
+                      </button>{" "}
+                      to create a P0 incident.
+                    </span>
+                  ) : null}
                 </div>
               );
             })

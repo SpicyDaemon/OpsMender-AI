@@ -45,6 +45,8 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   DevOps, Jira, Confluence, ServiceNow, Linear, and Notion provide typed
   repository, PR, ticket, record, and document capabilities with encrypted
   auth, self-hosted API URLs where applicable, and approval-locked merges.
+- **CI/CD integrations** — Jenkins, CircleCI, and Azure Pipelines expose build,
+  job, pipeline, and run status while triggers remain approval-gated.
 - **Kubernetes context and remediation** — encrypted API access for pods,
   events, logs, and deployments; rollout restarts and pod deletion remain
   approval-gated.

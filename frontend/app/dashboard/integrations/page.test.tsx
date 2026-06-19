@@ -93,6 +93,22 @@ beforeEach(() => {
           },
         ],
       },
+      {
+        kind: "jenkins",
+        label: "Jenkins",
+        supports_base_url: true,
+        auth_types: ["basic", "pat"],
+        adapter_available: true,
+        capabilities: [
+          {
+            action: "trigger_build",
+            description: "Trigger build",
+            classification: "caution",
+            mutating: true,
+            always_requires_approval: false,
+          },
+        ],
+      },
     ],
     total: 2,
   });
@@ -177,6 +193,19 @@ describe("Integrations page", () => {
     expect(screen.getByText(/"organization":"acme"/)).toBeTruthy();
     expect(
       screen.getByText(/create_work_item · approval-gated write/),
+    ).toBeTruthy();
+  });
+
+  it("shows CI/CD authentication and project guidance", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    await screen.findByRole("heading", { name: "Add integration" });
+    await user.selectOptions(screen.getByLabelText("Kind"), "jenkins");
+    expect(screen.getByText(/Jenkins controller URL/)).toBeTruthy();
+    expect(screen.getByText(/"api_token"/)).toBeTruthy();
+    expect(screen.getByText(/"job":"folder\/service"/)).toBeTruthy();
+    expect(
+      screen.getByText(/trigger_build · approval-gated write/),
     ).toBeTruthy();
   });
 });

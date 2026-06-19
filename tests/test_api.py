@@ -4187,6 +4187,16 @@ class TestIntegrationConnectors:
             for capability in phase_four["bitbucket"]["capabilities"]
             if capability["action"] == "merge_pull_request"
         )
+        ci_cd = {
+            item["kind"]: item
+            for item in kinds.json()["items"]
+            if item["kind"] in {"jenkins", "circleci", "azure_pipelines"}
+        }
+        assert len(ci_cd) == 3
+        assert all(item["adapter_available"] for item in ci_cd.values())
+        assert {
+            capability["action"] for capability in ci_cd["jenkins"]["capabilities"]
+        } >= {"get_job", "get_build", "trigger_build"}
 
         created = await client.post(
             "/integrations",

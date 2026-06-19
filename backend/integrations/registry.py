@@ -27,6 +27,9 @@ _KINDS = {
         IntegrationKind("servicenow", "ServiceNow", True, ("oauth", "basic")),
         IntegrationKind("linear", "Linear", False, ("api_key", "oauth")),
         IntegrationKind("notion", "Notion", False, ("api_key", "oauth")),
+        IntegrationKind("jenkins", "Jenkins", True, ("basic", "pat")),
+        IntegrationKind("circleci", "CircleCI", True, ("api_key",)),
+        IntegrationKind("azure_pipelines", "Azure Pipelines", True, ("pat", "oauth")),
         IntegrationKind("sentry", "Sentry", True, ("pat", "oauth")),
         IntegrationKind("newrelic", "New Relic", False, ("api_key",)),
         IntegrationKind("splunk", "Splunk", True, ("pat", "basic")),
@@ -34,7 +37,9 @@ _KINDS = {
         IntegrationKind("zendesk", "Zendesk", True, ("basic", "oauth")),
         IntegrationKind("freshservice", "Freshservice", True, ("api_key",)),
         IntegrationKind("asana", "Asana", False, ("pat", "oauth")),
-        IntegrationKind("custom", "Custom HTTP", True, ("none", "pat", "api_key", "basic", "custom")),
+        IntegrationKind(
+            "custom", "Custom HTTP", True, ("none", "pat", "api_key", "basic", "custom")
+        ),
     )
 }
 _ADAPTERS: dict[str, IntegrationAdapter] = {}

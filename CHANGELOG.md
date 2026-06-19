@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 2 Phase 3 — CI/CD connectors.** Added Jenkins, CircleCI, and Azure
+  Pipelines native adapters for job/pipeline/run status reads and tier-governed
+  build or pipeline triggers. Jenkins supports nested jobs and API-token Basic
+  auth; CircleCI supports hosted/self-hosted API bases; Azure Pipelines uses
+  the 7.1 Pipelines API with PAT or OAuth auth.
 - **Wave 2 Phase 2 — observability and error-ingest breadth.** Added native
   webhook parsers for Rollbar, BugSnag, Elastic/OpenSearch Watcher, Honeycomb,
   Dynatrace, AppDynamics, and Grafana Loki. Each adapter maps provider severity,

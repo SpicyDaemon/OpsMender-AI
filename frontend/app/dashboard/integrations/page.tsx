@@ -77,6 +77,21 @@ const INTEGRATION_HELP: Record<
     auth: 'Service account: {"token":"…","ca_cert":"-----BEGIN CERTIFICATE-----…"}. Custom headers: {"headers":{"Authorization":"…"}}.',
     config: '{"namespace":"production","verify_tls":true}',
   },
+  jenkins: {
+    base: "Required: the Jenkins controller URL.",
+    auth: 'API token/basic: {"username":"…","api_token":"…"}',
+    config: '{"job":"folder/service"}',
+  },
+  circleci: {
+    base: "Uses https://circleci.com/api/v2 by default. Enter a CircleCI Server API base when self-hosted.",
+    auth: 'API token: {"api_key":"…"}',
+    config: '{"project_slug":"gh/acme/service"}',
+  },
+  azure_pipelines: {
+    base: "Leave blank for Azure DevOps Services, or enter the collection URL for a self-hosted deployment.",
+    auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
+    config: '{"organization":"acme","project":"Operations"}',
+  },
   zendesk: {
     base: "Required: your subdomain URL, such as https://acme.zendesk.com.",
     auth: 'API token: {"email":"agent@acme.com","api_token":"…"}. OAuth: {"access_token":"…"}.',

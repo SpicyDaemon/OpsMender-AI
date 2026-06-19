@@ -2,6 +2,7 @@
 
 from backend.integrations import atlassian as atlassian  # noqa: F401
 from backend.integrations import azure_devops as azure_devops  # noqa: F401
+from backend.integrations import cicd as cicd  # noqa: F401
 from backend.integrations import generic as generic  # noqa: F401
 from backend.integrations import github as github  # noqa: F401
 from backend.integrations import gitlab as gitlab  # noqa: F401

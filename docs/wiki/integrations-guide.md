@@ -117,6 +117,28 @@ Read capabilities cover pods, recent logs, events, and deployments. Deployment
 rollout restart and pod deletion are mutating tools: they are blocked in Tier 0
 and Tier 2, and require Operator Approval in Tier 1.
 
+### Jenkins
+
+Enter the Jenkins controller URL. Credentials use
+`{"username":"...","api_token":"..."}` and config may set a default nested job
+such as `{"job":"folder/service"}`. Job/build reads are safe; build triggers,
+including parameterized builds, require approval.
+
+### CircleCI
+
+The hosted default is `https://circleci.com/api/v2`; CircleCI Server may use a
+custom base URL. Store `{"api_key":"..."}` and configure a project slug such as
+`{"project_slug":"gh/acme/service"}`. Pipeline/job reads are safe and pipeline
+triggers require approval.
+
+### Azure Pipelines
+
+Configure `{"organization":"acme","project":"Operations"}` and leave the base
+URL blank for Azure DevOps Services, or provide a self-hosted collection URL.
+PAT credentials use `{"token":"..."}`; OAuth uses
+`{"access_token":"..."}`. Pipeline/run reads are safe and running a pipeline
+requires approval.
+
 ## 2. Incident Ingest Adapters
 
 OpsMender provides inbound alert intake for monitoring tools. In v1, the legacy `/incidents/ingest` token backend remains available, but the product concept is moving toward **Service Webhooks**: each service exposes a unique alert URL with an embedded unguessable secret so external monitors can POST directly without separate API-key headers.

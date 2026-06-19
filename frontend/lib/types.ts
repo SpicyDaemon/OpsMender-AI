@@ -606,6 +606,81 @@ export interface MCPOAuthStartResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Integration connectors
+// ---------------------------------------------------------------------------
+
+export type IntegrationAuthType =
+  | "none"
+  | "pat"
+  | "oauth"
+  | "app"
+  | "api_key"
+  | "basic"
+  | "custom";
+
+export interface IntegrationCapability {
+  action: string;
+  description: string;
+  classification: "safe" | "caution" | "destructive";
+  mutating: boolean;
+  always_requires_approval: boolean;
+}
+
+export interface IntegrationKind {
+  kind: string;
+  label: string;
+  supports_base_url: boolean;
+  auth_types: IntegrationAuthType[];
+  adapter_available: boolean;
+  capabilities: IntegrationCapability[];
+}
+
+export interface IntegrationKindListResponse {
+  items: IntegrationKind[];
+  total: number;
+}
+
+export interface IntegrationConnectorResponse {
+  id: string;
+  org_id: string;
+  kind: string;
+  name: string;
+  base_url: string | null;
+  auth_type: IntegrationAuthType;
+  auth_keys: string[];
+  has_auth: boolean;
+  config: Record<string, unknown>;
+  is_enabled: boolean;
+  status: "not_configured" | "configured" | "healthy" | "error" | "disabled";
+  last_checked_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntegrationConnectorListResponse {
+  items: IntegrationConnectorResponse[];
+  total: number;
+}
+
+export interface IntegrationConnectorUpsert {
+  kind: string;
+  name: string;
+  base_url?: string | null;
+  auth_type: IntegrationAuthType;
+  auth?: Record<string, unknown> | null;
+  clear_auth?: boolean;
+  config?: Record<string, unknown>;
+  is_enabled?: boolean;
+}
+
+export interface IntegrationTestResponse {
+  success: boolean;
+  detail: string;
+  latency_ms: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // Legacy chat connector API
 // ---------------------------------------------------------------------------
 

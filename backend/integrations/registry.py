@@ -1,0 +1,56 @@
+"""Integration kind catalog and adapter registry."""
+
+from __future__ import annotations
+
+import dataclasses
+
+from backend.integrations.base import IntegrationAdapter
+
+
+@dataclasses.dataclass(frozen=True)
+class IntegrationKind:
+    kind: str
+    label: str
+    supports_base_url: bool
+    auth_types: tuple[str, ...]
+
+
+_KINDS = {
+    item.kind: item
+    for item in (
+        IntegrationKind("github", "GitHub", True, ("pat", "app")),
+        IntegrationKind("gitlab", "GitLab", True, ("pat", "oauth")),
+        IntegrationKind("bitbucket", "Bitbucket", True, ("pat", "oauth")),
+        IntegrationKind("azure_devops", "Azure DevOps", True, ("pat", "oauth")),
+        IntegrationKind("jira", "Jira", True, ("pat", "oauth", "basic")),
+        IntegrationKind("confluence", "Confluence", True, ("pat", "oauth", "basic")),
+        IntegrationKind("servicenow", "ServiceNow", True, ("oauth", "basic")),
+        IntegrationKind("linear", "Linear", False, ("api_key", "oauth")),
+        IntegrationKind("notion", "Notion", False, ("api_key", "oauth")),
+        IntegrationKind("sentry", "Sentry", True, ("pat", "oauth")),
+        IntegrationKind("newrelic", "New Relic", False, ("api_key",)),
+        IntegrationKind("splunk", "Splunk", True, ("pat", "basic")),
+        IntegrationKind("kubernetes", "Kubernetes", True, ("pat", "custom")),
+        IntegrationKind("custom", "Custom HTTP", True, ("none", "pat", "api_key", "basic", "custom")),
+    )
+}
+_ADAPTERS: dict[str, IntegrationAdapter] = {}
+
+
+def register_adapter(adapter: IntegrationAdapter) -> IntegrationAdapter:
+    if adapter.kind not in _KINDS:
+        raise ValueError(f"Unknown integration kind: {adapter.kind}")
+    _ADAPTERS[adapter.kind] = adapter
+    return adapter
+
+
+def get_adapter(kind: str) -> IntegrationAdapter | None:
+    return _ADAPTERS.get(kind)
+
+
+def get_kind(kind: str) -> IntegrationKind | None:
+    return _KINDS.get(kind)
+
+
+def list_kinds() -> list[IntegrationKind]:
+    return sorted(_KINDS.values(), key=lambda item: item.label)

@@ -643,6 +643,49 @@ export async function startMCPOAuth(id: string): Promise<MCPOAuthStartResponse> 
 }
 
 // ---------------------------------------------------------------------------
+// Integration connectors
+// ---------------------------------------------------------------------------
+
+import type {
+  IntegrationConnectorListResponse,
+  IntegrationConnectorResponse,
+  IntegrationConnectorUpsert,
+  IntegrationKindListResponse,
+  IntegrationTestResponse,
+} from "./types";
+
+export async function listIntegrationKinds(): Promise<IntegrationKindListResponse> {
+  return api.get<IntegrationKindListResponse>("/integrations/kinds");
+}
+
+export async function listIntegrationConnectors(): Promise<IntegrationConnectorListResponse> {
+  return api.get<IntegrationConnectorListResponse>("/integrations");
+}
+
+export async function createIntegrationConnector(
+  body: IntegrationConnectorUpsert,
+): Promise<IntegrationConnectorResponse> {
+  return api.post<IntegrationConnectorResponse>("/integrations", body);
+}
+
+export async function updateIntegrationConnector(
+  id: string,
+  body: IntegrationConnectorUpsert,
+): Promise<IntegrationConnectorResponse> {
+  return api.put<IntegrationConnectorResponse>(`/integrations/${id}`, body);
+}
+
+export async function deleteIntegrationConnector(id: string): Promise<void> {
+  return api.del<void>(`/integrations/${id}`);
+}
+
+export async function testIntegrationConnector(
+  id: string,
+): Promise<IntegrationTestResponse> {
+  return api.post<IntegrationTestResponse>(`/integrations/${id}/test`);
+}
+
+// ---------------------------------------------------------------------------
 // Legacy chat connector API
 // ---------------------------------------------------------------------------
 

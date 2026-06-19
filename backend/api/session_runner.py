@@ -45,10 +45,16 @@ from backend.db.repos import (
 from backend.llm.base import LLM
 from backend.llm.factory import create_llm
 from backend.mcp.pool import MCPServerPool
+from backend.mcp.client import call_tool as mcp_call_tool
+from backend.mcp.client import list_tools as mcp_list_tools
 from backend.skills.parser import SkillDefinition, load as load_skill_def, loads as load_skill_def_text
-from backend.tiers.enforcement import normalize_tier
+from backend.tiers.enforcement import check as tier_check, normalize_tier
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.bots.notifier import schedule_session_chat_event
+from backend.integrations.tools import (
+    IntegrationToolRuntime,
+    merge_integration_skill,
+)
 from backend.workflow.rollback import reconstruct_tool_calls, replay_compensating_inverses
 
 log = logging.getLogger(__name__)
@@ -543,6 +549,10 @@ async def _run_session_workflow_inner(
             config,
             preferred_mcp_server_ids=preferred_mcp_server_ids,
         )
+        integration_runtime = await IntegrationToolRuntime.create(factory, org_id)
+        skill_def = merge_integration_skill(
+            skill_def, integration_runtime.descriptors
+        )
         audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
         approval_service = ApprovalService(
             factory,
@@ -643,10 +653,47 @@ async def _run_session_workflow_inner(
         if selected_server is not None:
             async with pool.connect(selected_server.name) as mcp_session:
                 server_name = selected_server.name
-                if int(session.tier) == 0:
+                mcp_tools = await mcp_list_tools(mcp_session)
+                mcp_tool_names = [tool.name for tool in mcp_tools]
+                mcp_descriptions = {
+                    tool.name: tool.description
+                    for tool in mcp_tools
+                    if tool.description
+                }
+                integration_tool_names = [
+                    descriptor.name
+                    for descriptor in integration_runtime.descriptors
+                ]
+                mcp_caller = mcp_call_tool
+                if effective_tier == 0:
                     sandbox = await build_sandbox_for_session(mcp_session, skill_def)
-                    graph_kwargs["plan_tool_names"] = sorted(sandbox.allowed_tool_names)
-                    graph_kwargs["tool_caller"] = sandbox.call_tool
+                    mcp_tool_names = sorted(sandbox.allowed_tool_names)
+                    integration_tool_names = [
+                        name
+                        for name in integration_tool_names
+                        if tier_check(name, 0, skill_def).permitted
+                    ]
+                    mcp_caller = sandbox.call_tool
+
+                async def _combined_tool_caller(
+                    active_session,
+                    tool_name: str,
+                    params: dict[str, Any],
+                ):
+                    if integration_runtime.owns(tool_name):
+                        return await integration_runtime.call_tool(
+                            active_session, tool_name, params
+                        )
+                    return await mcp_caller(active_session, tool_name, params)
+
+                graph_kwargs["plan_tool_names"] = sorted(
+                    [*mcp_tool_names, *integration_tool_names]
+                )
+                graph_kwargs["plan_tool_descriptions"] = {
+                    **mcp_descriptions,
+                    **integration_runtime.descriptions,
+                }
+                graph_kwargs["tool_caller"] = _combined_tool_caller
                 graph_kwargs["mcp_session"] = mcp_session
                 graph_kwargs["audit_logger"] = audit_logger
 
@@ -663,6 +710,26 @@ async def _run_session_workflow_inner(
                 else:
                     result = await graph.ainvoke(initial_state)
         else:
+            integration_tool_names = [
+                descriptor.name
+                for descriptor in integration_runtime.descriptors
+            ]
+            if effective_tier == 0:
+                integration_tool_names = [
+                    name
+                    for name in integration_tool_names
+                    if tier_check(name, 0, skill_def).permitted
+                ]
+            if integration_tool_names:
+                graph_kwargs["plan_tool_names"] = sorted(
+                    integration_tool_names
+                )
+                graph_kwargs["plan_tool_descriptions"] = (
+                    integration_runtime.descriptions
+                )
+                graph_kwargs["tool_caller"] = integration_runtime.call_tool
+                graph_kwargs["mcp_session"] = integration_runtime
+                graph_kwargs["audit_logger"] = audit_logger
             graph = build_graph(**graph_kwargs)
             await _await_maybe(
                 audit_logger.log_session_start(str(session_id), int(session.tier))

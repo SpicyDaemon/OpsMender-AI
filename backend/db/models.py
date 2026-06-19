@@ -14,6 +14,7 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``ingest_tokens``      — per-source webhook credentials for external incident ingestion
 - ``ingest_log``         — raw payloads from external ingest for replay/debugging
 - ``bot_connectors``     — external chat bot connector configurations
+- ``integration_connectors`` — external system read/action connector configurations
 """
 
 from __future__ import annotations
@@ -817,6 +818,56 @@ class ReportSchedule(Base):
             "ix_report_schedules_due",
             "enabled",
             "next_run_at",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Integration connectors
+# ---------------------------------------------------------------------------
+
+
+class IntegrationConnector(Base):
+    """Tenant-scoped external system connector for read/action integrations."""
+
+    __tablename__ = "integration_connectors"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    base_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    auth_type: Mapped[str] = mapped_column(
+        String(30), default="pat", nullable=False
+    )
+    auth_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30), default="not_configured", nullable=False
+    )
+    last_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "name", name="uq_integration_connector_name"
+        ),
+        Index(
+            "ix_integration_connectors_org_kind_enabled",
+            "org_id",
+            "kind",
+            "is_enabled",
         ),
     )
 

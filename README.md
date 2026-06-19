@@ -13,7 +13,13 @@
 
 ## What it is
 
-OpsMender connects AI agents to **your** infrastructure through **[Model Context Protocol](https://modelcontextprotocol.io) (MCP) servers** you provide, then enforces a **three-tier autonomy model** so the agent only does what you allow. You classify each tool as `safe`, `caution`, or `destructive` in an MCP Skill; the **tier gate is enforced in code** — the agent cannot reason its way past it.
+OpsMender connects AI agents to **your** infrastructure through
+**[Model Context Protocol](https://modelcontextprotocol.io) (MCP) servers** you
+provide and encrypted native integration connectors, then enforces a
+**three-tier autonomy model** so the agent only does what you allow. MCP tools
+use your Skill classifications; native integration capabilities carry explicit
+tier policies. The **tier gate is enforced in code** — the agent cannot reason
+its way past it.
 
 Install it, invite your on-call operators, connect a model and your MCP servers, point your monitoring at it, and every paged incident walks the same loop:
 
@@ -25,7 +31,9 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 
 - **Three-tier AI autonomy** — Tier 0 Autonomous (sandbox + time limits + auto-rollback), Tier 1 Approval-Required, Tier 2 Advisory-Only (default).
 - **Programmatic tier gate** — enforced in code before any tool runs; not prompt-bypassable.
-- **MCP-first** — every action goes through an operator-provided MCP server; no cloud lock-in.
+- **MCP-first + native integrations** — operator-provided MCP servers remain the
+  general execution path; encrypted connectors add capability-scoped tools for
+  source control, tickets, docs, observability, and infrastructure.
 - **Org-owned skills** — one `SKILL.md` classifies every operation as safe / caution / destructive.
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + on-call calendar, maintenance windows.
 - **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
@@ -59,6 +67,7 @@ flowchart LR
   PAGE --> NOTIF["Notification channels<br/>Slack · Teams · Email · SMS"]
   API --> AGENT["LangGraph agent<br/>observe→diagnose→plan→tier_gate→execute→verify→summarize"]
   AGENT -->|"audited tool calls"| MCP["MCP servers<br/>your infrastructure"]
+  AGENT -->|"tier-gated internal tools"| INT["Integration connectors<br/>encrypted auth · self-host base URLs"]
   AGENT --> MEM[("AI incident memory")]
   API --> SLA["SLA poller<br/>uptime · latency"]
   UI["Next.js dashboard"] <--> API

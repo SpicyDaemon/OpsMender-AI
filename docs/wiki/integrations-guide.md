@@ -1,8 +1,29 @@
 # Integrations Guide
 
-OpsMender is built to sit at the center of your incident response ecosystem. It ingests alerts from your existing monitoring tools and broadcasts updates to your collaboration platforms.
+OpsMender is built to sit at the center of your incident response ecosystem. It
+ingests alerts, delivers incident updates, and connects the AI response loop to
+external systems through encrypted, tier-governed integration connectors.
 
-## 1. Incident Ingest Adapters
+## 1. External system connectors
+
+Admins manage source-control, ticketing, documentation, observability, and
+infrastructure connectors at **Admin → Integrations**.
+
+- Credentials are entered as provider-specific JSON and encrypted as one opaque
+  Fernet payload. The API never returns values; it only reports whether auth is
+  configured and which keys exist.
+- `base_url` supports self-hosted editions where relevant.
+- **Test** runs the adapter's cheap connection probe and records healthy/error
+  status, timestamp, and the last error.
+- Disabled connectors are not exposed to incident sessions.
+- Enabled capabilities become internal tools governed by the same Skill Gate,
+  safety tier, approval queue, and audit trail as MCP tools. Mutating actions
+  require Tier 1 approval by default.
+
+The **Custom HTTP** kind is the reference adapter in the foundation. Provider
+adapters are added in the following Wave 1 phases.
+
+## 2. Incident Ingest Adapters
 
 OpsMender provides inbound alert intake for monitoring tools. In v1, the legacy `/incidents/ingest` token backend remains available, but the product concept is moving toward **Service Webhooks**: each service exposes a unique alert URL with an embedded unguessable secret so external monitors can POST directly without separate API-key headers.
 
@@ -16,7 +37,7 @@ OpsMender natively supports several popular monitoring tools:
 **Universal (Auto) Adapter:**
 If your tool is not listed above, OpsMender provides an `auto` provider option. The Universal Adapter uses an LLM to dynamically inspect the incoming JSON payload, learn its structure, and extract the title, description, and severity automatically. It caches the structural mapping for performance on subsequent alerts.
 
-## 2. Notification Channels
+## 3. Notification Channels
 
 OpsMender can expose selected incident workflows through external chat platforms. Channel setup lives under **Paging & On-call** > **Notification Channels** and remains available through the existing `/bot-connectors` API.
 

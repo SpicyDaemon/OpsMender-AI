@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Encrypted integration connector foundation.** Added tenant-scoped
+  `integration_connectors`, an adapter/capability registry, non-fatal connection
+  probes, and an admin Integrations page for create/edit/test/enable/disable.
+  Connector auth JSON is Fernet-encrypted and write-only. Enabled adapter
+  capabilities become internal tools that reuse the existing skill tier gate,
+  approval flow, and audit log.
 - **Incident reports and organization SMTP.** Admins can configure per-workspace
   SMTP with an encrypted password and environment fallback, send a live test,
   export incident metrics as CSV or ReportLab PDF, and schedule weekly,

@@ -489,6 +489,7 @@ def _build_plan_with_tool_names(
     skill_def: SkillDefinition,
     tool_names: list[str],
     agent_roles: list[str] | None = None,
+    tool_descriptions: dict[str, str] | None = None,
 ):
     """Return a plan node that only exposes the supplied concrete tools."""
 
@@ -500,7 +501,12 @@ def _build_plan_with_tool_names(
         diagnosis = state.get("diagnosis", "")
         if tool_names:
             tools_list = "\n".join(
-                f"- {tool_name} ({skill_def.classify(tool_name)})"
+                (
+                    f"- {tool_name} ({skill_def.classify(tool_name)}): "
+                    f"{tool_descriptions[tool_name]}"
+                    if tool_descriptions and tool_name in tool_descriptions
+                    else f"- {tool_name} ({skill_def.classify(tool_name)})"
+                )
                 for tool_name in tool_names
             )
         else:

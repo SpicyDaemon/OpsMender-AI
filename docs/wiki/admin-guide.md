@@ -62,7 +62,19 @@ OpsMender uses the Model Context Protocol (MCP) to interact with your infrastruc
 3. Go to **Skills** to import, edit, clone, or bind `SKILL.md` content to an MCP server.
 4. Use tiers and Skill classifications together to control what OpsMender can execute.
 
-## 5. Notification Channels
+## 5. External integrations
+
+Open **Integrations** under Admin to configure external system connectors.
+Choose a kind, optional self-hosted base URL, authentication type, credential
+JSON, and adapter configuration JSON. Credentials are encrypted and
+write-only. Use **Test** to record connection health; disable a connector to
+remove its capabilities from incident sessions without deleting it.
+
+Integration actions reuse the normal Safety Tier, Skill Gate, Operator
+Approval, and Tool Activity audit path. State-changing actions are not a bypass
+around MCP governance.
+
+## 6. Notification Channels
 
 Workspace-level notification channels are managed under **Paging & On-call** > **Notification Channels**.
 
@@ -95,14 +107,14 @@ Supported Telegram commands:
 - `/reject <approval-id>`
 - `/help`
 
-## 6. Email and incident reports
+## 7. Email and incident reports
 
 Configure **Config → Email / SMTP** first. The same organization SMTP server
 powers invitations, password resets, test messages, and scheduled reports.
 Then open **Reports** to download CSV/PDF incident metrics or create weekly,
 monthly, and quarterly recipient schedules.
 
-## 7. Alert Intake
+## 8. Alert Intake
 
 To ingest incidents automatically from external tools (e.g., Datadog, CloudWatch, or generic webhook senders), create a service and use the Services area as the home for Alert Intake / Service Webhook setup.
 

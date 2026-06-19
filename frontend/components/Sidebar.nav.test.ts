@@ -30,6 +30,7 @@ describe("Sidebar nav model", () => {
     expect(hrefs).toContain("/dashboard/people");
     expect(hrefs).toContain("/dashboard/models");
     expect(hrefs).toContain("/dashboard/paging/services");
+    expect(hrefs).toContain("/dashboard/integrations");
   });
 
   it("labels the skills surface 'MCP Skills'", () => {
@@ -49,6 +50,7 @@ describe("Sidebar nav model", () => {
       "/dashboard/models",
       "/dashboard/mcp-servers",
       "/dashboard/memories",
+      "/dashboard/integrations",
     ]) {
       expect(hrefs).not.toContain(adminOnly);
     }
@@ -80,6 +82,7 @@ describe("requiredRolesForPath (route guard)", () => {
     expect(requiredRolesForPath("/dashboard/people")).toEqual(["admin"]);
     expect(requiredRolesForPath("/dashboard/people/detail")).toEqual(["admin"]);
     expect(requiredRolesForPath("/dashboard/models")).toEqual(["admin"]);
+    expect(requiredRolesForPath("/dashboard/integrations")).toEqual(["admin"]);
   });
 
   it("paging setup is read-only for operators (admin+operator)", () => {

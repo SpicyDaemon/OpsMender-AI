@@ -153,6 +153,7 @@ def build_graph(
     approval_service: ApprovalService | None = None,
     tier0_time_config: Tier0TimeConfig | None = None,
     plan_tool_names: list[str] | None = None,
+    plan_tool_descriptions: dict[str, str] | None = None,
     tool_caller=None,
     node_event_publisher=None,
     node_order: list[str] | None = None,
@@ -195,7 +196,12 @@ def build_graph(
         diagnose_fn = _build_diagnose(llm, agent_roles=agent_roles)
         if plan_tool_names is not None:
             plan_fn = _build_plan_with_tool_names(
-                llm, tier, skill_def, plan_tool_names, agent_roles=agent_roles
+                llm,
+                tier,
+                skill_def,
+                plan_tool_names,
+                agent_roles=agent_roles,
+                tool_descriptions=plan_tool_descriptions,
             )
         else:
             plan_fn = _build_plan(llm, tier, skill_def, agent_roles=agent_roles)

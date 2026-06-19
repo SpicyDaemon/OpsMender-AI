@@ -1044,6 +1044,76 @@ class ReportScheduleListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Integration connectors
+# ---------------------------------------------------------------------------
+
+
+class IntegrationConnectorUpsert(BaseModel):
+    kind: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=150)
+    base_url: Optional[str] = Field(default=None, max_length=1000)
+    auth_type: str = Field(
+        default="pat",
+        pattern="^(none|pat|oauth|app|api_key|basic|custom)$",
+    )
+    auth: Optional[dict[str, Any]] = None
+    clear_auth: bool = False
+    config: dict[str, Any] = Field(default_factory=dict)
+    is_enabled: bool = True
+
+
+class IntegrationConnectorResponse(BaseModel):
+    id: uuid.UUID
+    org_id: uuid.UUID
+    kind: str
+    name: str
+    base_url: Optional[str]
+    auth_type: str
+    auth_keys: list[str]
+    has_auth: bool
+    config: dict[str, Any]
+    is_enabled: bool
+    status: str
+    last_checked_at: Optional[datetime]
+    last_error: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class IntegrationConnectorListResponse(BaseModel):
+    items: list[IntegrationConnectorResponse]
+    total: int
+
+
+class IntegrationCapabilityResponse(BaseModel):
+    action: str
+    description: str
+    classification: str
+    mutating: bool
+    always_requires_approval: bool
+
+
+class IntegrationKindResponse(BaseModel):
+    kind: str
+    label: str
+    supports_base_url: bool
+    auth_types: list[str]
+    adapter_available: bool
+    capabilities: list[IntegrationCapabilityResponse]
+
+
+class IntegrationKindListResponse(BaseModel):
+    items: list[IntegrationKindResponse]
+    total: int
+
+
+class IntegrationTestResponse(BaseModel):
+    success: bool
+    detail: str
+    latency_ms: Optional[int] = None
+
+
+# ---------------------------------------------------------------------------
 # Workflow profiles (custom workflow builder — Phase 3)
 # ---------------------------------------------------------------------------
 

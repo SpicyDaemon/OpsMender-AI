@@ -4119,6 +4119,115 @@ class TestSetupChecklist:
         assert resp.status_code in {401, 403}
 
 
+class TestIntegrationConnectors:
+    async def test_crud_encrypts_auth_and_never_returns_secret(
+        self, client: AsyncClient, app, auth_headers, viewer_headers
+    ):
+        created = await client.post(
+            "/integrations",
+            headers=auth_headers,
+            json={
+                "kind": "custom",
+                "name": "Status API",
+                "base_url": "https://status.example.test",
+                "auth_type": "pat",
+                "auth": {"token": "top-secret"},
+                "config": {"health_path": "/health"},
+                "is_enabled": True,
+            },
+        )
+        assert created.status_code == 201
+        body = created.json()
+        assert body["has_auth"] is True
+        assert body["auth_keys"] == ["token"]
+        assert "top-secret" not in created.text
+
+        from backend.db.repos import IntegrationConnectorRepo
+
+        async with app.state.session_factory() as db:
+            row = await IntegrationConnectorRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(body["id"])
+            )
+            assert row is not None
+            assert row.auth_encrypted
+            assert "top-secret" not in row.auth_encrypted
+            assert IntegrationConnectorRepo.decrypt_auth(row)["token"] == "top-secret"
+
+        listed = await client.get("/integrations", headers=auth_headers)
+        assert listed.status_code == 200
+        assert listed.json()["total"] == 1
+        assert "top-secret" not in listed.text
+
+        updated = await client.put(
+            f"/integrations/{body['id']}",
+            headers=auth_headers,
+            json={
+                "kind": "custom",
+                "name": "Status API",
+                "base_url": "https://status.example.test",
+                "auth_type": "pat",
+                "config": {"health_path": "/ready"},
+                "is_enabled": False,
+            },
+        )
+        assert updated.status_code == 200
+        assert updated.json()["status"] == "disabled"
+        assert updated.json()["has_auth"] is True
+
+        forbidden = await client.get(
+            "/integrations", headers=viewer_headers
+        )
+        assert forbidden.status_code == 403
+
+        deleted = await client.delete(
+            f"/integrations/{body['id']}", headers=auth_headers
+        )
+        assert deleted.status_code == 204
+
+    async def test_kind_catalog_and_mocked_connection_test(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        kinds = await client.get("/integrations/kinds", headers=auth_headers)
+        assert kinds.status_code == 200
+        custom = next(
+            item for item in kinds.json()["items"] if item["kind"] == "custom"
+        )
+        assert custom["adapter_available"] is True
+        assert custom["capabilities"][0]["action"] == "test_connection"
+
+        created = await client.post(
+            "/integrations",
+            headers=auth_headers,
+            json={
+                "kind": "custom",
+                "name": "Mocked",
+                "base_url": "https://mock.example.test",
+                "auth_type": "none",
+                "config": {},
+                "is_enabled": True,
+            },
+        )
+        connector_id = created.json()["id"]
+
+        from backend.integrations.base import IntegrationResult
+
+        class FakeAdapter:
+            async def safe_invoke(self, action, connector, auth, parameters=None):
+                assert action == "test_connection"
+                return IntegrationResult.success(detail="Mock provider accepted credentials.")
+
+        monkeypatch.setattr(
+            "backend.api.routes.integrations.get_adapter",
+            lambda kind: FakeAdapter(),
+        )
+        tested = await client.post(
+            f"/integrations/{connector_id}/test", headers=auth_headers
+        )
+        assert tested.status_code == 200
+        assert tested.json()["success"] is True
+        assert "Mock provider" in tested.json()["detail"]
+
+
 class TestReportsAndEmail:
     async def test_csv_and_pdf_incident_reports(
         self, client: AsyncClient, app, auth_headers

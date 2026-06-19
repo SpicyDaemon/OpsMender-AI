@@ -12,6 +12,7 @@ Usage::
 """
 
 from __future__ import annotations
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
@@ -54,6 +55,7 @@ from backend.db.models import (
     TeamMember,
     IngestLog,
     IngestToken,
+    IntegrationConnector,
     MCPServer,
     MCPServerOAuthToken,
     ModelConfig,
@@ -4300,6 +4302,170 @@ class ReportScheduleRepo:
         db: AsyncSession, org_id: uuid.UUID, schedule_id: uuid.UUID
     ) -> bool:
         row = await ReportScheduleRepo.get_by_id(db, org_id, schedule_id)
+        if row is None:
+            return False
+        await db.delete(row)
+        await db.flush()
+        return True
+
+
+AUTH_UNSET = object()
+
+
+class IntegrationConnectorRepo:
+    @staticmethod
+    def _encrypt_auth(auth: dict[str, Any] | None) -> str | None:
+        if not auth:
+            return None
+        from backend.auth.secrets import encrypt_secret
+
+        return encrypt_secret(
+            json.dumps(auth, sort_keys=True, separators=(",", ":"))
+        )
+
+    @staticmethod
+    def decrypt_auth(row: IntegrationConnector) -> dict[str, Any]:
+        if not row.auth_encrypted:
+            return {}
+        from backend.auth.secrets import decrypt_secret
+
+        value = json.loads(decrypt_secret(row.auth_encrypted))
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        kind: str,
+        name: str,
+        base_url: str | None,
+        auth_type: str,
+        auth: dict[str, Any] | None,
+        config: dict[str, Any],
+        is_enabled: bool,
+    ) -> IntegrationConnector:
+        row = IntegrationConnector(
+            org_id=org_id,
+            kind=kind,
+            name=name,
+            base_url=base_url,
+            auth_type=auth_type,
+            auth_encrypted=IntegrationConnectorRepo._encrypt_auth(auth),
+            config=config,
+            is_enabled=is_enabled,
+            status="configured" if is_enabled else "disabled",
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        connector_id: uuid.UUID,
+    ) -> IntegrationConnector | None:
+        return (
+            await db.execute(
+                select(IntegrationConnector).where(
+                    IntegrationConnector.id == connector_id,
+                    IntegrationConnector.org_id == org_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_name(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        name: str,
+    ) -> IntegrationConnector | None:
+        return (
+            await db.execute(
+                select(IntegrationConnector).where(
+                    IntegrationConnector.org_id == org_id,
+                    IntegrationConnector.name == name,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_org(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        enabled_only: bool = False,
+        kind: str | None = None,
+    ) -> Sequence[IntegrationConnector]:
+        stmt = (
+            select(IntegrationConnector)
+            .where(IntegrationConnector.org_id == org_id)
+            .order_by(IntegrationConnector.kind, IntegrationConnector.name)
+        )
+        if enabled_only:
+            stmt = stmt.where(IntegrationConnector.is_enabled.is_(True))
+        if kind is not None:
+            stmt = stmt.where(IntegrationConnector.kind == kind)
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        row: IntegrationConnector,
+        *,
+        kind: str,
+        name: str,
+        base_url: str | None,
+        auth_type: str,
+        auth: dict[str, Any] | None | object = AUTH_UNSET,
+        config: dict[str, Any],
+        is_enabled: bool,
+    ) -> IntegrationConnector:
+        row.kind = kind
+        row.name = name
+        row.base_url = base_url
+        row.auth_type = auth_type
+        if auth is not AUTH_UNSET:
+            row.auth_encrypted = IntegrationConnectorRepo._encrypt_auth(
+                auth if isinstance(auth, dict) else None
+            )
+        row.config = config
+        row.is_enabled = is_enabled
+        row.status = (
+            "disabled"
+            if not is_enabled
+            else "configured"
+            if row.status == "disabled"
+            else row.status
+        )
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def mark_status(
+        db: AsyncSession,
+        row: IntegrationConnector,
+        *,
+        status: str,
+        error: str | None,
+    ) -> None:
+        row.status = status
+        row.last_error = error
+        row.last_checked_at = datetime.now(timezone.utc)
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        connector_id: uuid.UUID,
+    ) -> bool:
+        row = await IntegrationConnectorRepo.get_by_id(
+            db, org_id, connector_id
+        )
         if row is None:
             return False
         await db.delete(row)

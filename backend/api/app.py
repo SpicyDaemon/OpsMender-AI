@@ -267,6 +267,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.ws import router as ws_router
     from backend.api.routes.ingest import router as ingest_router
     from backend.api.routes.reports import router as reports_router
+    from backend.api.routes.integrations import router as integrations_router
     from backend.api.routes.workflow_profiles import router as workflow_profiles_router
     from backend.api.routes.agent_team_profiles import (
         router as agent_team_profiles_router,
@@ -308,6 +309,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(ws_router)
     app.include_router(ingest_router)
     app.include_router(reports_router)
+    app.include_router(integrations_router)
     app.include_router(workflow_profiles_router)
     app.include_router(agent_team_profiles_router)
     app.include_router(sla_router)

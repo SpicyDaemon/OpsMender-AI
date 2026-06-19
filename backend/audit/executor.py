@@ -17,10 +17,9 @@ Execution flow
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional
-
-from mcp import ClientSession
 
 from backend.audit.logger import AuditLogger
 from backend.mcp.client import call_tool
@@ -46,15 +45,15 @@ class AuditedToolResult:
 
 async def audited_tool_call(
     *,
-    session: ClientSession,
+    session: Any,
     tool_name: str,
     tool_parameters: dict[str, Any] | None = None,
     session_id: str,
     tier: int,
     skill_def: SkillDefinition,
-    logger: AuditLogger,
+    logger: AuditLogger | Any,
     tool_caller: Callable[
-        [ClientSession, str, dict[str, Any]],
+        [Any, str, dict[str, Any]],
         Awaitable[Any],
     ] | None = None,
 ) -> AuditedToolResult:
@@ -94,20 +93,26 @@ async def audited_tool_call(
     params = tool_parameters or {}
 
     # 1. Pre-log ─────────────────────────────────────────────────────
-    logger.log_tool_call_start(session_id, tier, tool_name, params)
+    pending_log = logger.log_tool_call_start(
+        session_id, tier, tool_name, params
+    )
+    if inspect.isawaitable(pending_log):
+        await pending_log
 
     # 2. Tier enforcement ────────────────────────────────────────────
     enforcement = tier_check(tool_name, tier, skill_def)
 
     if not enforcement.permitted:
         # 3a. Blocked ────────────────────────────────────────────────
-        logger.log_tool_call_blocked(
+        pending_log = logger.log_tool_call_blocked(
             session_id,
             tier,
             tool_name,
             tool_parameters=params,
             block_reason=enforcement.reason,
         )
+        if inspect.isawaitable(pending_log):
+            await pending_log
         return AuditedToolResult(
             permitted=False,
             enforcement=enforcement,
@@ -120,22 +125,34 @@ async def audited_tool_call(
         mcp_result = await caller(session, tool_name, params)
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
-        result_dict = {
-            "content": [
-                {"type": c.type, "text": getattr(c, "text", "")}
-                for c in (mcp_result.content or [])
-            ],
-            "isError": mcp_result.isError,
-        }
+        if isinstance(mcp_result, dict):
+            result_dict = mcp_result
+        else:
+            result_dict = {
+                "content": [
+                    {
+                        "type": getattr(c, "type", "text"),
+                        "text": (
+                            c.get("text", "")
+                            if isinstance(c, dict)
+                            else getattr(c, "text", "")
+                        ),
+                    }
+                    for c in (getattr(mcp_result, "content", None) or [])
+                ],
+                "isError": bool(getattr(mcp_result, "isError", False)),
+            }
 
         # 4. Post-log ───────────────────────────────────────────────
-        logger.log_tool_call_end(
+        pending_log = logger.log_tool_call_end(
             session_id,
             tier,
             tool_name,
             result=result_dict,
             duration_ms=elapsed_ms,
         )
+        if inspect.isawaitable(pending_log):
+            await pending_log
 
         return AuditedToolResult(
             permitted=True,
@@ -148,13 +165,15 @@ async def audited_tool_call(
         elapsed_ms = int((time.monotonic() - start) * 1000)
         error_str = str(exc)
 
-        logger.log_tool_call_end(
+        pending_log = logger.log_tool_call_end(
             session_id,
             tier,
             tool_name,
             result={"error": error_str},
             duration_ms=elapsed_ms,
         )
+        if inspect.isawaitable(pending_log):
+            await pending_log
 
         return AuditedToolResult(
             permitted=True,

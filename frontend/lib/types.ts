@@ -773,60 +773,6 @@ export interface BotConnectorPlatformListResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy viewer-update webhook API
-// ---------------------------------------------------------------------------
-
-export type WebhookTriggerEventType =
-  | "*"
-  | "session.created"
-  | "session.awaiting_approval"
-  | "session.active"
-  | "session.completed"
-  | "session.failed"
-  | "session.timed_out";
-
-export type WebhookTriggerFormat = "generic" | "slack" | "teams" | "sumo";
-
-export interface WebhookTriggerResponse {
-  id: string;
-  name: string;
-  url: string;
-  format: WebhookTriggerFormat;
-  event_types: WebhookTriggerEventType[];
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  last_triggered_at: string | null;
-  last_error: string | null;
-  header_names: string[];
-  has_token: boolean;
-}
-
-export interface WebhookTriggerListResponse {
-  items: WebhookTriggerResponse[];
-  total: number;
-}
-
-export interface WebhookTriggerUpsert {
-  name: string;
-  url: string;
-  format: WebhookTriggerFormat;
-  event_types: WebhookTriggerEventType[];
-  headers?: Record<string, string> | null;
-  clear_headers?: boolean;
-  token?: string | null;
-  clear_token?: boolean;
-  is_active?: boolean;
-}
-
-export interface WebhookTriggerTestResponse {
-  success: boolean;
-  detail: string;
-  status_code: number | null;
-  event_type: string;
-}
-
-// ---------------------------------------------------------------------------
 // Workflow Profiles
 // ---------------------------------------------------------------------------
 
@@ -2017,6 +1963,60 @@ export interface IncidentMemoryResponse {
 
 export interface IncidentMemoryListResponse {
   items: IncidentMemoryResponse[];
+  total: number;
+}
+
+export interface OrgEmailSettingsResponse {
+  org_id: string;
+  host: string;
+  port: number;
+  security: "starttls" | "ssl" | "none";
+  username: string | null;
+  from_name: string | null;
+  from_address: string;
+  has_password: boolean;
+  source: "database" | "environment";
+}
+
+export interface OrgEmailSettingsUpsert {
+  host: string;
+  port: number;
+  security: "starttls" | "ssl" | "none";
+  username?: string | null;
+  password?: string | null;
+  clear_password?: boolean;
+  from_name?: string | null;
+  from_address: string;
+}
+
+export interface ReportScheduleResponse {
+  id: string;
+  org_id: string;
+  name: string;
+  cadence: "weekly" | "monthly" | "quarterly";
+  recipients: string[];
+  filters: Record<string, unknown>;
+  format: "csv" | "pdf";
+  next_run_at: string;
+  enabled: boolean;
+  last_run_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReportScheduleUpsert {
+  name: string;
+  cadence: "weekly" | "monthly" | "quarterly";
+  recipients: string[];
+  filters?: Record<string, unknown>;
+  format: "csv" | "pdf";
+  next_run_at: string;
+  enabled?: boolean;
+}
+
+export interface ReportScheduleListResponse {
+  items: ReportScheduleResponse[];
   total: number;
 }
 

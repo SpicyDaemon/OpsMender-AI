@@ -37,6 +37,7 @@ from backend.db.repos import (
     IngestTokenRepo,
     MCPServerRepo,
     ModelConfigRepo,
+    OrgEmailSettingsRepo,
     ServiceRepo,
     ServiceEscalationChainRepo,
     SessionMessageRepo,
@@ -44,7 +45,6 @@ from backend.db.repos import (
     SkillRepo,
     TeamRepo,
     UserRepo,
-    WebhookTriggerRepo,
     WorkflowProfileRepo,
 )
 from backend.mcp.oauth import (
@@ -3330,190 +3330,6 @@ class TestSessions:
         assert "session_start" in entry_types
         assert "session_end" in entry_types
 
-    async def test_session_created_webhook_trigger_fires(
-        self, client: AsyncClient, app, auth_headers, monkeypatch
-    ):
-        deliveries: list[tuple[str, dict[str, object], dict[str, str]]] = []
-
-        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
-            deliveries.append((url, payload, headers))
-
-            class _Resp:
-                status_code = 204
-
-                def raise_for_status(self):
-                    return None
-
-            return _Resp()
-
-        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
-
-        async with app.state.session_factory() as db:
-            await WebhookTriggerRepo.create(
-                db,
-                TEST_ORG_ID,
-                name="created",
-                url="https://hooks.example/session-created",
-                event_types=["session.created"],
-                headers={"X-OpsMender-Test": "1"},
-                token="abc123",
-            )
-            await db.commit()
-
-        resp = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
-        assert resp.status_code == 201
-        session_id = resp.json()["id"]
-
-        await asyncio.sleep(0.05)
-
-        assert len(deliveries) == 1
-        url, payload, headers = deliveries[0]
-        assert url == "https://hooks.example/session-created"
-        assert payload["event"] == "session.created"
-        assert payload["session"]["id"] == session_id
-        assert headers["Authorization"] == "Bearer abc123"
-        assert headers["X-OpsMender-Test"] == "1"
-
-    async def test_session_terminal_webhook_trigger_fires(
-        self, client: AsyncClient, app, auth_headers, monkeypatch
-    ):
-        app.state.workflow_start_delay_seconds = 0
-        deliveries: list[tuple[str, dict[str, object]]] = []
-
-        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
-            deliveries.append((url, payload))
-
-            class _Resp:
-                status_code = 200
-
-                def raise_for_status(self):
-                    return None
-
-            return _Resp()
-
-        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
-
-        async with app.state.session_factory() as db:
-            await WebhookTriggerRepo.create(
-                db,
-                TEST_ORG_ID,
-                name="completed",
-                url="https://hooks.example/session-complete",
-                event_types=["session.completed"],
-            )
-            incident = await IncidentRepo.create(
-                db,
-                TEST_ORG_ID,
-                title="Webhook terminal test",
-                description="terminal state hook",
-                severity="high",
-            )
-            await db.commit()
-            incident_id = incident.id
-
-        await _ack_incident(client, str(incident_id), auth_headers)
-        resp = await client.post(
-            "/sessions",
-            json={"incident_id": str(incident_id), "tier": 2},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 201
-        session_id = resp.json()["id"]
-
-        await _wait_for_session_status(
-            client,
-            session_id,
-            auth_headers,
-            statuses={"completed"},
-        )
-        await asyncio.sleep(0.05)
-
-        assert any(
-            payload["event"] == "session.completed"
-            and payload["session"]["id"] == session_id
-            and payload["session"]["status"] == "completed"
-            for _, payload in deliveries
-        )
-
-    async def test_approval_pause_webhook_trigger_fires(
-        self, client: AsyncClient, app, auth_headers, monkeypatch
-    ):
-        app.state.workflow_start_delay_seconds = 0
-        deliveries: list[dict[str, object]] = []
-
-        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
-            deliveries.append(payload)
-
-            class _Resp:
-                status_code = 200
-
-                def raise_for_status(self):
-                    return None
-
-            return _Resp()
-
-        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
-
-        async def _resolve_llm(factory, session):
-            from backend.agent.llm import StubLLM
-
-            return StubLLM(
-                response=json.dumps(
-                    [
-                        {
-                            "tool_name": "delete_pod",
-                            "tool_parameters": {"pod": "api-123"},
-                            "justification": "Force approval path",
-                        }
-                    ]
-                )
-            )
-
-        monkeypatch.setattr("backend.api.session_runner._resolve_llm", _resolve_llm)
-
-        async with app.state.session_factory() as db:
-            await WebhookTriggerRepo.create(
-                db,
-                TEST_ORG_ID,
-                name="approval-pause",
-                url="https://hooks.example/approval",
-                event_types=["session.awaiting_approval"],
-            )
-            incident = await IncidentRepo.create(
-                db,
-                TEST_ORG_ID,
-                title="Approval webhook test",
-                description="delete_pod should require approval",
-                severity="critical",
-            )
-            await db.commit()
-            incident_id = incident.id
-
-        await _ack_incident(client, str(incident_id), auth_headers)
-        resp = await client.post(
-            "/sessions",
-            json={"incident_id": str(incident_id), "tier": 1},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 201
-        session_id = resp.json()["id"]
-
-        await _wait_for_session_status(
-            client,
-            session_id,
-            auth_headers,
-            statuses={"awaiting_approval", "completed", "failed", "timed_out"},
-        )
-        await asyncio.sleep(0.05)
-
-        assert any(
-            payload["event"] == "session.awaiting_approval"
-            and payload["session"]["id"] == session_id
-            for payload in deliveries
-        )
-
-    # -- ACK gate + intercept (Stop / Override) -----------------------------
-
     async def test_create_session_tier12_requires_ack(
         self, client: AsyncClient, auth_headers
     ):
@@ -4303,286 +4119,110 @@ class TestSetupChecklist:
         assert resp.status_code in {401, 403}
 
 
-# ===========================================================================
-# Webhook triggers
-# ===========================================================================
-
-
-class TestWebhookTriggers:
-    async def test_create_list_update_delete_and_test_trigger(
-        self, client: AsyncClient, app, auth_headers, monkeypatch
+class TestReportsAndEmail:
+    async def test_csv_and_pdf_incident_reports(
+        self, client: AsyncClient, app, auth_headers
     ):
-        deliveries: list[tuple[str, dict[str, object], dict[str, str]]] = []
-
-        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
-            deliveries.append((url, payload, headers))
-
-            class _Resp:
-                status_code = 202
-
-                def raise_for_status(self):
-                    return None
-
-            return _Resp()
-
-        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
-
-        create_resp = await client.post(
-            "/webhook-triggers",
-            json={
-                "name": "ops-webhook",
-                "url": "https://hooks.example/ops",
-                "format": "generic",
-                "event_types": ["session.completed", "session.failed"],
-                "headers": {"X-Team": "ops"},
-                "token": "secret-token",
-                "is_active": True,
-            },
-            headers=auth_headers,
-        )
-        assert create_resp.status_code == 201
-        trigger_id = create_resp.json()["id"]
-        assert create_resp.json()["format"] == "generic"
-        assert create_resp.json()["has_token"] is True
-        assert create_resp.json()["header_names"] == ["X-Team"]
-
-        list_resp = await client.get("/webhook-triggers", headers=auth_headers)
-        assert list_resp.status_code == 200
-        assert list_resp.json()["total"] == 1
-
-        update_resp = await client.put(
-            f"/webhook-triggers/{trigger_id}",
-            json={
-                "name": "ops-webhook",
-                "url": "https://hooks.example/ops-v2",
-                "format": "slack",
-                "event_types": ["session.completed"],
-                "headers": {"X-Team": "platform"},
-                "is_active": False,
-            },
-            headers=auth_headers,
-        )
-        assert update_resp.status_code == 200
-        assert update_resp.json()["url"] == "https://hooks.example/ops-v2"
-        assert update_resp.json()["format"] == "slack"
-        assert update_resp.json()["is_active"] is False
-
-        test_resp = await client.post(
-            f"/webhook-triggers/{trigger_id}/test",
-            headers=auth_headers,
-        )
-        assert test_resp.status_code == 200
-        assert test_resp.json()["success"] is True
-        assert test_resp.json()["event_type"] == "webhook.test"
-
-        await asyncio.sleep(0.05)
-        assert deliveries
-        _, payload, headers = deliveries[-1]
-        assert payload["text"].startswith("OpsMender Webhook.Test:")
-        assert payload["blocks"]
-        assert headers["Authorization"] == "Bearer secret-token"
-        assert headers["X-Team"] == "platform"
-
-        delete_resp = await client.delete(
-            f"/webhook-triggers/{trigger_id}",
-            headers=auth_headers,
-        )
-        assert delete_resp.status_code == 204
-
-    async def test_update_trigger_preserves_headers_unless_cleared(
-        self, client: AsyncClient, auth_headers
-    ):
-        create_resp = await client.post(
-            "/webhook-triggers",
-            json={
-                "name": "preserve-headers",
-                "url": "https://hooks.example/ops",
-                "format": "generic",
-                "event_types": ["session.completed"],
-                "headers": {"X-Team": "ops", "X-Region": "us"},
-                "is_active": True,
-            },
-            headers=auth_headers,
-        )
-        assert create_resp.status_code == 201
-        trigger_id = create_resp.json()["id"]
-
-        update_resp = await client.put(
-            f"/webhook-triggers/{trigger_id}",
-            json={
-                "name": "preserve-headers",
-                "url": "https://hooks.example/ops-v2",
-                "format": "generic",
-                "event_types": ["session.failed"],
-                "is_active": True,
-            },
-            headers=auth_headers,
-        )
-        assert update_resp.status_code == 200
-        assert sorted(update_resp.json()["header_names"]) == ["X-Region", "X-Team"]
-
-        clear_resp = await client.put(
-            f"/webhook-triggers/{trigger_id}",
-            json={
-                "name": "preserve-headers",
-                "url": "https://hooks.example/ops-v3",
-                "format": "generic",
-                "event_types": ["session.failed"],
-                "clear_headers": True,
-                "is_active": True,
-            },
-            headers=auth_headers,
-        )
-        assert clear_resp.status_code == 200
-        assert clear_resp.json()["header_names"] == []
-
-    async def test_create_trigger_validates_event_types(
-        self, client: AsyncClient, auth_headers
-    ):
-        resp = await client.post(
-            "/webhook-triggers",
-            json={
-                "name": "bad-trigger",
-                "url": "https://hooks.example/bad",
-                "format": "generic",
-                "event_types": ["session.unknown"],
-            },
-            headers=auth_headers,
-        )
-        assert resp.status_code == 400
-        assert "Unsupported event types" in resp.json()["detail"]
-
-    async def test_session_created_slack_trigger_formats_payload(
-        self, client: AsyncClient, app, auth_headers, monkeypatch
-    ):
-        deliveries: list[dict[str, object]] = []
-
-        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
-            deliveries.append(payload)
-
-            class _Resp:
-                status_code = 200
-
-                def raise_for_status(self):
-                    return None
-
-            return _Resp()
-
-        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
-
         async with app.state.session_factory() as db:
-            await WebhookTriggerRepo.create(
+            incident = await IncidentRepo.create(
                 db,
                 TEST_ORG_ID,
-                name="slack-created",
-                url="https://hooks.slack.com/services/T/B/X",
-                format="slack",
-                event_types=["session.created"],
+                title="Reportable outage",
+                description="checkout failed",
+                severity="critical",
+                priority="P0",
             )
+            incident.status = "resolved"
+            incident.acknowledged_at = incident.created_at + timedelta(minutes=2)
+            incident.updated_at = incident.created_at + timedelta(minutes=10)
             await db.commit()
 
-        resp = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
-        assert resp.status_code == 201
+        start = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        end = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        csv_resp = await client.get(
+            "/reports/incidents",
+            params={"format": "csv", "from": start, "to": end},
+            headers=auth_headers,
+        )
+        assert csv_resp.status_code == 200
+        assert "Reportable outage" in csv_resp.text
+        assert "mtta_seconds" in csv_resp.text
+        assert "mttr_seconds" in csv_resp.text
 
-        await asyncio.sleep(0.05)
+        pdf_resp = await client.get(
+            "/reports/incidents",
+            params={"format": "pdf", "from": start, "to": end},
+            headers=auth_headers,
+        )
+        assert pdf_resp.status_code == 200
+        assert pdf_resp.content.startswith(b"%PDF")
 
-        assert len(deliveries) == 1
-        payload = deliveries[0]
-        assert "text" in payload
-        assert "blocks" in payload
-        assert payload["text"].startswith("OpsMender Created:")
-
-    async def test_test_trigger_teams_format_uses_text_payload(
+    async def test_email_settings_encrypt_password_and_send_test(
         self, client: AsyncClient, app, auth_headers, monkeypatch
     ):
-        deliveries: list[dict[str, object]] = []
-
-        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
-            deliveries.append(payload)
-
-            class _Resp:
-                status_code = 200
-
-                def raise_for_status(self):
-                    return None
-
-            return _Resp()
-
-        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
-
-        create_resp = await client.post(
-            "/webhook-triggers",
+        response = await client.put(
+            f"/organizations/{TEST_ORG_ID}/email-settings",
             json={
-                "name": "teams-test",
-                "url": "https://prod-00.westus.logic.azure.com/workflows/test",
-                "format": "teams",
-                "event_types": ["session.completed"],
-                "is_active": True,
+                "host": "smtp.example.com",
+                "port": 587,
+                "security": "starttls",
+                "username": "ops",
+                "password": "secret",
+                "from_name": "OpsMender",
+                "from_address": "ops@example.com",
             },
             headers=auth_headers,
         )
-        assert create_resp.status_code == 201
+        assert response.status_code == 200
+        assert response.json()["has_password"] is True
+        async with app.state.session_factory() as db:
+            row = await OrgEmailSettingsRepo.get_for_org(db, TEST_ORG_ID)
+            assert row is not None
+            assert row.password_encrypted != "secret"
 
-        trigger_id = create_resp.json()["id"]
+        class FakeChannel:
+            async def send(self, **kwargs):
+                from backend.paging.dispatch import DeliveryAttempt
+
+                return DeliveryAttempt("email", "sent")
+
+        monkeypatch.setattr(
+            "backend.api.routes.organizations.build_email_channel",
+            lambda settings: FakeChannel(),
+        )
         test_resp = await client.post(
-            f"/webhook-triggers/{trigger_id}/test",
+            f"/organizations/{TEST_ORG_ID}/email-settings/test",
+            json={"recipient": "admin@example.com"},
             headers=auth_headers,
         )
         assert test_resp.status_code == 200
         assert test_resp.json()["success"] is True
 
-        assert deliveries
-        payload = deliveries[-1]
-        assert payload.keys() == {"text"}
-        assert "Webhook test incident" in payload["text"]
-
-    async def test_test_trigger_sumo_format_uses_log_friendly_json(
-        self, client: AsyncClient, app, auth_headers, monkeypatch
+    async def test_report_schedule_crud(
+        self, client: AsyncClient, auth_headers
     ):
-        deliveries: list[dict[str, object]] = []
-
-        async def _post_json(url, *, payload, headers, timeout_seconds=10.0):
-            deliveries.append(payload)
-
-            class _Resp:
-                status_code = 200
-
-                def raise_for_status(self):
-                    return None
-
-            return _Resp()
-
-        monkeypatch.setattr("backend.webhooks.service.post_json", _post_json)
-
-        create_resp = await client.post(
-            "/webhook-triggers",
+        create = await client.post(
+            "/reports/schedules",
             json={
-                "name": "sumo-test",
-                "url": "https://endpoint.collection.us2.sumologic.com/receiver/v1/http/test",
-                "format": "sumo",
-                "event_types": ["session.completed"],
-                "is_active": True,
+                "name": "Weekly leadership",
+                "cadence": "weekly",
+                "recipients": ["lead@example.com"],
+                "filters": {"priority": "P0"},
+                "format": "pdf",
+                "next_run_at": datetime.now(timezone.utc).isoformat(),
+                "enabled": True,
             },
             headers=auth_headers,
         )
-        assert create_resp.status_code == 201
-
-        trigger_id = create_resp.json()["id"]
-        test_resp = await client.post(
-            f"/webhook-triggers/{trigger_id}/test",
-            headers=auth_headers,
+        assert create.status_code == 201
+        schedule_id = create.json()["id"]
+        listing = await client.get("/reports/schedules", headers=auth_headers)
+        assert listing.status_code == 200
+        assert listing.json()["total"] == 1
+        deleted = await client.delete(
+            f"/reports/schedules/{schedule_id}", headers=auth_headers
         )
-        assert test_resp.status_code == 200
-        assert test_resp.json()["success"] is True
-
-        assert deliveries
-        payload = deliveries[-1]
-        assert payload["eventType"] == "webhook.test"
-        assert payload["source"] == "opsmender"
-        assert payload["message"].startswith("OpsMender Webhook.Test:")
-        assert payload["incidentTitle"] == "Webhook test incident"
-        assert payload["sessionStatus"] == "completed"
-        assert payload["session"]["id"] == "test-session"
+        assert deleted.status_code == 204
 
 
 class TestWorkflowProfiles:

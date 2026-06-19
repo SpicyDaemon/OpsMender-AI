@@ -490,17 +490,12 @@ https://<your-opsmender-url>/bot-connectors/<connector-id>/bluebubbles/webhook
 
 Identity mapping (RBAC): Use the sender's phone number or Apple ID (e.g., `+15550123`) as the platform user ID.
 
-## 3. Viewer Updates
+## 3. Reports and email delivery
 
-OpsMender can push real-time updates about incident sessions, AI actions, and SLA/SLO violations to external platforms.
-
-1. Navigate to **Paging & On-call** > **Notifications**.
-2. Open the **Viewer Updates** section.
-3. OpsMender supports formatted payloads for:
-   - **Slack:** Sends beautifully formatted block-kit messages with incident details and links.
-   - **Microsoft Teams:** Sends adaptive cards.
-   - **Sumo Logic:** Sends structured JSON for ingestion into log analytics.
-   - **Generic:** Sends a standard JSON payload containing the event data.
+Viewer-facing delivery is report-based. Configure organization SMTP under
+**Config**, then use **Reports** for CSV/PDF exports and scheduled stakeholder
+email. Real-time incident status belongs to Track-lane Slack, Teams, or
+EventBridge Notification Channels.
 
 ## 4. Docker Deployment Basics
 

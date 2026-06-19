@@ -747,44 +747,6 @@ export async function deleteBotUserLink(
 }
 
 // ---------------------------------------------------------------------------
-// Legacy viewer-update webhook API
-// ---------------------------------------------------------------------------
-
-import type {
-  WebhookTriggerListResponse,
-  WebhookTriggerResponse,
-  WebhookTriggerTestResponse,
-  WebhookTriggerUpsert,
-} from "./types";
-
-export async function listWebhookTriggers(): Promise<WebhookTriggerListResponse> {
-  return api.get<WebhookTriggerListResponse>("/webhook-triggers");
-}
-
-export async function createWebhookTrigger(
-  body: WebhookTriggerUpsert,
-): Promise<WebhookTriggerResponse> {
-  return api.post<WebhookTriggerResponse>("/webhook-triggers", body);
-}
-
-export async function updateWebhookTrigger(
-  id: string,
-  body: WebhookTriggerUpsert,
-): Promise<WebhookTriggerResponse> {
-  return api.put<WebhookTriggerResponse>(`/webhook-triggers/${id}`, body);
-}
-
-export async function deleteWebhookTrigger(id: string): Promise<void> {
-  return api.del<void>(`/webhook-triggers/${id}`);
-}
-
-export async function testWebhookTrigger(
-  id: string,
-): Promise<WebhookTriggerTestResponse> {
-  return api.post<WebhookTriggerTestResponse>(`/webhook-triggers/${id}/test`);
-}
-
-// ---------------------------------------------------------------------------
 // Workflow Profiles
 // ---------------------------------------------------------------------------
 
@@ -2020,6 +1982,77 @@ export async function updateMemory(
 
 export async function deleteMemory(id: string): Promise<void> {
   return api.del<void>(`/memories/${id}`);
+}
+
+import type {
+  OrgEmailSettingsResponse,
+  OrgEmailSettingsUpsert,
+  ReportScheduleListResponse,
+  ReportScheduleResponse,
+  ReportScheduleUpsert,
+} from "./types";
+
+export async function getOrgEmailSettings(
+  orgId: string,
+): Promise<OrgEmailSettingsResponse> {
+  return api.get<OrgEmailSettingsResponse>(`/organizations/${orgId}/email-settings`);
+}
+
+export async function updateOrgEmailSettings(
+  orgId: string,
+  body: OrgEmailSettingsUpsert,
+): Promise<OrgEmailSettingsResponse> {
+  return api.put<OrgEmailSettingsResponse>(
+    `/organizations/${orgId}/email-settings`,
+    body,
+  );
+}
+
+export async function testOrgEmailSettings(
+  orgId: string,
+  recipient: string,
+): Promise<{ success: boolean; detail: string }> {
+  return api.post<{ success: boolean; detail: string }>(
+    `/organizations/${orgId}/email-settings/test`,
+    { recipient },
+  );
+}
+
+export async function listReportSchedules(): Promise<ReportScheduleListResponse> {
+  return api.get<ReportScheduleListResponse>("/reports/schedules");
+}
+
+export async function createReportSchedule(
+  body: ReportScheduleUpsert,
+): Promise<ReportScheduleResponse> {
+  return api.post<ReportScheduleResponse>("/reports/schedules", body);
+}
+
+export async function updateReportSchedule(
+  id: string,
+  body: ReportScheduleUpsert,
+): Promise<ReportScheduleResponse> {
+  return api.put<ReportScheduleResponse>(`/reports/schedules/${id}`, body);
+}
+
+export async function deleteReportSchedule(id: string): Promise<void> {
+  return api.del<void>(`/reports/schedules/${id}`);
+}
+
+export async function downloadIncidentReport(
+  format: "csv" | "pdf",
+  from: string,
+  to: string,
+): Promise<Blob> {
+  const params = new URLSearchParams({ format, from, to });
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  const orgId = getOrgId();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (orgId) headers["X-Org-ID"] = orgId;
+  const response = await fetch(`${BASE_URL}/reports/incidents?${params}`, { headers });
+  if (!response.ok) throw new Error(`Report export failed: HTTP ${response.status}`);
+  return response.blob();
 }
 
 export async function bulkDeleteMemories(

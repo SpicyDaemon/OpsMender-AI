@@ -27,7 +27,6 @@ from backend.ingest.autostart import (
     load_auto_start_policy,
     should_auto_start_session,
 )
-from backend.webhooks import schedule_generic_event
 
 if TYPE_CHECKING:
     from backend.config_loader import AppConfig
@@ -143,7 +142,6 @@ class SLAPoller:
         self._task: asyncio.Task | None = None
         # Track ongoing probes so we don't spawn duplicates if polling interval < latency
         self._running_probes: set[uuid.UUID] = set()
-        self._active_mw_ids: set[uuid.UUID] = set()
         self._violated_slo_ids: set[uuid.UUID] = set()
 
     async def start(self) -> None:
@@ -183,50 +181,6 @@ class SLAPoller:
             org_id = org.id
             async with self._session_factory() as db:
                 targets = await SLATargetRepo.list_all(db, org_id, active_only=True)
-                windows = await MaintenanceWindowRepo.list_active_at(
-                    db, org_id, datetime.now(timezone.utc)
-                )
-
-                current_mw_ids = {w.id for w in windows}
-                started_mws = current_mw_ids - self._active_mw_ids
-                ended_mws = self._active_mw_ids - current_mw_ids
-
-                for w in windows:
-                    if w.id in started_mws:
-                        schedule_generic_event(
-                            self._session_factory,
-                            task_registry=None,
-                            event_type="maintenance_window.started",
-                            payload_data={
-                                "message": f"Maintenance window started: {w.name}",
-                                "maintenance_window": {
-                                    "id": str(w.id),
-                                    "name": w.name,
-                                    "reason": w.reason,
-                                },
-                            },
-                        )
-
-                if ended_mws:
-                    for wid in ended_mws:
-                        w = await MaintenanceWindowRepo.get_by_id(db, org_id, wid)
-                        if w:
-                            schedule_generic_event(
-                                self._session_factory,
-                                task_registry=None,
-                                event_type="maintenance_window.ended",
-                                payload_data={
-                                    "message": f"Maintenance window ended: {w.name}",
-                                    "maintenance_window": {
-                                        "id": str(w.id),
-                                        "name": w.name,
-                                        "reason": w.reason,
-                                    },
-                                },
-                            )
-
-                self._active_mw_ids = current_mw_ids
-
                 for target in targets:
                     if target.id in self._running_probes:
                         continue
@@ -262,24 +216,6 @@ class SLAPoller:
                 if burn_rate > float(slo.burn_alert_threshold):
                     if slo.id not in self._violated_slo_ids:
                         self._violated_slo_ids.add(slo.id)
-                        schedule_generic_event(
-                            self._session_factory,
-                            task_registry=None,
-                            event_type="slo.burn_rate_violated",
-                            payload_data={
-                                "message": f"SLO burn rate exceeded for {slo.name}",
-                                "slo": {
-                                    "id": str(slo.id),
-                                    "name": slo.name,
-                                    "objective_pct": float(slo.objective_pct),
-                                    "burn_alert_threshold": float(
-                                        slo.burn_alert_threshold
-                                    ),
-                                    "burn_rate": float(burn_rate),
-                                    "actual_pct": float(actual_pct),
-                                },
-                            },
-                        )
 
                     external_source = f"slo:{slo.id}"
                     external_id = "burn_rate_violation"

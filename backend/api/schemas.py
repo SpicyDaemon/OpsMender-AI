@@ -974,49 +974,73 @@ class SessionMessageListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Webhook triggers (outbound session-state notifications)
+# Organization email settings + incident reports
 # ---------------------------------------------------------------------------
 
 
-class WebhookTriggerUpsert(BaseModel):
+class OrgEmailSettingsUpsert(BaseModel):
+    host: str = Field(..., min_length=1, max_length=255)
+    port: int = Field(default=587, ge=1, le=65535)
+    security: str = Field(default="starttls", pattern="^(starttls|ssl|none)$")
+    username: Optional[str] = Field(default=None, max_length=255)
+    password: Optional[str] = None
+    clear_password: bool = False
+    from_name: Optional[str] = Field(default="OpsMender", max_length=255)
+    from_address: str = Field(..., min_length=3, max_length=255)
+
+
+class OrgEmailSettingsResponse(BaseModel):
+    org_id: uuid.UUID
+    host: str
+    port: int
+    security: str
+    username: Optional[str]
+    from_name: Optional[str]
+    from_address: str
+    has_password: bool
+    source: str = "database"
+
+
+class EmailSettingsTestRequest(BaseModel):
+    recipient: str = Field(..., min_length=3, max_length=255)
+
+
+class EmailSettingsTestResponse(BaseModel):
+    success: bool
+    detail: str
+
+
+class ReportScheduleUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
-    url: str = Field(..., min_length=1, max_length=1000)
-    format: str = Field(default="generic", pattern="^(generic|slack|teams|sumo)$")
-    event_types: list[str] = Field(..., min_length=1)
-    headers: Optional[dict[str, str]] = None
-    clear_headers: bool = False
-    token: Optional[str] = None
-    clear_token: bool = False
-    is_active: bool = True
+    cadence: str = Field(pattern="^(weekly|monthly|quarterly)$")
+    recipients: list[str] = Field(..., min_length=1)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    format: str = Field(default="pdf", pattern="^(csv|pdf)$")
+    next_run_at: datetime
+    enabled: bool = True
 
 
-class WebhookTriggerResponse(BaseModel):
+class ReportScheduleResponse(BaseModel):
     id: uuid.UUID
+    org_id: uuid.UUID
     name: str
-    url: str
+    cadence: str
+    recipients: list[str]
+    filters: dict[str, Any]
     format: str
-    event_types: list[str]
-    is_active: bool
+    next_run_at: datetime
+    enabled: bool
+    last_run_at: Optional[datetime]
+    last_error: Optional[str]
     created_at: datetime
     updated_at: datetime
-    last_triggered_at: Optional[datetime]
-    last_error: Optional[str]
-    header_names: list[str] = Field(default_factory=list)
-    has_token: bool
 
     model_config = {"from_attributes": True}
 
 
-class WebhookTriggerListResponse(BaseModel):
-    items: list[WebhookTriggerResponse]
+class ReportScheduleListResponse(BaseModel):
+    items: list[ReportScheduleResponse]
     total: int
-
-
-class WebhookTriggerTestResponse(BaseModel):
-    success: bool
-    detail: str
-    status_code: Optional[int] = None
-    event_type: str
 
 
 # ---------------------------------------------------------------------------

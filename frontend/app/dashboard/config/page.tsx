@@ -11,6 +11,7 @@ import {
   RetentionSection,
   TierSection,
 } from "@/components/config/ConfigSections";
+import { EmailSettingsSection } from "@/components/EmailSettingsSection";
 
 export default function ConfigPage() {
   const { user } = useAuth();
@@ -43,6 +44,8 @@ export default function ConfigPage() {
         </h2>
         <TierSection config={config} onSaved={reload} canEdit={canEdit} />
       </section>
+
+      {user?.primary_org_id && <EmailSettingsSection orgId={user.primary_org_id} />}
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-primary">

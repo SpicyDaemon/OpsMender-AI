@@ -41,7 +41,7 @@ from backend.db.repos import (
     OrgInviteRepo,
     UserRepo,
 )
-from backend.people import smtp as smtp_helper
+from backend.reports.email import build_email_channel, resolve_email_settings
 from backend.people import tokens as people_tokens
 
 
@@ -126,18 +126,27 @@ def _invite_email_body(*, org_name: str, role: str, url: str) -> str:
     )
 
 
-def _send_invite_email(
-    request: Request, *, to: str, org_name: str, role: str, url: str
+async def _send_invite_email(
+    request: Request,
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    to: str,
+    org_name: str,
+    role: str,
+    url: str,
 ) -> tuple[bool, str | None]:
-    cfg: AppConfig = request.app.state.config
-    if not cfg.smtp.configured:
+    settings = await resolve_email_settings(
+        db, org_id, config=request.app.state.config
+    )
+    if settings is None:
         return False, None
-    return smtp_helper.send_email(
-        cfg.smtp,
-        to=to,
+    attempt = await build_email_channel(settings).send(
+        recipient=to,
         subject=f"You're invited to {org_name} on OpsMender",
         body=_invite_email_body(org_name=org_name, role=role, url=url),
     )
+    return attempt.status == "sent", attempt.error
 
 
 # ---------------------------------------------------------------------------
@@ -195,8 +204,8 @@ async def create_invite(
     await db.commit()
 
     url = _build_invite_url(request, raw)
-    email_sent, email_error = _send_invite_email(
-        request, to=email_lc, org_name=org.name, role=body.role, url=url
+    email_sent, email_error = await _send_invite_email(
+        request, db, org_id, to=email_lc, org_name=org.name, role=body.role, url=url
     )
 
     return InviteCreatedResponse(
@@ -255,8 +264,10 @@ async def resend_invite(
     await db.commit()
 
     url = _build_invite_url(request, raw)
-    email_sent, email_error = _send_invite_email(
+    email_sent, email_error = await _send_invite_email(
         request,
+        db,
+        org_id,
         to=invite.email,
         org_name=org.name,
         role=invite.role,

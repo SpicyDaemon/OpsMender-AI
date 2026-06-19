@@ -11,7 +11,6 @@ Maps the data model from REFERENCE.md to Postgres tables:
 - ``runtime_config``     — DB-backed UI overrides for runtime settings
 - ``skills``             — operator-owned skill definitions (optionally bound to an MCP server)
 - ``session_messages``   — co-pilot chat history (user ↔ assistant), parallel to the workflow
-- ``webhook_triggers``   — outbound webhooks fired on session lifecycle changes
 - ``ingest_tokens``      — per-source webhook credentials for external incident ingestion
 - ``ingest_log``         — raw payloads from external ingest for replay/debugging
 - ``bot_connectors``     — external chat bot connector configurations
@@ -755,38 +754,70 @@ class RuntimeConfig(Base):
 
 
 # ---------------------------------------------------------------------------
-# Webhook triggers (outbound session-state notifications)
+# Organization email settings + incident report schedules
 # ---------------------------------------------------------------------------
 
 
-class WebhookTrigger(Base):
-    __tablename__ = "webhook_triggers"
-
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
-    )
-
+class OrgEmailSettings(Base):
+    __tablename__ = "org_email_settings"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(150), nullable=False)
-    url: Mapped[str] = mapped_column(String(1000), nullable=False)
-    format: Mapped[str] = mapped_column(String(20), default="generic", nullable=False)
-    event_types: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    headers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(Integer, default=587, nullable=False)
+    security: Mapped[str] = mapped_column(
+        String(20), default="starttls", nullable=False
+    )
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    from_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    from_address: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
-    last_triggered_at: Mapped[datetime | None] = mapped_column(
+
+
+class ReportSchedule(Base):
+    __tablename__ = "report_schedules"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    cadence: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipients: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    filters: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    format: Mapped[str] = mapped_column(String(10), default="pdf", nullable=False)
+    next_run_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
     __table_args__ = (
-        UniqueConstraint("org_id", "name", name="uq_webhook_trigger_name"),
+        UniqueConstraint("org_id", "name", name="uq_report_schedule_name"),
+        Index(
+            "ix_report_schedules_due",
+            "enabled",
+            "next_run_at",
+        ),
     )
 
 

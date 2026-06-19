@@ -49,7 +49,7 @@ from backend.db.repos import (
     UserRepo,
 )
 from backend.notifications import CATEGORY_ACCOUNT, emit_notification
-from backend.people import smtp as smtp_helper
+from backend.reports.email import build_email_channel, resolve_email_settings
 from backend.people import tokens as people_tokens
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -561,10 +561,17 @@ async def mint_password_reset(
     url = f"{base}/password-reset?token={raw}"
 
     # Best-effort SMTP delivery alongside the copy-paste URL.
-    cfg: AppConfig = request.app.state.config
     email_sent = False
     email_error: str | None = None
-    if cfg.smtp.configured:
+    email_org_id = target.primary_org_id or actor.primary_org_id
+    settings = (
+        await resolve_email_settings(
+            db, email_org_id, config=request.app.state.config
+        )
+        if email_org_id is not None
+        else None
+    )
+    if settings is not None:
         body = (
             f"Hi {target.username},\n\n"
             f"An OpsMender administrator initiated a password reset for your "
@@ -574,12 +581,13 @@ async def mint_password_reset(
             f"If you didn't expect this, ignore this email — your existing "
             f"password remains active until the token is used.\n"
         )
-        email_sent, email_error = smtp_helper.send_email(
-            cfg.smtp,
-            to=target.email,
+        attempt = await build_email_channel(settings).send(
+            recipient=target.email,
             subject="OpsMender password reset",
             body=body,
         )
+        email_sent = attempt.status == "sent"
+        email_error = attempt.error
 
     return PasswordResetMintResponse(
         url=url,

@@ -6,7 +6,7 @@ Only global admins (User.role == 'admin') can manage organizations.
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import require_role
@@ -14,6 +14,10 @@ from backend.api.deps import get_db
 from backend.api.schemas import (
     NotificationSettingsResponse,
     NotificationSettingsUpdate,
+    OrgEmailSettingsResponse,
+    OrgEmailSettingsUpsert,
+    EmailSettingsTestRequest,
+    EmailSettingsTestResponse,
     OrganizationCreate,
     OrganizationDomainCreate,
     OrganizationDomainListResponse,
@@ -33,11 +37,13 @@ from backend.auth.secrets import encrypt_secret
 from backend.db.models import User
 from backend.db.repos import (
     OrganizationDomainRepo,
+    OrgEmailSettingsRepo,
     OrganizationRepo,
     OrgSAMLConfigRepo,
     OrgSSOConfigRepo,
     UserRepo,
 )
+from backend.reports.email import build_email_channel, resolve_email_settings
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -228,6 +234,119 @@ async def update_notification_settings(
         slack_incident_channels_enabled=getattr(
             updated, "slack_incident_channels_enabled", False
         ),
+    )
+
+
+@router.get(
+    "/{org_id}/email-settings",
+    response_model=OrgEmailSettingsResponse,
+    dependencies=[admin_dependency],
+)
+async def get_email_settings(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    if await OrganizationRepo.get_by_id(db, org_id) is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    row = await OrgEmailSettingsRepo.get_for_org(db, org_id)
+    settings = await resolve_email_settings(db, org_id)
+    if settings is None:
+        raise HTTPException(status_code=404, detail="SMTP is not configured")
+    return OrgEmailSettingsResponse(
+        org_id=org_id,
+        host=settings.host,
+        port=settings.port,
+        security=settings.security,
+        username=settings.username,
+        from_name=settings.from_name,
+        from_address=settings.from_address,
+        has_password=bool(settings.password),
+        source="database" if row is not None else "environment",
+    )
+
+
+@router.put(
+    "/{org_id}/email-settings",
+    response_model=OrgEmailSettingsResponse,
+    dependencies=[admin_dependency],
+)
+async def upsert_email_settings(
+    org_id: uuid.UUID,
+    body: OrgEmailSettingsUpsert,
+    db: AsyncSession = Depends(get_db),
+):
+    if await OrganizationRepo.get_by_id(db, org_id) is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    existing = await OrgEmailSettingsRepo.get_for_org(db, org_id)
+    if body.clear_password:
+        encrypted = ""
+    elif body.password is not None:
+        encrypted = encrypt_secret(body.password)
+    elif existing is not None:
+        encrypted = None
+    else:
+        encrypted = ""
+    row = await OrgEmailSettingsRepo.upsert(
+        db,
+        org_id,
+        host=body.host,
+        port=body.port,
+        security=body.security,
+        username=body.username,
+        password_encrypted=encrypted,
+        from_name=body.from_name,
+        from_address=body.from_address,
+    )
+    await db.commit()
+    return OrgEmailSettingsResponse(
+        org_id=org_id,
+        host=row.host,
+        port=row.port,
+        security=row.security,
+        username=row.username,
+        from_name=row.from_name,
+        from_address=row.from_address,
+        has_password=bool(row.password_encrypted),
+        source="database",
+    )
+
+
+@router.delete(
+    "/{org_id}/email-settings",
+    status_code=204,
+    dependencies=[admin_dependency],
+)
+async def delete_email_settings(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    if not await OrgEmailSettingsRepo.delete(db, org_id):
+        raise HTTPException(status_code=404, detail="SMTP settings not found")
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.post(
+    "/{org_id}/email-settings/test",
+    response_model=EmailSettingsTestResponse,
+    dependencies=[admin_dependency],
+)
+async def test_email_settings(
+    org_id: uuid.UUID,
+    body: EmailSettingsTestRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    settings = await resolve_email_settings(db, org_id)
+    if settings is None:
+        return EmailSettingsTestResponse(success=False, detail="SMTP not configured")
+    attempt = await build_email_channel(settings).send(
+        recipient=body.recipient,
+        subject="OpsMender SMTP test",
+        body="Your OpsMender SMTP configuration is working.",
+    )
+    return EmailSettingsTestResponse(
+        success=attempt.status == "sent",
+        detail="Test email sent." if attempt.status == "sent" else (attempt.error or "Send failed"),
     )
 
 

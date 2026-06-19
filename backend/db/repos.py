@@ -58,13 +58,14 @@ from backend.db.models import (
     MCPServerOAuthToken,
     ModelConfig,
     NativeActionInvocation,
+    OrgEmailSettings,
     RuntimeConfig,
     Session,
     SessionMessage,
     Skill,
     User,
     UserNotificationPref,
-    WebhookTrigger,
+    ReportSchedule,
     WorkflowProfile,
     SLATarget,
     UptimeSample,
@@ -2253,160 +2254,6 @@ class RuntimeConfigRepo:
         return item
 
 
-class WebhookTriggerRepo:
-    @staticmethod
-    async def create(
-        db: AsyncSession,
-        org_id: uuid.UUID,
-        *,
-        name: str,
-        url: str,
-        format: str = "generic",
-        event_types: list[str],
-        headers: dict[str, str] | None = None,
-        token: str | None = None,
-        is_active: bool = True,
-    ) -> WebhookTrigger:
-        trigger = WebhookTrigger(
-            org_id=org_id,
-            name=name,
-            url=url,
-            format=format,
-            event_types=event_types,
-            headers=headers,
-            token=token,
-            is_active=is_active,
-        )
-        db.add(trigger)
-        await db.flush()
-        return trigger
-
-    @staticmethod
-    async def get_by_id(
-        db: AsyncSession, org_id: uuid.UUID, trigger_id: uuid.UUID
-    ) -> WebhookTrigger | None:
-        return (
-            await db.execute(
-                select(WebhookTrigger)
-                .where(WebhookTrigger.org_id == org_id)
-                .where(WebhookTrigger.org_id == org_id)
-                .where(WebhookTrigger.org_id == org_id)
-                .where(WebhookTrigger.id == trigger_id, WebhookTrigger.org_id == org_id)
-            )
-        ).scalar_one_or_none()
-
-    @staticmethod
-    async def get_by_name(
-        db: AsyncSession, org_id: uuid.UUID, name: str
-    ) -> WebhookTrigger | None:
-        stmt = (
-            select(WebhookTrigger)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.name == name)
-        )
-        result = await db.execute(stmt)
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def list_all(
-        db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
-    ) -> Sequence[WebhookTrigger]:
-        stmt = (
-            select(WebhookTrigger)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.org_id == org_id)
-            .order_by(WebhookTrigger.name)
-        )
-        if active_only:
-            stmt = stmt.where(WebhookTrigger.is_active == True)
-        result = await db.execute(stmt)
-        return result.scalars().all()
-
-    @staticmethod
-    async def list_matching_event(
-        db: AsyncSession, org_id: uuid.UUID, event_type: str
-    ) -> Sequence[WebhookTrigger]:
-        items = await WebhookTriggerRepo.list_all(db, org_id, active_only=True)
-        return [
-            item
-            for item in items
-            if "*" in (item.event_types or []) or event_type in (item.event_types or [])
-        ]
-
-    @staticmethod
-    async def update(
-        db: AsyncSession,
-        org_id: uuid.UUID,
-        trigger_id: uuid.UUID,
-        *,
-        name: str,
-        url: str,
-        format: str = "generic",
-        event_types: list[str],
-        headers: dict[str, str] | None = None,
-        token: str | None = None,
-        is_active: bool = True,
-    ) -> WebhookTrigger | None:
-        stmt = (
-            update(WebhookTrigger)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.id == trigger_id)
-            .values(
-                name=name,
-                url=url,
-                format=format,
-                event_types=event_types,
-                headers=headers,
-                token=token,
-                is_active=is_active,
-                updated_at=datetime.now(timezone.utc),
-            )
-        )
-        result = await db.execute(stmt)
-        if not result.rowcount:
-            return None
-        await db.flush()
-        return await WebhookTriggerRepo.get_by_id(db, org_id, trigger_id)
-
-    @staticmethod
-    async def mark_delivery(
-        db: AsyncSession,
-        org_id: uuid.UUID,
-        trigger_id: uuid.UUID,
-        *,
-        error: str | None = None,
-    ) -> None:
-        stmt = (
-            update(WebhookTrigger)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.org_id == org_id)
-            .where(WebhookTrigger.id == trigger_id)
-            .values(
-                last_triggered_at=datetime.now(timezone.utc),
-                last_error=error,
-                updated_at=datetime.now(timezone.utc),
-            )
-        )
-        await db.execute(stmt)
-
-    @staticmethod
-    async def delete(
-        db: AsyncSession, org_id: uuid.UUID, trigger_id: uuid.UUID
-    ) -> bool:
-        trigger = await WebhookTriggerRepo.get_by_id(db, org_id, trigger_id)
-        if trigger is None:
-            return False
-        await db.delete(trigger)
-        await db.flush()
-        return True
-
-
 class WorkflowProfileRepo:
     @staticmethod
     async def create(
@@ -4315,6 +4162,147 @@ class OrganizationRepo:
         if org is None:
             return False
         await db.delete(org)
+        await db.flush()
+        return True
+
+
+class OrgEmailSettingsRepo:
+    @staticmethod
+    async def get_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> OrgEmailSettings | None:
+        return (
+            await db.execute(
+                select(OrgEmailSettings).where(OrgEmailSettings.org_id == org_id)
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        host: str,
+        port: int,
+        security: str,
+        username: str | None,
+        password_encrypted: str | None,
+        from_name: str | None,
+        from_address: str,
+    ) -> OrgEmailSettings:
+        row = await OrgEmailSettingsRepo.get_for_org(db, org_id)
+        if row is None:
+            row = OrgEmailSettings(org_id=org_id)
+            db.add(row)
+        row.host = host
+        row.port = port
+        row.security = security
+        row.username = username
+        if password_encrypted is not None:
+            row.password_encrypted = password_encrypted or None
+        row.from_name = from_name
+        row.from_address = from_address
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def delete(db: AsyncSession, org_id: uuid.UUID) -> bool:
+        row = await OrgEmailSettingsRepo.get_for_org(db, org_id)
+        if row is None:
+            return False
+        await db.delete(row)
+        await db.flush()
+        return True
+
+
+class ReportScheduleRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        name: str,
+        cadence: str,
+        recipients: list[str],
+        filters: dict,
+        format: str,
+        next_run_at: datetime,
+        enabled: bool = True,
+    ) -> ReportSchedule:
+        row = ReportSchedule(
+            org_id=org_id,
+            name=name,
+            cadence=cadence,
+            recipients=recipients,
+            filters=filters,
+            format=format,
+            next_run_at=next_run_at,
+            enabled=enabled,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, schedule_id: uuid.UUID
+    ) -> ReportSchedule | None:
+        return (
+            await db.execute(
+                select(ReportSchedule).where(
+                    ReportSchedule.id == schedule_id,
+                    ReportSchedule.org_id == org_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[ReportSchedule]:
+        return (
+            await db.execute(
+                select(ReportSchedule)
+                .where(ReportSchedule.org_id == org_id)
+                .order_by(ReportSchedule.created_at.desc())
+            )
+        ).scalars().all()
+
+    @staticmethod
+    async def list_due(
+        db: AsyncSession, *, now: datetime
+    ) -> Sequence[ReportSchedule]:
+        return (
+            await db.execute(
+                select(ReportSchedule).where(
+                    ReportSchedule.enabled.is_(True),
+                    ReportSchedule.next_run_at <= now,
+                ).with_for_update(skip_locked=True)
+            )
+        ).scalars().all()
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        row: ReportSchedule,
+        **values,
+    ) -> ReportSchedule:
+        for key, value in values.items():
+            if value is not None:
+                setattr(row, key, value)
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def delete(
+        db: AsyncSession, org_id: uuid.UUID, schedule_id: uuid.UUID
+    ) -> bool:
+        row = await ReportScheduleRepo.get_by_id(db, org_id, schedule_id)
+        if row is None:
+            return False
+        await db.delete(row)
         await db.flush()
         return True
 

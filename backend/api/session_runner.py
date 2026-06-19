@@ -49,7 +49,6 @@ from backend.skills.parser import SkillDefinition, load as load_skill_def, loads
 from backend.tiers.enforcement import normalize_tier
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.bots.notifier import schedule_session_chat_event
-from backend.webhooks import schedule_session_event
 from backend.workflow.rollback import reconstruct_tool_calls, replay_compensating_inverses
 
 log = logging.getLogger(__name__)
@@ -550,21 +549,12 @@ async def _run_session_workflow_inner(
             org_id=org_id,
             timeout_seconds=config.approvals.timeout_seconds,
             publisher=lambda sid, event: publish(sid, WSMessage(**event)),
-            status_notifier=lambda sid, status: (
-                schedule_session_event(
+            status_notifier=lambda sid, status: schedule_session_chat_event(
                     factory,
                     org_id=org_id,
                     task_registry=app.state.background_tasks,
                     event_type=f"session.{status}",
                     session_id=sid,
-                ),
-                schedule_session_chat_event(
-                    factory,
-                    org_id=org_id,
-                    task_registry=app.state.background_tasks,
-                    event_type=f"session.{status}",
-                    session_id=sid,
-                ),
             ),
         )
 
@@ -712,13 +702,6 @@ async def _run_session_workflow_inner(
             status=final_status,
             summary=result.get("summary"),
         )
-        schedule_session_event(
-            factory,
-            org_id=org_id,
-            task_registry=app.state.background_tasks,
-            event_type=f"session.{final_status}",
-            session_id=session_id,
-        )
         schedule_session_chat_event(
             factory,
             org_id=org_id,
@@ -757,13 +740,6 @@ async def _run_session_workflow_inner(
                 session_id,
                 status="failed",
                 summary=f"Workflow failed: {exc}",
-            )
-            schedule_session_event(
-                factory,
-                org_id=org_id,
-                task_registry=app.state.background_tasks,
-                event_type="session.failed",
-                session_id=session_id,
             )
             schedule_session_chat_event(
                 factory,

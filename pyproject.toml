@@ -56,6 +56,7 @@ dependencies = [
     # libxmlsec1 + libxml2 native libs at runtime. The Docker image installs
     # these; PyInstaller builds fail-loud if they are missing on the host.
     "python3-saml>=1.16.0",
+    "reportlab>=4.4.0",
 ]
 
 [project.scripts]

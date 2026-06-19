@@ -31,6 +31,8 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
 - **Shared incident tracking** — update-in-place Slack status, Teams follow-ups,
   and versioned AWS EventBridge lifecycle events.
+- **Incident reporting** — on-demand CSV/PDF metrics plus scheduled
+  weekly/monthly/quarterly email reports from organization SMTP.
 - **Inbox** — per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
 - **Universal alert ingest** — JSON webhooks from Prometheus, Datadog, CloudWatch, Azure Monitor, GCP, OCI, Grafana, and more.
 - **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, per-org, operator-curated.

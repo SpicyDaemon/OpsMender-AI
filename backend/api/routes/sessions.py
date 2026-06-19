@@ -61,7 +61,6 @@ from backend.tiers.resolution import resolve_session_tier_for_incident
 from backend.tiers.sandbox import Tier0Sandbox
 from backend.llm.selection import choose_model_for_incident_service
 from backend.bots.notifier import schedule_session_chat_event
-from backend.webhooks import schedule_session_event
 from backend.workflow.rollback import (
     reconstruct_tool_calls,
     replay_compensating_inverses,
@@ -224,13 +223,6 @@ async def create_session(
     await db.commit()
     await db.refresh(session)
 
-    schedule_session_event(
-        request.app.state.session_factory,
-        org_id=org_id,
-        task_registry=request.app.state.background_tasks,
-        event_type="session.created",
-        session_id=session.id,
-    )
     schedule_session_chat_event(
         request.app.state.session_factory,
         org_id=org_id,

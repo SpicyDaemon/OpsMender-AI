@@ -1,18 +1,18 @@
 # Set up your notification preferences
 
-When an incident reaches OpsMender's paging engine, it has to know **how** to reach operators and **when**. The Notifications surface lives under **Paging & On-call** at `/dashboard/paging/notifications` and has four tabs:
+When an incident reaches OpsMender's paging engine, it has to know **how** to reach operators and **when**. The Notifications surface lives under **Paging & On-call** at `/dashboard/paging/notifications` and has three tabs:
 
 - **My Routing** — your personal priority-based routing and quiet hours.
 - **Routing Summary** — a read-only view of how incidents are routed (derived from services → escalation chains → rosters → channels). Editable team-level routing defaults are planned for v1.1.
 - **Notification Channels** — the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, custom). Configure these once; operators route to them.
-- **Viewer Notifications** — read-only/status updates to Viewer audiences and external/downstream recipients (formerly "Outbound Hooks").
 
 Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
 > **Three separate concepts — don't confuse them.**
 > - **Personal Routing (My Routing)** — how *you*, the current on-call operator, get paged.
 > - **Notification Channels** — shared team/workspace channels that receive incident + AI-session lifecycle updates (not a paging target).
-> - **Viewer Notifications** — read-only updates for viewers/stakeholders/downstream systems; never paging.
+> - **Inform reports** — viewers/stakeholders receive on-demand or scheduled
+>   CSV/PDF reports from the separate Reports page; never paging.
 
 > **How chat notifications work during the v1.1 rollout.** Every Notification
 > Channel sends a formatted message with an authenticated OpsMender link.

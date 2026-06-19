@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Incident reports and organization SMTP.** Admins can configure per-workspace
+  SMTP with an encrypted password and environment fallback, send a live test,
+  export incident metrics as CSV or ReportLab PDF, and schedule weekly,
+  monthly, or quarterly report attachments.
 - **Respond / Track notification lanes.** Admins can mark Slack, Microsoft
   Teams, and AWS EventBridge Notification Channels for shared incident
   tracking. Track posts are one-way status cards; Slack edits one durable post
@@ -78,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Legacy Viewer Notifications.** Removed `webhook_triggers`, its API,
+  delivery runtime, schemas/repository, tests, and frontend routes. Inform
+  delivery is now reports-only.
 - **Viewer Notifications navigation.** The legacy configuration surface is
   hidden and no longer accepts new configuration through Paging. Its retained
   data/API are removed in Wave 1 Phase 2 when reports replace it.

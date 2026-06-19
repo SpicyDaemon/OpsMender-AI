@@ -95,18 +95,12 @@ Supported Telegram commands:
 - `/reject <approval-id>`
 - `/help`
 
-## 6. Viewer Updates
+## 6. Email and incident reports
 
-You can set up viewer-update webhooks to notify external systems (like Slack, Microsoft Teams, or Sumo Logic) when specific events occur. Viewer updates are read-only/status notifications, not primary operator paging.
-
-1. Go to **Paging & On-call** > **Notifications**.
-2. Open **Viewer Updates** and click **Add Hook**.
-3. Select the event types to listen for:
-   - `session.created`
-   - `session.active`
-   - `session.awaiting_approval`
-   - `slo.burn_rate_violated`
-4. Provide the target URL and optional authentication headers.
+Configure **Config → Email / SMTP** first. The same organization SMTP server
+powers invitations, password resets, test messages, and scheduled reports.
+Then open **Reports** to download CSV/PDF incident metrics or create weekly,
+monthly, and quarterly recipient schedules.
 
 ## 7. Alert Intake
 

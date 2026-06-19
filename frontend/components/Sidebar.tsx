@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Cpu,
   FileText,
+  FileBarChart,
   GitBranch,
   LogOut,
   Network,
@@ -140,6 +141,7 @@ export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
       label: "Observe",
       items: [
         { href: "/dashboard/reliability", label: "Reliability", icon: Activity, roles: ["admin", "operator"] },
+        { href: "/dashboard/reports", label: "Reports", icon: FileBarChart, roles: ["admin", "operator"] },
         { href: "/dashboard/activity", label: "Activity", icon: BookOpen, roles: ["admin", "operator"] },
       ],
     },

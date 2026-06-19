@@ -19,9 +19,6 @@ vi.mock("@/lib/api", () => ({
 vi.mock("@/components/NotificationChannelsPage", () => ({
   NotificationChannelsPage: () => null,
 }));
-vi.mock("@/components/OutboundHooksPage", () => ({
-  OutboundHooksPage: () => null,
-}));
 vi.mock("@/components/RosterCalendarModal", () => ({
   RosterCalendarModal: () => null,
 }));

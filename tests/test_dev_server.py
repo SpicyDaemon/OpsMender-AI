@@ -53,39 +53,6 @@ class TestPatchSqliteDevSchema:
         assert "workflow_profile_id" in columns
         assert "agent_team_profile_id" in columns
 
-    def test_adds_missing_default_backed_columns(self, tmp_path):
-        db_path = tmp_path / "dev.db"
-        engine = create_engine(f"sqlite:///{db_path}")
-
-        with engine.begin() as conn:
-            conn.exec_driver_sql(
-                """
-                CREATE TABLE webhook_triggers (
-                    id CHAR(32) NOT NULL PRIMARY KEY,
-                    name VARCHAR(150) NOT NULL,
-                    url VARCHAR(1000) NOT NULL,
-                    event_types JSON NOT NULL,
-                    headers JSON,
-                    token TEXT,
-                    is_active BOOLEAN NOT NULL,
-                    created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    last_triggered_at DATETIME,
-                    last_error TEXT
-                )
-                """
-            )
-
-            _patch_sqlite_dev_schema(conn, Base.metadata)
-
-            rows = conn.exec_driver_sql(
-                "PRAGMA table_info('webhook_triggers')"
-            ).fetchall()
-            by_name = {row[1]: row for row in rows}
-
-        assert "format" in by_name
-        assert by_name["format"][4] == "'generic'"
-
     def test_adds_missing_mcp_status_columns(self, tmp_path):
         db_path = tmp_path / "dev.db"
         engine = create_engine(f"sqlite:///{db_path}")

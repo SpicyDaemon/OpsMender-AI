@@ -138,6 +138,12 @@ async def _lifespan(app: FastAPI):
     app.state.retention_scheduler = retention_scheduler
     await retention_scheduler.start()
 
+    from backend.reports.scheduler import ReportScheduler
+
+    report_scheduler = ReportScheduler(factory)
+    app.state.report_scheduler = report_scheduler
+    await report_scheduler.start()
+
     # mcp.json file mirror (Sprint 42 step 6). Opt-in via OPSMENDER_MCP_JSON_SYNC.
     # When enabled, reconcile the file against every org's MCP servers on
     # startup so file edits made while the service was down are applied.
@@ -197,6 +203,7 @@ async def _lifespan(app: FastAPI):
     await escalation_scheduler.stop()
     await audit_scheduler.stop()
     await retention_scheduler.stop()
+    await report_scheduler.stop()
     await engine.dispose()
 
 
@@ -259,7 +266,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.config import router as config_router
     from backend.api.routes.ws import router as ws_router
     from backend.api.routes.ingest import router as ingest_router
-    from backend.api.routes.webhook_triggers import router as webhook_triggers_router
+    from backend.api.routes.reports import router as reports_router
     from backend.api.routes.workflow_profiles import router as workflow_profiles_router
     from backend.api.routes.agent_team_profiles import (
         router as agent_team_profiles_router,
@@ -300,7 +307,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(config_router)
     app.include_router(ws_router)
     app.include_router(ingest_router)
-    app.include_router(webhook_triggers_router)
+    app.include_router(reports_router)
     app.include_router(workflow_profiles_router)
     app.include_router(agent_team_profiles_router)
     app.include_router(sla_router)

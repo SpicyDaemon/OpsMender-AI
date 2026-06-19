@@ -245,6 +245,8 @@ class EmailChannel:
         smtp_password: str | None = None,
         from_addr: str = "opsmender@localhost",
         use_tls: bool = True,
+        from_name: str | None = None,
+        security: str | None = None,
         smtp_factory: Callable[[], smtplib.SMTP] | None = None,
     ):
         self._smtp_host = smtp_host
@@ -252,23 +254,45 @@ class EmailChannel:
         self._smtp_user = smtp_user
         self._smtp_password = smtp_password
         self._from_addr = from_addr
-        self._use_tls = use_tls
+        self._from_name = from_name
+        self._security = security or ("starttls" if use_tls else "none")
         self._smtp_factory = smtp_factory
 
     def _new_smtp(self) -> smtplib.SMTP:
         if self._smtp_factory is not None:
             return self._smtp_factory()
-        return smtplib.SMTP(self._smtp_host, self._smtp_port, timeout=10)
+        client_type = smtplib.SMTP_SSL if self._security == "ssl" else smtplib.SMTP
+        return client_type(self._smtp_host, self._smtp_port, timeout=10)
 
-    def _send_sync(self, *, recipient: str, subject: str, body: str) -> None:
+    def _send_sync(
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        attachment: bytes | None = None,
+        attachment_name: str | None = None,
+        attachment_subtype: str = "octet-stream",
+    ) -> None:
         msg = EmailMessage()
-        msg["From"] = self._from_addr
+        msg["From"] = (
+            f"{self._from_name} <{self._from_addr}>"
+            if self._from_name
+            else self._from_addr
+        )
         msg["To"] = recipient
         msg["Subject"] = subject
         msg.set_content(body)
+        if attachment is not None:
+            msg.add_attachment(
+                attachment,
+                maintype="application",
+                subtype=attachment_subtype,
+                filename=attachment_name or "report.bin",
+            )
         smtp = self._new_smtp()
         try:
-            if self._use_tls:
+            if self._security == "starttls":
                 smtp.starttls()
             if self._smtp_user and self._smtp_password:
                 smtp.login(self._smtp_user, self._smtp_password)
@@ -293,6 +317,30 @@ class EmailChannel:
                 recipient=recipient,
                 subject=subject,
                 body=body,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return DeliveryAttempt(self.key, "failed", str(exc))
+        return DeliveryAttempt(self.key, "sent")
+
+    async def send_with_attachment(
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        attachment: bytes,
+        attachment_name: str,
+        attachment_subtype: str,
+    ) -> DeliveryAttempt:
+        try:
+            await asyncio.to_thread(
+                self._send_sync,
+                recipient=recipient,
+                subject=subject,
+                body=body,
+                attachment=attachment,
+                attachment_name=attachment_name,
+                attachment_subtype=attachment_subtype,
             )
         except Exception as exc:  # noqa: BLE001
             return DeliveryAttempt(self.key, "failed", str(exc))

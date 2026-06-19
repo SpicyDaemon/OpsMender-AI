@@ -10,7 +10,7 @@ This is the v1 guide to OpsMender's paging and on-call surface. The product mode
 
 If you only want a one-line summary: create a Team, create its Escalation Chain, add a Service with an intake endpoint, attach a Roster schedule, then configure Notifications.
 
-For the deep-dive data-model spec, see [`docs/paging-model.md`](../paging-model.md). For platform-specific chat details, see [Slack as your paging surface](slack-paging-surface.md) and [Teams as your paging surface](teams-paging-surface.md). For the broader notification-concepts model (Personal Routing vs Notification Channels vs Viewer Notifications), version-scope decisions (including why native chat buttons are deferred to v1.1), and the notification action/security decision record, see [`docs/ROADMAP.md`](../ROADMAP.md).
+For the deep-dive data-model spec, see [`docs/paging-model.md`](../paging-model.md). For platform-specific chat details, see [Slack as your paging surface](slack-paging-surface.md) and [Teams as your paging surface](teams-paging-surface.md). For the broader notification model, version-scope decisions, and the notification action/security decision record, see [`docs/ROADMAP.md`](../ROADMAP.md).
 
 ---
 
@@ -44,11 +44,14 @@ Organization
 
 Users
   └── Notifications
-       ├── Operator Delivery
-       ├── Viewer Updates
+       ├── My Routing
        ├── Quiet Hours
        ├── Routing by Priority
        └── Sessions / Chat
+
+Reports
+  ├── On-demand CSV / PDF
+  └── Scheduled stakeholder email
 ```
 
 Roles:
@@ -142,17 +145,19 @@ In v1, maintenance windows support selecting multiple services. Team scopes may 
 
 ## 7. Notifications
 
-Notifications is the single Paging & On-call page for delivery and update setup.
+Notifications is the Paging & On-call surface for personal and operator delivery.
 
 Sections:
 
-- Operator Delivery: channels used to page admins and operators.
-- Viewer Updates: read-only/status updates to viewer audiences or external workflows.
+- My Routing: the current user's delivery channels and destinations.
 - Quiet Hours: personal notification preferences where appropriate.
 - Routing by Priority: map `P0`/`P1`/`P2`/`P3` to configured channels.
 - Sessions / Chat: session behavior for chat-capable adapters only.
 
 Supported channels depend on configured adapters, such as Slack, Microsoft Teams, Discord, Telegram, Email, SMS, WhatsApp, Signal, and custom adapters.
+
+Stakeholder communication lives under Reports. Admins and operators can export
+incident CSV/PDF reports, while admins can schedule recurring email delivery.
 
 ---
 

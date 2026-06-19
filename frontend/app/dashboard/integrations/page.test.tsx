@@ -109,6 +109,22 @@ beforeEach(() => {
           },
         ],
       },
+      {
+        kind: "terraform_cloud",
+        label: "Terraform Cloud",
+        supports_base_url: true,
+        auth_types: ["api_key"],
+        adapter_available: true,
+        capabilities: [
+          {
+            action: "plan",
+            description: "Queue plan",
+            classification: "destructive",
+            mutating: true,
+            always_requires_approval: true,
+          },
+        ],
+      },
     ],
     total: 2,
   });
@@ -207,5 +223,15 @@ describe("Integrations page", () => {
     expect(
       screen.getByText(/trigger_build · approval-gated write/),
     ).toBeTruthy();
+  });
+
+  it("shows infrastructure automation approval and setup guidance", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    await screen.findByRole("heading", { name: "Add integration" });
+    await user.selectOptions(screen.getByLabelText("Kind"), "terraform_cloud");
+    expect(screen.getByText(/Terraform Enterprise API v2 base/)).toBeTruthy();
+    expect(screen.getByText(/"workspace_id":"ws-/)).toBeTruthy();
+    expect(screen.getByText(/plan · always approval/)).toBeTruthy();
   });
 });

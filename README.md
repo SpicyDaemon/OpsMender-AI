@@ -47,6 +47,9 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   auth, self-hosted API URLs where applicable, and approval-locked merges.
 - **CI/CD integrations** — Jenkins, CircleCI, and Azure Pipelines expose build,
   job, pipeline, and run status while triggers remain approval-gated.
+- **Infrastructure automation** — Terraform Cloud, Argo CD, and Ansible
+  Automation expose workspace, run, application, diff, template, and job
+  context; every plan/apply, sync/rollback, or launch requires approval.
 - **Kubernetes context and remediation** — encrypted API access for pods,
   events, logs, and deployments; rollout restarts and pod deletion remain
   approval-gated.

@@ -139,6 +139,27 @@ PAT credentials use `{"token":"..."}`; OAuth uses
 `{"access_token":"..."}`. Pipeline/run reads are safe and running a pipeline
 requires approval.
 
+### Terraform Cloud
+
+The hosted default is `https://app.terraform.io/api/v2`; Terraform Enterprise
+may use a custom API v2 base. Store `{"api_key":"..."}` and configure
+`{"organization":"acme","workspace_id":"ws-..."}`. Workspace/run reads are
+safe. Plan and apply always require Operator Approval.
+
+### Argo CD
+
+Enter the Argo CD server URL and store `{"token":"..."}` or an OAuth access
+token. Config may set `{"application":"production-service"}`. Application
+health, sync state, and managed-resource diff reads are safe. Sync and rollback
+always require Operator Approval.
+
+### Ansible Automation
+
+Enter the AWX or Ansible Automation Controller URL. Use
+`{"token":"..."}` or Basic credentials
+`{"username":"...","password":"..."}`. Job-template and job reads are safe;
+template launch always requires Operator Approval.
+
 ## 2. Incident Ingest Adapters
 
 OpsMender provides inbound alert intake for monitoring tools. In v1, the legacy `/incidents/ingest` token backend remains available, but the product concept is moving toward **Service Webhooks**: each service exposes a unique alert URL with an embedded unguessable secret so external monitors can POST directly without separate API-key headers.

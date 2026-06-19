@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 2 Phase 4 — infrastructure automation connectors.** Added Terraform
+  Cloud workspace/run reads plus speculative plan and apply actions, Argo CD
+  application/sync/diff reads plus sync and rollback actions, and Ansible
+  Automation Controller template/job reads plus launch. Every automation
+  mutation is destructive-classified and always requires Tier 1 approval.
 - **Wave 2 Phase 3 — CI/CD connectors.** Added Jenkins, CircleCI, and Azure
   Pipelines native adapters for job/pipeline/run status reads and tier-governed
   build or pipeline triggers. Jenkins supports nested jobs and API-token Basic

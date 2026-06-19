@@ -1,5 +1,6 @@
 """External integration connector framework."""
 
+from backend.integrations import automation as automation  # noqa: F401
 from backend.integrations import atlassian as atlassian  # noqa: F401
 from backend.integrations import azure_devops as azure_devops  # noqa: F401
 from backend.integrations import cicd as cicd  # noqa: F401

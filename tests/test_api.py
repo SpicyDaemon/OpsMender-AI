@@ -4197,6 +4197,23 @@ class TestIntegrationConnectors:
         assert {
             capability["action"] for capability in ci_cd["jenkins"]["capabilities"]
         } >= {"get_job", "get_build", "trigger_build"}
+        automation = {
+            item["kind"]: item
+            for item in kinds.json()["items"]
+            if item["kind"] in {"terraform_cloud", "argocd", "ansible"}
+        }
+        assert len(automation) == 3
+        assert all(item["adapter_available"] for item in automation.values())
+        assert {
+            capability["action"]
+            for capability in automation["terraform_cloud"]["capabilities"]
+        } >= {"list_workspaces", "list_runs", "plan", "apply"}
+        assert all(
+            capability["always_requires_approval"]
+            for item in automation.values()
+            for capability in item["capabilities"]
+            if capability["mutating"]
+        )
 
         created = await client.post(
             "/integrations",

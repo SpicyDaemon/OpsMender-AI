@@ -92,6 +92,21 @@ const INTEGRATION_HELP: Record<
     auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
     config: '{"organization":"acme","project":"Operations"}',
   },
+  terraform_cloud: {
+    base: "Uses https://app.terraform.io/api/v2 by default. Enter a Terraform Enterprise API v2 base when self-hosted.",
+    auth: 'User or team API token: {"api_key":"…"}',
+    config: '{"organization":"acme","workspace_id":"ws-…"}',
+  },
+  argocd: {
+    base: "Required: the Argo CD server URL.",
+    auth: 'Token: {"token":"…"}. OAuth: {"access_token":"…"}',
+    config: '{"application":"production-service"}',
+  },
+  ansible: {
+    base: "Required: the AWX or Ansible Automation Controller URL.",
+    auth: 'Token: {"token":"…"}. Basic: {"username":"…","password":"…"}',
+    config: "No extra config required.",
+  },
   zendesk: {
     base: "Required: your subdomain URL, such as https://acme.zendesk.com.",
     auth: 'API token: {"email":"agent@acme.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
@@ -378,7 +393,11 @@ export default function IntegrationsPage() {
                   className="rounded-full border border-border-subtle px-2 py-1 text-xs text-fg-secondary"
                 >
                   {capability.action}
-                  {capability.mutating ? " · approval-gated write" : " · read"}
+                  {capability.always_requires_approval
+                    ? " · always approval"
+                    : capability.mutating
+                      ? " · approval-gated write"
+                      : " · read"}
                 </span>
               ))}
             </div>

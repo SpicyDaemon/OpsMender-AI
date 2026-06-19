@@ -82,6 +82,7 @@ import type {
   AgentTeamProfileUpsert,
   BotConnectorCapability,
   BotConnectorFieldSchema,
+  BotConnectorLane,
   BotConnectorPlatform,
   BotConnectorPlatformSchema,
   BotConnectorResponse,
@@ -2447,6 +2448,7 @@ type BotConnectorFormState = {
   credentialsText: string;
   credentialMode: CredentialMode;
   allowed_capabilities: BotConnectorCapability[];
+  lanes: BotConnectorLane[];
   team_scope: NotificationTeamScope;
   team_ids: string[];
   status: BotConnectorStatus;
@@ -2506,6 +2508,7 @@ function createBotConnectorFormState(
       "session_status",
       "notifications",
     ],
+    lanes: current?.lanes?.length ? current.lanes : ["respond"],
     team_scope: current?.team_scope ?? "workspace",
     team_ids: current?.team_ids ?? [],
     status: current?.status ?? "not_configured",
@@ -2557,6 +2560,9 @@ function buildBotConnectorPayload(
   if (form.allowed_capabilities.length === 0) {
     return { error: "Select at least one allowed capability." };
   }
+  if (form.lanes.length === 0) {
+    return { error: "Select at least one delivery lane." };
+  }
   if (form.team_scope === "teams" && form.team_ids.length === 0) {
     return { error: "Select at least one team or use workspace-wide scope." };
   }
@@ -2607,6 +2613,7 @@ function buildBotConnectorPayload(
     platform: form.platform,
     config: configObj,
     allowed_capabilities: form.allowed_capabilities,
+    lanes: form.lanes,
     team_scope: form.team_scope,
     team_ids: form.team_scope === "teams" ? form.team_ids : [],
     status: form.status,
@@ -2632,6 +2639,7 @@ function isFormFillable(
 ): boolean {
   if (!form.name.trim()) return false;
   if (form.allowed_capabilities.length === 0) return false;
+  if (form.lanes.length === 0) return false;
   if (form.team_scope === "teams" && form.team_ids.length === 0) return false;
   if (!schema) return true; // free-form fallback handles its own validation
   for (const field of schema.fields) {
@@ -2663,6 +2671,7 @@ const PLATFORM_LABELS: Record<BotConnectorPlatform, string> = {
   smtp: "SMTP Email",
   homeassistant: "Home Assistant",
   bluebubbles: "BlueBubbles (iMessage)",
+  eventbridge: "AWS EventBridge",
   custom: "Custom Adapter",
 };
 
@@ -3001,6 +3010,9 @@ function BotConnectorModal({
           ["slack", "teams"].includes(next) && sameAsInitial
             ? Boolean(initialConnector?.native_actions_enabled)
             : false,
+        lanes: ["slack", "teams", "eventbridge"].includes(next)
+          ? current.lanes
+          : current.lanes.filter((lane) => lane !== "track"),
       };
     });
   }
@@ -3014,6 +3026,16 @@ function BotConnectorModal({
           ? current.allowed_capabilities.filter((item) => item !== capability)
           : [...current.allowed_capabilities, capability],
       };
+    });
+  }
+
+  function toggleLane(lane: BotConnectorLane) {
+    setForm((current) => {
+      const hasLane = current.lanes.includes(lane);
+      const lanes = hasLane
+        ? current.lanes.filter((item) => item !== lane)
+        : [...current.lanes, lane];
+      return { ...current, lanes };
     });
   }
 
@@ -3177,6 +3199,34 @@ function BotConnectorModal({
             signing in to OpsMender.
           </span>
         </div>
+
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+            Delivery lanes
+          </legend>
+          <div className="grid gap-2 md:grid-cols-2">
+            <label className="flex items-start gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-primary">
+              <input
+                type="checkbox"
+                checked={form.lanes.includes("respond")}
+                onChange={() => toggleLane("respond")}
+                className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+              />
+              <span><span className="font-medium">Respond</span><span className="block text-xs text-fg-muted">Fast operator-facing delivery and actions.</span></span>
+            </label>
+            {["slack", "teams", "eventbridge"].includes(form.platform) && (
+              <label className="flex items-start gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-primary">
+                <input
+                  type="checkbox"
+                  checked={form.lanes.includes("track")}
+                  onChange={() => toggleLane("track")}
+                  className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                />
+                <span><span className="font-medium">Track</span><span className="block text-xs text-fg-muted">One-way shared incident status, updated in place where supported.</span></span>
+              </label>
+            )}
+          </div>
+        </fieldset>
 
         <fieldset className="space-y-3">
           <legend className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
@@ -3898,6 +3948,7 @@ export function BotConnectorSection({
             <thead className="bg-bg-elevated text-left text-xs font-semibold uppercase tracking-wide text-fg-secondary">
               <tr>
                 <th className="px-4 py-3">Channel</th>
+                <th className="px-4 py-3">Lanes</th>
                 <th className="px-4 py-3">Capabilities</th>
                 <th className="px-4 py-3">Team Scope</th>
                 <th className="px-4 py-3">Credentials</th>
@@ -3925,6 +3976,15 @@ export function BotConnectorSection({
                         <Badge variant={connector.is_enabled ? "resolved" : "closed"}>
                           {connector.is_enabled ? "Enabled" : "Disabled"}
                         </Badge>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex flex-wrap gap-1.5">
+                        {(connector.lanes?.length ? connector.lanes : ["respond"]).map((lane) => (
+                          <Badge key={lane} variant={lane === "track" ? "info" : undefined}>
+                            {lane === "track" ? "Track" : "Respond"}
+                          </Badge>
+                        ))}
                       </div>
                     </td>
                     <td className="px-4 py-3 align-top">

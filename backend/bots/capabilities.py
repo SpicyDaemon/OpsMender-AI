@@ -153,6 +153,7 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
     "homeassistant": _cap("homeassistant", "Home Assistant", shared_channel=True),
     "bluebubbles": _cap("bluebubbles", "BlueBubbles (iMessage)", direct_message=True, shared_channel=True),
     "custom": _cap("custom", "Custom Webhook", shared_channel=True),
+    "eventbridge": _cap("eventbridge", "AWS EventBridge", shared_channel=True),
 }
 
 

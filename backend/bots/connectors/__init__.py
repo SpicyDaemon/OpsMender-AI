@@ -16,6 +16,7 @@ from .bluebubbles import BlueBubblesAdapter
 from .dingtalk import DingTalkAdapter
 from .discord import DiscordAdapter
 from .email import EmailAdapter
+from .eventbridge import EventBridgeAdapter
 from .feishu import FeishuAdapter
 from .homeassistant import HomeAssistantAdapter
 from .matrix import MatrixAdapter
@@ -38,6 +39,7 @@ __all__ = [
     "DingTalkAdapter",
     "DiscordAdapter",
     "EmailAdapter",
+    "EventBridgeAdapter",
     "FeishuAdapter",
     "HomeAssistantAdapter",
     "MatrixAdapter",

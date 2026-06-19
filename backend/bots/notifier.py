@@ -28,6 +28,7 @@ from backend.db.repos import (
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentNotificationReceiptRepo,
+    IncidentTrackPostRepo,
     IncidentPageRepo,
     IncidentRepo,
     ServiceRepo,
@@ -54,6 +55,8 @@ def _utcnow() -> datetime:
 
 
 def _allowed_chat_ids(connector: BotConnector) -> list[str]:
+    if connector.platform == "eventbridge":
+        return ["eventbridge"]
     config = connector.config or {}
     raw = config.get("allowed_chat_ids") or []
     if isinstance(raw, list) and raw:
@@ -64,6 +67,13 @@ def _allowed_chat_ids(connector: BotConnector) -> list[str]:
 
 def _has_capability(connector: BotConnector, capability: str) -> bool:
     return capability in set(connector.allowed_capabilities or [])
+
+
+def _has_lane(connector: BotConnector, lane: str) -> bool:
+    lanes = list(connector.lanes or [])
+    if not lanes and _has_capability(connector, "notifications"):
+        lanes = ["respond"]
+    return lane in lanes
 
 
 def _connector_team_scope(connector: BotConnector) -> tuple[str, set[uuid.UUID]]:
@@ -224,6 +234,9 @@ async def _deliver_via_adapter(
     session_id: uuid.UUID | None,
     incident=None,
     native_actions_ready: bool = False,
+    service_name: str | None = None,
+    team_name: str | None = None,
+    delivery_lane: str = "respond",
 ) -> DeliveryReceipt:
     adapter = get_adapter(connector.platform)
     if adapter is None:
@@ -231,12 +244,24 @@ async def _deliver_via_adapter(
 
     if hasattr(adapter, "send_incident_update") and command_label.startswith("notify:"):
         if connector.platform in {"slack", "teams"}:
+            kwargs = {
+                "chat_id": chat_id,
+                "text": text,
+                "incident": incident,
+                "native_actions_ready": native_actions_ready,
+            }
+            if delivery_lane == "track":
+                kwargs["status_update"] = True
+            receipt = await adapter.send_incident_update(connector, **kwargs)
+        elif connector.platform == "eventbridge":
             receipt = await adapter.send_incident_update(
                 connector,
                 chat_id=chat_id,
                 text=text,
                 incident=incident,
-                native_actions_ready=native_actions_ready,
+                native_actions_ready=False,
+                service_name=service_name,
+                team_name=team_name,
             )
         else:
             receipt = await adapter.send_incident_update(
@@ -278,6 +303,7 @@ async def _record_delivery(
     rendered_status: str | None,
     delivery_status: str = "delivered",
     last_updated_at: datetime | None = None,
+    delivery_lane: str = "respond",
 ) -> None:
     await BotActionAuditRepo.create(
         db,
@@ -299,6 +325,19 @@ async def _record_delivery(
             error=(receipt.error or "")[:1000],
         )
         return
+    if (
+        delivery_lane == "track"
+        and incident_id is not None
+        and connector.platform != "eventbridge"
+    ):
+        await IncidentTrackPostRepo.upsert(
+            db,
+            org_id,
+            incident_id=incident_id,
+            connector_id=connector.id,
+            external_message_id=receipt.external_message_id,
+            channel_ref=receipt.external_channel_id or chat_id,
+        )
     if incident_id is not None and lifecycle_event is not None:
         await IncidentNotificationReceiptRepo.create(
             db,
@@ -332,6 +371,7 @@ async def _try_update_incident_notification(
     rendered_status: str | None,
     incident=None,
     native_actions_ready: bool = False,
+    delivery_lane: str = "respond",
 ) -> bool:
     """Edit the prior incident message in place when the platform supports it.
 
@@ -352,25 +392,38 @@ async def _try_update_incident_notification(
         return False
 
     async with factory() as db:
-        prior = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
-            db,
-            org_id,
-            incident_id=incident_id,
-            connector_id=connector.id,
-            external_channel_id=chat_id,
-            updateable_only=True,
-        )
+        if delivery_lane == "track":
+            prior = await IncidentTrackPostRepo.get(
+                db,
+                org_id,
+                incident_id=incident_id,
+                connector_id=connector.id,
+            )
+        else:
+            prior = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
+                db,
+                org_id,
+                incident_id=incident_id,
+                connector_id=connector.id,
+                external_channel_id=chat_id,
+                updateable_only=True,
+            )
     if prior is None or prior.external_message_id is None:
         return False
 
+    update_kwargs = {
+        "chat_id": chat_id,
+        "text": text,
+        "external_message_id": prior.external_message_id,
+        "external_thread_id": getattr(prior, "external_thread_id", None),
+        "incident": incident,
+        "native_actions_ready": native_actions_ready,
+    }
+    if delivery_lane == "track":
+        update_kwargs["status_update"] = True
     result: UpdateResult = await adapter.update_incident_update(
         connector,
-        chat_id=chat_id,
-        text=text,
-        external_message_id=prior.external_message_id,
-        external_thread_id=prior.external_thread_id,
-        incident=incident,
-        native_actions_ready=native_actions_ready,
+        **update_kwargs,
     )
 
     if not (result.ok and not result.fallback_to_followup):
@@ -388,9 +441,9 @@ async def _try_update_incident_notification(
     receipt = result.receipt or DeliveryReceipt(
         ok=True,
         external_message_id=prior.external_message_id,
-        external_thread_id=prior.external_thread_id,
+        external_thread_id=getattr(prior, "external_thread_id", None),
         external_channel_id=chat_id,
-        can_update=prior.can_update,
+        can_update=True,
     )
     async with factory() as db:
         await _record_delivery(
@@ -406,6 +459,7 @@ async def _try_update_incident_notification(
             rendered_status=rendered_status,
             delivery_status="updated",
             last_updated_at=_utcnow(),
+            delivery_lane=delivery_lane,
         )
         await db.commit()
     return True
@@ -425,6 +479,9 @@ async def _deliver(
     rendered_status: str | None = None,
     incident=None,
     native_actions_ready: bool = False,
+    delivery_lane: str = "respond",
+    service_name: str | None = None,
+    team_name: str | None = None,
 ) -> None:
     if incident_id is not None and lifecycle_event is not None:
         updated = await _try_update_incident_notification(
@@ -440,6 +497,7 @@ async def _deliver(
             rendered_status=rendered_status,
             incident=incident,
             native_actions_ready=native_actions_ready,
+            delivery_lane=delivery_lane,
         )
         if updated:
             return
@@ -465,6 +523,9 @@ async def _deliver(
             session_id=session_id,
             incident=incident,
             native_actions_ready=native_actions_ready,
+            service_name=service_name,
+            team_name=team_name,
+            delivery_lane=delivery_lane,
         )
     async with factory() as db:
         await _record_delivery(
@@ -478,6 +539,7 @@ async def _deliver(
             incident_id=incident_id,
             lifecycle_event=lifecycle_event,
             rendered_status=rendered_status,
+            delivery_lane=delivery_lane,
         )
         await db.commit()
 
@@ -523,6 +585,8 @@ async def deliver_session_chat_event(
 
     for connector in connectors:
         if not _has_capability(connector, "notifications"):
+            continue
+        if not _has_lane(connector, "respond"):
             continue
         if get_adapter(connector.platform) is None and connector.platform != "telegram":
             continue
@@ -675,7 +739,14 @@ async def deliver_incident_event(
             continue
         if not _connector_matches_team(connector, team_id):
             continue
+        is_track = _has_lane(connector, "track")
+        if is_track and connector.platform not in {"slack", "teams", "eventbridge"}:
+            continue
+        if not is_track and not _has_lane(connector, "respond"):
+            continue
         native_actions_ready = bool(
+            not is_track
+            and
             connector.platform in {"slack", "teams"}
             and connector.native_actions_enabled
             and connector.callback_status in {"configured", "verified"}
@@ -690,7 +761,10 @@ async def deliver_incident_event(
             team_name=team_name,
             supports_actions=native_actions_ready,
         )
-        for chat_id in _allowed_chat_ids(connector):
+        chat_ids = _allowed_chat_ids(connector)
+        if is_track:
+            chat_ids = chat_ids[:1]
+        for chat_id in chat_ids:
             await _deliver(
                 factory,
                 org_id=org_id,
@@ -704,6 +778,9 @@ async def deliver_incident_event(
                 rendered_status=incident.status,
                 incident=incident,
                 native_actions_ready=native_actions_ready,
+                delivery_lane="track" if is_track else "respond",
+                service_name=service_name,
+                team_name=team_name,
             )
 
 
@@ -752,15 +829,35 @@ async def deliver_incident_text(
         connectors = list(
             await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
         )
+        incident = (
+            await IncidentRepo.get_by_id(db, org_id, incident_id)
+            if incident_id is not None
+            else None
+        )
+        resolved_team_id = team_id
+        team_name = None
+        service_name = None
+        if incident is not None:
+            resolved_team_id, team_name, service_name = await _resolve_incident_team(
+                db, org_id, incident
+            )
 
     for connector in connectors:
         if not _has_capability(connector, "notifications"):
             continue
+        is_track = _has_lane(connector, "track")
+        if is_track and connector.platform not in {"slack", "teams", "eventbridge"}:
+            continue
+        if not is_track and not _has_lane(connector, "respond"):
+            continue
         if get_adapter(connector.platform) is None and connector.platform != "telegram":
             continue
-        if not _connector_matches_team(connector, team_id):
+        if not _connector_matches_team(connector, resolved_team_id):
             continue
-        for chat_id in _allowed_chat_ids(connector):
+        chat_ids = _allowed_chat_ids(connector)
+        if is_track:
+            chat_ids = chat_ids[:1]
+        for chat_id in chat_ids:
             await _deliver(
                 factory,
                 org_id=org_id,
@@ -772,6 +869,10 @@ async def deliver_incident_text(
                 incident_id=incident_id,
                 lifecycle_event=event_type if incident_id is not None else None,
                 rendered_status=rendered_status,
+                incident=incident,
+                delivery_lane="track" if is_track else "respond",
+                service_name=service_name,
+                team_name=team_name,
             )
 
 

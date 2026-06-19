@@ -203,6 +203,7 @@ class SlackAdapter:
         text: str,
         incident=None,
         native_actions_ready: bool = False,
+        status_update: bool = False,
     ) -> DeliveryReceipt:
         credentials = connector.credentials or {}
         bot_token = credentials.get("bot_token")
@@ -215,6 +216,7 @@ class SlackAdapter:
                 incident,
                 base_url=None,
                 include_native_actions=native_actions_ready,
+                status_update=status_update,
             )
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -251,6 +253,7 @@ class SlackAdapter:
         external_thread_id: str | None = None,
         incident=None,
         native_actions_ready: bool = False,
+        status_update: bool = False,
     ) -> UpdateResult:
         """Edit an existing Slack incident message in place via chat.update.
 
@@ -274,6 +277,7 @@ class SlackAdapter:
                 incident,
                 base_url=None,
                 include_native_actions=native_actions_ready,
+                status_update=status_update,
             )
 
         try:

@@ -57,6 +57,7 @@ def build_page_card_adaptive(
     *,
     base_url: str | None = None,
     include_native_actions: bool = False,
+    status_update: bool = False,
 ) -> dict[str, Any]:
     """Return a single adaptive card payload (the value that goes inside
     an attachment's ``content`` field). Use :func:`wrap_card_as_attachment`
@@ -86,7 +87,7 @@ def build_page_card_adaptive(
             "type": "TextBlock",
             "size": "Large",
             "weight": "Bolder",
-            "text": f"OpsMender page: {title}",
+            "text": f"{'Status update' if status_update else 'OpsMender page'}: {title}",
             "wrap": True,
         },
         {"type": "FactSet", "facts": facts},
@@ -187,6 +188,7 @@ def build_graph_chat_message(
     *,
     base_url: str | None = None,
     include_native_actions: bool = False,
+    status_update: bool = False,
 ) -> dict[str, Any]:
     """Return a complete Graph ``chats/{id}/messages`` payload carrying
     the adaptive card. This is the value the dispatcher posts to Graph.
@@ -196,6 +198,7 @@ def build_graph_chat_message(
         incident,
         base_url=base_url,
         include_native_actions=include_native_actions,
+        status_update=status_update,
     )
     attachment = wrap_card_as_attachment(card)
     fallback = build_page_card_text(incident)

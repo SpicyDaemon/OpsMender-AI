@@ -28,6 +28,7 @@ from backend.api.schemas import (
 import backend.bots  # noqa: F401 — triggers adapter registry side-effect
 from backend.bots.capabilities import display_name, get_platform_capabilities
 from backend.bots.connectors import FieldSpec, get_adapter, list_platforms
+from backend.auth.secrets import encrypt_secret
 from backend.db.models import BotConnector, User
 from backend.db.repos import BotConnectorRepo, BotUserLinkRepo, TeamRepo, UserRepo
 
@@ -50,8 +51,12 @@ REQUIRED_CREDENTIAL_KEYS = {
     "teams": ("tenant_id", "client_id", "client_secret"),
     "email": ("mailgun_api_key", "mailgun_domain"),
     "smtp": ("smtp_host", "smtp_port", "from_email"),
+    "eventbridge": ("region", "event_bus_name"),
     "custom": (),
 }
+
+ALLOWED_LANES = {"respond", "track"}
+_ENCRYPTED_PREFIX = "enc:"
 
 
 def _validate_capabilities(capabilities: list[str]) -> list[str]:
@@ -70,6 +75,51 @@ def _validate_capabilities(capabilities: list[str]) -> list[str]:
             detail=f"Unsupported capabilities: {', '.join(invalid)}. Allowed: {allowed}",
         )
     return cleaned
+
+
+def _validate_lanes(lanes: list[str]) -> list[str]:
+    cleaned = [lane for lane in ("respond", "track") if lane in set(lanes)]
+    invalid = sorted({lane for lane in lanes if lane not in ALLOWED_LANES})
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported lanes: {', '.join(invalid)}",
+        )
+    if not cleaned:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select at least one delivery lane.",
+        )
+    return cleaned
+
+
+def _validate_platform_lanes(platform: str, lanes: list[str]) -> list[str]:
+    cleaned = _validate_lanes(lanes)
+    if "track" in cleaned and platform not in {"slack", "teams", "eventbridge"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Track lane currently supports Slack, Microsoft Teams, and AWS EventBridge.",
+        )
+    return cleaned
+
+
+def _encrypt_eventbridge_credentials(
+    platform: str,
+    credentials: dict | None,
+) -> dict | None:
+    if platform != "eventbridge" or credentials is None:
+        return credentials
+    encrypted: dict[str, object] = {}
+    for key, value in credentials.items():
+        if value is None or value == "":
+            encrypted[key] = value
+            continue
+        text = str(value)
+        encrypted[key] = (
+            text if text.startswith(_ENCRYPTED_PREFIX)
+            else _ENCRYPTED_PREFIX + encrypt_secret(text)
+        )
+    return encrypted
 
 
 def _resolve_credentials(
@@ -209,6 +259,7 @@ async def _to_response(
         platform=connector.platform,
         config=connector.config,
         allowed_capabilities=list(connector.allowed_capabilities or []),
+        lanes=list(connector.lanes or []),
         status=connector.status,
         is_enabled=connector.is_enabled,
         created_at=connector.created_at,
@@ -507,6 +558,7 @@ async def create_bot_connector(
 ):
     team_ids = await _validate_team_scope(db, org_id, body)
     credentials = _resolve_credentials(body)
+    credentials = _encrypt_eventbridge_credentials(body.platform, credentials)
     try:
         connector = await BotConnectorRepo.create(
             db,
@@ -518,6 +570,7 @@ async def create_bot_connector(
             ),
             credentials=credentials,
             allowed_capabilities=_validate_capabilities(body.allowed_capabilities),
+            lanes=_validate_platform_lanes(body.platform, body.lanes),
             status="configured" if body.credentials else body.status,
             is_enabled=body.is_enabled,
             native_actions_enabled=(
@@ -558,6 +611,7 @@ async def update_bot_connector(
         )
 
     credentials = _resolve_credentials(body, existing)
+    credentials = _encrypt_eventbridge_credentials(body.platform, credentials)
     team_ids = await _validate_team_scope(db, org_id, body)
     try:
         updated = await BotConnectorRepo.update(
@@ -571,6 +625,7 @@ async def update_bot_connector(
             ),
             credentials=credentials,
             allowed_capabilities=_validate_capabilities(body.allowed_capabilities),
+            lanes=_validate_platform_lanes(body.platform, body.lanes),
             status=(
                 "configured"
                 if credentials and body.status == "not_configured"

@@ -37,6 +37,7 @@ from backend.db.models import (
     InAppNotification,
     NotificationEscalation,
     IncidentNotificationReceipt,
+    IncidentTrackPost,
     IncidentMemory,
     IncidentMemoryRecallLog,
     IncidentPage,
@@ -3650,6 +3651,7 @@ class BotConnectorRepo:
         config: dict[str, Any] | None = None,
         credentials: dict[str, Any] | None = None,
         allowed_capabilities: list[str],
+        lanes: list[str] | None = None,
         status: str = "not_configured",
         is_enabled: bool = False,
         native_actions_enabled: bool = False,
@@ -3661,6 +3663,7 @@ class BotConnectorRepo:
             config=config,
             credentials=credentials,
             allowed_capabilities=allowed_capabilities,
+            lanes=lanes or ["respond"],
             status=status,
             is_enabled=is_enabled,
             native_actions_enabled=native_actions_enabled,
@@ -3730,6 +3733,7 @@ class BotConnectorRepo:
         config: dict[str, Any] | None = None,
         credentials: dict[str, Any] | None = None,
         allowed_capabilities: list[str],
+        lanes: list[str] | None = None,
         status: str,
         is_enabled: bool,
         native_actions_enabled: bool = False,
@@ -3746,6 +3750,7 @@ class BotConnectorRepo:
                 config=config,
                 credentials=credentials,
                 allowed_capabilities=allowed_capabilities,
+                lanes=lanes or ["respond"],
                 status=status,
                 is_enabled=is_enabled,
                 native_actions_enabled=native_actions_enabled,
@@ -4013,6 +4018,57 @@ class IncidentNotificationReceiptRepo:
         result = await db.execute(stmt)
         return result.scalars().all()
 
+
+class IncidentTrackPostRepo:
+    @staticmethod
+    async def get(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        connector_id: uuid.UUID,
+    ) -> IncidentTrackPost | None:
+        return (
+            await db.execute(
+                select(IncidentTrackPost).where(
+                    IncidentTrackPost.org_id == org_id,
+                    IncidentTrackPost.incident_id == incident_id,
+                    IncidentTrackPost.connector_id == connector_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        connector_id: uuid.UUID,
+        external_message_id: str | None,
+        channel_ref: str | None,
+    ) -> IncidentTrackPost:
+        row = await IncidentTrackPostRepo.get(
+            db,
+            org_id,
+            incident_id=incident_id,
+            connector_id=connector_id,
+        )
+        if row is None:
+            row = IncidentTrackPost(
+                org_id=org_id,
+                incident_id=incident_id,
+                connector_id=connector_id,
+                external_message_id=external_message_id,
+                channel_ref=channel_ref,
+            )
+            db.add(row)
+        else:
+            row.external_message_id = external_message_id
+            row.channel_ref = channel_ref
+            row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
 
 class BotActionAuditRepo:
     @staticmethod

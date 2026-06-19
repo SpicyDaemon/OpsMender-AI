@@ -627,6 +627,7 @@ export type BotConnectorPlatform =
   | "smtp"
   | "homeassistant"
   | "bluebubbles"
+  | "eventbridge"
   | "custom";
 
 export type BotConnectorCapability =
@@ -644,6 +645,7 @@ export type BotConnectorStatus =
   | "disabled";
 
 export type NotificationTeamScope = "workspace" | "teams";
+export type BotConnectorLane = "respond" | "track";
 
 // Honest per-platform capability descriptor (see backend bots/capabilities.py).
 // Drives what the Notification Channels UI advertises — it never offers an
@@ -668,6 +670,7 @@ export interface BotConnectorResponse {
   platform: BotConnectorPlatform;
   config: Record<string, unknown> | null;
   allowed_capabilities: BotConnectorCapability[];
+  lanes: BotConnectorLane[];
   status: BotConnectorStatus;
   is_enabled: boolean;
   created_at: string;
@@ -699,6 +702,7 @@ export interface BotConnectorUpsert {
   credentials?: Record<string, string> | null;
   clear_credentials?: boolean;
   allowed_capabilities: BotConnectorCapability[];
+  lanes?: BotConnectorLane[];
   team_scope?: NotificationTeamScope;
   team_ids?: string[];
   status?: BotConnectorStatus;

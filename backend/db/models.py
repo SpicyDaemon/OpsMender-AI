@@ -1276,6 +1276,9 @@ class BotConnector(Base):
     config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     credentials: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     allowed_capabilities: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    lanes: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=lambda: ["respond"]
+    )
     status: Mapped[str] = mapped_column(
         String(30), default="not_configured", nullable=False
     )  # not_configured | configured | healthy | error | disabled
@@ -1446,6 +1449,44 @@ class IncidentNotificationReceipt(Base):
             "ix_incident_notification_receipts_session",
             "org_id",
             "session_id",
+        ),
+    )
+
+
+class IncidentTrackPost(Base):
+    """Durable update-in-place pointer for a Track-lane status post."""
+
+    __tablename__ = "incident_track_posts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False
+    )
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("bot_connectors.id", ondelete="CASCADE"), nullable=False
+    )
+    external_message_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    channel_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "incident_id",
+            "connector_id",
+            name="uq_incident_track_posts_incident_connector",
+        ),
+        Index(
+            "ix_incident_track_posts_org_incident",
+            "org_id",
+            "incident_id",
         ),
     )
 

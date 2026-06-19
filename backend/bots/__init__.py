@@ -3,6 +3,7 @@ from backend.bots.connectors import (
     DingTalkAdapter,
     DiscordAdapter,
     EmailAdapter,
+    EventBridgeAdapter,
     FeishuAdapter,
     HomeAssistantAdapter,
     MatrixAdapter,
@@ -36,3 +37,4 @@ register_adapter(EmailAdapter())
 register_adapter(HomeAssistantAdapter())
 register_adapter(BlueBubblesAdapter())
 register_adapter(TeamsAdapter())
+register_adapter(EventBridgeAdapter())

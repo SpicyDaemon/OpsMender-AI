@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Respond / Track notification lanes.** Admins can mark Slack, Microsoft
+  Teams, and AWS EventBridge Notification Channels for shared incident
+  tracking. Track posts are one-way status cards; Slack edits one durable post
+  per incident, Teams posts follow-ups, and EventBridge emits the versioned
+  `opsmender.incident.status` event. Migration `d0e1f2a3b4c5` adds
+  `bot_connectors.lanes` and `incident_track_posts`.
+- **AWS EventBridge delivery.** Per-organization EventBridge connectors support
+  the runtime AWS credential chain, explicit access credentials, or an assumed
+  role. Credentials and the event-bus name are encrypted at rest.
+
 - **Memory table selection and bulk actions.** The Memories page now has row
   checkboxes, a current-page select-all checkbox, and a dynamic Actions menu.
   One selected memory can be edited or deleted; multiple selections expose
@@ -67,6 +77,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-poll emit.
 
 ### Removed
+
+- **Viewer Notifications navigation.** The legacy configuration surface is
+  hidden and no longer accepts new configuration through Paging. Its retained
+  data/API are removed in Wave 1 Phase 2 when reports replace it.
 
 - **Incident `closed` status and auto-close scheduler.** `resolved` is now the
   final incident status. Migration `c9d0e1f2a3b4` normalizes existing closed

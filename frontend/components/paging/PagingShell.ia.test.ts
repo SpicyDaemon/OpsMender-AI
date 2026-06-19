@@ -57,12 +57,11 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain("Rotation members (ordered)");
   });
 
-  it("organizes Notifications into the four v1 tabs", () => {
+  it("organizes Notifications around Respond and Track configuration", () => {
     expect(pagingShellSource).toContain("My Routing");
     expect(pagingShellSource).toContain("Routing Summary");
     expect(pagingShellSource).toContain("Notification Channels");
-    // Outbound Hooks is renamed to Viewer Notifications.
-    expect(pagingShellSource).toContain("Viewer Notifications");
+    expect(pagingShellSource).not.toContain("Viewer Notifications");
     expect(pagingShellSource).not.toContain("Outbound Hooks");
     // Routing Summary is read-only and explains the derivation + defers
     // editable team routing to v1.1.

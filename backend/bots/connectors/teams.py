@@ -131,12 +131,14 @@ class TeamsAdapter:
         text: str,
         incident=None,
         native_actions_ready: bool = False,
+        status_update: bool = False,
     ) -> DeliveryReceipt:
         payload = (
             build_graph_chat_message(
                 incident,
                 base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
                 include_native_actions=native_actions_ready,
+                status_update=status_update,
             )
             if incident is not None
             else {

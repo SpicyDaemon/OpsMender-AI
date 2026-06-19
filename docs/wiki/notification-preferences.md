@@ -126,7 +126,16 @@ After saving:
 
 ## Notification Channels (configured delivery adapters)
 
-The **Notification Channels** tab (Admin) is where every delivery adapter is configured: Telegram, Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost, Matrix, Lark/Feishu, DingTalk, WeCom, WeChat, Mailgun Email, SMTP Email, SMS, Home Assistant, BlueBubbles (iMessage), and a custom adapter. Each channel has a friendly **name** (what routing displays) and its provider details live here only. Mailgun uses its API key/domain; SMTP Email supports hosted providers and internal relays with configurable TLS and optional authentication. Neither email provider supports IMAP/inbound actions. Routing screens show the channel name you chose (for example, "SMS Primary", "Mailgun On-call", or "SMTP NOC").
+The **Notification Channels** tab (Admin) is where delivery adapters are
+configured. Every channel has one or both delivery lanes:
+
+- **Respond** — fast operator-facing delivery and verified actions where the
+  platform supports them.
+- **Track** — one-way shared lifecycle status for Slack, Microsoft Teams, or
+  AWS EventBridge. Slack updates one post in place; Teams posts follow-ups;
+  EventBridge emits a structured event.
+
+Each channel has a friendly name and provider details that live here only.
 
 Adding a channel here makes it immediately routable in **My Routing** with no further changes — the routing layer routes to *configured channels*, not to platform types, so new providers never require routing changes.
 
@@ -135,7 +144,10 @@ Each channel has a **Team Scope**:
 - **Workspace-wide** channels receive every incident lifecycle post and every incident-linked AI session lifecycle post.
 - **Specific teams** channels receive only matching incidents and sessions. OpsMender resolves the incident team deterministically from the incident Service's team, then the active escalation chain's team. If neither exists, only workspace-wide channels receive the post.
 
-Channels with the `notifications` capability receive incident **created / acknowledged / escalated / resolved** messages. Incident-linked AI sessions also post when they **start**, **complete**, **fail**, or **time out**. Messages always include authenticated OpsMender links. Opted-in Slack and Teams channels also render verified native incident actions; other providers keep the link fallback. No provider receives a public action URL.
+Respond channels receive incident and AI-session delivery. Track channels
+receive incident **created / acknowledged / escalated / resolved** status only,
+without action controls. Messages always include authenticated OpsMender links;
+no provider receives a public action URL.
 
 ---
 

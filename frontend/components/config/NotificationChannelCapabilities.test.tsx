@@ -269,6 +269,7 @@ function connector(
   return {
     config: null,
     allowed_capabilities: ["notifications"],
+    lanes: ["respond"],
     status: "configured",
     is_enabled: true,
     created_at: "2026-06-05T00:00:00Z",
@@ -408,6 +409,28 @@ describe("Notification Channels capability rendering", () => {
     expect(screen.getByText("Team Scope")).toBeTruthy();
     const row = screen.getByText("Slack #incidents").closest("tr")!;
     expect(within(row).getByText("Workspace-wide")).toBeTruthy();
+  });
+
+  it("shows lane tags and lets admins enable Track for Slack", async () => {
+    const trackedSlack = connector({
+      ...slack,
+      id: "c-track",
+      name: "Slack status",
+      lanes: ["respond", "track"],
+    });
+    render(
+      <BotConnectorSection
+        connectors={[trackedSlack]}
+        onReload={async () => {}}
+        canEdit
+      />,
+    );
+    const row = screen.getByText("Slack status").closest("tr")!;
+    expect(within(row).getByText("Respond")).toBeTruthy();
+    expect(within(row).getByText("Track")).toBeTruthy();
+
+    fireEvent.click(within(row).getByRole("button", { name: /edit/i }));
+    expect((screen.getByLabelText(/Track/) as HTMLInputElement).checked).toBe(true);
   });
 
   it("lets admins choose specific teams in the modal", async () => {

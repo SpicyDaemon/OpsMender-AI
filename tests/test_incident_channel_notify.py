@@ -49,6 +49,7 @@ async def _make_connector(
     is_enabled=True,
     name=None,
     team_ids=None,
+    lanes=None,
 ):
     config = {"allowed_chat_ids": allowed_chat_ids or []}
     if team_ids is not None:
@@ -63,6 +64,7 @@ async def _make_connector(
             config=config,
             credentials={"bot_token": "BOT-TOKEN"},
             allowed_capabilities=list(capabilities),
+            lanes=lanes,
             status="configured",
             is_enabled=is_enabled,
         )
@@ -168,6 +170,96 @@ def test_headline_reflects_event_type():
 
 
 class TestIncidentEventFanOut:
+    async def test_track_status_posts_are_lane_gated_and_reuse_message_id(
+        self, factory, monkeypatch
+    ):
+        class FakeSlackAdapter:
+            platform = "slack"
+
+            def __init__(self):
+                self.sent = []
+                self.updated = []
+
+            async def send_incident_update(self, connector, **kwargs):
+                self.sent.append((connector.name, kwargs))
+                return DeliveryReceipt(
+                    ok=True,
+                    external_channel_id=kwargs["chat_id"],
+                    external_message_id=f"msg-{connector.name}",
+                    can_update=True,
+                )
+
+            async def update_incident_update(self, connector, **kwargs):
+                self.updated.append((connector.name, kwargs))
+                return UpdateResult(
+                    ok=True,
+                    receipt=DeliveryReceipt(
+                        ok=True,
+                        external_channel_id=kwargs["chat_id"],
+                        external_message_id=kwargs["external_message_id"],
+                        can_update=True,
+                    ),
+                )
+
+        fake = FakeSlackAdapter()
+        monkeypatch.setattr(notifier, "get_adapter", lambda platform: fake)
+        monkeypatch.setattr(notifier, "supports_message_update", lambda platform: True)
+
+        track_id = await _make_connector(
+            factory,
+            name="track",
+            platform="slack",
+            capabilities=["notifications"],
+            allowed_chat_ids=["C-TRACK"],
+            lanes=["track"],
+        )
+        await _make_connector(
+            factory,
+            name="respond",
+            platform="slack",
+            capabilities=["notifications"],
+            allowed_chat_ids=["C-RESPOND"],
+            lanes=["respond"],
+        )
+        incident_id = await _make_incident(factory)
+
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.created",
+        )
+        await notifier.deliver_incident_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.acknowledged",
+        )
+
+        track_sends = [item for item in fake.sent if item[0] == "track"]
+        respond_sends = [item for item in fake.sent if item[0] == "respond"]
+        assert len(track_sends) == 1
+        assert track_sends[0][1]["status_update"] is True
+        assert len(respond_sends) == 1
+        assert "status_update" not in respond_sends[0][1]
+        assert len(fake.updated) == 2
+        track_update = next(item for item in fake.updated if item[0] == "track")
+        assert track_update[1]["external_message_id"] == "msg-track"
+        assert track_update[1]["status_update"] is True
+
+        async with factory() as db:
+            from backend.db.repos import IncidentTrackPostRepo
+
+            post = await IncidentTrackPostRepo.get(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident_id,
+                connector_id=track_id,
+            )
+        assert post is not None
+        assert post.external_message_id == "msg-track"
+        assert post.channel_ref == "C-TRACK"
+
     async def test_created_event_delivers_to_notifications_channel(
         self, factory, monkeypatch
     ):

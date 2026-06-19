@@ -59,6 +59,7 @@ def build_page_card_blocks(
     *,
     base_url: str | None = None,
     include_native_actions: bool = False,
+    status_update: bool = False,
 ) -> list[dict[str, Any]]:
     """Block Kit JSON for an actionable page card. ``base_url`` is the
     OpsMender web UI origin (e.g. ``https://opsmender.example.com``); when
@@ -73,8 +74,9 @@ def build_page_card_blocks(
     severity = (incident.severity or "").strip()
     incident_id_str = str(incident.id)
 
+    heading = "Status update" if status_update else "OpsMender page"
     header_lines = [
-        f"*{emoji} {priority} — {title}*",
+        f"*{emoji} {priority} — {heading}: {title}*",
         f"Status: `{status_label}`" + (f"  •  Severity: `{severity}`" if severity else ""),
     ]
     if incident.description:

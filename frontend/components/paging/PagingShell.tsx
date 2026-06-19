@@ -37,7 +37,6 @@ import {
 
 import { RosterCalendarModal } from "@/components/RosterCalendarModal";
 import { NotificationChannelsPage } from "@/components/NotificationChannelsPage";
-import { OutboundHooksPage } from "@/components/OutboundHooksPage";
 import { useAuth } from "@/context/auth";
 
 import {
@@ -79,7 +78,6 @@ import {
   listTeamMembers,
   listTeams,
   listUsers,
-  listWebhookTriggers,
   removeRosterMember,
   removeTeamMember,
   reorderEscalationSteps,
@@ -3774,13 +3772,12 @@ function MaintenanceWindowsPanel({
 
 const ALL_PRIORITIES: Priority[] = ["P0", "P1", "P2", "P3"];
 
-type NotificationsTab = "my_routing" | "routing_summary" | "channels" | "outbound";
+type NotificationsTab = "my_routing" | "routing_summary" | "channels";
 
 const NOTIFICATIONS_TABS: { id: NotificationsTab; label: string }[] = [
   { id: "my_routing", label: "My Routing" },
   { id: "routing_summary", label: "Routing Summary" },
   { id: "channels", label: "Notification Channels" },
-  { id: "outbound", label: "Viewer Notifications" },
 ];
 
 function NotificationsPanel({
@@ -3845,20 +3842,6 @@ function NotificationsPanel({
         </div>
       )}
 
-      {subTab === "outbound" && (
-        <div className="rounded-xl border border-border-subtle bg-bg-panel/95 p-4">
-          <h3 className="text-sm font-semibold text-fg-primary">
-            Viewer Notifications
-          </h3>
-          <p className="mt-1 text-sm text-fg-secondary">
-            Send read-only incident updates to Viewers and external/downstream
-            recipients without making them on-call operators.
-          </p>
-          <div className="mt-4">
-            <OutboundHooksPage embedded />
-          </div>
-        </div>
-      )}
     </section>
   );
 }
@@ -3881,7 +3864,6 @@ function RoutingSummaryPanel({
   const [chainByService, setChainByService] = useState<Map<string, string>>(
     new Map(),
   );
-  const [outboundCount, setOutboundCount] = useState<number | null>(null);
 
   const teamNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -3909,13 +3891,6 @@ function RoutingSummaryPanel({
       );
       if (!cancelled) setChainByService(new Map(entries));
     })();
-    listWebhookTriggers()
-      .then((r) => {
-        if (!cancelled) setOutboundCount(r.items.length);
-      })
-      .catch(() => {
-        if (!cancelled) setOutboundCount(0);
-      });
     return () => {
       cancelled = true;
     };
@@ -3992,14 +3967,6 @@ function RoutingSummaryPanel({
         <li>· P0/P1 page through the service&apos;s escalation chain.</li>
         <li>· Each level targets a roster or user; the roster resolves the current Admin/Operator from its coverage window and rotation order.</li>
         <li>· Delivery uses each recipient&apos;s configured notification channels.</li>
-        <li>
-          · Viewer/external updates:{" "}
-          {outboundCount === null
-            ? "checking…"
-            : outboundCount > 0
-              ? `${outboundCount} Viewer Notification rule${outboundCount === 1 ? "" : "s"} configured.`
-              : "Not configured."}
-        </li>
       </ul>
     </div>
   );

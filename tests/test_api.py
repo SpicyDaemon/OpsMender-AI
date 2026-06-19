@@ -4839,6 +4839,53 @@ class TestAgentTeamProfiles:
 
 
 class TestBotConnectorsAPI:
+    async def test_track_lane_round_trips_and_eventbridge_secrets_are_encrypted(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        response = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "soc-events",
+                "platform": "eventbridge",
+                "credentials": {
+                    "region": "us-east-1",
+                    "event_bus_name": "security",
+                    "access_key_id": "AKIA_TEST",
+                    "secret_access_key": "secret",
+                },
+                "allowed_capabilities": ["notifications"],
+                "lanes": ["track"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["lanes"] == ["track"]
+        connector_id = uuid.UUID(data["id"])
+        async with app.state.session_factory() as db:
+            stored = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector_id)
+            assert stored is not None
+            assert stored.credentials["secret_access_key"] != "secret"
+            assert stored.credentials["secret_access_key"].startswith("enc:")
+            assert stored.credentials["event_bus_name"] != "security"
+
+    async def test_track_lane_rejects_unsupported_platform(
+        self, client: AsyncClient, auth_headers
+    ):
+        response = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "telegram-track",
+                "platform": "telegram",
+                "allowed_capabilities": ["notifications"],
+                "lanes": ["track"],
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 400
+        assert "Track lane currently supports" in response.json()["detail"]
+
     async def test_create_list_update_delete_bot_connector(
         self, client: AsyncClient, app, auth_headers
     ):

@@ -1503,11 +1503,12 @@ class ResponseTimeResponse(BaseModel):
 
 class BotConnectorUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
-    platform: str = Field(pattern="^(telegram|signal|whatsapp|slack|discord|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|smtp|homeassistant|bluebubbles|custom)$")
+    platform: str = Field(pattern="^(telegram|signal|whatsapp|slack|discord|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|smtp|homeassistant|bluebubbles|eventbridge|custom)$")
     config: Optional[dict] = None
     credentials: Optional[dict] = None
     clear_credentials: bool = False
     allowed_capabilities: list[str] = Field(..., min_length=1)
+    lanes: list[str] = Field(default_factory=lambda: ["respond"])
     team_scope: str = Field(default="workspace", pattern="^(workspace|teams)$")
     team_ids: list[uuid.UUID] = Field(default_factory=list)
     status: str = Field(
@@ -1524,6 +1525,7 @@ class BotConnectorResponse(BaseModel):
     platform: str
     config: Optional[dict]
     allowed_capabilities: list[str]
+    lanes: list[str] = Field(default_factory=lambda: ["respond"])
     status: str
     is_enabled: bool
     created_at: datetime

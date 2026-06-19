@@ -56,6 +56,11 @@ class TestRegistry:
 
         assert get_adapter("does-not-exist") is None
 
+    def test_eventbridge_adapter_registered(self):
+        import backend.bots  # noqa: F401
+
+        assert get_adapter("eventbridge") is not None
+
 
 class TestTelegramAdapter:
     def test_verify_rejects_wrong_platform(self):
@@ -759,6 +764,60 @@ class TestTeamsAdapter:
             "Escalate",
             "Start AI Session",
         }
+
+
+class TestEventBridgeAdapter:
+    async def test_put_events_uses_versioned_incident_status_schema(
+        self, monkeypatch
+    ):
+        captured = {}
+
+        class FakeEvents:
+            def put_events(self, **kwargs):
+                captured.update(kwargs)
+                return {"FailedEntryCount": 0, "Entries": [{"EventId": "evt-1"}]}
+
+        adapter = get_adapter("eventbridge")
+        monkeypatch.setattr(adapter, "_client", lambda connector: FakeEvents())
+        connector = BotConnector(
+            name="soc-bus",
+            platform="eventbridge",
+            credentials={"region": "us-east-1", "event_bus_name": "security"},
+            config={},
+            allowed_capabilities=["notifications"],
+            lanes=["track"],
+            status="configured",
+            is_enabled=True,
+        )
+        incident = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000123",
+            title="API outage",
+            severity="critical",
+            priority=None,
+            status="open",
+            external_source="api",
+            created_at=None,
+            acknowledged_at=None,
+            updated_at=None,
+        )
+        receipt = await adapter.send_incident_update(
+            connector,
+            chat_id="eventbridge",
+            text="ignored",
+            incident=incident,
+            service_name="Checkout",
+            team_name="Payments",
+        )
+        assert receipt.ok is True
+        assert receipt.external_message_id == "evt-1"
+        entry = captured["Entries"][0]
+        assert entry["Source"] == "opsmender"
+        assert entry["DetailType"] == "opsmender.incident.status"
+        detail = json.loads(entry["Detail"])
+        assert detail["schema_version"] == "1.0"
+        assert detail["incident"]["priority"] == "P0"
+        assert detail["incident"]["service"] == "Checkout"
+        assert detail["incident"]["team"] == "Payments"
 
 
 class TestConnectorTestChecks:

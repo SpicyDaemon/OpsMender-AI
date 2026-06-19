@@ -522,6 +522,7 @@ class TestFormSchema:
         "whatsapp",
         "slack",
         "discord",
+        "google_chat",
         "mattermost",
         "matrix",
         "feishu",

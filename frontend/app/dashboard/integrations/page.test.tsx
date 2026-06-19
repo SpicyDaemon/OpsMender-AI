@@ -125,6 +125,29 @@ beforeEach(() => {
           },
         ],
       },
+      {
+        kind: "google_docs",
+        label: "Google Docs",
+        supports_base_url: false,
+        auth_types: ["oauth", "custom"],
+        adapter_available: true,
+        capabilities: [
+          {
+            action: "read_doc",
+            description: "Read document",
+            classification: "safe",
+            mutating: false,
+            always_requires_approval: false,
+          },
+          {
+            action: "export_doc",
+            description: "Export document",
+            classification: "safe",
+            mutating: false,
+            always_requires_approval: false,
+          },
+        ],
+      },
     ],
     total: 2,
   });
@@ -233,5 +256,16 @@ describe("Integrations page", () => {
     expect(screen.getByText(/Terraform Enterprise API v2 base/)).toBeTruthy();
     expect(screen.getByText(/"workspace_id":"ws-/)).toBeTruthy();
     expect(screen.getByText(/plan · always approval/)).toBeTruthy();
+  });
+
+  it("shows Google Docs OAuth and service-account guidance", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    await screen.findByRole("heading", { name: "Add integration" });
+    await user.selectOptions(screen.getByLabelText("Kind"), "google_docs");
+    expect(screen.getByText(/Google Docs and Drive APIs/)).toBeTruthy();
+    expect(screen.getByText(/Service account \(Custom\)/)).toBeTruthy();
+    expect(screen.getByText(/domain-wide delegation/)).toBeTruthy();
+    expect(screen.getByText(/read_doc · read/)).toBeTruthy();
   });
 });

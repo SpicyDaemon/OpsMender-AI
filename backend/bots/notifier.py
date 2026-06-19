@@ -748,6 +748,7 @@ async def deliver_incident_event(
             "slack",
             "teams",
             "discord",
+            "google_chat",
             "eventbridge",
         }:
             continue
@@ -858,6 +859,7 @@ async def deliver_incident_text(
             "slack",
             "teams",
             "discord",
+            "google_chat",
             "eventbridge",
         }:
             continue

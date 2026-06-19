@@ -690,6 +690,7 @@ export type BotConnectorPlatform =
   | "whatsapp"
   | "slack"
   | "discord"
+  | "google_chat"
   | "teams"
   | "mattermost"
   | "matrix"

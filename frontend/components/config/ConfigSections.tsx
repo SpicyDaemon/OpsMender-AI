@@ -2755,6 +2755,7 @@ const PLATFORM_LABELS: Record<BotConnectorPlatform, string> = {
   whatsapp: "WhatsApp",
   slack: "Slack",
   discord: "Discord",
+  google_chat: "Google Chat",
   teams: "Microsoft Teams",
   mattermost: "Mattermost",
   matrix: "Matrix",
@@ -3120,7 +3121,13 @@ function BotConnectorModal({
           ["slack", "teams"].includes(next) && sameAsInitial
             ? Boolean(initialConnector?.native_actions_enabled)
             : false,
-        lanes: ["slack", "teams", "discord", "eventbridge"].includes(next)
+        lanes: [
+          "slack",
+          "teams",
+          "discord",
+          "google_chat",
+          "eventbridge",
+        ].includes(next)
           ? current.lanes
           : current.lanes.filter((lane) => lane !== "track"),
       };
@@ -3342,9 +3349,13 @@ function BotConnectorModal({
                 </span>
               </span>
             </label>
-            {["slack", "teams", "discord", "eventbridge"].includes(
-              form.platform,
-            ) && (
+            {[
+              "slack",
+              "teams",
+              "discord",
+              "google_chat",
+              "eventbridge",
+            ].includes(form.platform) && (
               <label className="flex items-start gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-primary">
                 <input
                   type="checkbox"

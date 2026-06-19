@@ -33,6 +33,11 @@ const INTEGRATION_HELP: Record<
     auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
     config: '{"project":"group/project"}',
   },
+  gitea: {
+    base: "Required: your Gitea instance URL or API v1 base.",
+    auth: 'Personal access token: {"token":"…"}',
+    config: '{"owner":"acme","repo":"service"}',
+  },
   bitbucket: {
     base: "Cloud uses https://api.bitbucket.org/2.0 by default. For Data Center, enter the instance root or REST API base.",
     auth: 'Cloud API token: {"email":"admin@example.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
@@ -72,6 +77,11 @@ const INTEGRATION_HELP: Record<
     auth: 'Integration token: {"api_key":"…"}. OAuth: {"access_token":"…"}',
     config: '{"parent_page_id":"…","notion_version":"2026-03-11"}',
   },
+  google_docs: {
+    base: "Uses the Google Docs and Drive APIs.",
+    auth: 'OAuth: {"access_token":"…"}. Service account (Custom): {"client_email":"…","private_key":"-----BEGIN PRIVATE KEY-----…","delegated_user":"optional@example.com"}',
+    config: "Share documents with the service account, or configure domain-wide delegation.",
+  },
   kubernetes: {
     base: "Required: the Kubernetes API server URL, such as https://cluster.example.com:6443.",
     auth: 'Service account: {"token":"…","ca_cert":"-----BEGIN CERTIFICATE-----…"}. Custom headers: {"headers":{"Authorization":"…"}}.',
@@ -106,6 +116,11 @@ const INTEGRATION_HELP: Record<
     base: "Required: the AWX or Ansible Automation Controller URL.",
     auth: 'Token: {"token":"…"}. Basic: {"username":"…","password":"…"}',
     config: "No extra config required.",
+  },
+  statuspage: {
+    base: "Uses https://api.statuspage.io/v1 by default.",
+    auth: 'API token: {"api_key":"…"}',
+    config: '{"page_id":"…"}',
   },
   zendesk: {
     base: "Required: your subdomain URL, such as https://acme.zendesk.com.",

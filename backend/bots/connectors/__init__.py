@@ -18,6 +18,7 @@ from .discord import DiscordAdapter
 from .email import EmailAdapter
 from .eventbridge import EventBridgeAdapter
 from .feishu import FeishuAdapter
+from .google_chat import GoogleChatAdapter
 from .homeassistant import HomeAssistantAdapter
 from .matrix import MatrixAdapter
 from .mattermost import MattermostAdapter
@@ -41,6 +42,7 @@ __all__ = [
     "EmailAdapter",
     "EventBridgeAdapter",
     "FeishuAdapter",
+    "GoogleChatAdapter",
     "HomeAssistantAdapter",
     "MatrixAdapter",
     "MattermostAdapter",

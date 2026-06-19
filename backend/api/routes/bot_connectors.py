@@ -48,6 +48,7 @@ REQUIRED_CREDENTIAL_KEYS = {
     "whatsapp": ("access_token", "phone_number_id"),
     "slack": ("signing_secret", "bot_token"),
     "discord": ("public_key", "bot_token"),
+    "google_chat": ("client_email", "private_key"),
     "teams": ("tenant_id", "client_id", "client_secret"),
     "email": ("mailgun_api_key", "mailgun_domain"),
     "smtp": ("smtp_host", "smtp_port", "from_email"),
@@ -99,23 +100,24 @@ def _validate_platform_lanes(platform: str, lanes: list[str]) -> list[str]:
         "slack",
         "teams",
         "discord",
+        "google_chat",
         "eventbridge",
     }:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Track lane currently supports Slack, Microsoft Teams, "
-                "Discord, and AWS EventBridge."
+                "Discord, Google Chat, and AWS EventBridge."
             ),
         )
     return cleaned
 
 
-def _encrypt_eventbridge_credentials(
+def _encrypt_platform_credentials(
     platform: str,
     credentials: dict | None,
 ) -> dict | None:
-    if platform != "eventbridge" or credentials is None:
+    if platform not in {"eventbridge", "google_chat"} or credentials is None:
         return credentials
     encrypted: dict[str, object] = {}
     for key, value in credentials.items():
@@ -567,7 +569,7 @@ async def create_bot_connector(
 ):
     team_ids = await _validate_team_scope(db, org_id, body)
     credentials = _resolve_credentials(body)
-    credentials = _encrypt_eventbridge_credentials(body.platform, credentials)
+    credentials = _encrypt_platform_credentials(body.platform, credentials)
     try:
         connector = await BotConnectorRepo.create(
             db,
@@ -620,7 +622,7 @@ async def update_bot_connector(
         )
 
     credentials = _resolve_credentials(body, existing)
-    credentials = _encrypt_eventbridge_credentials(body.platform, credentials)
+    credentials = _encrypt_platform_credentials(body.platform, credentials)
     team_ids = await _validate_team_scope(db, org_id, body)
     try:
         updated = await BotConnectorRepo.update(

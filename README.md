@@ -37,12 +37,14 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **Org-owned skills** — one `SKILL.md` classifies every operation as safe / caution / destructive.
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + on-call calendar, maintenance windows.
 - **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
-- **Shared incident tracking** — update-in-place Slack and Discord status,
-  Teams follow-ups, and versioned AWS EventBridge lifecycle events.
+- **Shared incident tracking** — update-in-place Slack, Discord, and Google
+  Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
+  events.
 - **Incident reporting** — on-demand CSV/PDF metrics plus scheduled
   weekly/monthly/quarterly email reports from organization SMTP.
 - **Native work-system integrations** — GitHub, GitLab, Bitbucket, Azure
-  DevOps, Jira, Confluence, ServiceNow, Linear, and Notion provide typed
+  DevOps, Gitea, Jira, Confluence, ServiceNow, Linear, Notion, Google Docs, and
+  Statuspage provide typed
   repository, PR, ticket, record, and document capabilities with encrypted
   auth, self-hosted API URLs where applicable, and approval-locked merges.
 - **CI/CD integrations** — Jenkins, CircleCI, and Azure Pipelines expose build,

@@ -1617,7 +1617,7 @@ class ResponseTimeResponse(BaseModel):
 class BotConnectorUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     platform: str = Field(
-        pattern="^(telegram|signal|whatsapp|slack|discord|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|smtp|homeassistant|bluebubbles|eventbridge|custom)$"
+        pattern="^(telegram|signal|whatsapp|slack|discord|google_chat|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|smtp|homeassistant|bluebubbles|eventbridge|custom)$"
     )
     config: Optional[dict] = None
     credentials: Optional[dict] = None

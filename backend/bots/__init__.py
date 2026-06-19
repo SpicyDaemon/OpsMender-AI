@@ -5,6 +5,7 @@ from backend.bots.connectors import (
     EmailAdapter,
     EventBridgeAdapter,
     FeishuAdapter,
+    GoogleChatAdapter,
     HomeAssistantAdapter,
     MatrixAdapter,
     MattermostAdapter,
@@ -29,6 +30,7 @@ register_adapter(DiscordAdapter())
 register_adapter(MattermostAdapter())
 register_adapter(MatrixAdapter())
 register_adapter(FeishuAdapter())
+register_adapter(GoogleChatAdapter())
 register_adapter(DingTalkAdapter())
 register_adapter(WeComAdapter())
 register_adapter(WeixinAdapter())

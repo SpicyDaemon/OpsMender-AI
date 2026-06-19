@@ -145,6 +145,14 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         # channel messages through the message resource.
         message_update=True,
     ),
+    "google_chat": _cap(
+        "google_chat",
+        "Google Chat",
+        shared_channel=True,
+        # Chat app-authored messages return a durable resource name and can be
+        # patched later with the chat.bot scope.
+        message_update=True,
+    ),
     "telegram": _cap(
         "telegram",
         "Telegram",

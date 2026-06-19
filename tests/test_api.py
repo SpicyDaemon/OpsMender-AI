@@ -4214,6 +4214,22 @@ class TestIntegrationConnectors:
             for capability in item["capabilities"]
             if capability["mutating"]
         )
+        phase_five = {
+            item["kind"]: item
+            for item in kinds.json()["items"]
+            if item["kind"] in {"gitea", "google_docs", "statuspage"}
+        }
+        assert len(phase_five) == 3
+        assert all(item["adapter_available"] for item in phase_five.values())
+        assert {
+            capability["action"]
+            for capability in phase_five["google_docs"]["capabilities"]
+        } == {"test_connection", "read_doc", "export_doc"}
+        assert any(
+            capability["always_requires_approval"]
+            for capability in phase_five["gitea"]["capabilities"]
+            if capability["action"] == "merge_pull_request"
+        )
 
         created = await client.post(
             "/integrations",
@@ -4725,6 +4741,39 @@ class TestBotConnectorsAPI:
         assert response.status_code == 201
         assert response.json()["lanes"] == ["respond", "track"]
 
+    async def test_google_chat_supports_track_and_encrypts_service_account(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        response = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "google-chat-status",
+                "platform": "google_chat",
+                "config": {"default_chat_id": "spaces/SPACE1"},
+                "credentials": {
+                    "client_email": "chat@project.iam.gserviceaccount.com",
+                    "private_key": "private-key",
+                },
+                "allowed_capabilities": ["notifications"],
+                "lanes": ["respond", "track"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["lanes"] == ["respond", "track"]
+        assert data["platform_label"] == "Google Chat"
+        assert data["platform_capabilities"]["message_update"] is True
+        connector_id = uuid.UUID(data["id"])
+        async with app.state.session_factory() as db:
+            stored = await BotConnectorRepo.get_by_id(
+                db, TEST_ORG_ID, connector_id
+            )
+            assert stored is not None
+            assert stored.credentials["client_email"].startswith("enc:")
+            assert stored.credentials["private_key"].startswith("enc:")
+
     async def test_create_list_update_delete_bot_connector(
         self, client: AsyncClient, app, auth_headers
     ):
@@ -5023,6 +5072,7 @@ class TestBotConnectorsAPI:
             "telegram",
             "slack",
             "discord",
+            "google_chat",
             "whatsapp",
             "signal",
             "mattermost",
@@ -5067,6 +5117,16 @@ class TestBotConnectorsAPI:
         discord_fields = {field["name"]: field for field in discord["fields"]}
         assert discord_fields["default_chat_id"]["label"] == "Discord Channel ID"
         assert "Snowflake" not in discord_fields["default_chat_id"]["helper"]
+
+        google_chat_resp = await client.get(
+            "/bot-connectors/platforms/google_chat/schema", headers=auth_headers
+        )
+        assert google_chat_resp.status_code == 200
+        google_chat = google_chat_resp.json()
+        google_fields = {field["name"]: field for field in google_chat["fields"]}
+        assert google_fields["default_chat_id"]["label"] == "Google Chat space name"
+        assert google_fields["private_key"]["group"] == "credentials"
+        assert google_chat["capabilities"]["message_update"] is True
 
         email_resp = await client.get(
             "/bot-connectors/platforms/email/schema", headers=auth_headers

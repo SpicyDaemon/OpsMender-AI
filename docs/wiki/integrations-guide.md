@@ -160,6 +160,27 @@ Enter the AWX or Ansible Automation Controller URL. Use
 `{"username":"...","password":"..."}`. Job-template and job reads are safe;
 template launch always requires Operator Approval.
 
+### Gitea
+
+Enter the Gitea instance URL and store `{"token":"..."}`. Configure a default
+repository with `{"owner":"acme","repo":"service"}`. Repository/file reads,
+issues/comments, and pull-request list/create are available; merging a pull
+request always requires Operator Approval.
+
+### Google Docs
+
+OAuth uses `{"access_token":"..."}`. For a service account, choose Custom auth
+and store `{"client_email":"...","private_key":"..."}`; optionally add
+`delegated_user` for configured domain-wide delegation. Share documents with
+the service account when delegation is not used. Capabilities read document
+structure and export text or binary formats through Drive.
+
+### Statuspage
+
+Store `{"api_key":"..."}` and configure `{"page_id":"..."}`. Component and
+incident reads are safe. Creating a public incident is a mutating capability
+that requires Operator Approval.
+
 ## 2. Incident Ingest Adapters
 
 OpsMender provides inbound alert intake for monitoring tools. In v1, the legacy `/incidents/ingest` token backend remains available, but the product concept is moving toward **Service Webhooks**: each service exposes a unique alert URL with an embedded unguessable secret so external monitors can POST directly without separate API-key headers.
@@ -429,6 +450,18 @@ OpsMender verifies every inbound interaction using Ed25519 signatures (`X-Signat
 
 Identity mapping (RBAC): Use the Discord User ID (e.g., `123456789012345678`) as the platform user ID.
 
+### Google Chat
+
+Google Chat Notification Channels support **Respond** and **Track** as
+outbound-only delivery. Configure the Chat app's service-account email and
+private key, then set the destination resource name such as `spaces/AAAA...`.
+The service-account fields are encrypted at rest.
+
+Google Chat returns a durable message resource name. OpsMender stores it for
+both Respond and Track delivery and patches that same message as the incident
+changes state. The channel does not expose inbound commands or interactive
+incident actions.
+
 ### Mattermost (Outgoing Webhooks)
 
 Mattermost integration uses Outgoing Webhooks for inbound commands and the Mattermost API for outbound delivery.
@@ -676,8 +709,8 @@ Identity mapping (RBAC): Use the sender's phone number or Apple ID (e.g., `+1555
 
 Viewer-facing delivery is report-based. Configure organization SMTP under
 **Config**, then use **Reports** for CSV/PDF exports and scheduled stakeholder
-email. Real-time incident status belongs to Track-lane Slack, Teams, or
-EventBridge Notification Channels.
+email. Real-time incident status belongs to Track-lane Slack, Teams, Discord,
+Google Chat, or EventBridge Notification Channels.
 
 ## 4. Docker Deployment Basics
 

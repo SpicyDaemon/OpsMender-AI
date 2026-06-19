@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 2 Phase 5 — source control, docs, status, and ChatOps breadth.** Added
+  Gitea repository/file/issue/pull-request workflows, Google Docs read/export
+  through OAuth or service-account auth, and Statuspage component/incident
+  reads plus tier-governed incident creation. Google Chat Notification
+  Channels now support Respond and Track, encrypt service-account credentials,
+  retain durable message resource names, and update lifecycle posts in place.
 - **Wave 2 Phase 4 — infrastructure automation connectors.** Added Terraform
   Cloud workspace/run reads plus speculative plan and apply actions, Argo CD
   application/sync/diff reads plus sync and rollback actions, and Ansible

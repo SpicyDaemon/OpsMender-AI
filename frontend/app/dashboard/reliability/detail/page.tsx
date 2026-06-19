@@ -7,6 +7,7 @@ import { ArrowLeft, ServerCrash, ShieldAlert, CalendarX, Plus, Trash2, Pencil, E
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { createIncident } from "@/lib/api";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { SLOModal } from "@/components/reliability/SLOModal";
 import { UptimeStrip } from "@/components/reliability/UptimeStrip";
@@ -91,6 +92,7 @@ function TargetDetailContent() {
   const [slos, setSlos] = useState<(SLOResponse & { status: SLOStatusResponse | null })[]>([]);
   const [recommendations, setRecommendations] = useState<SLORecommendation[]>([]);
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
+  const [confirmRec, setConfirmRec] = useState<SLORecommendation | null>(null);
   const [loading, setLoading] = useState(true);
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<string | null>(null);
@@ -199,6 +201,7 @@ function TargetDetailContent() {
         label: "Open incident",
         href: `/dashboard/incidents/detail?id=${result.id}`,
       });
+      setConfirmRec(null);
       router.push(`/dashboard/incidents/detail?id=${result.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create incident");
@@ -307,11 +310,11 @@ function TargetDetailContent() {
                       Click{" "}
                       <button
                         type="button"
-                        onClick={() => void createIncidentFromRec(rec)}
+                        onClick={() => setConfirmRec(rec)}
                         disabled={creatingFor !== null}
                         className="font-medium text-accent underline hover:no-underline disabled:opacity-50 disabled:no-underline"
                       >
-                        {creatingFor === rec.slo_id ? "creating…" : "here"}
+                        here
                       </button>{" "}
                       to create a P0 incident.
                     </span>
@@ -645,6 +648,34 @@ function TargetDetailContent() {
         targetId={id}
         initialData={editingSLO}
       />
+
+      <Modal
+        open={confirmRec !== null}
+        onClose={() => setConfirmRec(null)}
+        title="Create P0 incident?"
+      >
+        <p className="text-sm text-fg-secondary">
+          Are you sure you want to create a P0 incident
+          {confirmRec?.service_name ? (
+            <> for <span className="font-medium text-fg-primary">{confirmRec.service_name}</span></>
+          ) : null}
+          ? P0 is the highest priority and will page the owning on-call.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmRec(null)} disabled={creatingFor !== null}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            loading={creatingFor !== null}
+            onClick={() => {
+              if (confirmRec) void createIncidentFromRec(confirmRec);
+            }}
+          >
+            Create P0 incident
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

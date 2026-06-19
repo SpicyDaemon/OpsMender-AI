@@ -1054,6 +1054,9 @@ export type IngestProvider =
   | "azure_monitor"
   | "gcp_monitoring"
   | "oci_monitoring"
+  | "sentry"
+  | "newrelic"
+  | "splunk"
   | "generic";
 
 export interface IngestTokenResponse {
@@ -1232,7 +1235,11 @@ export interface SLOListResponse {
   total: number;
 }
 
-export type MaintenanceWindowScopeType = "global" | "service" | "roster" | "team";
+export type MaintenanceWindowScopeType =
+  | "global"
+  | "service"
+  | "roster"
+  | "team";
 
 export type NotificationChannelKey = "slack_dm" | "teams_dm" | "email" | "sms";
 
@@ -1384,11 +1391,9 @@ export interface BotUserLinkCreate {
   opsmender_user_id: string;
 }
 
-
 // ---------------------------------------------------------------------------
 // Organizations (Phase 4)
 // ---------------------------------------------------------------------------
-
 
 export interface BrandingConfig {
   company_name?: string;
@@ -1398,7 +1403,6 @@ export interface BrandingConfig {
   favicon_url?: string;
 }
 
-
 export interface OrganizationResponse {
   id: string;
   name: string;
@@ -1407,12 +1411,10 @@ export interface OrganizationResponse {
   created_at: string;
 }
 
-
 export interface OrganizationListResponse {
   items: OrganizationResponse[];
   total: number;
 }
-
 
 export interface OrganizationCreate {
   name: string;
@@ -1420,13 +1422,11 @@ export interface OrganizationCreate {
   branding?: BrandingConfig;
 }
 
-
 export interface OrganizationUpdate {
   name?: string;
   slug?: string;
   branding?: BrandingConfig;
 }
-
 
 export interface UserOrganizationResponse {
   user_id: string;
@@ -1436,18 +1436,15 @@ export interface UserOrganizationResponse {
   joined_at: string;
 }
 
-
 export interface OrganizationUserListResponse {
   items: UserOrganizationResponse[];
   total: number;
 }
 
-
 export interface UserOrganizationLink {
   user_id: string;
   role: "admin" | "operator" | "viewer";
 }
-
 
 export interface MyOrganizationResponse {
   id: string;
@@ -1458,12 +1455,10 @@ export interface MyOrganizationResponse {
   is_primary: boolean;
 }
 
-
 export interface MyOrganizationListResponse {
   items: MyOrganizationResponse[];
   total: number;
 }
-
 
 export interface OrganizationDomainResponse {
   id: string;
@@ -1474,19 +1469,16 @@ export interface OrganizationDomainResponse {
   created_at: string;
 }
 
-
 export interface OrganizationDomainListResponse {
   items: OrganizationDomainResponse[];
   total: number;
 }
-
 
 export interface OrganizationDomainCreate {
   domain: string;
   is_primary?: boolean;
   verified?: boolean;
 }
-
 
 export interface TenantContextResponse {
   pinned: boolean;
@@ -1500,7 +1492,6 @@ export interface TenantContextResponse {
   saml_enabled?: boolean;
   saml_login_path?: string | null;
 }
-
 
 export interface OrgSSOConfigResponse {
   id: string;
@@ -1519,7 +1510,6 @@ export interface OrgSSOConfigResponse {
   updated_at: string;
 }
 
-
 export interface OrgSSOConfigCreate {
   provider?: "oidc";
   discovery_url: string;
@@ -1532,7 +1522,6 @@ export interface OrgSSOConfigCreate {
   default_role?: "admin" | "operator" | "viewer";
   allowed_email_domains?: string | null;
 }
-
 
 export interface OrgSAMLConfigResponse {
   id: string;
@@ -1549,7 +1538,6 @@ export interface OrgSAMLConfigResponse {
   created_at: string;
   updated_at: string;
 }
-
 
 export interface OrgSAMLConfigCreate {
   is_active?: boolean;
@@ -1569,7 +1557,11 @@ export interface OrgSAMLConfigCreate {
 
 export type AuditSeverity = "critical" | "high" | "medium" | "low" | "info";
 export type AuditRunStatus = "queued" | "running" | "completed" | "failed";
-export type AuditFindingStatus = "open" | "remediating" | "resolved" | "dismissed";
+export type AuditFindingStatus =
+  | "open"
+  | "remediating"
+  | "resolved"
+  | "dismissed";
 
 export interface AuditAnalyzerResponse {
   key: string;

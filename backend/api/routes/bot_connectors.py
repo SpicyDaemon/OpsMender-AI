@@ -95,10 +95,18 @@ def _validate_lanes(lanes: list[str]) -> list[str]:
 
 def _validate_platform_lanes(platform: str, lanes: list[str]) -> list[str]:
     cleaned = _validate_lanes(lanes)
-    if "track" in cleaned and platform not in {"slack", "teams", "eventbridge"}:
+    if "track" in cleaned and platform not in {
+        "slack",
+        "teams",
+        "discord",
+        "eventbridge",
+    }:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Track lane currently supports Slack, Microsoft Teams, and AWS EventBridge.",
+            detail=(
+                "Track lane currently supports Slack, Microsoft Teams, "
+                "Discord, and AWS EventBridge."
+            ),
         )
     return cleaned
 
@@ -116,7 +124,8 @@ def _encrypt_eventbridge_credentials(
             continue
         text = str(value)
         encrypted[key] = (
-            text if text.startswith(_ENCRYPTED_PREFIX)
+            text
+            if text.startswith(_ENCRYPTED_PREFIX)
             else _ENCRYPTED_PREFIX + encrypt_secret(text)
         )
     return encrypted
@@ -140,9 +149,7 @@ def _callback_status(
 ) -> str:
     """Describe callback readiness without claiming a callback ran."""
 
-    enabled = (
-        body.platform in {"slack", "teams"} and body.native_actions_enabled
-    )
+    enabled = body.platform in {"slack", "teams"} and body.native_actions_enabled
     verifier = _callback_verifier(
         body.platform,
         config=body.config,
@@ -338,9 +345,11 @@ def _connector_config_checks(
             _check(
                 "credentials",
                 "pass",
-                "Required stored credentials are present."
-                if required_keys
-                else "No stored credentials required for this platform.",
+                (
+                    "Required stored credentials are present."
+                    if required_keys
+                    else "No stored credentials required for this platform."
+                ),
             )
         )
 
@@ -687,7 +696,9 @@ async def test_bot_connector(
         adapter = get_adapter(connector.platform)
         if adapter is None:
             checks.append(
-                _check("connection", "fail", "No adapter is registered for this platform.")
+                _check(
+                    "connection", "fail", "No adapter is registered for this platform."
+                )
             )
         else:
             # Provider reachability, where the adapter supports a dedicated probe.

@@ -75,9 +75,10 @@ Approval, and Tool Activity audit path. State-changing actions are not a bypass
 around MCP governance.
 
 Native connector coverage includes GitHub, GitLab, Bitbucket, Azure DevOps,
-Jira, Confluence, ServiceNow, Linear, and Notion. Provider-specific setup
-examples appear directly below the base URL, credentials, and configuration
-fields. Repository merges are always routed through Operator Approval.
+Jira, Confluence, ServiceNow, Linear, Notion, and Kubernetes.
+Provider-specific setup examples appear directly below the base URL,
+credentials, and configuration fields. Repository merges and Kubernetes
+remediation are routed through Operator Approval.
 
 ## 6. Notification Channels
 

@@ -72,6 +72,11 @@ const INTEGRATION_HELP: Record<
     auth: 'Integration token: {"api_key":"…"}. OAuth: {"access_token":"…"}',
     config: '{"parent_page_id":"…","notion_version":"2026-03-11"}',
   },
+  kubernetes: {
+    base: "Required: the Kubernetes API server URL, such as https://cluster.example.com:6443.",
+    auth: 'Service account: {"token":"…","ca_cert":"-----BEGIN CERTIFICATE-----…"}. Custom headers: {"headers":{"Authorization":"…"}}.',
+    config: '{"namespace":"production","verify_tls":true}',
+  },
 };
 
 function parseObject(value: string, label: string): Record<string, unknown> {

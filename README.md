@@ -37,16 +37,20 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **Org-owned skills** — one `SKILL.md` classifies every operation as safe / caution / destructive.
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + on-call calendar, maintenance windows.
 - **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
-- **Shared incident tracking** — update-in-place Slack status, Teams follow-ups,
-  and versioned AWS EventBridge lifecycle events.
+- **Shared incident tracking** — update-in-place Slack and Discord status,
+  Teams follow-ups, and versioned AWS EventBridge lifecycle events.
 - **Incident reporting** — on-demand CSV/PDF metrics plus scheduled
   weekly/monthly/quarterly email reports from organization SMTP.
 - **Native work-system integrations** — GitHub, GitLab, Bitbucket, Azure
   DevOps, Jira, Confluence, ServiceNow, Linear, and Notion provide typed
   repository, PR, ticket, record, and document capabilities with encrypted
   auth, self-hosted API URLs where applicable, and approval-locked merges.
+- **Kubernetes context and remediation** — encrypted API access for pods,
+  events, logs, and deployments; rollout restarts and pod deletion remain
+  approval-gated.
 - **Inbox** — per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
-- **Universal alert ingest** — JSON webhooks from Prometheus, Datadog, CloudWatch, Azure Monitor, GCP, OCI, Grafana, and more.
+- **Universal alert ingest** — native Sentry, New Relic, Splunk, CloudWatch,
+  Azure Monitor, GCP, and OCI parsing plus auto-learned JSON webhooks.
 - **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, per-org, operator-curated.
 - **Reliability / SLA** — HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.
 - **Audit everything** — every tool call, approval, rollback, and state transition recorded.
@@ -58,7 +62,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 ```mermaid
 flowchart LR
   subgraph SRC["Alert sources"]
-    MON["Monitoring / APM<br/>Prometheus · Datadog · CloudWatch · Grafana"]
+    MON["Monitoring / APM<br/>Sentry · New Relic · Splunk · CloudWatch · more"]
   end
   OP(["Operators"])
 

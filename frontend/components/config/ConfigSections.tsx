@@ -118,7 +118,13 @@ import type {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
-import { FormError, Input, Label, Select, Textarea } from "@/components/ui/Input";
+import {
+  FormError,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { StatusDot } from "@/components/ui/StatusDot";
 
@@ -134,7 +140,9 @@ export function ConfigCard({
   className?: string;
 }) {
   return (
-    <div className={`overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm ${className}`}>
+    <div
+      className={`overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm ${className}`}
+    >
       <div className="border-b border-border-subtle bg-bg-elevated px-4 py-4 sm:px-6">
         <h3 className="text-sm font-semibold text-fg-primary">{title}</h3>
         {description && (
@@ -153,7 +161,9 @@ export function formatLastSeen(timestamp: string | null): string {
   return parsed.toLocaleString();
 }
 
-export function describeMCPStatus(status: MCPServerStatusResponse | undefined): {
+export function describeMCPStatus(
+  status: MCPServerStatusResponse | undefined,
+): {
   tone: "green" | "amber" | "red";
   label: string;
   title: string;
@@ -228,8 +238,7 @@ export function ConfigPageSkeleton() {
 const LOG_LEVEL_DETAILS = {
   DEBUG:
     "Highest verbosity. Captures every node transition, every prompt, every tool argument. Useful when debugging an agent loop; can grow logs fast on busy clusters.",
-  INFO:
-    "Recommended default. Captures session lifecycle, tool calls, approvals, and notable runtime events without the per-step noise.",
+  INFO: "Recommended default. Captures session lifecycle, tool calls, approvals, and notable runtime events without the per-step noise.",
   WARNING:
     "Drops INFO chatter; keeps anything the backend marked as a soft error (retries, degraded fallbacks, suppressed deliveries).",
   ERROR:
@@ -318,10 +327,14 @@ export function TierSection({
             disabled={!canEdit}
           >
             <option value="DEBUG">DEBUG — capture everything (loudest)</option>
-            <option value="INFO">INFO — normal operation + above (default)</option>
+            <option value="INFO">
+              INFO — normal operation + above (default)
+            </option>
             <option value="WARNING">WARNING — soft errors + above</option>
             <option value="ERROR">ERROR — real failures + above</option>
-            <option value="CRITICAL">CRITICAL — fatal events only (quietest)</option>
+            <option value="CRITICAL">
+              CRITICAL — fatal events only (quietest)
+            </option>
           </Select>
           <p className="mt-1.5 text-xs text-fg-muted">
             {LOG_LEVEL_DETAILS[logLevel as keyof typeof LOG_LEVEL_DETAILS] ??
@@ -343,7 +356,9 @@ export function TierSection({
         </p>
       )}
       {error && <FormError message={error} />}
-      {success && <p className="text-sm text-status-low">Saved successfully.</p>}
+      {success && (
+        <p className="text-sm text-status-low">Saved successfully.</p>
+      )}
 
       <div className="flex justify-end">
         <Button onClick={handleSave} loading={saving} disabled={!canEdit}>
@@ -375,15 +390,13 @@ function createModelFormState(
 ): ModelFormState {
   const fallbackProvider = providers[0];
   const selectedProvider =
-    providers.find((item) => item.provider === current?.provider) ?? fallbackProvider;
+    providers.find((item) => item.provider === current?.provider) ??
+    fallbackProvider;
 
   return {
     name: current?.name ?? "",
     provider: current?.provider ?? selectedProvider?.provider ?? "anthropic",
-    model_id:
-      current?.model_id ??
-      selectedProvider?.default_model_id ??
-      "",
+    model_id: current?.model_id ?? selectedProvider?.default_model_id ?? "",
     api_key_env_var:
       current?.api_key_env_var ??
       selectedProvider?.default_api_key_env_var ??
@@ -518,13 +531,15 @@ function ModelConfigModal({
           ...current,
           model_id: refreshed.models.includes(current.model_id)
             ? current.model_id
-            : refreshed.models[0] ?? current.model_id,
+            : (refreshed.models[0] ?? current.model_id),
         }));
       } else {
         setUseManualModelId(true);
       }
     } catch (err) {
-      onErrorChange(err instanceof Error ? err.message : "Provider refresh failed");
+      onErrorChange(
+        err instanceof Error ? err.message : "Provider refresh failed",
+      );
     } finally {
       setRefreshingCatalog(false);
     }
@@ -580,11 +595,15 @@ function ModelConfigModal({
                   className="text-xs font-medium text-fg-secondary transition-colors hover:text-fg-primary"
                   onClick={() => setUseManualModelId((current) => !current)}
                 >
-                  {useManualModelId ? "Use discovered suggestions" : "Type manual model ID"}
+                  {useManualModelId
+                    ? "Use discovered suggestions"
+                    : "Type manual model ID"}
                 </button>
               ) : null}
             </div>
-            {selectedProvider && selectedProvider.models.length > 0 && !useManualModelId ? (
+            {selectedProvider &&
+            selectedProvider.models.length > 0 &&
+            !useManualModelId ? (
               <Select
                 id="model-id"
                 value={form.model_id}
@@ -606,7 +625,8 @@ function ModelConfigModal({
               />
             )}
             <p className="mt-1 text-xs text-fg-muted">
-              Provider-discovered models are suggestions only. You can always enter an explicit model or deployment ID.
+              Provider-discovered models are suggestions only. You can always
+              enter an explicit model or deployment ID.
             </p>
           </div>
           <div>
@@ -687,7 +707,9 @@ function ModelConfigModal({
         {form.provider === "bedrock" && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
             <p>
-              Bedrock discovery uses your AWS credential chain plus the selected region. Save a manual model ID, or refresh the catalog after entering region/profile.
+              Bedrock discovery uses your AWS credential chain plus the selected
+              region. Save a manual model ID, or refresh the catalog after
+              entering region/profile.
             </p>
             <Button
               type="button"
@@ -727,7 +749,9 @@ function ModelConfigModal({
         {form.provider === "vertex_ai" && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
             <p>
-              Vertex AI discovery uses ADC plus the selected project and location. Save a manual model ID, or refresh the catalog after entering both fields.
+              Vertex AI discovery uses ADC plus the selected project and
+              location. Save a manual model ID, or refresh the catalog after
+              entering both fields.
             </p>
             <Button
               type="button"
@@ -742,7 +766,9 @@ function ModelConfigModal({
         )}
 
         <div className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
-          Secrets are stored as environment-variable references only. Enter the variable name OpsMender should read at runtime, not the raw provider secret.
+          Secrets are stored as environment-variable references only. Enter the
+          variable name OpsMender should read at runtime, not the raw provider
+          secret.
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -777,8 +803,13 @@ function ModelConfigModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" loading={saving} disabled={!form.name || !form.model_id}>
-            <Save size={13} /> {initialConfig ? "Save Changes" : "Create Config"}
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={!form.name || !form.model_id}
+          >
+            <Save size={13} />{" "}
+            {initialConfig ? "Save Changes" : "Create Config"}
           </Button>
         </div>
       </form>
@@ -806,7 +837,9 @@ export function ModelSection({
   const [notice, setNotice] = useState("");
   const [warningNotice, setWarningNotice] = useState("");
   const [testingId, setTestingId] = useState<string | null>(null);
-  const providerById = new Map(providers.map((provider) => [provider.provider, provider]));
+  const providerById = new Map(
+    providers.map((provider) => [provider.provider, provider]),
+  );
 
   async function handleTest(config: ModelConfigResponse) {
     setTestingId(config.id);
@@ -818,7 +851,9 @@ export function ModelSection({
       if (result.ok) {
         setNotice(`${config.name}: ${result.detail ?? "Connection OK."}`);
       } else {
-        setError(`${config.name}: ${result.error ?? "Connection test failed."}`);
+        setError(
+          `${config.name}: ${result.error ?? "Connection test failed."}`,
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection test failed");
@@ -883,7 +918,9 @@ export function ModelSection({
         setNotice("Model config created.");
       }
       if (result.warnings.length > 0) {
-        setWarningNotice(result.warnings.map((warning) => warning.message).join(" "));
+        setWarningNotice(
+          result.warnings.map((warning) => warning.message).join(" "),
+        );
       }
       setModalOpen(false);
       setEditing(null);
@@ -896,9 +933,7 @@ export function ModelSection({
   }
 
   async function handleDelete(config: ModelConfigResponse) {
-    const confirmed = window.confirm(
-      `Delete model config "${config.name}"?`,
-    );
+    const confirmed = window.confirm(`Delete model config "${config.name}"?`);
     if (!confirmed) return;
 
     setError("");
@@ -958,12 +993,14 @@ export function ModelSection({
         cell: (config) => (
           <div className="flex items-center gap-2 capitalize">
             <StatusDot
-              tone={providerById.get(config.provider)?.available ? "green" : "red"}
+              tone={
+                providerById.get(config.provider)?.available ? "green" : "red"
+              }
               title={
                 providerById.get(config.provider)?.available
                   ? `${providerById.get(config.provider)?.label ?? config.provider} is available.`
-                  : providerById.get(config.provider)?.error ??
-                    `${providerById.get(config.provider)?.label ?? config.provider} is unavailable.`
+                  : (providerById.get(config.provider)?.error ??
+                    `${providerById.get(config.provider)?.label ?? config.provider} is unavailable.`)
               }
             />
             <span>{config.provider.replace("_", " ")}</span>
@@ -1030,7 +1067,9 @@ export function ModelSection({
           if (provider?.available)
             return <Badge variant="resolved">available</Badge>;
           if (provider && provider.available === false)
-            return <span className="text-status-high text-xs">not available</span>;
+            return (
+              <span className="text-status-high text-xs">not available</span>
+            );
           return <span className="text-fg-muted text-xs">disabled</span>;
         },
         hiddenByDefault: true,
@@ -1065,7 +1104,10 @@ export function ModelSection({
                 Default model setup is still incomplete.
               </p>
               <p className="mt-1 text-sm text-fg-secondary">
-                OpsMender falls back to offline stub responses until one saved model config is marked as default. Bootstrap your first model here; secrets stay in `.env` or your deployment environment and only the env-var name is stored.
+                OpsMender falls back to offline stub responses until one saved
+                model config is marked as default. Bootstrap your first model
+                here; secrets stay in `.env` or your deployment environment and
+                only the env-var name is stored.
               </p>
             </div>
             <Button onClick={openCreateModal} disabled={!canEdit}>
@@ -1089,7 +1131,9 @@ export function ModelSection({
 
       {error && <FormError message={error} />}
       {notice && <p className="text-sm text-status-low">{notice}</p>}
-      {warningNotice && <p className="text-sm text-status-medium">{warningNotice}</p>}
+      {warningNotice && (
+        <p className="text-sm text-status-medium">{warningNotice}</p>
+      )}
 
       <DataTable
         rows={configs}
@@ -1110,7 +1154,8 @@ export function ModelSection({
         }
         empty={
           <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No saved model configs yet. Create one to make provider switching easier for operators.
+            No saved model configs yet. Create one to make provider switching
+            easier for operators.
           </div>
         }
         rowActions={(config) => (
@@ -1143,11 +1188,17 @@ export function ModelSection({
                   await toggleModelConfigActive(config.id);
                   await onReload();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : "Toggle failed");
+                  setError(
+                    err instanceof Error ? err.message : "Toggle failed",
+                  );
                 }
               }}
               disabled={!canEdit}
-              title={config.is_active ? "Disable this model config" : "Enable this model config"}
+              title={
+                config.is_active
+                  ? "Disable this model config"
+                  : "Enable this model config"
+              }
             >
               {config.is_active ? "Disable" : "Enable"}
             </Button>
@@ -1248,9 +1299,14 @@ const MCP_SERVER_TEMPLATES: MCPServerTemplate[] = [
     transport: "stdio",
     suggestedName: "postgres-prod",
     command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/opsmender"],
+    args: [
+      "-y",
+      "@modelcontextprotocol/server-postgres",
+      "postgresql://localhost/opsmender",
+    ],
     tokenStrategy: "none",
-    docsHref: "https://www.npmjs.com/package/@modelcontextprotocol/server-postgres",
+    docsHref:
+      "https://www.npmjs.com/package/@modelcontextprotocol/server-postgres",
     docsLabel: "Package docs",
   },
   {
@@ -1299,12 +1355,15 @@ const MCP_SERVER_TEMPLATES: MCPServerTemplate[] = [
     command: "python",
     args: ["/path/to/mcp_server.py"],
     tokenStrategy: "none",
-    docsHref: "https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/skills-guide.md",
+    docsHref:
+      "https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/skills-guide.md",
     docsLabel: "Skills guide",
   },
 ];
 
-function envObjectToPairs(env: Record<string, string> | null | undefined): EnvPair[] {
+function envObjectToPairs(
+  env: Record<string, string> | null | undefined,
+): EnvPair[] {
   if (!env) return [];
   return Object.entries(env).map(([key, value]) => ({ key, value }));
 }
@@ -1319,7 +1378,9 @@ function envPairsToObject(pairs: EnvPair[]): Record<string, string> | null {
   return out;
 }
 
-function createMCPFormStateFromTemplate(template: MCPServerTemplate): MCPFormState {
+function createMCPFormStateFromTemplate(
+  template: MCPServerTemplate,
+): MCPFormState {
   const commandLine = template.command
     ? template.args && template.args.length > 0
       ? `${template.command} ${template.args.join(" ")}`
@@ -1351,14 +1412,18 @@ function createMCPFormState(current?: MCPServerResponse | null): MCPFormState {
   };
 }
 
-function buildMCPPayload(
-  form: MCPFormState,
-): { payload?: MCPServerUpsert; error?: string } {
+function buildMCPPayload(form: MCPFormState): {
+  payload?: MCPServerUpsert;
+  error?: string;
+} {
   if (!form.name.trim()) return { error: "Name is required." };
   if (form.transport === "stdio" && !form.command.trim()) {
     return { error: "stdio transport requires a command." };
   }
-  if ((form.transport === "sse" || form.transport === "http") && !form.url.trim()) {
+  if (
+    (form.transport === "sse" || form.transport === "http") &&
+    !form.url.trim()
+  ) {
     return { error: `${form.transport} transport requires a URL.` };
   }
 
@@ -1393,10 +1458,7 @@ function MCPServerModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (
-    form: MCPFormState,
-    intent: "save" | "connect",
-  ) => Promise<void>;
+  onSubmit: (form: MCPFormState, intent: "save" | "connect") => Promise<void>;
   saving: boolean;
   error: string;
   initialServer: MCPServerResponse | null;
@@ -1475,174 +1537,182 @@ function MCPServerModal({
     >
       <div
         className={
-          templatesOpen
-            ? "grid gap-6 md:grid-cols-[1fr_18rem]"
-            : "block"
+          templatesOpen ? "grid gap-6 md:grid-cols-[1fr_18rem]" : "block"
         }
       >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <Label htmlFor="mcp-name">Name</Label>
-          <Input
-            id="mcp-name"
-            value={form.name}
-            onChange={(e) => setField("name", e.target.value)}
-            placeholder="kubernetes-prod"
-            required
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="mcp-transport">Transport</Label>
-          <Select
-            id="mcp-transport"
-            value={form.transport}
-            onChange={(e) => setField("transport", e.target.value as MCPTransport)}
-          >
-            <option value="stdio">stdio (local process)</option>
-            <option value="sse">sse (server-sent events)</option>
-            <option value="http">http</option>
-          </Select>
-        </div>
-
-        {form.transport === "stdio" ? (
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="mcp-command">Command</Label>
+            <Label htmlFor="mcp-name">Name</Label>
             <Input
-              id="mcp-command"
-              value={form.command}
-              onChange={(e) => setField("command", e.target.value)}
-              placeholder="npx -y @anthropic/mcp-server-k8s"
-              className="font-mono text-xs"
-              required
-            />
-            <p className="mt-1 text-xs text-fg-muted">
-              Full command line. Split on whitespace into command + args at
-              runtime. For args containing spaces, use the Import from JSON
-              entry point instead.
-            </p>
-          </div>
-        ) : (
-          <div>
-            <Label htmlFor="mcp-url">URL</Label>
-            <Input
-              id="mcp-url"
-              value={form.url}
-              onChange={(e) => setField("url", e.target.value)}
-              placeholder="https://example.com/sse"
+              id="mcp-name"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              placeholder="kubernetes-prod"
               required
             />
           </div>
-        )}
 
-        <div>
-          <div className="flex items-center justify-between">
-            <Label>Environment Variables</Label>
-            <Button type="button" variant="secondary" size="sm" onClick={addEnvPair}>
-              <Plus size={12} /> Variable
-            </Button>
+          <div>
+            <Label htmlFor="mcp-transport">Transport</Label>
+            <Select
+              id="mcp-transport"
+              value={form.transport}
+              onChange={(e) =>
+                setField("transport", e.target.value as MCPTransport)
+              }
+            >
+              <option value="stdio">stdio (local process)</option>
+              <option value="sse">sse (server-sent events)</option>
+              <option value="http">http</option>
+            </Select>
           </div>
-          {form.envPairs.length === 0 ? (
-            <p className="mt-2 text-xs text-fg-muted">
-              None. Click <em>+ Variable</em> to add KEY=value pairs.
-            </p>
+
+          {form.transport === "stdio" ? (
+            <div>
+              <Label htmlFor="mcp-command">Command</Label>
+              <Input
+                id="mcp-command"
+                value={form.command}
+                onChange={(e) => setField("command", e.target.value)}
+                placeholder="npx -y @anthropic/mcp-server-k8s"
+                className="font-mono text-xs"
+                required
+              />
+              <p className="mt-1 text-xs text-fg-muted">
+                Full command line. Split on whitespace into command + args at
+                runtime. For args containing spaces, use the Import from JSON
+                entry point instead.
+              </p>
+            </div>
           ) : (
-            <div className="mt-2 space-y-2">
-              {form.envPairs.map((pair, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
-                    placeholder="KEY"
-                    value={pair.key}
-                    onChange={(e) => updateEnvPair(idx, { key: e.target.value })}
-                    className="font-mono text-xs flex-1 min-w-0"
-                    aria-label={`Env var key ${idx + 1}`}
-                  />
-                  <Input
-                    placeholder="value"
-                    value={pair.value}
-                    onChange={(e) => updateEnvPair(idx, { value: e.target.value })}
-                    className="font-mono text-xs flex-1 min-w-0"
-                    aria-label={`Env var value ${idx + 1}`}
-                  />
-                  <Button
-                    type="button"
-                    variant="danger"
-                    size="sm"
-                    onClick={() => removeEnvPair(idx)}
-                    aria-label={`Remove env var ${idx + 1}`}
-                  >
-                    <Trash2 size={12} />
-                  </Button>
-                </div>
-              ))}
+            <div>
+              <Label htmlFor="mcp-url">URL</Label>
+              <Input
+                id="mcp-url"
+                value={form.url}
+                onChange={(e) => setField("url", e.target.value)}
+                placeholder="https://example.com/sse"
+                required
+              />
             </div>
           )}
-        </div>
 
-        <div>
-          <label className="inline-flex items-center gap-2 text-sm text-fg-primary">
-            <input
-              type="checkbox"
-              checked={form.is_active}
-              onChange={(e) => setField("is_active", e.target.checked)}
-              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
-            />
-            Active (available for sessions)
-          </label>
-        </div>
-
-        {error && <FormError message={error} />}
-
-        <div className="flex justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={saving} disabled={!form.name.trim()}>
-            <Save size={13} /> {initialServer ? "Save Changes" : "Create Server"}
-          </Button>
-        </div>
-      </form>
-
-      {templatesOpen && (
-        <aside
-          className="space-y-3 rounded-lg border border-border-subtle bg-bg-elevated p-4 max-h-[60vh] overflow-y-auto"
-          aria-label="Templates"
-        >
           <div>
-            <p className="text-sm font-medium text-fg-primary">Templates</p>
-            <p className="mt-1 text-xs text-fg-secondary">
-              Prefill the form with a common shape, then tweak.
-            </p>
-          </div>
-          {MCP_SERVER_TEMPLATES.map((template) => (
-            <button
-              key={template.id}
-              type="button"
-              onClick={() => {
-                setForm(createMCPFormStateFromTemplate(template));
-                setTemplatesOpen(false);
-              }}
-              className="w-full rounded-md border border-border-subtle bg-bg-panel px-3 py-2 text-left transition hover:border-border-strong"
-            >
-              <p className="text-sm font-medium text-fg-primary">
-                {template.name}
+            <div className="flex items-center justify-between">
+              <Label>Environment Variables</Label>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={addEnvPair}
+              >
+                <Plus size={12} /> Variable
+              </Button>
+            </div>
+            {form.envPairs.length === 0 ? (
+              <p className="mt-2 text-xs text-fg-muted">
+                None. Click <em>+ Variable</em> to add KEY=value pairs.
               </p>
-              <p className="mt-0.5 text-xs text-fg-secondary line-clamp-2">
-                {template.description}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <Badge>{template.transport}</Badge>
-                {template.tokenStrategy === "oauth" && (
-                  <Badge variant="info">OAuth</Badge>
-                )}
-                {template.tokenStrategy === "bearer" && (
-                  <Badge>Bearer</Badge>
-                )}
+            ) : (
+              <div className="mt-2 space-y-2">
+                {form.envPairs.map((pair, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      placeholder="KEY"
+                      value={pair.key}
+                      onChange={(e) =>
+                        updateEnvPair(idx, { key: e.target.value })
+                      }
+                      className="font-mono text-xs flex-1 min-w-0"
+                      aria-label={`Env var key ${idx + 1}`}
+                    />
+                    <Input
+                      placeholder="value"
+                      value={pair.value}
+                      onChange={(e) =>
+                        updateEnvPair(idx, { value: e.target.value })
+                      }
+                      className="font-mono text-xs flex-1 min-w-0"
+                      aria-label={`Env var value ${idx + 1}`}
+                    />
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      onClick={() => removeEnvPair(idx)}
+                      aria-label={`Remove env var ${idx + 1}`}
+                    >
+                      <Trash2 size={12} />
+                    </Button>
+                  </div>
+                ))}
               </div>
-            </button>
-          ))}
-        </aside>
-      )}
+            )}
+          </div>
+
+          <div>
+            <label className="inline-flex items-center gap-2 text-sm text-fg-primary">
+              <input
+                type="checkbox"
+                checked={form.is_active}
+                onChange={(e) => setField("is_active", e.target.checked)}
+                className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+              />
+              Active (available for sessions)
+            </label>
+          </div>
+
+          {error && <FormError message={error} />}
+
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={saving} disabled={!form.name.trim()}>
+              <Save size={13} />{" "}
+              {initialServer ? "Save Changes" : "Create Server"}
+            </Button>
+          </div>
+        </form>
+
+        {templatesOpen && (
+          <aside
+            className="space-y-3 rounded-lg border border-border-subtle bg-bg-elevated p-4 max-h-[60vh] overflow-y-auto"
+            aria-label="Templates"
+          >
+            <div>
+              <p className="text-sm font-medium text-fg-primary">Templates</p>
+              <p className="mt-1 text-xs text-fg-secondary">
+                Prefill the form with a common shape, then tweak.
+              </p>
+            </div>
+            {MCP_SERVER_TEMPLATES.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => {
+                  setForm(createMCPFormStateFromTemplate(template));
+                  setTemplatesOpen(false);
+                }}
+                className="w-full rounded-md border border-border-subtle bg-bg-panel px-3 py-2 text-left transition hover:border-border-strong"
+              >
+                <p className="text-sm font-medium text-fg-primary">
+                  {template.name}
+                </p>
+                <p className="mt-0.5 text-xs text-fg-secondary line-clamp-2">
+                  {template.description}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Badge>{template.transport}</Badge>
+                  {template.tokenStrategy === "oauth" && (
+                    <Badge variant="info">OAuth</Badge>
+                  )}
+                  {template.tokenStrategy === "bearer" && <Badge>Bearer</Badge>}
+                </div>
+              </button>
+            ))}
+          </aside>
+        )}
       </div>
     </Modal>
   );
@@ -1672,18 +1742,17 @@ type ImportEntryResult = {
   message: string;
 };
 
-function parseMCPJsonImport(
-  raw: string,
-): { entries?: MCPServerUpsert[]; error?: string } {
+function parseMCPJsonImport(raw: string): {
+  entries?: MCPServerUpsert[];
+  error?: string;
+} {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
     return {
       error:
-        err instanceof Error
-          ? `Invalid JSON: ${err.message}`
-          : "Invalid JSON.",
+        err instanceof Error ? `Invalid JSON: ${err.message}` : "Invalid JSON.",
     };
   }
   if (
@@ -1709,7 +1778,9 @@ function parseMCPJsonImport(
     const url = typeof value.url === "string" ? value.url : null;
     const command = typeof value.command === "string" ? value.command : null;
     const rawArgs = Array.isArray(value.args)
-      ? (value.args as unknown[]).filter((a): a is string => typeof a === "string")
+      ? (value.args as unknown[]).filter(
+          (a): a is string => typeof a === "string",
+        )
       : [];
     const rawEnv =
       value.env && typeof value.env === "object" && !Array.isArray(value.env)
@@ -1723,7 +1794,11 @@ function parseMCPJsonImport(
       typeof value.transport === "string" ? value.transport : null;
 
     let transport: MCPTransport;
-    if (rawTransport === "stdio" || rawTransport === "http" || rawTransport === "sse") {
+    if (
+      rawTransport === "stdio" ||
+      rawTransport === "http" ||
+      rawTransport === "sse"
+    ) {
       transport = rawTransport;
     } else if (url) {
       transport = "http";
@@ -1732,10 +1807,14 @@ function parseMCPJsonImport(
     }
 
     if (transport === "stdio" && !command) {
-      return { error: `Entry "${name}" needs a "command" for stdio transport.` };
+      return {
+        error: `Entry "${name}" needs a "command" for stdio transport.`,
+      };
     }
     if (transport !== "stdio" && !url) {
-      return { error: `Entry "${name}" needs a "url" for ${transport} transport.` };
+      return {
+        error: `Entry "${name}" needs a "url" for ${transport} transport.`,
+      };
     }
 
     entries.push({
@@ -1831,10 +1910,10 @@ function ImportMCPJsonModal({
     >
       <div className="space-y-4">
         <p className="text-xs text-fg-secondary">
-          Paste a Claude Desktop / Cursor-style <code>mcp.json</code>{" "}
-          (top-level <code>mcpServers</code> map). Each entry is created
-          through the standard MCP server API; per-entry failures are
-          reported without aborting the batch.
+          Paste a Claude Desktop / Cursor-style <code>mcp.json</code> (top-level{" "}
+          <code>mcpServers</code> map). Each entry is created through the
+          standard MCP server API; per-entry failures are reported without
+          aborting the batch.
         </p>
 
         <div>
@@ -2037,9 +2116,13 @@ export function MCPSection({
               </span>
               {(argsCount > 0 || envCount > 0) && (
                 <p className="mt-1 text-xs text-fg-muted">
-                  {argsCount > 0 ? `${argsCount} arg${argsCount === 1 ? "" : "s"}` : null}
+                  {argsCount > 0
+                    ? `${argsCount} arg${argsCount === 1 ? "" : "s"}`
+                    : null}
                   {argsCount > 0 && envCount > 0 ? " · " : null}
-                  {envCount > 0 ? `${envCount} env var${envCount === 1 ? "" : "s"}` : null}
+                  {envCount > 0
+                    ? `${envCount} env var${envCount === 1 ? "" : "s"}`
+                    : null}
                 </p>
               )}
             </div>
@@ -2091,8 +2174,12 @@ export function MCPSection({
           valueOf: (server) => getRuntimeState(server),
         },
         cell: (server) => {
-          const runtimeStatus = describeMCPStatus(statusByServerId.get(server.id));
-          const testState: TestState = testStates[server.id] ?? { status: "idle" };
+          const runtimeStatus = describeMCPStatus(
+            statusByServerId.get(server.id),
+          );
+          const testState: TestState = testStates[server.id] ?? {
+            status: "idle",
+          };
           return (
             <div className="flex flex-col items-start gap-1.5">
               <StatusDot
@@ -2164,10 +2251,7 @@ export function MCPSection({
     setError("");
   }
 
-  async function handleSubmit(
-    form: MCPFormState,
-    _intent: "save" | "connect",
-  ) {
+  async function handleSubmit(form: MCPFormState, _intent: "save" | "connect") {
     // The "connect" intent (auto-redirect to OAuth after save) was driven
     // by the inline template grid that picked an OAuth template. That UI
     // is gone; OAuth-needing servers are saved first, then connected via
@@ -2334,7 +2418,9 @@ export function MCPSection({
           </div>
         }
         rowActions={(server) => {
-          const testState: TestState = testStates[server.id] ?? { status: "idle" };
+          const testState: TestState = testStates[server.id] ?? {
+            status: "idle",
+          };
           return (
             <div className="flex flex-wrap justify-end gap-2">
               <Button
@@ -2359,7 +2445,9 @@ export function MCPSection({
                   disabled={!canEdit}
                 >
                   <ExternalLink size={13} />
-                  {server.oauth_status === "connected" ? "Reconnect" : "Connect"}
+                  {server.oauth_status === "connected"
+                    ? "Reconnect"
+                    : "Connect"}
                 </Button>
               )}
               <Button
@@ -2416,7 +2504,10 @@ const BOT_CAPABILITY_OPTIONS: Array<{
   { value: "notifications", label: "Notifications" },
 ];
 
-const BOT_STATUS_VARIANTS: Record<BotConnectorStatus, ComponentProps<typeof Badge>["variant"]> = {
+const BOT_STATUS_VARIANTS: Record<
+  BotConnectorStatus,
+  ComponentProps<typeof Badge>["variant"]
+> = {
   not_configured: "closed",
   configured: "info",
   healthy: "resolved",
@@ -2535,10 +2626,14 @@ function parseJsonObject(
   }
 }
 
-function parseKeyValueSecrets(
-  text: string,
-): { value?: Record<string, string> | null; error?: string } {
-  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+function parseKeyValueSecrets(text: string): {
+  value?: Record<string, string> | null;
+  error?: string;
+} {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
   if (!lines.length) return { value: null };
   const value: Record<string, string> = {};
   for (const line of lines) {
@@ -2620,10 +2715,9 @@ function buildBotConnectorPayload(
     team_ids: form.team_scope === "teams" ? form.team_ids : [],
     status: form.status,
     is_enabled: form.is_enabled,
-    native_actions_enabled:
-      ["slack", "teams"].includes(form.platform)
-        ? form.native_actions_enabled
-        : false,
+    native_actions_enabled: ["slack", "teams"].includes(form.platform)
+      ? form.native_actions_enabled
+      : false,
   };
 
   if (form.credentialMode === "clear") {
@@ -2721,8 +2815,8 @@ function connectorPlatformCapabilities(
     ...connector.platform_capabilities,
     interactive_actions: Boolean(
       connector.platform_capabilities.interactive_actions &&
-        connector.native_actions_enabled &&
-        ["configured", "verified"].includes(connector.callback_status ?? ""),
+      connector.native_actions_enabled &&
+      ["configured", "verified"].includes(connector.callback_status ?? ""),
     ),
   };
 }
@@ -2747,15 +2841,20 @@ function DynamicFieldInput({
     id: inputId,
     value,
     placeholder: field.placeholder ?? undefined,
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-      onChange(e.target.value),
+    onChange: (
+      e: React.ChangeEvent<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >,
+    ) => onChange(e.target.value),
   };
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2">
         <Label htmlFor={inputId}>
           {field.label}
-          {field.required && <span className="ml-0.5 text-status-critical">*</span>}
+          {field.required && (
+            <span className="ml-0.5 text-status-critical">*</span>
+          )}
         </Label>
         {field.doc_url && (
           <a
@@ -2815,7 +2914,9 @@ function DynamicConnectorForm({
   const [shownSecrets, setShownSecrets] = useState<Record<string, boolean>>({});
 
   const configFields = schema.fields.filter((f) => f.group === "config");
-  const credentialFields = schema.fields.filter((f) => f.group === "credentials");
+  const credentialFields = schema.fields.filter(
+    (f) => f.group === "credentials",
+  );
   const hasExistingCredentials = Boolean(initialConnector?.has_credentials);
 
   function setConfigValue(name: string, value: string) {
@@ -2946,8 +3047,8 @@ function BotConnectorModal({
   schemas: Record<string, BotConnectorPlatformSchema>;
 }) {
   const initialSchema = initialConnector
-    ? schemas[initialConnector.platform] ?? null
-    : schemas["telegram"] ?? null;
+    ? (schemas[initialConnector.platform] ?? null)
+    : (schemas["telegram"] ?? null);
 
   const [form, setForm] = useState<BotConnectorFormState>(() =>
     createBotConnectorFormState(initialConnector, initialSchema),
@@ -2962,8 +3063,8 @@ function BotConnectorModal({
   useEffect(() => {
     if (!open) return;
     const schema = initialConnector
-      ? schemas[initialConnector.platform] ?? null
-      : schemas["telegram"] ?? null;
+      ? (schemas[initialConnector.platform] ?? null)
+      : (schemas["telegram"] ?? null);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(createBotConnectorFormState(initialConnector, schema));
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -2981,7 +3082,9 @@ function BotConnectorModal({
       .catch((err) => {
         if (cancelled) return;
         setTeams([]);
-        setTeamsError(err instanceof Error ? err.message : "Failed to load teams.");
+        setTeamsError(
+          err instanceof Error ? err.message : "Failed to load teams.",
+        );
       });
     return () => {
       cancelled = true;
@@ -3000,19 +3103,24 @@ function BotConnectorModal({
   function handlePlatformChange(next: BotConnectorPlatform) {
     setForm((current) => {
       const nextSchema = schemas[next] ?? null;
-      const sameAsInitial = initialConnector && initialConnector.platform === next;
+      const sameAsInitial =
+        initialConnector && initialConnector.platform === next;
       return {
         ...current,
         platform: next,
         configValues: sameAsInitial
-          ? valuesFromConfig(nextSchema, initialConnector?.config ?? null, "config")
+          ? valuesFromConfig(
+              nextSchema,
+              initialConnector?.config ?? null,
+              "config",
+            )
           : defaultValues(nextSchema, "config"),
         credentialValues: defaultValues(nextSchema, "credentials"),
         native_actions_enabled:
           ["slack", "teams"].includes(next) && sameAsInitial
             ? Boolean(initialConnector?.native_actions_enabled)
             : false,
-        lanes: ["slack", "teams", "eventbridge"].includes(next)
+        lanes: ["slack", "teams", "discord", "eventbridge"].includes(next)
           ? current.lanes
           : current.lanes.filter((lane) => lane !== "track"),
       };
@@ -3119,7 +3227,11 @@ function BotConnectorModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={initialConnector ? "Edit Notification Channel" : "Add Notification Channel"}
+      title={
+        initialConnector
+          ? "Edit Notification Channel"
+          : "Add Notification Channel"
+      }
       maxWidth="max-w-2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -3139,13 +3251,17 @@ function BotConnectorModal({
             <Select
               id="bot-platform"
               value={form.platform}
-              onChange={(e) => handlePlatformChange(e.target.value as BotConnectorPlatform)}
+              onChange={(e) =>
+                handlePlatformChange(e.target.value as BotConnectorPlatform)
+              }
             >
-              {(Object.keys(PLATFORM_LABELS) as BotConnectorPlatform[]).map((p) => (
-                <option key={p} value={p}>
-                  {PLATFORM_LABELS[p]}
-                </option>
-              ))}
+              {(Object.keys(PLATFORM_LABELS) as BotConnectorPlatform[]).map(
+                (p) => (
+                  <option key={p} value={p}>
+                    {PLATFORM_LABELS[p]}
+                  </option>
+                ),
+              )}
             </Select>
           </div>
         </div>
@@ -3163,12 +3279,17 @@ function BotConnectorModal({
               />
               <span>
                 <span className="font-medium">
-                  Enable verified {form.platform === "slack" ? "Slack" : "Teams"} actions
+                  Enable verified{" "}
+                  {form.platform === "slack" ? "Slack" : "Teams"} actions
                 </span>
                 <span className="mt-1 block text-xs text-fg-muted">
                   Allows Acknowledge, Resolve, Escalate, and Start AI Session
-                  only after {form.platform === "slack" ? "Slack signs" : "Microsoft Bot Framework verifies"} a callback and the external user
-                  is linked to an active Admin or Operator account.
+                  only after{" "}
+                  {form.platform === "slack"
+                    ? "Slack signs"
+                    : "Microsoft Bot Framework verifies"}{" "}
+                  a callback and the external user is linked to an active Admin
+                  or Operator account.
                 </span>
               </span>
             </label>
@@ -3214,9 +3335,16 @@ function BotConnectorModal({
                 onChange={() => toggleLane("respond")}
                 className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
               />
-              <span><span className="font-medium">Respond</span><span className="block text-xs text-fg-muted">Fast operator-facing delivery and actions.</span></span>
+              <span>
+                <span className="font-medium">Respond</span>
+                <span className="block text-xs text-fg-muted">
+                  Fast operator-facing delivery and actions.
+                </span>
+              </span>
             </label>
-            {["slack", "teams", "eventbridge"].includes(form.platform) && (
+            {["slack", "teams", "discord", "eventbridge"].includes(
+              form.platform,
+            ) && (
               <label className="flex items-start gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-primary">
                 <input
                   type="checkbox"
@@ -3224,7 +3352,13 @@ function BotConnectorModal({
                   onChange={() => toggleLane("track")}
                   className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
                 />
-                <span><span className="font-medium">Track</span><span className="block text-xs text-fg-muted">One-way shared incident status, updated in place where supported.</span></span>
+                <span>
+                  <span className="font-medium">Track</span>
+                  <span className="block text-xs text-fg-muted">
+                    One-way shared incident status, updated in place where
+                    supported.
+                  </span>
+                </span>
               </label>
             )}
           </div>
@@ -3310,8 +3444,11 @@ function BotConnectorModal({
               />
             </div>
             <div>
-              <Label htmlFor="bot-credentials">Credentials (key=value, one per line)</Label>
-              {Boolean(initialConnector?.has_credentials) && form.credentialMode === "keep" ? (
+              <Label htmlFor="bot-credentials">
+                Credentials (key=value, one per line)
+              </Label>
+              {Boolean(initialConnector?.has_credentials) &&
+              form.credentialMode === "keep" ? (
                 <div className="flex items-center gap-3 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-secondary">
                   <span className="font-mono tracking-widest">********</span>
                   <span className="text-xs text-fg-muted">
@@ -3388,7 +3525,9 @@ function BotConnectorModal({
             <Select
               id="bot-status"
               value={form.status}
-              onChange={(e) => setField("status", e.target.value as BotConnectorStatus)}
+              onChange={(e) =>
+                setField("status", e.target.value as BotConnectorStatus)
+              }
             >
               <option value="not_configured">Not configured</option>
               <option value="configured">Configured</option>
@@ -3497,7 +3636,8 @@ function BotConnectorModal({
               onClick={handleConnectOAuth}
               loading={oauthStarting}
             >
-              <ExternalLink size={13} /> Connect to {PLATFORM_LABELS[form.platform]}
+              <ExternalLink size={13} /> Connect to{" "}
+              {PLATFORM_LABELS[form.platform]}
             </Button>
           )}
           {initialConnector && (
@@ -3521,7 +3661,8 @@ function BotConnectorModal({
             </>
           )}
           <Button type="submit" loading={saving} disabled={!fillable}>
-            <Save size={13} /> {initialConnector ? "Save Changes" : "Create Connector"}
+            <Save size={13} />{" "}
+            {initialConnector ? "Save Changes" : "Create Connector"}
           </Button>
         </div>
       </form>
@@ -3542,7 +3683,7 @@ function BotUserLinksModal({
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  
+
   // Form state for new link
   const [platformUserId, setPlatformUserId] = useState("");
   const [opsMenderUserId, setOpsMenderUserId] = useState("");
@@ -3558,7 +3699,7 @@ function BotUserLinksModal({
         listUsers(),
       ]);
       setLinks(linksRes.items);
-      setUsers(usersRes.items.filter(u => u.is_active));
+      setUsers(usersRes.items.filter((u) => u.is_active));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load links");
     } finally {
@@ -3577,7 +3718,7 @@ function BotUserLinksModal({
   async function handleAddLink(e: React.FormEvent) {
     e.preventDefault();
     if (!connector || !platformUserId.trim() || !opsMenderUserId) return;
-    
+
     setCreating(true);
     setError("");
     try {
@@ -3597,8 +3738,13 @@ function BotUserLinksModal({
 
   async function handleDeleteLink(link: BotUserLinkResponse) {
     if (!connector) return;
-    if (!window.confirm(`Remove link for platform user "${link.platform_user_id}"?`)) return;
-    
+    if (
+      !window.confirm(
+        `Remove link for platform user "${link.platform_user_id}"?`,
+      )
+    )
+      return;
+
     setError("");
     try {
       await deleteBotUserLink(connector.id, link.id);
@@ -3612,19 +3758,27 @@ function BotUserLinksModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={connector ? `Identity Links: ${connector.name}` : "Bot Identity Links"}
+      title={
+        connector ? `Identity Links: ${connector.name}` : "Bot Identity Links"
+      }
       maxWidth="max-w-2xl"
     >
       <div className="space-y-6">
         <p className="text-sm text-fg-secondary">
-          Map platform-specific user IDs (Telegram usernames, WhatsApp numbers, Signal IDs)
-          to OpsMender users to enable permissions and audit trails for bot interactions.
+          Map platform-specific user IDs (Telegram usernames, WhatsApp numbers,
+          Signal IDs) to OpsMender users to enable permissions and audit trails
+          for bot interactions.
         </p>
 
         {error && <FormError message={error} />}
 
-        <form onSubmit={handleAddLink} className="rounded-lg border border-border-subtle bg-bg-elevated p-4">
-          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-fg-muted">Link New Identity</h4>
+        <form
+          onSubmit={handleAddLink}
+          className="rounded-lg border border-border-subtle bg-bg-elevated p-4"
+        >
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-fg-muted">
+            Link New Identity
+          </h4>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="platform-user-id">Platform User ID</Label>
@@ -3632,7 +3786,11 @@ function BotUserLinksModal({
                 id="platform-user-id"
                 value={platformUserId}
                 onChange={(e) => setPlatformUserId(e.target.value)}
-                placeholder={connector?.platform === "whatsapp" ? "1234567890" : "@username"}
+                placeholder={
+                  connector?.platform === "whatsapp"
+                    ? "1234567890"
+                    : "@username"
+                }
                 required
               />
             </div>
@@ -3654,16 +3812,25 @@ function BotUserLinksModal({
             </div>
           </div>
           <div className="mt-4 flex justify-end">
-            <Button type="submit" size="sm" loading={creating} disabled={!platformUserId.trim() || !opsMenderUserId}>
+            <Button
+              type="submit"
+              size="sm"
+              loading={creating}
+              disabled={!platformUserId.trim() || !opsMenderUserId}
+            >
               <Plus size={14} /> Add Link
             </Button>
           </div>
         </form>
 
         <div className="space-y-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Active Mappings ({links.length})</h4>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+            Active Mappings ({links.length})
+          </h4>
           {loading && links.length === 0 ? (
-            <div className="py-8 text-center text-sm text-fg-muted animate-pulse">Loading links...</div>
+            <div className="py-8 text-center text-sm text-fg-muted animate-pulse">
+              Loading links...
+            </div>
           ) : links.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border-subtle py-8 text-center text-sm text-fg-muted">
               No identity links configured yet.
@@ -3686,8 +3853,12 @@ function BotUserLinksModal({
                       </td>
                       <td className="px-4 py-2">
                         <div className="flex flex-col">
-                          <span className="font-medium text-fg-primary">{link.opsmender_username}</span>
-                          <span className="text-[10px] uppercase text-fg-muted">{link.opsmender_role}</span>
+                          <span className="font-medium text-fg-primary">
+                            {link.opsmender_username}
+                          </span>
+                          <span className="text-[10px] uppercase text-fg-muted">
+                            {link.opsmender_role}
+                          </span>
                         </div>
                       </td>
                       <td className="px-4 py-2 text-right">
@@ -3708,7 +3879,9 @@ function BotUserLinksModal({
         </div>
 
         <div className="flex justify-end">
-          <Button variant="secondary" onClick={onClose}>Close</Button>
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
         </div>
       </div>
     </Modal>
@@ -3764,12 +3937,17 @@ export function BotConnectorSection({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [testStates, setTestStates] = useState<Record<string, BotConnectorTestState>>({});
+  const [testStates, setTestStates] = useState<
+    Record<string, BotConnectorTestState>
+  >({});
 
   const [linksModalOpen, setLinksModalOpen] = useState(false);
-  const [linkingConnector, setLinkingConnector] = useState<BotConnectorResponse | null>(null);
+  const [linkingConnector, setLinkingConnector] =
+    useState<BotConnectorResponse | null>(null);
 
-  const [schemas, setSchemas] = useState<Record<string, BotConnectorPlatformSchema>>({});
+  const [schemas, setSchemas] = useState<
+    Record<string, BotConnectorPlatformSchema>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -3837,7 +4015,10 @@ export function BotConnectorSection({
 
   async function handleSubmit(form: BotConnectorFormState) {
     const schema = schemas[form.platform] ?? null;
-    const { payload, error: buildError } = buildBotConnectorPayload(form, schema);
+    const { payload, error: buildError } = buildBotConnectorPayload(
+      form,
+      schema,
+    );
     if (buildError || !payload) {
       setError(buildError ?? "Invalid form values.");
       return;
@@ -3864,7 +4045,9 @@ export function BotConnectorSection({
   }
 
   async function handleDelete(connector: BotConnectorResponse) {
-    const confirmed = window.confirm(`Delete notification channel "${connector.name}"?`);
+    const confirmed = window.confirm(
+      `Delete notification channel "${connector.name}"?`,
+    );
     if (!confirmed) return;
 
     setError("");
@@ -3924,7 +4107,8 @@ export function BotConnectorSection({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-fg-secondary">
-            {connectors.length} saved channel{connectors.length === 1 ? "" : "s"}
+            {connectors.length} saved channel
+            {connectors.length === 1 ? "" : "s"}
           </p>
           {!canEdit && (
             <p className="text-sm text-fg-secondary">
@@ -3942,7 +4126,8 @@ export function BotConnectorSection({
 
       {connectors.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No notification channels yet. Add one to prepare Slack, Teams, Discord, Email, SMS, Telegram, WhatsApp, Signal, or a custom adapter.
+          No notification channels yet. Add one to prepare Slack, Teams,
+          Discord, Email, SMS, Telegram, WhatsApp, Signal, or a custom adapter.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border-subtle">
@@ -3960,11 +4145,15 @@ export function BotConnectorSection({
             </thead>
             <tbody className="divide-y divide-border-subtle bg-bg-panel">
               {connectors.map((connector) => {
-                const testState = testStates[connector.id] ?? { status: "idle" };
+                const testState = testStates[connector.id] ?? {
+                  status: "idle",
+                };
                 return (
                   <tr
                     key={connector.id}
-                    className={!connector.is_enabled ? "bg-bg-elevated opacity-70" : ""}
+                    className={
+                      !connector.is_enabled ? "bg-bg-elevated opacity-70" : ""
+                    }
                   >
                     <td className="px-4 py-3 align-top">
                       <div className="flex items-center gap-2">
@@ -3975,15 +4164,23 @@ export function BotConnectorSection({
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <Badge>{platformLabel(connector)}</Badge>
-                        <Badge variant={connector.is_enabled ? "resolved" : "closed"}>
+                        <Badge
+                          variant={connector.is_enabled ? "resolved" : "closed"}
+                        >
                           {connector.is_enabled ? "Enabled" : "Disabled"}
                         </Badge>
                       </div>
                     </td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex flex-wrap gap-1.5">
-                        {(connector.lanes?.length ? connector.lanes : ["respond"]).map((lane) => (
-                          <Badge key={lane} variant={lane === "track" ? "info" : undefined}>
+                        {(connector.lanes?.length
+                          ? connector.lanes
+                          : ["respond"]
+                        ).map((lane) => (
+                          <Badge
+                            key={lane}
+                            variant={lane === "track" ? "info" : undefined}
+                          >
                             {lane === "track" ? "Track" : "Respond"}
                           </Badge>
                         ))}
@@ -3993,20 +4190,21 @@ export function BotConnectorSection({
                       <div className="flex max-w-xs flex-wrap gap-1.5">
                         {platformCapabilityLabels(
                           connectorPlatformCapabilities(connector),
-                        ).map(
-                          (label) => (
-                            <Badge
-                              key={label}
-                              variant={label === "Delivery-only" ? "closed" : undefined}
-                            >
-                              {label}
-                            </Badge>
-                          ),
-                        )}
+                        ).map((label) => (
+                          <Badge
+                            key={label}
+                            variant={
+                              label === "Delivery-only" ? "closed" : undefined
+                            }
+                          >
+                            {label}
+                          </Badge>
+                        ))}
                       </div>
                       {connector.allowed_capabilities.length > 0 && (
                         <p className="mt-1.5 text-xs text-fg-muted">
-                          Enabled: {connector.allowed_capabilities
+                          Enabled:{" "}
+                          {connector.allowed_capabilities
                             .map((c) => c.replace(/_/g, " "))
                             .join(", ")}
                         </p>
@@ -4014,7 +4212,8 @@ export function BotConnectorSection({
                       {["slack", "teams"].includes(connector.platform) &&
                         connector.native_actions_enabled && (
                           <p className="mt-1.5 text-xs text-fg-muted">
-                            {connector.platform === "slack" ? "Slack" : "Teams"} callbacks:{" "}
+                            {connector.platform === "slack" ? "Slack" : "Teams"}{" "}
+                            callbacks:{" "}
                             {connector.callback_status === "verified"
                               ? "verified"
                               : connector.callback_status === "configured"
@@ -4030,7 +4229,11 @@ export function BotConnectorSection({
                         {connectorTeamScopeLabels(connector).map((label) => (
                           <Badge
                             key={label}
-                            variant={connector.team_scope === "teams" ? undefined : "closed"}
+                            variant={
+                              connector.team_scope === "teams"
+                                ? undefined
+                                : "closed"
+                            }
                           >
                             {label}
                           </Badge>
@@ -4043,7 +4246,9 @@ export function BotConnectorSection({
                           {connector.credential_keys.join(", ")}
                         </p>
                       ) : (
-                        <p className="text-xs text-fg-muted">No credentials stored.</p>
+                        <p className="text-xs text-fg-muted">
+                          No credentials stored.
+                        </p>
                       )}
                     </td>
                     <td className="px-4 py-3 align-top">
@@ -4053,7 +4258,8 @@ export function BotConnectorSection({
                         </Badge>
                         <BotConnectorTestPill state={testState} />
                         <p className="text-xs text-fg-muted">
-                          Last checked: {formatRelativeTimestamp(connector.last_checked_at)}
+                          Last checked:{" "}
+                          {formatRelativeTimestamp(connector.last_checked_at)}
                         </p>
                         {connector.last_error && (
                           <p
@@ -4138,7 +4344,12 @@ const PROVIDER_COLORS: Record<string, string> = {
   cloudwatch: "border-status-high-border bg-status-high-bg text-status-high",
   azure_monitor: "border-status-info-border bg-status-info-bg text-status-info",
   gcp_monitoring: "border-status-low-border bg-status-low-bg text-status-low",
-  oci_monitoring: "border-status-critical-border bg-status-critical-bg text-status-critical",
+  oci_monitoring:
+    "border-status-critical-border bg-status-critical-bg text-status-critical",
+  sentry:
+    "border-status-critical-border bg-status-critical-bg text-status-critical",
+  newrelic: "border-status-info-border bg-status-info-bg text-status-info",
+  splunk: "border-status-high-border bg-status-high-bg text-status-high",
   generic: "border-border-subtle bg-bg-elevated text-fg-secondary",
 };
 
@@ -4171,7 +4382,8 @@ export function IngestTokenSection({
   const [notice, setNotice] = useState("");
 
   // One-time token reveal
-  const [createdToken, setCreatedToken] = useState<IngestTokenCreatedResponse | null>(null);
+  const [createdToken, setCreatedToken] =
+    useState<IngestTokenCreatedResponse | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Create form
@@ -4211,7 +4423,11 @@ export function IngestTokenSection({
     if (form.provider === "auto" && sampleText.trim()) {
       try {
         const parsed = JSON.parse(sampleText);
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          Array.isArray(parsed)
+        ) {
           setSampleError("Sample payload must be a JSON object.");
           setSaving(false);
           return;
@@ -4444,7 +4660,9 @@ export function IngestTokenSection({
         }
         empty={
           <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No alert intake tokens yet. Create one only if you need the legacy shared intake flow; the Services area is the preferred home for service-specific alert intake.
+            No alert intake tokens yet. Create one only if you need the legacy
+            shared intake flow; the Services area is the preferred home for
+            service-specific alert intake.
           </div>
         }
         rowActions={(token) => (
@@ -4501,23 +4719,25 @@ export function IngestTokenSection({
                 <code className="flex-1 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 font-mono text-xs text-fg-primary break-all select-all">
                   {createdToken.token}
                 </code>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleCopy}
-                >
-                  <ClipboardCopy size={13} />{" "}
-                  {copied ? "Copied!" : "Copy"}
+                <Button variant="secondary" size="sm" onClick={handleCopy}>
+                  <ClipboardCopy size={13} /> {copied ? "Copied!" : "Copy"}
                 </Button>
               </div>
             </div>
             <div>
               <Label>Usage</Label>
               <code className="block rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 font-mono text-xs text-fg-secondary">
-                curl -H &quot;X-OpsMender-Token: {createdToken.token.slice(0, 20)}...&quot; \<br />
-                &nbsp;&nbsp;-H &quot;Content-Type: application/json&quot; \<br />
-                &nbsp;&nbsp;-d &apos;{`{"title":"...","description":"..."}`}&apos; \<br />
-                &nbsp;&nbsp;{typeof window !== "undefined" ? window.location.origin : "http://localhost:8000"}/incidents/ingest
+                curl -H &quot;X-OpsMender-Token:{" "}
+                {createdToken.token.slice(0, 20)}...&quot; \<br />
+                &nbsp;&nbsp;-H &quot;Content-Type: application/json&quot; \
+                <br />
+                &nbsp;&nbsp;-d &apos;{`{"title":"...","description":"..."}`}
+                &apos; \<br />
+                &nbsp;&nbsp;
+                {typeof window !== "undefined"
+                  ? window.location.origin
+                  : "http://localhost:8000"}
+                /incidents/ingest
               </code>
             </div>
             <div className="flex justify-end">
@@ -4568,7 +4788,9 @@ export function IngestTokenSection({
 
             {form.provider === "auto" && (
               <div>
-                <Label htmlFor="ingest-sample">Sample payload (optional JSON)</Label>
+                <Label htmlFor="ingest-sample">
+                  Sample payload (optional JSON)
+                </Label>
                 <textarea
                   id="ingest-sample"
                   value={sampleText}
@@ -4577,7 +4799,9 @@ export function IngestTokenSection({
                     setSampleError("");
                   }}
                   rows={6}
-                  placeholder={'{\n  "alerts": [{"labels": {"alertname": "..."}}]\n}'}
+                  placeholder={
+                    '{\n  "alerts": [{"labels": {"alertname": "..."}}]\n}'
+                  }
                   className="mt-1 block w-full rounded-md border border-border-subtle bg-bg-panel px-3 py-2 font-mono text-xs text-fg-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
                 />
                 <p className="mt-1 text-xs text-fg-muted">
@@ -4585,7 +4809,9 @@ export function IngestTokenSection({
                   LLM call on the first real webhook of this shape.
                 </p>
                 {sampleError && (
-                  <p className="mt-1 text-xs text-status-critical">{sampleError}</p>
+                  <p className="mt-1 text-xs text-status-critical">
+                    {sampleError}
+                  </p>
                 )}
               </div>
             )}
@@ -4628,12 +4854,14 @@ const AGENT_ROLE_OPTIONS: Array<{
   {
     value: "investigator",
     label: "Investigator",
-    description: "Focuses on evidence, failure domains, and root-cause signals.",
+    description:
+      "Focuses on evidence, failure domains, and root-cause signals.",
   },
   {
     value: "skeptic",
     label: "Skeptic",
-    description: "Challenges assumptions and surfaces uncertainty or missing data.",
+    description:
+      "Challenges assumptions and surfaces uncertainty or missing data.",
   },
   {
     value: "remediator",
@@ -4745,8 +4973,8 @@ function AgentTeamProfileModal({
           <Label>Specialist Roles</Label>
           <p className="mt-1 text-xs text-fg-muted">
             Selected roles each produce their own reasoning pass for observe,
-            diagnose, plan, verify, and summarize. OpsMender then synthesizes them
-            into one final answer while keeping `tier_gate` and `execute`
+            diagnose, plan, verify, and summarize. OpsMender then synthesizes
+            them into one final answer while keeping `tier_gate` and `execute`
             single-path and deterministic.
           </p>
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -4769,8 +4997,12 @@ function AgentTeamProfileModal({
                       className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
                     />
                     <div>
-                      <p className="font-medium text-fg-primary">{role.label}</p>
-                      <p className="mt-1 text-xs text-fg-secondary">{role.description}</p>
+                      <p className="font-medium text-fg-primary">
+                        {role.label}
+                      </p>
+                      <p className="mt-1 text-xs text-fg-secondary">
+                        {role.description}
+                      </p>
                     </div>
                   </div>
                 </label>
@@ -4811,8 +5043,7 @@ function AgentTeamProfileModal({
             loading={saving}
             disabled={!form.name.trim() || form.roles.length === 0}
           >
-            <Save size={13} />{" "}
-            {initialProfile ? "Save Changes" : "Create Team"}
+            <Save size={13} /> {initialProfile ? "Save Changes" : "Create Team"}
           </Button>
         </div>
       </form>
@@ -4884,9 +5115,7 @@ export function AgentTeamProfileSection({
   }
 
   async function handleDelete(profile: AgentTeamProfileResponse) {
-    const confirmed = window.confirm(
-      `Delete agent team "${profile.name}"?`,
-    );
+    const confirmed = window.confirm(`Delete agent team "${profile.name}"?`);
     if (!confirmed) return;
 
     setError("");
@@ -4911,7 +5140,9 @@ export function AgentTeamProfileSection({
         cell: (profile) => (
           <div className="min-w-[12rem]">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-fg-primary">{profile.name}</span>
+              <span className="font-medium text-fg-primary">
+                {profile.name}
+              </span>
               {profile.is_default && <Badge>Default</Badge>}
             </div>
             {profile.description && (
@@ -5000,7 +5231,8 @@ export function AgentTeamProfileSection({
         }
         empty={
           <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No agent teams yet. Sessions will use OpsMender&apos;s default single-agent reasoning.
+            No agent teams yet. Sessions will use OpsMender&apos;s default
+            single-agent reasoning.
           </div>
         }
         rowActions={(profile) => (
@@ -5168,7 +5400,9 @@ function WorkflowProfileModal({
           </p>
           <div className="mt-3 space-y-2">
             {form.node_order.map((node, index) => {
-              const option = WORKFLOW_NODE_OPTIONS.find((item) => item.value === node);
+              const option = WORKFLOW_NODE_OPTIONS.find(
+                (item) => item.value === node,
+              );
               return (
                 <div
                   key={`${node}-${index}`}
@@ -5366,7 +5600,9 @@ export function WorkflowProfileSection({
         cell: (profile) => (
           <div className="min-w-[12rem]">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-fg-primary">{profile.name}</span>
+              <span className="font-medium text-fg-primary">
+                {profile.name}
+              </span>
               {profile.is_default && <Badge>Default</Badge>}
             </div>
             {profile.description && (
@@ -5462,7 +5698,8 @@ export function WorkflowProfileSection({
         }
         empty={
           <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No custom session profiles yet. Sessions will use OpsMender&apos;s built-in default flow.
+            No custom session profiles yet. Sessions will use OpsMender&apos;s
+            built-in default flow.
           </div>
         }
         rowActions={(profile) => (
@@ -5526,7 +5763,8 @@ const RETENTION_CATEGORY_DESCRIPTIONS: Record<string, string> = {
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
@@ -5551,8 +5789,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
       setStatus(res);
       setDrafts(
         res.configs.reduce<Record<string, string>>((acc, cfg) => {
-          acc[cfg.category] =
-            cfg.ttl_days === null ? "" : String(cfg.ttl_days);
+          acc[cfg.category] = cfg.ttl_days === null ? "" : String(cfg.ttl_days);
           return acc;
         }, {}),
       );
@@ -5575,10 +5812,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
     return map;
   }, [status]);
 
-  async function saveCategory(
-    category: string,
-    ttl_days: number | null,
-  ) {
+  async function saveCategory(category: string, ttl_days: number | null) {
     if (!canEdit) return;
     setSaving(category);
     setError("");
@@ -5590,8 +5824,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
       setStatus(res);
       setDrafts(
         res.configs.reduce<Record<string, string>>((acc, cfg) => {
-          acc[cfg.category] =
-            cfg.ttl_days === null ? "" : String(cfg.ttl_days);
+          acc[cfg.category] = cfg.ttl_days === null ? "" : String(cfg.ttl_days);
           return acc;
         }, {}),
       );
@@ -5784,9 +6017,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() =>
-                          saveCategory(cfg.category, draftNum)
-                        }
+                        onClick={() => saveCategory(cfg.category, draftNum)}
                         disabled={
                           !canEdit ||
                           !dirty ||

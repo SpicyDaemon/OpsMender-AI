@@ -233,9 +233,7 @@ class IncidentCreate(BaseModel):
 
 
 class IncidentUpdate(BaseModel):
-    status: Optional[str] = Field(
-        default=None, pattern="^(open|in_progress|resolved)$"
-    )
+    status: Optional[str] = Field(default=None, pattern="^(open|in_progress|resolved)$")
     severity: Optional[str] = Field(
         default=None, pattern="^(critical|high|medium|low)$"
     )
@@ -1217,7 +1215,7 @@ class IngestTokenCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     provider: str = Field(
         default="auto",
-        pattern="^(auto|cloudwatch|azure_monitor|gcp_monitoring|oci_monitoring|generic)$",
+        pattern="^(auto|cloudwatch|azure_monitor|gcp_monitoring|oci_monitoring|sentry|newrelic|splunk|generic)$",
     )
     # Optional sample payload from the source tool — if supplied, the
     # server parses it on create so future payloads with the same shape
@@ -1477,9 +1475,7 @@ class MaintenanceWindowUpdate(BaseModel):
     ends_at: Optional[datetime] = None
     rrule: Optional[str] = None
     target_ids: Optional[list[str]] = None
-    scope_type: Optional[str] = Field(
-        None, pattern="^(global|service|roster|team)$"
-    )
+    scope_type: Optional[str] = Field(None, pattern="^(global|service|roster|team)$")
     scope_id: Optional[uuid.UUID] = None
     scope_ids: Optional[list[uuid.UUID]] = None
 
@@ -1616,7 +1612,9 @@ class ResponseTimeResponse(BaseModel):
 
 class BotConnectorUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
-    platform: str = Field(pattern="^(telegram|signal|whatsapp|slack|discord|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|smtp|homeassistant|bluebubbles|eventbridge|custom)$")
+    platform: str = Field(
+        pattern="^(telegram|signal|whatsapp|slack|discord|teams|mattermost|matrix|feishu|dingtalk|wecom|weixin|twilio|email|smtp|homeassistant|bluebubbles|eventbridge|custom)$"
+    )
     config: Optional[dict] = None
     credentials: Optional[dict] = None
     clear_credentials: bool = False
@@ -1914,9 +1912,7 @@ class OrgSAMLConfigCreate(BaseModel):
     email_attribute: str = (
         "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
     )
-    name_attribute: str = (
-        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
-    )
+    name_attribute: str = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
     default_role: str = Field(default="viewer", pattern="^(admin|operator|viewer)$")
     allowed_email_domains: Optional[str] = None  # comma-separated
     want_assertions_signed: bool = True
@@ -2136,7 +2132,9 @@ class ServiceCreate(BaseModel):
     description: Optional[str] = None
     priority: str = Field(default="P2", pattern="^(P0|P1|P2|P3)$")
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
-    preferred_model_config_ids: list[uuid.UUID] = Field(default_factory=list, max_length=3)
+    preferred_model_config_ids: list[uuid.UUID] = Field(
+        default_factory=list, max_length=3
+    )
     ai_default_tier: Optional[int] = Field(default=None, ge=0, le=2)
     external_refs: Optional[dict[str, Any]] = None
     is_active: bool = True
@@ -2366,9 +2364,7 @@ class IncidentBulkActionRequest(BaseModel):
     failed, never aborting on the first error.
     """
 
-    action: str = Field(
-        ..., pattern="^(acknowledge|resolve|reopen|reassign|delete)$"
-    )
+    action: str = Field(..., pattern="^(acknowledge|resolve|reopen|reassign|delete)$")
     incident_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
     # For action="reassign" (also used to set the assignee when acknowledging).
     user_id: Optional[uuid.UUID] = None
@@ -2614,7 +2610,9 @@ class IncidentChainPanelResponse(BaseModel):
 
 
 class IncidentAckRequest(BaseModel):
-    via: str = Field(default="web_ui", pattern="^(button_click|slash_command|web_ui|api)$")
+    via: str = Field(
+        default="web_ui", pattern="^(button_click|slash_command|web_ui|api)$"
+    )
 
 
 class IncidentTakeRequest(BaseModel):

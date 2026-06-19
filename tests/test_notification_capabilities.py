@@ -55,12 +55,11 @@ def test_slack_and_teams_advertise_interactive_actions_in_phase_c():
         assert supports_interactive_actions(platform) is expected, platform
 
 
-def test_only_slack_advertises_message_updates_in_phase_d():
-    # Phase D: Slack edits the incident message in place via chat.update.
-    # Teams stays follow-up-only — Microsoft Graph app-only auth cannot edit a
-    # posted chat message's content — and every other platform is unchanged.
+def test_slack_and_discord_advertise_message_updates():
+    # Slack uses chat.update; Discord edits the bot-authored channel message.
+    # Teams stays follow-up-only because its app-only path cannot edit content.
     for platform, caps in PLATFORM_CAPABILITIES.items():
-        expected = platform == "slack"
+        expected = platform in {"slack", "discord"}
         assert caps.message_update is expected, platform
         assert supports_message_update(platform) is expected, platform
 

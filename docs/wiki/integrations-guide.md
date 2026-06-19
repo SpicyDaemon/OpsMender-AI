@@ -106,6 +106,17 @@ Configure a default parent with `{"parent_page_id":"..."}`. Capabilities read
 page markdown, create pages, and append document content using Notion API
 version `2026-03-11`.
 
+### Kubernetes
+
+Enter the Kubernetes API server URL and store a service-account token as
+`{"token":"..."}`. A private cluster CA can be stored in the same encrypted
+credential object as `ca_cert`. Common config:
+`{"namespace":"production","verify_tls":true}`.
+
+Read capabilities cover pods, recent logs, events, and deployments. Deployment
+rollout restart and pod deletion are mutating tools: they are blocked in Tier 0
+and Tier 2, and require Operator Approval in Tier 1.
+
 ## 2. Incident Ingest Adapters
 
 OpsMender provides inbound alert intake for monitoring tools. In v1, the legacy `/incidents/ingest` token backend remains available, but the product concept is moving toward **Service Webhooks**: each service exposes a unique alert URL with an embedded unguessable secret so external monitors can POST directly without separate API-key headers.
@@ -116,6 +127,11 @@ OpsMender natively supports several popular monitoring tools:
 - **Azure Monitor:** Parses the Common Alert Schema v2.
 - **GCP Cloud Monitoring:** Parses incident webhook v1.2.
 - **Oracle Cloud (OCI):** Parses CHRONOS_NOTIFICATION alarms.
+- **Sentry:** Parses issue and metric-alert integration webhooks, including
+  resolved issue state.
+- **New Relic:** Parses alert-workflow issue fields and activated/closed state.
+- **Splunk:** Parses standard webhook alert payloads containing the search SID,
+  results link, owner/app, and first result row.
 
 **Universal (Auto) Adapter:**
 If your tool is not listed above, OpsMender provides an `auto` provider option. The Universal Adapter uses an LLM to dynamically inspect the incoming JSON payload, learn its structure, and extract the title, description, and severity automatically. It caches the structural mapping for performance on subsequent alerts.
@@ -333,6 +349,10 @@ Identity mapping (RBAC): Use the user's Azure AD object ID
 ### Discord (Interactions)
 
 Discord integration uses the Interactions API (webhooks) for low-latency command handling and the Bot API for outbound notifications.
+
+Discord Notification Channels support both **Respond** and **Track**. Track is
+one-way shared status: OpsMender stores the posted message ID and edits that
+same bot-authored message as the incident changes state.
 
 Required connector credentials:
 

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from fastapi import HTTPException, status
 import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
 
+from backend.bots.delivery import DeliveryReceipt, UpdateResult
 from backend.db.models import BotConnector
 from .base import BotConnectorAdapter, FieldSpec, InboundMessage
 
@@ -18,6 +19,13 @@ class DiscordAdapter:
     """Adapter for Discord Interactions (webhooks)."""
 
     platform = "discord"
+
+    def __init__(
+        self,
+        *,
+        http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
+    ) -> None:
+        self._factory = http_client_factory or (lambda: httpx.AsyncClient(timeout=10.0))
 
     @classmethod
     def form_schema(cls) -> list[FieldSpec]:
@@ -81,8 +89,12 @@ class DiscordAdapter:
                 detail="Discord public key is not configured",
             )
 
-        signature = headers.get("x-signature-ed25519") or headers.get("X-Signature-Ed25519")
-        timestamp = headers.get("x-signature-timestamp") or headers.get("X-Signature-Timestamp")
+        signature = headers.get("x-signature-ed25519") or headers.get(
+            "X-Signature-Ed25519"
+        )
+        timestamp = headers.get("x-signature-timestamp") or headers.get(
+            "X-Signature-Timestamp"
+        )
 
         if not signature or not timestamp:
             raise HTTPException(
@@ -124,7 +136,7 @@ class DiscordAdapter:
         # If it's a slash command, we might want to reconstruct the command string
         command_name = data.get("name")
         options = data.get("options") or []
-        
+
         # Reconstruct something like "/command arg1 arg2"
         args = [str(opt.get("value")) for opt in options]
         text = f"/{command_name} {' '.join(args)}".strip()
@@ -150,7 +162,7 @@ class DiscordAdapter:
             "type": 4,
             "data": {
                 "content": text,
-            }
+            },
         }
 
     async def send_message(
@@ -165,19 +177,117 @@ class DiscordAdapter:
         if not bot_token:
             return False, "Discord bot token is not configured"
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"https://discord.com/api/v10/channels/{chat_id}/messages",
-                headers={
-                    "Authorization": f"Bot {bot_token}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "content": text,
-                },
-                timeout=10.0,
+        try:
+            async with self._factory() as client:
+                resp = await client.post(
+                    f"https://discord.com/api/v10/channels/{chat_id}/messages",
+                    headers={
+                        "Authorization": f"Bot {bot_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"content": text[:2000]},
+                )
+        except httpx.HTTPError as exc:
+            return False, f"Discord network error: {exc}"
+        if resp.status_code not in (200, 201):
+            return False, f"Discord API error: HTTP {resp.status_code} - {resp.text}"
+        return True, None
+
+    async def send_incident_update(
+        self,
+        connector: BotConnector,
+        *,
+        chat_id: str,
+        text: str,
+        incident=None,
+        native_actions_ready: bool = False,
+        status_update: bool = False,
+    ) -> DeliveryReceipt:
+        credentials = connector.credentials or {}
+        bot_token = credentials.get("bot_token")
+        if not bot_token:
+            return DeliveryReceipt(
+                ok=False, error="Discord bot token is not configured"
             )
-            if resp.status_code not in (200, 201):
-                return False, f"Discord API error: HTTP {resp.status_code} - {resp.text}"
-            
-            return True, None
+        try:
+            async with self._factory() as client:
+                response = await client.post(
+                    f"https://discord.com/api/v10/channels/{chat_id}/messages",
+                    headers={
+                        "Authorization": f"Bot {bot_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"content": text[:2000]},
+                )
+        except httpx.HTTPError as exc:
+            return DeliveryReceipt(ok=False, error=f"Discord network error: {exc}")
+        if response.status_code not in (200, 201):
+            return DeliveryReceipt(
+                ok=False,
+                error=(
+                    f"Discord API error: HTTP {response.status_code} - "
+                    f"{response.text}"
+                ),
+            )
+        data = response.json()
+        message_id = data.get("id")
+        return DeliveryReceipt(
+            ok=True,
+            external_channel_id=str(data.get("channel_id") or chat_id),
+            external_message_id=str(message_id) if message_id else None,
+            can_update=bool(message_id),
+        )
+
+    async def update_incident_update(
+        self,
+        connector: BotConnector,
+        *,
+        chat_id: str,
+        text: str,
+        external_message_id: str,
+        external_thread_id: str | None = None,
+        incident=None,
+        native_actions_ready: bool = False,
+        status_update: bool = False,
+    ) -> UpdateResult:
+        credentials = connector.credentials or {}
+        bot_token = credentials.get("bot_token")
+        if not bot_token:
+            return UpdateResult(ok=False, error="Discord bot token is not configured")
+        try:
+            async with self._factory() as client:
+                response = await client.patch(
+                    f"https://discord.com/api/v10/channels/{chat_id}/messages/"
+                    f"{external_message_id}",
+                    headers={
+                        "Authorization": f"Bot {bot_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"content": text[:2000]},
+                )
+        except httpx.HTTPError as exc:
+            return UpdateResult(
+                ok=False,
+                error=f"Discord network error: {exc}",
+                fallback_to_followup=True,
+            )
+        if response.status_code != 200:
+            return UpdateResult(
+                ok=False,
+                error=(
+                    f"Discord API error: HTTP {response.status_code} - "
+                    f"{response.text}"
+                ),
+                fallback_to_followup=response.status_code in {403, 404},
+            )
+        data = response.json()
+        return UpdateResult(
+            ok=True,
+            receipt=DeliveryReceipt(
+                ok=True,
+                external_channel_id=str(data.get("channel_id") or chat_id),
+                external_message_id=str(data.get("id") or external_message_id),
+                external_thread_id=external_thread_id,
+                can_update=True,
+            ),
+        )

@@ -4676,6 +4676,28 @@ class TestBotConnectorsAPI:
         assert response.status_code == 400
         assert "Track lane currently supports" in response.json()["detail"]
 
+    async def test_discord_supports_respond_and_track_lanes(
+        self, client: AsyncClient, auth_headers
+    ):
+        response = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "discord-status",
+                "platform": "discord",
+                "config": {"default_chat_id": "123456789012345678"},
+                "credentials": {
+                    "public_key": "ab" * 32,
+                    "bot_token": "discord-token",
+                },
+                "allowed_capabilities": ["notifications"],
+                "lanes": ["respond", "track"],
+                "is_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        assert response.json()["lanes"] == ["respond", "track"]
+
     async def test_create_list_update_delete_bot_connector(
         self, client: AsyncClient, app, auth_headers
     ):

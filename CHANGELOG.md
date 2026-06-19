@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 1 observability, infrastructure, and ChatOps breadth.** Added native
+  Sentry issue/metric-alert, New Relic workflow, and Splunk webhook ingest
+  adapters with source-specific severity, fingerprint, and resolved-state
+  mapping. Added an encrypted Kubernetes API connector for pods, events, logs,
+  deployments, approval-gated rollout restarts, and approval-gated pod
+  deletion. Discord Notification Channels now support both Respond and Track,
+  capture durable message IDs, and edit the shared lifecycle post in place.
 - **Repository, tracker, ITSM, and documentation integration breadth.** Added
   native adapters for Bitbucket Cloud/Data Center, Azure DevOps Repos/Boards,
   Jira Cloud/on-premises, Confluence Cloud/on-premises, ServiceNow, Linear,

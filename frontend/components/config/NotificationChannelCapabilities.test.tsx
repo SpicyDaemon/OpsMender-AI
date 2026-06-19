@@ -505,6 +505,7 @@ describe("Notification Channels capability rendering", () => {
 
     fireEvent.change(platform, { target: { value: "discord" } });
     expect(await screen.findByLabelText(/Discord Channel ID/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Track/) as HTMLInputElement).toBeTruthy();
     expect(
       screen.getByText(
         /The Discord channel ID where OpsMender should post outbound notifications/i,

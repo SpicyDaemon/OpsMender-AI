@@ -1583,3 +1583,53 @@ class TestLearnShapeAPI:
         lst = await client.get("/ingest-tokens", headers=admin_headers)
         match = next(i for i in lst.json()["items"] if i["name"] == "pre-warmed")
         assert match["shape_cache_size"] == 1
+
+
+class TestWaveOneAlertSources:
+    async def test_newrelic_state_change_creates_then_resolves_incident(
+        self, client: AsyncClient, app
+    ):
+        raw, _ = await _create_token(
+            app, provider="newrelic", name="newrelic-workflow"
+        )
+        headers = {"X-OpsMender-Token": raw}
+        opened = await client.post(
+            "/incidents/ingest",
+            headers=headers,
+            json={
+                "issueId": "nr-100",
+                "issueTitle": "Checkout latency",
+                "priority": "CRITICAL",
+                "state": "ACTIVATED",
+            },
+        )
+        assert opened.status_code == 200
+        assert opened.json()["dedup_action"] == "created"
+
+        closed = await client.post(
+            "/incidents/ingest",
+            headers=headers,
+            json={
+                "issueId": "nr-100",
+                "issueTitle": "Checkout latency",
+                "priority": "CRITICAL",
+                "state": "CLOSED",
+            },
+        )
+        assert closed.status_code == 200
+        assert closed.json()["dedup_action"] == "updated"
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_external_fingerprint(
+                db,
+                TEST_ORG_ID,
+                external_source="newrelic",
+                external_id="nr-100",
+            )
+        assert incident.status == "resolved"
+
+    async def test_provider_catalog_exposes_wave_one_alert_sources(
+        self, client: AsyncClient, admin_headers
+    ):
+        response = await client.get("/ingest-providers", headers=admin_headers)
+        keys = {item["key"] for item in response.json()["items"]}
+        assert {"sentry", "newrelic", "splunk"} <= keys

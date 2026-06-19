@@ -7,6 +7,9 @@ from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
 from backend.ingest.adapters.azure_monitor import AzureMonitorAdapter
 from backend.ingest.adapters.gcp_monitoring import GCPMonitoringAdapter
 from backend.ingest.adapters.oci_monitoring import OCIMonitoringAdapter
+from backend.ingest.adapters.newrelic import NewRelicAdapter
+from backend.ingest.adapters.sentry import SentryAdapter
+from backend.ingest.adapters.splunk import SplunkAdapter
 from backend.ingest.adapters.generic import GenericAdapter
 from backend.ingest.adapters.universal import UniversalAdapter
 
@@ -16,6 +19,9 @@ _ADAPTERS: dict[str, type[IngestAdapter]] = {
     "azure_monitor": AzureMonitorAdapter,
     "gcp_monitoring": GCPMonitoringAdapter,
     "oci_monitoring": OCIMonitoringAdapter,
+    "sentry": SentryAdapter,
+    "newrelic": NewRelicAdapter,
+    "splunk": SplunkAdapter,
     "generic": GenericAdapter,
 }
 
@@ -42,7 +48,4 @@ def list_providers() -> list[dict[str, str]]:
 
     ``auto`` is listed first so UIs surface it as the default.
     """
-    return [
-        {"key": key, "label": cls.label}
-        for key, cls in _ADAPTERS.items()
-    ]
+    return [{"key": key, "label": cls.label} for key, cls in _ADAPTERS.items()]

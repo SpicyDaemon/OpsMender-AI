@@ -120,7 +120,11 @@ async def _resolve_incident_team(
         service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
         if service is not None:
             team = await TeamRepo.get_by_id(db, org_id, service.team_id)
-            return service.team_id, team.name if team is not None else None, service.name
+            return (
+                service.team_id,
+                team.name if team is not None else None,
+                service.name,
+            )
 
     state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident.id)
     if state is not None and state.chain_id is not None:
@@ -740,14 +744,18 @@ async def deliver_incident_event(
         if not _connector_matches_team(connector, team_id):
             continue
         is_track = _has_lane(connector, "track")
-        if is_track and connector.platform not in {"slack", "teams", "eventbridge"}:
+        if is_track and connector.platform not in {
+            "slack",
+            "teams",
+            "discord",
+            "eventbridge",
+        }:
             continue
         if not is_track and not _has_lane(connector, "respond"):
             continue
         native_actions_ready = bool(
             not is_track
-            and
-            connector.platform in {"slack", "teams"}
+            and connector.platform in {"slack", "teams"}
             and connector.native_actions_enabled
             and connector.callback_status in {"configured", "verified"}
             and supports_interactive_actions(connector.platform)
@@ -846,7 +854,12 @@ async def deliver_incident_text(
         if not _has_capability(connector, "notifications"):
             continue
         is_track = _has_lane(connector, "track")
-        if is_track and connector.platform not in {"slack", "teams", "eventbridge"}:
+        if is_track and connector.platform not in {
+            "slack",
+            "teams",
+            "discord",
+            "eventbridge",
+        }:
             continue
         if not is_track and not _has_lane(connector, "respond"):
             continue
@@ -948,7 +961,9 @@ async def deliver_copilot_relay(
     session_id: uuid.UUID,
     reply_text: str,
 ) -> None:
-    targets = await _resolve_relay_targets(factory, org_id=org_id, session_id=session_id)
+    targets = await _resolve_relay_targets(
+        factory, org_id=org_id, session_id=session_id
+    )
     formatted = _format_copilot_reply(reply_text)
     for connector, chat_id in targets:
         await _deliver(

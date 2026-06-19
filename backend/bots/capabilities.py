@@ -37,8 +37,8 @@ Capability flags
     Always available because it is just another authenticated deep link.
 ``message_update``
     The platform/adapter can update a previously-posted incident message in
-    place using a stored provider message id. This is False everywhere in v1
-    until an adapter ships a verified update path.
+    place using a stored provider message id. Enabled only when the adapter has
+    a verified provider edit path.
 
 ``delivery_only`` is *derived*: a channel is delivery-only when it can neither
 render an incident card nor host interactive actions. Such channels still get
@@ -136,13 +136,43 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         # patchable). Teams therefore posts an honest follow-up message for each
         # lifecycle change rather than claiming an unsupported edit path.
     ),
-    "discord": _cap("discord", "Discord", incident_card=True, shared_channel=True),
-    "telegram": _cap("telegram", "Telegram", incident_card=True, direct_message=True, shared_channel=True),
-    "mattermost": _cap("mattermost", "Mattermost", incident_card=True, direct_message=True, shared_channel=True),
-    "matrix": _cap("matrix", "Matrix", incident_card=True, direct_message=True, shared_channel=True),
-    "feishu": _cap("feishu", "Lark / Feishu", incident_card=True, direct_message=True, shared_channel=True),
+    "discord": _cap(
+        "discord",
+        "Discord",
+        incident_card=True,
+        shared_channel=True,
+        # Discord returns a durable message id and supports editing bot-authored
+        # channel messages through the message resource.
+        message_update=True,
+    ),
+    "telegram": _cap(
+        "telegram",
+        "Telegram",
+        incident_card=True,
+        direct_message=True,
+        shared_channel=True,
+    ),
+    "mattermost": _cap(
+        "mattermost",
+        "Mattermost",
+        incident_card=True,
+        direct_message=True,
+        shared_channel=True,
+    ),
+    "matrix": _cap(
+        "matrix", "Matrix", incident_card=True, direct_message=True, shared_channel=True
+    ),
+    "feishu": _cap(
+        "feishu",
+        "Lark / Feishu",
+        incident_card=True,
+        direct_message=True,
+        shared_channel=True,
+    ),
     "dingtalk": _cap("dingtalk", "DingTalk", incident_card=True, shared_channel=True),
-    "wecom": _cap("wecom", "WeCom", incident_card=True, direct_message=True, shared_channel=True),
+    "wecom": _cap(
+        "wecom", "WeCom", incident_card=True, direct_message=True, shared_channel=True
+    ),
     # Delivery-only platforms — plain message + authenticated incident link.
     "whatsapp": _cap("whatsapp", "WhatsApp", direct_message=True),
     "signal": _cap("signal", "Signal", direct_message=True, shared_channel=True),
@@ -151,7 +181,12 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
     "smtp": _cap("smtp", "SMTP Email", direct_message=True, shared_channel=True),
     "weixin": _cap("weixin", "WeChat (Official Account)"),
     "homeassistant": _cap("homeassistant", "Home Assistant", shared_channel=True),
-    "bluebubbles": _cap("bluebubbles", "BlueBubbles (iMessage)", direct_message=True, shared_channel=True),
+    "bluebubbles": _cap(
+        "bluebubbles",
+        "BlueBubbles (iMessage)",
+        direct_message=True,
+        shared_channel=True,
+    ),
     "custom": _cap("custom", "Custom Webhook", shared_channel=True),
     "eventbridge": _cap("eventbridge", "AWS EventBridge", shared_channel=True),
 }

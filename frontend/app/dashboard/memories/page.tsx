@@ -314,10 +314,18 @@ export default function MemoriesPage() {
           toolbarRight={
             <div className="flex items-center gap-2">
               {canEdit && (
+                <Button
+                  className="h-11"
+                  onClick={() => setCreateOpen(true)}
+                >
+                  <Plus size={14} /> New memory
+                </Button>
+              )}
+              {canEdit && (
                 <div className="relative">
                   <Button
                     data-testid="memory-actions-trigger"
-                    size="sm"
+                    className="h-11"
                     variant={selectedKeys.size > 0 ? "primary" : "secondary"}
                     disabled={selectedKeys.size === 0}
                     onClick={() => setActionsOpen((open) => !open)}
@@ -369,11 +377,6 @@ export default function MemoriesPage() {
                     </>
                   )}
                 </div>
-              )}
-              {canEdit && (
-                <Button size="sm" onClick={() => setCreateOpen(true)}>
-                  <Plus size={14} /> New memory
-                </Button>
               )}
             </div>
           }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -659,6 +659,114 @@ export default function IncidentsPage() {
     ] as const;
   }, [items]);
 
+  // Selection-driven Actions menu. Lives in the filter row (right of the Time
+  // filter), always visible and disabled until at least one row is selected —
+  // mirroring the Memories page.
+  const actionsMenu = canManage ? (
+    <div className="relative">
+      <Button
+        data-testid="incident-actions-trigger"
+        className="h-11"
+        variant={selectedIds.size > 0 ? "primary" : "secondary"}
+        disabled={bulkBusy || selectedIds.size === 0}
+        onClick={() => setActionsOpen((open) => !open)}
+      >
+        Actions <ChevronDown size={13} />
+      </Button>
+      {actionsOpen ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-10 cursor-default"
+            aria-label="Close incident actions"
+            onClick={() => setActionsOpen(false)}
+          />
+          <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border-default bg-bg-panel p-1 shadow-lg">
+            <button
+              type="button"
+              data-testid="incident-action-acknowledge"
+              disabled={bulkBusy || !allOpen}
+              onClick={() => void runBulk("acknowledge")}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <CheckCircle2 size={14} /> Acknowledge
+            </button>
+            <button
+              type="button"
+              data-testid="incident-action-resolve"
+              disabled={
+                bulkBusy ||
+                !canRunLifecycleAction ||
+                !allOpenOrInProgress
+              }
+              title={
+                !allOpenOrInProgress
+                  ? "Only open or in-progress incidents can be resolved."
+                  : !canRunLifecycleAction
+                    ? "Operators must select incidents from one service."
+                    : undefined
+              }
+              onClick={() => {
+                setConfirmingAction("resolve");
+                setActionsOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <CheckCircle2 size={14} /> Mark as resolved
+            </button>
+            <button
+              type="button"
+              data-testid="incident-action-reopen"
+              disabled={
+                bulkBusy || !canRunLifecycleAction || !allResolved
+              }
+              title={
+                !allResolved
+                  ? "Reopen is available only when every selected incident is resolved."
+                  : !canRunLifecycleAction
+                    ? "Operators must select incidents from one service."
+                    : undefined
+              }
+              onClick={() => {
+                setConfirmingAction("reopen");
+                setActionsOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RotateCcw size={14} /> Reopen
+            </button>
+            <button
+              type="button"
+              disabled={bulkBusy || selectedIds.size < 2}
+              onClick={() => {
+                setShowCombine(true);
+                setActionsOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Combine
+            </button>
+            {isAdmin ? (
+              <button
+                type="button"
+                data-testid="incident-action-delete"
+                disabled={bulkBusy || selectedIds.size === 0}
+                onClick={() => {
+                  setConfirmingAction("delete");
+                  setActionsOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-status-critical hover:bg-status-critical-bg disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 size={14} />{" "}
+                {selectedIds.size === 1 ? "Delete" : "Delete all"}
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+    </div>
+  ) : undefined;
+
   return (
     <div>
       <SetupChecklist />
@@ -732,6 +840,7 @@ export default function IncidentsPage() {
           setCustomFrom("");
           setCustomTo("");
         }}
+        actionsSlot={actionsMenu}
       />
 
       {/* Table */}
@@ -796,110 +905,6 @@ export default function IncidentsPage() {
               )}
             </div>
           ) : undefined}
-          bulkActions={() => (
-            <div className="relative">
-              <Button
-                data-testid="incident-actions-trigger"
-                size="sm"
-                variant="primary"
-                disabled={bulkBusy || selectedIds.size === 0}
-                onClick={() => setActionsOpen((open) => !open)}
-              >
-                Actions <ChevronDown size={13} />
-              </Button>
-              {actionsOpen ? (
-                <>
-                  <button
-                    type="button"
-                    className="fixed inset-0 z-10 cursor-default"
-                    aria-label="Close incident actions"
-                    onClick={() => setActionsOpen(false)}
-                  />
-                  <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-md border border-border-default bg-bg-panel p-1 shadow-lg">
-                    <button
-                      type="button"
-                      data-testid="incident-action-acknowledge"
-                      disabled={bulkBusy || !allOpen}
-                      onClick={() => void runBulk("acknowledge")}
-                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <CheckCircle2 size={14} /> Acknowledge
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="incident-action-resolve"
-                      disabled={
-                        bulkBusy ||
-                        !canRunLifecycleAction ||
-                        !allOpenOrInProgress
-                      }
-                      title={
-                        !allOpenOrInProgress
-                          ? "Only open or in-progress incidents can be resolved."
-                          : !canRunLifecycleAction
-                            ? "Operators must select incidents from one service."
-                            : undefined
-                      }
-                      onClick={() => {
-                        setConfirmingAction("resolve");
-                        setActionsOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <CheckCircle2 size={14} /> Mark as resolved
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="incident-action-reopen"
-                      disabled={
-                        bulkBusy || !canRunLifecycleAction || !allResolved
-                      }
-                      title={
-                        !allResolved
-                          ? "Reopen is available only when every selected incident is resolved."
-                          : !canRunLifecycleAction
-                            ? "Operators must select incidents from one service."
-                            : undefined
-                      }
-                      onClick={() => {
-                        setConfirmingAction("reopen");
-                        setActionsOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <RotateCcw size={14} /> Reopen
-                    </button>
-                    <button
-                      type="button"
-                      disabled={bulkBusy || selectedIds.size < 2}
-                      onClick={() => {
-                        setShowCombine(true);
-                        setActionsOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Combine
-                    </button>
-                    {isAdmin ? (
-                      <button
-                        type="button"
-                        data-testid="incident-action-delete"
-                        disabled={bulkBusy}
-                        onClick={() => {
-                          setConfirmingAction("delete");
-                          setActionsOpen(false);
-                        }}
-                        className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-status-critical hover:bg-status-critical-bg disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <Trash2 size={14} />{" "}
-                        {selectedIds.size === 1 ? "Delete" : "Delete all"}
-                      </button>
-                    ) : null}
-                  </div>
-                </>
-              ) : null}
-            </div>
-          )}
         />
       )}
 
@@ -1047,6 +1052,7 @@ function IncidentFilterBar({
   customTo,
   onCustomToChange,
   onClear,
+  actionsSlot,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -1066,6 +1072,8 @@ function IncidentFilterBar({
   customTo: string;
   onCustomToChange: (value: string) => void;
   onClear: () => void;
+  /** Selection-driven Actions menu, rendered right of the Time filter. */
+  actionsSlot?: ReactNode;
 }) {
   const toggle = (arr: string[], value: string) =>
     arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
@@ -1139,6 +1147,7 @@ function IncidentFilterBar({
           customTo={customTo}
           onCustomToChange={onCustomToChange}
         />
+        {actionsSlot}
         <div className="ml-auto flex items-center gap-2">
           {hasFilters ? (
             <Button variant="ghost" size="sm" onClick={onClear} className="h-11">

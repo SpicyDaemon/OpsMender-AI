@@ -29,7 +29,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **Org-owned skills** — one `SKILL.md` classifies every operation as safe / caution / destructive.
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + on-call calendar, maintenance windows.
 - **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
-- **Notification center** — per-user 🔔 bell with live updates, deep links, per-category mute, and quiet hours.
+- **Inbox** — per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
 - **Universal alert ingest** — JSON webhooks from Prometheus, Datadog, CloudWatch, Azure Monitor, GCP, OCI, Grafana, and more.
 - **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, per-org, operator-curated.
 - **Reliability / SLA** — HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.

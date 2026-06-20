@@ -1,21 +1,28 @@
 version: 2
+# Security-only posture: open-pull-requests-limit: 0 disables routine
+# version-update PRs (which were noisy) while keeping each ecosystem registered
+# so Dependabot SECURITY updates still surface (security PRs ignore this limit).
 updates:
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
 
   - package-ecosystem: docker
     directory: /docker
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0

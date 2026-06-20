@@ -109,6 +109,9 @@ async def session_stream(
     # Authenticate via query-param JWT
     try:
         payload = decode_access_token(token)
+        if payload.get("token_type") not in (None, "access"):
+            await websocket.close(code=4401)
+            return
         user_id = payload.get("sub")
         if user_id is None:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -152,6 +155,9 @@ async def notifications_stream(
     """
     try:
         payload = decode_access_token(token)
+        if payload.get("token_type") not in (None, "access"):
+            await websocket.close(code=4401)
+            return
         sub = payload.get("sub")
         if sub is None:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)

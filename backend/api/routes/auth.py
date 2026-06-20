@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import (
     create_access_token,
+    create_mfa_token,
     get_current_user,
     hash_password,
     require_role,
@@ -27,6 +28,7 @@ from backend.api.auth import (
 from backend.api.deps import get_db
 from backend.api.schemas import (
     LoginRequest,
+    LoginResponse,
     MyOrganizationListResponse,
     MyOrganizationResponse,
     PasswordResetConsumeRequest,
@@ -52,6 +54,7 @@ from backend.db.repos import (
     OrgSAMLConfigRepo,
     OrgSSOConfigRepo,
     PasswordResetTokenRepo,
+    UserMFARepo,
     UserRepo,
 )
 from backend.notifications import CATEGORY_ACCOUNT, emit_notification
@@ -277,7 +280,7 @@ async def register(
 
 @router.post(
     "/login",
-    response_model=TokenResponse,
+    response_model=LoginResponse,
     summary="Log in and receive a JWT",
 )
 async def login(
@@ -314,8 +317,23 @@ async def login(
             detail="Account is deactivated",
         )
 
+    mfa = await UserMFARepo.get(db, user.id)
+    if user.auth_source == "local" and mfa is not None and mfa.enabled_at is not None:
+        return LoginResponse(
+            mfa_required=True,
+            mfa_token=create_mfa_token(user.id, user.role),
+        )
+
+    enrollment_required = False
+    if user.auth_source == "local" and user.primary_org_id is not None:
+        org = await OrganizationRepo.get_by_id(db, user.primary_org_id)
+        enrollment_required = bool(org and org.mfa_required)
+
     token = create_access_token(user.id, user.role)
-    return TokenResponse(access_token=token)
+    return LoginResponse(
+        access_token=token,
+        mfa_enrollment_required=enrollment_required,
+    )
 
 
 @router.get(
@@ -323,8 +341,27 @@ async def login(
     response_model=UserResponse,
     summary="Get current user profile",
 )
-async def me(user: User = Depends(get_current_user)):
-    return user
+async def me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    mfa = await UserMFARepo.get(db, user.id)
+    org = (
+        await OrganizationRepo.get_by_id(db, user.primary_org_id)
+        if user.primary_org_id is not None
+        else None
+    )
+    return UserResponse.model_validate(user).model_copy(
+        update={
+            "mfa_enabled": bool(mfa and mfa.enabled_at),
+            "mfa_enrollment_required": bool(
+                user.auth_source == "local"
+                and org
+                and org.mfa_required
+                and not (mfa and mfa.enabled_at)
+            ),
+        }
+    )
 
 
 @router.patch(

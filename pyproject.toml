@@ -51,6 +51,8 @@ dependencies = [
     # credentials). Pin bcrypt to the last compatible major until passlib
     # 1.8 ships or we migrate off passlib.
     "bcrypt<4.1",
+    "pyotp>=2.10.0",
+    "qrcode[pil]>=8.2",
     "websockets>=15.0",
     "tzdata>=2025.2",
     # SAML 2.0 SP support (Sprint 30). Pulls in xmlsec / lxml — requires

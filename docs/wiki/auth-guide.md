@@ -69,6 +69,25 @@ The Register link only appears when self-signup is still open (i.e. no users exi
 
 ---
 
+## Multi-factor authentication
+
+Local accounts can enable TOTP from **Profile & Settings → Multi-factor
+authentication**:
+
+1. Scan the QR code or enter the manual key in an authenticator app.
+2. Enter the current six-digit code.
+3. Save the eight recovery codes shown after confirmation. Each works once and
+   cannot be displayed again.
+
+Future password logins pause at `/mfa-challenge` until an authenticator or
+recovery code is verified. Disabling MFA also requires a current factor.
+
+Admins can enable **Require MFA for this organization** in the same security
+panel. Local users without MFA are sent to `/mfa-setup` after password login.
+OIDC and SAML users continue to follow their identity provider's MFA policy.
+
+---
+
 ## Inviting users
 
 Default-mode invite flow (full details in [People Guide §4](people-guide.md)):

@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 3 Phase 5 — TOTP MFA.** Added encrypted authenticator enrollment,
+  purpose-bound five-minute login challenges, bcrypt-hashed one-time recovery
+  codes, TOTP replay protection, verified disable, and an organization-level
+  enforcement policy for local accounts. The dashboard now includes security
+  settings, required enrollment, and MFA challenge screens; SSO/SAML accounts
+  continue to use their identity provider's MFA policy.
 - **Wave 3 Phase 4 — UX and onboarding.** Added email-first signup with
   collision-safe derived usernames, nullable username storage with a partial
   unique index, email-domain OIDC/SAML hints, 72-hour admin invites, and

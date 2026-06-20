@@ -124,6 +124,33 @@ describe("AuthProvider", () => {
     expect(apiMocks.clearToken).not.toHaveBeenCalled();
   });
 
+  it("returns an MFA challenge without storing a partial-session token", async () => {
+    apiMocks.getToken.mockReturnValue(null);
+    apiMocks.login.mockResolvedValue({
+      access_token: null,
+      token_type: "bearer",
+      mfa_required: true,
+      mfa_token: "challenge-token",
+      mfa_enrollment_required: false,
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("state").textContent).toBe("anon"),
+    );
+
+    fireEvent.click(screen.getByText("login"));
+
+    await waitFor(() => expect(apiMocks.login).toHaveBeenCalledTimes(1));
+    expect(apiMocks.setToken).not.toHaveBeenCalled();
+    expect(apiMocks.getMe).not.toHaveBeenCalled();
+    expect(screen.getByTestId("state").textContent).toBe("anon");
+  });
+
   it("logout clears the stored browser session", async () => {
     apiMocks.getToken.mockReturnValue("stored-token");
     apiMocks.getMe.mockResolvedValue(MOCK_USER);

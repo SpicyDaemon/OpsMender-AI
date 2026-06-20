@@ -29,10 +29,16 @@ import type { UserResponse } from "@/lib/types";
 interface AuthContextValue {
   user: UserResponse | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<LoginOutcome>;
   logout: () => void;
   /** Re-fetch the current user (e.g. after a profile edit). */
   refresh: () => Promise<void>;
+}
+
+export interface LoginOutcome {
+  mfaRequired: boolean;
+  mfaToken: string | null;
+  mfaEnrollmentRequired: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -92,10 +98,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const resp = await apiLogin(username, password);
+    if (resp.mfa_required) {
+      return {
+        mfaRequired: true,
+        mfaToken: resp.mfa_token ?? null,
+        mfaEnrollmentRequired: false,
+      };
+    }
+    if (!resp.access_token) {
+      throw new Error("Login did not return an access token.");
+    }
     setToken(resp.access_token);
     const me = await getMe();
     setUser(me);
     await syncOrganization(me);
+    return {
+      mfaRequired: false,
+      mfaToken: null,
+      mfaEnrollmentRequired:
+        resp.mfa_enrollment_required || Boolean(me.mfa_enrollment_required),
+    };
   }, [syncOrganization]);
 
   const logout = useCallback(() => {

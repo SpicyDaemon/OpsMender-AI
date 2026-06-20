@@ -67,6 +67,7 @@ from backend.db.models import (
     SessionMessage,
     Skill,
     User,
+    UserMFA,
     UserNotificationPref,
     ReportSchedule,
     WorkflowProfile,
@@ -322,6 +323,78 @@ class UserRepo:
         await db.execute(stmt)
         await db.flush()
         return await db.get(User, user_id)
+
+
+class UserMFARepo:
+    @staticmethod
+    async def get(db: AsyncSession, user_id: uuid.UUID) -> UserMFA | None:
+        return await db.get(UserMFA, user_id)
+
+    @staticmethod
+    async def upsert_pending(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        *,
+        totp_secret_encrypted: str,
+    ) -> UserMFA:
+        row = await UserMFARepo.get(db, user_id)
+        if row is None:
+            row = UserMFA(
+                user_id=user_id,
+                totp_secret_encrypted=totp_secret_encrypted,
+                recovery_codes=[],
+            )
+            db.add(row)
+        else:
+            row.totp_secret_encrypted = totp_secret_encrypted
+            row.enabled_at = None
+            row.recovery_codes = []
+            row.last_used_code = None
+            row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def enable(
+        db: AsyncSession,
+        row: UserMFA,
+        *,
+        recovery_codes: list[str],
+    ) -> UserMFA:
+        row.enabled_at = datetime.now(timezone.utc)
+        row.recovery_codes = recovery_codes
+        row.last_used_code = None
+        row.updated_at = row.enabled_at
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def record_totp_use(
+        db: AsyncSession,
+        row: UserMFA,
+        counter: int,
+    ) -> None:
+        row.last_used_code = f"totp:{counter}"
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+
+    @staticmethod
+    async def consume_recovery_code(
+        db: AsyncSession,
+        row: UserMFA,
+        code_index: int,
+    ) -> None:
+        remaining = list(row.recovery_codes or [])
+        remaining.pop(code_index)
+        row.recovery_codes = remaining
+        row.last_used_code = "recovery"
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+
+    @staticmethod
+    async def delete(db: AsyncSession, row: UserMFA) -> None:
+        await db.delete(row)
+        await db.flush()
 
 
 class PasswordResetTokenRepo:
@@ -4130,6 +4203,7 @@ class OrganizationRepo:
         name: str | None = None,
         slug: str | None = None,
         branding: dict | None = None,
+        mfa_required: bool | None = None,
         notification_dedup_window_minutes: int | None = None,
         slack_incident_channels_enabled: bool | None = None,
     ) -> Organization | None:
@@ -4140,6 +4214,8 @@ class OrganizationRepo:
             values["slug"] = slug
         if branding is not None:
             values["branding"] = branding
+        if mfa_required is not None:
+            values["mfa_required"] = mfa_required
         if notification_dedup_window_minutes is not None:
             values["notification_dedup_window_minutes"] = (
                 notification_dedup_window_minutes

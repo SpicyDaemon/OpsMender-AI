@@ -78,8 +78,15 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await login(username, password);
-      router.push("/dashboard");
+      const outcome = await login(username, password);
+      if (outcome.mfaRequired && outcome.mfaToken) {
+        sessionStorage.setItem("opsmender_mfa_token", outcome.mfaToken);
+        router.push("/mfa-challenge");
+      } else if (outcome.mfaEnrollmentRequired) {
+        router.push("/mfa-setup");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

@@ -310,6 +310,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     # -- Routes -------------------------------------------------------------
     from backend.api.routes.auth import router as auth_router
+    from backend.api.routes.mfa import router as mfa_router
     from backend.api.routes.incidents import router as incidents_router
     from backend.api.routes.sessions import router as sessions_router
     from backend.api.routes.approvals import router as approvals_router
@@ -356,6 +357,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     api_routers = [
         auth_router,
+        mfa_router,
         incidents_router,
         sessions_router,
         approvals_router,

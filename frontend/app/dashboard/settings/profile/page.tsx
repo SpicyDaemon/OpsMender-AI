@@ -16,6 +16,7 @@ import { FormError, Input, Label } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useToast } from "@/components/ui/Toast";
+import { MFASettings } from "@/components/MFASettings";
 
 export default function ProfileSettingsPage() {
   const { user, refresh } = useAuth();
@@ -248,6 +249,8 @@ export default function ProfileSettingsPage() {
           </Button>
         </div>
       </section>
+
+      <MFASettings />
 
       {/* Notifications link */}
       <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">

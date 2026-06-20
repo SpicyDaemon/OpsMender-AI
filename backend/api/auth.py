@@ -66,11 +66,34 @@ def create_access_token(
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "role": role,
+        "token_type": "access",
         "iat": now,
         "exp": expire,
     }
     return jwt.encode(
         payload,
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def create_mfa_token(
+    user_id: uuid.UUID,
+    role: str,
+    *,
+    expires_delta: timedelta = timedelta(minutes=5),
+) -> str:
+    """Create a short-lived JWT that can only complete an MFA challenge."""
+    settings = _auth_config()
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {
+            "sub": str(user_id),
+            "role": role,
+            "token_type": "mfa",
+            "iat": now,
+            "exp": now + expires_delta,
+        },
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
@@ -109,6 +132,8 @@ async def get_current_user(
     )
     try:
         payload = decode_access_token(token)
+        if payload.get("token_type") not in (None, "access"):
+            raise credentials_exc
         user_id_str: str | None = payload.get("sub")
         if user_id_str is None:
             raise credentials_exc

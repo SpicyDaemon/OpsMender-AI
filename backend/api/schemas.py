@@ -34,6 +34,54 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class LoginResponse(BaseModel):
+    access_token: Optional[str] = None
+    token_type: str = "bearer"
+    mfa_required: bool = False
+    mfa_token: Optional[str] = None
+    mfa_enrollment_required: bool = False
+
+
+class MFASetupResponse(BaseModel):
+    secret: str
+    otpauth_url: str
+    qr_data_url: str
+
+
+class MFAConfirmRequest(BaseModel):
+    totp_code: str = Field(..., min_length=6, max_length=8)
+
+
+class MFAConfirmResponse(BaseModel):
+    recovery_codes: list[str]
+
+
+class MFAVerifyRequest(BaseModel):
+    mfa_token: str
+    totp_code: Optional[str] = Field(default=None, min_length=6, max_length=8)
+    recovery_code: Optional[str] = Field(default=None, min_length=8, max_length=32)
+
+
+class MFADisableRequest(BaseModel):
+    totp_code: Optional[str] = Field(default=None, min_length=6, max_length=8)
+    recovery_code: Optional[str] = Field(default=None, min_length=8, max_length=32)
+
+
+class MFAStatusResponse(BaseModel):
+    enabled: bool
+    required: bool
+    recovery_codes_remaining: int = 0
+
+
+class OrganizationMFASettingsUpdate(BaseModel):
+    mfa_required: bool
+
+
+class OrganizationMFASettingsResponse(BaseModel):
+    org_id: uuid.UUID
+    mfa_required: bool
+
+
 class SSOHintRequest(BaseModel):
     email: str = Field(..., max_length=255)
 
@@ -56,6 +104,8 @@ class UserResponse(BaseModel):
     last_name: Optional[str] = None
     avatar_color: Optional[str] = None
     must_change_password: bool = False
+    mfa_enabled: bool = False
+    mfa_enrollment_required: bool = False
     primary_org_id: Optional[uuid.UUID] = None
     created_at: datetime
     # Sprint 56: soft-delete marker. When set, the user is hidden from
@@ -1791,6 +1841,7 @@ class OrganizationResponse(BaseModel):
     name: str
     slug: str
     branding: Optional[dict]
+    mfa_required: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

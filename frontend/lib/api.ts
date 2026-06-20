@@ -64,7 +64,7 @@ async function request<T>(
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !skipAuth) {
     clearToken();
     if (typeof window !== "undefined") {
       window.location.href = "/login";
@@ -105,17 +105,26 @@ export const api = {
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
 
-  del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  del: <T>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: "DELETE",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
 };
 
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 
-import type { TokenResponse, UserListResponse, UserResponse } from "./types";
+import type {
+  LoginResponse,
+  TokenResponse,
+  UserListResponse,
+  UserResponse,
+} from "./types";
 
-export async function login(username: string, password: string): Promise<TokenResponse> {
-  return api.post<TokenResponse>("/auth/login", { username, password }, true);
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  return api.post<LoginResponse>("/auth/login", { username, password }, true);
 }
 
 export async function register(
@@ -149,6 +158,46 @@ export async function changeMyPassword(
   body: import("./types").MePasswordChangeRequest,
 ): Promise<void> {
   await api.post("/auth/me/password", body);
+}
+
+export async function getMFAStatus(): Promise<import("./types").MFAStatusResponse> {
+  return api.get<import("./types").MFAStatusResponse>("/auth/mfa/status");
+}
+
+export async function setupMFA(): Promise<import("./types").MFASetupResponse> {
+  return api.post<import("./types").MFASetupResponse>("/auth/mfa/setup", {});
+}
+
+export async function confirmMFA(
+  totpCode: string,
+): Promise<import("./types").MFAConfirmResponse> {
+  return api.post<import("./types").MFAConfirmResponse>("/auth/mfa/confirm", {
+    totp_code: totpCode,
+  });
+}
+
+export async function verifyMFA(body: {
+  mfa_token: string;
+  totp_code?: string;
+  recovery_code?: string;
+}): Promise<TokenResponse> {
+  return api.post<TokenResponse>("/auth/mfa/verify", body, true);
+}
+
+export async function disableMFA(body: {
+  totp_code?: string;
+  recovery_code?: string;
+}): Promise<void> {
+  return api.del<void>("/auth/mfa", body);
+}
+
+export async function updateOrganizationMFASettings(
+  mfaRequired: boolean,
+): Promise<import("./types").OrganizationMFASettingsResponse> {
+  return api.patch<import("./types").OrganizationMFASettingsResponse>(
+    "/admin/org/settings",
+    { mfa_required: mfaRequired },
+  );
 }
 
 export async function listUsers(params?: {

@@ -66,6 +66,8 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   container scanning, CodeQL, Dependabot, and digest-only image-signing
   guidance are included for self-hosted security review.
 - **RBAC + multi-tenant (opt-in)** — Admin / Operator / Viewer; per-org isolation with per-tenant SSO/SAML.
+- **Local-account MFA** — encrypted TOTP enrollment, one-time recovery codes,
+  and optional organization-wide enforcement.
 - **Dashboard** — Next.js console with a `Cmd/Ctrl-K` command palette.
 
 ## Architecture
@@ -266,6 +268,9 @@ and revoke. After sign-in, dashboard URLs use
 `/o/{organization-slug}/dashboard/...` so workspace links are bookmarkable.
 The login page can switch to OIDC or SAML after the email field identifies a
 configured organization domain.
+Local accounts can enable TOTP from **Profile & Settings**. Admins can require
+MFA for the active organization; recovery codes are shown once and stored only
+as bcrypt hashes.
 
 ## Project layout
 

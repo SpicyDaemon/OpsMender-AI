@@ -5,6 +5,14 @@ export interface TokenResponse {
   token_type: string;
 }
 
+export interface LoginResponse {
+  access_token?: string | null;
+  token_type: string;
+  mfa_required: boolean;
+  mfa_token?: string | null;
+  mfa_enrollment_required: boolean;
+}
+
 export interface UserResponse {
   id: string;
   username: string;
@@ -16,11 +24,34 @@ export interface UserResponse {
   last_name?: string | null;
   avatar_color?: string | null;
   must_change_password?: boolean;
+  mfa_enabled?: boolean;
+  mfa_enrollment_required?: boolean;
   primary_org_id: string | null;
   created_at: string;
   // Sprint 56: soft-delete marker. When set, the user is hidden from
   // active lists; per-user pages render the deleted-state placeholder.
   deleted_at?: string | null;
+}
+
+export interface MFAStatusResponse {
+  enabled: boolean;
+  required: boolean;
+  recovery_codes_remaining: number;
+}
+
+export interface MFASetupResponse {
+  secret: string;
+  otpauth_url: string;
+  qr_data_url: string;
+}
+
+export interface MFAConfirmResponse {
+  recovery_codes: string[];
+}
+
+export interface OrganizationMFASettingsResponse {
+  org_id: string;
+  mfa_required: boolean;
 }
 
 export interface SSOHintResponse {
@@ -1423,6 +1454,7 @@ export interface OrganizationResponse {
   name: string;
   slug: string;
   branding: BrandingConfig | null;
+  mfa_required: boolean;
   created_at: string;
 }
 

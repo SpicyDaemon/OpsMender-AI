@@ -81,6 +81,9 @@ class Organization(Base):
     slack_incident_channels_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    mfa_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -283,6 +286,9 @@ class User(Base):
     organizations: Mapped[list["UserOrganization"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    mfa: Mapped["UserMFA | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
 
     __table_args__ = (
         Index(
@@ -293,6 +299,34 @@ class User(Base):
             sqlite_where=text("username IS NOT NULL"),
         ),
     )
+
+
+class UserMFA(Base):
+    """TOTP MFA state for a local user account."""
+
+    __tablename__ = "user_mfa"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    totp_secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    recovery_codes: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    last_used_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    user: Mapped[User] = relationship(back_populates="mfa")
 
 
 class OrgInvite(Base):

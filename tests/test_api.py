@@ -229,6 +229,22 @@ async def _create_approval_request(
         return session, request
 
 
+async def _enable_mfa(client: AsyncClient, headers: dict[str, str]):
+    import pyotp
+
+    setup = await client.post("/auth/mfa/setup", headers=headers)
+    assert setup.status_code == 200
+    setup_data = setup.json()
+    code = pyotp.TOTP(setup_data["secret"]).now()
+    confirm = await client.post(
+        "/auth/mfa/confirm",
+        headers=headers,
+        json={"totp_code": code},
+    )
+    assert confirm.status_code == 200
+    return setup_data, confirm.json()["recovery_codes"]
+
+
 async def _ack_incident(
     client: AsyncClient, incident_id: str, headers: dict[str, str]
 ) -> None:
@@ -613,6 +629,152 @@ class TestSessionDuration:
         )
         assert resp.status_code == 401
 
+
+class TestMFA:
+    async def test_enrollment_encrypts_secret_and_returns_recovery_codes(
+        self,
+        client: AsyncClient,
+        app,
+        auth_headers: dict[str, str],
+    ):
+        setup, recovery_codes = await _enable_mfa(client, auth_headers)
+        assert setup["otpauth_url"].startswith("otpauth://totp/")
+        assert setup["qr_data_url"].startswith("data:image/png;base64,")
+        assert len(recovery_codes) == 8
+
+        from backend.db.repos import UserMFARepo
+
+        async with app.state.session_factory() as db:
+            user = await UserRepo.get_by_username(db, "testadmin")
+            row = await UserMFARepo.get(db, user.id)
+            assert row is not None
+            assert row.enabled_at is not None
+            assert row.totp_secret_encrypted != setup["secret"]
+            assert setup["secret"] not in row.totp_secret_encrypted
+            assert len(row.recovery_codes) == 8
+            assert all(code not in row.recovery_codes for code in recovery_codes)
+
+    async def test_login_requires_mfa_and_totp_exchanges_challenge(
+        self,
+        client: AsyncClient,
+        auth_headers: dict[str, str],
+    ):
+        import pyotp
+
+        setup, _ = await _enable_mfa(client, auth_headers)
+        login = await client.post(
+            "/auth/login",
+            json={"username": "testadmin", "password": "securepass123"},
+        )
+        assert login.status_code == 200
+        challenge = login.json()
+        assert challenge["mfa_required"] is True
+        assert challenge["access_token"] is None
+
+        verify = await client.post(
+            "/auth/mfa/verify",
+            json={
+                "mfa_token": challenge["mfa_token"],
+                "totp_code": pyotp.TOTP(setup["secret"]).now(),
+            },
+        )
+        assert verify.status_code == 200
+        me = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {verify.json()['access_token']}"},
+        )
+        assert me.status_code == 200
+        assert me.json()["mfa_enabled"] is True
+
+    async def test_recovery_code_is_single_use(
+        self,
+        client: AsyncClient,
+        auth_headers: dict[str, str],
+    ):
+        _, recovery_codes = await _enable_mfa(client, auth_headers)
+        login = await client.post(
+            "/auth/login",
+            json={"username": "testadmin", "password": "securepass123"},
+        )
+        first = await client.post(
+            "/auth/mfa/verify",
+            json={
+                "mfa_token": login.json()["mfa_token"],
+                "recovery_code": recovery_codes[0],
+            },
+        )
+        assert first.status_code == 200
+
+        login_again = await client.post(
+            "/auth/login",
+            json={"username": "testadmin", "password": "securepass123"},
+        )
+        reused = await client.post(
+            "/auth/mfa/verify",
+            json={
+                "mfa_token": login_again.json()["mfa_token"],
+                "recovery_code": recovery_codes[0],
+            },
+        )
+        assert reused.status_code == 401
+
+    async def test_expired_mfa_token_is_rejected(
+        self,
+        client: AsyncClient,
+        app,
+        auth_headers: dict[str, str],
+    ):
+        import pyotp
+        from backend.api.auth import create_mfa_token
+
+        setup, _ = await _enable_mfa(client, auth_headers)
+        async with app.state.session_factory() as db:
+            user = await UserRepo.get_by_username(db, "testadmin")
+            expired = create_mfa_token(
+                user.id,
+                user.role,
+                expires_delta=timedelta(seconds=-1),
+            )
+        response = await client.post(
+            "/auth/mfa/verify",
+            json={
+                "mfa_token": expired,
+                "totp_code": pyotp.TOTP(setup["secret"]).now(),
+            },
+        )
+        assert response.status_code == 401
+
+    async def test_org_policy_marks_login_for_enrollment(
+        self,
+        client: AsyncClient,
+        app,
+        auth_headers: dict[str, str],
+    ):
+        policy = await client.patch(
+            "/admin/org/settings",
+            headers=auth_headers,
+            json={"mfa_required": True},
+        )
+        assert policy.status_code == 200
+        assert policy.json()["mfa_required"] is True
+
+        login = await client.post(
+            "/auth/login",
+            json={"username": "testadmin", "password": "securepass123"},
+        )
+        assert login.status_code == 200
+        assert login.json()["access_token"]
+        assert login.json()["mfa_enrollment_required"] is True
+
+        me = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        )
+        assert me.status_code == 200
+        assert me.json()["mfa_enrollment_required"] is True
+
+
+class TestSessionRevocation:
     async def test_deactivated_user_rejected_with_valid_token(
         self, client: AsyncClient, app
     ):

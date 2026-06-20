@@ -329,14 +329,11 @@ async def test_approval_request_notifies_approvers(factory, monkeypatch):
             justification="Deleting a stuck pod",
         )
     )
-    # Poll until the background approval task has created the request + emitted
-    # the notification, rather than racing a fixed sleep (which is too tight
-    # under full-suite load and makes this test flaky).
-    for _ in range(150):  # up to ~3s
-        async with factory() as db:
-            if await InAppNotificationRepo.count_for_user(db, ORG, USER_A) == 1:
-                break
-        await asyncio.sleep(0.02)
+    # Let it create the request + emit, then resolve so the task can finish.
+    # 0.6s (was 0.15s) gives headroom so the assertion doesn't race the
+    # background approval task under heavy full-suite load; still well under
+    # the 5s approval timeout.
+    await asyncio.sleep(0.6)
     async with factory() as db:
         # The operator was notified; the viewer was not.
         assert (

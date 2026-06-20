@@ -33,6 +33,7 @@ SESSION_PROFILE_TEMPLATES: list[dict[str, Any]] = [
             "verify",
             "summarize",
         ],
+        "workflow_enabled": True,
     },
     {
         "key": "read_only_investigation",
@@ -42,6 +43,7 @@ SESSION_PROFILE_TEMPLATES: list[dict[str, Any]] = [
             "Tier 2 (Advisory) when you want analysis without any changes."
         ),
         "node_order": ["observe", "diagnose", "summarize"],
+        "workflow_enabled": False,
     },
     {
         "key": "fast_triage",
@@ -51,6 +53,7 @@ SESSION_PROFILE_TEMPLATES: list[dict[str, Any]] = [
             "summarize. No diagnosis loop or changes; ideal for first glance."
         ),
         "node_order": ["observe", "summarize"],
+        "workflow_enabled": False,
     },
     {
         "key": "postmortem_builder",
@@ -61,6 +64,7 @@ SESSION_PROFILE_TEMPLATES: list[dict[str, Any]] = [
             "reviews that feed the postmortem."
         ),
         "node_order": ["observe", "diagnose", "verify", "summarize"],
+        "workflow_enabled": False,
     },
     {
         "key": "high_risk_change_review",
@@ -78,6 +82,7 @@ SESSION_PROFILE_TEMPLATES: list[dict[str, Any]] = [
             "verify",
             "summarize",
         ],
+        "workflow_enabled": True,
     },
 ]
 

@@ -2340,6 +2340,7 @@ class WorkflowProfileRepo:
         name: str,
         description: str | None,
         node_order: list[str],
+        workflow_enabled: bool = True,
         is_active: bool = True,
         is_default: bool = False,
     ) -> WorkflowProfile:
@@ -2356,6 +2357,7 @@ class WorkflowProfileRepo:
             name=name,
             description=description,
             node_order=node_order,
+            workflow_enabled=workflow_enabled,
             is_active=is_active,
             is_default=is_default,
         )
@@ -2432,6 +2434,7 @@ class WorkflowProfileRepo:
         name: str,
         description: str | None,
         node_order: list[str],
+        workflow_enabled: bool,
         is_active: bool,
         is_default: bool,
     ) -> WorkflowProfile | None:
@@ -2454,6 +2457,7 @@ class WorkflowProfileRepo:
                 name=name,
                 description=description,
                 node_order=node_order,
+                workflow_enabled=workflow_enabled,
                 is_active=is_active,
                 is_default=is_default,
                 updated_at=datetime.now(timezone.utc),

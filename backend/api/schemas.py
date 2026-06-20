@@ -1208,6 +1208,7 @@ class WorkflowProfileUpsert(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     description: Optional[str] = None
     node_order: list[str] = Field(..., min_length=1)
+    workflow_enabled: bool = True
     is_active: bool = True
     is_default: bool = False
 
@@ -1217,6 +1218,7 @@ class WorkflowProfileResponse(BaseModel):
     name: str
     description: Optional[str]
     node_order: list[str]
+    workflow_enabled: bool
     is_active: bool
     is_default: bool
     created_at: datetime
@@ -1237,6 +1239,7 @@ class SessionProfileTemplate(BaseModel):
     name: str
     description: str
     node_order: list[str]
+    workflow_enabled: bool = True
 
 
 class SessionProfileTemplateListResponse(BaseModel):

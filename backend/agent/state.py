@@ -31,6 +31,8 @@ class ToolCallRecord(TypedDict, total=False):
     error: str | None
     duration_ms: int | None
     block_reason: str | None
+    workflow_step_id: str
+    workflow_step_status: str
 
 
 class IncidentContext(TypedDict, total=False):
@@ -84,6 +86,7 @@ class IncidentState(TypedDict, total=False):
     observations: str              # output of the observe node
     diagnosis: str                 # output of the diagnose node
     plan: list[dict[str, Any]]     # proposed actions from the plan node
+    workflow_result: dict[str, Any]  # Skill-defined workflow execution summary
 
     # -- tier gate -----------------------------------------------------------
     approved_actions: list[dict[str, Any]]   # actions that passed the gate

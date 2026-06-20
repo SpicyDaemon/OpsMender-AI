@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 3 Phase 7 — Skills-defined remediation workflows.** A `SKILL.md` can
+  declare an ordered `## Workflow` of remediation steps (tool, templated
+  inputs, `on_failure`, `tier_override`) that the agent executes through the
+  existing tier gate: each step is enforced, audited
+  (`workflow.step.completed` / `blocked` / `failed`), and routed through the
+  approval flow when it requires one; templated inputs resolve `{{incident.*}}`
+  and `{{steps.<id>.output}}`. Session profiles gain a `workflow_enabled`
+  toggle. A template-resolution failure marks the step failed without aborting
+  the run; only a tool-action failure with `on_failure: abort` stops execution.
 - **Wave 3 Phase 6 — bi-directional ticket synchronization.** Jira and
   ServiceNow connectors can persist incident-to-ticket sync state, push
   mapped incident lifecycle changes in a non-blocking background task, and

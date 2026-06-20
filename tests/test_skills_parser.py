@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.skills.parser import OperationClassification, SkillDefinition, load
+from backend.skills.parser import OperationClassification, SkillDefinition, load, loads
 
 
 @pytest.fixture()
@@ -99,8 +99,6 @@ class TestLoad:
         assert sd.focus_areas == []
 
     def test_focus_areas_comma_string(self):
-        from backend.skills.parser import loads
-
         md = (
             "---\n"
             "version: 1\n"
@@ -111,6 +109,60 @@ class TestLoad:
         )
         sd = loads(md, fmt="md")
         assert sd.focus_areas == ["a", "b", "c"]
+
+    def test_workflow_section_parses_ordered_yaml_steps(self):
+        sd = loads(
+            """---
+version: "1"
+environment: test
+operations:
+  - tool: find_pod
+    classification: safe
+  - tool: restart_pod
+    classification: caution
+---
+
+## Workflow
+
+```yaml
+steps:
+  - id: find
+    description: Find the failing pod
+    tool: find_pod
+    inputs:
+      incident_id: "{{incident.id}}"
+    on_failure: abort
+  - id: restart
+    description: Restart the selected pod
+    tool: restart_pod
+    inputs:
+      pod: "{{steps.find.output.pod}}"
+    on_failure: continue
+    tier_override: approval
+```
+"""
+        )
+
+        assert [step.id for step in sd.workflow] == ["find", "restart"]
+        assert sd.workflow[0].inputs == {"incident_id": "{{incident.id}}"}
+        assert sd.workflow[1].on_failure == "continue"
+        assert sd.workflow[1].tier_override == "approval"
+
+    def test_workflow_rejects_duplicate_step_ids(self):
+        with pytest.raises(ValueError, match="duplicated"):
+            loads(
+                """---
+operations: []
+---
+## Workflow
+```yaml
+- id: duplicate
+  tool: first
+- id: duplicate
+  tool: second
+```
+"""
+            )
 
 
 class TestClassify:

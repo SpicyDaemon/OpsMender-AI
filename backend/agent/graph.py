@@ -53,6 +53,7 @@ from backend.agent.nodes import (
     _build_diagnose,
     _build_plan,
     _build_plan_with_tool_names,
+    _build_workflow_plan,
     _build_tier_gate,
     _build_execute,
     _build_verify,
@@ -62,6 +63,7 @@ from backend.agent.nodes import (
     validate_agent_roles,
 )
 from backend.skills.parser import SkillDefinition
+from backend.agent.workflow_executor import WorkflowExecutor
 
 DEFAULT_WORKFLOW_NODE_ORDER = [
     "recall",
@@ -162,6 +164,7 @@ def build_graph(
     org_id=None,
     service_id=None,
     source_incident_id=None,
+    workflow_enabled: bool = True,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -223,6 +226,23 @@ def build_graph(
         )
     else:
         execute_fn = execute
+
+    if (
+        workflow_enabled
+        and skill_def.workflow
+        and mcp_session is not None
+        and audit_logger is not None
+    ):
+        plan_fn = _build_workflow_plan(
+            WorkflowExecutor(
+                mcp_session=mcp_session,
+                skill_def=skill_def,
+                audit_logger=audit_logger,
+                tier=tier,
+                approval_service=approval_service,
+                tool_caller=tool_caller,
+            )
+        )
 
     if memory_factory is not None and org_id is not None:
         recall_fn = _build_recall(

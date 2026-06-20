@@ -25,12 +25,15 @@ from __future__ import annotations
 import dataclasses
 import fnmatch
 import pathlib
-from typing import List, Optional
+import re
+from typing import Any, List, Optional
 
 import yaml
 
 
 _TIER_MODES = ("autonomous", "approval", "blocked", "advisory")
+_WORKFLOW_FAILURE_MODES = ("abort", "continue")
+_WORKFLOW_TIER_OVERRIDES = (*_TIER_MODES, "T0", "T1", "T2")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -107,6 +110,37 @@ class OperationClassification:
         return self.classification != "safe" and self.effective_reversible
 
 
+@dataclasses.dataclass(frozen=True)
+class WorkflowStep:
+    """One ordered remediation step declared in a Skill's Workflow section."""
+
+    id: str
+    description: str
+    tool: str
+    inputs: dict[str, Any] = dataclasses.field(default_factory=dict)
+    on_failure: str = "abort"
+    tier_override: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.id.strip():
+            raise ValueError("Workflow step id cannot be blank")
+        if not self.tool.strip():
+            raise ValueError(f"Workflow step '{self.id}': tool cannot be blank")
+        if self.on_failure not in _WORKFLOW_FAILURE_MODES:
+            raise ValueError(
+                f"Workflow step '{self.id}': on_failure must be one of "
+                f"{_WORKFLOW_FAILURE_MODES}"
+            )
+        if (
+            self.tier_override is not None
+            and self.tier_override not in _WORKFLOW_TIER_OVERRIDES
+        ):
+            raise ValueError(
+                f"Workflow step '{self.id}': tier_override must be one of "
+                f"{_WORKFLOW_TIER_OVERRIDES}"
+            )
+
+
 @dataclasses.dataclass
 class SkillDefinition:
     """Parsed skill definition with a fast lookup method."""
@@ -122,6 +156,8 @@ class SkillDefinition:
     # "high systemd restart counts"). Platform-agnostic by design — the LLM
     # decides what each phrase means given the MCP server's tools.
     focus_areas: List[str] = dataclasses.field(default_factory=list)
+    # Optional ordered remediation workflow parsed from ``## Workflow``.
+    workflow: List[WorkflowStep] = dataclasses.field(default_factory=list)
 
     def _match(self, tool_name: str) -> Optional[OperationClassification]:
         """Return the first matching OperationClassification or None."""
@@ -255,6 +291,81 @@ def _parse_bool(raw: object, *, field: str) -> bool:
     return raw
 
 
+def _extract_workflow_section(text: str) -> object | None:
+    """Parse YAML from a markdown ``## Workflow`` section.
+
+    The section may contain either a fenced YAML block or plain YAML. Parsing
+    stops at the next level-two heading so later Skill documentation remains
+    free-form markdown.
+    """
+    match = re.search(r"(?im)^##[ \t]+Workflow[ \t]*$", text)
+    if match is None:
+        return None
+    remainder = text[match.end():]
+    next_heading = re.search(r"(?m)^##[ \t]+", remainder)
+    section = remainder[: next_heading.start()] if next_heading else remainder
+    section = section.strip()
+    fenced = re.fullmatch(
+        r"```(?:yaml|yml)?[ \t]*\r?\n(?P<body>.*?)\r?\n```",
+        section,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    if fenced is not None:
+        section = fenced.group("body")
+    if not section.strip():
+        return []
+    return yaml.safe_load(section)
+
+
+def _normalize_tier_override(raw: object, *, step_id: str) -> Optional[str]:
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    lowered = value.lower()
+    if lowered in _TIER_MODES:
+        return lowered
+    tier = _parse_tier(raw, field=f"Workflow step '{step_id}' tier_override")
+    return f"T{tier}"
+
+
+def _parse_workflow(raw_workflow: object | None) -> list[WorkflowStep]:
+    if raw_workflow is None:
+        return []
+    if isinstance(raw_workflow, dict):
+        raw_steps = raw_workflow.get("steps", [])
+    else:
+        raw_steps = raw_workflow
+    if not isinstance(raw_steps, list):
+        raise ValueError("Workflow must be a list of steps or a mapping with steps")
+
+    workflow: list[WorkflowStep] = []
+    seen_ids: set[str] = set()
+    for index, raw_step in enumerate(raw_steps):
+        if not isinstance(raw_step, dict):
+            raise ValueError(f"Workflow step {index + 1} must be a mapping")
+        step_id = str(raw_step.get("id", "")).strip()
+        if step_id in seen_ids:
+            raise ValueError(f"Workflow step id '{step_id}' is duplicated")
+        seen_ids.add(step_id)
+        inputs = raw_step.get("inputs") or {}
+        if not isinstance(inputs, dict):
+            raise ValueError(f"Workflow step '{step_id}': inputs must be a mapping")
+        workflow.append(
+            WorkflowStep(
+                id=step_id,
+                description=str(raw_step.get("description", "")).strip(),
+                tool=str(raw_step.get("tool", "")).strip(),
+                inputs=dict(inputs),
+                on_failure=str(raw_step.get("on_failure", "abort")).strip().lower(),
+                tier_override=_normalize_tier_override(
+                    raw_step.get("tier_override"),
+                    step_id=step_id,
+                ),
+            )
+        )
+    return workflow
+
+
 def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
     """Parse a raw skill definition string and return a SkillDefinition.
 
@@ -263,9 +374,16 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
     """
     if fmt in ("yaml", "yml"):
         data = yaml.safe_load(raw) or {}
+        raw_workflow = data.get("workflow")
     else:
         front_matter = _extract_yaml_front_matter(raw)
         data = yaml.safe_load(front_matter) or {}
+        raw_workflow = _extract_workflow_section(raw)
+        if raw_workflow is None:
+            raw_workflow = data.get("workflow")
+
+    if not isinstance(data, dict):
+        raise ValueError("Skill definition YAML must be a mapping")
 
     operations: list[OperationClassification] = []
     for entry in data.get("operations", []):
@@ -339,6 +457,7 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
             else _parse_tier(data.get("default_tier"), field="default_tier")
         ),
         focus_areas=focus_areas,
+        workflow=_parse_workflow(raw_workflow),
     )
 
 

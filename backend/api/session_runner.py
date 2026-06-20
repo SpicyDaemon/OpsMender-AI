@@ -231,6 +231,48 @@ class LiveAuditLogger:
             await db.commit()
         return str(entry.id)
 
+    async def log_workflow_step(
+        self,
+        session_id: str,
+        tier: int,
+        entry_type: AuditEntryType,
+        tool_name: str,
+        *,
+        tool_parameters: dict | None = None,
+        result: dict | None = None,
+        permitted: bool = True,
+        block_reason: str | None = None,
+    ) -> str:
+        async with self._factory() as db:
+            entry = await AuditEntryRepo.create(
+                db,
+                org_id=self._org_id,
+                session_id=uuid.UUID(session_id),
+                tier=tier,
+                entry_type=entry_type.value,
+                tool_name=tool_name,
+                tool_parameters=tool_parameters,
+                result=result,
+                permitted=permitted,
+                block_reason=block_reason,
+            )
+            await db.commit()
+        await self._publisher(
+            self._session_id,
+            WSMessage(
+                type="tool_call",
+                data={
+                    "tool_name": tool_name,
+                    "parameters": tool_parameters or {},
+                    "permitted": permitted,
+                    "phase": entry_type.value,
+                    "result": result or {},
+                    "block_reason": block_reason,
+                },
+            ),
+        )
+        return str(entry.id)
+
     async def read_by_session(self, session_id: str):
         async with self._factory() as db:
             return await AuditEntryRepo.list_by_session(db, self._org_id, uuid.UUID(session_id))
@@ -635,6 +677,9 @@ async def _run_session_workflow_inner(
                 )
             if workflow_profile is not None:
                 graph_kwargs["node_order"] = list(workflow_profile.node_order or [])
+                graph_kwargs["workflow_enabled"] = bool(
+                    workflow_profile.workflow_enabled
+                )
         if getattr(session, "agent_team_profile_id", None) is not None:
             async with factory() as db:
                 agent_team_profile = await AgentTeamProfileRepo.get_by_id(

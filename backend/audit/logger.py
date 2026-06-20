@@ -37,6 +37,9 @@ class AuditEntryType(str, enum.Enum):
     TOOL_CALL_BLOCKED = "tool_call_blocked"
     SESSION_START = "session_start"
     SESSION_END = "session_end"
+    WORKFLOW_STEP_COMPLETED = "workflow.step.completed"
+    WORKFLOW_STEP_BLOCKED = "workflow.step.blocked"
+    WORKFLOW_STEP_FAILED = "workflow.step.failed"
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +214,36 @@ class AuditLogger:
                 tier=tier,
                 entry_type=AuditEntryType.SESSION_END,
                 permitted=True,
+            )
+        )
+        return entry_id
+
+    def log_workflow_step(
+        self,
+        session_id: str,
+        tier: int,
+        entry_type: AuditEntryType,
+        tool_name: str,
+        *,
+        tool_parameters: dict | None = None,
+        result: dict | None = None,
+        permitted: bool = True,
+        block_reason: str | None = None,
+    ) -> str:
+        """Log a terminal Skill workflow-step outcome."""
+        entry_id = self._entry_id()
+        self.log(
+            AuditEntry(
+                entry_id=entry_id,
+                session_id=session_id,
+                timestamp=self._now(),
+                tier=tier,
+                entry_type=entry_type,
+                tool_name=tool_name,
+                tool_parameters=tool_parameters,
+                result=result,
+                permitted=permitted,
+                block_reason=block_reason,
             )
         )
         return entry_id

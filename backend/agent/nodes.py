@@ -548,6 +548,25 @@ def plan(state: IncidentState) -> dict:
     }
 
 
+def _build_workflow_plan(workflow_executor):
+    """Return a plan node that executes a Skill-defined remediation workflow."""
+
+    async def workflow_plan(state: IncidentState) -> dict:
+        result = await workflow_executor.execute(
+            session_id=state.get("session_id", "unknown"),
+            incident=state.get("incident"),
+        )
+        return {
+            # Downstream tier_gate/execute nodes remain in the graph but have
+            # no standard LLM-generated actions to process.
+            "plan": [],
+            "tool_calls": result.tool_call_records(),
+            "workflow_result": result.to_dict(),
+        }
+
+    return workflow_plan
+
+
 # ---------------------------------------------------------------------------
 # tier_gate  (HARD PROGRAMMATIC CHECK — not an LLM decision)
 # ---------------------------------------------------------------------------

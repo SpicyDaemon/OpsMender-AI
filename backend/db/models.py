@@ -1021,6 +1021,9 @@ class WorkflowProfile(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     node_order: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    workflow_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

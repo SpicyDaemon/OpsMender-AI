@@ -91,6 +91,9 @@ class TestAuditEntryType:
             "tool_call_blocked",
             "session_start",
             "session_end",
+            "workflow.step.completed",
+            "workflow.step.blocked",
+            "workflow.step.failed",
         }
         actual = {e.value for e in AuditEntryType}
         assert actual == expected

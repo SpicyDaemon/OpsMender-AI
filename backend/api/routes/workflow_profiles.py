@@ -87,6 +87,7 @@ async def create_workflow_profile(
             name=body.name,
             description=body.description,
             node_order=_validated_node_order(body.node_order),
+            workflow_enabled=body.workflow_enabled,
             is_active=body.is_active,
             is_default=body.is_default,
         )
@@ -128,6 +129,7 @@ async def update_workflow_profile(
             name=body.name,
             description=body.description,
             node_order=_validated_node_order(body.node_order),
+            workflow_enabled=body.workflow_enabled,
             is_active=body.is_active,
             is_default=body.is_default,
         )

@@ -62,6 +62,9 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, per-org, operator-curated.
 - **Reliability / SLA** — HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.
 - **Audit everything** — every tool call, approval, rollback, and state transition recorded.
+- **Supply-chain security baseline** — CycloneDX SBOM generation, high/critical
+  container scanning, CodeQL, Dependabot, and digest-only image-signing
+  guidance are included for self-hosted security review.
 - **RBAC + multi-tenant (opt-in)** — Admin / Operator / Viewer; per-org isolation with per-tenant SSO/SAML.
 - **Dashboard** — Next.js console with a `Cmd/Ctrl-K` command palette.
 

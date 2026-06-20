@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 3 Phase 1 — compliance posture.** Added CycloneDX SBOM generation
+  with Syft, high/critical image scanning with Trivy, a digest-only Cosign
+  signing scaffold, weekly Dependabot updates, and scheduled/push CodeQL
+  analysis for Python and JavaScript/TypeScript.
 - **Wave 2 Phase 5 — source control, docs, status, and ChatOps breadth.** Added
   Gitea repository/file/issue/pull-request workflows, Google Docs read/export
   through OAuth or service-account auth, and Statuspage component/incident

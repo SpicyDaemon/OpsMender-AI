@@ -57,3 +57,15 @@ OpsMender is meant to be deployed inside an organization's trusted network. The 
 - The tier gate is the final guard against destructive actions — it is programmatic and cannot be bypassed by agent reasoning. Reports showing a way to bypass the tier gate are treated as critical.
 
 If you have questions about whether something is in scope, open an issue first — it's fine to ask.
+
+## Supply-chain verification
+
+- Generate a CycloneDX SBOM with `bash scripts/generate-sbom.sh`.
+- Scan a locally built image with
+  `bash scripts/scan-image.sh <image-reference>`.
+- Sign an immutable image digest with
+  `COSIGN_KEY=/path/to/key bash scripts/sign-image.sh <image>@sha256:<digest>`.
+
+The repository also runs CodeQL and Trivy on `main` and uses Dependabot for
+weekly dependency-update proposals. These controls support security review;
+they are not a compliance certification.

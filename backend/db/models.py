@@ -487,7 +487,7 @@ class AuditEntry(Base):
         Uuid, ForeignKey("sessions.id"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
+        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
     )
     tier: Mapped[int] = mapped_column(Integer, nullable=False)
     entry_type: Mapped[str] = mapped_column(

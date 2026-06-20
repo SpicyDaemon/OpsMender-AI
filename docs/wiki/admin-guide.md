@@ -120,7 +120,33 @@ powers invitations, password resets, test messages, and scheduled reports.
 Then open **Reports** to download CSV/PDF incident metrics or create weekly,
 monthly, and quarterly recipient schedules.
 
-## 8. Alert Intake
+## 8. Audit retention and archive
+
+Audit entries are retained in Postgres for 90 days by default. A dedicated job
+runs daily at 02:00 UTC. With archival disabled, expired rows are pruned
+directly. With archival enabled, OpsMender first writes gzip-compressed JSONL
+objects to S3-compatible storage and deletes only rows whose upload succeeds.
+
+Configure the global fallback in `.env`:
+
+```dotenv
+AUDIT_RETENTION_DAYS=90
+AUDIT_ARCHIVE_ENABLED=true
+AUDIT_ARCHIVE_S3_BUCKET=opsmender-audit
+AUDIT_ARCHIVE_S3_PREFIX=audit/
+# Optional for non-AWS S3-compatible storage:
+AUDIT_ARCHIVE_S3_ENDPOINT_URL=https://objects.example.com
+# Optional when the normal AWS credential chain is not used:
+AUDIT_ARCHIVE_AWS_ACCESS_KEY_ID=...
+AUDIT_ARCHIVE_AWS_ACCESS_KEY_SECRET=...
+```
+
+Objects are named `{prefix}{YYYY-MM-DD}.jsonl.gz` using each audit entry's UTC
+date. Per-workspace `audit_entries` settings under **Config → Storage &
+retention** override `AUDIT_RETENTION_DAYS`; disabling that category prevents
+both archival and pruning for the workspace.
+
+## 9. Alert Intake
 
 To ingest incidents automatically from external tools (e.g., Datadog, CloudWatch, or generic webhook senders), create a service and use the Services area as the home for Alert Intake / Service Webhook setup.
 

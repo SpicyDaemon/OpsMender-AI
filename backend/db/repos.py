@@ -6847,7 +6847,11 @@ class RetentionConfigRepo:
 
     @staticmethod
     async def effective_ttl_days(
-        db: AsyncSession, org_id: uuid.UUID, category: str
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        category: str,
+        *,
+        default_ttl_days: int = DEFAULT_RETENTION_TTL_DAYS,
     ) -> int | None:
         """Resolved TTL for the (org, category) pair.
 
@@ -6858,7 +6862,7 @@ class RetentionConfigRepo:
         """
         existing = await RetentionConfigRepo.get(db, org_id, category)
         if existing is None:
-            return DEFAULT_RETENTION_TTL_DAYS
+            return default_ttl_days
         return existing.ttl_days
 
     @staticmethod
@@ -6868,6 +6872,7 @@ class RetentionConfigRepo:
         *,
         category: str,
         deleted_count: int,
+        default_ttl_days: int = DEFAULT_RETENTION_TTL_DAYS,
     ) -> None:
         """Record the last pruner outcome. Creates the row if it doesn't
         exist so the operator can see the default applied + last result even
@@ -6878,7 +6883,7 @@ class RetentionConfigRepo:
             row = RetentionConfig(
                 org_id=org_id,
                 category=category,
-                ttl_days=DEFAULT_RETENTION_TTL_DAYS,
+                ttl_days=default_ttl_days,
                 last_pruned_at=now,
                 last_pruned_count=deleted_count,
             )

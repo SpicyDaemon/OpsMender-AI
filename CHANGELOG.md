@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 3 Phase 2 — audit retention and archival.** Added configurable audit
+  retention, an optional S3-compatible gzip JSONL archive sink, and a daily
+  02:00 UTC archive/prune scheduler. Expired rows are deleted only after a
+  successful upload when archival is enabled; otherwise they are pruned
+  directly. Existing per-workspace retention overrides remain supported.
 - **Wave 3 Phase 1 — compliance posture.** Added CycloneDX SBOM generation
   with Syft, high/critical image scanning with Trivy, a digest-only Cosign
   signing scaffold, weekly Dependabot updates, and scheduled/push CodeQL

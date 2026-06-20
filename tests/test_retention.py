@@ -6,7 +6,7 @@ Covers:
   disabled categories, never touches incident_memories, stamps last_pruned_at.
 - `estimate_storage_for_org`: returns counts + byte estimates for the four log
   categories plus the non-prunable memories panel entry.
-- `RetentionScheduler.run_once`: walks all orgs and totals the deletions.
+- `RetentionScheduler.run_once`: leaves audit rows to the archive scheduler.
 - REST API: GET status, PUT config, POST run, role gates, validation 400s.
 """
 
@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.db.models import (
@@ -332,14 +333,19 @@ class TestPrunerStorageEstimate:
 
 
 class TestRetentionScheduler:
-    async def test_run_once_walks_all_orgs(self, factory):
+    async def test_run_once_leaves_audit_rows_to_archive_scheduler(self, factory):
         _, session_a = await _seed_session(factory, ORG_A)
         _, session_b = await _seed_session(factory, ORG_B)
         await _seed_audit_entry(factory, ORG_A, session_a, age_days=200)
         await _seed_audit_entry(factory, ORG_B, session_b, age_days=200)
         scheduler = RetentionScheduler(factory, enabled=True)
         total = await scheduler.run_once()
-        assert total == 2
+        assert total == 0
+        async with factory() as db:
+            remaining = (
+                await db.execute(select(func.count()).select_from(AuditEntry))
+            ).scalar_one()
+        assert remaining == 2
 
     async def test_disabled_env_skips_loop(self, factory):
         scheduler = RetentionScheduler(factory, enabled=False)

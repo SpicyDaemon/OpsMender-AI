@@ -164,6 +164,17 @@ class AuditConfig:
     """Audit logger configuration."""
 
     output: str = "./logs/audit.jsonl"
+    retention_days: int = 90
+    archive_enabled: bool = False
+    archive_s3_bucket: str | None = None
+    archive_s3_prefix: str = ""
+    archive_s3_endpoint_url: str | None = None
+    archive_aws_access_key_id: str | None = None
+    archive_aws_access_key_secret: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.retention_days < 1:
+            raise ValueError("AUDIT_RETENTION_DAYS must be >= 1")
 
 
 @dataclasses.dataclass
@@ -441,7 +452,18 @@ class AppConfig:
             )
             or "./frontend/out",
         )
-        audit = AuditConfig(output=app.audit_output)
+        audit = AuditConfig(
+            output=app.audit_output,
+            retention_days=_env_int(env, "AUDIT_RETENTION_DAYS", 90),
+            archive_enabled=_env_bool(env, "AUDIT_ARCHIVE_ENABLED", False),
+            archive_s3_bucket=_env_str(env, "AUDIT_ARCHIVE_S3_BUCKET"),
+            archive_s3_prefix=_env_str(env, "AUDIT_ARCHIVE_S3_PREFIX", "") or "",
+            archive_s3_endpoint_url=_env_str(env, "AUDIT_ARCHIVE_S3_ENDPOINT_URL"),
+            archive_aws_access_key_id=_env_str(env, "AUDIT_ARCHIVE_AWS_ACCESS_KEY_ID"),
+            archive_aws_access_key_secret=_env_str(
+                env, "AUDIT_ARCHIVE_AWS_ACCESS_KEY_SECRET"
+            ),
+        )
         approvals = ApprovalConfig(
             timeout_seconds=_env_int(env, "OPSMENDER_APPROVAL_TIMEOUT_SECONDS", 900)
         )

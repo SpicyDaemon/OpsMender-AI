@@ -165,6 +165,7 @@ async def prune_org(
     org_id: uuid.UUID,
     *,
     now: datetime | None = None,
+    skip_categories: set[str] | frozenset[str] = frozenset(),
 ) -> PrunerRunReport:
     """Run one pruner pass for every category on a single org.
 
@@ -175,6 +176,18 @@ async def prune_org(
     current = now or datetime.now(timezone.utc)
 
     for category in RETENTION_CATEGORIES:
+        if category in skip_categories:
+            report.results.append(
+                PrunerResult(
+                    org_id=org_id,
+                    category=category,
+                    ttl_days=None,
+                    cutoff=None,
+                    deleted_count=0,
+                    skipped_reason="managed_by_audit_archiver",
+                )
+            )
+            continue
         ttl_days = await RetentionConfigRepo.effective_ttl_days(
             db, org_id, category
         )

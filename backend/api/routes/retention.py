@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
@@ -35,21 +37,29 @@ from backend.retention.pruner import (
     prune_org,
 )
 from backend.retention.scheduler import retention_enabled_from_env
+from backend.services.audit_archiver import AuditArchiver
 
 router = APIRouter(prefix="/retention", tags=["retention"])
 
 
 def _to_config_items(
     rows: dict[str, dict],
+    *,
+    audit_default_ttl_days: int = DEFAULT_RETENTION_TTL_DAYS,
 ) -> list[RetentionCategoryConfig]:
     items: list[RetentionCategoryConfig] = []
     for category in RETENTION_CATEGORIES:
         row = rows.get(category)
         if row is None:
+            default_ttl_days = (
+                audit_default_ttl_days
+                if category == "audit_entries"
+                else DEFAULT_RETENTION_TTL_DAYS
+            )
             items.append(
                 RetentionCategoryConfig(
                     category=category,
-                    ttl_days=DEFAULT_RETENTION_TTL_DAYS,
+                    ttl_days=default_ttl_days,
                     last_pruned_at=None,
                     last_pruned_count=None,
                     is_default=True,
@@ -74,6 +84,7 @@ def _to_config_items(
     summary="Per-category TTL + storage estimate for the active org",
 )
 async def get_retention_status(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     # Admin or operator can read; viewers don't need this.
@@ -103,7 +114,10 @@ async def get_retention_status(
         default_ttl_days=DEFAULT_RETENTION_TTL_DAYS,
         scheduler_enabled=retention_enabled_from_env(),
         last_run_at=None,  # Scheduler-instance state isn't request-scoped.
-        configs=_to_config_items(rows_by_category),
+        configs=_to_config_items(
+            rows_by_category,
+            audit_default_ttl_days=request.app.state.config.audit.retention_days,
+        ),
         storage=storage_items,
     )
 
@@ -114,6 +128,7 @@ async def get_retention_status(
     summary="Update per-category retention TTLs (admin only)",
 )
 async def update_retention(
+    request: Request,
     body: RetentionUpdateRequest,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
@@ -142,7 +157,9 @@ async def update_retention(
         )
     await db.commit()
     # Reuse the GET handler's projection logic.
-    return await get_retention_status(db=db, org_id=org_id, user=user)
+    return await get_retention_status(
+        request=request, db=db, org_id=org_id, user=user
+    )
 
 
 @router.post(
@@ -151,17 +168,36 @@ async def update_retention(
     summary="Run the pruner immediately for the active org (admin only)",
 )
 async def run_retention_now(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    report = await prune_org(db, org_id)
-    return RetentionRunReportResponse(
-        started_at=report.started_at,
-        finished_at=report.finished_at,
-        total_deleted=report.total_deleted,
-        total_errors=report.total_errors,
-        items=[
+    started_at = datetime.now(timezone.utc)
+    audit_ttl = await RetentionConfigRepo.effective_ttl_days(
+        db,
+        org_id,
+        "audit_entries",
+        default_ttl_days=request.app.state.config.audit.retention_days,
+    )
+    archive_report = await AuditArchiver(
+        request.app.state.config.audit
+    ).archive_and_prune(db, org_id=org_id)
+    report = await prune_org(db, org_id, skip_categories={"audit_entries"})
+    items = [
+        RetentionRunReportItem(
+            category="audit_entries",
+            ttl_days=audit_ttl,
+            cutoff=(
+                started_at - timedelta(days=audit_ttl)
+                if audit_ttl is not None
+                else None
+            ),
+            deleted_count=archive_report.deleted_count,
+            skipped_reason="disabled" if audit_ttl is None else None,
+            error="; ".join(archive_report.errors) or None,
+        ),
+        *[
             RetentionRunReportItem(
                 category=r.category,
                 ttl_days=r.ttl_days,
@@ -171,5 +207,14 @@ async def run_retention_now(
                 error=r.error,
             )
             for r in report.results
+            if r.category != "audit_entries"
         ],
+    ]
+    finished_at = datetime.now(timezone.utc)
+    return RetentionRunReportResponse(
+        started_at=started_at,
+        finished_at=finished_at,
+        total_deleted=sum(item.deleted_count for item in items),
+        total_errors=sum(1 for item in items if item.error is not None),
+        items=items,
     )

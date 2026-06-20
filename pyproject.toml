@@ -88,6 +88,7 @@ dev = [
     # Used by scripts/combine_screenshots.py to build the composite
     # review images from the per-route captures.
     "Pillow",
+    "moto[s3]>=5.1.0",
 ]
 build = [
     "pyinstaller>=6.11",

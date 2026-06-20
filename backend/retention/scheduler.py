@@ -105,7 +105,7 @@ class RetentionScheduler:
                 await db.execute(select(Organization.id))
             ).scalars().all()
             for org_id in org_ids:
-                report = await prune_org(db, org_id)
+                report = await prune_org(db, org_id, skip_categories={"audit_entries"})
                 total_deleted += report.total_deleted
                 if report.total_deleted > 0 or report.total_errors > 0:
                     logger.info(

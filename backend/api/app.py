@@ -129,6 +129,12 @@ async def _lifespan(app: FastAPI):
     app.state.audit_scheduler = audit_scheduler
     await audit_scheduler.start()
 
+    from backend.services.audit_archiver import AuditArchiveScheduler
+
+    audit_archive_scheduler = AuditArchiveScheduler(factory, config.audit)
+    app.state.audit_archive_scheduler = audit_archive_scheduler
+    await audit_archive_scheduler.start()
+
     # Data-retention scheduler (Sprint 53). Enabled by default so a fresh
     # deployment auto-prunes from day one; operators can disable per category
     # via Config → "Storage & retention" or set OPSMENDER_RETENTION_ENABLED=false.
@@ -202,6 +208,7 @@ async def _lifespan(app: FastAPI):
     await sla_poller.stop()
     await escalation_scheduler.stop()
     await audit_scheduler.stop()
+    await audit_archive_scheduler.stop()
     await retention_scheduler.stop()
     await report_scheduler.stop()
     await engine.dispose()

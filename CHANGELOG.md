@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 3 Phase 3 — distributed deployment mode.** Added
+  `monolith|distributed` topology selection, API/worker/scheduler/dispatcher
+  service roles, role-specific routers and background jobs, a PostgreSQL
+  LISTEN/NOTIFY bus for `incident.created`, and a distributed Compose stack
+  with shared Postgres and Redis. Legacy `development|production` deployment
+  mode values remain supported as monolith aliases.
 - **Wave 3 Phase 2 — audit retention and archival.** Added configurable audit
   retention, an optional S3-compatible gzip JSONL archive sink, and a daily
   02:00 UTC archive/prune scheduler. Expired rows are deleted only after a

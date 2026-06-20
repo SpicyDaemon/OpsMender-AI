@@ -92,6 +92,7 @@ from backend.ingest.autostart import (
     load_auto_start_policy,
     schedule_auto_started_session,
 )
+from backend.services.incident_events import dispatch_incident_created
 from backend.llm.selection import choose_model_for_incident_service
 
 import logging
@@ -532,6 +533,12 @@ async def _resolve_auto_start_on_create(
         tier = policy.session_tier
         skip = auto_start_skip_reason(incident, dedup_action="created", policy=policy)
         if skip is not None:
+            await dispatch_incident_created(
+                request.app,
+                org_id=org_id,
+                incident_id=incident.id,
+                auto_start_tier=None,
+            )
             return ("skipped", skip, tier)
         model = await choose_model_for_incident_service(
             db,
@@ -547,10 +554,27 @@ async def _resolve_auto_start_on_create(
                 incident.id,
                 tier,
             )
+            await dispatch_incident_created(
+                request.app,
+                org_id=org_id,
+                incident_id=incident.id,
+                auto_start_tier=None,
+            )
             return ("failed", "no_enabled_model", tier)
-        schedule_auto_started_session(
-            request.app, org_id=org_id, incident_id=incident.id, tier=tier
-        )
+        if request.app.state.config.deployment.mode == "monolith":
+            schedule_auto_started_session(
+                request.app,
+                org_id=org_id,
+                incident_id=incident.id,
+                tier=tier,
+            )
+        else:
+            await dispatch_incident_created(
+                request.app,
+                org_id=org_id,
+                incident_id=incident.id,
+                auto_start_tier=tier,
+            )
         _log.info(
             "incident.auto_start: queued incident=%s tier=%s", incident.id, tier
         )

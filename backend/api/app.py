@@ -63,6 +63,21 @@ async def _lifespan(app: FastAPI):
     set_session_factory(factory)
     app.state.database_url = database_url
     app.state.session_factory = factory
+    deployment = config.deployment
+    run_bootstrap = deployment.mode == "monolith" or deployment.service_role == "api"
+    run_schedulers = (
+        deployment.mode == "monolith" or deployment.service_role == "scheduler"
+    )
+    run_worker = (
+        deployment.mode == "distributed" and deployment.service_role == "worker"
+    )
+    scheduler_stoppers = []
+    worker_bus = None
+
+    if deployment.mode == "distributed":
+        from backend.services.incident_events import IncidentEventPublisher
+
+        app.state.incident_event_publisher = IncidentEventPublisher(database_url)
 
     # Re-apply the persisted log level (saved from the dashboard Config page)
     # now that the DB is reachable, so a UI change survives a restart. Falls
@@ -86,76 +101,97 @@ async def _lifespan(app: FastAPI):
 
     # Sprint 56: bootstrap admin from env vars if the users table is empty.
     # No-op when bootstrap env vars are unset or users already exist.
-    from backend.people.bootstrap import bootstrap_admin
+    if run_bootstrap:
+        from backend.people.bootstrap import bootstrap_admin
 
-    await bootstrap_admin(factory, config.people)
+        await bootstrap_admin(factory, config.people)
 
     # Bootstrap default model config from env vars (OPSMENDER_MODEL_PROVIDER
     # + OPSMENDER_MODEL_ID + provider-specific base_url) so an operator can
     # bring up a working agent loop on a fresh DB without clicking through
     # /dashboard/models first. No-op if any model_configs row already exists.
-    from backend.llm.bootstrap import bootstrap_model_config
+        from backend.llm.bootstrap import bootstrap_model_config
 
-    await bootstrap_model_config(factory, config.providers)
+        await bootstrap_model_config(factory, config.providers)
 
     pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
     set_mcp_pool(pool)
     app.state.mcp_pool = pool
-    sla_poller = SLAPoller(factory, config)
-    app.state.sla_poller = sla_poller
-    if config.sla.poller_enabled:
-        await sla_poller.start()
+    if run_schedulers:
+        incident_created_callback = None
+        if deployment.mode == "distributed":
+            from backend.services.incident_events import dispatch_incident_created
 
-    downsampler = UptimeDownsampler(factory)
-    app.state.uptime_downsampler = downsampler
-    await downsampler.start()
+            async def incident_created_callback(
+                org_id, incident_id, auto_start_tier
+            ):
+                await dispatch_incident_created(
+                    app,
+                    org_id=org_id,
+                    incident_id=incident_id,
+                    auto_start_tier=auto_start_tier,
+                )
 
-    # Escalation chain scheduler (Sprint 34). Always on — no-op when there
-    # are no chains running.
-    from backend.paging.scheduler import EscalationScheduler
+        sla_poller = SLAPoller(
+            factory,
+            config,
+            incident_created_callback=incident_created_callback,
+        )
+        app.state.sla_poller = sla_poller
+        if config.sla.poller_enabled:
+            await sla_poller.start()
+        scheduler_stoppers.append(sla_poller.stop)
 
-    escalation_scheduler = EscalationScheduler(factory)
-    app.state.escalation_scheduler = escalation_scheduler
-    await escalation_scheduler.start()
+        downsampler = UptimeDownsampler(factory)
+        app.state.uptime_downsampler = downsampler
+        await downsampler.start()
+        scheduler_stoppers.append(downsampler.stop)
 
-    # Audit scheduler (Sprint 39 step 2). No-op when no schedules exist.
-    from backend.auditor.scheduler import AuditScheduler
+        from backend.paging.scheduler import EscalationScheduler
 
-    audit_scheduler = AuditScheduler(
-        factory,
-        pool=app.state.mcp_pool,
-        config=app.state.config,
-    )
-    app.state.audit_scheduler = audit_scheduler
-    await audit_scheduler.start()
+        escalation_scheduler = EscalationScheduler(factory)
+        app.state.escalation_scheduler = escalation_scheduler
+        await escalation_scheduler.start()
+        scheduler_stoppers.append(escalation_scheduler.stop)
 
-    from backend.services.audit_archiver import AuditArchiveScheduler
+        from backend.auditor.scheduler import AuditScheduler
 
-    audit_archive_scheduler = AuditArchiveScheduler(factory, config.audit)
-    app.state.audit_archive_scheduler = audit_archive_scheduler
-    await audit_archive_scheduler.start()
+        audit_scheduler = AuditScheduler(
+            factory,
+            pool=app.state.mcp_pool,
+            config=app.state.config,
+        )
+        app.state.audit_scheduler = audit_scheduler
+        await audit_scheduler.start()
+        scheduler_stoppers.append(audit_scheduler.stop)
 
-    # Data-retention scheduler (Sprint 53). Enabled by default so a fresh
-    # deployment auto-prunes from day one; operators can disable per category
-    # via Config → "Storage & retention" or set OPSMENDER_RETENTION_ENABLED=false.
-    from backend.retention.scheduler import RetentionScheduler
+        from backend.services.audit_archiver import AuditArchiveScheduler
 
-    retention_scheduler = RetentionScheduler(factory)
-    app.state.retention_scheduler = retention_scheduler
-    await retention_scheduler.start()
+        audit_archive_scheduler = AuditArchiveScheduler(factory, config.audit)
+        app.state.audit_archive_scheduler = audit_archive_scheduler
+        await audit_archive_scheduler.start()
+        scheduler_stoppers.append(audit_archive_scheduler.stop)
 
-    from backend.reports.scheduler import ReportScheduler
+        from backend.retention.scheduler import RetentionScheduler
 
-    report_scheduler = ReportScheduler(factory)
-    app.state.report_scheduler = report_scheduler
-    await report_scheduler.start()
+        retention_scheduler = RetentionScheduler(factory)
+        app.state.retention_scheduler = retention_scheduler
+        await retention_scheduler.start()
+        scheduler_stoppers.append(retention_scheduler.stop)
+
+        from backend.reports.scheduler import ReportScheduler
+
+        report_scheduler = ReportScheduler(factory)
+        app.state.report_scheduler = report_scheduler
+        await report_scheduler.start()
+        scheduler_stoppers.append(report_scheduler.stop)
 
     # mcp.json file mirror (Sprint 42 step 6). Opt-in via OPSMENDER_MCP_JSON_SYNC.
     # When enabled, reconcile the file against every org's MCP servers on
     # startup so file edits made while the service was down are applied.
-    mcp_json_syncer = MCPJSONSyncer(factory)
+    mcp_json_syncer = MCPJSONSyncer(factory if run_bootstrap else None)
     app.state.mcp_json_syncer = mcp_json_syncer
-    if mcp_json_syncer.enabled:
+    if run_bootstrap and mcp_json_syncer.enabled:
         try:
             from backend.db.repos import OrganizationRepo
 
@@ -177,16 +213,29 @@ async def _lifespan(app: FastAPI):
 
     # Import any SKILL.md files under ./skills/ that aren't already in the DB.
     # Best-effort: failures are logged but do not block startup.
-    try:
-        await auto_import_skills(factory, skills_dir="skills")
-    except Exception as exc:  # noqa: BLE001
-        import logging
+    if run_bootstrap:
+        try:
+            await auto_import_skills(factory, skills_dir="skills")
+        except Exception as exc:  # noqa: BLE001
+            import logging
 
-        logging.getLogger(__name__).warning(
-            "skills.auto_import: startup scan failed: %s", exc
+            logging.getLogger(__name__).warning(
+                "skills.auto_import: startup scan failed: %s", exc
+            )
+
+    if run_worker:
+        from backend.services.incident_events import (
+            start_incident_created_subscriber,
         )
 
+        worker_bus = await start_incident_created_subscriber(app, database_url)
+
     yield
+
+    if worker_bus is not None:
+        worker_conn, unsubscribe = worker_bus
+        await unsubscribe()
+        await worker_conn.close()
 
     session_tasks = list(getattr(app.state, "session_tasks", set()))
     for task in session_tasks:
@@ -204,13 +253,8 @@ async def _lifespan(app: FastAPI):
 
         await asyncio.gather(*background_tasks, return_exceptions=True)
 
-    await downsampler.stop()
-    await sla_poller.stop()
-    await escalation_scheduler.stop()
-    await audit_scheduler.stop()
-    await audit_archive_scheduler.stop()
-    await retention_scheduler.stop()
-    await report_scheduler.stop()
+    for stop in reversed(scheduler_stoppers):
+        await stop()
     await engine.dispose()
 
 
@@ -236,6 +280,9 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.state.mcp_json_syncer = MCPJSONSyncer(None)
     app.state.session_tasks = set()
     app.state.background_tasks = set()
+    app.state.incident_event_publisher = None
+    app.state.deployment_mode = config.deployment.mode
+    app.state.service_role = config.deployment.service_role
     app.state.session_workflow_concurrency = _workflow_concurrency_from_env()
     app.state.session_workflow_semaphore = asyncio.Semaphore(
         app.state.session_workflow_concurrency
@@ -272,7 +319,10 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.audit import router as audit_router
     from backend.api.routes.config import router as config_router
     from backend.api.routes.ws import router as ws_router
-    from backend.api.routes.ingest import router as ingest_router
+    from backend.api.routes.ingest import (
+        router as ingest_router,
+        webhook_router as ingest_webhook_router,
+    )
     from backend.api.routes.reports import router as reports_router
     from backend.api.routes.integrations import router as integrations_router
     from backend.api.routes.workflow_profiles import router as workflow_profiles_router
@@ -304,39 +354,57 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     )
     from backend.api.routes.notifications import router as notifications_router
 
-    app.include_router(auth_router)
-    app.include_router(incidents_router)
-    app.include_router(sessions_router)
-    app.include_router(approvals_router)
-    app.include_router(models_router)
-    app.include_router(mcp_servers_router)
-    app.include_router(skills_router)
-    app.include_router(audit_router)
-    app.include_router(config_router)
-    app.include_router(ws_router)
-    app.include_router(ingest_router)
-    app.include_router(reports_router)
-    app.include_router(integrations_router)
-    app.include_router(workflow_profiles_router)
-    app.include_router(agent_team_profiles_router)
-    app.include_router(sla_router)
-    app.include_router(bot_oauth_router)
-    app.include_router(bot_connectors_router)
-    app.include_router(bot_webhooks_router)
-    app.include_router(organizations_router)
-    app.include_router(tenant_router)
-    app.include_router(sso_router)
-    app.include_router(saml_router)
-    app.include_router(audits_router)
-    app.include_router(paging_router)
-    app.include_router(slack_paging_router)
-    app.include_router(teams_paging_router)
-    app.include_router(memories_router)
-    app.include_router(sessions_memory_router)
-    app.include_router(retention_router)
-    app.include_router(invites_admin_router)
-    app.include_router(invites_public_router)
-    app.include_router(notifications_router)
+    api_routers = [
+        auth_router,
+        incidents_router,
+        sessions_router,
+        approvals_router,
+        models_router,
+        mcp_servers_router,
+        skills_router,
+        audit_router,
+        config_router,
+        ws_router,
+        ingest_router,
+        reports_router,
+        integrations_router,
+        workflow_profiles_router,
+        agent_team_profiles_router,
+        sla_router,
+        bot_oauth_router,
+        bot_connectors_router,
+        organizations_router,
+        tenant_router,
+        sso_router,
+        saml_router,
+        audits_router,
+        paging_router,
+        memories_router,
+        sessions_memory_router,
+        retention_router,
+        invites_admin_router,
+        invites_public_router,
+        notifications_router,
+    ]
+    dispatcher_routers = [
+        ingest_webhook_router,
+        bot_webhooks_router,
+        slack_paging_router,
+        teams_paging_router,
+    ]
+
+    deployment = config.deployment
+    if deployment.mode == "monolith":
+        selected_routers = [*api_routers, *dispatcher_routers]
+    elif deployment.service_role == "api":
+        selected_routers = api_routers
+    elif deployment.service_role == "dispatcher":
+        selected_routers = dispatcher_routers
+    else:
+        selected_routers = []
+
+    for selected_router in selected_routers:
+        app.include_router(selected_router)
 
     # -- Health check -------------------------------------------------------
     @app.get("/health", tags=["system"])
@@ -344,8 +412,9 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         return {"status": "ok"}
 
     # -- Frontend (static export) — MUST be registered last so API routes win
-    from backend.api.static import mount_frontend
+    if deployment.mode == "monolith" or deployment.service_role == "api":
+        from backend.api.static import mount_frontend
 
-    mount_frontend(app, config.app.frontend_static_dir)
+        mount_frontend(app, config.app.frontend_static_dir)
 
     return app

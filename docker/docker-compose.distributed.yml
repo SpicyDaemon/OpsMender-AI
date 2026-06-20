@@ -1,0 +1,115 @@
+# OpsMender distributed topology.
+#
+# API: user-facing REST/WebSocket/static frontend
+# Worker: incident-created subscription + AI session execution
+# Scheduler: singleton recurring jobs
+# Dispatcher: external incident/chat callback ingress
+
+x-opsmender-common: &opsmender-common
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+    args:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+  restart: unless-stopped
+  env_file:
+    - ../.env
+  environment: &opsmender-environment
+    OPSMENDER_DEPLOYMENT_MODE: distributed
+    OPSMENDER_ENVIRONMENT: ${OPSMENDER_ENVIRONMENT:-production}
+    OPSMENDER_DATABASE_URL: postgresql+asyncpg://opsmender:${POSTGRES_PASSWORD:-opsmender}@db:5432/opsmender
+    REDIS_URL: redis://redis:6379/0
+    OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  volumes:
+    - ../logs:/app/logs
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: opsmender
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opsmender}
+      POSTGRES_DB: opsmender
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opsmender"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    <<: *opsmender-common
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *opsmender-environment
+      OPSMENDER_SERVICE_ROLE: api
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *opsmender-common
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: *opsmender-environment
+      OPSMENDER_SERVICE_ROLE: worker
+    command:
+      - sh
+      - -c
+      - exec uvicorn backend.api.app:create_app --factory --host 0.0.0.0 --port 8000
+
+  scheduler:
+    <<: *opsmender-common
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: *opsmender-environment
+      OPSMENDER_SERVICE_ROLE: scheduler
+    command:
+      - sh
+      - -c
+      - exec uvicorn backend.api.app:create_app --factory --host 0.0.0.0 --port 8000
+
+  dispatcher:
+    <<: *opsmender-common
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: *opsmender-environment
+      OPSMENDER_SERVICE_ROLE: dispatcher
+    command:
+      - sh
+      - -c
+      - exec uvicorn backend.api.app:create_app --factory --host 0.0.0.0 --port 8000
+    ports:
+      - "8001:8000"
+
+volumes:
+  postgres_data:
+  redis_data:

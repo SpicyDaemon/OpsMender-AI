@@ -182,7 +182,8 @@ End-to-end **manual-QA walkthrough** (drives the real UI in a browser and report
 Set production values in `.env`, then bring it up detached:
 
 ```dotenv
-OPSMENDER_DEPLOYMENT_MODE=production
+OPSMENDER_DEPLOYMENT_MODE=monolith
+OPSMENDER_ENVIRONMENT=production
 OPSMENDER_JWT_SECRET=<64+ random chars>      # e.g. openssl rand -hex 32
 OPSMENDER_BOOTSTRAP_ADMIN_EMAIL=you@example.com
 OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD=<strong password>
@@ -202,7 +203,8 @@ Production mode **refuses to start** with a default/weak JWT secret. Put a TLS-t
 Download the Linux/Windows binary (with `.sha256`) from [**Releases**](https://github.com/SpicyDaemon/OpsMender-AI/releases), or build it with `bash scripts/build_binary.sh`. It bundles the Python runtime, the static frontend, migrations, and skills (Node.js is **not** bundled — install `node`/`npx` if your MCP servers need it).
 
 ```bash
-OPSMENDER_DEPLOYMENT_MODE=production \
+OPSMENDER_DEPLOYMENT_MODE=monolith \
+OPSMENDER_ENVIRONMENT=production \
 OPSMENDER_JWT_SECRET=$(openssl rand -hex 32) \
 OPSMENDER_DATABASE_URL=postgresql+asyncpg://user:pw@host/opsmender \
 OPSMENDER_BOOTSTRAP_ADMIN_EMAIL=you@example.com \
@@ -224,7 +226,9 @@ All configuration is via environment variables; [`.env.example`](.env.example) d
 
 | Variable | Prod | Default | Purpose |
 |---|---|---|---|
-| `OPSMENDER_DEPLOYMENT_MODE` | ✅ | `development` | `production` enforces startup guards. |
+| `OPSMENDER_DEPLOYMENT_MODE` | ✅ | `monolith` | `monolith` or `distributed`; legacy `development`/`production` select monolith. |
+| `OPSMENDER_ENVIRONMENT` | ✅ | `production` | `development` permits local defaults; `production` enforces startup guards. |
+| `OPSMENDER_SERVICE_ROLE` | Distributed | `api` | `api`, `worker`, `scheduler`, or `dispatcher`. |
 | `OPSMENDER_JWT_SECRET` | ✅ | — | Session-token signing key (64+ random chars). |
 | `OPSMENDER_DATABASE_URL` | ✅ | SQLite file | `postgresql+asyncpg://…` for production. |
 | `OPSMENDER_BOOTSTRAP_ADMIN_EMAIL` / `…_PASSWORD` | ✅ | `admin`/`admin123` (dev) | First admin account. |
@@ -233,6 +237,15 @@ All configuration is via environment variables; [`.env.example`](.env.example) d
 | `AUDIT_RETENTION_DAYS` | ➕ | `90` | Hot audit-entry retention before pruning or archival. |
 | `AUDIT_ARCHIVE_ENABLED` | ➕ | `false` | Archive expired audit entries to S3-compatible storage before deletion. |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / … | ➕ | — | Only for the model providers you enable. |
+
+For the four-process topology:
+
+```bash
+docker compose -f docker/docker-compose.distributed.yml up --build -d
+```
+
+The API is exposed on port 8000. External incident/chat callback ingress is
+exposed by the dispatcher on port 8001; route those webhook paths there.
 
 <details>
 <summary><b>First-login checklist (production)</b></summary>

@@ -26,6 +26,23 @@ Key configurations include:
 - **Auto-Start Policies:** Conditions under which OpsMender will automatically start an AI session upon incident ingestion.
 - **SLA Poller Defaults:** The non-AI Reliability checker that repeatedly probes HTTP/TCP targets. HTTP targets can treat exact codes, status classes (`2xx`), ranges (`200-299`), or expected error codes such as `404` as healthy.
 
+### Monolith and distributed deployment
+
+Monolith remains the default:
+
+```dotenv
+OPSMENDER_DEPLOYMENT_MODE=monolith
+OPSMENDER_ENVIRONMENT=production
+```
+
+For separate API, worker, scheduler, and dispatcher processes, use
+`docker/docker-compose.distributed.yml`. It assigns
+`OPSMENDER_SERVICE_ROLE=api|worker|scheduler|dispatcher` per container. The API
+is exposed on port 8000 and external webhook/callback ingress on dispatcher
+port 8001. Both share Postgres and Redis. Existing installations using
+`OPSMENDER_DEPLOYMENT_MODE=development|production` continue to run as
+monoliths.
+
 ## 3. Model Configuration
 
 OpsMender supports multiple LLM providers. Navigate to **Models** in the sidebar (`/dashboard/models`) to configure them.

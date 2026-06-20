@@ -6,6 +6,7 @@ import dataclasses
 import json
 import os
 import pathlib
+from collections.abc import Mapping
 from typing import Any
 
 from dotenv import dotenv_values
@@ -30,15 +31,73 @@ class InsecureProductionConfigError(RuntimeError):
     """Raised when the API would start in production with an unsafe default."""
 
 
+@dataclasses.dataclass(frozen=True)
+class DeploymentConfig:
+    """Process topology and security environment."""
+
+    mode: str = "monolith"
+    service_role: str = "all"
+    environment: str = "production"
+
+
+def resolve_deployment_config(
+    values: Mapping[str, str] | None = None,
+) -> DeploymentConfig:
+    """Resolve new topology values without breaking legacy environment values."""
+
+    env = os.environ if values is None else values
+    raw_mode = (env.get("OPSMENDER_DEPLOYMENT_MODE") or "").strip().lower()
+    raw_environment = (env.get("OPSMENDER_ENVIRONMENT") or "").strip().lower()
+
+    if raw_mode in {"monolith", "distributed"}:
+        mode = raw_mode
+        environment = raw_environment or "production"
+    else:
+        mode = "monolith"
+        legacy_environment = (
+            raw_mode if raw_mode in {"development", "production"} else "production"
+        )
+        environment = raw_environment or legacy_environment
+
+    if environment not in {"development", "production"}:
+        raise ValueError(
+            "OPSMENDER_ENVIRONMENT must be development or production, "
+            f"got {environment!r}"
+        )
+
+    if mode == "monolith":
+        return DeploymentConfig(
+            mode=mode,
+            service_role="all",
+            environment=environment,
+        )
+
+    service_role = (env.get("OPSMENDER_SERVICE_ROLE") or "api").strip().lower()
+    if service_role not in {"api", "worker", "scheduler", "dispatcher"}:
+        raise ValueError(
+            "OPSMENDER_SERVICE_ROLE must be api, worker, scheduler, or dispatcher, "
+            f"got {service_role!r}"
+        )
+    return DeploymentConfig(
+        mode=mode,
+        service_role=service_role,
+        environment=environment,
+    )
+
+
+def is_development_environment() -> bool:
+    return resolve_deployment_config().environment == "development"
+
+
 def check_production_safety(config: "AppConfig") -> None:
     """Refuse to start the API in production with an unset JWT secret.
 
-    Activated when ``OPSMENDER_DEPLOYMENT_MODE`` is unset or set to any
-    value other than ``"development"``. ``scripts/dev_server.py`` sets
-    the env var to ``development`` so local dev keeps working.
+    Activated when the resolved security environment is production.
+    ``OPSMENDER_DEPLOYMENT_MODE=development`` remains a legacy alias;
+    new topology values use ``OPSMENDER_ENVIRONMENT``.
     """
-    mode = (os.environ.get("OPSMENDER_DEPLOYMENT_MODE") or "").strip().lower()
-    if mode == "development":
+    deployment = getattr(config, "deployment", None) or resolve_deployment_config()
+    if deployment.environment == "development":
         return
     secret = (config.auth.jwt_secret or "").strip()
     if secret in _DEFAULT_JWT_SECRETS:
@@ -46,7 +105,7 @@ def check_production_safety(config: "AppConfig") -> None:
             "OPSMENDER_JWT_SECRET is still the default placeholder "
             f"({secret!r}). Set a strong value before starting the API in "
             "production — e.g. `openssl rand -hex 32` — or set "
-            "OPSMENDER_DEPLOYMENT_MODE=development for local dev."
+            "OPSMENDER_ENVIRONMENT=development for local dev."
         )
 
 _ENV_PATH_OVERRIDE: pathlib.Path | None = None
@@ -428,6 +487,7 @@ class AppConfig:
     providers: ProviderConfig
     people: PeopleConfig
     smtp: SMTPConfig
+    deployment: DeploymentConfig
     env_file: str
 
     @classmethod
@@ -484,6 +544,7 @@ class AppConfig:
             ),
             max_node_seconds=_env_int(env, "OPSMENDER_TIER0_MAX_NODE_SECONDS", 120),
         )
+        deployment = resolve_deployment_config(env)
 
         return cls(
             mcp_servers=_parse_mcp_servers(env),
@@ -569,6 +630,7 @@ class AppConfig:
                 from_address=_env_str(env, "OPSMENDER_SMTP_FROM"),
                 use_tls=_env_bool(env, "OPSMENDER_SMTP_USE_TLS", True),
             ),
+            deployment=deployment,
             env_file=str(env_path),
         )
 

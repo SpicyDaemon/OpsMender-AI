@@ -11,7 +11,6 @@ CLI is the only place that prints; the functions return data.
 
 from __future__ import annotations
 
-import os
 import pathlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -20,7 +19,11 @@ from typing import Awaitable, Callable
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from backend.config_loader import AppConfig, _DEFAULT_JWT_SECRETS
+from backend.config_loader import (
+    AppConfig,
+    _DEFAULT_JWT_SECRETS,
+    resolve_deployment_config,
+)
 
 
 Status = str  # "ok" | "warn" | "fail"
@@ -46,8 +49,8 @@ class CheckResult:
 def check_jwt_secret(config: AppConfig) -> CheckResult:
     """Verify the JWT secret is not a placeholder and is reasonably long."""
     secret = (config.auth.jwt_secret or "").strip()
-    mode = (os.environ.get("OPSMENDER_DEPLOYMENT_MODE") or "").strip().lower()
-    is_dev = mode == "development"
+    deployment = getattr(config, "deployment", None) or resolve_deployment_config()
+    is_dev = deployment.environment == "development"
 
     if secret in _DEFAULT_JWT_SECRETS:
         if is_dev:

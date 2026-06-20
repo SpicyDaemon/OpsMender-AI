@@ -34,7 +34,6 @@ from backend.api.schemas import (
 )
 from backend.db.models import IngestToken, User
 from backend.db.repos import IngestTokenRepo, ServiceRepo
-from backend.ingest.autostart import schedule_auto_started_session
 from backend.ingest.llm_extractor import (
     apply_shape_cache,
     compute_shape_hash,
@@ -48,19 +47,29 @@ from backend.ingest.service import (
     hash_token,
     ingest_incident,
 )
+from backend.services.incident_events import dispatch_incident_created
 
 router = APIRouter(tags=["ingest"])
+webhook_router = APIRouter(tags=["ingest"])
 
 
-def _schedule_auto_start(app, *, org_id: uuid.UUID, result) -> None:
-    if result.auto_start_tier is None or result.incident_id is None:
+async def _dispatch_created(app, *, org_id: uuid.UUID, result) -> None:
+    if result.incident_id is None or result.dedup_action != "created":
         return
-    schedule_auto_started_session(
-        app,
-        org_id=org_id,
-        incident_id=result.incident_id,
-        tier=result.auto_start_tier,
-    )
+    try:
+        await dispatch_incident_created(
+            app,
+            org_id=org_id,
+            incident_id=result.incident_id,
+            auto_start_tier=result.auto_start_tier,
+        )
+    except Exception:  # noqa: BLE001 - intake is durable before bus publication
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "incident.created publication failed incident=%s",
+            result.incident_id,
+        )
 
 
 async def _stop_sessions_on_resolve(
@@ -103,7 +112,7 @@ def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
 # ---------------------------------------------------------------------------
 
 
-@router.post(
+@webhook_router.post(
     "/api/v1/intake/{service_token}",
     response_model=IngestResponse,
     summary="Ingest an incident through a service intake endpoint",
@@ -186,7 +195,7 @@ async def service_intake_webhook(
     # does not wait for session creation or workflow/model execution.
     await db.commit()
     await _stop_sessions_on_resolve(request.app, db, org_id=service.org_id, result=result)
-    _schedule_auto_start(request.app, org_id=service.org_id, result=result)
+    await _dispatch_created(request.app, org_id=service.org_id, result=result)
     return IngestResponse(
         success=result.success,
         incident_id=result.incident_id,
@@ -195,7 +204,7 @@ async def service_intake_webhook(
     )
 
 
-@router.post(
+@webhook_router.post(
     "/incidents/ingest",
     response_model=IngestResponse,
     summary="Ingest an incident from an external source",
@@ -285,7 +294,7 @@ async def ingest_webhook(
 
     await db.commit()
     await _stop_sessions_on_resolve(request.app, db, org_id=token.org_id, result=result)
-    _schedule_auto_start(request.app, org_id=token.org_id, result=result)
+    await _dispatch_created(request.app, org_id=token.org_id, result=result)
     return IngestResponse(
         success=result.success,
         incident_id=result.incident_id,

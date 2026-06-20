@@ -11,7 +11,7 @@ Runs once at API startup. If any user already exists, the function is a
 no-op — operators who later want to onboard a *new* admin do so through
 the invite flow.
 
-Development convenience: when ``OPSMENDER_DEPLOYMENT_MODE=development`` and no
+Development convenience: when the resolved environment is development and no
 bootstrap env vars are set, fall back to a default ``admin`` / ``admin123``
 admin so the documented ``docker compose up`` dev flow logs in out of the box
 (matching ``scripts/dev_server.py`` and the README). Production mode never
@@ -21,11 +21,11 @@ seeds a default admin — it requires explicit bootstrap vars.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from typing import TYPE_CHECKING
 
 from backend.api.auth import hash_password
+from backend.config_loader import is_development_environment
 from backend.db.repos import OrganizationRepo, UserRepo
 
 if TYPE_CHECKING:
@@ -51,7 +51,7 @@ def _username_from_email(email: str) -> str:
 
 
 def _is_development_mode() -> bool:
-    return (os.environ.get("OPSMENDER_DEPLOYMENT_MODE") or "").strip().lower() == "development"
+    return is_development_environment()
 
 
 async def bootstrap_admin(

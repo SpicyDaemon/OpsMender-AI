@@ -7,7 +7,6 @@ GET  /auth/me       — return the current user profile
 
 from __future__ import annotations
 
-import os
 import uuid
 
 from datetime import datetime, timedelta, timezone
@@ -41,7 +40,7 @@ from backend.api.schemas import (
     UserResponse,
     UserUpdateRequest,
 )
-from backend.config_loader import AppConfig
+from backend.config_loader import AppConfig, is_development_environment
 from backend.db.models import User
 from backend.db.repos import (
     OrganizationRepo,
@@ -65,8 +64,7 @@ def _is_development_mode() -> bool:
     without changes.
     """
 
-    mode = (os.environ.get("OPSMENDER_DEPLOYMENT_MODE") or "").strip().lower()
-    return mode == "development"
+    return is_development_environment()
 
 
 async def _self_registration_open(db: AsyncSession) -> bool:

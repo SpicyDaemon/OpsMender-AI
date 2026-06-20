@@ -7,6 +7,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 import httpx
@@ -136,6 +137,10 @@ class SLAPoller:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         config: AppConfig,
+        *,
+        incident_created_callback: (
+            Callable[[uuid.UUID, uuid.UUID, int], Awaitable[None]] | None
+        ) = None,
     ) -> None:
         self._session_factory = session_factory
         self._config = config
@@ -143,6 +148,7 @@ class SLAPoller:
         # Track ongoing probes so we don't spawn duplicates if polling interval < latency
         self._running_probes: set[uuid.UUID] = set()
         self._violated_slo_ids: set[uuid.UUID] = set()
+        self._incident_created_callback = incident_created_callback
 
     async def start(self) -> None:
         if not self._config.sla.poller_enabled:
@@ -190,6 +196,7 @@ class SLAPoller:
                 await self._check_slos(org_id)
 
     async def _check_slos(self, org_id: uuid.UUID) -> None:
+        pending_created_events: list[tuple[uuid.UUID, uuid.UUID, int]] = []
         async with self._session_factory() as db:
             slos = await SLORepo.list_all(db, org_id, active_only=True)
 
@@ -273,15 +280,23 @@ class SLAPoller:
                         if not await has_active_session_for_incident(
                             db, org_id, incident.id
                         ):
-                            await SessionRepo.create(
-                                db,
-                                org_id,
-                                tier=policy.session_tier,
-                                incident_id=incident.id,
-                            )
+                            if self._incident_created_callback is None:
+                                await SessionRepo.create(
+                                    db,
+                                    org_id,
+                                    tier=policy.session_tier,
+                                    incident_id=incident.id,
+                                )
+                            else:
+                                pending_created_events.append(
+                                    (org_id, incident.id, policy.session_tier)
+                                )
                 else:
                     self._violated_slo_ids.discard(slo.id)
             await db.commit()
+        if self._incident_created_callback is not None:
+            for event in pending_created_events:
+                await self._incident_created_callback(*event)
 
     async def _probe_and_record(self, org_id: uuid.UUID, target: SLATarget) -> None:
         try:

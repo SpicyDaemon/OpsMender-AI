@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -99,6 +100,9 @@ async def test_create_invite_returns_one_time_url(env):
     assert invite["email"] == "newbie@example.com"
     assert invite["role"] == "operator"
     assert invite["status"] == "pending"
+    expires_at = datetime.fromisoformat(invite["expires_at"])
+    remaining = expires_at - datetime.now(timezone.utc)
+    assert timedelta(hours=71, minutes=59) < remaining <= timedelta(hours=72)
 
 
 async def test_create_invite_requires_admin(env):

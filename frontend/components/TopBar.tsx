@@ -23,6 +23,11 @@ import {
   setMyPrimaryOrganization,
   setOrgId,
 } from "@/lib/api";
+import {
+  scopeDashboardPath,
+  setOrgSlug,
+  stripOrgScope,
+} from "@/lib/org-path";
 import type { MyOrganizationResponse, TenantContextResponse } from "@/lib/types";
 
 const ROLE_STYLES: Record<string, string> = {
@@ -94,6 +99,8 @@ export function TopBar({
           res.items[0]?.id ||
           null;
         setActiveOrgId(current);
+        const currentOrg = res.items.find((org) => org.id === current);
+        if (currentOrg) setOrgSlug(currentOrg.slug);
         if (current && current !== stored) setOrgId(current);
       })
       .catch(() => {
@@ -107,11 +114,16 @@ export function TopBar({
     setSwitching(true);
     try {
       setOrgId(org.id);
+      setOrgSlug(org.slug);
       await setMyPrimaryOrganization(org.id);
       setActiveOrgId(org.id);
       setOrgMenuOpen(false);
       // Reload so every page-level fetch reruns under the new org context.
-      window.location.reload();
+      const target = scopeDashboardPath(
+        stripOrgScope(window.location.pathname),
+        org.slug,
+      );
+      window.location.href = `${target}${window.location.search}`;
     } catch {
       setSwitching(false);
     }
@@ -301,7 +313,10 @@ export function TopBar({
                   )}
                 </div>
                 <Link
-                  href="/dashboard/settings/profile"
+                  href={scopeDashboardPath(
+                    "/dashboard/settings/profile",
+                    tenant?.org_slug ?? activeOrg?.slug ?? null,
+                  )}
                   onClick={() => setMenuOpen(false)}
                   className="flex w-full items-center gap-2 border-b border-border-subtle px-3 py-2.5 text-sm text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
                 >

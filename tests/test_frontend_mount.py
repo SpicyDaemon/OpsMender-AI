@@ -98,6 +98,13 @@ class TestFrontendMount:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
 
+    async def test_org_scoped_dashboard_route_reuses_static_export(
+        self, client: AsyncClient
+    ):
+        resp = await client.get("/o/test-org/dashboard/incidents/detail")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
     async def test_api_route_wins(self, client: AsyncClient):
         """The /health API route must still be reachable, not shadowed by /{full_path:path}."""
         resp = await client.get("/health")

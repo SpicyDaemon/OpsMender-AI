@@ -57,6 +57,9 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
         # Reject traversal attempts up-front.
         if ".." in safe_path.split("/"):
             raise HTTPException(status_code=400, detail="invalid path")
+        parts = safe_path.split("/")
+        if len(parts) >= 3 and parts[0] == "o" and parts[2] == "dashboard":
+            safe_path = "/".join(parts[2:])
 
         candidates: list[pathlib.Path] = []
         if not safe_path:

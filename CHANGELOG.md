@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 3 Phase 4 — UX and onboarding.** Added email-first signup with
+  collision-safe derived usernames, nullable username storage with a partial
+  unique index, email-domain OIDC/SAML hints, 72-hour admin invites, and
+  organization-scoped `/o/{slug}/dashboard/...` URLs. Existing
+  system/light/dark theming and invite-management UI complete the onboarding
+  flow.
 - **Wave 3 Phase 3 — distributed deployment mode.** Added
   `monolith|distributed` topology selection, API/worker/scheduler/dispatcher
   service roles, role-specific routers and background jobs, a PostgreSQL

@@ -11,7 +11,7 @@ Two routers exported from this module:
 Invite tokens follow the same opaque-token pattern as password resets
 (see ``backend/people/tokens.py``): mint a 256-bit URL-safe token,
 return the raw value to the admin exactly once, persist only the
-sha256 hash. TTL is 7 days (versus 24 hours for password resets) so
+sha256 hash. TTL is 72 hours (versus 24 hours for password resets) so
 invites survive email delays.
 """
 
@@ -49,7 +49,7 @@ admin_router = APIRouter(prefix="/organizations", tags=["invites"])
 public_router = APIRouter(prefix="/invites", tags=["invites"])
 
 
-INVITE_TTL = timedelta(days=7)
+INVITE_TTL = timedelta(hours=72)
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ def _invite_email_body(*, org_name: str, role: str, url: str) -> str:
     return (
         f"Hi,\n\n"
         f"You've been invited to join {org_name} on OpsMender as a "
-        f"{role}. Click the link below within 7 days to accept "
+        f"{role}. Click the link below within 72 hours to accept "
         f"the invite and set up your account:\n\n"
         f"{url}\n\n"
         f"If you didn't expect this invite, you can safely ignore "

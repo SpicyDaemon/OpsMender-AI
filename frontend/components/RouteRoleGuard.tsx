@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 import { useAuth } from "@/context/auth";
 import { requiredRolesForPath } from "@/components/Sidebar";
+import { stripOrgScope } from "@/lib/org-path";
 
 /**
  * Per-route authorization guard. Mirrors the sidebar role model so a user who
@@ -16,7 +17,7 @@ export function RouteRoleGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuth();
 
-  const allowed = requiredRolesForPath(pathname ?? "");
+  const allowed = requiredRolesForPath(stripOrgScope(pathname ?? ""));
   if (user && allowed && !allowed.includes(user.role)) {
     return (
       <div className="mx-auto flex max-w-md flex-col items-center justify-center py-20 text-center">

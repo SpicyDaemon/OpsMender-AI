@@ -32,6 +32,8 @@ OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD=replace-me-on-first-login
 After this row exists, public self-signup is closed — the only path to a new account is an admin invite.
 
 If you skip the bootstrap env vars, the first user to register via `/register` becomes the admin (legacy escape hatch). Most production installs should set the env vars and never leave self-signup open.
+Public registration asks only for email + password; OpsMender derives a
+collision-safe username for compatibility with historical attribution.
 
 ---
 
@@ -77,7 +79,14 @@ Default-mode invite flow (full details in [People Guide §4](people-guide.md)):
 4. OpsMender returns a **one-time invite URL**. If SMTP is configured (see below), OpsMender also tries to email it; if not, copy the URL and deliver it however you want (chat, your own email, etc.).
 5. The recipient opens the URL, picks a username + password, and is signed into OpsMender as the role you chose.
 
-Invites are single-use and expire after **7 days**. Lost or expired? Use the **resend** action on a pending row — it revokes the old token and mints a fresh one.
+Invites are single-use and expire after **72 hours**. Lost or expired? Use the
+**resend** action on a pending row — it revokes the old token and mints a fresh
+one.
+
+After sign-in, dashboard links use
+`/o/{organization-slug}/dashboard/...`. The slug selects the active workspace
+for bookmarkable links; existing bare `/dashboard/...` links remain compatible
+and redirect after the active workspace is loaded.
 
 ---
 

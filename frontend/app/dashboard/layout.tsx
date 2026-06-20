@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { AuthGuard } from "@/components/AuthGuard";
 import { RouteRoleGuard } from "@/components/RouteRoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -8,9 +9,21 @@ import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import type { ReactNode } from "react";
+import { getOrgSlug, scopeDashboardPath } from "@/lib/org-path";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!pathname.startsWith("/dashboard")) return;
+    const slug = getOrgSlug();
+    if (!slug) return;
+    const target = scopeDashboardPath(pathname, slug);
+    window.location.replace(
+      `${target}${window.location.search}${window.location.hash}`,
+    );
+  }, [pathname]);
 
   return (
     <AuthGuard>

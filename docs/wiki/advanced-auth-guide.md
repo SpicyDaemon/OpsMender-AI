@@ -123,7 +123,12 @@ OpsMender acts as an OIDC relying party. Each org can wire its own IdP — Okta,
 
 ### Login flow
 
-When SSO is enabled on a host-pinned domain, the login page shows a **Sign in with {Org name}** button above the local email/password form. Local login still works (and remains the only option on hosts that aren't pinned). The button only appears when a provider is actually configured for the resolved tenant — that gating is independent of the env flag.
+When SSO is enabled on a host-pinned domain, the login page shows a **Sign in
+with {Org name}** button above the local email/password form. On an unpinned
+host, leaving the email field calls `POST /auth/sso-hint`; a verified
+organization domain or configured `allowed_email_domains` match replaces the
+password field with the appropriate OIDC/SAML button. Local login remains the
+fallback when no provider matches.
 
 ### Client secret encryption
 

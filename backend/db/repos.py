@@ -91,7 +91,7 @@ class UserRepo:
     async def create(
         db: AsyncSession,
         *,
-        username: str,
+        username: str | None,
         email: str,
         password_hash: str,
         auth_source: str = "local",

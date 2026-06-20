@@ -23,6 +23,13 @@ export interface UserResponse {
   deleted_at?: string | null;
 }
 
+export interface SSOHintResponse {
+  provider: "local" | "oidc" | "saml";
+  label: string;
+  login_path?: string | null;
+  org_slug?: string | null;
+}
+
 export interface UserListResponse {
   items: UserResponse[];
   total: number;

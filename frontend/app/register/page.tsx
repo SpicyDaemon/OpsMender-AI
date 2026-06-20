@@ -7,17 +7,15 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { register } from "@/lib/api";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
-import { FormError, Input, Label, Select } from "@/components/ui/Input";
+import { FormError, Input, Label } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
 
 export default function RegisterPage() {
   const { login } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({
-    username: "",
     email: "",
     password: "",
-    role: "viewer" as "admin" | "operator" | "viewer",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,9 +29,9 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      await register(form.username, form.email, form.password, form.role);
+      await register(form.email, form.password);
       // Auto-login after registration
-      await login(form.username, form.password);
+      await login(form.email, form.password);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -56,21 +54,6 @@ export default function RegisterPage() {
       )}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <Label htmlFor="username">Username</Label>
-          <Input
-            id="username"
-            type="text"
-            name="username"
-            autoComplete="username"
-            required
-            minLength={3}
-            value={form.username}
-            onChange={(e) => set("username", e.target.value)}
-            placeholder="johndoe"
-          />
-        </div>
-
         <div>
           <Label htmlFor="email">Email</Label>
           <Input
@@ -96,19 +79,6 @@ export default function RegisterPage() {
           onChange={(e) => set("password", e.target.value)}
           placeholder="Minimum 8 characters"
         />
-
-        <div>
-          <Label htmlFor="role">Role</Label>
-          <Select
-            id="role"
-            value={form.role}
-            onChange={(e) => set("role", e.target.value)}
-          >
-            <option value="viewer">Viewer</option>
-            <option value="operator">Operator</option>
-            <option value="admin">Admin</option>
-          </Select>
-        </div>
 
         {error && <FormError message={error} />}
 

@@ -245,7 +245,7 @@ class UserOrganization(Base):
 class User(Base):
     __tablename__ = "users"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    username: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    username: Mapped[str | None] = mapped_column(String(150), nullable=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     auth_source: Mapped[str] = mapped_column(
@@ -282,6 +282,16 @@ class User(Base):
 
     organizations: Mapped[list["UserOrganization"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_users_username_unique_not_null",
+            "username",
+            unique=True,
+            postgresql_where=text("username IS NOT NULL"),
+            sqlite_where=text("username IS NOT NULL"),
+        ),
     )
 
 

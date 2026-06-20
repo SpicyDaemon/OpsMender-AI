@@ -18,7 +18,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=150)
+    username: Optional[str] = Field(default=None, min_length=3, max_length=150)
     email: str = Field(..., max_length=255)  # EmailStr needs email-validator
     password: str = Field(..., min_length=8)
     role: str = Field(default="viewer", pattern="^(admin|operator|viewer)$")
@@ -34,9 +34,20 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class SSOHintRequest(BaseModel):
+    email: str = Field(..., max_length=255)
+
+
+class SSOHintResponse(BaseModel):
+    provider: str = Field(pattern="^(local|oidc|saml)$")
+    label: str
+    login_path: Optional[str] = None
+    org_slug: Optional[str] = None
+
+
 class UserResponse(BaseModel):
     id: uuid.UUID
-    username: str
+    username: Optional[str] = None
     email: str
     auth_source: str = "local"
     role: str

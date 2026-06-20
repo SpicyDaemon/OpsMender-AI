@@ -284,6 +284,55 @@ class TestHealth:
 
 
 class TestAuth:
+    async def test_register_with_email_only_derives_username(
+        self, client: AsyncClient
+    ):
+        first = await client.post(
+            "/auth/register",
+            json={"email": "person@example.com", "password": "password123"},
+        )
+        second = await client.post(
+            "/auth/register",
+            json={"email": "person@elsewhere.com", "password": "password123"},
+        )
+
+        assert first.status_code == 201
+        assert first.json()["username"] == "person"
+        assert second.status_code == 201
+        assert second.json()["username"] == "person-2"
+
+    async def test_sso_hint_resolves_email_domain(self, client: AsyncClient, app):
+        from backend.db.repos import OrganizationDomainRepo, OrgSSOConfigRepo
+
+        async with app.state.session_factory() as db:
+            await OrganizationDomainRepo.create(
+                db,
+                org_id=TEST_ORG_ID,
+                domain="acme.example",
+            )
+            await OrgSSOConfigRepo.upsert(
+                db,
+                org_id=TEST_ORG_ID,
+                provider="oidc",
+                discovery_url="https://id.acme.example/.well-known/openid-configuration",
+                client_id="client",
+                client_secret_encrypted="encrypted",
+            )
+            await db.commit()
+
+        response = await client.post(
+            "/auth/sso-hint",
+            json={"email": "operator@acme.example"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "provider": "oidc",
+            "label": "Continue with Test Org SSO",
+            "login_path": "/auth/sso/test-org/login",
+            "org_slug": "test-org",
+        }
+
     async def test_register_first_user_is_admin(self, client: AsyncClient):
         resp = await client.post(
             "/auth/register",

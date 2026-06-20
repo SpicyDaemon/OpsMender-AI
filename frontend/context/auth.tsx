@@ -8,7 +8,22 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { clearToken, getMe, getToken, login as apiLogin, setToken, setOrgId, clearOrgId } from "@/lib/api";
+import {
+  clearOrgId,
+  clearToken,
+  getMe,
+  getToken,
+  listMyOrganizations,
+  login as apiLogin,
+  setOrgId,
+  setToken,
+} from "@/lib/api";
+import {
+  getOrgSlug,
+  scopeDashboardPath,
+  setOrgSlug,
+  stripOrgScope,
+} from "@/lib/org-path";
 import type { UserResponse } from "@/lib/types";
 
 interface AuthContextValue {
@@ -26,6 +41,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const syncOrganization = useCallback(async (currentUser: UserResponse) => {
+    if (currentUser.primary_org_id) setOrgId(currentUser.primary_org_id);
+    try {
+      const organizations = await listMyOrganizations();
+      const requestedSlug = getOrgSlug();
+      const active =
+        organizations.items.find((org) => org.slug === requestedSlug) ??
+        organizations.items.find(
+          (org) => org.id === currentUser.primary_org_id,
+        ) ??
+        organizations.items.find((org) => org.is_primary) ??
+        organizations.items[0];
+      if (active) {
+        setOrgId(active.id);
+        setOrgSlug(active.slug);
+        if (
+          requestedSlug &&
+          requestedSlug !== active.slug &&
+          window.location.pathname.startsWith("/o/")
+        ) {
+          const target = scopeDashboardPath(
+            stripOrgScope(window.location.pathname),
+            active.slug,
+          );
+          window.location.replace(`${target}${window.location.search}`);
+        }
+      }
+    } catch {
+      // Keep the primary organization id when the list is unavailable.
+    }
+  }, []);
+
   // On mount, re-hydrate from stored token
   useEffect(() => {
     const token = getToken();
@@ -35,25 +82,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     getMe()
-      .then((u) => {
+      .then(async (u) => {
         setUser(u);
-        if (u.primary_org_id) setOrgId(u.primary_org_id);
+        await syncOrganization(u);
       })
       .catch(() => clearToken())
       .finally(() => setLoading(false));
-  }, []);
+  }, [syncOrganization]);
 
   const login = useCallback(async (username: string, password: string) => {
     const resp = await apiLogin(username, password);
     setToken(resp.access_token);
     const me = await getMe();
     setUser(me);
-    if (me.primary_org_id) setOrgId(me.primary_org_id);
-  }, []);
+    await syncOrganization(me);
+  }, [syncOrganization]);
 
   const logout = useCallback(() => {
     clearToken();
     clearOrgId();
+    setOrgSlug(null);
     setUser(null);
     window.location.href = "/login";
   }, []);

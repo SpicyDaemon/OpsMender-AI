@@ -78,7 +78,7 @@ The invited user opens `/invite?token=...`, picks a username and password, and i
 Invite behavior:
 
 - Invites are **single-use**.
-- Invites expire after **7 days**.
+- Invites expire after **72 hours**.
 - Revoked, expired, and already-used tokens are all rejected on consume.
 - The invite list shows the derived state so admins can tell pending vs accepted vs expired vs revoked at a glance.
 - If the recipient loses the original URL, use the **resend** action on the pending invite row. OpsMender revokes the old link and mints a fresh one in one step.

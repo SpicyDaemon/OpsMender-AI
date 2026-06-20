@@ -8,8 +8,16 @@ import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 import { FormError, Input, Label } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
-import { getMe, getRegistrationOpen, resolveTenant, setOrgId, setToken } from "@/lib/api";
-import type { TenantContextResponse } from "@/lib/types";
+import {
+  getMe,
+  getRegistrationOpen,
+  getSSOHint,
+  resolveTenant,
+  setOrgId,
+  setToken,
+} from "@/lib/api";
+import type { SSOHintResponse, TenantContextResponse } from "@/lib/types";
+import { setOrgSlug } from "@/lib/org-path";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -18,6 +26,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ssoHint, setSSOHint] = useState<SSOHintResponse | null>(null);
+  const [hintLoading, setHintLoading] = useState(false);
   const [tenant, setTenant] = useState<TenantContextResponse | null>(null);
   // Sprint 56: hide the register link when self-signup is closed. Null
   // while loading so we don't briefly flash the link.
@@ -57,6 +67,14 @@ export default function LoginPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (
+      ssoHint?.login_path &&
+      (ssoHint.provider === "oidc" || ssoHint.provider === "saml")
+    ) {
+      setOrgSlug(ssoHint.org_slug ?? null);
+      window.location.href = ssoHint.login_path;
+      return;
+    }
     setError("");
     setLoading(true);
     try {
@@ -66,6 +84,22 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function resolveEmailHint() {
+    const email = username.trim().toLowerCase();
+    if (!email.includes("@")) {
+      setSSOHint(null);
+      return;
+    }
+    setHintLoading(true);
+    try {
+      setSSOHint(await getSSOHint(email));
+    } catch {
+      setSSOHint(null);
+    } finally {
+      setHintLoading(false);
     }
   }
 
@@ -95,6 +129,7 @@ export default function LoginPage() {
           {tenant?.sso_enabled && tenant.sso_login_path && (
             <a
               href={tenant.sso_login_path}
+              onClick={() => setOrgSlug(tenant.org_slug ?? null)}
               className="flex w-full items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
             >
               Sign in with {tenant.org_name ?? "SSO"}
@@ -103,6 +138,7 @@ export default function LoginPage() {
           {tenant?.saml_enabled && tenant.saml_login_path && (
             <a
               href={tenant.saml_login_path}
+              onClick={() => setOrgSlug(tenant.org_slug ?? null)}
               className="flex w-full items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
             >
               Sign in with SAML
@@ -118,35 +154,56 @@ export default function LoginPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="username">Username or email</Label>
+          <Label htmlFor="username">Email</Label>
           <Input
             id="username"
-            type="text"
+            type="email"
             name="username"
-            autoComplete="username"
+            autoComplete="email"
             required
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="admin or you@example.com"
+            onChange={(e) => {
+              setUsername(e.target.value);
+              setSSOHint(null);
+            }}
+            onBlur={resolveEmailHint}
+            placeholder="you@example.com"
           />
         </div>
 
-        <PasswordField
-          id="password"
-          name="password"
-          label="Password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
-        />
+        {ssoHint?.provider !== "oidc" && ssoHint?.provider !== "saml" ? (
+          <PasswordField
+            id="password"
+            name="password"
+            label="Password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+        ) : null}
 
         {error && <FormError message={error} />}
 
-        <Button type="submit" loading={loading} className="w-full justify-center">
-          Sign in
-        </Button>
+        {ssoHint?.login_path &&
+        (ssoHint.provider === "oidc" || ssoHint.provider === "saml") ? (
+          <a
+            href={ssoHint.login_path}
+            onClick={() => setOrgSlug(ssoHint.org_slug ?? null)}
+            className="flex w-full items-center justify-center rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            {ssoHint.label}
+          </a>
+        ) : (
+          <Button
+            type="submit"
+            loading={loading || hintLoading}
+            className="w-full justify-center"
+          >
+            Sign in
+          </Button>
+        )}
       </form>
     </AuthShell>
   );

@@ -33,6 +33,7 @@ import {
 import { useAuth } from "@/context/auth";
 import { useTheme } from "@/context/theme";
 import { getConfig } from "@/lib/api";
+import { getOrgSlug, scopeDashboardPath, stripOrgScope } from "@/lib/org-path";
 
 type NavItem = {
   href: string;
@@ -190,6 +191,7 @@ type NavLinkArgs = {
   active: boolean;
   collapsed: boolean;
   onClick?: () => void;
+  orgSlug?: string | null;
 };
 
 function renderNavLink({
@@ -200,11 +202,12 @@ function renderNavLink({
   active,
   collapsed,
   onClick,
+  orgSlug,
 }: NavLinkArgs) {
   return (
     <Link
       key={href}
-      href={href}
+      href={scopeDashboardPath(href, orgSlug)}
       onClick={onClick}
       title={collapsed ? label : undefined}
       className={`group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
@@ -252,6 +255,7 @@ type SidebarContentProps = {
   showCollapseToggle?: boolean;
   mobile?: boolean;
   onMobileClose?: () => void;
+  orgSlug: string | null;
 };
 
 function SidebarContent({
@@ -268,6 +272,7 @@ function SidebarContent({
   showCollapseToggle = true,
   mobile = false,
   onMobileClose,
+  orgSlug,
 }: SidebarContentProps) {
   const tierInfo = tier !== null ? TIER_STYLES[tier] : null;
   const { resolvedTheme } = useTheme();
@@ -348,6 +353,7 @@ function SidebarContent({
                 active: exact ? pathname === href : pathname.startsWith(href),
                 collapsed: true,
                 onClick: onNavigate,
+                orgSlug,
               }),
             )
           : visibleGroups.map((group) => (
@@ -365,6 +371,7 @@ function SidebarContent({
                       active: exact ? pathname === href : pathname.startsWith(href),
                       collapsed: false,
                       onClick: onNavigate,
+                      orgSlug,
                     }),
                   )}
                 </div>
@@ -391,13 +398,13 @@ function SidebarContent({
         {user && (
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-bg-panel text-xs font-semibold text-fg-secondary uppercase">
-              {user.username.slice(0, 2)}
+              {(user.username ?? user.email).slice(0, 2)}
             </div>
             {!collapsed && (
               <>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-fg-primary">
-                    {user.username}
+                    {user.username ?? user.email}
                   </p>
                   <span
                     className={`mt-0.5 inline-block rounded-pill border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide ${roleClass}`}
@@ -422,7 +429,7 @@ function SidebarContent({
 }
 
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
-  const pathname = usePathname();
+  const pathname = stripOrgScope(usePathname());
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -432,7 +439,12 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   // Defaults to false (= single-workspace) until the first /config
   // response lands, matching the simple-by-default posture.
   const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
+  const [orgSlug, setOrgSlug] = useState<string | null>(null);
   const previousPathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    setOrgSlug(getOrgSlug());
+  }, [pathname]);
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
@@ -522,6 +534,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           flatVisibleItems={flatVisibleItems}
           user={user}
           logout={logout}
+          orgSlug={orgSlug}
           onToggleCollapse={() => setCollapsed((c) => !c)}
         />
       </aside>
@@ -544,6 +557,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
               flatVisibleItems={flatVisibleItems}
               user={user}
               logout={logout}
+              orgSlug={orgSlug}
               mobile
               onMobileClose={onMobileClose}
               onNavigate={onMobileClose}

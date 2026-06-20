@@ -29,34 +29,38 @@ function hashString(s: string): number {
 }
 
 export function avatarColorFor(user: {
-  username: string;
+  username: string | null;
+  email?: string | null;
   avatar_color?: string | null;
 }): string {
   if (user.avatar_color && AVATAR_PALETTE[user.avatar_color]) {
     return AVATAR_PALETTE[user.avatar_color];
   }
-  const key = AVATAR_COLOR_KEYS[hashString(user.username) % AVATAR_COLOR_KEYS.length];
+  const identity = user.username ?? user.email ?? "user";
+  const key = AVATAR_COLOR_KEYS[hashString(identity) % AVATAR_COLOR_KEYS.length];
   return AVATAR_PALETTE[key];
 }
 
 export function userInitials(user: {
-  username: string;
+  username: string | null;
+  email?: string | null;
   first_name?: string | null;
   last_name?: string | null;
 }): string {
   const f = (user.first_name ?? "").trim();
   const l = (user.last_name ?? "").trim();
   if (f || l) return `${f.slice(0, 1)}${l.slice(0, 1)}`.toUpperCase() || f.slice(0, 2).toUpperCase();
-  return user.username.slice(0, 2).toUpperCase();
+  return (user.username ?? user.email ?? "U").slice(0, 2).toUpperCase();
 }
 
 export function userDisplayName(user: {
-  username: string;
+  username: string | null;
+  email?: string | null;
   first_name?: string | null;
   last_name?: string | null;
 }): string {
   const full = `${(user.first_name ?? "").trim()} ${(user.last_name ?? "").trim()}`.trim();
-  return full || user.username;
+  return full || user.username || user.email || "User";
 }
 
 export function Avatar({
@@ -64,7 +68,13 @@ export function Avatar({
   size = 28,
   className = "",
 }: {
-  user: Pick<UserResponse, "username" | "first_name" | "last_name" | "avatar_color">;
+  user: {
+    username: UserResponse["username"] | null;
+    email?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    avatar_color?: string | null;
+  };
   size?: number;
   className?: string;
 }) {

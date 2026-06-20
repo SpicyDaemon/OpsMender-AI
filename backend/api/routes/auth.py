@@ -7,12 +7,14 @@ GET  /auth/me       — return the current user profile
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import (
@@ -30,6 +32,8 @@ from backend.api.schemas import (
     PasswordResetConsumeRequest,
     PasswordResetMintResponse,
     RegisterRequest,
+    SSOHintRequest,
+    SSOHintResponse,
     SoftDeletePreconditions,
     TokenResponse,
     MePasswordChangeRequest,
@@ -41,9 +45,12 @@ from backend.api.schemas import (
     UserUpdateRequest,
 )
 from backend.config_loader import AppConfig, is_development_environment
-from backend.db.models import User
+from backend.db.models import OrgSAMLConfig, OrgSSOConfig, User
 from backend.db.repos import (
+    OrganizationDomainRepo,
     OrganizationRepo,
+    OrgSAMLConfigRepo,
+    OrgSSOConfigRepo,
     PasswordResetTokenRepo,
     UserRepo,
 )
@@ -52,6 +59,7 @@ from backend.reports.email import build_email_channel, resolve_email_settings
 from backend.people import tokens as people_tokens
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_USERNAME_RE = re.compile(r"[^a-z0-9_-]+")
 
 
 def _is_development_mode() -> bool:
@@ -82,8 +90,101 @@ async def _self_registration_open(db: AsyncSession) -> bool:
     return not existing
 
 
+async def _available_username(db: AsyncSession, email: str) -> str:
+    local = email.split("@", 1)[0].lower()
+    base = (_USERNAME_RE.sub("-", local).strip("-") or "user")[:140]
+    candidate = base
+    suffix = 2
+    while await UserRepo.get_by_username(db, candidate):
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
 class RegistrationOpenResponse(BaseModel):
     open: bool
+
+
+@router.post(
+    "/sso-hint",
+    response_model=SSOHintResponse,
+    summary="Resolve the preferred sign-in method for an email domain",
+)
+async def sso_hint(
+    body: SSOHintRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    email = body.email.strip().lower()
+    if "@" not in email:
+        return SSOHintResponse(provider="local", label="Password")
+    domain = email.rsplit("@", 1)[1]
+    match = await OrganizationDomainRepo.find_by_host(db, domain)
+    org = (
+        await OrganizationRepo.get_by_id(db, match.org_id)
+        if match is not None
+        else None
+    )
+    if org is None:
+        oidc_rows = (
+            (
+                await db.execute(
+                    select(OrgSSOConfig).where(OrgSSOConfig.is_active.is_(True))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for config in oidc_rows:
+            allowed = {
+                item.strip().lower()
+                for item in (config.allowed_email_domains or "").split(",")
+                if item.strip()
+            }
+            if domain in allowed:
+                org = await OrganizationRepo.get_by_id(db, config.org_id)
+                break
+    if org is None:
+        saml_rows = (
+            (
+                await db.execute(
+                    select(OrgSAMLConfig).where(OrgSAMLConfig.is_active.is_(True))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for config in saml_rows:
+            allowed = {
+                item.strip().lower()
+                for item in (config.allowed_email_domains or "").split(",")
+                if item.strip()
+            }
+            if domain in allowed:
+                org = await OrganizationRepo.get_by_id(db, config.org_id)
+                break
+    if org is None:
+        return SSOHintResponse(provider="local", label="Password")
+    oidc = await OrgSSOConfigRepo.get_for_org(db, org.id)
+    if oidc is not None and oidc.is_active:
+        return SSOHintResponse(
+            provider="oidc",
+            label=f"Continue with {org.name} SSO",
+            login_path=f"/auth/sso/{org.slug}/login",
+            org_slug=org.slug,
+        )
+    saml = await OrgSAMLConfigRepo.get_for_org(db, org.id)
+    if saml is not None and saml.is_active:
+        return SSOHintResponse(
+            provider="saml",
+            label=f"Continue with {org.name} SAML",
+            login_path=f"/auth/saml/{org.slug}/login",
+            org_slug=org.slug,
+        )
+    return SSOHintResponse(
+        provider="local",
+        label="Password",
+        org_slug=org.slug,
+    )
 
 
 @router.get(
@@ -127,16 +228,21 @@ async def register(
             ),
         )
 
+    email = body.email.strip().lower()
+    username = body.username.strip() if body.username is not None else ""
+    if not username:
+        username = await _available_username(db, email)
+
     # Check for existing username / email
-    if await UserRepo.get_by_username(db, body.username):
+    if await UserRepo.get_by_username(db, username):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Username '{body.username}' already taken",
+            detail=f"Username '{username}' already taken",
         )
-    if await UserRepo.get_by_email(db, body.email):
+    if await UserRepo.get_by_email(db, email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Email '{body.email}' already registered",
+            detail=f"Email '{email}' already registered",
         )
 
     # First user in the system gets admin role automatically
@@ -154,8 +260,8 @@ async def register(
 
     user = await UserRepo.create(
         db,
-        username=body.username,
-        email=body.email,
+        username=username,
+        email=email,
         password_hash=hash_password(body.password),
         role=role,
         primary_org_id=org.id,

@@ -260,6 +260,13 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 
 </details>
 
+Signup is email-first; OpsMender derives a display username when public
+registration is open. Admin invites expire after 72 hours and support resend
+and revoke. After sign-in, dashboard URLs use
+`/o/{organization-slug}/dashboard/...` so workspace links are bookmarkable.
+The login page can switch to OIDC or SAML after the email field identifies a
+configured organization domain.
+
 ## Project layout
 
 | Path | What |

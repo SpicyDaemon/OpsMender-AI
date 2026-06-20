@@ -119,12 +119,20 @@ export async function login(username: string, password: string): Promise<TokenRe
 }
 
 export async function register(
-  username: string,
   email: string,
   password: string,
-  role = "viewer",
 ): Promise<UserResponse> {
-  return api.post<UserResponse>("/auth/register", { username, email, password, role }, true);
+  return api.post<UserResponse>("/auth/register", { email, password }, true);
+}
+
+export async function getSSOHint(
+  email: string,
+): Promise<import("./types").SSOHintResponse> {
+  return api.post<import("./types").SSOHintResponse>(
+    "/auth/sso-hint",
+    { email },
+    true,
+  );
 }
 
 export async function getMe(): Promise<UserResponse> {

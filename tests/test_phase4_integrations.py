@@ -132,7 +132,14 @@ async def test_jira_and_confluence_cloud_contracts_use_adf_and_storage():
         if path.endswith("/comment"):
             return httpx.Response(201, json={"id": "20"})
         if path.endswith("/transitions") and request.method == "GET":
-            return httpx.Response(200, json={"transitions": [{"id": "31"}]})
+            return httpx.Response(
+                200,
+                json={
+                    "transitions": [
+                        {"id": "31", "name": "Resolve", "to": {"name": "Done"}}
+                    ]
+                },
+            )
         if path.endswith("/transitions") and request.method == "POST":
             return httpx.Response(204)
         raise AssertionError(str(request.url))
@@ -150,14 +157,18 @@ async def test_jira_and_confluence_cloud_contracts_use_adf_and_storage():
     )
     auth = {"email": "admin@example.com", "api_token": "token"}
     assert (await jira.safe_invoke("test_connection", jira_connector, auth)).ok
-    assert (
-        await jira.safe_invoke(
-            "create_issue",
-            jira_connector,
-            auth,
-            {"summary": "Failure", "description": "Details"},
-        )
-    ).ok
+    created = await jira.safe_invoke(
+        "create_issue",
+        jira_connector,
+        auth,
+        {
+            "summary": "Failure",
+            "description": "Details",
+            "incident_id": str(uuid.uuid4()),
+        },
+    )
+    assert created.ok
+    assert created.data["ticket_sync"]["external_ticket_id"] == "OPS-10"
     assert (
         await jira.safe_invoke(
             "comment_issue",
@@ -180,6 +191,14 @@ async def test_jira_and_confluence_cloud_contracts_use_adf_and_storage():
             jira_connector,
             auth,
             {"issue_key": "OPS-10", "transition_id": "31"},
+        )
+    ).ok
+    assert (
+        await jira.safe_invoke(
+            "sync_status_out",
+            jira_connector,
+            auth,
+            {"ticket_id": "OPS-10", "new_status": "Done"},
         )
     ).ok
     create_body = json.loads(jira_requests[1].content)
@@ -390,6 +409,14 @@ async def test_servicenow_table_api_create_and_update_records():
         {"sys_id": "abc", "fields": {"state": "2"}},
     )
     assert updated.data["record"]["state"] == "2"
+    synced = await adapter.safe_invoke(
+        "sync_status_out",
+        connector,
+        auth,
+        {"ticket_id": "abc", "new_status": "6"},
+    )
+    assert synced.data["record"]["state"] == "2"
+    assert json.loads(seen[-1].content)["state"] == "6"
     assert all("/api/now/table/incident" in item.url.path for item in seen)
 
 

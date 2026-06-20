@@ -774,6 +774,184 @@ class TestMFA:
         assert me.json()["mfa_enrollment_required"] is True
 
 
+class TestTicketSync:
+    async def _seed(
+        self,
+        app,
+        *,
+        webhook_secret: str = "ticket-secret",
+    ):
+        from backend.db.repos import IntegrationConnectorRepo, TicketSyncStateRepo
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="Ticket-linked outage",
+                description="Linked external ticket",
+                severity="high",
+            )
+            connector = await IntegrationConnectorRepo.create(
+                db,
+                TEST_ORG_ID,
+                kind="jira",
+                name=f"Jira sync {uuid.uuid4()}",
+                base_url="https://tickets.example.test",
+                auth_type="pat",
+                auth={"token": "api-token", "webhook_secret": webhook_secret},
+                config={
+                    "ticket_sync_enabled": True,
+                    "status_map": {
+                        "open": "To Do",
+                        "in_progress": "In Progress",
+                        "resolved": "Done",
+                    },
+                },
+                is_enabled=True,
+            )
+            state = await TicketSyncStateRepo.upsert(
+                db,
+                TEST_ORG_ID,
+                connector_id=connector.id,
+                incident_id=incident.id,
+                external_ticket_id="OPS-42",
+                external_ticket_url="https://tickets.example.test/browse/OPS-42",
+                status_map=connector.config["status_map"],
+            )
+            await db.commit()
+            return incident.id, connector.id, state.id
+
+    async def test_outbound_push_runs_after_incident_resolve(
+        self,
+        client: AsyncClient,
+        app,
+        auth_headers: dict[str, str],
+        monkeypatch,
+    ):
+        from backend.integrations.base import IntegrationResult
+        from backend.services import ticket_sync
+
+        incident_id, _, _ = await self._seed(app)
+        calls: list[dict] = []
+
+        class FakeAdapter:
+            async def safe_invoke(self, action, connector, auth, parameters):
+                calls.append(
+                    {
+                        "action": action,
+                        "connector": connector.id,
+                        "auth": auth,
+                        "parameters": parameters,
+                    }
+                )
+                return IntegrationResult.success(synced=True)
+
+        monkeypatch.setattr(ticket_sync, "get_adapter", lambda kind: FakeAdapter())
+        response = await client.patch(
+            f"/incidents/{incident_id}",
+            headers=auth_headers,
+            json={"status": "resolved"},
+        )
+        assert response.status_code == 200
+        for _ in range(100):
+            if calls:
+                break
+            await asyncio.sleep(0.01)
+        assert calls
+        assert calls[0]["action"] == "sync_status_out"
+        assert calls[0]["parameters"] == {
+            "ticket_id": "OPS-42",
+            "new_status": "Done",
+        }
+
+    async def test_signed_inbound_webhook_updates_incident_and_audits_source(
+        self,
+        client: AsyncClient,
+        app,
+    ):
+        import hashlib
+        import hmac
+
+        from backend.db.repos import IncidentCommentRepo, TicketSyncStateRepo
+
+        incident_id, connector_id, _ = await self._seed(app)
+        raw = json.dumps(
+            {
+                "issue": {
+                    "key": "OPS-42",
+                    "fields": {"status": {"name": "Done"}},
+                }
+            },
+            separators=(",", ":"),
+        ).encode()
+        signature = "sha256=" + hmac.new(
+            b"ticket-secret",
+            raw,
+            hashlib.sha256,
+        ).hexdigest()
+        response = await client.post(
+            f"/webhooks/ticket-sync/{connector_id}",
+            content=raw,
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature": signature,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "resolved"
+        assert response.json()["source"] == "ticket_sync"
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            comments = await IncidentCommentRepo.list_for_incident(
+                db,
+                TEST_ORG_ID,
+                incident_id,
+            )
+            state = await TicketSyncStateRepo.get_by_external_ticket(
+                db,
+                TEST_ORG_ID,
+                connector_id,
+                "OPS-42",
+            )
+            assert incident.status == "resolved"
+            assert comments[-1].source == "ticket_sync"
+            assert state.sync_direction == "inbound"
+
+    async def test_invalid_ticket_webhook_signature_is_rejected(
+        self,
+        client: AsyncClient,
+        app,
+    ):
+        _, connector_id, _ = await self._seed(app)
+        response = await client.post(
+            f"/webhooks/ticket-sync/{connector_id}",
+            json={
+                "issue": {
+                    "key": "OPS-42",
+                    "fields": {"status": {"name": "Done"}},
+                }
+            },
+            headers={"X-Hub-Signature": "sha256=invalid"},
+        )
+        assert response.status_code == 401
+
+    def test_status_mapping_round_trip(self):
+        from backend.services.ticket_sync import normalized_status_map, reverse_status
+
+        mapping = normalized_status_map(
+            "jira",
+            {
+                "open": "Backlog",
+                "in_progress": "Working",
+                "resolved": "Complete",
+            },
+        )
+        assert mapping["resolved"] == "Complete"
+        assert reverse_status(mapping, "working") == "in_progress"
+        assert reverse_status(mapping, "Complete") == "resolved"
+
+
 class TestSessionRevocation:
     async def test_deactivated_user_rejected_with_valid_token(
         self, client: AsyncClient, app

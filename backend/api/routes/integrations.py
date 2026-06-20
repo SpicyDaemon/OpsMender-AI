@@ -22,7 +22,11 @@ from backend.api.schemas import (
     IntegrationTestResponse,
 )
 from backend.db.models import IntegrationConnector, User
-from backend.db.repos import AUTH_UNSET, IntegrationConnectorRepo
+from backend.db.repos import (
+    AUTH_UNSET,
+    IntegrationConnectorRepo,
+    TicketSyncStateRepo,
+)
 from backend.integrations.registry import get_adapter, get_kind, list_kinds
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -193,6 +197,13 @@ async def update_integration_connector(
             config=body.config,
             is_enabled=body.is_enabled,
         )
+        status_map = body.config.get("status_map")
+        if isinstance(status_map, dict):
+            await TicketSyncStateRepo.update_status_map_for_connector(
+                db,
+                row.id,
+                status_map,
+            )
         await db.commit()
         await db.refresh(row)
         return _response(row)

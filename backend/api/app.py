@@ -354,6 +354,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         public_router as invites_public_router,
     )
     from backend.api.routes.notifications import router as notifications_router
+    from backend.api.routes.ticket_sync import router as ticket_sync_router
 
     api_routers = [
         auth_router,
@@ -393,6 +394,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         bot_webhooks_router,
         slack_paging_router,
         teams_paging_router,
+        ticket_sync_router,
     ]
 
     deployment = config.deployment

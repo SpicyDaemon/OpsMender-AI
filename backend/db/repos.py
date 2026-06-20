@@ -54,6 +54,7 @@ from backend.db.models import (
     ServiceRoster,
     Team,
     TeamMember,
+    TicketSyncState,
     IngestLog,
     IngestToken,
     IntegrationConnector,
@@ -4453,6 +4454,13 @@ class IntegrationConnectorRepo:
         ).scalar_one_or_none()
 
     @staticmethod
+    async def get_by_id_unscoped(
+        db: AsyncSession,
+        connector_id: uuid.UUID,
+    ) -> IntegrationConnector | None:
+        return await db.get(IntegrationConnector, connector_id)
+
+    @staticmethod
     async def get_by_name(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -4548,6 +4556,105 @@ class IntegrationConnectorRepo:
         await db.delete(row)
         await db.flush()
         return True
+
+
+class TicketSyncStateRepo:
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        connector_id: uuid.UUID,
+        incident_id: uuid.UUID,
+        external_ticket_id: str,
+        external_ticket_url: str | None,
+        status_map: dict[str, Any],
+        sync_direction: str = "outbound",
+    ) -> TicketSyncState:
+        row = (
+            await db.execute(
+                select(TicketSyncState).where(
+                    TicketSyncState.org_id == org_id,
+                    TicketSyncState.integration_connector_id == connector_id,
+                    TicketSyncState.incident_id == incident_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            row = TicketSyncState(
+                org_id=org_id,
+                integration_connector_id=connector_id,
+                incident_id=incident_id,
+                external_ticket_id=external_ticket_id,
+                external_ticket_url=external_ticket_url,
+                status_map=dict(status_map),
+                sync_direction=sync_direction,
+            )
+            db.add(row)
+        else:
+            row.external_ticket_id = external_ticket_id
+            row.external_ticket_url = external_ticket_url
+            row.status_map = dict(status_map)
+            row.sync_direction = sync_direction
+            row.last_synced_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def list_for_incident(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+    ) -> Sequence[TicketSyncState]:
+        return (
+            await db.execute(
+                select(TicketSyncState).where(
+                    TicketSyncState.org_id == org_id,
+                    TicketSyncState.incident_id == incident_id,
+                )
+            )
+        ).scalars().all()
+
+    @staticmethod
+    async def get_by_external_ticket(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        connector_id: uuid.UUID,
+        external_ticket_id: str,
+    ) -> TicketSyncState | None:
+        return (
+            await db.execute(
+                select(TicketSyncState).where(
+                    TicketSyncState.org_id == org_id,
+                    TicketSyncState.integration_connector_id == connector_id,
+                    TicketSyncState.external_ticket_id == external_ticket_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def mark_synced(
+        db: AsyncSession,
+        row: TicketSyncState,
+        *,
+        direction: str,
+    ) -> None:
+        row.sync_direction = direction
+        row.last_synced_at = datetime.now(timezone.utc)
+        await db.flush()
+
+    @staticmethod
+    async def update_status_map_for_connector(
+        db: AsyncSession,
+        connector_id: uuid.UUID,
+        status_map: dict[str, Any],
+    ) -> None:
+        await db.execute(
+            update(TicketSyncState)
+            .where(TicketSyncState.integration_connector_id == connector_id)
+            .values(status_map=dict(status_map))
+        )
+        await db.flush()
 
 
 class IncidentIntegrationLinkRepo:
@@ -5886,12 +5993,14 @@ class IncidentCommentRepo:
         incident_id: uuid.UUID,
         body: str,
         author_user_id: uuid.UUID | None,
+        source: str = "user",
     ) -> IncidentComment:
         row = IncidentComment(
             org_id=org_id,
             incident_id=incident_id,
             body=body,
             author_user_id=author_user_id,
+            source=source,
         )
         db.add(row)
         await db.flush()

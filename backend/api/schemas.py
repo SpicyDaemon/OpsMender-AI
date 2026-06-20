@@ -449,6 +449,7 @@ class IncidentCommentResponse(BaseModel):
     body: str
     author_user_id: Optional[uuid.UUID] = None
     author_label: Optional[str] = None
+    source: str = "user"
     created_at: datetime
     updated_at: datetime
 
@@ -1142,6 +1143,13 @@ class IntegrationConnectorResponse(BaseModel):
 class IntegrationConnectorListResponse(BaseModel):
     items: list[IntegrationConnectorResponse]
     total: int
+
+
+class TicketSyncWebhookResponse(BaseModel):
+    incident_id: uuid.UUID
+    status: str
+    updated: bool
+    source: str = "ticket_sync"
 
 
 class IntegrationCapabilityResponse(BaseModel):

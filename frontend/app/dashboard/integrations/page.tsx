@@ -54,7 +54,7 @@ const INTEGRATION_HELP: Record<
     base: "Required: your Jira site or on-premises instance URL.",
     auth: 'Cloud API token: {"email":"admin@example.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
     config:
-      'Cloud: {"project_key":"OPS","issue_type":"Task"}. On-premises: {"edition":"on_prem","api_version":"2","project_key":"OPS"}.',
+      'Cloud: {"project_key":"OPS","issue_type":"Task","ticket_sync_enabled":true}. Store webhook_secret in Credentials JSON.',
   },
   confluence: {
     base: "Required: your Confluence site or on-premises instance URL.",
@@ -65,7 +65,8 @@ const INTEGRATION_HELP: Record<
   servicenow: {
     base: "Required: your instance URL, such as https://acme.service-now.com.",
     auth: 'Basic: {"username":"…","password":"…"}. OAuth: {"access_token":"…"}',
-    config: '{"table":"incident"}',
+    config:
+      '{"table":"incident","ticket_sync_enabled":true}. Store webhook_token in Credentials JSON.',
   },
   linear: {
     base: "Uses https://api.linear.app/graphql by default.",
@@ -153,6 +154,125 @@ function statusClass(status: string): string {
   if (status === "error")
     return "bg-status-critical-bg text-status-critical border-status-critical-border";
   return "bg-status-neutral-bg text-status-neutral border-status-neutral-border";
+}
+
+const DEFAULT_TICKET_STATUS_MAP: Record<string, Record<string, string>> = {
+  jira: {
+    open: "To Do",
+    in_progress: "In Progress",
+    resolved: "Done",
+  },
+  servicenow: {
+    open: "1",
+    in_progress: "2",
+    resolved: "6",
+  },
+};
+
+function TicketSyncPanel({
+  connector,
+  onSaved,
+}: {
+  connector: IntegrationConnectorResponse;
+  onSaved: () => Promise<void>;
+}) {
+  const defaults = DEFAULT_TICKET_STATUS_MAP[connector.kind] ?? {};
+  const configuredMap =
+    connector.config.status_map &&
+    typeof connector.config.status_map === "object" &&
+    !Array.isArray(connector.config.status_map)
+      ? (connector.config.status_map as Record<string, unknown>)
+      : {};
+  const [enabled, setEnabled] = useState(
+    Boolean(connector.config.ticket_sync_enabled),
+  );
+  const [statusMap, setStatusMap] = useState<Record<string, string>>({
+    open: String(configuredMap.open ?? defaults.open ?? ""),
+    in_progress: String(configuredMap.in_progress ?? defaults.in_progress ?? ""),
+    resolved: String(configuredMap.resolved ?? defaults.resolved ?? ""),
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function saveSyncSettings() {
+    setSaving(true);
+    try {
+      await updateIntegrationConnector(connector.id, {
+        kind: connector.kind,
+        name: connector.name,
+        base_url: connector.base_url,
+        auth_type: connector.auth_type,
+        config: {
+          ...connector.config,
+          ticket_sync_enabled: enabled,
+          status_map: statusMap,
+        },
+        is_enabled: connector.is_enabled,
+      });
+      await onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-border-subtle bg-bg-elevated p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-fg-primary">
+            Bi-directional ticket sync
+          </h4>
+          <p className="mt-1 text-xs text-fg-secondary">
+            Outbound incident changes update linked tickets. Signed inbound
+            webhooks update the incident without creating a sync loop.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-fg-secondary">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(event) => setEnabled(event.target.checked)}
+          />
+          Sync enabled
+        </label>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {(["open", "in_progress", "resolved"] as const).map((status) => (
+          <div key={status}>
+            <Label htmlFor={`sync-${connector.id}-${status}`}>
+              {status.replace("_", " ")}
+            </Label>
+            <Input
+              id={`sync-${connector.id}-${status}`}
+              value={statusMap[status]}
+              onChange={(event) =>
+                setStatusMap({ ...statusMap, [status]: event.target.value })
+              }
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 rounded-md bg-bg-muted p-3 text-xs text-fg-secondary">
+        <p className="font-medium text-fg-primary">Inbound webhook URL</p>
+        <code className="mt-1 block break-all font-mono">
+          /webhooks/ticket-sync/{connector.id}
+          {connector.kind === "servicenow" ? "?webhook_token=…" : ""}
+        </code>
+        <p className="mt-2">
+          {connector.kind === "jira"
+            ? "Jira must send X-Hub-Signature (HMAC-SHA256) using the webhook_secret stored in Credentials JSON."
+            : "ServiceNow must send the webhook_token query parameter matching the encrypted credential."}
+        </p>
+      </div>
+      <Button
+        className="mt-4"
+        size="sm"
+        onClick={saveSyncSettings}
+        loading={saving}
+      >
+        Save sync settings
+      </Button>
+    </div>
+  );
 }
 
 export default function IntegrationsPage() {
@@ -518,6 +638,9 @@ export default function IntegrationsPage() {
                 </Button>
               </div>
             </div>
+            {connector.kind === "jira" || connector.kind === "servicenow" ? (
+              <TicketSyncPanel connector={connector} onSaved={reload} />
+            ) : null}
           </article>
         ))}
       </section>

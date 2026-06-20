@@ -357,6 +357,7 @@ class JiraAdapter(IntegrationAdapter):
         project_key=None,
         issue_type=None,
         description=None,
+        incident_id=None,
     ):
         fields = {
             "project": {
@@ -377,7 +378,28 @@ class JiraAdapter(IntegrationAdapter):
         response, failure = await self._request(
             connector, auth, "POST", "/issue", json={"fields": fields}
         )
-        return failure or IntegrationResult.success(issue=response.json())
+        if failure:
+            return failure
+        issue = response.json()
+        data: dict[str, Any] = {"issue": issue}
+        issue_key = issue.get("key") or issue.get("id")
+        if incident_id and issue_key:
+            root = required(connector.base_url, "base_url").rstrip("/")
+            root = root.split("/rest/api/", 1)[0]
+            url = f"{root}/browse/{quote(str(issue_key))}"
+            data["integration_link"] = {
+                "incident_id": incident_id,
+                "reference_type": "ticket",
+                "external_id": str(issue_key),
+                "url": url,
+                "title": summary,
+            }
+            data["ticket_sync"] = {
+                "incident_id": incident_id,
+                "external_ticket_id": str(issue_key),
+                "external_ticket_url": url,
+            }
+        return IntegrationResult.success(**data)
 
     async def comment_issue(self, connector, auth, issue_key, body):
         value = _adf(required(body, "body")) if self._cloud(connector) else body
@@ -411,6 +433,43 @@ class JiraAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(
             transitioned=True, status_code=response.status_code
+        )
+
+    async def sync_status_out(
+        self,
+        connector,
+        auth,
+        ticket_id,
+        new_status,
+    ):
+        transitions = await self.list_transitions(
+            connector,
+            auth,
+            issue_key=ticket_id,
+        )
+        if not transitions.ok:
+            return transitions
+        target = str(new_status).strip().casefold()
+        match = next(
+            (
+                item
+                for item in transitions.data.get("transitions", [])
+                if str(item.get("id", "")).casefold() == target
+                or str(item.get("name", "")).casefold() == target
+                or str((item.get("to") or {}).get("name", "")).casefold()
+                == target
+            ),
+            None,
+        )
+        if match is None:
+            return IntegrationResult.failure(
+                f"No Jira transition matches '{new_status}'"
+            )
+        return await self.transition_issue(
+            connector,
+            auth,
+            issue_key=ticket_id,
+            transition_id=match["id"],
         )
 
 

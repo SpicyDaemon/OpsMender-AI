@@ -916,6 +916,50 @@ class IntegrationConnector(Base):
     )
 
 
+class TicketSyncState(Base):
+    """Durable incident-to-ticket synchronization state."""
+
+    __tablename__ = "ticket_sync_state"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    integration_connector_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("integration_connectors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False
+    )
+    external_ticket_id: Mapped[str] = mapped_column(String(500), nullable=False)
+    external_ticket_url: Mapped[str | None] = mapped_column(
+        String(2000), nullable=True
+    )
+    last_synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    sync_direction: Mapped[str] = mapped_column(
+        String(20), default="outbound", nullable=False
+    )
+    status_map: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "integration_connector_id",
+            "incident_id",
+            name="uq_ticket_sync_connector_incident",
+        ),
+        UniqueConstraint(
+            "integration_connector_id",
+            "external_ticket_id",
+            name="uq_ticket_sync_connector_external",
+        ),
+        Index("ix_ticket_sync_org_incident", "org_id", "incident_id"),
+    )
+
+
 class IncidentIntegrationLink(Base):
     """Durable relation between an incident and an external provider object."""
 
@@ -2096,6 +2140,9 @@ class IncidentComment(Base):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(50), default="user", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

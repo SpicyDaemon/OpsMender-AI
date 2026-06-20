@@ -82,6 +82,11 @@ edition.
 
 - Jira config commonly includes `{"project_key":"OPS","issue_type":"Task"}`.
   It can read/create/comment on issues and list/apply transitions.
+  For two-way incident lifecycle mirroring, enable **Bi-directional ticket
+  sync**, map `open` / `in_progress` / `resolved` to Jira status names or
+  transition IDs, and store `webhook_secret` in Credentials JSON. Configure
+  Jira to POST to the displayed `/webhooks/ticket-sync/{connector_id}` URL
+  with an `X-Hub-Signature` HMAC-SHA256 header.
 - Confluence config uses `{"space_id":"..."}`. It can read runbooks and
   create/update postmortem pages.
 
@@ -91,7 +96,11 @@ Enter the instance URL and configure a table such as
 `{"table":"incident"}`. Basic credentials are
 `{"username":"...","password":"..."}`; OAuth uses an access token.
 Capabilities read, create, and update Table API records. Wave 1 does not
-perform continuous state synchronization.
+perform continuous state synchronization. Wave 3 adds it: enable
+**Bi-directional ticket sync**, map OpsMender statuses to ServiceNow state
+values (defaults `1`, `2`, `6`), store `webhook_token` in Credentials JSON,
+and configure the business rule/webhook to POST to the displayed URL with the
+same token query parameter.
 
 ### Linear
 

@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 3 Phase 6 — bi-directional ticket synchronization.** Jira and
+  ServiceNow connectors can persist incident-to-ticket sync state, push
+  mapped incident lifecycle changes in a non-blocking background task, and
+  accept signed/token-authenticated inbound status webhooks. Inbound changes
+  are recorded on the incident timeline with source `ticket_sync`. Connector
+  settings now expose a sync toggle, three-state mapping table, and webhook
+  URL.
 - **Wave 3 Phase 5 — TOTP MFA.** Added encrypted authenticator enrollment,
   purpose-bound five-minute login challenges, bcrypt-hashed one-time recovery
   codes, TOTP replay protection, verified disable, and an organization-level

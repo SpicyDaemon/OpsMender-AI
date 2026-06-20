@@ -12,6 +12,7 @@ from mcp.types import CallToolResult, TextContent
 from backend.db.repos import (
     IncidentIntegrationLinkRepo,
     IntegrationConnectorRepo,
+    TicketSyncStateRepo,
 )
 from backend.integrations.base import IntegrationCapability
 from backend.integrations.registry import get_adapter
@@ -218,6 +219,37 @@ class IntegrationToolRuntime:
                                 "found in this organization"
                             ),
                         )
+            sync_payload = result.data.get("ticket_sync")
+            if (
+                result.ok
+                and isinstance(sync_payload, dict)
+                and bool(connector.config.get("ticket_sync_enabled"))
+                and connector.kind in {"jira", "servicenow"}
+            ):
+                try:
+                    await TicketSyncStateRepo.upsert(
+                        db,
+                        self._org_id,
+                        connector_id=connector.id,
+                        incident_id=uuid.UUID(str(sync_payload["incident_id"])),
+                        external_ticket_id=str(
+                            sync_payload["external_ticket_id"]
+                        ),
+                        external_ticket_url=(
+                            str(sync_payload["external_ticket_url"])
+                            if sync_payload.get("external_ticket_url")
+                            else None
+                        ),
+                        status_map=dict(
+                            connector.config.get("status_map") or {}
+                        ),
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    result = dataclasses.replace(
+                        result,
+                        ok=False,
+                        error=f"Invalid ticket sync payload: {exc}",
+                    )
             if descriptor.capability.action == "test_connection":
                 await IntegrationConnectorRepo.mark_status(
                     db,

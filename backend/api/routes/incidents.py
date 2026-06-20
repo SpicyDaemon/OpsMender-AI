@@ -895,6 +895,15 @@ async def update_incident(
     await db.commit()
     if body.status == "resolved" and prior_status != "resolved":
         await _notify_channels(db, incident_id, org_id, "incident.resolved")
+    if body.status is not None and body.status != prior_status:
+        from backend.services.ticket_sync import schedule_ticket_status_sync
+
+        schedule_ticket_status_sync(
+            request.app,
+            org_id=org_id,
+            incident_id=incident_id,
+            new_status=body.status,
+        )
     refreshed = await IncidentRepo.get_by_id(db, org_id, incident_id)
     assert refreshed is not None
     return await _to_incident_response(db, org_id, refreshed)
@@ -1058,6 +1067,7 @@ async def _comment_to_response(
         body=comment.body,
         author_user_id=comment.author_user_id,
         author_label=author_label,
+        source=comment.source,
         created_at=_aware(comment.created_at) or comment.created_at,
         updated_at=_aware(comment.updated_at) or comment.updated_at,
     )
@@ -1464,6 +1474,7 @@ async def get_incident_timeline(
                 body=comment.body,
                 actor_user_id=comment.author_user_id,
                 actor_label=author_label,
+                metadata={"source": comment.source},
             )
         )
 
@@ -1752,6 +1763,16 @@ async def bulk_incident_action(
                     )
 
         await db.commit()
+        if action != "delete":
+            from backend.services.ticket_sync import schedule_ticket_status_sync
+
+            for incident in incidents:
+                schedule_ticket_status_sync(
+                    request.app,
+                    org_id=org_id,
+                    incident_id=incident.id,
+                    new_status=next_status,
+                )
         if action == "resolve":
             for incident in incidents:
                 await _notify_channels(

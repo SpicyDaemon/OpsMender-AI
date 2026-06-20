@@ -198,6 +198,7 @@ export interface IncidentCommentResponse {
   body: string;
   author_user_id: string | null;
   author_label: string | null;
+  source?: string;
   created_at: string;
   updated_at: string;
 }

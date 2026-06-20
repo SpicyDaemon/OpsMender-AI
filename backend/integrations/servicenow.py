@@ -112,7 +112,14 @@ class ServiceNowAdapter(IntegrationAdapter):
             record=response.json().get("result", {})
         )
 
-    async def create_record(self, connector, auth, fields, table=None):
+    async def create_record(
+        self,
+        connector,
+        auth,
+        fields,
+        table=None,
+        incident_id=None,
+    ):
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
         table = self._table(connector, table)
@@ -123,9 +130,28 @@ class ServiceNowAdapter(IntegrationAdapter):
             f"/{quote(table)}",
             json=fields,
         )
-        return failure or IntegrationResult.success(
-            record=response.json().get("result", {})
-        )
+        if failure:
+            return failure
+        record = response.json().get("result", {})
+        data: dict[str, Any] = {"record": record}
+        ticket_id = record.get("sys_id")
+        if incident_id and ticket_id:
+            root = required(connector.base_url, "base_url").rstrip("/")
+            target = f"{table}.do?sys_id={ticket_id}"
+            url = f"{root}/nav_to.do?uri={quote(target, safe='')}"
+            data["integration_link"] = {
+                "incident_id": incident_id,
+                "reference_type": "ticket",
+                "external_id": str(ticket_id),
+                "url": url,
+                "title": record.get("number"),
+            }
+            data["ticket_sync"] = {
+                "incident_id": incident_id,
+                "external_ticket_id": str(ticket_id),
+                "external_ticket_url": url,
+            }
+        return IntegrationResult.success(**data)
 
     async def update_record(self, connector, auth, sys_id, fields, table=None):
         if not isinstance(fields, dict) or not fields:
@@ -140,6 +166,20 @@ class ServiceNowAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(
             record=response.json().get("result", {})
+        )
+
+    async def sync_status_out(
+        self,
+        connector,
+        auth,
+        ticket_id,
+        new_status,
+    ):
+        return await self.update_record(
+            connector,
+            auth,
+            sys_id=ticket_id,
+            fields={"state": new_status},
         )
 
 

@@ -62,6 +62,14 @@ beforeEach(() => {
         ],
       },
       {
+        kind: "jira",
+        label: "Jira",
+        supports_base_url: true,
+        auth_types: ["pat", "oauth", "basic"],
+        adapter_available: true,
+        capabilities: [],
+      },
+      {
         kind: "custom",
         label: "Custom HTTP",
         supports_base_url: true,
@@ -267,5 +275,51 @@ describe("Integrations page", () => {
     expect(screen.getByText(/Service account \(Custom\)/)).toBeTruthy();
     expect(screen.getByText(/domain-wide delegation/)).toBeTruthy();
     expect(screen.getByText(/read_doc · read/)).toBeTruthy();
+  });
+
+  it("configures Jira status mapping and shows the signed webhook URL", async () => {
+    const jiraConnector = {
+      ...connector,
+      kind: "jira",
+      name: "Jira Tickets",
+      base_url: "https://tickets.example.test",
+      config: {
+        ticket_sync_enabled: true,
+        status_map: {
+          open: "Backlog",
+          in_progress: "Working",
+          resolved: "Complete",
+        },
+      },
+    };
+    apiMocks.listIntegrationConnectors.mockResolvedValue({
+      items: [jiraConnector],
+      total: 1,
+    });
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    expect(await screen.findByText("Bi-directional ticket sync")).toBeTruthy();
+    expect(
+      screen.getByText(
+        `/webhooks/ticket-sync/${jiraConnector.id}`,
+      ),
+    ).toBeTruthy();
+    expect((screen.getByLabelText("resolved") as HTMLInputElement).value).toBe(
+      "Complete",
+    );
+    await user.clear(screen.getByLabelText("resolved"));
+    await user.type(screen.getByLabelText("resolved"), "Closed");
+    await user.click(screen.getByRole("button", { name: "Save sync settings" }));
+    await waitFor(() =>
+      expect(apiMocks.updateIntegrationConnector).toHaveBeenCalledWith(
+        jiraConnector.id,
+        expect.objectContaining({
+          config: expect.objectContaining({
+            ticket_sync_enabled: true,
+            status_map: expect.objectContaining({ resolved: "Closed" }),
+          }),
+        }),
+      ),
+    );
   });
 });

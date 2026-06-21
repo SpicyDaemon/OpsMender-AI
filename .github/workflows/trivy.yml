@@ -32,3 +32,8 @@ jobs:
         with:
           image-ref: opsmender:security-scan
           trivy-config: trivy.yaml
+          # The action's own ignore-unfixed input defaults to false and is
+          # passed as an env var, which overrides trivy.yaml. Set it here so
+          # unfixed/deferred base-image CVEs (no upstream patch available) do
+          # not gate the build; we only fail on findings that have a fix.
+          ignore-unfixed: true

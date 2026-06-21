@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     querystring parsing).
   - Bumped `cryptography` 48.0.0 → 49.0.0 (GHSA-537c-gmf6-5ccf — vulnerable
     OpenSSL bundled in the cryptography wheels).
+  - Bumped `langsmith` 0.8.5 → 0.8.18 (GHSA-f4xh-w4cj-qxq8 — TracingMiddleware
+    arbitrary server-side file access).
+  - Made `ignore-unfixed` effective by passing it as the Trivy action input
+    (its default `false` env var was overriding `trivy.yaml`), so base-image
+    CVEs with no upstream fix no longer gate the build.
   - Upgraded the bundled npm in the Docker `node-runtime` stage so its vendored
     `picomatch` is patched (CVE-2026-33671 ReDoS) before the global
     `node_modules` is copied into the runtime image. npm there only backs

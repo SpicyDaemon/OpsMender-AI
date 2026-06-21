@@ -33,6 +33,12 @@ RUN npm run build
 # Same Debian bookworm base as python:3.12-slim → glibc-compatible binaries.
 FROM node:22-slim AS node-runtime
 
+# Upgrade the bundled npm so its own vendored dependencies (e.g. picomatch,
+# flagged by Trivy as CVE-2026-33671) are patched before this stage's global
+# node_modules is copied into the runtime image. npm here only backs npx-based
+# MCP servers; it is not on the application request path.
+RUN npm install -g npm@latest
+
 
 # ── Stage 3: backend (Python deps) ──────────────────────────────────────────
 FROM python:3.12-slim AS backend-builder

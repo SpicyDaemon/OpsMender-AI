@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Resolved the fixable HIGH-severity findings from the container vulnerability
+  scan (Trivy):
+  - Bumped `starlette` 1.1.0 → 1.3.1 (CVE-2026-54283 — `request.form()` limits
+    silently ignored).
+  - Bumped `python-multipart` 0.0.29 → 0.0.32 (CVE-2026-53539 — quadratic-time
+    querystring parsing).
+  - Upgraded the bundled npm in the Docker `node-runtime` stage so its vendored
+    `picomatch` is patched (CVE-2026-33671 ReDoS) before the global
+    `node_modules` is copied into the runtime image. npm there only backs
+    npx-based MCP servers; it is not on the application request path.
+
 ## [1.3.0] — 2026-06-21
 
 ### Changed

@@ -15,10 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     silently ignored).
   - Bumped `python-multipart` 0.0.29 → 0.0.32 (CVE-2026-53539 — quadratic-time
     querystring parsing).
+  - Bumped `cryptography` 48.0.0 → 49.0.0 (GHSA-537c-gmf6-5ccf — vulnerable
+    OpenSSL bundled in the cryptography wheels).
   - Upgraded the bundled npm in the Docker `node-runtime` stage so its vendored
     `picomatch` is patched (CVE-2026-33671 ReDoS) before the global
     `node_modules` is copied into the runtime image. npm there only backs
     npx-based MCP servers; it is not on the application request path.
+  - Configured Trivy to skip npm's own vendored `node_modules`
+    (`usr/local/lib/node_modules/npm`). Those are CLI tooling deps we cannot
+    pin and that are not on the application request path; gating the build on
+    them is an upstream-npm release treadmill. Our own Python/JS dependencies
+    and application code are still scanned.
 
 ## [1.3.0] — 2026-06-21
 

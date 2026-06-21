@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-06-21
+
 ### Changed
 
 - Removed stale Viewer Notifications wording from the Paging & On-call

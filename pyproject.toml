@@ -1,6 +1,6 @@
 [project]
 name = "opsmender"
-version = "1.2.0"
+version = "1.3.0"
 description = "OpsMender AI — open-source AI incident manager / AI SRE / AI on-call. Tier-gated, MCP-first, human-in-the-loop AI incident response for production infrastructure."
 readme = "README.md"
 requires-python = ">=3.11"

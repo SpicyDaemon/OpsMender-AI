@@ -2152,7 +2152,7 @@ class AuditFindingRemediateResponse(BaseModel):
 
 # ---------------------------------------------------------------------------
 # Paging (Sprint 33) — teams / services / rosters / priority rules / incident
-# assignments. See docs/paging-model.md for the data model.
+# assignments. See docs/REFERENCE.md (D-021 — Paging Model) for the data model.
 # ---------------------------------------------------------------------------
 
 

@@ -5,7 +5,7 @@ Given a roster snapshot and a timestamp T, ``on_call_at`` returns the
 pure — caller materializes members + overrides from the DB and the result is
 fully reproducible.
 
-Algorithm (see ``docs/paging-model.md`` for the spec):
+Algorithm (see ``docs/REFERENCE.md (D-021 — Paging Model)`` for the spec):
 
 1. Active override wins. If any override covers T, its ``covering_user_id``
    is on call.

@@ -128,4 +128,4 @@ See also:
 
 - [Notification Preferences](notification-preferences.md) — channels, per-priority routing, quiet hours.
 - [Operator Guide](operator-guide.md) — full incident triage flow.
-- `docs/paging-model.md` — the underlying data model and algorithms.
+- `docs/REFERENCE.md` (D-021 — Paging Model) — the underlying data model and algorithms.

@@ -153,7 +153,7 @@ no provider receives a public action URL.
 
 ## Future direction
 
-> The full long-term model — Personal Operator Routing vs. Team Channels vs. Viewer Notifications, interactive incident cards, and the end-to-end incident flow — lives in [Future Incident Communication Model](../future-incident-communication.md).
+> The full long-term model — Personal Operator Routing vs. Team Channels vs. Viewer Notifications, interactive incident cards, and the end-to-end incident flow — lives in [`docs/ROADMAP.md`](../ROADMAP.md) Part II (Incident communication model).
 
 The staged-routing architecture is intentionally channel-agnostic so the following can be layered on without changing routing:
 

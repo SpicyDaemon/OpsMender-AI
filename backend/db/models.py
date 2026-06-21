@@ -1892,7 +1892,7 @@ class AuditFinding(Base):
 
 # ---------------------------------------------------------------------------
 # Paging (Sprint 33) — teams, services, rosters, priority rules, assignments.
-# Full data model lives in docs/paging-model.md.
+# Full data model lives in docs/REFERENCE.md (D-021 — Paging Model).
 # ---------------------------------------------------------------------------
 
 

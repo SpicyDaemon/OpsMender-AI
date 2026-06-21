@@ -19,6 +19,7 @@ If you are a developer looking for internal architecture documentation, API deta
   * [Advanced Auth Guide](advanced-auth-guide.md) — optional surfaces: per-tenant OIDC, per-tenant SAML 2.0, multi-tenant organizations, host-based domain isolation, and the two env flags (`OPSMENDER_ADVANCED_AUTH_ENABLED`, `OPSMENDER_MULTI_ORG_ENABLED`) that gate them.
 * [Integrations Guide](integrations-guide.md) — Encrypted external-system connectors, tier-governed actions, alert intake, and notification channels.
 * [Skills Guide](skills-guide.md) — Managing MCP servers, enforcement tiers, and capability examples.
+* [MCP Skills (Skill Studio)](mcp-skills.md) — The MCP Skills builder: per-tier classification, deny lists, the generic-command guardrail, templates, and the invariant that the backend tier gate is the execution authority. (Deep-linked from the in-product Skills page.)
 
 ### 3. Operator Guide
 * [Operator Guide](operator-guide.md) — Incident triage flow, managing approvals, interacting with session chat, using the audit log, and understanding rollback behavior.

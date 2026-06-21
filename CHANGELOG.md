@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Docs consolidation.** Reduced `docs/` to seven planning files
+  (CURRENT_STATE, TASKS, LOGS, ROADMAP, REFERENCE, PROMPT_CONTEXT,
+  Guide_for_Human). Merged `V2_ROADMAP.md` + the `future-*` north-star docs +
+  `integrations-catalog.md` into **ROADMAP.md Part II** (Forward-looking design
+  & north stars); merged `paging-model.md` into **REFERENCE.md** under D-021
+  (code comments repointed); rewrote `Guide_for_Human.md` from a stub into a
+  real operating guide; removed the completed wave plan/prompt artifacts.
+  Inbound links updated across docs, wiki, and the in-product wiki index (which
+  now lists `mcp-skills.md`).
 - Replaced the deprecated `HTTP_422_UNPROCESSABLE_ENTITY` status constant with
   `HTTP_422_UNPROCESSABLE_CONTENT` in the notifications routes (surfaced as a
   StarletteDeprecationWarning after the starlette 1.3.1 bump). Same 422 status;

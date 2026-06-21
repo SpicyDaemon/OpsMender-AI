@@ -35,7 +35,7 @@ def _validate_quiet_hours(qh) -> None:
     for label, value in (("start", qh.start), ("end", qh.end)):
         if not value:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"quiet_hours.{label} is required when enabled",
             )
         try:
@@ -44,7 +44,7 @@ def _validate_quiet_hours(qh) -> None:
                 raise ValueError
         except (ValueError, TypeError):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"quiet_hours.{label} must be HH:MM",
             )
 
@@ -126,7 +126,7 @@ async def update_preferences(
         invalid = set(body.muted_categories) - set(ALL_CATEGORIES)
         if invalid:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown categories: {sorted(invalid)}",
             )
         in_app = dict(routing.get("in_app") or {})

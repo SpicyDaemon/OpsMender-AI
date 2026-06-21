@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   executor and all audit loggers (file, PostgreSQL, WS-emitting) plus the
   Skill-workflow step path.
 
+### Changed
+
+- Replaced the deprecated `HTTP_422_UNPROCESSABLE_ENTITY` status constant with
+  `HTTP_422_UNPROCESSABLE_CONTENT` in the notifications routes (surfaced as a
+  StarletteDeprecationWarning after the starlette 1.3.1 bump). Same 422 status;
+  removes our deprecation warnings.
+
 ### Security
 
 - Resolved the fixable HIGH-severity findings from the container vulnerability

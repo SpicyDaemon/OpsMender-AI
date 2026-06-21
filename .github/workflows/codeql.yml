@@ -1,10 +1,13 @@
 name: CodeQL
 
+# CodeQL uploads results to GitHub code scanning, which requires GitHub Advanced
+# Security on PRIVATE repositories (a paid feature; free only on public repos).
+# This repo is private without GHAS, so automatic push/schedule runs always fail
+# at the upload step ("Code scanning is not enabled for this repository").
+# The triggers are therefore manual-only. To re-enable automatic analysis: make
+# the repo public, or enable GHAS code scanning (Settings → Code security →
+# Code scanning → Advanced), then restore the `push`/`schedule` triggers below.
 on:
-  push:
-    branches: [main]
-  schedule:
-    - cron: "31 3 * * 1"
   workflow_dispatch:
 
 permissions:

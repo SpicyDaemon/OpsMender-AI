@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Made `ignore-unfixed` effective by passing it as the Trivy action input
     (its default `false` env var was overriding `trivy.yaml`), so base-image
     CVEs with no upstream fix no longer gate the build.
+
+### Changed
+
+- CodeQL analysis (`.github/workflows/codeql.yml`) is now manual-only
+  (`workflow_dispatch`). Code scanning requires GitHub Advanced Security on
+  private repositories, so automatic push/schedule runs always failed at the
+  upload step on this private repo. The workflow is retained for use if the
+  repo becomes public or GHAS is enabled (KI-009).
   - Upgraded the bundled npm in the Docker `node-runtime` stage so its vendored
     `picomatch` is patched (CVE-2026-33671 ReDoS) before the global
     `node_modules` is copied into the runtime image. npm there only backs

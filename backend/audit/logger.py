@@ -121,8 +121,14 @@ class AuditLogger:
         tier: int,
         tool_name: str,
         tool_parameters: dict | None = None,
+        classification: str | None = None,
     ) -> str:
-        """Log a pre-execution entry.  Returns the ``entry_id``."""
+        """Log a pre-execution entry.  Returns the ``entry_id``.
+
+        ``classification`` is accepted for parity with the WS-emitting audit
+        logger (it surfaces the safety class on the live event stream); the
+        file-backed log does not persist it.
+        """
         entry_id = self._entry_id()
         self.log(
             AuditEntry(
@@ -145,6 +151,7 @@ class AuditLogger:
         tool_name: str,
         result: dict | None = None,
         duration_ms: int | None = None,
+        classification: str | None = None,
     ) -> str:
         """Log a post-execution entry.  Returns the ``entry_id``."""
         entry_id = self._entry_id()
@@ -170,6 +177,7 @@ class AuditLogger:
         tool_name: str,
         tool_parameters: dict | None = None,
         block_reason: str | None = None,
+        classification: str | None = None,
     ) -> str:
         """Log a blocked/denied tool call.  Returns the ``entry_id``."""
         entry_id = self._entry_id()
@@ -229,6 +237,7 @@ class AuditLogger:
         result: dict | None = None,
         permitted: bool = True,
         block_reason: str | None = None,
+        classification: str | None = None,
     ) -> str:
         """Log a terminal Skill workflow-step outcome."""
         entry_id = self._entry_id()

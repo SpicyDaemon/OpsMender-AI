@@ -370,6 +370,7 @@ class WorkflowExecutor:
             result=outcome.output or ({"error": outcome.error} if outcome.error else None),
             permitted=outcome.status != "blocked",
             block_reason=outcome.block_reason,
+            classification=outcome.classification,
         )
         if inspect.isawaitable(pending):
             await pending

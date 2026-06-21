@@ -92,9 +92,13 @@ async def audited_tool_call(
     """
     params = tool_parameters or {}
 
+    # Safety class for this tool, surfaced on the live session event stream
+    # (ToolCallCard chip). "safe" | "caution" | "destructive" | "unknown".
+    classification = skill_def.classify(tool_name)
+
     # 1. Pre-log ─────────────────────────────────────────────────────
     pending_log = logger.log_tool_call_start(
-        session_id, tier, tool_name, params
+        session_id, tier, tool_name, params, classification=classification
     )
     if inspect.isawaitable(pending_log):
         await pending_log
@@ -110,6 +114,7 @@ async def audited_tool_call(
             tool_name,
             tool_parameters=params,
             block_reason=enforcement.reason,
+            classification=classification,
         )
         if inspect.isawaitable(pending_log):
             await pending_log
@@ -150,6 +155,7 @@ async def audited_tool_call(
             tool_name,
             result=result_dict,
             duration_ms=elapsed_ms,
+            classification=classification,
         )
         if inspect.isawaitable(pending_log):
             await pending_log
@@ -171,6 +177,7 @@ async def audited_tool_call(
             tool_name,
             result={"error": error_str},
             duration_ms=elapsed_ms,
+            classification=classification,
         )
         if inspect.isawaitable(pending_log):
             await pending_log

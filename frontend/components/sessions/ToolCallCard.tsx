@@ -16,11 +16,9 @@
  *   - Runtime (when known)
  *   - Block-reason callout (only when phase = blocked) -- this is
  *     Step 4 of the sprint, surfaced inline rather than as a tooltip
- *
- * Safety-class classification (safe / caution / destructive) is not
- * surfaced yet because it lives in the MCP server's SKILL.md
- * markdown body rather than in a structured field. Adding it would
- * require a backend schema change; tracked as a sprint follow-up.
+ *   - Safety-class chip (safe / caution / destructive) -- the tool's
+ *     SKILL.md classification, resolved server-side at tool-call time
+ *     and carried on the `tool_call` WS payload (`classification`).
  */
 
 import { useState } from "react";
@@ -30,6 +28,7 @@ import {
   ChevronRight,
   Loader2,
   Server,
+  Shield,
   ShieldAlert,
   Wrench,
 } from "lucide-react";
@@ -45,6 +44,9 @@ interface ToolEventRaw {
   phase?: "start" | "end" | "blocked";
   block_reason?: string | null;
   duration_ms?: number;
+  /** SKILL.md safety class, resolved server-side: "safe" | "caution" |
+   *  "destructive" | "unknown". Absent on older sessions/payloads. */
+  classification?: string | null;
   /** MCP server name if the runner happens to expose it. Today the
    *  WSMessage doesn't carry this; we look it up best-effort instead. */
   mcp_server_name?: string;
@@ -93,6 +95,56 @@ function guessMCPServerName(
   return null;
 }
 
+/** Per-classification chip styling. The SKILL.md safety class governs how
+ *  the tier gate treats a tool, so surface it prominently next to the tool
+ *  name. Unrecognised/absent values render nothing. */
+const SAFETY_CLASS_STYLES: Record<
+  string,
+  { label: string; className: string; title: string }
+> = {
+  safe: {
+    label: "Safe",
+    className: "border-status-low-border bg-status-low-bg text-status-low",
+    title: "Safety class: safe — read-only / low-risk operation",
+  },
+  caution: {
+    label: "Caution",
+    className:
+      "border-status-medium-border bg-status-medium-bg text-status-medium",
+    title: "Safety class: caution — may change state; review before approving",
+  },
+  destructive: {
+    label: "Destructive",
+    className:
+      "border-status-critical-border bg-status-critical-bg text-status-critical",
+    title:
+      "Safety class: destructive — irreversible / high-impact; tier-gated",
+  },
+  unknown: {
+    label: "Unclassified",
+    className: "border-border-subtle bg-bg-elevated text-fg-muted",
+    title:
+      "Safety class: unknown — not declared in the skill definition (treated as high-risk)",
+  },
+};
+
+function SafetyClassChip({ classification }: { classification?: string | null }) {
+  if (!classification) return null;
+  const style = SAFETY_CLASS_STYLES[classification.toLowerCase()];
+  if (!style) return null;
+  return (
+    <span
+      data-testid="safety-class-chip"
+      data-classification={classification.toLowerCase()}
+      title={style.title}
+      className={`inline-flex items-center gap-1 rounded-pill border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${style.className}`}
+    >
+      <Shield size={9} />
+      {style.label}
+    </span>
+  );
+}
+
 // -- Component ----------------------------------------------------------
 
 export function ToolCallCard({
@@ -114,6 +166,7 @@ export function ToolCallCard({
   const mcpServer =
     raw?.mcp_server_name ?? guessMCPServerName(toolName, mcpServers);
   const runtime = durationMs ?? raw?.duration_ms ?? null;
+  const classification = raw?.classification ?? null;
 
   // -- Visual treatments per phase -----------------------------------
 
@@ -168,6 +221,7 @@ export function ToolCallCard({
             <p className="font-mono text-sm font-medium text-fg-primary">
               {toolName}
             </p>
+            <SafetyClassChip classification={classification} />
             {phasePill}
             {mcpServer && (
               <span

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Safety-class chip on tool-call cards.** The live session event stream now
+  shows each MCP tool's SKILL.md safety class (safe / caution / destructive /
+  unclassified) as a colored chip on its `ToolCallCard`. The class is resolved
+  server-side at tool-call time and carried on the `tool_call` WS payload
+  (`classification`); no schema change. Threaded through the audited tool-call
+  executor and all audit loggers (file, PostgreSQL, WS-emitting) plus the
+  Skill-workflow step path.
+
 ### Security
 
 - Resolved the fixable HIGH-severity findings from the container vulnerability

@@ -106,6 +106,7 @@ class LiveAuditLogger:
         tier: int,
         tool_name: str,
         tool_parameters: dict | None = None,
+        classification: str | None = None,
     ) -> str:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
@@ -128,6 +129,7 @@ class LiveAuditLogger:
                     "parameters": tool_parameters or {},
                     "permitted": True,
                     "phase": "start",
+                    "classification": classification,
                 },
             ),
         )
@@ -140,6 +142,7 @@ class LiveAuditLogger:
         tool_name: str,
         result: dict | None = None,
         duration_ms: int | None = None,
+        classification: str | None = None,
     ) -> str:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
@@ -164,6 +167,7 @@ class LiveAuditLogger:
                     "phase": "end",
                     "result": result or {},
                     "duration_ms": duration_ms,
+                    "classification": classification,
                 },
             ),
         )
@@ -176,6 +180,7 @@ class LiveAuditLogger:
         tool_name: str,
         tool_parameters: dict | None = None,
         block_reason: str | None = None,
+        classification: str | None = None,
     ) -> str:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
@@ -200,6 +205,7 @@ class LiveAuditLogger:
                     "permitted": False,
                     "block_reason": block_reason,
                     "phase": "blocked",
+                    "classification": classification,
                 },
             ),
         )
@@ -242,6 +248,7 @@ class LiveAuditLogger:
         result: dict | None = None,
         permitted: bool = True,
         block_reason: str | None = None,
+        classification: str | None = None,
     ) -> str:
         async with self._factory() as db:
             entry = await AuditEntryRepo.create(
@@ -268,6 +275,7 @@ class LiveAuditLogger:
                     "phase": entry_type.value,
                     "result": result or {},
                     "block_reason": block_reason,
+                    "classification": classification,
                 },
             ),
         )

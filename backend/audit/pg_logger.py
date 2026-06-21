@@ -56,6 +56,7 @@ class PgAuditLogger:
         tier: int,
         tool_name: str,
         tool_parameters: dict | None = None,
+        classification: str | None = None,
     ) -> str:
         entry = await AuditEntryRepo.create(
             self._db,
@@ -76,6 +77,7 @@ class PgAuditLogger:
         tool_name: str,
         result: dict | None = None,
         duration_ms: int | None = None,
+        classification: str | None = None,
     ) -> str:
         entry = await AuditEntryRepo.create(
             self._db,
@@ -97,6 +99,7 @@ class PgAuditLogger:
         tool_name: str,
         tool_parameters: dict | None = None,
         block_reason: str | None = None,
+        classification: str | None = None,
     ) -> str:
         entry = await AuditEntryRepo.create(
             self._db,
@@ -144,6 +147,7 @@ class PgAuditLogger:
         result: dict | None = None,
         permitted: bool = True,
         block_reason: str | None = None,
+        classification: str | None = None,
     ) -> str:
         entry = await AuditEntryRepo.create(
             self._db,

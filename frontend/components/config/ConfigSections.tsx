@@ -382,6 +382,7 @@ type ModelFormState = {
   location: string;
   max_tokens: number;
   temperature: number;
+  max_concurrent_sessions: number;
 };
 
 function createModelFormState(
@@ -409,6 +410,7 @@ function createModelFormState(
     location: current?.provider_meta?.location ?? "",
     max_tokens: current?.max_tokens ?? 4096,
     temperature: current?.temperature ?? 0,
+    max_concurrent_sessions: current?.max_concurrent_sessions ?? 0,
   };
 }
 
@@ -771,7 +773,7 @@ function ModelConfigModal({
           secret.
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <Label htmlFor="model-max-tokens">Max Tokens</Label>
             <Input
@@ -794,6 +796,22 @@ function ModelConfigModal({
               value={form.temperature}
               onChange={(e) => setField("temperature", Number(e.target.value))}
             />
+          </div>
+          <div>
+            <Label htmlFor="model-max-sessions">Concurrent Sessions</Label>
+            <Input
+              id="model-max-sessions"
+              type="number"
+              min={0}
+              max={10000}
+              value={form.max_concurrent_sessions}
+              onChange={(e) =>
+                setField("max_concurrent_sessions", Number(e.target.value))
+              }
+            />
+            <p className="mt-1 text-xs text-fg-muted">
+              0 means unlimited. The cap applies per workspace and model config.
+            </p>
           </div>
         </div>
 
@@ -908,6 +926,7 @@ export function ModelSection({
             : undefined,
         max_tokens: form.max_tokens,
         temperature: form.temperature,
+        max_concurrent_sessions: form.max_concurrent_sessions,
       };
       const result = editing
         ? await updateModelConfigById(editing.id, payload)
@@ -1028,6 +1047,12 @@ export function ModelSection({
           <div className="text-fg-secondary">
             <div>Max tokens: {config.max_tokens}</div>
             <div>Temp: {config.temperature}</div>
+            <div>
+              Sessions:{" "}
+              {config.max_concurrent_sessions
+                ? config.max_concurrent_sessions
+                : "Unlimited"}
+            </div>
           </div>
         ),
       },

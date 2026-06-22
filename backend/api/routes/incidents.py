@@ -93,7 +93,10 @@ from backend.ingest.autostart import (
     schedule_auto_started_session,
 )
 from backend.services.incident_events import dispatch_incident_created
-from backend.llm.selection import choose_model_for_incident_service
+from backend.llm.selection import (
+    choose_model_for_incident_service,
+    has_active_model_configs,
+)
 
 import logging
 
@@ -189,6 +192,7 @@ def _to_session_response(session) -> SessionResponse:
         incident_id=session.incident_id,
         workflow_profile_id=getattr(session, "workflow_profile_id", None),
         agent_team_profile_id=getattr(session, "agent_team_profile_id", None),
+        model_config_id=getattr(session, "model_config_id", None),
         tier=session.tier,
         model_provider=session.model_provider,
         model_id=session.model_id,
@@ -547,10 +551,17 @@ async def _resolve_auto_start_on_create(
             ingestion_model_config_id=getattr(
                 incident, "ingestion_model_config_id", None
             ),
+            respect_capacity=True,
         )
         if model is None:
+            reason = (
+                "model_capacity_reached"
+                if await has_active_model_configs(db, org_id)
+                else "no_enabled_model"
+            )
             _log.warning(
-                "incident.auto_start: no_enabled_model incident=%s tier=%s",
+                "incident.auto_start: %s incident=%s tier=%s",
+                reason,
                 incident.id,
                 tier,
             )
@@ -560,7 +571,7 @@ async def _resolve_auto_start_on_create(
                 incident_id=incident.id,
                 auto_start_tier=None,
             )
-            return ("failed", "no_enabled_model", tier)
+            return ("failed", reason, tier)
         if request.app.state.config.deployment.mode == "monolith":
             schedule_auto_started_session(
                 request.app,

@@ -34,6 +34,7 @@ from backend.db.repos import (
     OrgSSOConfigRepo,
     RuntimeConfigRepo,
     ServiceRepo,
+    SessionRepo,
     SkillRepo,
 )
 from backend.llm import ProviderRegistry
@@ -262,6 +263,31 @@ async def update_model_config(
         )
 
     name = body.name or f"{body.provider}:{body.model_id}"
+    existing = await ModelConfigRepo.get_by_name(db, org_id, name)
+    if existing is not None:
+        occupancy = await SessionRepo.active_occupancy_for_model_config(
+            db, org_id, existing.id
+        )
+        material_change = any(
+            (
+                body.provider != existing.provider,
+                body.model_id != existing.model_id,
+                body.api_key_env_var != existing.api_key_env_var,
+                body.base_url != existing.base_url,
+                body.api_version != existing.api_version,
+                body.provider_meta != existing.provider_meta,
+                body.max_tokens != existing.max_tokens,
+                body.temperature != existing.temperature,
+            )
+        )
+        if occupancy and material_change:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Cannot change an occupied model config's provider or runtime "
+                    "settings. Wait for its active sessions to finish."
+                ),
+            )
     cfg = await ModelConfigRepo.upsert(
         db,
         org_id,
@@ -274,6 +300,7 @@ async def update_model_config(
         provider_meta=body.provider_meta,
         max_tokens=body.max_tokens,
         temperature=body.temperature,
+        max_concurrent_sessions=body.max_concurrent_sessions,
     )
     await ModelConfigRepo.set_default(db, org_id, cfg.id)
     refreshed = await ModelConfigRepo.get_by_id(db, org_id, cfg.id)

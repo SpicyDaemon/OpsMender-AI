@@ -255,7 +255,8 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 <details>
 <summary><b>First-login checklist (production)</b></summary>
 
-1. **Models** (`/dashboard/models`) — add a model, set a default, run **Test connection**.
+1. **Models** (`/dashboard/models`) — add a model, optionally cap concurrent
+   incident sessions (`0` = unlimited), set a default, and run **Test connection**.
 2. **MCP servers** (`/dashboard/mcp-servers`) — add and test connectivity.
 3. **Skills** (`/dashboard/skills`) — import/create a `SKILL.md` (start from `examples/`).
 4. **Services / Teams / Rosters / Escalation** (`/dashboard/paging/*`) — define routing and on-call.

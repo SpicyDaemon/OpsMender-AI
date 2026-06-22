@@ -505,6 +505,7 @@ class SessionResponse(BaseModel):
     incident_id: Optional[uuid.UUID]
     workflow_profile_id: Optional[uuid.UUID]
     agent_team_profile_id: Optional[uuid.UUID]
+    model_config_id: Optional[uuid.UUID]
     tier: int
     model_provider: Optional[str]
     model_id: Optional[str]
@@ -741,6 +742,7 @@ class ModelConfigResponse(BaseModel):
     provider_meta: Optional[dict[str, str]]
     max_tokens: int
     temperature: float
+    max_concurrent_sessions: Optional[int]
     is_default: bool
     is_active: bool = True
     created_at: datetime
@@ -791,6 +793,7 @@ class ModelConfigUpdate(BaseModel):
     provider_meta: Optional[dict[str, str]] = None
     max_tokens: int = Field(default=4096, ge=1, le=200000)
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    max_concurrent_sessions: Optional[int] = Field(default=None, ge=0, le=10000)
 
 
 class MCPServerResponse(BaseModel):

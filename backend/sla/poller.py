@@ -19,9 +19,14 @@ from backend.db.repos import (
     MaintenanceWindowRepo,
     SessionRepo,
     SLATargetRepo,
+    SLATargetRepo,
     SLORepo,
     UptimeSampleRepo,
     OrganizationRepo,
+)
+from backend.llm.selection import (
+    choose_model_for_incident_service,
+    has_active_model_configs,
 )
 from backend.ingest.autostart import (
     has_active_session_for_incident,
@@ -238,6 +243,7 @@ class SLAPoller:
                         continue
 
                     dedup_action = "created"
+                    target = await SLATargetRepo.get_by_id(db, org_id, slo.target_id)
                     if existing:
                         await IncidentRepo.update_status(
                             db, org_id, existing.id, "open"
@@ -259,6 +265,7 @@ class SLAPoller:
                             external_id=external_id,
                             external_source=external_source,
                             target_id=slo.target_id,
+                            service_id=None if target is None else target.service_id,
                         )
                         db.add(incident)
                         await db.flush()
@@ -281,11 +288,35 @@ class SLAPoller:
                             db, org_id, incident.id
                         ):
                             if self._incident_created_callback is None:
+                                model = await choose_model_for_incident_service(
+                                    db,
+                                    org_id,
+                                    service_id=incident.service_id,
+                                    ingestion_model_config_id=(
+                                        incident.ingestion_model_config_id
+                                    ),
+                                    respect_capacity=True,
+                                )
+                                if model is None and await has_active_model_configs(
+                                    db, org_id
+                                ):
+                                    logger.info(
+                                        "slo.auto_start: capacity reached incident=%s",
+                                        incident.id,
+                                    )
+                                    continue
                                 await SessionRepo.create(
                                     db,
                                     org_id,
                                     tier=policy.session_tier,
                                     incident_id=incident.id,
+                                    model_config_id=(
+                                        None if model is None else model.id
+                                    ),
+                                    model_provider=(
+                                        None if model is None else model.provider
+                                    ),
+                                    model_id=None if model is None else model.model_id,
                                 )
                             else:
                                 pending_created_events.append(

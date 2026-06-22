@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v2 Phase 1 — per-model incident-session capacity.** Saved model configs now
+  accept an optional per-workspace `max_concurrent_sessions` cap (`null`/`0`
+  remains unlimited). Incident-response allocation walks the incident/service
+  preference ladder, then the workspace default, then any active model with a
+  free slot. Sessions persist the selected model-config id for exact occupancy
+  accounting and runtime resolution; ingest/triage classification remains
+  uncapped. Manual, auto-start, SLO, and verified chat starts share the
+  capacity-aware selector. Occupied configs cannot be deleted, disabled, or
+  materially retargeted. Migration `l8m9n0p1q2r3`.
 - **Safety-class chip on tool-call cards.** The live session event stream now
   shows each MCP tool's SKILL.md safety class (safe / caution / destructive /
   unclassified) as a colored chip on its `ToolCallCard`. The class is resolved

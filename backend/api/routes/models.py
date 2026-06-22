@@ -23,7 +23,7 @@ from backend.api.schemas import (
     ProviderModelsListResponse,
 )
 from backend.db.models import User
-from backend.db.repos import ModelConfigRepo
+from backend.db.repos import ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
 from backend.llm.factory import create_provider
 
@@ -157,6 +157,7 @@ async def create_model_config(
             provider_meta=body.provider_meta,
             max_tokens=body.max_tokens,
             temperature=body.temperature,
+            max_concurrent_sessions=body.max_concurrent_sessions,
         )
         await db.commit()
         await db.refresh(cfg)
@@ -189,6 +190,29 @@ async def update_model_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Model config not found",
         )
+    occupancy = await SessionRepo.active_occupancy_for_model_config(
+        db, org_id, config_id
+    )
+    material_change = any(
+        (
+            body.provider != existing.provider,
+            body.model_id != existing.model_id,
+            body.api_key_env_var != existing.api_key_env_var,
+            body.base_url != existing.base_url,
+            body.api_version != existing.api_version,
+            body.provider_meta != existing.provider_meta,
+            body.max_tokens != existing.max_tokens,
+            body.temperature != existing.temperature,
+        )
+    )
+    if occupancy and material_change:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Cannot change an occupied model config's provider or runtime "
+                "settings. Wait for its active sessions to finish."
+            ),
+        )
 
     registry = ProviderRegistry()
     try:
@@ -214,6 +238,7 @@ async def update_model_config(
             provider_meta=body.provider_meta,
             max_tokens=body.max_tokens,
             temperature=body.temperature,
+            max_concurrent_sessions=body.max_concurrent_sessions,
         )
         await db.commit()
         if updated is None:
@@ -244,6 +269,14 @@ async def delete_model_config(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
+    occupancy = await SessionRepo.active_occupancy_for_model_config(
+        db, org_id, config_id
+    )
+    if occupancy:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a model config while it has active sessions.",
+        )
     deleted = await ModelConfigRepo.delete(db, org_id, config_id)
     if not deleted:
         raise HTTPException(
@@ -357,6 +390,13 @@ async def toggle_model_config_active(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Model config not found",
+        )
+    if existing.is_active and await SessionRepo.active_occupancy_for_model_config(
+        db, org_id, config_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot disable a model config while it has active sessions.",
         )
     # Safety: prevent disabling the only active config that is also the default.
     if existing.is_active and existing.is_default:

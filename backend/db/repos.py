@@ -1024,6 +1024,7 @@ class SessionRepo:
         incident_id: uuid.UUID | None = None,
         workflow_profile_id: uuid.UUID | None = None,
         agent_team_profile_id: uuid.UUID | None = None,
+        model_config_id: uuid.UUID | None = None,
         model_provider: str | None = None,
         model_id: str | None = None,
     ) -> Session:
@@ -1033,6 +1034,7 @@ class SessionRepo:
             incident_id=incident_id,
             workflow_profile_id=workflow_profile_id,
             agent_team_profile_id=agent_team_profile_id,
+            model_config_id=model_config_id,
             model_provider=model_provider,
             model_id=model_id,
         )
@@ -1160,6 +1162,40 @@ class SessionRepo:
             .values(**values)
         )
         await db.execute(stmt)
+
+    @staticmethod
+    async def active_occupancy_by_model_config(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+    ) -> dict[uuid.UUID, int]:
+        """Count running/approval-held incident sessions per saved model config."""
+        rows = (
+            await db.execute(
+                select(Session.model_config_id, func.count(Session.id))
+                .where(
+                    Session.org_id == org_id,
+                    Session.model_config_id.is_not(None),
+                    Session.status.in_(("active", "awaiting_approval")),
+                )
+                .group_by(Session.model_config_id)
+            )
+        ).all()
+        return {model_config_id: int(count) for model_config_id, count in rows}
+
+    @staticmethod
+    async def active_occupancy_for_model_config(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        model_config_id: uuid.UUID,
+    ) -> int:
+        value = await db.scalar(
+            select(func.count(Session.id)).where(
+                Session.org_id == org_id,
+                Session.model_config_id == model_config_id,
+                Session.status.in_(("active", "awaiting_approval")),
+            )
+        )
+        return int(value or 0)
 
 
 class AuditEntryRepo:
@@ -1373,6 +1409,7 @@ class ModelConfigRepo:
         provider_meta: dict[str, str] | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
+        max_concurrent_sessions: int | None = None,
         is_default: bool = False,
     ) -> ModelConfig:
         cfg = ModelConfig(
@@ -1386,6 +1423,7 @@ class ModelConfigRepo:
             provider_meta=provider_meta,
             max_tokens=max_tokens,
             temperature=temperature,
+            max_concurrent_sessions=max_concurrent_sessions,
             is_default=is_default,
         )
         db.add(cfg)
@@ -1445,6 +1483,19 @@ class ModelConfigRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def list_all_for_update(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> Sequence[ModelConfig]:
+        """Lock an org's model configs in stable order for capacity allocation."""
+        stmt = (
+            select(ModelConfig)
+            .where(ModelConfig.org_id == org_id)
+            .order_by(ModelConfig.id)
+            .with_for_update()
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
     async def update(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -1459,6 +1510,7 @@ class ModelConfigRepo:
         provider_meta: dict[str, str] | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
+        max_concurrent_sessions: int | None = None,
     ) -> ModelConfig | None:
         stmt = (
             update(ModelConfig)
@@ -1476,6 +1528,7 @@ class ModelConfigRepo:
                 provider_meta=provider_meta,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                max_concurrent_sessions=max_concurrent_sessions,
             )
         )
         result = await db.execute(stmt)
@@ -1527,6 +1580,7 @@ class ModelConfigRepo:
         provider_meta: dict[str, str] | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
+        max_concurrent_sessions: int | None = None,
         is_default: bool = False,
     ) -> ModelConfig:
         existing = await ModelConfigRepo.get_by_name(db, org_id, name)
@@ -1543,6 +1597,7 @@ class ModelConfigRepo:
                 provider_meta=provider_meta,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                max_concurrent_sessions=max_concurrent_sessions,
                 is_default=is_default,
             )
         stmt = (
@@ -1560,6 +1615,7 @@ class ModelConfigRepo:
                 provider_meta=provider_meta,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                max_concurrent_sessions=max_concurrent_sessions,
                 is_default=is_default,
             )
         )

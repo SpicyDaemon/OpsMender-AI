@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config_loader import AppConfig
 from backend.db.models import Incident
 from backend.db.repos import IncidentRepo, SessionRepo
-from backend.llm.selection import choose_model_for_incident_service
+from backend.llm.selection import (
+    choose_model_for_incident_service,
+    has_active_model_configs,
+)
 from backend.tiers.resolution import resolve_session_tier_for_incident
 
 _ACTIVE_SESSION_STATUSES = {"active", "awaiting_approval"}
@@ -129,12 +132,20 @@ async def provision_auto_started_session(
                 org_id,
                 service_id=incident.service_id,
                 ingestion_model_config_id=incident.ingestion_model_config_id,
+                respect_capacity=True,
             )
+            if model is None and await has_active_model_configs(db, org_id):
+                logger.info(
+                    "incident.auto_start: no model capacity incident=%s",
+                    incident_id,
+                )
+                return
             session = await SessionRepo.create(
                 db,
                 org_id,
                 tier=tier,
                 incident_id=incident_id,
+                model_config_id=None if model is None else model.id,
                 model_provider=None if model is None else model.provider,
                 model_id=None if model is None else model.model_id,
             )

@@ -237,6 +237,7 @@ export interface SessionResponse {
   incident_id: string | null;
   workflow_profile_id: string | null;
   agent_team_profile_id: string | null;
+  model_config_id: string | null;
   tier: number;
   model_provider: string | null;
   model_id: string | null;
@@ -517,6 +518,7 @@ export interface ModelConfigResponse {
   provider_meta: Record<string, string> | null;
   max_tokens: number;
   temperature: number;
+  max_concurrent_sessions: number | null;
   is_default: boolean;
   is_active: boolean;
   created_at: string;
@@ -561,6 +563,7 @@ export interface ModelConfigUpdate {
   provider_meta?: Record<string, string>;
   max_tokens?: number;
   temperature?: number;
+  max_concurrent_sessions?: number | null;
 }
 
 export interface ProviderModelsResponse {

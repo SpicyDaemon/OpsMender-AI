@@ -26,6 +26,10 @@ from backend.db.repos import (
     UserRepo,
 )
 from backend.paging import escalation as _escalation
+from backend.llm.selection import (
+    choose_model_for_incident_service,
+    has_active_model_configs,
+)
 from backend.tiers.resolution import resolve_session_tier_for_incident
 
 
@@ -358,11 +362,29 @@ async def execute_incident_action(
             config,
             incident=incident,
         )
+        model = await choose_model_for_incident_service(
+            db,
+            claims.org_id,
+            service_id=incident.service_id,
+            ingestion_model_config_id=incident.ingestion_model_config_id,
+            respect_capacity=True,
+        )
+        if model is None and await has_active_model_configs(db, claims.org_id):
+            return IncidentActionResult(
+                action=claims.action,
+                status="capacity_reached",
+                incident_id=claims.incident_id,
+                actor_user_id=actor_user_id,
+                detail="All configured incident-response models are at capacity.",
+            )
         session = await SessionRepo.create(
             db,
             claims.org_id,
             tier=resolved_tier,
             incident_id=claims.incident_id,
+            model_config_id=None if model is None else model.id,
+            model_provider=None if model is None else model.provider,
+            model_id=None if model is None else model.model_id,
         )
         return IncidentActionResult(
             action=claims.action,

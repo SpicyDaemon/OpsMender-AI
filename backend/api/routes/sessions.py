@@ -59,7 +59,11 @@ from backend.skills.parser import loads as load_skill_def
 from backend.tiers.enforcement import normalize_tier
 from backend.tiers.resolution import resolve_session_tier_for_incident
 from backend.tiers.sandbox import Tier0Sandbox
-from backend.llm.selection import choose_model_for_incident_service
+from backend.llm.selection import (
+    choose_model_config_by_identity,
+    choose_model_for_incident_service,
+    has_active_model_configs,
+)
 from backend.bots.notifier import schedule_session_chat_event
 from backend.workflow.rollback import (
     reconstruct_tool_calls,
@@ -86,6 +90,7 @@ def _to_session_response(session) -> SessionResponse:
         incident_id=session.incident_id,
         workflow_profile_id=getattr(session, "workflow_profile_id", None),
         agent_team_profile_id=getattr(session, "agent_team_profile_id", None),
+        model_config_id=getattr(session, "model_config_id", None),
         tier=session.tier,
         model_provider=session.model_provider,
         model_id=session.model_id,
@@ -191,7 +196,26 @@ async def create_session(
             org_id,
             service_id=incident.service_id,
             ingestion_model_config_id=incident.ingestion_model_config_id,
+            respect_capacity=True,
         )
+        if selected_model is None and await has_active_model_configs(db, org_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="All configured incident-response models are at capacity.",
+            )
+    elif body.model_provider is not None and body.model_id is not None:
+        selected_model, has_saved_match = await choose_model_config_by_identity(
+            db,
+            org_id,
+            provider=body.model_provider,
+            model_id=body.model_id,
+            respect_capacity=True,
+        )
+        if has_saved_match and selected_model is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The selected incident-response model is at capacity.",
+            )
     session = await SessionRepo.create(
         db,
         org_id,
@@ -199,6 +223,7 @@ async def create_session(
         incident_id=body.incident_id,
         workflow_profile_id=workflow_profile_id,
         agent_team_profile_id=agent_team_profile_id,
+        model_config_id=None if selected_model is None else selected_model.id,
         model_provider=(
             body.model_provider
             if selected_model is None

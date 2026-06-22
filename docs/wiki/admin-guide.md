@@ -68,7 +68,12 @@ To add a model config:
 3. For Bedrock, enter the AWS Region first, then click **Refresh Catalog** if you want the live Bedrock model list for that region/profile.
 4. For Vertex AI, enter the GCP Project + Location first, then click **Refresh Catalog** if you want the live `google/...`, `anthropic/...`, and `meta/...` model suggestions for that project/location.
 5. Pick a model from the discovered catalog, or click **Type manual model ID** if discovery is unavailable or the model isn't reported (e.g. a proxy that doesn't implement `/v1/models`).
-6. Save. Model discovery is cached for 60 seconds for local/proxy endpoints and 1 hour for cloud catalogs so the page stays snappy.
+6. Set **Concurrent Sessions** if the provider/model needs a per-workspace
+   incident-response limit. `0` means unlimited. When a preferred model is full,
+   OpsMender tries the Service's next preferred model, then the workspace
+   default, then another active model. This cap does not apply to ingest/triage
+   classification.
+7. Save. Model discovery is cached for 60 seconds for local/proxy endpoints and 1 hour for cloud catalogs so the page stays snappy.
 
 ## 4. MCP Servers and Skills
 

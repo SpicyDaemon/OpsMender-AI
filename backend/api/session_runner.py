@@ -312,6 +312,12 @@ def _llm_from_config(cfg) -> LLM:  # type: ignore[no-untyped-def]
 
 async def _resolve_llm(factory, session) -> LLM:  # type: ignore[no-untyped-def]
     async with factory() as db:
+        if getattr(session, "model_config_id", None) is not None:
+            pinned_cfg = await ModelConfigRepo.get_by_id(
+                db, session.org_id, session.model_config_id
+            )
+            if pinned_cfg is not None:
+                return _llm_from_config(pinned_cfg)
         if not session.model_provider:
             default_cfg = await ModelConfigRepo.get_default(db, session.org_id)
             if default_cfg is not None:

@@ -33,6 +33,7 @@ from backend.db.repos import (
     PriorityRuleRepo,
     RosterOverrideRepo,
     RosterRepo,
+    SessionRepo,
     ServiceRepo,
     SkillRepo,
     TeamRepo,
@@ -1025,6 +1026,164 @@ class TestPagingAPI:
             )
             assert selected is not None
             assert selected.id == fallback.id
+
+    async def test_capacity_allocation_degrades_preferred_then_default_then_any(
+        self, app
+    ):
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Capacity Team",
+                slug=f"capacity-team-{uuid.uuid4().hex[:6]}",
+                created_by=uuid.uuid4(),
+            )
+            primary = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"capacity-primary-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="capacity-primary",
+                max_concurrent_sessions=1,
+            )
+            secondary = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"capacity-secondary-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="capacity-secondary",
+                max_concurrent_sessions=1,
+            )
+            default = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"capacity-default-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="capacity-default",
+                max_concurrent_sessions=1,
+                is_default=True,
+            )
+            fallback = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"capacity-fallback-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="capacity-fallback",
+                max_concurrent_sessions=1,
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Capacity Service",
+                slug=f"capacity-service-{uuid.uuid4().hex[:6]}",
+                preferred_model_config_ids=[str(primary.id), str(secondary.id)],
+            )
+
+            selected = await choose_model_for_incident_service(
+                db,
+                TEST_ORG_ID,
+                service_id=service.id,
+                respect_capacity=True,
+            )
+            assert selected is not None
+            assert selected.id == primary.id
+
+            await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=0,
+                model_config_id=primary.id,
+                model_provider=primary.provider,
+                model_id=primary.model_id,
+            )
+            selected = await choose_model_for_incident_service(
+                db,
+                TEST_ORG_ID,
+                service_id=service.id,
+                respect_capacity=True,
+            )
+            assert selected is not None
+            assert selected.id == secondary.id
+
+            await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=0,
+                model_config_id=secondary.id,
+                model_provider=secondary.provider,
+                model_id=secondary.model_id,
+            )
+            selected = await choose_model_for_incident_service(
+                db,
+                TEST_ORG_ID,
+                service_id=service.id,
+                respect_capacity=True,
+            )
+            assert selected is not None
+            assert selected.id == default.id
+
+            await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=0,
+                model_config_id=default.id,
+                model_provider=default.provider,
+                model_id=default.model_id,
+            )
+            selected = await choose_model_for_incident_service(
+                db,
+                TEST_ORG_ID,
+                service_id=service.id,
+                respect_capacity=True,
+            )
+            assert selected is not None
+            assert selected.id == fallback.id
+
+    async def test_unset_or_zero_capacity_remains_unlimited(self, app):
+        async with app.state.session_factory() as db:
+            for index, cap in enumerate((None, 0)):
+                model = await ModelConfigRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    name=f"unlimited-{index}-{uuid.uuid4().hex[:6]}",
+                    provider="ollama",
+                    model_id=f"unlimited-{index}",
+                    max_concurrent_sessions=cap,
+                )
+                team = await TeamRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    name=f"Unlimited Team {index}",
+                    slug=f"unlimited-team-{index}-{uuid.uuid4().hex[:6]}",
+                    created_by=uuid.uuid4(),
+                )
+                service = await ServiceRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    team_id=team.id,
+                    name=f"Unlimited Service {index}",
+                    slug=f"unlimited-service-{index}-{uuid.uuid4().hex[:6]}",
+                    preferred_model_config_ids=[str(model.id)],
+                )
+                for _ in range(3):
+                    await SessionRepo.create(
+                        db,
+                        TEST_ORG_ID,
+                        tier=0,
+                        model_config_id=model.id,
+                        model_provider=model.provider,
+                        model_id=model.model_id,
+                    )
+
+                selected = await choose_model_for_incident_service(
+                    db,
+                    TEST_ORG_ID,
+                    service_id=service.id,
+                    respect_capacity=True,
+                )
+                assert selected is not None
+                assert selected.id == model.id
 
     async def test_service_intake_uses_service_priority_not_priority_rules(
         self, client: AsyncClient, app, auth_headers

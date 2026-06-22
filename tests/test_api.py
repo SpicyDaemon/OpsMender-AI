@@ -3450,6 +3450,66 @@ class TestSessions:
         assert resp.status_code == 201
         assert resp.json()["incident_id"] == inc_id
 
+    async def test_explicit_saved_model_respects_capacity(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"manual-cap-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id=f"manual-cap-{uuid.uuid4().hex[:6]}",
+                max_concurrent_sessions=1,
+            )
+            await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=2,
+                model_config_id=model.id,
+                model_provider=model.provider,
+                model_id=model.model_id,
+            )
+            await db.commit()
+
+        resp = await client.post(
+            "/sessions",
+            json={
+                "tier": 2,
+                "model_provider": model.provider,
+                "model_id": model.model_id,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        assert "at capacity" in resp.json()["detail"]
+
+    async def test_explicit_saved_model_persists_config_id(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"manual-unlimited-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id=f"manual-unlimited-{uuid.uuid4().hex[:6]}",
+                max_concurrent_sessions=0,
+            )
+            await db.commit()
+
+        resp = await client.post(
+            "/sessions",
+            json={
+                "tier": 2,
+                "model_provider": model.provider,
+                "model_id": model.model_id,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["model_config_id"] == str(model.id)
+
     async def test_session_defaults_to_incident_ingestion_model(
         self, client: AsyncClient, app, auth_headers
     ):
@@ -6575,6 +6635,7 @@ class TestModelConfigAPI:
                 "api_key_env_var": "OPENAI_API_KEY",
                 "max_tokens": 8192,
                 "temperature": 0.1,
+                "max_concurrent_sessions": 3,
             },
             headers=auth_headers,
         )
@@ -6585,12 +6646,70 @@ class TestModelConfigAPI:
         assert data["model_id"] == "gpt-4o"
         assert data["max_tokens"] == 8192
         assert data["temperature"] == 0.1
+        assert data["max_concurrent_sessions"] == 3
         assert data["is_default"] is True
 
         async with app.state.session_factory() as db:
             default = await ModelConfigRepo.get_default(db, TEST_ORG_ID)
             assert default is not None
             assert default.name == "primary-openai"
+
+    async def test_occupied_model_config_allows_cap_change_but_blocks_retarget_and_delete(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.api.routes.models.ProviderRegistry.validate_model_config",
+            lambda self, **kwargs: type("_Validation", (), {"warnings": []})(),
+        )
+        async with app.state.session_factory() as db:
+            model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"occupied-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id="occupied-model",
+                max_concurrent_sessions=1,
+            )
+            await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=2,
+                model_config_id=model.id,
+                model_provider=model.provider,
+                model_id=model.model_id,
+            )
+            await db.commit()
+
+        cap_update = await client.put(
+            f"/models/configs/{model.id}",
+            json={
+                "name": model.name,
+                "provider": model.provider,
+                "model_id": model.model_id,
+                "max_concurrent_sessions": 2,
+            },
+            headers=auth_headers,
+        )
+        assert cap_update.status_code == 200, cap_update.text
+        assert cap_update.json()["config"]["max_concurrent_sessions"] == 2
+
+        retarget = await client.put(
+            f"/models/configs/{model.id}",
+            json={
+                "name": model.name,
+                "provider": model.provider,
+                "model_id": "different-model",
+                "max_concurrent_sessions": 2,
+            },
+            headers=auth_headers,
+        )
+        assert retarget.status_code == 409
+
+        deleted = await client.delete(
+            f"/models/configs/{model.id}",
+            headers=auth_headers,
+        )
+        assert deleted.status_code == 409
 
     async def test_update_model_config_surfaces_warnings(
         self, client: AsyncClient, auth_headers, monkeypatch

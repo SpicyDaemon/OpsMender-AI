@@ -89,6 +89,20 @@ def _session_block(session) -> str:
 
 async def _resolve_llm(db, org_id: uuid.UUID, session) -> LLM:
     """Pick an LLM for the session: session-pinned model, then default, then stub."""
+    if getattr(session, "model_config_id", None) is not None:
+        pinned_cfg = await ModelConfigRepo.get_by_id(
+            db, org_id, session.model_config_id
+        )
+        if pinned_cfg is not None:
+            return create_llm(
+                provider=pinned_cfg.provider,
+                model_id=pinned_cfg.model_id,
+                max_tokens=pinned_cfg.max_tokens,
+                api_key_env_var=pinned_cfg.api_key_env_var,
+                base_url=pinned_cfg.base_url,
+                api_version=pinned_cfg.api_version,
+                provider_meta=pinned_cfg.provider_meta,
+            )
     provider = session.model_provider
     model_id = session.model_id
 

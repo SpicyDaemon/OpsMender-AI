@@ -491,6 +491,12 @@ class Session(Base):
     agent_team_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("agent_team_profiles.id", ondelete="SET NULL"), nullable=True
     )
+    model_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("model_configs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     tier: Mapped[int] = mapped_column(Integer, nullable=False)
     model_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -508,6 +514,7 @@ class Session(Base):
     incident: Mapped[Incident | None] = relationship(back_populates="sessions")
     workflow_profile: Mapped["WorkflowProfile | None"] = relationship()
     agent_team_profile: Mapped["AgentTeamProfile | None"] = relationship()
+    model_config: Mapped["ModelConfig | None"] = relationship()
     audit_entries: Mapped[list[AuditEntry]] = relationship(back_populates="session")
     approval_requests: Mapped[list[ApprovalRequest]] = relationship(
         back_populates="session"
@@ -613,6 +620,9 @@ class ModelConfig(Base):
     provider_meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096, nullable=False)
     temperature: Mapped[float] = mapped_column(default=0.0, nullable=False)
+    max_concurrent_sessions: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

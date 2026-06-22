@@ -25,6 +25,7 @@ const apiMocks = vi.hoisted(() => ({
   getIncidentPostmortem: vi.fn(),
   putIncidentPostmortem: vi.fn(),
   extractPostmortemMemoryCandidates: vi.fn(),
+  draftIncidentPostmortemFromSessions: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -76,6 +77,26 @@ describe("Postmortem page Phase 2 polish", () => {
     await waitFor(() => expect(screen.getByText(/Recommended sections/)).toBeTruthy());
     expect(screen.getByText(/Recommended sections \(\d+\/7\)/)).toBeTruthy();
     expect(screen.getAllByLabelText("filled").length).toBeGreaterThan(0);
+  });
+
+  it("drafts from AI sessions via the backend and loads it into the editor", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    apiMocks.draftIncidentPostmortemFromSessions.mockResolvedValue({
+      incident_id: "inc-1",
+      draft: "## Summary\nDrafted from the session trail.\n## Root cause\nOOMKilled",
+      source_session_ids: ["sess-1"],
+    });
+    await renderPage();
+    const btn = await screen.findByRole("button", { name: /Draft from sessions/i });
+    fireEvent.click(btn);
+    await waitFor(() =>
+      expect(apiMocks.draftIncidentPostmortemFromSessions).toHaveBeenCalledWith(
+        "inc-1",
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByDisplayValue(/Drafted from the session trail/)).toBeTruthy(),
+    );
   });
 
   it("offers a 'Save N to memory' button and calls the handoff", async () => {

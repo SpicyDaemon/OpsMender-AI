@@ -14,8 +14,9 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Brain, Check, Circle, Download, Eye, Pencil, Save, ScrollText, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, Brain, Check, Circle, Download, Eye, Pencil, Save, ScrollText, Sparkles, Trash2 } from "lucide-react";
 import {
+  draftIncidentPostmortemFromSessions,
   extractPostmortemMemoryCandidates,
   getIncident,
   getIncidentPostmortem,
@@ -417,6 +418,38 @@ function IncidentPostmortemContent() {
     setMode("edit");
   }
 
+  const [draftingFromSessions, setDraftingFromSessions] = useState(false);
+
+  async function handleDraftFromSessions() {
+    if (!id) return;
+    if (
+      draft.trim() &&
+      !confirm(
+        "Replace the current draft with one assembled from this incident's AI sessions (observations, diagnosis, plan)? Unsaved edits will be lost.",
+      )
+    ) {
+      return;
+    }
+    setDraftingFromSessions(true);
+    setError("");
+    try {
+      const result = await draftIncidentPostmortemFromSessions(id);
+      setDraft(result.draft);
+      setMode("edit");
+      if (result.source_session_ids.length === 0) {
+        toast.info("No AI sessions on this incident yet — drafted from lifecycle only.");
+      } else {
+        toast.success(
+          `Drafted from ${result.source_session_ids.length} AI session(s).`,
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not draft from sessions");
+    } finally {
+      setDraftingFromSessions(false);
+    }
+  }
+
   function handleDownload() {
     const filename = `postmortem-${incident?.id?.slice(0, 8) ?? "incident"}.md`;
     const blob = new Blob([draft], { type: "text/markdown" });
@@ -504,9 +537,20 @@ function IncidentPostmortemContent() {
                 size="sm"
                 variant="secondary"
                 onClick={handleGenerateDraft}
-                title="Generate a structured draft from incident details, timeline, and session data. You can edit it before saving or downloading."
+                title="Generate a structured draft from incident details and timeline. You can edit it before saving or downloading."
               >
                 <Sparkles size={14} /> Generate draft
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleDraftFromSessions}
+                loading={draftingFromSessions}
+                title="Assemble a draft from this incident's AI sessions — observations, diagnosis, and proposed actions — mapped onto the postmortem sections."
+              >
+                <Bot size={14} /> Draft from sessions
               </Button>
             )}
             {canEdit && candidateCount > 0 && (

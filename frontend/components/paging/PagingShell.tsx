@@ -4126,10 +4126,16 @@ export function NotificationPreferencesPanel({
   // routable automatically. Friendly names only; provider lives in channel
   // config.
   const channelOptions = useMemo(
-    () =>
-      botConnectors
+    () => [
+      ...botConnectors
         .filter((c) => c.is_enabled)
         .map((c) => ({ value: c.id, label: c.name })),
+      // Voice Call is an env-configured personal-routing medium (v2 Phase 6):
+      // selectable here; it delivers only when Twilio voice is configured on the
+      // server (otherwise the page records as skipped, like any unconfigured
+      // channel).
+      { value: "voice", label: "Voice Call" },
+    ],
     [botConnectors],
   );
 

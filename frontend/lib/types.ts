@@ -192,6 +192,12 @@ export interface IncidentPostmortemUpdate {
   postmortem_md: string | null;
 }
 
+export interface PostmortemDraftResponse {
+  incident_id: string;
+  draft: string;
+  source_session_ids: string[];
+}
+
 export interface IncidentCommentResponse {
   id: string;
   incident_id: string;

@@ -225,6 +225,7 @@ import type {
   IncidentCommentListResponse,
   IncidentCommentResponse,
   IncidentPostmortemResponse,
+  PostmortemDraftResponse,
   PostmortemMemoryCandidatesResponse,
   IncidentPostmortemUpdate,
   IncidentResponse,
@@ -365,6 +366,15 @@ export async function extractPostmortemMemoryCandidates(
 ): Promise<PostmortemMemoryCandidatesResponse> {
   return api.post<PostmortemMemoryCandidatesResponse>(
     `/incidents/${id}/postmortem/memory-candidates`,
+    {},
+  );
+}
+
+export async function draftIncidentPostmortemFromSessions(
+  id: string,
+): Promise<PostmortemDraftResponse> {
+  return api.post<PostmortemDraftResponse>(
+    `/incidents/${id}/postmortem/draft`,
     {},
   );
 }

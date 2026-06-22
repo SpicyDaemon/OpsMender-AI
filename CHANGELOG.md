@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v2 UI follow-ups.** (1) The postmortem editor gains a **"Draft from
+  sessions"** button that calls `POST /incidents/{id}/postmortem/draft` and
+  loads the session-trail-derived RCA draft into the editor (distinct from the
+  existing client-side "Generate draft"). (2) **Voice Call** is now selectable as
+  a stage channel in **My Routing** (delivers when Twilio voice is configured;
+  otherwise the page records as skipped).
 - **v2 Phase 8 — bounded memory growth (opt-in).** Incident memories are still
   never auto-deleted by default. When `OPSMENDER_MEMORY_EVICTION_ENABLED=true`
   and a service's memory count exceeds `OPSMENDER_MEMORY_MAX_PER_SERVICE`

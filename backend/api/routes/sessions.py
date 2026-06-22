@@ -25,6 +25,9 @@ from backend.api.session_runner import (
     schedule_session_workflow,
 )
 from backend.api.schemas import (
+    ModelCapacityRow,
+    OrchestrationOverview,
+    OrchestrationSession,
     RollbackStepResponse,
     SessionCreate,
     SessionListResponse,
@@ -48,6 +51,7 @@ from backend.db.repos import (
     IncidentAssignmentRepo,
     IncidentRepo,
     MCPServerRepo,
+    ModelConfigRepo,
     SessionMessageRepo,
     SessionRepo,
     SkillRepo,
@@ -324,6 +328,63 @@ async def list_sessions(
     )
     rows = [_to_session_response(s) for s in items]
     return SessionListResponse(items=rows, total=len(rows))
+
+
+@router.get(
+    "/orchestration",
+    response_model=OrchestrationOverview,
+    summary="AI session orchestration overview (per-model occupancy + queue)",
+)
+async def orchestration_overview(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """v2 Phase 3: per-model concurrency occupancy plus the currently running and
+    queued AI sessions (with the reason each is queued). Read-only."""
+    configs = await ModelConfigRepo.list_all(db, org_id)
+    occupancy = await SessionRepo.active_occupancy_by_model_config(db, org_id)
+    name_by_id = {c.id: c.name for c in configs}
+    models = [
+        ModelCapacityRow(
+            model_config_id=c.id,
+            name=c.name,
+            provider=c.provider,
+            model_id=c.model_id,
+            max_concurrent_sessions=c.max_concurrent_sessions,
+            running=int(occupancy.get(c.id, 0)),
+        )
+        for c in configs
+        if c.is_active
+    ]
+
+    active: list[OrchestrationSession] = []
+    queued: list[OrchestrationSession] = []
+    for session, incident in await SessionRepo.list_live_with_incident(db, org_id):
+        row = OrchestrationSession(
+            session_id=session.id,
+            incident_id=session.incident_id,
+            incident_title=getattr(incident, "title", None),
+            priority=getattr(incident, "priority", None),
+            status=session.status,
+            tier=session.tier,
+            model_config_id=session.model_config_id,
+            model_name=name_by_id.get(session.model_config_id),
+            queued_at=session.queued_at,
+            queue_expires_at=session.queue_expires_at,
+            queue_reason=session.queue_reason,
+            force_started=session.force_started,
+            started_at=session.started_at,
+        )
+        (queued if session.status == "queued" else active).append(row)
+
+    return OrchestrationOverview(
+        models=models,
+        active_sessions=active,
+        queued_sessions=queued,
+        active_total=len(active),
+        queued_total=len(queued),
+    )
 
 
 @router.get(

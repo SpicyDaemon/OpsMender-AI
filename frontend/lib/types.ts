@@ -260,6 +260,40 @@ export interface SessionListResponse {
   total: number;
 }
 
+// v2 Phase 3 — session orchestration overview
+export interface ModelCapacityRow {
+  model_config_id: string;
+  name: string;
+  provider: string;
+  model_id: string;
+  max_concurrent_sessions: number | null;
+  running: number;
+}
+
+export interface OrchestrationSession {
+  session_id: string;
+  incident_id: string | null;
+  incident_title: string | null;
+  priority: string | null;
+  status: SessionStatus;
+  tier: number;
+  model_config_id: string | null;
+  model_name: string | null;
+  queued_at: string | null;
+  queue_expires_at: string | null;
+  queue_reason: string | null;
+  force_started: boolean;
+  started_at: string;
+}
+
+export interface OrchestrationOverview {
+  models: ModelCapacityRow[];
+  active_sessions: OrchestrationSession[];
+  queued_sessions: OrchestrationSession[];
+  active_total: number;
+  queued_total: number;
+}
+
 export interface SessionCreate {
   incident_id?: string;
   workflow_profile_id?: string;

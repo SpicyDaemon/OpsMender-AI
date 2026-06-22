@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Cpu,
+  Gauge,
   FileText,
   FileBarChart,
   GitBranch,
@@ -136,6 +137,7 @@ export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
         { href: "/dashboard/memories", label: "Memories", icon: Brain, roles: ["admin"] },
         { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network, roles: ["admin"] },
         { href: "/dashboard/models", label: "Models", icon: Cpu, roles: ["admin"] },
+        { href: "/dashboard/orchestration", label: "Orchestration", icon: Gauge, roles: ["admin", "operator"] },
       ],
     },
     {

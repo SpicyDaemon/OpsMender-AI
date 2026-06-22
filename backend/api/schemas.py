@@ -529,6 +529,50 @@ class SessionListResponse(BaseModel):
     total: int
 
 
+# -- Session orchestration overview (v2 Phase 3) -----------------------------
+
+
+class ModelCapacityRow(BaseModel):
+    """Per-model concurrency occupancy for the orchestration overview."""
+
+    model_config_id: uuid.UUID
+    name: str
+    provider: str
+    model_id: str
+    max_concurrent_sessions: Optional[int] = None  # None / 0 = unlimited
+    running: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class OrchestrationSession(BaseModel):
+    """A live (running / awaiting-approval / queued) session for the overview."""
+
+    session_id: uuid.UUID
+    incident_id: Optional[uuid.UUID]
+    incident_title: Optional[str] = None
+    priority: Optional[str] = None
+    status: str
+    tier: int
+    model_config_id: Optional[uuid.UUID]
+    model_name: Optional[str] = None
+    queued_at: Optional[datetime] = None
+    queue_expires_at: Optional[datetime] = None
+    queue_reason: Optional[str] = None
+    force_started: bool = False
+    started_at: datetime
+
+
+class OrchestrationOverview(BaseModel):
+    """Running + queued sessions and per-model occupancy."""
+
+    models: list[ModelCapacityRow]
+    active_sessions: list[OrchestrationSession]
+    queued_sessions: list[OrchestrationSession]
+    active_total: int
+    queued_total: int
+
+
 # -- Rollback (Sprint 17) ----------------------------------------------------
 
 

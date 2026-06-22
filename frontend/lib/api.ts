@@ -374,6 +374,7 @@ export async function extractPostmortemMemoryCandidates(
 // ---------------------------------------------------------------------------
 
 import type {
+  OrchestrationOverview,
   SessionCreate,
   SessionListResponse,
   SessionMessageCreate,
@@ -415,6 +416,10 @@ export async function listSessions(params?: {
   if (params?.offset !== undefined) qs.set("offset", String(params.offset));
   const q = qs.toString();
   return api.get<SessionListResponse>(`/sessions${q ? `?${q}` : ""}`);
+}
+
+export async function getSessionOrchestration(): Promise<OrchestrationOverview> {
+  return api.get<OrchestrationOverview>("/sessions/orchestration");
 }
 
 export async function listIncidentSessions(id: string): Promise<SessionListResponse> {

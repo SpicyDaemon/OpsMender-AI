@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v2 Phase 4 — automatic incident-comment timeline.** Lifecycle actions now
+  record an incident comment (source `lifecycle`) so the timeline reads as one
+  narrative regardless of origin (web UI, chat, or the AI runner):
+  **acknowledge** (all surfaces, via `handle_ack`), **resolve** (incident status
+  route), **escalate** (every step ≥ 1, manual or timer-driven), and **AI
+  session started / ended**. Written inside the caller's transaction; advisory
+  only — never affects enforcement.
+- **v2 Phase 3 — session orchestration overview.** New
+  `GET /sessions/orchestration` (admin/operator) returns per-model concurrency
+  occupancy plus the currently running and queued sessions with each queued
+  session's reason. New **Orchestration** page (AI Agent → Orchestration) shows
+  per-model capacity bars, the priority queue (incident · priority · waiting ·
+  expires · reason), and running sessions (incl. a "forced" marker). Builds on
+  the Phase 1 per-model cap admin controls and the Phase 2 queue.
 - **v2 Phase 1 — per-model incident-session capacity.** Saved model configs now
   accept an optional per-workspace `max_concurrent_sessions` cap (`null`/`0`
   remains unlimited). Incident-response allocation walks the incident/service

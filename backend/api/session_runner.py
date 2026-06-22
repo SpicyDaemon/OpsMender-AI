@@ -51,6 +51,7 @@ from backend.skills.parser import SkillDefinition, load as load_skill_def, loads
 from backend.tiers.enforcement import check as tier_check, normalize_tier
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.bots.notifier import schedule_session_chat_event
+from backend.services.incident_timeline import record_lifecycle_comment
 from backend.integrations.tools import (
     IntegrationToolRuntime,
     merge_integration_skill,
@@ -221,6 +222,16 @@ class LiveAuditLogger:
                 entry_type=AuditEntryType.SESSION_START.value,
                 permitted=True,
             )
+            session_row = await SessionRepo.get_by_id(
+                db, self._org_id, uuid.UUID(session_id)
+            )
+            if session_row is not None:
+                await record_lifecycle_comment(
+                    db,
+                    self._org_id,
+                    incident_id=session_row.incident_id,
+                    body="AI session started.",
+                )
             await db.commit()
         return str(entry.id)
 
@@ -234,6 +245,16 @@ class LiveAuditLogger:
                 entry_type=AuditEntryType.SESSION_END.value,
                 permitted=True,
             )
+            session_row = await SessionRepo.get_by_id(
+                db, self._org_id, uuid.UUID(session_id)
+            )
+            if session_row is not None:
+                await record_lifecycle_comment(
+                    db,
+                    self._org_id,
+                    incident_id=session_row.incident_id,
+                    body="AI session ended.",
+                )
             await db.commit()
         return str(entry.id)
 

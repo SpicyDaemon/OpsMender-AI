@@ -93,6 +93,7 @@ from backend.ingest.autostart import (
     schedule_auto_started_session,
 )
 from backend.services.incident_events import dispatch_incident_created
+from backend.services.incident_timeline import record_lifecycle_comment
 from backend.llm.selection import choose_model_for_incident_service
 from backend.bots.notifier import schedule_session_chat_event
 
@@ -898,6 +899,13 @@ async def update_incident(
             org_id,
             incident_id,
             reason=f"Incident {body.status} by {user.username}",
+        )
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body="Resolved the incident.",
+            author_user_id=user.id,
         )
     await db.commit()
     if body.status == "resolved" and prior_status != "resolved":

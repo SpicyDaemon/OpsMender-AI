@@ -66,6 +66,7 @@ from backend.db.repos import (
 )
 
 _log = logging.getLogger(__name__)
+from backend.services.incident_timeline import record_lifecycle_comment
 from backend.paging.dispatch import ChannelFactory, dispatch_page
 from backend.paging.on_call import (
     OnCallContext,
@@ -529,6 +530,12 @@ async def tick(
     # An advanced step (index >= 1) is an escalation to a higher level — notify
     # configured Notification Channels. Best-effort; never blocks the engine.
     if result.step_index >= 1 and result.users_paged:
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body=f"Escalated to step {result.step_index + 1}.",
+        )
         await _notify_escalation(db, org_id, incident_id)
     return result
 
@@ -578,6 +585,12 @@ async def escalate_now(
     )
     await db.flush()
     if result.step_index >= 1 and result.users_paged:
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body=f"Escalated to step {result.step_index + 1}.",
+        )
         await _notify_escalation(db, org_id, incident_id)
     return result
 
@@ -613,6 +626,13 @@ async def handle_ack(
             user_id=user_id,
             assigned_by="self_ack",
         )
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body=f"Acknowledged the incident (via {via}).",
+            author_user_id=user_id,
+        )
         from backend.paging import notification_escalation as _ne
 
         await _ne.stop_escalation(
@@ -632,6 +652,13 @@ async def handle_ack(
         incident_id=incident_id,
         user_id=user_id,
         assigned_by="self_ack",
+    )
+    await record_lifecycle_comment(
+        db,
+        org_id,
+        incident_id=incident_id,
+        body=f"Acknowledged the incident (via {via}).",
+        author_user_id=user_id,
     )
     state.status = "acked"
     state.finished_at = now

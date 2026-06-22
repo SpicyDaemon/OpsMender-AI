@@ -1355,6 +1355,41 @@ class SessionRepo:
         )
         return int(value or 0)
 
+    @staticmethod
+    async def list_live_with_incident(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+    ) -> Sequence[tuple[Session, Incident | None]]:
+        """Active / awaiting-approval / queued sessions joined to their incident.
+
+        Powers the orchestration overview: running sessions ordered by start
+        time, queued sessions ordered by the same priority rule the drainer
+        uses (P0 first, then queue-entry time).
+        """
+        priority_order = case(
+            (Incident.priority == "P0", 0),
+            (Incident.priority == "P1", 1),
+            (Incident.priority == "P2", 2),
+            else_=3,
+        )
+        # queued rows sort first by priority, active rows by recency.
+        status_order = case((Session.status == "queued", 0), else_=1)
+        stmt = (
+            select(Session, Incident)
+            .outerjoin(Incident, Incident.id == Session.incident_id)
+            .where(
+                Session.org_id == org_id,
+                Session.status.in_(("active", "awaiting_approval", "queued")),
+            )
+            .order_by(
+                status_order,
+                priority_order,
+                Session.queued_at,
+                Session.started_at.desc(),
+            )
+        )
+        return [(row[0], row[1]) for row in (await db.execute(stmt)).all()]
+
 
 class AuditEntryRepo:
     @staticmethod

@@ -64,6 +64,10 @@ class PlatformCapabilities:
     shared_channel: bool = False
     ai_session_link: bool = True
     message_update: bool = False
+    # Can this provider place an outbound **phone call** (PSTN voice)? True only
+    # for telephony providers (e.g. Twilio); chat bots cannot place calls. Gates
+    # whether Voice Call is offered as a personal-routing delivery medium.
+    voice_call: bool = False
 
     @property
     def delivery_only(self) -> bool:
@@ -83,6 +87,7 @@ class PlatformCapabilities:
             "shared_channel": self.shared_channel,
             "ai_session_link": self.ai_session_link,
             "message_update": self.message_update,
+            "voice_call": self.voice_call,
             "delivery_only": self.delivery_only,
         }
 
@@ -96,6 +101,7 @@ def _cap(
     direct_message: bool = False,
     shared_channel: bool = False,
     message_update: bool = False,
+    voice_call: bool = False,
 ) -> PlatformCapabilities:
     return PlatformCapabilities(
         platform=platform,
@@ -105,6 +111,7 @@ def _cap(
         direct_message=direct_message,
         shared_channel=shared_channel,
         message_update=message_update,
+        voice_call=voice_call,
     )
 
 
@@ -184,7 +191,9 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
     # Delivery-only platforms — plain message + authenticated incident link.
     "whatsapp": _cap("whatsapp", "WhatsApp", direct_message=True),
     "signal": _cap("signal", "Signal", direct_message=True, shared_channel=True),
-    "twilio": _cap("twilio", "Twilio (SMS)", direct_message=True),
+    "twilio": _cap(
+        "twilio", "Twilio (SMS)", direct_message=True, voice_call=True
+    ),
     "email": _cap("email", "Mailgun Email", direct_message=True, shared_channel=True),
     "smtp": _cap("smtp", "SMTP Email", direct_message=True, shared_channel=True),
     "weixin": _cap("weixin", "WeChat (Official Account)"),
@@ -227,6 +236,12 @@ def supports_interactive_actions(platform: str) -> bool:
 def supports_message_update(platform: str) -> bool:
     caps = PLATFORM_CAPABILITIES.get(platform)
     return bool(caps and caps.message_update)
+
+
+def supports_voice_call(platform: str) -> bool:
+    """True only for telephony providers that can place outbound phone calls."""
+    caps = PLATFORM_CAPABILITIES.get(platform)
+    return bool(caps and caps.voice_call)
 
 
 def is_delivery_only(platform: str) -> bool:

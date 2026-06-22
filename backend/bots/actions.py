@@ -26,6 +26,7 @@ from backend.db.repos import (
     UserRepo,
 )
 from backend.paging import escalation as _escalation
+from backend.services.incident_timeline import record_lifecycle_comment
 from backend.services.session_orchestration import admit_session
 from backend.tiers.resolution import resolve_session_tier_for_incident
 
@@ -299,6 +300,7 @@ async def execute_incident_action(
             claims.org_id,
             incident_id=claims.incident_id,
             user_id=actor_user_id,
+            via=(connector.platform if connector is not None else "web_ui"),
         )
         return IncidentActionResult(
             action=claims.action,
@@ -328,6 +330,13 @@ async def execute_incident_action(
         )
         await IncidentRepo.update_status(
             db, claims.org_id, claims.incident_id, "resolved"
+        )
+        await record_lifecycle_comment(
+            db,
+            claims.org_id,
+            incident_id=claims.incident_id,
+            body="Resolved the incident.",
+            author_user_id=actor_user_id,
         )
         return IncidentActionResult(
             action=claims.action,

@@ -3997,6 +3997,7 @@ const LEGACY_CHANNEL_LABELS: Record<string, string> = {
   teams_dm_graph: "Teams DM",
   email: "Email",
   sms: "SMS",
+  voice: "Voice Call",
 };
 
 // Stage delay options gating the next escalation stage.

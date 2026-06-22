@@ -23,6 +23,7 @@ from backend.db.repos import (
     BotConnectorRepo,
     BotUserLinkRepo,
     IncidentAssignmentRepo,
+    IncidentCommentRepo,
     IncidentRepo,
     NativeActionInvocationRepo,
     SessionRepo,
@@ -145,6 +146,31 @@ async def test_operator_can_acknowledge_and_viewer_is_rejected(factory):
             actor_user_id=operator.id,
         )
         assert again.status == "already_acknowledged"
+
+
+async def test_native_resolve_records_lifecycle_comment(factory):
+    """A verified native resolve must leave a lifecycle comment on the timeline
+    (parity with the web-UI resolve path — v2 Phase 4/5)."""
+    async with factory() as db:
+        operator = await _user(db, username="closer", role="operator")
+        incident = await IncidentRepo.create(
+            db,
+            TEST_ORG_ID,
+            title="Disk pressure",
+            description="node disk full",
+            severity="high",
+        )
+        result = await execute_incident_action(
+            db,
+            claims=_claims(incident.id, action="resolve"),
+            actor_user_id=operator.id,
+        )
+        assert result.status == "resolved"
+        comments = await IncidentCommentRepo.list_for_incident(db, TEST_ORG_ID, incident.id)
+        lifecycle = [c for c in comments if c.source == "lifecycle"]
+        assert len(lifecycle) == 1
+        assert lifecycle[0].body == "Resolved the incident."
+        assert lifecycle[0].author_user_id == operator.id
 
 
 async def test_resolve_and_start_ai_session_are_idempotent(factory):

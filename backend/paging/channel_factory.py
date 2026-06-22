@@ -35,6 +35,7 @@ from backend.paging.channels import (
     SMSChannel,
     TeamsDMChannel,
     TeamsGraphDMChannel,
+    VoiceChannel,
 )
 from backend.paging.dispatch import Channel, ChannelFactory
 
@@ -70,6 +71,15 @@ def build_channel_factory(
     twilio_sid = src.get("OPSMENDER_TWILIO_ACCOUNT_SID") or None
     twilio_token = src.get("OPSMENDER_TWILIO_AUTH_TOKEN") or None
     twilio_from = src.get("OPSMENDER_TWILIO_FROM_NUMBER") or None
+    # Voice Call medium (provider-agnostic; Twilio Programmable Voice today).
+    # Falls back to the SMS-capable Twilio number when no dedicated voice number
+    # is set. Voice is offered only when a voice-capable provider is configured.
+    twilio_voice_from = (
+        src.get("OPSMENDER_TWILIO_VOICE_FROM_NUMBER") or twilio_from
+    )
+    twilio_voice_status_cb = (
+        src.get("OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL") or None
+    )
 
     teams_graph_tenant = src.get("OPSMENDER_TEAMS_GRAPH_TENANT_ID") or None
     teams_graph_client = src.get("OPSMENDER_TEAMS_GRAPH_CLIENT_ID") or None
@@ -94,6 +104,13 @@ def build_channel_factory(
                 account_sid=twilio_sid,
                 auth_token=twilio_token,
                 from_number=twilio_from,
+            )
+        if key == "voice" and twilio_sid and twilio_token and twilio_voice_from:
+            return VoiceChannel(
+                account_sid=twilio_sid,
+                auth_token=twilio_token,
+                from_number=twilio_voice_from,
+                status_callback_url=twilio_voice_status_cb,
             )
         if (
             key == "teams_dm_graph"

@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v2 Phase 6 — Voice Call paging medium (provider-agnostic).** Added a `voice`
+  personal-routing delivery channel behind the existing channel-agnostic
+  dispatch abstraction. The first provider is **Twilio Programmable Voice**
+  (`VoiceChannel` places an outbound call that speaks the page via inline TwiML
+  `<Say>`, with an optional status callback for the answered/ack signal). A new
+  `voice_call` platform capability (+ `supports_voice_call`) gates it — Voice is
+  offered only by telephony providers that can place calls (chat bots can't).
+  Config: `OPSMENDER_TWILIO_VOICE_FROM_NUMBER` (falls back to the SMS number) +
+  `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL`. Other voice providers plug in as
+  additional `voice` channel implementations.
+- **v2 Phase 5 — Slack verified interactive incident actions through the shared
+  path.** Slack/Teams verified interactive cards (Ack/Resolve/Escalate/Start-AI)
+  already shipped in v1.1; this wires them through the v2 Phase 2/4 paths so all
+  four actions behave identically to the web UI: native **resolve** now records
+  a `lifecycle` incident comment (parity with the web resolve), and native
+  **acknowledge** attributes its lifecycle comment to the originating platform
+  (e.g. "via slack"). Start-AI already routes through the capacity-aware
+  admission/queue.
 - **v2 Phase 4 — automatic incident-comment timeline.** Lifecycle actions now
   record an incident comment (source `lifecycle`) so the timeline reads as one
   narrative regardless of origin (web UI, chat, or the AI runner):

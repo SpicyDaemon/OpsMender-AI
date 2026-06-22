@@ -23,6 +23,7 @@ import asyncio
 import smtplib
 from email.message import EmailMessage
 from typing import Callable, ClassVar
+from xml.sax.saxutils import escape as _xml_escape
 
 import httpx
 
@@ -388,6 +389,73 @@ class SMSChannel:
             try:
                 data = resp.json()
                 detail = data.get("message") or data.get("error_message") or ""
+            except ValueError:
+                detail = ""
+            msg = f"http {resp.status_code}"
+            if detail:
+                msg = f"{msg}: {detail}"
+            return DeliveryAttempt(self.key, "failed", msg)
+        return DeliveryAttempt(self.key, "sent")
+
+
+class VoiceChannel:
+    """Outbound **phone call** personal-routing medium.
+
+    A capability-gated voice provider (today: Twilio Programmable Voice). The
+    abstract :class:`Channel` protocol is the telephony abstraction layer — a
+    new voice provider plugs in as another ``key="voice"`` implementation behind
+    ``channel_factory`` + the ``voice_call`` capability gate; chat bots that
+    cannot place PSTN calls never expose this channel.
+
+    Places an outbound call that speaks the page via inline TwiML ``<Say>``. An
+    optional ``status_callback_url`` lets the provider report the answered/ack
+    signal back to OpsMender (mapping answered → ack is wired through the
+    existing inbound webhook).
+    """
+
+    key: ClassVar[str] = "voice"
+
+    def __init__(
+        self,
+        *,
+        account_sid: str,
+        auth_token: str,
+        from_number: str,
+        status_callback_url: str | None = None,
+        http_client_factory: HttpClientFactory | None = None,
+    ):
+        self._sid = account_sid
+        self._token = auth_token
+        self._from = from_number
+        self._status_callback_url = status_callback_url
+        self._factory = http_client_factory or _default_http_client
+
+    async def send(
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        blocks: list[dict] | None = None,
+    ) -> DeliveryAttempt:
+        spoken = f"{subject}. {body}"
+        if len(spoken) > 900:
+            spoken = spoken[:897] + "..."
+        twiml = f"<Response><Say>{_xml_escape(spoken)}</Say></Response>"
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{self._sid}/Calls.json"
+        data = {"From": self._from, "To": recipient, "Twiml": twiml}
+        if self._status_callback_url:
+            data["StatusCallback"] = self._status_callback_url
+            data["StatusCallbackEvent"] = "answered"
+        try:
+            async with self._factory() as client:
+                resp = await client.post(url, auth=(self._sid, self._token), data=data)
+        except httpx.HTTPError as exc:
+            return DeliveryAttempt(self.key, "failed", f"network: {exc}")
+        if resp.status_code >= 400:
+            try:
+                payload = resp.json()
+                detail = payload.get("message") or payload.get("error_message") or ""
             except ValueError:
                 detail = ""
             msg = f"http {resp.status_code}"

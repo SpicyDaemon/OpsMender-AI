@@ -52,6 +52,7 @@ CHANNEL_KEYS: tuple[str, ...] = (
     "teams_dm_graph",
     "email",
     "sms",
+    "voice",
 )
 DEFAULT_CHANNELS: tuple[str, ...] = ("email",)
 PRIORITY_RANK: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}

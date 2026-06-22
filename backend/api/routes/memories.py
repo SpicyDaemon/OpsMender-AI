@@ -62,6 +62,7 @@ def _to_response(
         tags=list(memory.tags or []),
         helpful_count=memory.helpful_count or 0,
         unhelpful_count=memory.unhelpful_count or 0,
+        pinned=bool(memory.pinned),
         can_edit=can_manage,
         can_delete=can_manage,
         created_by_user_id=memory.created_by_user_id,
@@ -314,6 +315,7 @@ async def update_memory(
         tags=tags,
         service_id=body.service_id,
         service_id_set=body.service_id_set,
+        pinned=body.pinned,
     )
     if updated is None:
         raise HTTPException(

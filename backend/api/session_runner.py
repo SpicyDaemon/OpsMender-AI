@@ -506,6 +506,18 @@ async def _service_context_for_incident(
     )
 
 
+def _progress_snapshot(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a resumable progress snapshot from the final graph state (v2 Phase
+    7) — the findings/decisions a revisitor or postmortem draft needs. Returns
+    None when the graph produced nothing worth persisting."""
+    snapshot: dict[str, Any] = {}
+    for key in ("observations", "diagnosis", "plan", "workflow_result", "rollback"):
+        value = result.get(key)
+        if value:
+            snapshot[key] = value
+    return snapshot or None
+
+
 async def _set_session_terminal_state(
     app,
     factory,
@@ -514,6 +526,7 @@ async def _set_session_terminal_state(
     *,
     status: str,
     summary: str | None = None,
+    progress: dict | None = None,
 ) -> None:
     async with factory() as db:
         await SessionRepo.set_status(
@@ -523,6 +536,7 @@ async def _set_session_terminal_state(
             status=status,
             summary=summary,
             ended_at=_utcnow(),
+            progress=progress,
         )
         await db.commit()
     from backend.services.session_orchestration import schedule_queue_drain
@@ -863,6 +877,7 @@ async def _run_session_workflow_inner(
             session_id,
             status=final_status,
             summary=result.get("summary"),
+            progress=_progress_snapshot(result),
         )
         schedule_session_chat_event(
             factory,

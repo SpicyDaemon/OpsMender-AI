@@ -1284,12 +1284,15 @@ class SessionRepo:
         status: str,
         summary: str | None = None,
         ended_at: datetime | None = None,
+        progress: dict | None = None,
     ) -> None:
         values: dict[str, Any] = {"status": status}
         if summary is not None:
             values["summary"] = summary
         if ended_at is not None:
             values["ended_at"] = ended_at
+        if progress is not None:
+            values["progress"] = progress
         stmt = (
             update(Session)
             .where(Session.org_id == org_id)
@@ -7177,6 +7180,7 @@ class IncidentMemoryRepo:
         tags: list[str] | None = None,
         service_id: uuid.UUID | None = None,
         service_id_set: bool = False,
+        pinned: bool | None = None,
     ) -> IncidentMemory | None:
         row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
         if row is None:
@@ -7189,6 +7193,8 @@ class IncidentMemoryRepo:
             row.tags = list(tags)
         if service_id_set:
             row.service_id = service_id
+        if pinned is not None:
+            row.pinned = pinned
         row.updated_at = datetime.now(timezone.utc)
         await db.flush()
         return row

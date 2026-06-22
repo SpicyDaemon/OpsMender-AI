@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -46,6 +47,32 @@ from backend.db.repos import IncidentMemoryRepo
 logger = logging.getLogger(__name__)
 
 COMPACTION_THRESHOLD = 50
+
+# v2 Phase 8 — bounded memory growth (opt-in). Off by default. When enabled and
+# a service's memory count exceeds the configured ceiling, evict the
+# lowest-value memories down to the ceiling. Operator-pinned and high-recall
+# (helpful_count >= EVICTION_PROTECT_HELPFUL) memories are never evicted.
+EVICTION_PROTECT_HELPFUL = 3
+DEFAULT_EVICTION_MAX = 500
+
+
+def _eviction_enabled() -> bool:
+    return os.environ.get("OPSMENDER_MEMORY_EVICTION_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _eviction_max() -> int:
+    raw = os.environ.get("OPSMENDER_MEMORY_MAX_PER_SERVICE", "").strip()
+    if not raw:
+        return DEFAULT_EVICTION_MAX
+    try:
+        return int(raw)
+    except ValueError:
+        return DEFAULT_EVICTION_MAX
 """Per-service memory count above which auto-compaction runs after a write."""
 
 MAX_COMPACTION_OPS = 5
@@ -292,6 +319,12 @@ async def remember_for_session(
     except Exception:
         logger.exception("memory auto-compaction failed; continuing")
 
+    # Opt-in bounded-growth eviction (off by default). Also best-effort.
+    try:
+        await maybe_evict(factory, org_id=org_id, service_id=service_id)
+    except Exception:
+        logger.exception("memory eviction failed; continuing")
+
     return new_id
 
 
@@ -383,6 +416,67 @@ async def maybe_compact(
         "llm_deleted": llm_deleted,
         "total_after": total_after,
     }
+
+
+async def maybe_evict(
+    factory: Any,
+    *,
+    org_id: uuid.UUID,
+    service_id: uuid.UUID | None,
+    max_total: int | None = None,
+    enabled: bool | None = None,
+    protect_helpful: int = EVICTION_PROTECT_HELPFUL,
+) -> dict[str, Any]:
+    """Opt-in bounded-growth eviction for one service group (v2 Phase 8).
+
+    Off by default. When enabled and the group exceeds ``max_total``, evict the
+    least-valuable memories down to the ceiling — oldest by ``last_used_at``
+    (falling back to ``created_at``) first. **Never** evicts pinned or
+    high-recall (``helpful_count >= protect_helpful``) memories. Returns an
+    observable report and logs each eviction. Best-effort; never raises.
+    """
+    enabled = _eviction_enabled() if enabled is None else enabled
+    max_total = _eviction_max() if max_total is None else max_total
+    report = {"evicted": 0, "protected": 0, "total_after": 0, "enabled": enabled}
+    if not enabled or max_total <= 0 or factory is None:
+        return report
+
+    async with factory() as db:
+        count = await IncidentMemoryRepo.count_for_service(db, org_id, service_id)
+        if count <= max_total:
+            report["total_after"] = count
+            return report
+
+        memories = list(
+            await IncidentMemoryRepo.list_for_org(
+                db, org_id, service_id=service_id, global_only=service_id is None
+            )
+        )
+        evictable = [
+            m
+            for m in memories
+            if not m.pinned and (m.helpful_count or 0) < protect_helpful
+        ]
+        report["protected"] = len(memories) - len(evictable)
+        # Least-recently-used first; never-used sort by age.
+        evictable.sort(key=lambda m: (m.last_used_at or m.created_at))
+        to_evict = count - max_total
+        evicted = 0
+        for memory in evictable[:to_evict]:
+            await IncidentMemoryRepo.delete(db, memory_id=memory.id, org_id=org_id)
+            evicted += 1
+            logger.info(
+                "memory.evicted org=%s service=%s memory=%s title=%r helpful=%s",
+                org_id,
+                service_id,
+                memory.id,
+                memory.title,
+                memory.helpful_count,
+            )
+        await db.commit()
+        report["evicted"] = evicted
+        report["total_after"] = count - evicted
+    return report
 
 
 async def _llm_compact(

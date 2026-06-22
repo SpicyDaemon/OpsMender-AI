@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v2 Phase 8 — bounded memory growth (opt-in).** Incident memories are still
+  never auto-deleted by default. When `OPSMENDER_MEMORY_EVICTION_ENABLED=true`
+  and a service's memory count exceeds `OPSMENDER_MEMORY_MAX_PER_SERVICE`
+  (default 500), the least-recently-used memories are evicted down to the
+  ceiling. **Operator-pinned** memories (new `pinned` flag, editable via the
+  memory update API/response) and **high-recall** memories (`helpful_count ≥ 3`)
+  are never evicted. Eviction runs after compaction in the writeback path,
+  audit-logs each removal, and returns an observable report. Migration
+  `o1p2q3r4s5t6`.
+- **v2 Phase 7 — resumable session progress + RCA drafting.** AI sessions now
+  persist a `progress` snapshot (observations / diagnosis / plan /
+  workflow_result) on completion (migration `n0p1q2r3s4t5`), exposed on the
+  session API so a revisitor or takeover gets the accumulated context instead of
+  a blank slate. New `POST /incidents/{id}/postmortem/draft` deterministically
+  assembles a postmortem/RCA markdown draft from the incident's session trail
+  (mapped onto the canonical sections) for the editor to prefill — LLM-free, not
+  auto-saved.
 - **v2 Phase 6 — Voice Call paging medium (provider-agnostic).** Added a `voice`
   personal-routing delivery channel behind the existing channel-agnostic
   dispatch abstraction. The first provider is **Twilio Programmable Voice**

@@ -31,6 +31,7 @@ from backend.api.schemas import (
     IncidentPostmortemUpdate,
     IncidentResponse,
     PostmortemMemoryCandidate,
+    PostmortemDraftResponse,
     PostmortemMemoryCandidatesResponse,
     IncidentTimelineItemResponse,
     IncidentTimelineResponse,
@@ -94,6 +95,7 @@ from backend.ingest.autostart import (
 )
 from backend.services.incident_events import dispatch_incident_created
 from backend.services.incident_timeline import record_lifecycle_comment
+from backend.services.postmortem_draft import draft_postmortem
 from backend.llm.selection import choose_model_for_incident_service
 from backend.bots.notifier import schedule_session_chat_event
 
@@ -952,6 +954,34 @@ async def get_incident_postmortem(
         postmortem_md=incident.postmortem_md,
         postmortem_updated_at=_aware(incident.postmortem_updated_at),
         template=DEFAULT_POSTMORTEM_TEMPLATE,
+    )
+
+
+@router.post(
+    "/{incident_id}/postmortem/draft",
+    response_model=PostmortemDraftResponse,
+    summary="Draft a postmortem/RCA from the incident's AI session trail",
+)
+async def draft_incident_postmortem(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """v2 Phase 7 — assemble a postmortem draft from the persisted session
+    progress (observations / diagnosis / plan) + lifecycle. Deterministic and
+    LLM-free; returns the draft for the editor to prefill (does not save)."""
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found"
+        )
+    sessions = list(await SessionRepo.list_by_incident(db, org_id, incident_id))
+    draft = draft_postmortem(incident, sessions)
+    return PostmortemDraftResponse(
+        incident_id=incident.id,
+        draft=draft,
+        source_session_ids=[s.id for s in sessions],
     )
 
 

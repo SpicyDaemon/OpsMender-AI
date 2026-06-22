@@ -439,6 +439,14 @@ class IncidentPostmortemUpdate(BaseModel):
     postmortem_md: Optional[str] = Field(default=None, max_length=100_000)
 
 
+class PostmortemDraftResponse(BaseModel):
+    """A postmortem draft assembled from the AI session trail (v2 Phase 7)."""
+
+    incident_id: uuid.UUID
+    draft: str
+    source_session_ids: list[uuid.UUID]
+
+
 class IncidentCommentCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=5000)
 
@@ -512,6 +520,7 @@ class SessionResponse(BaseModel):
     model_id: Optional[str]
     status: str
     summary: Optional[str]
+    progress: Optional[dict] = None
     queued_at: Optional[datetime]
     queue_expires_at: Optional[datetime]
     queue_reason: Optional[str]
@@ -2767,6 +2776,7 @@ class IncidentMemoryResponse(BaseModel):
     tags: list[str] = Field(default_factory=list)
     helpful_count: int = 0
     unhelpful_count: int = 0
+    pinned: bool = False
     can_edit: bool = False
     can_delete: bool = False
     created_by_user_id: Optional[uuid.UUID] = None
@@ -2797,6 +2807,8 @@ class IncidentMemoryUpdate(BaseModel):
     # vs leave it untouched (field omitted from request body).
     service_id: Optional[uuid.UUID] = None
     service_id_set: bool = False
+    # v2 Phase 8 — pin/unpin to protect from bounded-growth eviction.
+    pinned: Optional[bool] = None
 
 
 class IncidentMemoryFeedbackRequest(BaseModel):

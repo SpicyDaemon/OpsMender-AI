@@ -509,6 +509,10 @@ class Session(Base):
         String(20), nullable=False, default="active"
     )  # queued | active | awaiting_approval | completed | failed | timed_out | stopped | cancelled
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Resumable progress snapshot (v2 Phase 7): persisted findings/decisions
+    # (observations, diagnosis, plan, workflow_result) so a revisitor or takeover
+    # gets accumulated context and a postmortem/RCA can be drafted from the trail.
+    progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     queued_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
@@ -2463,6 +2467,9 @@ class IncidentMemory(Base):
     unhelpful_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )
+    # v2 Phase 8 — operator-pinned memories are protected from bounded-growth
+    # eviction (alongside high-recall memories). Never auto-deleted.
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

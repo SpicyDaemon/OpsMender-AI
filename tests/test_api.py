@@ -3510,6 +3510,79 @@ class TestSessions:
         assert resp.status_code == 201, resp.text
         assert resp.json()["model_config_id"] == str(model.id)
 
+    async def test_manual_queue_can_be_force_started_with_warning_and_audit(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        app.state.workflow_start_delay_seconds = 3600
+        async with app.state.session_factory() as db:
+            model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"force-cap-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id=f"force-cap-{uuid.uuid4().hex[:6]}",
+                max_concurrent_sessions=1,
+            )
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Force Queue Team",
+                slug=f"force-queue-team-{uuid.uuid4().hex[:6]}",
+                created_by=uuid.uuid4(),
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Force Queue Service",
+                slug=f"force-queue-service-{uuid.uuid4().hex[:6]}",
+                priority="P0",
+                preferred_model_config_ids=[str(model.id)],
+            )
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="Manual force queue",
+                description="all models full",
+                priority="P0",
+                service_id=service.id,
+            )
+            await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=2,
+                model_config_id=model.id,
+                model_provider=model.provider,
+                model_id=model.model_id,
+            )
+            await db.commit()
+
+        queued = await client.post(
+            "/sessions",
+            json={"incident_id": str(incident.id), "tier": 0},
+            headers=auth_headers,
+        )
+        assert queued.status_code == 201, queued.text
+        assert queued.json()["status"] == "queued"
+
+        forced = await client.post(
+            "/sessions",
+            json={"incident_id": str(incident.id), "tier": 0, "force": True},
+            headers=auth_headers,
+        )
+        assert forced.status_code == 201, forced.text
+        data = forced.json()
+        assert data["id"] == queued.json()["id"]
+        assert data["status"] == "active"
+        assert data["force_started"] is True
+        assert "1/1" in data["capacity_warning"]
+
+        async with app.state.session_factory() as db:
+            entries = await AuditEntryRepo.list_by_session(
+                db, TEST_ORG_ID, uuid.UUID(data["id"])
+            )
+        assert any(entry.entry_type == "session_force_start" for entry in entries)
+
     async def test_session_defaults_to_incident_ingestion_model(
         self, client: AsyncClient, app, auth_headers
     ):
@@ -7843,6 +7916,27 @@ class TestApprovals:
             headers=auth_headers,
         )
         assert resp.status_code == 422
+
+    async def test_extend_request_resets_approval_hold(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        _, request = await _create_approval_request(app)
+        original_expiry = request.expires_at
+
+        resp = await client.post(
+            f"/approvals/{request.id}/extend",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "pending"
+        assert data["extension_count"] == 1
+        original_utc = (
+            original_expiry.replace(tzinfo=timezone.utc)
+            if original_expiry.tzinfo is None
+            else original_expiry
+        )
+        assert datetime.fromisoformat(data["expires_at"]) > original_utc
 
     async def test_viewer_cannot_approve(
         self, client: AsyncClient, app, viewer_headers

@@ -118,19 +118,17 @@ async def _lifespan(app: FastAPI):
     set_mcp_pool(pool)
     app.state.mcp_pool = pool
     if run_schedulers:
-        incident_created_callback = None
-        if deployment.mode == "distributed":
-            from backend.services.incident_events import dispatch_incident_created
+        from backend.services.incident_events import dispatch_incident_created
 
-            async def incident_created_callback(
-                org_id, incident_id, auto_start_tier
-            ):
-                await dispatch_incident_created(
-                    app,
-                    org_id=org_id,
-                    incident_id=incident_id,
-                    auto_start_tier=auto_start_tier,
-                )
+        async def incident_created_callback(
+            org_id, incident_id, auto_start_tier
+        ):
+            await dispatch_incident_created(
+                app,
+                org_id=org_id,
+                incident_id=incident_id,
+                auto_start_tier=auto_start_tier,
+            )
 
         sla_poller = SLAPoller(
             factory,
@@ -185,6 +183,16 @@ async def _lifespan(app: FastAPI):
         app.state.report_scheduler = report_scheduler
         await report_scheduler.start()
         scheduler_stoppers.append(report_scheduler.stop)
+
+        from backend.services.session_orchestration import SessionQueueScheduler
+
+        session_queue_scheduler = SessionQueueScheduler(
+            app,
+            poll_interval_seconds=config.sessions.sweep_interval_seconds,
+        )
+        app.state.session_queue_scheduler = session_queue_scheduler
+        await session_queue_scheduler.start()
+        scheduler_stoppers.append(session_queue_scheduler.stop)
 
     # mcp.json file mirror (Sprint 42 step 6). Opt-in via OPSMENDER_MCP_JSON_SYNC.
     # When enabled, reconcile the file against every org's MCP servers on

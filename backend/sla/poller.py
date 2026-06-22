@@ -24,10 +24,7 @@ from backend.db.repos import (
     UptimeSampleRepo,
     OrganizationRepo,
 )
-from backend.llm.selection import (
-    choose_model_for_incident_service,
-    has_active_model_configs,
-)
+from backend.services.session_orchestration import admit_session
 from backend.ingest.autostart import (
     has_active_session_for_incident,
     load_auto_start_policy,
@@ -288,35 +285,14 @@ class SLAPoller:
                             db, org_id, incident.id
                         ):
                             if self._incident_created_callback is None:
-                                model = await choose_model_for_incident_service(
-                                    db,
-                                    org_id,
-                                    service_id=incident.service_id,
-                                    ingestion_model_config_id=(
-                                        incident.ingestion_model_config_id
-                                    ),
-                                    respect_capacity=True,
-                                )
-                                if model is None and await has_active_model_configs(
-                                    db, org_id
-                                ):
-                                    logger.info(
-                                        "slo.auto_start: capacity reached incident=%s",
-                                        incident.id,
-                                    )
-                                    continue
-                                await SessionRepo.create(
+                                await admit_session(
                                     db,
                                     org_id,
                                     tier=policy.session_tier,
-                                    incident_id=incident.id,
-                                    model_config_id=(
-                                        None if model is None else model.id
+                                    incident=incident,
+                                    queue_ttl_seconds=(
+                                        self._config.sessions.queue_ttl_seconds
                                     ),
-                                    model_provider=(
-                                        None if model is None else model.provider
-                                    ),
-                                    model_id=None if model is None else model.model_id,
                                 )
                             else:
                                 pending_created_events.append(

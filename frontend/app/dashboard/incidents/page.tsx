@@ -169,18 +169,19 @@ function timeRangeForPreset(preset: TimePreset) {
 }
 
 /** In-progress AI-session pill for the incidents list. Renders only while a
- * session is `active` or `awaiting_approval`; terminal/absent sessions show
+ * session is queued, active, or awaiting approval; terminal/absent sessions show
  * nothing so the list stays uncluttered. */
 function AiSessionBadge({ incident }: { incident: IncidentResponse }) {
   if (!incident.ai_session_active || !incident.ai_session_status) return null;
   const awaiting = incident.ai_session_status === "awaiting_approval";
+  const queued = incident.ai_session_status === "queued";
   return (
     <Badge
-      variant={awaiting ? "awaiting_approval" : "active"}
+      variant={queued ? "queued" : awaiting ? "awaiting_approval" : "active"}
       className="gap-1"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
-      {awaiting ? "AI · approval" : "AI · running"}
+      {queued ? "AI · waiting" : awaiting ? "AI · approval" : "AI · running"}
     </Badge>
   );
 }

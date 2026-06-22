@@ -49,6 +49,7 @@ RESULT_MESSAGES = {
     "escalated": "escalated",
     "no_escalation_target": "found no further escalation target for",
     "session_started": "started an AI session for",
+    "session_queued": "queued an AI session for",
     "already_active": "found an active AI session for",
 }
 
@@ -116,3 +117,34 @@ async def execute_normalized_callback(
         channel_factory=build_channel_factory(),
         config=config,
     )
+
+
+async def dispatch_native_session_result(
+    app,
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    result: IncidentActionResult,
+) -> None:
+    """Commit and dispatch a verified chat session start after admission."""
+    if result.session_id is None or result.status not in {
+        "session_started",
+        "session_queued",
+    }:
+        return
+    await db.commit()
+    if result.status == "session_queued":
+        from backend.bots.notifier import schedule_session_chat_event
+
+        schedule_session_chat_event(
+            app.state.session_factory,
+            org_id=org_id,
+            task_registry=app.state.background_tasks,
+            event_type="session.queued",
+            session_id=result.session_id,
+        )
+        return
+
+    from backend.services.session_orchestration import dispatch_session_ready
+
+    await dispatch_session_ready(app, result.session_id)

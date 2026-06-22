@@ -225,12 +225,14 @@ export interface PostmortemMemoryCandidatesResponse {
 // ---------------------------------------------------------------------------
 
 export type SessionStatus =
+  | "queued"
   | "active"
   | "awaiting_approval"
   | "completed"
   | "failed"
   | "timed_out"
-  | "stopped";
+  | "stopped"
+  | "cancelled";
 
 export interface SessionResponse {
   id: string;
@@ -243,6 +245,11 @@ export interface SessionResponse {
   model_id: string | null;
   status: SessionStatus;
   summary: string | null;
+  queued_at: string | null;
+  queue_expires_at: string | null;
+  queue_reason: string | null;
+  force_started: boolean;
+  capacity_warning: string | null;
   started_at: string;
   ended_at: string | null;
   tier0_max_session_seconds: number | null;
@@ -261,6 +268,7 @@ export interface SessionCreate {
   model_provider?: string;
   model_id?: string;
   initial_briefing?: string;
+  force?: boolean;
 }
 
 export interface SessionOverrideRequest {
@@ -361,6 +369,8 @@ export interface ApprovalRequestResponse {
   resolved_at: string | null;
   resolved_by: string | null;
   expires_at: string;
+  extension_count: number;
+  extension_notified_at: string | null;
 }
 
 export interface ApprovalListResponse {

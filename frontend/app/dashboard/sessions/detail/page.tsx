@@ -592,7 +592,14 @@ function SessionPageContent() {
       setPendingApprovals([]);
       setEvents((prev) => [
         ...prev,
-        { id: idGen(), kind: "end", label: "Session stopped (by you)", ts: new Date() },
+        {
+          id: idGen(),
+          kind: "end",
+          label: updated.status === "cancelled"
+            ? "Queued session cancelled (by you)"
+            : "Session stopped (by you)",
+          ts: new Date(),
+        },
       ]);
     } catch (err) {
       setInterceptError(err instanceof Error ? err.message : "Failed to stop session");
@@ -648,7 +655,12 @@ function SessionPageContent() {
   }, [canChat, session?.status]);
 
   const tier0Timer = useMemo(() => {
-    if (!session || session.tier !== 0 || !session.tier0_max_session_seconds) {
+    if (
+      !session
+      || session.status === "queued"
+      || session.tier !== 0
+      || !session.tier0_max_session_seconds
+    ) {
       return null;
     }
     const startedMs = new Date(session.started_at).getTime();
@@ -736,11 +748,15 @@ function SessionPageContent() {
               </div>
               <p className="mt-1.5 text-xs text-fg-muted font-mono tabular-nums">
                 session {session.id.slice(0, 8)}…
-                {session.started_at && (
+                {session.status === "queued" && session.queued_at ? (
+                  <span className="ml-2">
+                    queued {new Date(session.queued_at).toLocaleTimeString()}
+                  </span>
+                ) : session.started_at ? (
                   <span className="ml-2">
                     started {new Date(session.started_at).toLocaleTimeString()}
                   </span>
-                )}
+                ) : null}
               </p>
             </div>
             <span
@@ -756,11 +772,26 @@ function SessionPageContent() {
               {connected ? "Live" : "Disconnected"}
             </span>
           </div>
-          {canChat && (session.status === "active" || session.status === "awaiting_approval") && (
+          {session.status === "queued" && (
+            <div className="mt-3 rounded-lg border border-status-high-border bg-status-high-bg px-3 py-2 text-xs text-status-high">
+              Waiting for model capacity
+              {session.queue_expires_at
+                ? ` until ${new Date(session.queue_expires_at).toLocaleTimeString()}`
+                : ""}
+              . The model is selected again when this session reaches the front
+              of the queue.
+            </div>
+          )}
+          {canChat && (
+            session.status === "queued"
+            || session.status === "active"
+            || session.status === "awaiting_approval"
+          ) && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-3">
               <p className="text-xs text-fg-secondary">
-                Intercept this running session — stop the AI, or override into a
-                less-autonomous tier and take control.
+                {session.status === "queued"
+                  ? "Cancel this queued session before it starts."
+                  : "Intercept this running session — stop the AI, or override into a less-autonomous tier and take control."}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -769,9 +800,10 @@ function SessionPageContent() {
                   onClick={handleStop}
                   loading={intercepting}
                 >
-                  <StopCircle size={14} /> Stop
+                  <StopCircle size={14} />
+                  {session.status === "queued" ? "Cancel queued session" : "Stop"}
                 </Button>
-                {session.tier < 1 && (
+                {session.status !== "queued" && session.tier < 1 && (
                   <Button
                     size="sm"
                     variant="secondary"
@@ -781,7 +813,7 @@ function SessionPageContent() {
                     <Split size={14} /> Override → Tier 1
                   </Button>
                 )}
-                {session.tier < 2 && (
+                {session.status !== "queued" && session.tier < 2 && (
                   <Button
                     size="sm"
                     variant="secondary"

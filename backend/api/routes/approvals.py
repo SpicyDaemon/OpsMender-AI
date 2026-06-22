@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
@@ -51,6 +51,12 @@ def _to_ws_message(request) -> WSMessage:
             ),
             "resolved_by": str(request.resolved_by) if request.resolved_by else None,
             "expires_at": _as_utc(request.expires_at).isoformat(),
+            "extension_count": request.extension_count,
+            "extension_notified_at": (
+                _as_utc(request.extension_notified_at).isoformat()
+                if request.extension_notified_at
+                else None
+            ),
         },
     )
 
@@ -60,6 +66,7 @@ async def _resolve_request(
     org_id: uuid.UUID,
     request_id: uuid.UUID,
     *,
+    app_request: Request,
     decision: str,
     resolver: User,
     resolution_note: str | None = None,
@@ -87,6 +94,9 @@ async def _resolve_request(
             ended_at=_utcnow(),
         )
         await db.commit()
+        from backend.services.session_orchestration import schedule_queue_drain
+
+        schedule_queue_drain(app_request.app, org_id=org_id)
         expired = await ApprovalRequestRepo.get_by_id(db, org_id, request.id)
         if expired is None:
             raise HTTPException(
@@ -155,11 +165,19 @@ async def list_approvals(
 )
 async def approve_request(
     request_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    return await _resolve_request(db, org_id, request_id, decision="approved", resolver=user)
+    return await _resolve_request(
+        db,
+        org_id,
+        request_id,
+        app_request=request,
+        decision="approved",
+        resolver=user,
+    )
 
 
 @router.post(
@@ -169,11 +187,19 @@ async def approve_request(
 )
 async def reject_request(
     request_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    return await _resolve_request(db, org_id, request_id, decision="rejected", resolver=user)
+    return await _resolve_request(
+        db,
+        org_id,
+        request_id,
+        app_request=request,
+        decision="rejected",
+        resolver=user,
+    )
 
 
 @router.post(
@@ -184,6 +210,7 @@ async def reject_request(
 async def redirect_request(
     request_id: uuid.UUID,
     body: ApprovalRedirectRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
@@ -198,7 +225,53 @@ async def redirect_request(
         db,
         org_id,
         request_id,
+        app_request=request,
         decision="redirected",
         resolver=user,
         resolution_note=body.guidance.strip(),
     )
+
+
+@router.post(
+    "/{request_id}/extend",
+    response_model=ApprovalRequestResponse,
+    summary="Extend a pending approval's model-slot hold",
+)
+async def extend_request(
+    request_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    approval = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
+    if approval is None:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+    if approval.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Approval request is already {approval.status}",
+        )
+    now = _utcnow()
+    if now >= _as_utc(approval.expires_at):
+        raise HTTPException(status_code=409, detail="Approval request has expired")
+    expires_at = now + timedelta(
+        seconds=request.app.state.config.sessions.approval_hold_ttl_seconds
+    )
+    extended = await ApprovalRequestRepo.extend(
+        db,
+        org_id,
+        request_id,
+        expires_at=expires_at,
+    )
+    if not extended:
+        raise HTTPException(
+            status_code=409,
+            detail="Approval request could not be extended",
+        )
+    await db.commit()
+    updated = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+    await publish(updated.session_id, _to_ws_message(updated))
+    return updated

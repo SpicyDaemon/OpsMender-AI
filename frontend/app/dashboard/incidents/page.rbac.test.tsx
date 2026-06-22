@@ -118,6 +118,21 @@ function incident(
 }
 
 describe("Incidents page RBAC", () => {
+  it("shows when an incident is waiting for AI capacity", async () => {
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [
+        {
+          ...incident("queued", "open", "svc-queue"),
+          ai_session_active: true,
+          ai_session_status: "queued",
+        },
+      ],
+      total: 1,
+    });
+    await renderAndSettle();
+    expect((await screen.findAllByText("AI · waiting")).length).toBeGreaterThan(0);
+  });
+
   it("shows New Incident + Fire Test Incident for admin", async () => {
     role.current = "admin";
     await renderAndSettle();

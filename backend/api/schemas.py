@@ -490,6 +490,7 @@ class SessionCreate(BaseModel):
     model_provider: Optional[str] = None
     model_id: Optional[str] = None
     initial_briefing: Optional[str] = Field(default=None, max_length=10000)
+    force: bool = False
 
 
 class SessionOverrideRequest(BaseModel):
@@ -511,6 +512,11 @@ class SessionResponse(BaseModel):
     model_id: Optional[str]
     status: str
     summary: Optional[str]
+    queued_at: Optional[datetime]
+    queue_expires_at: Optional[datetime]
+    queue_reason: Optional[str]
+    force_started: bool = False
+    capacity_warning: Optional[str] = None
     started_at: datetime
     ended_at: Optional[datetime]
     tier0_max_session_seconds: Optional[int] = None
@@ -601,6 +607,8 @@ class ApprovalRequestResponse(BaseModel):
     resolved_at: Optional[datetime]
     resolved_by: Optional[uuid.UUID]
     expires_at: datetime
+    extension_count: int = 0
+    extension_notified_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

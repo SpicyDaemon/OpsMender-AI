@@ -79,12 +79,14 @@ const PIPELINE: PipelineDef[] = [
 export interface WorkflowStateInputs {
   /** Session.status as returned by GET /sessions/{id}. */
   sessionStatus:
+    | "queued"
     | "active"
     | "awaiting_approval"
     | "completed"
     | "failed"
     | "timed_out"
-    | "stopped";
+    | "stopped"
+    | "cancelled";
   /**
    * The oldest-first event log (the host page appends WebSocket
    * messages, so `events[0]` is the earliest and `events.at(-1)` is

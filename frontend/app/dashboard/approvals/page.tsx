@@ -11,7 +11,12 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
-import { approveRequest, listApprovals, rejectRequest } from "@/lib/api";
+import {
+  approveRequest,
+  extendApprovalRequest,
+  listApprovals,
+  rejectRequest,
+} from "@/lib/api";
 import type { ApprovalListResponse, ApprovalRequestResponse, ApprovalStatus } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -92,6 +97,20 @@ export default function ApprovalsPage() {
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Rejection failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleExtend(id: string) {
+    setActionLoading(true);
+    try {
+      const updated = await extendApprovalRequest(id);
+      toast.success("Session hold extended");
+      setSelected(updated);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Extension failed");
     } finally {
       setActionLoading(false);
     }
@@ -336,6 +355,14 @@ export default function ApprovalsPage() {
 
             {selected.status === "pending" && (
               <div className="flex justify-end gap-3 pt-2 border-t border-border-subtle">
+                <Button
+                  variant="secondary"
+                  onClick={() => handleExtend(selected.id)}
+                  loading={actionLoading}
+                >
+                  <Clock size={16} />
+                  Extend session
+                </Button>
                 <Button
                   variant="danger"
                   onClick={() => handleReject(selected.id)}

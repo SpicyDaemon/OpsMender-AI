@@ -42,6 +42,10 @@ log = logging.getLogger(__name__)
 
 SESSION_CHAT_EVENTS = {
     "session.created",
+    "session.queued",
+    "session.started_from_queue",
+    "session.queue_cancelled",
+    "session.queue_expired",
     "session.awaiting_approval",
     "session.active",
     "session.completed",
@@ -161,6 +165,14 @@ def _format_session_event(
             if actor_name
             else "*AI session started*"
         )
+    elif event_type == "session.queued":
+        headline = "*AI session queued for capacity*"
+    elif event_type == "session.started_from_queue":
+        headline = "*AI session started after waiting for capacity*"
+    elif event_type == "session.queue_cancelled":
+        headline = "*Queued AI session cancelled*"
+    elif event_type == "session.queue_expired":
+        headline = "*Queued AI session expired*"
     elif event_type == "session.completed":
         headline = "*AI session completed*"
     elif event_type in {"session.failed", "session.timed_out"}:

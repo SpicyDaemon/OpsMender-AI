@@ -100,6 +100,9 @@ function sourceMeta(incident: IncidentResponse) {
 }
 
 function sessionStatusSummary(sessions: SessionResponse[]) {
+  if (sessions.some((session) => session.status === "queued")) {
+    return { label: "Waiting for AI capacity", variant: "queued" as const };
+  }
   if (sessions.some((session) => session.status === "awaiting_approval")) {
     return { label: "Awaiting approval", variant: "awaiting_approval" as const };
   }
@@ -524,6 +527,11 @@ function IncidentDetailContent() {
           setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
           setActiveSessionId(session.id);
           setShowSession(false);
+          if (session.capacity_warning) {
+            toast.warning(session.capacity_warning);
+          } else if (session.status === "queued") {
+            toast.info("AI session queued until model capacity becomes available.");
+          }
           router.prefetch(`/dashboard/sessions/detail?id=${session.id}`);
         }}
       />
@@ -623,6 +631,15 @@ function StartSessionModal({
   const blockedOnAck = ackRequired && !isAcknowledged;
 
   async function handleStart() {
+    if (
+      form.force
+      && !window.confirm(
+        "Force start can exceed the selected model's concurrency limit. "
+          + "The override will be audited and will count toward occupancy. Continue?",
+      )
+    ) {
+      return;
+    }
     setError("");
     setLoading(true);
     try {
@@ -761,6 +778,29 @@ function StartSessionModal({
             Seeded as the first user message in the co-pilot chat before the workflow begins.
           </p>
         </div>
+
+        <label className="flex items-start gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={Boolean(form.force)}
+            onChange={(e) =>
+              setForm((current) => ({
+                ...current,
+                force: e.target.checked,
+              }))
+            }
+          />
+          <span>
+            <span className="block font-medium text-fg-primary">
+              Force start if the selected model is full
+            </span>
+            <span className="block text-xs text-fg-muted">
+              Soft override: the session counts toward occupancy and the action
+              is audited.
+            </span>
+          </span>
+        </label>
 
         {error && <FormError message={error} />}
 

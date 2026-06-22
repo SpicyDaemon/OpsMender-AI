@@ -497,13 +497,33 @@ class Session(Base):
         nullable=True,
         index=True,
     )
+    requested_model_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("model_configs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     tier: Mapped[int] = mapped_column(Integer, nullable=False)
     model_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="active"
-    )  # active | awaiting_approval | completed | failed | timed_out
+    )  # queued | active | awaiting_approval | completed | failed | timed_out | stopped | cancelled
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    queued_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    queue_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    queue_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    force_started: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    force_started_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    force_start_occupancy: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    force_start_cap: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -514,7 +534,9 @@ class Session(Base):
     incident: Mapped[Incident | None] = relationship(back_populates="sessions")
     workflow_profile: Mapped["WorkflowProfile | None"] = relationship()
     agent_team_profile: Mapped["AgentTeamProfile | None"] = relationship()
-    model_config: Mapped["ModelConfig | None"] = relationship()
+    model_config: Mapped["ModelConfig | None"] = relationship(
+        foreign_keys=[model_config_id]
+    )
     audit_entries: Mapped[list[AuditEntry]] = relationship(back_populates="session")
     approval_requests: Mapped[list[ApprovalRequest]] = relationship(
         back_populates="session"
@@ -590,6 +612,12 @@ class ApprovalRequest(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+    extension_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    extension_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     session: Mapped[Session] = relationship(back_populates="approval_requests")

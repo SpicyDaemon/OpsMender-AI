@@ -230,6 +230,12 @@ class ApprovalService:
             ),
             "resolved_by": str(request.resolved_by) if request.resolved_by else None,
             "expires_at": _as_utc(request.expires_at).isoformat(),
+            "extension_count": request.extension_count,
+            "extension_notified_at": (
+                _as_utc(request.extension_notified_at).isoformat()
+                if request.extension_notified_at
+                else None
+            ),
         }
 
     @staticmethod

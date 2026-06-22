@@ -536,6 +536,12 @@ export async function rejectRequest(id: string): Promise<ApprovalRequestResponse
   return api.post<ApprovalRequestResponse>(`/approvals/${id}/reject`);
 }
 
+export async function extendApprovalRequest(
+  id: string,
+): Promise<ApprovalRequestResponse> {
+  return api.post<ApprovalRequestResponse>(`/approvals/${id}/extend`);
+}
+
 export async function redirectRequest(
   id: string,
   guidance: string,

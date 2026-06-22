@@ -353,7 +353,10 @@ async def test_approval_request_notifies_approvers(factory, monkeypatch):
             db, ORG, pending[0].id, status="approved", resolved_by=USER_A
         )
         await db.commit()
-    await asyncio.wait_for(task, timeout=2)
+    # Under the full suite, SQLite connection scheduling can delay the final
+    # poll after the request is resolved. Keep this well below the approval's
+    # own timeout while avoiding a teardown-only timing failure.
+    await asyncio.wait_for(task, timeout=5)
 
 
 # --- @mention parsing --------------------------------------------------------

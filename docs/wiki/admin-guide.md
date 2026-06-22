@@ -68,6 +68,18 @@ To add a model config:
 3. For Bedrock, enter the AWS Region first, then click **Refresh Catalog** if you want the live Bedrock model list for that region/profile.
 4. For Vertex AI, enter the GCP Project + Location first, then click **Refresh Catalog** if you want the live `google/...`, `anthropic/...`, and `meta/...` model suggestions for that project/location.
 5. Pick a model from the discovered catalog, or click **Type manual model ID** if discovery is unavailable or the model isn't reported (e.g. a proxy that doesn't implement `/v1/models`).
+6. Optionally set **Concurrent Sessions**. `0` means unlimited. When every
+   response model is full, incident sessions enter the durable priority queue;
+   ingest/triage classification does not consume these slots.
+
+Capacity is enforced per organization and saved model config. If multiple
+organizations share one provider API key, these per-organization caps do not
+protect the provider account's combined global limit. Queue wait, approval hold,
+extension warning, and scheduler sweep intervals are configured with
+`OPSMENDER_SESSION_QUEUE_TTL_SECONDS`,
+`OPSMENDER_APPROVAL_HOLD_TTL_SECONDS`,
+`OPSMENDER_APPROVAL_EXTENSION_WARNING_SECONDS`, and
+`OPSMENDER_SESSION_QUEUE_SWEEP_SECONDS`.
 6. Set **Concurrent Sessions** if the provider/model needs a per-workspace
    incident-response limit. `0` means unlimited. When a preferred model is full,
    OpsMender tries the Service's next preferred model, then the workspace

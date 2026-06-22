@@ -16,7 +16,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
@@ -1025,8 +1025,17 @@ class SessionRepo:
         workflow_profile_id: uuid.UUID | None = None,
         agent_team_profile_id: uuid.UUID | None = None,
         model_config_id: uuid.UUID | None = None,
+        requested_model_config_id: uuid.UUID | None = None,
         model_provider: str | None = None,
         model_id: str | None = None,
+        status: str = "active",
+        queued_at: datetime | None = None,
+        queue_expires_at: datetime | None = None,
+        queue_reason: str | None = None,
+        force_started: bool = False,
+        force_started_by: uuid.UUID | None = None,
+        force_start_occupancy: int | None = None,
+        force_start_cap: int | None = None,
     ) -> Session:
         session = Session(
             org_id=org_id,
@@ -1035,8 +1044,17 @@ class SessionRepo:
             workflow_profile_id=workflow_profile_id,
             agent_team_profile_id=agent_team_profile_id,
             model_config_id=model_config_id,
+            requested_model_config_id=requested_model_config_id,
             model_provider=model_provider,
             model_id=model_id,
+            status=status,
+            queued_at=queued_at,
+            queue_expires_at=queue_expires_at,
+            queue_reason=queue_reason,
+            force_started=force_started,
+            force_started_by=force_started_by,
+            force_start_occupancy=force_start_occupancy,
+            force_start_cap=force_start_cap,
         )
         db.add(session)
         await db.flush()
@@ -1057,6 +1075,18 @@ class SessionRepo:
         ).scalar_one_or_none()
 
     @staticmethod
+    async def get_by_id_global_for_update(
+        db: AsyncSession, session_id: uuid.UUID
+    ) -> Session | None:
+        return (
+            await db.execute(
+                select(Session)
+                .where(Session.id == session_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
     async def list_by_incident(
         db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
     ) -> Sequence[Session]:
@@ -1070,6 +1100,113 @@ class SessionRepo:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    @staticmethod
+    async def get_nonterminal_for_incident(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+    ) -> Session | None:
+        return (
+            await db.execute(
+                select(Session)
+                .where(
+                    Session.org_id == org_id,
+                    Session.incident_id == incident_id,
+                    Session.status.in_(("queued", "active", "awaiting_approval")),
+                )
+                .order_by(Session.started_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_queued_for_drain(
+        db: AsyncSession,
+        org_id: uuid.UUID | None = None,
+        *,
+        limit: int = 100,
+    ) -> Sequence[Session]:
+        priority_order = case(
+            (Incident.priority == "P0", 0),
+            (Incident.priority == "P1", 1),
+            (Incident.priority == "P2", 2),
+            else_=3,
+        )
+        stmt = (
+            select(Session)
+            .join(Incident, Incident.id == Session.incident_id)
+            .where(Session.status == "queued")
+            .order_by(priority_order, Session.queued_at, Session.id)
+            .limit(limit)
+        )
+        if org_id is not None:
+            stmt = stmt.where(Session.org_id == org_id)
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def admit_queued(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        session_id: uuid.UUID,
+        *,
+        model_config_id: uuid.UUID,
+        model_provider: str,
+        model_id: str,
+        started_at: datetime,
+    ) -> bool:
+        result = await db.execute(
+            update(Session)
+            .where(
+                Session.org_id == org_id,
+                Session.id == session_id,
+                Session.status == "queued",
+            )
+            .values(
+                status="active",
+                model_config_id=model_config_id,
+                model_provider=model_provider,
+                model_id=model_id,
+                started_at=started_at,
+                queue_reason=None,
+            )
+        )
+        return bool(result.rowcount)
+
+    @staticmethod
+    async def cancel_queued_for_incident(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+        *,
+        reason: str,
+    ) -> Sequence[Session]:
+        sessions = list(
+            (
+                await db.execute(
+                    select(Session).where(
+                        Session.org_id == org_id,
+                        Session.incident_id == incident_id,
+                        Session.status == "queued",
+                    )
+                )
+            ).scalars()
+        )
+        if sessions:
+            await db.execute(
+                update(Session)
+                .where(
+                    Session.org_id == org_id,
+                    Session.incident_id == incident_id,
+                    Session.status == "queued",
+                )
+                .values(
+                    status="cancelled",
+                    summary=reason,
+                    ended_at=datetime.now(timezone.utc),
+                )
+            )
+        return sessions
 
     @staticmethod
     async def list_for_incidents(
@@ -1162,6 +1299,27 @@ class SessionRepo:
             .values(**values)
         )
         await db.execute(stmt)
+
+    @staticmethod
+    async def mark_force_start(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        session_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID,
+        occupancy: int,
+        cap: int,
+    ) -> None:
+        await db.execute(
+            update(Session)
+            .where(Session.org_id == org_id, Session.id == session_id)
+            .values(
+                force_started=True,
+                force_started_by=user_id,
+                force_start_occupancy=occupancy,
+                force_start_cap=cap,
+            )
+        )
 
     @staticmethod
     async def active_occupancy_by_model_config(
@@ -1337,6 +1495,49 @@ class ApprovalRequestRepo:
         stmt = stmt.order_by(ApprovalRequest.requested_at)
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    @staticmethod
+    async def extend(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        request_id: uuid.UUID,
+        *,
+        expires_at: datetime,
+    ) -> bool:
+        result = await db.execute(
+            update(ApprovalRequest)
+            .where(
+                ApprovalRequest.org_id == org_id,
+                ApprovalRequest.id == request_id,
+                ApprovalRequest.status == "pending",
+            )
+            .values(
+                expires_at=expires_at,
+                extension_count=ApprovalRequest.extension_count + 1,
+                extension_notified_at=None,
+            )
+        )
+        return bool(result.rowcount)
+
+    @staticmethod
+    async def mark_extension_notified(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        request_id: uuid.UUID,
+        *,
+        at: datetime,
+    ) -> bool:
+        result = await db.execute(
+            update(ApprovalRequest)
+            .where(
+                ApprovalRequest.org_id == org_id,
+                ApprovalRequest.id == request_id,
+                ApprovalRequest.status == "pending",
+                ApprovalRequest.extension_notified_at.is_(None),
+            )
+            .values(extension_notified_at=at)
+        )
+        return bool(result.rowcount)
 
     @staticmethod
     async def list(
@@ -6196,6 +6397,12 @@ class IncidentAssignmentRepo:
         if incident is not None and incident.acknowledged_at is None:
             incident.acknowledged_at = row.assigned_at
             await db.flush()
+        await SessionRepo.cancel_queued_for_incident(
+            db,
+            org_id,
+            incident_id,
+            reason="Incident was acknowledged before AI capacity became available.",
+        )
         return row
 
     @staticmethod

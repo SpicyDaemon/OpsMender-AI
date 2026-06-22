@@ -58,6 +58,7 @@ class TestConfigLoad:
         assert cfg.tiers["default"] == 2
         assert cfg.logging["level"] == "DEBUG"
         assert cfg.approvals.timeout_seconds == 120
+        assert cfg.sessions.approval_hold_ttl_seconds == 120
 
     def test_missing_explicit_env_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
@@ -72,7 +73,25 @@ class TestConfigLoad:
         assert cfg.logging == {"level": "INFO"}
         assert cfg.audit.output == "./logs/audit.jsonl"
         assert cfg.approvals.timeout_seconds == 900
+        assert cfg.sessions.queue_ttl_seconds == 900
+        assert cfg.sessions.approval_hold_ttl_seconds == 900
+        assert cfg.sessions.approval_warning_seconds == 60
+        assert cfg.sessions.sweep_interval_seconds == 30
         assert cfg.cors.origins == ["*"]
+
+    def test_session_orchestration_env_overrides(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "OPSMENDER_SESSION_QUEUE_TTL_SECONDS=300\n"
+            "OPSMENDER_APPROVAL_HOLD_TTL_SECONDS=600\n"
+            "OPSMENDER_APPROVAL_EXTENSION_WARNING_SECONDS=45\n"
+            "OPSMENDER_SESSION_QUEUE_SWEEP_SECONDS=20\n"
+        )
+        cfg = Config.load(env_file)
+        assert cfg.sessions.queue_ttl_seconds == 300
+        assert cfg.sessions.approval_hold_ttl_seconds == 600
+        assert cfg.sessions.approval_warning_seconds == 45
+        assert cfg.sessions.sweep_interval_seconds == 20
 
     def test_invalid_mcp_servers_json_raises(self, tmp_path):
         env_file = tmp_path / ".env"

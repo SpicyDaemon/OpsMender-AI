@@ -26,10 +26,7 @@ from backend.db.repos import (
     UserRepo,
 )
 from backend.paging import escalation as _escalation
-from backend.llm.selection import (
-    choose_model_for_incident_service,
-    has_active_model_configs,
-)
+from backend.services.session_orchestration import admit_session
 from backend.tiers.resolution import resolve_session_tier_for_incident
 
 
@@ -39,7 +36,7 @@ SUPPORTED_INCIDENT_ACTIONS = {
     "escalate",
     "start_ai_session",
 }
-ACTIVE_SESSION_STATUSES = {"active", "awaiting_approval"}
+ACTIVE_SESSION_STATUSES = {"queued", "active", "awaiting_approval"}
 TERMINAL_SESSION_STATUSES = {"completed", "failed", "timed_out"}
 
 
@@ -281,6 +278,12 @@ async def execute_incident_action(
         raise IncidentActionError("incident_not_found")
 
     if claims.action == "acknowledge":
+        await SessionRepo.cancel_queued_for_incident(
+            db,
+            claims.org_id,
+            claims.incident_id,
+            reason="Incident was acknowledged before AI capacity became available.",
+        )
         active = await IncidentAssignmentRepo.get_active(
             db, claims.org_id, claims.incident_id
         )
@@ -305,6 +308,12 @@ async def execute_incident_action(
         )
 
     if claims.action == "resolve":
+        await SessionRepo.cancel_queued_for_incident(
+            db,
+            claims.org_id,
+            claims.incident_id,
+            reason="Incident was resolved before AI capacity became available.",
+        )
         if incident.status == "resolved":
             return IncidentActionResult(
                 action=claims.action,
@@ -362,36 +371,24 @@ async def execute_incident_action(
             config,
             incident=incident,
         )
-        model = await choose_model_for_incident_service(
-            db,
-            claims.org_id,
-            service_id=incident.service_id,
-            ingestion_model_config_id=incident.ingestion_model_config_id,
-            respect_capacity=True,
-        )
-        if model is None and await has_active_model_configs(db, claims.org_id):
-            return IncidentActionResult(
-                action=claims.action,
-                status="capacity_reached",
-                incident_id=claims.incident_id,
-                actor_user_id=actor_user_id,
-                detail="All configured incident-response models are at capacity.",
-            )
-        session = await SessionRepo.create(
+        admission = await admit_session(
             db,
             claims.org_id,
             tier=resolved_tier,
-            incident_id=claims.incident_id,
-            model_config_id=None if model is None else model.id,
-            model_provider=None if model is None else model.provider,
-            model_id=None if model is None else model.model_id,
+            incident=incident,
+            actor_user_id=actor_user_id,
+            queue_ttl_seconds=(
+                config.sessions.queue_ttl_seconds if config is not None else 900
+            ),
         )
+        session = admission.session
         return IncidentActionResult(
             action=claims.action,
-            status="session_started",
+            status="session_queued" if admission.queued else "session_started",
             incident_id=claims.incident_id,
             actor_user_id=actor_user_id,
             session_id=session.id,
+            detail=admission.warning,
         )
 
     raise IncidentActionError("unsupported_action")

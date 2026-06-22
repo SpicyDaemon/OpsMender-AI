@@ -93,10 +93,8 @@ from backend.ingest.autostart import (
     schedule_auto_started_session,
 )
 from backend.services.incident_events import dispatch_incident_created
-from backend.llm.selection import (
-    choose_model_for_incident_service,
-    has_active_model_configs,
-)
+from backend.llm.selection import choose_model_for_incident_service
+from backend.bots.notifier import schedule_session_chat_event
 
 import logging
 
@@ -198,6 +196,11 @@ def _to_session_response(session) -> SessionResponse:
         model_id=session.model_id,
         status=session.status,
         summary=session.summary,
+        queued_at=getattr(session, "queued_at", None),
+        queue_expires_at=getattr(session, "queue_expires_at", None),
+        queue_reason=getattr(session, "queue_reason", None),
+        force_started=bool(getattr(session, "force_started", False)),
+        capacity_warning=None,
         started_at=session.started_at,
         ended_at=session.ended_at,
         tier0_max_session_seconds=_tier0_max_session_seconds()
@@ -238,7 +241,7 @@ def _user_display(user) -> tuple[str | None, str | None]:
 
 
 # AI session statuses that count as "in progress" for the list indicator.
-_IN_PROGRESS_SESSION_STATUSES = {"active", "awaiting_approval"}
+_IN_PROGRESS_SESSION_STATUSES = {"queued", "active", "awaiting_approval"}
 
 
 def _resolve_ai_session(sessions) -> tuple[bool, str | None]:
@@ -551,17 +554,10 @@ async def _resolve_auto_start_on_create(
             ingestion_model_config_id=getattr(
                 incident, "ingestion_model_config_id", None
             ),
-            respect_capacity=True,
         )
         if model is None:
-            reason = (
-                "model_capacity_reached"
-                if await has_active_model_configs(db, org_id)
-                else "no_enabled_model"
-            )
             _log.warning(
-                "incident.auto_start: %s incident=%s tier=%s",
-                reason,
+                "incident.auto_start: no_enabled_model incident=%s tier=%s",
                 incident.id,
                 tier,
             )
@@ -571,7 +567,7 @@ async def _resolve_auto_start_on_create(
                 incident_id=incident.id,
                 auto_start_tier=None,
             )
-            return ("failed", reason, tier)
+            return ("failed", "no_enabled_model", tier)
         if request.app.state.config.deployment.mode == "monolith":
             schedule_auto_started_session(
                 request.app,
@@ -2109,6 +2105,12 @@ async def ack_incident(
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
+    cancelled_queued = await SessionRepo.cancel_queued_for_incident(
+        db,
+        org_id,
+        incident_id,
+        reason="Incident was acknowledged before AI capacity became available.",
+    )
     await _esc.handle_ack(
         db,
         org_id,
@@ -2117,6 +2119,14 @@ async def ack_incident(
         via=body.via,
     )
     await db.commit()
+    for session in cancelled_queued:
+        schedule_session_chat_event(
+            request.app.state.session_factory,
+            org_id=org_id,
+            task_registry=request.app.state.background_tasks,
+            event_type="session.queue_cancelled",
+            session_id=session.id,
+        )
     await _notify_channels(db, incident_id, org_id, "incident.acknowledged")
     # T1/T2 sessions start on acknowledgment (T0 already started at creation).
     # Duplicate acks are safe — an active session short-circuits this.

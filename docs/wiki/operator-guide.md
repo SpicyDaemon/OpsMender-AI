@@ -10,7 +10,7 @@ When an incident is ingested (either manually or via an external alert), it appe
 1. **Triage the list:** Use the table search, status/severity/source chips, Last activity date range, sorting, and column controls to narrow the incident set.
 2. **Bulk-handle obvious rows:** Select one or more rows to bulk **Acknowledge** or **Resolve** without opening each incident.
 3. **Review:** Click on an incident to open the command surface. The detail page now keeps the main response controls in a sticky command strip, a right-side context rail for service/team/owner/escalation state, and a single timeline that interleaves AI actions with paging events and inbound alert evidence.
-4. **Start Session:** If an AI session hasn't auto-started, click **Start Session** from the command strip or the timeline header. This provisions a dedicated AI agent context for the incident.
+4. **Start Session:** If an AI session hasn't auto-started, click **Start Session** from the command strip or the timeline header. This provisions a dedicated AI agent context for the incident. If every configured response model is full, the session waits in the durable capacity queue; the incident list and session page show that state.
 5. **Investigation:** Use the timeline rows to jump straight into the session sidecar or open the full **Session Details** view when you need the richer chat surface.
 
 ### Permanently deleting an incident
@@ -38,6 +38,20 @@ The AI Autonomy Tier governs both what the AI may do and **how a session starts*
 - **Tier 0 — Autonomous:** a session auto-starts the moment the incident is created.
 - **Tier 1 / Tier 2:** **no** session auto-starts. **Acknowledge** the incident first (this records you as the owner), then click **Start Session**. Starting a Tier 1/2 session is blocked until the incident is acknowledged.
 
+Queued sessions are ordered P0→P3 and FIFO within the same priority. Model
+selection is re-evaluated when the session reaches the front, so it can use a
+better model that became available while it waited. Human paging is independent
+and continues normally. You can cancel a queued session from its session page.
+The Start Session modal also offers **Force start** as an explicit soft
+override; confirm the warning before using it. The override is audited and the
+session still counts toward model occupancy.
+
+Acknowledgment means the incident is already human-owned, so OpsMender cancels
+any session that was queued before the acknowledgment. Because Tier 1/2 starts
+are acknowledgment-gated, if capacity is full at that point, wait for a slot or
+use the explicit audited **Force start** override rather than leaving delayed
+work behind.
+
 ## 4. Approvals (Tier 1 is interactive)
 
 At **Tier 1**, the AI pauses on **every** state-mutating action it proposes (not just destructive ones); read-only investigation runs freely, and deny-listed actions are never offered. (For MCP Skills that declare an explicit per-operation Tier 1 policy, that policy decides.)
@@ -48,6 +62,7 @@ At **Tier 1**, the AI pauses on **every** state-mutating action it proposes (not
    - **Approve** — the action executes.
    - **Reject** — the action is blocked.
    - **Redirect** — type free-text guidance (e.g. "drain the node first, then restart") and the AI **re-plans** with your steering in context.
+   - **Extend session** — resets the approval-hold timer when you need more time. OpsMender warns approvers shortly before the hold expires; expiry rejects the pending action, ends the session, and releases its model slot.
 
 ## 5. Intercept a running session (Stop / Override)
 

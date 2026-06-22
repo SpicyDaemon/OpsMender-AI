@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   uncapped. Manual, auto-start, SLO, and verified chat starts share the
   capacity-aware selector. Occupied configs cannot be deleted, disabled, or
   materially retargeted. Migration `l8m9n0p1q2r3`.
+- **v2 Phase 2 — durable priority queue and slot lifecycle.** Saturated
+  incident sessions now persist as `queued`, notify responders, and drain by
+  incident priority with FIFO ordering inside each priority. Admission is
+  re-evaluated when capacity frees, with event-driven drains plus a scheduler
+  safety sweep. Queued sessions expire after a configurable TTL and are
+  cancelled when the incident is handled. Tier 1 approval holds warn before
+  expiry and can be extended; expiry releases the model slot. Manual starts can
+  force a soft cap override with an exact occupancy warning and audit record,
+  and repeated starts take over the existing incident session. Migration
+  `m9n0p1q2r3s4`.
 - **Safety-class chip on tool-call cards.** The live session event stream now
   shows each MCP tool's SKILL.md safety class (safe / caution / destructive /
   unclassified) as a colored chip on its `ToolCallCard`. The class is resolved

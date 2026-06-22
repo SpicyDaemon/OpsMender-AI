@@ -59,12 +59,12 @@ from backend.skills.parser import loads as load_skill_def
 from backend.tiers.enforcement import normalize_tier
 from backend.tiers.resolution import resolve_session_tier_for_incident
 from backend.tiers.sandbox import Tier0Sandbox
-from backend.llm.selection import (
-    choose_model_config_by_identity,
-    choose_model_for_incident_service,
-    has_active_model_configs,
-)
 from backend.bots.notifier import schedule_session_chat_event
+from backend.services.session_orchestration import (
+    admit_session,
+    dispatch_session_ready,
+    schedule_queue_drain,
+)
 from backend.workflow.rollback import (
     reconstruct_tool_calls,
     replay_compensating_inverses,
@@ -84,7 +84,9 @@ def _tier0_max_session_seconds() -> int:
         return 600
 
 
-def _to_session_response(session) -> SessionResponse:
+def _to_session_response(
+    session, *, capacity_warning: str | None = None
+) -> SessionResponse:
     return SessionResponse(
         id=session.id,
         incident_id=session.incident_id,
@@ -96,6 +98,11 @@ def _to_session_response(session) -> SessionResponse:
         model_id=session.model_id,
         status=session.status,
         summary=session.summary,
+        queued_at=getattr(session, "queued_at", None),
+        queue_expires_at=getattr(session, "queue_expires_at", None),
+        queue_reason=getattr(session, "queue_reason", None),
+        force_started=bool(getattr(session, "force_started", False)),
+        capacity_warning=capacity_warning,
         started_at=session.started_at,
         ended_at=session.ended_at,
         tier0_max_session_seconds=_tier0_max_session_seconds()
@@ -189,48 +196,51 @@ async def create_session(
                 ),
             )
 
-    selected_model = None
-    if body.model_provider is None and body.model_id is None and incident is not None:
-        selected_model = await choose_model_for_incident_service(
+    try:
+        admission = await admit_session(
             db,
             org_id,
-            service_id=incident.service_id,
-            ingestion_model_config_id=incident.ingestion_model_config_id,
-            respect_capacity=True,
+            incident=incident,
+            tier=resolved_tier,
+            workflow_profile_id=workflow_profile_id,
+            agent_team_profile_id=agent_team_profile_id,
+            requested_provider=body.model_provider,
+            requested_model_id=body.model_id,
+            force=body.force,
+            actor_user_id=user.id,
+            queue_ttl_seconds=request.app.state.config.sessions.queue_ttl_seconds,
+            takeover_existing=True,
         )
-        if selected_model is None and await has_active_model_configs(db, org_id):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="All configured incident-response models are at capacity.",
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    session = admission.session
+
+    if admission.takeover:
+        session.tier = resolved_tier
+        session.workflow_profile_id = workflow_profile_id
+        session.agent_team_profile_id = agent_team_profile_id
+        if session.status in _RUNNING_STATUSES:
+            cancel_session_workflow(request.app, session_id=session.id)
+            await _expire_pending_approvals(db, org_id, session.id)
+        if incident is not None and session.status != "queued":
+            await IncidentAssignmentRepo.assign(
+                db,
+                org_id,
+                incident_id=incident.id,
+                user_id=user.id,
+                assigned_by="session_takeover",
             )
-    elif body.model_provider is not None and body.model_id is not None:
-        selected_model, has_saved_match = await choose_model_config_by_identity(
+        await AuditEntryRepo.create(
             db,
             org_id,
-            provider=body.model_provider,
-            model_id=body.model_id,
-            respect_capacity=True,
+            session_id=session.id,
+            tier=resolved_tier,
+            entry_type="session_takeover",
+            result={"actor_user_id": str(user.id)},
+            permitted=True,
         )
-        if has_saved_match and selected_model is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="The selected incident-response model is at capacity.",
-            )
-    session = await SessionRepo.create(
-        db,
-        org_id,
-        tier=resolved_tier,
-        incident_id=body.incident_id,
-        workflow_profile_id=workflow_profile_id,
-        agent_team_profile_id=agent_team_profile_id,
-        model_config_id=None if selected_model is None else selected_model.id,
-        model_provider=(
-            body.model_provider
-            if selected_model is None
-            else selected_model.provider
-        ),
-        model_id=body.model_id if selected_model is None else selected_model.model_id,
-    )
 
     briefing = (body.initial_briefing or "").strip()
     briefing_message_id: uuid.UUID | None = None
@@ -248,15 +258,22 @@ async def create_session(
     await db.commit()
     await db.refresh(session)
 
-    schedule_session_chat_event(
-        request.app.state.session_factory,
-        org_id=org_id,
-        task_registry=request.app.state.background_tasks,
-        event_type="session.created",
-        session_id=session.id,
-        actor_user_id=user.id,
-        base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
-    )
+    if admission.created or admission.start_required:
+        if admission.started_from_queue:
+            event_type = "session.started_from_queue"
+        elif admission.queued:
+            event_type = "session.queued"
+        else:
+            event_type = "session.created"
+        schedule_session_chat_event(
+            request.app.state.session_factory,
+            org_id=org_id,
+            task_registry=request.app.state.background_tasks,
+            event_type=event_type,
+            session_id=session.id,
+            actor_user_id=user.id,
+            base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+        )
 
     # If a briefing was provided, fire the responder so the chat has an
     # assistant reply waiting by the time the UI connects.
@@ -271,10 +288,13 @@ async def create_session(
             )
         )
 
-    if body.incident_id is not None:
-        schedule_session_workflow(request.app, session_id=session.id)
+    if admission.start_required:
+        await dispatch_session_ready(request.app, session.id)
 
-    return _to_session_response(session)
+    return _to_session_response(
+        session,
+        capacity_warning=admission.warning,
+    )
 
 
 @router.get(
@@ -331,6 +351,7 @@ async def get_session(
 # ---------------------------------------------------------------------------
 
 _RUNNING_STATUSES = {"active", "awaiting_approval"}
+_STOPPABLE_STATUSES = {"queued", *_RUNNING_STATUSES}
 
 
 async def _expire_pending_approvals(
@@ -365,25 +386,54 @@ async def stop_session(
     session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    if session.status not in _RUNNING_STATUSES:
+    if session.status not in _STOPPABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Session is not running (status={session.status})",
         )
 
+    was_queued = session.status == "queued"
     cancel_session_workflow(request.app, session_id=session_id)
     await _expire_pending_approvals(db, org_id, session_id)
     await SessionRepo.set_status(
-        db, org_id, session_id, status="stopped", ended_at=_utcnow()
+        db,
+        org_id,
+        session_id,
+        status="cancelled" if was_queued else "stopped",
+        ended_at=_utcnow(),
     )
+    if was_queued:
+        from backend.services.session_orchestration import notify_capacity_event
+
+        await notify_capacity_event(
+            db,
+            org_id,
+            session=session,
+            event_type="session.queue_cancelled",
+            title="Queued AI session cancelled",
+            body=f"Cancelled by {user.username}.",
+        )
     await db.commit()
+    schedule_queue_drain(request.app, org_id=org_id)
+    if was_queued:
+        schedule_session_chat_event(
+            request.app.state.session_factory,
+            org_id=org_id,
+            task_registry=request.app.state.background_tasks,
+            event_type="session.queue_cancelled",
+            session_id=session_id,
+            actor_user_id=user.id,
+            base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+        )
 
     await publish(
         session_id,
         WSMessage(
             type="session_end",
             data={
-                "status": "stopped",
+                "status": (
+                    "cancelled" if was_queued else "stopped"
+                ),
                 "summary": f"Session stopped by {user.username}",
                 "stopped_by": str(user.id),
             },

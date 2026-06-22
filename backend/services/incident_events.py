@@ -14,6 +14,7 @@ from backend.services.pg_bus import asyncpg_dsn, publish, subscribe
 logger = logging.getLogger(__name__)
 
 INCIDENT_CREATED_CHANNEL = "incident.created"
+SESSION_READY_CHANNEL = "session.ready"
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,17 @@ class IncidentEventPublisher:
         conn = await self._connect(self._dsn)
         try:
             await publish(conn, INCIDENT_CREATED_CHANNEL, event.to_payload())
+        finally:
+            await conn.close()
+
+    async def publish_session_ready(self, session_id: uuid.UUID) -> None:
+        conn = await self._connect(self._dsn)
+        try:
+            await publish(
+                conn,
+                SESSION_READY_CHANNEL,
+                {"session_id": str(session_id)},
+            )
         finally:
             await conn.close()
 
@@ -117,5 +129,23 @@ async def start_incident_created_subscriber(app, database_url: str):
             tier=event.auto_start_tier,
         )
 
-    unsubscribe = await subscribe(conn, INCIDENT_CREATED_CHANNEL, handle)
+    async def handle_session_ready(payload: Any) -> None:
+        try:
+            session_id = uuid.UUID(str(payload["session_id"]))
+        except (KeyError, TypeError, ValueError):
+            logger.warning("Invalid session.ready payload: %r", payload)
+            return
+        from backend.api.session_runner import schedule_session_workflow
+
+        schedule_session_workflow(app, session_id=session_id)
+
+    unsubscribe_incident = await subscribe(conn, INCIDENT_CREATED_CHANNEL, handle)
+    unsubscribe_session = await subscribe(
+        conn, SESSION_READY_CHANNEL, handle_session_ready
+    )
+
+    async def unsubscribe() -> None:
+        await unsubscribe_session()
+        await unsubscribe_incident()
+
     return conn, unsubscribe

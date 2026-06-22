@@ -244,6 +244,16 @@ class ApprovalConfig:
 
 
 @dataclasses.dataclass
+class SessionOrchestrationConfig:
+    """Capacity queue and approval-slot lifecycle settings."""
+
+    queue_ttl_seconds: int = 900
+    approval_hold_ttl_seconds: int = 900
+    approval_warning_seconds: int = 60
+    sweep_interval_seconds: int = 30
+
+
+@dataclasses.dataclass
 class IngestConfig:
     """External incident ingestion rate-limiting.
 
@@ -475,6 +485,7 @@ class AppConfig:
     logging: dict[str, Any]
     audit: AuditConfig
     approvals: ApprovalConfig
+    sessions: SessionOrchestrationConfig
     ingest: IngestConfig
     sla: SLAConfig
     tier0: "Tier0Config"
@@ -527,6 +538,22 @@ class AppConfig:
         approvals = ApprovalConfig(
             timeout_seconds=_env_int(env, "OPSMENDER_APPROVAL_TIMEOUT_SECONDS", 900)
         )
+        sessions = SessionOrchestrationConfig(
+            queue_ttl_seconds=_env_int(
+                env, "OPSMENDER_SESSION_QUEUE_TTL_SECONDS", 900
+            ),
+            approval_hold_ttl_seconds=_env_int(
+                env,
+                "OPSMENDER_APPROVAL_HOLD_TTL_SECONDS",
+                approvals.timeout_seconds,
+            ),
+            approval_warning_seconds=_env_int(
+                env, "OPSMENDER_APPROVAL_EXTENSION_WARNING_SECONDS", 60
+            ),
+            sweep_interval_seconds=_env_int(
+                env, "OPSMENDER_SESSION_QUEUE_SWEEP_SECONDS", 30
+            ),
+        )
 
         ingest = IngestConfig(
             rate_limit=_env_int(env, "OPSMENDER_INGEST_RATE_LIMIT", 60),
@@ -552,6 +579,7 @@ class AppConfig:
             logging={"level": app.log_level},
             audit=audit,
             approvals=approvals,
+            sessions=sessions,
             ingest=ingest,
             sla=sla,
             tier0=tier0,

@@ -13,6 +13,7 @@ const VARIANTS = {
   closed: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
   merged: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
   // session status
+  queued: "bg-status-high-bg text-status-high border-status-high-border",
   active: "bg-status-info-bg text-status-info border-status-info-border",
   awaiting_approval: "bg-status-high-bg text-status-high border-status-high-border",
   running: "bg-status-info-bg text-status-info border-status-info-border",
@@ -21,6 +22,7 @@ const VARIANTS = {
   timed_out: "bg-status-high-bg text-status-high border-status-high-border",
   paused: "bg-status-high-bg text-status-high border-status-high-border",
   stopped: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
+  cancelled: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
   // approval status
   pending: "bg-status-high-bg text-status-high border-status-high-border",
   approved: "bg-status-low-bg text-status-low border-status-low-border",

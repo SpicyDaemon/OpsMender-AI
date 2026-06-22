@@ -47,6 +47,7 @@ from backend.bots.native_callbacks import (
     NormalizedNativeCallback,
     callback_error_message,
     callback_result_message,
+    dispatch_native_session_result,
     execute_normalized_callback,
 )
 from backend.db.models import BotConnector, Incident, IncidentChainState, IncidentPage
@@ -213,6 +214,12 @@ async def slack_interactions(
         )
         return _ephemeral(message)
 
+    await dispatch_native_session_result(
+        request.app,
+        db,
+        org_id=connector.org_id,
+        result=result,
+    )
     incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
     title = incident.title if incident is not None else str(incident_id)
     return _ephemeral(callback_result_message(result, title))

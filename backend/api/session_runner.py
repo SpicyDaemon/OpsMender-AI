@@ -486,6 +486,7 @@ async def _service_context_for_incident(
 
 
 async def _set_session_terminal_state(
+    app,
     factory,
     org_id: uuid.UUID,
     session_id: uuid.UUID,
@@ -503,6 +504,9 @@ async def _set_session_terminal_state(
             ended_at=_utcnow(),
         )
         await db.commit()
+    from backend.services.session_orchestration import schedule_queue_drain
+
+    schedule_queue_drain(app, org_id=org_id)
 
 
 async def _session_snapshot(factory, session_id: uuid.UUID):
@@ -610,18 +614,28 @@ async def _run_session_workflow_inner(
             skill_def, integration_runtime.descriptors
         )
         audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
+
+        def notify_session_status(sid: uuid.UUID, status: str) -> None:
+            schedule_session_chat_event(
+                factory,
+                org_id=org_id,
+                task_registry=app.state.background_tasks,
+                event_type=f"session.{status}",
+                session_id=sid,
+            )
+            if status == "timed_out":
+                from backend.services.session_orchestration import (
+                    schedule_queue_drain,
+                )
+
+                schedule_queue_drain(app, org_id=org_id)
+
         approval_service = ApprovalService(
             factory,
             org_id=org_id,
-            timeout_seconds=config.approvals.timeout_seconds,
+            timeout_seconds=config.sessions.approval_hold_ttl_seconds,
             publisher=lambda sid, event: publish(sid, WSMessage(**event)),
-            status_notifier=lambda sid, status: schedule_session_chat_event(
-                    factory,
-                    org_id=org_id,
-                    task_registry=app.state.background_tasks,
-                    event_type=f"session.{status}",
-                    session_id=sid,
-            ),
+            status_notifier=notify_session_status,
         )
 
         incident_description = _build_incident_description(incident, pending_messages)
@@ -822,6 +836,7 @@ async def _run_session_workflow_inner(
                 result["rollback"] = rollback_summary
 
         await _set_session_terminal_state(
+            app,
             factory,
             org_id,
             session_id,
@@ -861,6 +876,7 @@ async def _run_session_workflow_inner(
             
         if org_id:
             await _set_session_terminal_state(
+                app,
                 factory,
                 org_id,
                 session_id,
@@ -939,7 +955,7 @@ def cancel_session_workflow(app: FastAPI, *, session_id: uuid.UUID) -> bool:
 
 
 # Session statuses that count as "in progress" (mirrors the sessions route).
-_RUNNING_SESSION_STATUSES = {"active", "awaiting_approval"}
+_RUNNING_SESSION_STATUSES = {"queued", "active", "awaiting_approval"}
 
 
 async def stop_incident_sessions(
@@ -974,6 +990,7 @@ async def stop_incident_sessions(
         if session.status not in _RUNNING_SESSION_STATUSES:
             continue
         try:
+            was_queued = session.status == "queued"
             cancel_session_workflow(app, session_id=session.id)
             pending = await ApprovalRequestRepo.list_pending(
                 db, org_id, session_id=session.id
@@ -986,15 +1003,35 @@ async def stop_incident_sessions(
                 db,
                 org_id,
                 session.id,
-                status="stopped",
+                status="cancelled" if was_queued else "stopped",
                 ended_at=datetime.now(timezone.utc),
             )
+            if was_queued:
+                from backend.services.session_orchestration import (
+                    notify_capacity_event,
+                )
+
+                await notify_capacity_event(
+                    db,
+                    org_id,
+                    session=session,
+                    event_type="session.queue_cancelled",
+                    title="Queued AI session cancelled",
+                    body=reason,
+                )
             stopped += 1
             await publish(
                 session.id,
                 WSMessage(
                     type="session_end",
-                    data={"status": "stopped", "summary": reason},
+                    data={
+                        "status": (
+                            "cancelled"
+                            if was_queued
+                            else "stopped"
+                        ),
+                        "summary": reason,
+                    },
                 ),
             )
         except Exception:
@@ -1003,4 +1040,8 @@ async def stop_incident_sessions(
                 incident_id,
                 session.id,
             )
+    if stopped:
+        from backend.services.session_orchestration import schedule_queue_drain
+
+        schedule_queue_drain(app, org_id=org_id)
     return stopped

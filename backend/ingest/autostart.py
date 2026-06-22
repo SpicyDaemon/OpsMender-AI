@@ -12,13 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config_loader import AppConfig
 from backend.db.models import Incident
 from backend.db.repos import IncidentRepo, SessionRepo
-from backend.llm.selection import (
-    choose_model_for_incident_service,
-    has_active_model_configs,
+from backend.services.session_orchestration import (
+    admit_session,
+    dispatch_session_ready,
 )
 from backend.tiers.resolution import resolve_session_tier_for_incident
 
-_ACTIVE_SESSION_STATUSES = {"active", "awaiting_approval"}
+_ACTIVE_SESSION_STATUSES = {"queued", "active", "awaiting_approval"}
 logger = logging.getLogger(__name__)
 
 
@@ -127,39 +127,35 @@ async def provision_auto_started_session(
                     incident_id,
                 )
                 return
-            model = await choose_model_for_incident_service(
+            admission = await admit_session(
                 db,
                 org_id,
-                service_id=incident.service_id,
-                ingestion_model_config_id=incident.ingestion_model_config_id,
-                respect_capacity=True,
-            )
-            if model is None and await has_active_model_configs(db, org_id):
-                logger.info(
-                    "incident.auto_start: no model capacity incident=%s",
-                    incident_id,
-                )
-                return
-            session = await SessionRepo.create(
-                db,
-                org_id,
+                incident=incident,
                 tier=tier,
-                incident_id=incident_id,
-                model_config_id=None if model is None else model.id,
-                model_provider=None if model is None else model.provider,
-                model_id=None if model is None else model.model_id,
+                queue_ttl_seconds=app.state.config.sessions.queue_ttl_seconds,
             )
+            session = admission.session
             await db.commit()
 
-        from backend.api.session_runner import schedule_session_workflow
-
         logger.info(
-            "incident.auto_start: provisioned incident=%s session=%s tier=%s",
+            "incident.auto_start: provisioned incident=%s session=%s tier=%s status=%s",
             incident_id,
             session.id,
             tier,
+            session.status,
         )
-        schedule_session_workflow(app, session_id=session.id)
+        if admission.queued and admission.created:
+            from backend.bots.notifier import schedule_session_chat_event
+
+            schedule_session_chat_event(
+                app.state.session_factory,
+                org_id=org_id,
+                task_registry=app.state.background_tasks,
+                event_type="session.queued",
+                session_id=session.id,
+            )
+        elif admission.start_required:
+            await dispatch_session_ready(app, session.id)
     except Exception:
         logger.exception(
             "incident.auto_start: provisioning_failed incident=%s tier=%s",

@@ -266,6 +266,14 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 
 </details>
 
+Before an incident is human-handled, if every configured incident-response
+model is full, OpsMender keeps the AI session in a durable priority queue (P0
+first, FIFO within a priority) while human paging continues normally.
+Acknowledgment cancels delayed queued work. Operators can cancel a queued
+session or explicitly force a start; force is a soft, audited cap override and
+still counts toward occupancy. Queue and approval-hold TTLs are configurable
+in `.env.example`.
+
 Signup is email-first; OpsMender derives a display username when public
 registration is open. Admin invites expire after 72 hours and support resend
 and revoke. After sign-in, dashboard URLs use

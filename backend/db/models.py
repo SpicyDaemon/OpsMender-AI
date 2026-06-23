@@ -520,6 +520,10 @@ class Session(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     queue_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Admin manual reorder override (v2 queue admin): when set, ranked sessions
+    # drain before unranked ones, lowest rank first — overriding the P0→P3 +
+    # FIFO default. NULL = normal priority/FIFO ordering.
+    queue_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     force_started: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )

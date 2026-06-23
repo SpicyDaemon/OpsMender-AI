@@ -432,6 +432,32 @@ export async function getSessionOrchestration(): Promise<OrchestrationOverview> 
   return api.get<OrchestrationOverview>("/sessions/orchestration");
 }
 
+export async function purgeSessionQueue(): Promise<{ cancelled: number }> {
+  return api.post<{ cancelled: number }>("/sessions/queue/purge", {});
+}
+
+export async function cancelQueuedSession(
+  id: string,
+): Promise<{ cancelled: boolean }> {
+  return api.post<{ cancelled: boolean }>(`/sessions/${id}/queue/cancel`, {});
+}
+
+export async function reprioritizeQueuedSession(
+  id: string,
+  direction: "front" | "back" | "up" | "down",
+): Promise<{ queue_rank: number }> {
+  return api.post<{ queue_rank: number }>(
+    `/sessions/${id}/queue/reprioritize`,
+    { direction },
+  );
+}
+
+export async function forceStartQueuedSession(
+  id: string,
+): Promise<SessionResponse> {
+  return api.post<SessionResponse>(`/sessions/${id}/queue/force-start`, {});
+}
+
 export async function listIncidentSessions(id: string): Promise<SessionListResponse> {
   return api.get<SessionListResponse>(`/incidents/${id}/sessions`);
 }

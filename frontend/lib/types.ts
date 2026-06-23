@@ -288,6 +288,7 @@ export interface OrchestrationSession {
   queued_at: string | null;
   queue_expires_at: string | null;
   queue_reason: string | null;
+  queue_rank: number | null;
   force_started: boolean;
   started_at: string;
 }

@@ -42,6 +42,7 @@ const { overview } = vi.hoisted(() => {
       queued_at: null,
       queue_expires_at: null,
       queue_reason: null,
+      queue_rank: null,
       force_started: false,
       started_at: new Date().toISOString(),
     },
@@ -59,6 +60,7 @@ const { overview } = vi.hoisted(() => {
       queued_at: new Date().toISOString(),
       queue_expires_at: new Date(Date.now() + 600000).toISOString(),
       queue_reason: "All preferred models at capacity",
+      queue_rank: null,
       force_started: false,
       started_at: new Date().toISOString(),
     },
@@ -71,6 +73,14 @@ const { overview } = vi.hoisted(() => {
 
 vi.mock("@/lib/api", () => ({
   getSessionOrchestration: vi.fn().mockResolvedValue(overview),
+  purgeSessionQueue: vi.fn().mockResolvedValue({ cancelled: 0 }),
+  cancelQueuedSession: vi.fn().mockResolvedValue({ cancelled: true }),
+  reprioritizeQueuedSession: vi.fn().mockResolvedValue({ queue_rank: -1 }),
+  forceStartQueuedSession: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("@/context/auth", () => ({
+  useAuth: () => ({ user: { role: "admin" } }),
 }));
 
 import OrchestrationPage from "@/app/dashboard/orchestration/page";

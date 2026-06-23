@@ -10,8 +10,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { getSessionOrchestration } from "@/lib/api";
+import { ChevronUp, ChevronDown, Trash2, Zap } from "lucide-react";
+import {
+  cancelQueuedSession,
+  forceStartQueuedSession,
+  getSessionOrchestration,
+  purgeSessionQueue,
+  reprioritizeQueuedSession,
+} from "@/lib/api";
 import type { OrchestrationOverview, OrchestrationSession } from "@/lib/types";
+import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 
 function relTime(iso: string | null): string {
@@ -50,9 +58,13 @@ function SessionLink({ s }: { s: OrchestrationSession }) {
 }
 
 export default function OrchestrationPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const canManage = isAdmin || user?.role === "operator";
   const [data, setData] = useState<OrchestrationOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -65,6 +77,27 @@ export default function OrchestrationPage() {
       setLoading(false);
     }
   }, []);
+
+  const runAction = useCallback(
+    async (key: string, fn: () => Promise<unknown>) => {
+      setBusy(key);
+      setError(null);
+      try {
+        await fn();
+        await reload();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Action failed");
+      } finally {
+        setBusy(null);
+      }
+    },
+    [reload],
+  );
+
+  async function handlePurge() {
+    if (!confirm("Cancel ALL queued AI sessions? This cannot be undone.")) return;
+    await runAction("purge", purgeSessionQueue);
+  }
 
   useEffect(() => {
     reload().catch(() => {});
@@ -141,9 +174,21 @@ export default function OrchestrationPage() {
 
       {/* Queued sessions */}
       <section className="rounded-xl border border-border-subtle bg-bg-panel p-4">
-        <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-fg-secondary">
-          Queue {data ? `(${data.queued_total})` : ""}
-        </h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-fg-secondary">
+            Queue {data ? `(${data.queued_total})` : ""}
+          </h2>
+          {isAdmin && data && data.queued_total > 0 && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handlePurge}
+              disabled={busy === "purge"}
+            >
+              <Trash2 size={13} /> Purge queue
+            </Button>
+          )}
+        </div>
         {data && data.queued_sessions.length === 0 ? (
           <p className="text-sm text-fg-muted">No sessions are waiting on capacity.</p>
         ) : (
@@ -155,6 +200,7 @@ export default function OrchestrationPage() {
                 <th className="pb-2 font-medium">Waiting</th>
                 <th className="pb-2 font-medium">Expires</th>
                 <th className="pb-2 font-medium">Reason</th>
+                {canManage && <th className="pb-2 font-medium text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle/50">
@@ -164,11 +210,81 @@ export default function OrchestrationPage() {
                   <td className="py-2 pr-3">
                     <span className={`inline-flex rounded-pill border px-1.5 py-0.5 text-[10px] font-semibold ${priorityTone(s.priority)}`}>
                       {s.priority ?? "—"}
+                      {s.queue_rank != null && (
+                        <span className="ml-1 opacity-70" title="Manually reprioritized">★</span>
+                      )}
                     </span>
                   </td>
                   <td className="py-2 pr-3 tabular-nums text-fg-secondary">{relTime(s.queued_at)}</td>
                   <td className="py-2 pr-3 tabular-nums text-fg-muted">{relTime(s.queue_expires_at)}</td>
                   <td className="py-2 text-fg-muted">{s.queue_reason ?? "—"}</td>
+                  {canManage && (
+                    <td className="py-2 text-right">
+                      <div className="inline-flex items-center gap-1">
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              title="Move to front"
+                              disabled={busy === s.session_id}
+                              onClick={() =>
+                                runAction(s.session_id, () =>
+                                  reprioritizeQueuedSession(s.session_id, "front"),
+                                )
+                              }
+                              className="rounded p-1 text-fg-muted hover:bg-bg-hover hover:text-fg-primary"
+                            >
+                              <ChevronUp size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              title="Move to back"
+                              disabled={busy === s.session_id}
+                              onClick={() =>
+                                runAction(s.session_id, () =>
+                                  reprioritizeQueuedSession(s.session_id, "back"),
+                                )
+                              }
+                              className="rounded p-1 text-fg-muted hover:bg-bg-hover hover:text-fg-primary"
+                            >
+                              <ChevronDown size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              title="Force-start now (bypasses capacity)"
+                              disabled={busy === s.session_id}
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    "Force-start this session now? It bypasses the model's concurrency cap.",
+                                  )
+                                )
+                                  runAction(s.session_id, () =>
+                                    forceStartQueuedSession(s.session_id),
+                                  );
+                              }}
+                              className="rounded p-1 text-status-medium hover:bg-bg-hover"
+                            >
+                              <Zap size={14} />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          title="Cancel (remove from queue)"
+                          disabled={busy === s.session_id}
+                          onClick={() =>
+                            runAction(s.session_id, () =>
+                              cancelQueuedSession(s.session_id),
+                            )
+                          }
+                          className="rounded p-1 text-fg-muted hover:bg-bg-hover hover:text-status-critical"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

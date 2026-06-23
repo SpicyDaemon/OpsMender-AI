@@ -568,8 +568,15 @@ class OrchestrationSession(BaseModel):
     queued_at: Optional[datetime] = None
     queue_expires_at: Optional[datetime] = None
     queue_reason: Optional[str] = None
+    queue_rank: Optional[int] = None
     force_started: bool = False
     started_at: datetime
+
+
+class QueueReprioritizeRequest(BaseModel):
+    """Move a queued session within the drain order (v2 queue admin)."""
+
+    direction: str = Field(pattern="^(front|back|up|down)$")
 
 
 class OrchestrationOverview(BaseModel):

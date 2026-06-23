@@ -28,6 +28,7 @@ from backend.api.schemas import (
     ModelCapacityRow,
     OrchestrationOverview,
     OrchestrationSession,
+    QueueReprioritizeRequest,
     RollbackStepResponse,
     SessionCreate,
     SessionListResponse,
@@ -64,6 +65,7 @@ from backend.tiers.enforcement import normalize_tier
 from backend.tiers.resolution import resolve_session_tier_for_incident
 from backend.tiers.sandbox import Tier0Sandbox
 from backend.bots.notifier import schedule_session_chat_event
+from backend.llm.selection import choose_model_for_incident_service
 from backend.services.session_orchestration import (
     admit_session,
     dispatch_session_ready,
@@ -373,6 +375,7 @@ async def orchestration_overview(
             queued_at=session.queued_at,
             queue_expires_at=session.queue_expires_at,
             queue_reason=session.queue_reason,
+            queue_rank=session.queue_rank,
             force_started=session.force_started,
             started_at=session.started_at,
         )
@@ -385,6 +388,130 @@ async def orchestration_overview(
         active_total=len(active),
         queued_total=len(queued),
     )
+
+
+@router.post(
+    "/queue/purge",
+    summary="Cancel every queued AI session (admin)",
+)
+async def purge_session_queue(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    """v2 queue admin — cancel all queued sessions at once."""
+    count = await SessionRepo.purge_queue(
+        db, org_id, reason=f"Queue purged by {user.username}"
+    )
+    await db.commit()
+    return {"cancelled": count}
+
+
+@router.post(
+    "/{session_id}/queue/cancel",
+    summary="Cancel a single queued AI session (admin/operator)",
+)
+async def cancel_queued_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    ok = await SessionRepo.cancel_queued_session(
+        db, org_id, session_id, reason=f"Removed from queue by {user.username}"
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Session is not queued",
+        )
+    await db.commit()
+    return {"cancelled": True}
+
+
+@router.post(
+    "/{session_id}/queue/reprioritize",
+    summary="Move a queued session within the queue (admin)",
+)
+async def reprioritize_queued_session(
+    session_id: uuid.UUID,
+    body: QueueReprioritizeRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    """Move a queued session to the front or back of the drain order. Ranked
+    sessions drain before unranked ones (overriding P0→P3 + FIFO)."""
+    min_rank, max_rank = await SessionRepo.queue_rank_bounds(db, org_id)
+    if body.direction in ("front", "up"):
+        rank = (min_rank if min_rank is not None else 0) - 1
+    else:  # back / down
+        rank = (max_rank if max_rank is not None else 0) + 1
+    ok = await SessionRepo.set_queue_rank(db, org_id, session_id, rank=rank)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Session is not queued"
+        )
+    await db.commit()
+    return {"queue_rank": rank}
+
+
+@router.post(
+    "/{session_id}/queue/force-start",
+    response_model=SessionResponse,
+    summary="Force-start a queued session now, bypassing capacity (admin)",
+)
+async def force_start_queued_session(
+    session_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    """Soft override: admit a queued session immediately even if its model is at
+    capacity. Audited; counts toward occupancy for later allocations."""
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
+    if session is None or session.status != "queued":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Session is not queued"
+        )
+    incident = (
+        await IncidentRepo.get_by_id(db, org_id, session.incident_id)
+        if session.incident_id is not None
+        else None
+    )
+    model = await choose_model_for_incident_service(
+        db,
+        org_id,
+        service_id=incident.service_id if incident is not None else None,
+        ingestion_model_config_id=(
+            incident.ingestion_model_config_id if incident is not None else None
+        ),
+    )
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="No active model is configured to start this session",
+        )
+    occupancy = (
+        await SessionRepo.active_occupancy_by_model_config(db, org_id)
+    ).get(model.id, 0)
+    cap = int(model.max_concurrent_sessions or 0)
+    session.status = "active"
+    session.model_config_id = model.id
+    session.model_provider = model.provider
+    session.model_id = model.model_id
+    session.started_at = _utcnow()
+    session.queue_reason = None
+    session.queue_rank = None
+    session.force_started = True
+    session.force_started_by = user.id
+    session.force_start_occupancy = occupancy
+    session.force_start_cap = cap
+    await db.commit()
+    await dispatch_session_ready(request.app, session.id)
+    refreshed = await SessionRepo.get_by_id(db, org_id, session_id)
+    return _to_session_response(refreshed)
 
 
 @router.get(

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Orchestration queue admin controls.** The Orchestration view now lets admins
+  manage the AI-session queue: **purge** (cancel all queued), **cancel** a single
+  queued session (admin/operator), **force-start** a queued session immediately
+  (admin soft-override that bypasses the model cap, audited), and
+  **reprioritize** (move to front/back). Reprioritized sessions carry a manual
+  `queue_rank` that drains before the default P0→P3 + FIFO order (migration
+  `p2q3r4s5t6u7`). New `POST /sessions/queue/purge`,
+  `POST /sessions/{id}/queue/{cancel,force-start,reprioritize}`.
+
 - **v2 UI follow-ups.** (1) The postmortem editor gains a **"Draft from
   sessions"** button that calls `POST /incidents/{id}/postmortem/draft` and
   loads the session-trail-derived RCA draft into the editor (distinct from the

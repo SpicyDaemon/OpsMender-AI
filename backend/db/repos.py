@@ -1133,16 +1133,93 @@ class SessionRepo:
             (Incident.priority == "P2", 2),
             else_=3,
         )
+        # Admin-ranked sessions drain first (lowest rank), then normal
+        # priority→FIFO. NULLs sort last so unranked rows keep default order.
+        ranked_first = case((Session.queue_rank.is_(None), 1), else_=0)
         stmt = (
             select(Session)
             .join(Incident, Incident.id == Session.incident_id)
             .where(Session.status == "queued")
-            .order_by(priority_order, Session.queued_at, Session.id)
+            .order_by(
+                ranked_first,
+                Session.queue_rank,
+                priority_order,
+                Session.queued_at,
+                Session.id,
+            )
             .limit(limit)
         )
         if org_id is not None:
             stmt = stmt.where(Session.org_id == org_id)
         return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def purge_queue(db: AsyncSession, org_id: uuid.UUID, *, reason: str) -> int:
+        """Cancel every queued session in the org. Returns the count cancelled."""
+        result = await db.execute(
+            update(Session)
+            .where(Session.org_id == org_id, Session.status == "queued")
+            .values(
+                status="cancelled",
+                queue_reason=reason,
+                ended_at=datetime.now(timezone.utc),
+            )
+        )
+        return int(result.rowcount or 0)
+
+    @staticmethod
+    async def cancel_queued_session(
+        db: AsyncSession, org_id: uuid.UUID, session_id: uuid.UUID, *, reason: str
+    ) -> bool:
+        """Cancel a single queued session (no-op unless it is queued)."""
+        result = await db.execute(
+            update(Session)
+            .where(
+                Session.org_id == org_id,
+                Session.id == session_id,
+                Session.status == "queued",
+            )
+            .values(
+                status="cancelled",
+                queue_reason=reason,
+                ended_at=datetime.now(timezone.utc),
+            )
+        )
+        return bool(result.rowcount)
+
+    @staticmethod
+    async def set_queue_rank(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        session_id: uuid.UUID,
+        *,
+        rank: int | None,
+    ) -> bool:
+        """Set/clear the admin reorder rank on a queued session."""
+        result = await db.execute(
+            update(Session)
+            .where(
+                Session.org_id == org_id,
+                Session.id == session_id,
+                Session.status == "queued",
+            )
+            .values(queue_rank=rank)
+        )
+        return bool(result.rowcount)
+
+    @staticmethod
+    async def queue_rank_bounds(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> tuple[int | None, int | None]:
+        """Return (min_rank, max_rank) over queued sessions for front/back moves."""
+        row = (
+            await db.execute(
+                select(
+                    func.min(Session.queue_rank), func.max(Session.queue_rank)
+                ).where(Session.org_id == org_id, Session.status == "queued")
+            )
+        ).one()
+        return row[0], row[1]
 
     @staticmethod
     async def admit_queued(

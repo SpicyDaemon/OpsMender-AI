@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Integration form schemas (Phase 1).** `GET /integrations/kinds` now returns
+  typed credential fields per authentication method plus typed config fields
+  for every integration kind. Field names are derived from the adapter/tool
+  source, and a source-audit regression test prevents schema keys from drifting
+  away from what runtime code reads. Secrets remain write-only.
+
 - **Orchestration queue admin controls.** The Orchestration view now lets admins
   manage the AI-session queue: **purge** (cancel all queued), **cancel** a single
   queued session (admin/operator), **force-start** a queued session immediately

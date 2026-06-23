@@ -17,6 +17,8 @@ from backend.api.schemas import (
     IntegrationConnectorListResponse,
     IntegrationConnectorResponse,
     IntegrationConnectorUpsert,
+    IntegrationFieldOptionResponse,
+    IntegrationFieldResponse,
     IntegrationKindListResponse,
     IntegrationKindResponse,
     IntegrationTestResponse,
@@ -27,9 +29,34 @@ from backend.db.repos import (
     IntegrationConnectorRepo,
     TicketSyncStateRepo,
 )
-from backend.integrations.registry import get_adapter, get_kind, list_kinds
+from backend.integrations.base import IntegrationFieldSpec
+from backend.integrations.registry import (
+    config_fields,
+    credential_fields_by_auth,
+    get_adapter,
+    get_kind,
+    list_kinds,
+)
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+
+def _field_response(field: IntegrationFieldSpec) -> IntegrationFieldResponse:
+    return IntegrationFieldResponse(
+        name=field.name,
+        label=field.label,
+        kind=field.kind,
+        group=field.group,
+        required=field.required,
+        helper=field.helper,
+        placeholder=field.placeholder,
+        doc_url=field.doc_url,
+        options=[
+            IntegrationFieldOptionResponse(value=value, label=label)
+            for value, label in field.options
+        ],
+        default=field.default,
+    )
 
 
 def _response(row: IntegrationConnector) -> IntegrationConnectorResponse:
@@ -105,6 +132,16 @@ async def list_integration_kinds(
                         ),
                     )
                     for capability in (() if adapter is None else adapter.capabilities)
+                ],
+                credential_fields={
+                    auth_type: [_field_response(field) for field in fields]
+                    for auth_type, fields in credential_fields_by_auth(
+                        definition.kind
+                    ).items()
+                },
+                config_fields=[
+                    _field_response(field)
+                    for field in config_fields(definition.kind)
                 ],
             )
         )

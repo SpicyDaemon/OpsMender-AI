@@ -1231,6 +1231,24 @@ class IntegrationCapabilityResponse(BaseModel):
     always_requires_approval: bool
 
 
+class IntegrationFieldOptionResponse(BaseModel):
+    value: str
+    label: str
+
+
+class IntegrationFieldResponse(BaseModel):
+    name: str
+    label: str
+    kind: str
+    group: str
+    required: bool
+    helper: Optional[str] = None
+    placeholder: Optional[str] = None
+    doc_url: Optional[str] = None
+    options: list[IntegrationFieldOptionResponse] = Field(default_factory=list)
+    default: Any = None
+
+
 class IntegrationKindResponse(BaseModel):
     kind: str
     label: str
@@ -1238,6 +1256,8 @@ class IntegrationKindResponse(BaseModel):
     auth_types: list[str]
     adapter_available: bool
     capabilities: list[IntegrationCapabilityResponse]
+    credential_fields: dict[str, list[IntegrationFieldResponse]]
+    config_fields: list[IntegrationFieldResponse]
 
 
 class IntegrationKindListResponse(BaseModel):

@@ -4674,6 +4674,13 @@ class TestIntegrationConnectors:
         )
         assert custom["adapter_available"] is True
         assert custom["capabilities"][0]["action"] == "test_connection"
+        assert [field["name"] for field in custom["credential_fields"]["pat"]] == [
+            "token"
+        ]
+        assert {field["name"] for field in custom["config_fields"]} == {
+            "headers",
+            "health_path",
+        }
         github = next(
             item for item in kinds.json()["items"] if item["kind"] == "github"
         )
@@ -4682,6 +4689,17 @@ class TestIntegrationConnectors:
         )
         assert github["adapter_available"] is True
         assert gitlab["adapter_available"] is True
+        assert [field["name"] for field in github["credential_fields"]["pat"]] == [
+            "token"
+        ]
+        assert {
+            field["name"] for field in github["credential_fields"]["app"]
+        } == {"app_id", "installation_id", "private_key", "installation_token"}
+        assert {field["name"] for field in github["config_fields"]} == {
+            "owner",
+            "repo",
+            "api_version",
+        }
         assert "merge_pull_request" in {
             item["action"] for item in github["capabilities"]
         }

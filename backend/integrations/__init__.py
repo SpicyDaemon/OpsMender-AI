@@ -18,9 +18,13 @@ from backend.integrations import statuspage as statuspage  # noqa: F401
 from backend.integrations.base import (
     IntegrationAdapter,
     IntegrationCapability,
+    IntegrationFieldSpec,
     IntegrationResult,
 )
 from backend.integrations.registry import (
+    config_fields,
+    credential_fields_by_auth,
+    field_schema,
     get_adapter,
     get_kind,
     list_kinds,
@@ -30,7 +34,11 @@ from backend.integrations.registry import (
 __all__ = [
     "IntegrationAdapter",
     "IntegrationCapability",
+    "IntegrationFieldSpec",
     "IntegrationResult",
+    "config_fields",
+    "credential_fields_by_auth",
+    "field_schema",
     "get_adapter",
     "get_kind",
     "list_kinds",

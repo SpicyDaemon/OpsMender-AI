@@ -4,9 +4,36 @@ from __future__ import annotations
 
 import abc
 import dataclasses
-from typing import Any
+from typing import Any, Literal
 
 from backend.db.models import IntegrationConnector
+
+
+IntegrationFieldKind = Literal[
+    "text",
+    "secret",
+    "url",
+    "number",
+    "select",
+    "textarea",
+]
+IntegrationFieldGroup = Literal["credentials", "config"]
+
+
+@dataclasses.dataclass(frozen=True)
+class IntegrationFieldSpec:
+    """Typed operator-facing field stored in an integration JSON bag."""
+
+    name: str
+    label: str
+    kind: IntegrationFieldKind = "text"
+    group: IntegrationFieldGroup = "config"
+    required: bool = False
+    helper: str | None = None
+    placeholder: str | None = None
+    doc_url: str | None = None
+    options: tuple[tuple[str, str], ...] = ()
+    default: Any = None
 
 
 @dataclasses.dataclass(frozen=True)

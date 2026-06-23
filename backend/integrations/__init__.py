@@ -22,6 +22,7 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.registry import (
+    base_url_metadata,
     config_fields,
     credential_fields_by_auth,
     field_schema,
@@ -36,6 +37,7 @@ __all__ = [
     "IntegrationCapability",
     "IntegrationFieldSpec",
     "IntegrationResult",
+    "base_url_metadata",
     "config_fields",
     "credential_fields_by_auth",
     "field_schema",

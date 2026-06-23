@@ -46,7 +46,8 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   DevOps, Gitea, Jira, Confluence, ServiceNow, Linear, Notion, Google Docs, and
   Statuspage provide typed
   repository, PR, ticket, record, and document capabilities with encrypted
-  auth, self-hosted API URLs where applicable, and approval-locked merges.
+  auth, guided per-provider setup fields plus additional variables, self-hosted
+  API URLs where applicable, and approval-locked merges.
 - **Bi-directional ticket state** — linked Jira and ServiceNow tickets mirror
   mapped incident status in both directions through non-blocking outbound jobs
   and signed inbound webhooks.

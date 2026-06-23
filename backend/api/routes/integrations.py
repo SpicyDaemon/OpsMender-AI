@@ -31,6 +31,7 @@ from backend.db.repos import (
 )
 from backend.integrations.base import IntegrationFieldSpec
 from backend.integrations.registry import (
+    base_url_metadata,
     config_fields,
     credential_fields_by_auth,
     get_adapter,
@@ -114,11 +115,14 @@ async def list_integration_kinds(
     items: list[IntegrationKindResponse] = []
     for definition in list_kinds():
         adapter = get_adapter(definition.kind)
+        base_url_helper, base_url_placeholder = base_url_metadata(definition.kind)
         items.append(
             IntegrationKindResponse(
                 kind=definition.kind,
                 label=definition.label,
                 supports_base_url=definition.supports_base_url,
+                base_url_helper=base_url_helper,
+                base_url_placeholder=base_url_placeholder,
                 auth_types=list(definition.auth_types),
                 adapter_available=adapter is not None,
                 capabilities=[

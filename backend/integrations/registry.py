@@ -50,6 +50,93 @@ _KINDS = {
 }
 _ADAPTERS: dict[str, IntegrationAdapter] = {}
 
+_BASE_URL_METADATA: dict[str, tuple[str, str]] = {
+    "github": (
+        "Hosted default: https://api.github.com. For Enterprise Server, enter its API base or instance root.",
+        "https://api.github.com",
+    ),
+    "gitlab": (
+        "Hosted default: https://gitlab.com/api/v4. For self-managed GitLab, enter its API base or instance root.",
+        "https://gitlab.example.com/api/v4",
+    ),
+    "gitea": (
+        "Required: your Gitea instance URL or API v1 base.",
+        "https://gitea.example.com",
+    ),
+    "bitbucket": (
+        "Cloud uses https://api.bitbucket.org/2.0 by default. For Data Center, enter the instance root or REST API base.",
+        "https://api.bitbucket.org/2.0",
+    ),
+    "azure_devops": (
+        "Leave blank for Azure DevOps Services, or enter the collection URL for a self-hosted deployment.",
+        "https://dev.azure.com/acme",
+    ),
+    "jira": (
+        "Required: your Jira Cloud site or on-premises instance URL.",
+        "https://acme.atlassian.net",
+    ),
+    "confluence": (
+        "Required: your Confluence Cloud site or on-premises instance URL.",
+        "https://acme.atlassian.net/wiki",
+    ),
+    "servicenow": (
+        "Required: your ServiceNow instance URL.",
+        "https://acme.service-now.com",
+    ),
+    "jenkins": (
+        "Required: the Jenkins controller URL.",
+        "https://jenkins.example.com",
+    ),
+    "circleci": (
+        "Uses https://circleci.com/api/v2 by default. Enter a CircleCI Server API base when self-hosted.",
+        "https://circleci.com/api/v2",
+    ),
+    "azure_pipelines": (
+        "Leave blank for Azure DevOps Services, or enter the collection URL for a self-hosted deployment.",
+        "https://dev.azure.com/acme",
+    ),
+    "terraform_cloud": (
+        "Uses https://app.terraform.io/api/v2 by default. Enter a Terraform Enterprise API v2 base when self-hosted.",
+        "https://app.terraform.io/api/v2",
+    ),
+    "argocd": (
+        "Required: the Argo CD server URL.",
+        "https://argocd.example.com",
+    ),
+    "ansible": (
+        "Required: the AWX or Ansible Automation Controller URL.",
+        "https://controller.example.com",
+    ),
+    "statuspage": (
+        "Uses https://api.statuspage.io/v1 by default.",
+        "https://api.statuspage.io/v1",
+    ),
+    "sentry": (
+        "Enter the Sentry API base for a self-hosted deployment; leave blank for hosted Sentry.",
+        "https://sentry.io/api/0",
+    ),
+    "splunk": (
+        "Required for an outbound Splunk adapter: the Splunk management API base.",
+        "https://splunk.example.com:8089",
+    ),
+    "kubernetes": (
+        "Required: the Kubernetes API server URL.",
+        "https://cluster.example.com:6443",
+    ),
+    "zendesk": (
+        "Required: your Zendesk subdomain URL.",
+        "https://acme.zendesk.com",
+    ),
+    "freshservice": (
+        "Required: your Freshservice portal URL.",
+        "https://acme.freshservice.com",
+    ),
+    "custom": (
+        "Required: the HTTP endpoint root that OpsMender should probe.",
+        "https://service.example.com",
+    ),
+}
+
 
 def _credential(
     name: str,
@@ -514,3 +601,10 @@ def config_fields(kind: str) -> tuple[IntegrationFieldSpec, ...]:
     if definition is None:
         raise KeyError(kind)
     return _CONFIG_FIELDS.get(kind, ())
+
+
+def base_url_metadata(kind: str) -> tuple[str | None, str | None]:
+    definition = get_kind(kind)
+    if definition is None:
+        raise KeyError(kind)
+    return _BASE_URL_METADATA.get(kind, (None, None))

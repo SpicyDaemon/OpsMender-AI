@@ -9,9 +9,14 @@ external systems through encrypted, tier-governed integration connectors.
 Admins manage source-control, ticketing, documentation, observability, and
 infrastructure connectors at **Admin → Integrations**.
 
-- Credentials are entered as provider-specific JSON and encrypted as one opaque
-  Fernet payload. The API never returns values; it only reports whether auth is
-  configured and which keys exist.
+- The form renders provider-specific credential fields for the selected
+  authentication method and provider-specific configuration fields. Credentials
+  are encrypted as one opaque Fernet payload. The API never returns values; it
+  only reports whether auth is configured and which keys exist.
+- Existing or custom keys outside the built-in schema appear under
+  **Additional variables** for credentials and config. Saved credential values
+  remain blank: leave them blank to keep, enter a value to replace, or remove
+  the row to delete that key.
 - `base_url` supports self-hosted editions where relevant.
 - **Test** runs the adapter's cheap connection probe and records healthy/error
   status, timestamp, and the last error.
@@ -27,10 +32,10 @@ The **Custom HTTP** kind is the reference adapter in the foundation.
 - Hosted base URL: leave blank (`https://api.github.com`).
 - Enterprise Server: enter the API base or instance root; roots normalize to
   `/api/v3`.
-- PAT credentials: `{"token":"..."}`.
-- App credentials:
-  `{"app_id":"...","installation_id":"...","private_key":"-----BEGIN PRIVATE KEY-----..."}`.
-- Common config: `{"owner":"acme","repo":"service","api_version":"2022-11-28"}`.
+- PAT authentication asks for **Personal access token**.
+- App authentication asks for **App ID**, **Installation ID**, and **Private
+  key**.
+- Optional defaults: **Owner**, **Repository**, and **API version**.
 
 Capabilities include repository/file reads, issue list/create/comment,
 pull-request create/merge, and commit/pull-request links to incidents.
@@ -40,9 +45,8 @@ pull-request create/merge, and commit/pull-request links to incidents.
 - Hosted base URL: leave blank (`https://gitlab.com/api/v4`).
 - Self-managed: enter the API base or instance root; roots normalize to
   `/api/v4`.
-- PAT credentials: `{"token":"..."}`.
-- OAuth credentials: `{"access_token":"..."}`.
-- Common config: `{"project":"group/project"}`.
+- PAT authentication asks for **Token**; OAuth asks for **Access token**.
+- **Default project** accepts a path such as `group/project`.
 
 Capabilities include project/file reads, issue list/create/comment,
 merge-request create/merge, and commit/merge-request links to incidents.
@@ -52,22 +56,20 @@ of the workspace's autonomous tier.
 
 ### Bitbucket
 
-- Cloud: leave the base URL blank; use
-  `{"email":"admin@example.com","api_token":"..."}` and
-  `{"workspace":"acme","repo":"service"}`.
-- Data Center: enter the instance URL and use
-  `{"edition":"data_center","project":"OPS","repo":"service"}`.
+- Cloud: leave the base URL blank; enter the Atlassian account email, API
+  token, workspace, and repository fields.
+- Data Center: enter the instance URL, choose **Data Center**, and set the
+  project and repository fields.
 
 Capabilities cover repository/file reads and pull-request create/merge. The
 Cloud edition also supports issue list/create. Merge always requires approval.
 
 ### Azure DevOps
 
-- Services: leave the base URL blank and configure
-  `{"organization":"acme","project":"Operations","repository":"service"}`.
+- Services: leave the base URL blank and configure the Organization, Default
+  project, and Default repository fields.
 - Server: enter the collection base URL.
-- PAT credentials: `{"token":"..."}`; OAuth:
-  `{"access_token":"..."}`.
+- PAT authentication asks for Token; OAuth asks for Access token.
 
 Capabilities cover Repos repository/file and pull-request workflows plus
 Boards work-item read/create/update. Pull-request completion always requires
@@ -75,16 +77,15 @@ approval.
 
 ### Jira and Confluence
 
-Enter the Cloud site or on-premises instance URL. Cloud API-token credentials
-use `{"email":"admin@example.com","api_token":"..."}`; OAuth uses
-`{"access_token":"..."}`. Set `{"edition":"on_prem"}` for an on-premises
-edition.
+Enter the Cloud site or on-premises instance URL. Cloud API-token authentication
+uses the Atlassian account email and API token fields; OAuth uses Access token.
+Choose the on-premises edition in the Edition field when applicable.
 
 - Jira config commonly includes `{"project_key":"OPS","issue_type":"Task"}`.
   It can read/create/comment on issues and list/apply transitions.
   For two-way incident lifecycle mirroring, enable **Bi-directional ticket
   sync**, map `open` / `in_progress` / `resolved` to Jira status names or
-  transition IDs, and store `webhook_secret` in Credentials JSON. Configure
+  transition IDs, and set **Ticket-sync webhook secret** in Credentials. Configure
   Jira to POST to the displayed `/webhooks/ticket-sync/{connector_id}` URL
   with an `X-Hub-Signature` HMAC-SHA256 header.
 - Confluence config uses `{"space_id":"..."}`. It can read runbooks and
@@ -92,13 +93,12 @@ edition.
 
 ### ServiceNow
 
-Enter the instance URL and configure a table such as
-`{"table":"incident"}`. Basic credentials are
-`{"username":"...","password":"..."}`; OAuth uses an access token.
+Enter the instance URL and set the Default table (usually `incident`). Basic
+authentication asks for Username and Password; OAuth asks for Access token.
 Capabilities read, create, and update Table API records. Wave 1 does not
 perform continuous state synchronization. Wave 3 adds it: enable
 **Bi-directional ticket sync**, map OpsMender statuses to ServiceNow state
-values (defaults `1`, `2`, `6`), store `webhook_token` in Credentials JSON,
+values (defaults `1`, `2`, `6`), set **Ticket-sync webhook token** in Credentials,
 and configure the business rule/webhook to POST to the displayed URL with the
 same token query parameter.
 

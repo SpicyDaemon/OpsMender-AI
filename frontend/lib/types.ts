@@ -744,6 +744,8 @@ export interface IntegrationKind {
   kind: string;
   label: string;
   supports_base_url: boolean;
+  base_url_helper: string | null;
+  base_url_placeholder: string | null;
   auth_types: IntegrationAuthType[];
   adapter_available: boolean;
   capabilities: IntegrationCapability[];

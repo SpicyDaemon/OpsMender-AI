@@ -68,6 +68,9 @@ beforeEach(() => {
         kind: "github",
         label: "GitHub",
         supports_base_url: true,
+        base_url_helper:
+          "Hosted default: https://api.github.com. For Enterprise Server, enter its API base or instance root.",
+        base_url_placeholder: "https://api.github.com",
         auth_types: ["pat", "app"],
         adapter_available: true,
         credential_fields: {
@@ -116,6 +119,8 @@ beforeEach(() => {
         kind: "jira",
         label: "Jira",
         supports_base_url: true,
+        base_url_helper: "Required: your Jira Cloud site URL.",
+        base_url_placeholder: "https://acme.atlassian.net",
         auth_types: ["pat", "oauth", "basic"],
         adapter_available: true,
         credential_fields: {
@@ -144,6 +149,8 @@ beforeEach(() => {
         kind: "custom",
         label: "Custom HTTP",
         supports_base_url: true,
+        base_url_helper: "Required: the HTTP endpoint root.",
+        base_url_placeholder: "https://service.example.com",
         auth_types: ["none", "pat"],
         adapter_available: true,
         credential_fields: {
@@ -178,6 +185,9 @@ beforeEach(() => {
         kind: "azure_devops",
         label: "Azure DevOps",
         supports_base_url: true,
+        base_url_helper:
+          "Leave blank for Azure DevOps Services, or enter the collection URL for a self-hosted deployment.",
+        base_url_placeholder: "https://dev.azure.com/acme",
         auth_types: ["pat", "oauth"],
         adapter_available: true,
         credential_fields: {
@@ -207,6 +217,8 @@ beforeEach(() => {
         kind: "jenkins",
         label: "Jenkins",
         supports_base_url: true,
+        base_url_helper: "Required: the Jenkins controller URL.",
+        base_url_placeholder: "https://jenkins.example.com",
         auth_types: ["basic", "pat"],
         adapter_available: true,
         credential_fields: {
@@ -240,6 +252,9 @@ beforeEach(() => {
         kind: "terraform_cloud",
         label: "Terraform Cloud",
         supports_base_url: true,
+        base_url_helper:
+          "Uses https://app.terraform.io/api/v2 by default. Enter a Terraform Enterprise API v2 base when self-hosted.",
+        base_url_placeholder: "https://app.terraform.io/api/v2",
         auth_types: ["api_key"],
         adapter_available: true,
         credential_fields: {
@@ -268,6 +283,8 @@ beforeEach(() => {
         kind: "google_docs",
         label: "Google Docs",
         supports_base_url: false,
+        base_url_helper: null,
+        base_url_placeholder: null,
         auth_types: ["oauth", "custom"],
         adapter_available: true,
         credential_fields: {
@@ -451,7 +468,11 @@ describe("Integrations page", () => {
     const legacyConnector = {
       ...connector,
       auth_keys: ["legacy_secret", "token"],
-      config: { health_path: "/old", legacy_timeout: 30 },
+      config: {
+        health_path: "/old",
+        legacy_timeout: 30,
+        legacy_empty: null,
+      },
     };
     apiMocks.listIntegrationConnectors.mockResolvedValue({
       items: [legacyConnector],
@@ -481,6 +502,10 @@ describe("Integrations page", () => {
       (screen.getByLabelText("Additional config value 1") as HTMLInputElement)
         .value,
     ).toBe("30");
+    expect(
+      (screen.getByLabelText("Additional config key 2") as HTMLInputElement)
+        .value,
+    ).toBe("legacy_empty");
 
     await user.click(screen.getByRole("button", { name: "Save integration" }));
     await waitFor(() =>
@@ -490,6 +515,7 @@ describe("Integrations page", () => {
           config: expect.objectContaining({
             health_path: "/old",
             legacy_timeout: 30,
+            legacy_empty: null,
           }),
         }),
       ),
@@ -518,7 +544,7 @@ describe("Integrations page", () => {
     await user.click(addButtons[0]);
     await user.type(
       screen.getByLabelText("Additional credential key 1"),
-      "region_token",
+      "legacy_secret",
     );
     await user.type(
       screen.getByLabelText("Additional credential value 1"),
@@ -537,8 +563,7 @@ describe("Integrations page", () => {
         legacyConnector.id,
         expect.objectContaining({
           auth: {
-            legacy_secret: null,
-            region_token: "secret-2",
+            legacy_secret: "secret-2",
           },
           config: expect.objectContaining({
             legacy_timeout: 30,

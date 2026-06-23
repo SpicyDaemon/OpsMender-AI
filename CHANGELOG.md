@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   textareas. Saved credentials show a write-only placeholder and blank values
   are omitted. Credential updates are patches, so changing one secret preserves
   every omitted stored key; `null` explicitly removes a key.
+- **Integration form polish (Phase 4).** Provider Base URL guidance now comes
+  from the backend kind catalog alongside field metadata; the old frontend hint
+  map and all raw-JSON form wording are removed. Backward-compat coverage now
+  includes unknown null config values and remove-then-replace credential keys.
 
 - **One SMTP setting, with clear status.** Config → Email / SMTP now shows
   whether SMTP is **Configured** and its **source** (saved here vs. from

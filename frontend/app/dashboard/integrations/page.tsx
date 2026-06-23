@@ -38,127 +38,6 @@ function authTypeLabel(value: string): string {
       .replace(/\b\w/g, (c) => c.toUpperCase())
   );
 }
-const INTEGRATION_HELP: Record<
-  string,
-  { base: string; auth: string; config: string }
-> = {
-  github: {
-    base: "Hosted default: https://api.github.com. For Enterprise Server, enter its API base or instance root.",
-    auth: 'PAT: {"token":"…"}. App: {"app_id":"…","installation_id":"…","private_key":"-----BEGIN PRIVATE KEY-----…"}',
-    config: '{"owner":"acme","repo":"service","api_version":"2022-11-28"}',
-  },
-  gitlab: {
-    base: "Hosted default: https://gitlab.com/api/v4. For self-managed, enter its API base or instance root.",
-    auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
-    config: '{"project":"group/project"}',
-  },
-  gitea: {
-    base: "Required: your Gitea instance URL or API v1 base.",
-    auth: 'Personal access token: {"token":"…"}',
-    config: '{"owner":"acme","repo":"service"}',
-  },
-  bitbucket: {
-    base: "Cloud uses https://api.bitbucket.org/2.0 by default. For Data Center, enter the instance root or REST API base.",
-    auth: 'Cloud API token: {"email":"admin@example.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
-    config:
-      'Cloud: {"workspace":"acme","repo":"service"}. Data Center: {"edition":"data_center","project":"OPS","repo":"service"}.',
-  },
-  azure_devops: {
-    base: "Leave blank for Azure DevOps Services, or enter the collection URL for a self-hosted deployment.",
-    auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
-    config:
-      '{"organization":"acme","project":"Operations","repository":"service"}',
-  },
-  jira: {
-    base: "Required: your Jira site or on-premises instance URL.",
-    auth: 'Cloud API token: {"email":"admin@example.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
-    config:
-      'Cloud: {"project_key":"OPS","issue_type":"Task","ticket_sync_enabled":true}. Store webhook_secret in Credentials JSON.',
-  },
-  confluence: {
-    base: "Required: your Confluence site or on-premises instance URL.",
-    auth: 'Cloud API token: {"email":"admin@example.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
-    config:
-      'Cloud: {"space_id":"12345"}. On-premises: {"edition":"on_prem","space_id":"OPS"}.',
-  },
-  servicenow: {
-    base: "Required: your instance URL, such as https://acme.service-now.com.",
-    auth: 'Basic: {"username":"…","password":"…"}. OAuth: {"access_token":"…"}',
-    config:
-      '{"table":"incident","ticket_sync_enabled":true}. Store webhook_token in Credentials JSON.',
-  },
-  linear: {
-    base: "Uses https://api.linear.app/graphql by default.",
-    auth: 'API key: {"api_key":"…"}. OAuth: {"access_token":"…"}',
-    config: '{"team_id":"…"}',
-  },
-  notion: {
-    base: "Uses https://api.notion.com/v1 by default.",
-    auth: 'Integration token: {"api_key":"…"}. OAuth: {"access_token":"…"}',
-    config: '{"parent_page_id":"…","notion_version":"2026-03-11"}',
-  },
-  google_docs: {
-    base: "Uses the Google Docs and Drive APIs.",
-    auth: 'OAuth: {"access_token":"…"}. Service account (Custom): {"client_email":"…","private_key":"-----BEGIN PRIVATE KEY-----…","delegated_user":"optional@example.com"}',
-    config: "Share documents with the service account, or configure domain-wide delegation.",
-  },
-  kubernetes: {
-    base: "Required: the Kubernetes API server URL, such as https://cluster.example.com:6443.",
-    auth: 'Service account: {"token":"…","ca_cert":"-----BEGIN CERTIFICATE-----…"}. Custom headers: {"headers":{"Authorization":"…"}}.',
-    config: '{"namespace":"production","verify_tls":true}',
-  },
-  jenkins: {
-    base: "Required: the Jenkins controller URL.",
-    auth: 'API token/basic: {"username":"…","api_token":"…"}',
-    config: '{"job":"folder/service"}',
-  },
-  circleci: {
-    base: "Uses https://circleci.com/api/v2 by default. Enter a CircleCI Server API base when self-hosted.",
-    auth: 'API token: {"api_key":"…"}',
-    config: '{"project_slug":"gh/acme/service"}',
-  },
-  azure_pipelines: {
-    base: "Leave blank for Azure DevOps Services, or enter the collection URL for a self-hosted deployment.",
-    auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}',
-    config: '{"organization":"acme","project":"Operations"}',
-  },
-  terraform_cloud: {
-    base: "Uses https://app.terraform.io/api/v2 by default. Enter a Terraform Enterprise API v2 base when self-hosted.",
-    auth: 'User or team API token: {"api_key":"…"}',
-    config: '{"organization":"acme","workspace_id":"ws-…"}',
-  },
-  argocd: {
-    base: "Required: the Argo CD server URL.",
-    auth: 'Token: {"token":"…"}. OAuth: {"access_token":"…"}',
-    config: '{"application":"production-service"}',
-  },
-  ansible: {
-    base: "Required: the AWX or Ansible Automation Controller URL.",
-    auth: 'Token: {"token":"…"}. Basic: {"username":"…","password":"…"}',
-    config: "No extra config required.",
-  },
-  statuspage: {
-    base: "Uses https://api.statuspage.io/v1 by default.",
-    auth: 'API token: {"api_key":"…"}',
-    config: '{"page_id":"…"}',
-  },
-  zendesk: {
-    base: "Required: your subdomain URL, such as https://acme.zendesk.com.",
-    auth: 'API token: {"email":"agent@acme.com","api_token":"…"}. OAuth: {"access_token":"…"}.',
-    config: "No extra config required.",
-  },
-  freshservice: {
-    base: "Required: your portal URL, such as https://acme.freshservice.com.",
-    auth: 'API key: {"api_key":"…"}.',
-    config: "No extra config required.",
-  },
-  asana: {
-    base: "Uses https://app.asana.com/api/1.0 by default.",
-    auth: 'PAT: {"token":"…"}. OAuth: {"access_token":"…"}.',
-    config: '{"project_id":"…"} (default project for create/list tasks).',
-  },
-};
-
 function formatFieldValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return JSON.stringify(value, null, 2);
@@ -268,7 +147,9 @@ function additionalConfigRows(
 
 function parseAdditionalValue(row: AdditionalVariable): unknown | undefined {
   if (!row.value.trim()) {
-    return row.originalValue === "" ? "" : undefined;
+    return Object.prototype.hasOwnProperty.call(row, "originalValue")
+      ? row.originalValue
+      : undefined;
   }
   if (
     row.originalValue !== undefined &&
@@ -548,7 +429,7 @@ function TicketSyncPanel({
         </code>
         <p className="mt-2">
           {connector.kind === "jira"
-            ? "Jira must send X-Hub-Signature (HMAC-SHA256) using the webhook_secret stored in Credentials JSON."
+            ? "Jira must send X-Hub-Signature (HMAC-SHA256) using the webhook_secret stored in the Credentials section."
             : "ServiceNow must send the webhook_token query parameter matching the encrypted credential."}
         </p>
       </div>
@@ -619,7 +500,6 @@ export default function IntegrationsPage() {
     [authType, selectedKind],
   );
   const configFields = selectedKind?.config_fields ?? [];
-  const integrationHelp = INTEGRATION_HELP[kind];
 
   function resetForm() {
     setEditing(null);
@@ -693,6 +573,7 @@ export default function IntegrationsPage() {
         if (value !== undefined) auth[field.name] = value;
       }
       const credentialKeys = new Set(credentialFields.map((field) => field.name));
+      for (const key of removedCredentialKeys) auth[key] = null;
       for (const row of additionalCredentials) {
         const key = row.key.trim();
         if (!key && !row.value.trim()) continue;
@@ -710,8 +591,6 @@ export default function IntegrationsPage() {
           throw new Error(`Additional credential '${key}' needs a value.`);
         }
       }
-      for (const key of removedCredentialKeys) auth[key] = null;
-
       const config: Record<string, unknown> = {};
       for (const field of configFields) {
         const value = parseFieldValue(field, fieldValue(configValues, field));
@@ -862,13 +741,16 @@ export default function IntegrationsPage() {
               <Label htmlFor="integration-base-url">Base URL</Label>
               <Input
                 id="integration-base-url"
-                placeholder="https://service.example.com"
+                placeholder={
+                  selectedKind.base_url_placeholder ??
+                  "https://service.example.com"
+                }
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
               />
-              {integrationHelp && (
+              {selectedKind.base_url_helper && (
                 <p className="mt-1 text-xs text-fg-muted">
-                  {integrationHelp.base}
+                  {selectedKind.base_url_helper}
                 </p>
               )}
             </div>

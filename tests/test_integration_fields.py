@@ -4,7 +4,11 @@ import ast
 from pathlib import Path
 
 import backend.integrations  # noqa: F401 - register bundled adapters
-from backend.integrations.registry import field_schema, list_kinds
+from backend.integrations.registry import (
+    base_url_metadata,
+    field_schema,
+    list_kinds,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +87,10 @@ def _read_keys(paths: tuple[str, ...]) -> tuple[set[str], set[str]]:
 
 def test_every_catalog_kind_has_a_complete_per_auth_schema():
     for definition in list_kinds():
+        helper, placeholder = base_url_metadata(definition.kind)
+        if definition.supports_base_url:
+            assert helper
+            assert placeholder
         seen_config: tuple[str, ...] | None = None
         for auth_type in definition.auth_types:
             credential_fields, config_fields = field_schema(

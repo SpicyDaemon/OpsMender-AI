@@ -4714,6 +4714,7 @@ class TestIntegrationConnectors:
         )
         assert custom["adapter_available"] is True
         assert custom["capabilities"][0]["action"] == "test_connection"
+        assert custom["base_url_placeholder"] == "https://service.example.com"
         assert [field["name"] for field in custom["credential_fields"]["pat"]] == [
             "token"
         ]
@@ -4729,6 +4730,7 @@ class TestIntegrationConnectors:
         )
         assert github["adapter_available"] is True
         assert gitlab["adapter_available"] is True
+        assert "Enterprise Server" in github["base_url_helper"]
         assert [field["name"] for field in github["credential_fields"]["pat"]] == [
             "token"
         ]

@@ -1253,6 +1253,8 @@ class IntegrationKindResponse(BaseModel):
     kind: str
     label: str
     supports_base_url: bool
+    base_url_helper: Optional[str] = None
+    base_url_placeholder: Optional[str] = None
     auth_types: list[str]
     adapter_available: bool
     capabilities: list[IntegrationCapabilityResponse]

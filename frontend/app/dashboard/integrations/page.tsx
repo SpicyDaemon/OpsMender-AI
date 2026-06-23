@@ -19,6 +19,26 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 
 const EMPTY_OBJECT = "{}";
+
+// Friendly Title-Case labels for authentication methods (acronyms stay upper).
+const AUTH_TYPE_LABELS: Record<string, string> = {
+  none: "None",
+  pat: "Personal Access Token",
+  api_key: "API Key",
+  basic: "Basic",
+  custom: "Custom",
+  oauth: "OAuth",
+  app: "App",
+};
+
+function authTypeLabel(value: string): string {
+  return (
+    AUTH_TYPE_LABELS[value] ??
+    value
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
 const INTEGRATION_HELP: Record<
   string,
   { base: string; auth: string; config: string }
@@ -474,7 +494,7 @@ export default function IntegrationsPage() {
             >
               {(selectedKind?.auth_types ?? ["pat"]).map((item) => (
                 <option key={item} value={item}>
-                  {item.replaceAll("_", " ")}
+                  {authTypeLabel(item)}
                 </option>
               ))}
             </Select>

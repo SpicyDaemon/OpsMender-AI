@@ -4656,6 +4656,46 @@ class TestIntegrationConnectors:
         assert updated.json()["status"] == "disabled"
         assert updated.json()["has_auth"] is True
 
+        patched = await client.put(
+            f"/integrations/{body['id']}",
+            headers=auth_headers,
+            json={
+                "kind": "custom",
+                "name": "Status API",
+                "base_url": "https://status.example.test",
+                "auth_type": "pat",
+                "auth": {"secondary": "keep-me"},
+                "config": {"health_path": "/ready"},
+                "is_enabled": False,
+            },
+        )
+        assert patched.status_code == 200
+        assert patched.json()["auth_keys"] == ["secondary", "token"]
+        async with app.state.session_factory() as db:
+            row = await IntegrationConnectorRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(body["id"])
+            )
+            assert IntegrationConnectorRepo.decrypt_auth(row) == {
+                "secondary": "keep-me",
+                "token": "top-secret",
+            }
+
+        removed = await client.put(
+            f"/integrations/{body['id']}",
+            headers=auth_headers,
+            json={
+                "kind": "custom",
+                "name": "Status API",
+                "base_url": "https://status.example.test",
+                "auth_type": "pat",
+                "auth": {"secondary": None},
+                "config": {"health_path": "/ready"},
+                "is_enabled": False,
+            },
+        )
+        assert removed.status_code == 200
+        assert removed.json()["auth_keys"] == ["token"]
+
         forbidden = await client.get("/integrations", headers=viewer_headers)
         assert forbidden.status_code == 403
 

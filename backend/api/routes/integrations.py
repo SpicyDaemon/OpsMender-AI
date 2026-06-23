@@ -219,7 +219,15 @@ async def update_integration_connector(
     if body.clear_auth:
         auth = None
     elif body.auth is not None:
-        auth = body.auth
+        try:
+            auth = IntegrationConnectorRepo.decrypt_auth(row)
+        except (ValueError, TypeError):
+            auth = {}
+        for key, value in body.auth.items():
+            if value is None:
+                auth.pop(key, None)
+            else:
+                auth[key] = value
     else:
         auth = AUTH_UNSET
     try:

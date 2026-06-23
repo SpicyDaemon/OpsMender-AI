@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Structured integration form (Phase 2).** Integrations now render the
+  selected kind/auth method's credential and config fields instead of raw JSON
+  textareas. Saved credentials show a write-only placeholder and blank values
+  are omitted. Credential updates are patches, so changing one secret preserves
+  every omitted stored key; `null` explicitly removes a key.
+
 - **One SMTP setting, with clear status.** Config → Email / SMTP now shows
   whether SMTP is **Configured** and its **source** (saved here vs. from
   environment), the active server, and a **Test now** result badge

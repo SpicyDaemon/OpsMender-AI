@@ -13,12 +13,11 @@ import type {
   IntegrationAuthType,
   IntegrationConnectorResponse,
   IntegrationConnectorUpsert,
+  IntegrationField,
   IntegrationKind,
 } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
-
-const EMPTY_OBJECT = "{}";
 
 // Friendly Title-Case labels for authentication methods (acronyms stay upper).
 const AUTH_TYPE_LABELS: Record<string, string> = {
@@ -160,12 +159,139 @@ const INTEGRATION_HELP: Record<
   },
 };
 
-function parseObject(value: string, label: string): Record<string, unknown> {
-  const parsed = JSON.parse(value || EMPTY_OBJECT);
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new Error(`${label} must be a JSON object.`);
+function formatFieldValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function fieldValue(
+  values: Record<string, string>,
+  field: IntegrationField,
+): string {
+  return Object.prototype.hasOwnProperty.call(values, field.name)
+    ? values[field.name]
+    : formatFieldValue(field.default);
+}
+
+function parseFieldValue(
+  field: IntegrationField,
+  raw: string,
+): unknown | undefined {
+  const value = raw.trim();
+  if (!value) return undefined;
+  if (field.kind === "number") {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      throw new Error(`${field.label} must be a number.`);
+    }
+    return parsed;
   }
-  return parsed as Record<string, unknown>;
+  if (typeof field.default === "boolean") {
+    return value === "true";
+  }
+  if (
+    field.default !== null &&
+    typeof field.default === "object" &&
+    !Array.isArray(field.default)
+  ) {
+    const parsed = JSON.parse(value);
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error(`${field.label} must be a JSON object.`);
+    }
+    return parsed as Record<string, unknown>;
+  }
+  return raw;
+}
+
+function valuesForFields(
+  fields: IntegrationField[],
+  source: Record<string, unknown>,
+): Record<string, string> {
+  return Object.fromEntries(
+    fields
+      .filter((field) =>
+        Object.prototype.hasOwnProperty.call(source, field.name),
+      )
+      .map((field) => [field.name, formatFieldValue(source[field.name])]),
+  );
+}
+
+function StructuredField({
+  field,
+  value,
+  saved,
+  onChange,
+}: {
+  field: IntegrationField;
+  value: string;
+  saved?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const id = `integration-${field.group}-${field.name}`;
+  const placeholder =
+    saved && field.group === "credentials"
+      ? "Saved — leave blank to keep"
+      : (field.placeholder ?? "");
+  return (
+    <div>
+      <Label htmlFor={id}>
+        {field.label}
+        {field.required ? " *" : ""}
+      </Label>
+      {field.kind === "textarea" ? (
+        <Textarea
+          id={id}
+          rows={field.default && typeof field.default === "object" ? 5 : 4}
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+          spellCheck={false}
+        />
+      ) : field.kind === "select" ? (
+        <Select
+          id={id}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {!field.required && !value ? <option value="">Not set</option> : null}
+          {field.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      ) : (
+        <Input
+          id={id}
+          type={field.kind === "secret" ? "password" : field.kind}
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete="off"
+        />
+      )}
+      {(field.helper || field.doc_url || saved) && (
+        <p className="mt-1 text-xs text-fg-muted">
+          {saved ? "A value is already stored. Enter a new value to replace it. " : ""}
+          {field.helper}
+          {field.doc_url ? (
+            <>
+              {" "}
+              <a
+                href={field.doc_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent hover:underline"
+              >
+                Where do I get this?
+              </a>
+            </>
+          ) : null}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function statusClass(status: string): string {
@@ -307,8 +433,13 @@ export default function IntegrationsPage() {
   const [kind, setKind] = useState("custom");
   const [baseUrl, setBaseUrl] = useState("");
   const [authType, setAuthType] = useState<IntegrationAuthType>("pat");
-  const [authJson, setAuthJson] = useState(EMPTY_OBJECT);
-  const [configJson, setConfigJson] = useState(EMPTY_OBJECT);
+  const [credentialValues, setCredentialValues] = useState<
+    Record<string, string>
+  >({});
+  const [configValues, setConfigValues] = useState<Record<string, string>>({});
+  const [preservedConfig, setPreservedConfig] = useState<
+    Record<string, unknown>
+  >({});
   const [enabled, setEnabled] = useState(true);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -334,6 +465,11 @@ export default function IntegrationsPage() {
     () => kinds.find((item) => item.kind === kind),
     [kind, kinds],
   );
+  const credentialFields = useMemo(
+    () => selectedKind?.credential_fields?.[authType] ?? [],
+    [authType, selectedKind],
+  );
+  const configFields = selectedKind?.config_fields ?? [];
   const integrationHelp = INTEGRATION_HELP[kind];
 
   function resetForm() {
@@ -342,8 +478,9 @@ export default function IntegrationsPage() {
     setKind("custom");
     setBaseUrl("");
     setAuthType("pat");
-    setAuthJson(EMPTY_OBJECT);
-    setConfigJson(EMPTY_OBJECT);
+    setCredentialValues({});
+    setConfigValues({});
+    setPreservedConfig({});
     setEnabled(true);
   }
 
@@ -353,12 +490,16 @@ export default function IntegrationsPage() {
     setKind(connector.kind);
     setBaseUrl(connector.base_url ?? "");
     setAuthType(connector.auth_type);
-    setAuthJson(EMPTY_OBJECT);
-    setConfigJson(JSON.stringify(connector.config ?? {}, null, 2));
+    setCredentialValues({});
+    const definition = kinds.find((item) => item.kind === connector.kind);
+    setConfigValues(
+      valuesForFields(definition?.config_fields ?? [], connector.config ?? {}),
+    );
+    setPreservedConfig(connector.config ?? {});
     setEnabled(connector.is_enabled);
     setNotice(
       connector.has_auth
-        ? "Credentials are stored. Leave Credentials JSON as {} to keep them."
+        ? "Credentials are stored. Leave saved credential fields blank to keep them."
         : "",
     );
   }
@@ -367,8 +508,36 @@ export default function IntegrationsPage() {
     setBusy(true);
     setNotice("");
     try {
-      const auth = parseObject(authJson, "Credentials");
-      const config = parseObject(configJson, "Configuration");
+      const missingCredential = credentialFields.find(
+        (field) =>
+          field.required &&
+          !fieldValue(credentialValues, field).trim() &&
+          !(editing?.auth_keys ?? []).includes(field.name),
+      );
+      if (missingCredential) {
+        throw new Error(`${missingCredential.label} is required.`);
+      }
+      const missingConfig = configFields.find(
+        (field) => field.required && !fieldValue(configValues, field).trim(),
+      );
+      if (missingConfig) {
+        throw new Error(`${missingConfig.label} is required.`);
+      }
+
+      const auth: Record<string, unknown> = {};
+      for (const field of credentialFields) {
+        const value = parseFieldValue(
+          field,
+          fieldValue(credentialValues, field),
+        );
+        if (value !== undefined) auth[field.name] = value;
+      }
+      const config: Record<string, unknown> = { ...preservedConfig };
+      for (const field of configFields) {
+        const value = parseFieldValue(field, fieldValue(configValues, field));
+        if (value === undefined) delete config[field.name];
+        else config[field.name] = value;
+      }
       const payload: IntegrationConnectorUpsert = {
         kind,
         name,
@@ -452,8 +621,12 @@ export default function IntegrationsPage() {
                 const next = event.target.value;
                 setKind(next);
                 const definition = kinds.find((item) => item.kind === next);
-                if (definition?.auth_types[0])
+                if (definition?.auth_types[0]) {
                   setAuthType(definition.auth_types[0]);
+                }
+                setCredentialValues({});
+                setConfigValues({});
+                setPreservedConfig({});
               }}
             >
               {kinds.map((item) => (
@@ -469,28 +642,31 @@ export default function IntegrationsPage() {
               </p>
             )}
           </div>
-          <div>
-            <Label htmlFor="integration-base-url">Base URL</Label>
-            <Input
-              id="integration-base-url"
-              placeholder="https://service.example.com"
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-            />
-            {integrationHelp && (
-              <p className="mt-1 text-xs text-fg-muted">
-                {integrationHelp.base}
-              </p>
-            )}
-          </div>
+          {selectedKind?.supports_base_url ? (
+            <div>
+              <Label htmlFor="integration-base-url">Base URL</Label>
+              <Input
+                id="integration-base-url"
+                placeholder="https://service.example.com"
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+              />
+              {integrationHelp && (
+                <p className="mt-1 text-xs text-fg-muted">
+                  {integrationHelp.base}
+                </p>
+              )}
+            </div>
+          ) : null}
           <div>
             <Label htmlFor="integration-auth-type">Authentication</Label>
             <Select
               id="integration-auth-type"
               value={authType}
-              onChange={(event) =>
-                setAuthType(event.target.value as IntegrationAuthType)
-              }
+              onChange={(event) => {
+                setAuthType(event.target.value as IntegrationAuthType);
+                setCredentialValues({});
+              }}
             >
               {(selectedKind?.auth_types ?? ["pat"]).map((item) => (
                 <option key={item} value={item}>
@@ -499,42 +675,60 @@ export default function IntegrationsPage() {
               ))}
             </Select>
           </div>
-          <div>
-            <Label htmlFor="integration-auth">Credentials JSON</Label>
-            <Textarea
-              id="integration-auth"
-              rows={6}
-              value={authJson}
-              onChange={(event) => setAuthJson(event.target.value)}
-              spellCheck={false}
-            />
-            <p className="mt-1 text-xs text-fg-muted">
-              Example: {`{"token":"…"}`}. Saved values are write-only.
-            </p>
-            {integrationHelp && (
-              <p className="mt-1 text-xs text-fg-muted">
-                {integrationHelp.auth}
+        </div>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <fieldset className="space-y-4 rounded-lg border border-border-subtle bg-bg-elevated p-4">
+            <legend className="px-1 text-sm font-semibold text-fg-primary">
+              Credentials
+            </legend>
+            {credentialFields.length === 0 ? (
+              <p className="text-sm text-fg-muted">
+                No credentials are required for this authentication method.
               </p>
+            ) : (
+              credentialFields.map((field) => (
+                <StructuredField
+                  key={field.name}
+                  field={field}
+                  value={fieldValue(credentialValues, field)}
+                  saved={Boolean(editing?.auth_keys.includes(field.name))}
+                  onChange={(value) =>
+                    setCredentialValues((current) => ({
+                      ...current,
+                      [field.name]: value,
+                    }))
+                  }
+                />
+              ))
             )}
-          </div>
-          <div>
-            <Label htmlFor="integration-config">Configuration JSON</Label>
-            <Textarea
-              id="integration-config"
-              rows={6}
-              value={configJson}
-              onChange={(event) => setConfigJson(event.target.value)}
-              spellCheck={false}
-            />
-            <p className="mt-1 text-xs text-fg-muted">
-              Repository, project, organization, or adapter-specific options.
+            <p className="text-xs text-fg-muted">
+              Credential values are encrypted and never returned by the API.
             </p>
-            {integrationHelp && (
-              <p className="mt-1 text-xs text-fg-muted">
-                Example: {integrationHelp.config}
+          </fieldset>
+          <fieldset className="space-y-4 rounded-lg border border-border-subtle bg-bg-elevated p-4">
+            <legend className="px-1 text-sm font-semibold text-fg-primary">
+              Configuration
+            </legend>
+            {configFields.length === 0 ? (
+              <p className="text-sm text-fg-muted">
+                No adapter-specific configuration is required.
               </p>
+            ) : (
+              configFields.map((field) => (
+                <StructuredField
+                  key={field.name}
+                  field={field}
+                  value={fieldValue(configValues, field)}
+                  onChange={(value) =>
+                    setConfigValues((current) => ({
+                      ...current,
+                      [field.name]: value,
+                    }))
+                  }
+                />
+              ))
             )}
-          </div>
+          </fieldset>
         </div>
         {selectedKind && selectedKind.capabilities.length > 0 && (
           <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">

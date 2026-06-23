@@ -60,6 +60,7 @@ def _credential(
     helper: str | None = None,
     placeholder: str | None = None,
     doc_url: str | None = None,
+    default=None,
 ) -> IntegrationFieldSpec:
     return IntegrationFieldSpec(
         name=name,
@@ -70,6 +71,7 @@ def _credential(
         helper=helper,
         placeholder=placeholder,
         doc_url=doc_url,
+        default=default,
     )
 
 
@@ -272,6 +274,7 @@ _AUTH_FIELDS: dict[str, dict[str, tuple[IntegrationFieldSpec, ...]]] = {
                 kind="textarea",
                 helper="JSON object of HTTP headers sent to the Kubernetes API.",
                 placeholder='{"Authorization":"Bearer …"}',
+                default={},
             ),
             _credential(
                 "ca_cert",

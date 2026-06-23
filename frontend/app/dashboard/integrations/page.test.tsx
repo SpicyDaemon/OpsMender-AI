@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +34,32 @@ const connector = {
   updated_at: "2026-06-19T12:00:00Z",
 };
 
+function field(
+  name: string,
+  label: string,
+  group: "credentials" | "config",
+  options: {
+    kind?: "text" | "secret" | "url" | "number" | "select" | "textarea";
+    required?: boolean;
+    default?: unknown;
+    placeholder?: string;
+    choices?: Array<{ value: string; label: string }>;
+  } = {},
+) {
+  return {
+    name,
+    label,
+    kind: options.kind ?? "text",
+    group,
+    required: options.required ?? false,
+    helper: null,
+    placeholder: options.placeholder ?? null,
+    doc_url: null,
+    options: options.choices ?? [],
+    default: options.default ?? null,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   apiMocks.listIntegrationKinds.mockResolvedValue({
@@ -44,6 +70,31 @@ beforeEach(() => {
         supports_base_url: true,
         auth_types: ["pat", "app"],
         adapter_available: true,
+        credential_fields: {
+          pat: [
+            field("token", "Personal access token", "credentials", {
+              kind: "secret",
+              required: true,
+            }),
+          ],
+          app: [
+            field("app_id", "App ID", "credentials", { required: true }),
+            field("installation_id", "Installation ID", "credentials", {
+              required: true,
+            }),
+            field("private_key", "Private key", "credentials", {
+              kind: "textarea",
+              required: true,
+            }),
+          ],
+        },
+        config_fields: [
+          field("owner", "Default owner", "config"),
+          field("repo", "Default repository", "config"),
+          field("api_version", "API version", "config", {
+            default: "2022-11-28",
+          }),
+        ],
         capabilities: [
           {
             action: "get_file",
@@ -67,6 +118,26 @@ beforeEach(() => {
         supports_base_url: true,
         auth_types: ["pat", "oauth", "basic"],
         adapter_available: true,
+        credential_fields: {
+          pat: [
+            field("email", "Atlassian account email", "credentials"),
+            field("api_token", "API token", "credentials", {
+              kind: "secret",
+              required: true,
+            }),
+          ],
+        },
+        config_fields: [
+          field("project_key", "Default project key", "config"),
+          field("ticket_sync_enabled", "Ticket sync", "config", {
+            kind: "select",
+            default: false,
+            choices: [
+              { value: "false", label: "Disabled" },
+              { value: "true", label: "Enabled" },
+            ],
+          }),
+        ],
         capabilities: [],
       },
       {
@@ -75,6 +146,24 @@ beforeEach(() => {
         supports_base_url: true,
         auth_types: ["none", "pat"],
         adapter_available: true,
+        credential_fields: {
+          none: [],
+          pat: [
+            field("token", "Token", "credentials", {
+              kind: "secret",
+              required: true,
+            }),
+          ],
+        },
+        config_fields: [
+          field("headers", "Request headers", "config", {
+            kind: "textarea",
+            default: {},
+          }),
+          field("health_path", "Health path", "config", {
+            placeholder: "/ready",
+          }),
+        ],
         capabilities: [
           {
             action: "test_connection",
@@ -91,6 +180,19 @@ beforeEach(() => {
         supports_base_url: true,
         auth_types: ["pat", "oauth"],
         adapter_available: true,
+        credential_fields: {
+          pat: [
+            field("token", "Token", "credentials", {
+              kind: "secret",
+              required: true,
+            }),
+          ],
+        },
+        config_fields: [
+          field("organization", "Organization", "config", { required: true }),
+          field("project", "Default project", "config"),
+          field("repository", "Default repository", "config"),
+        ],
         capabilities: [
           {
             action: "create_work_item",
@@ -107,6 +209,23 @@ beforeEach(() => {
         supports_base_url: true,
         auth_types: ["basic", "pat"],
         adapter_available: true,
+        credential_fields: {
+          basic: [
+            field("username", "Username", "credentials", { required: true }),
+            field("password", "Password", "credentials", {
+              kind: "secret",
+              required: true,
+            }),
+          ],
+          pat: [
+            field("username", "Username", "credentials", { required: true }),
+            field("api_token", "API token", "credentials", {
+              kind: "secret",
+              required: true,
+            }),
+          ],
+        },
+        config_fields: [field("job", "Default job", "config")],
         capabilities: [
           {
             action: "trigger_build",
@@ -123,6 +242,18 @@ beforeEach(() => {
         supports_base_url: true,
         auth_types: ["api_key"],
         adapter_available: true,
+        credential_fields: {
+          api_key: [
+            field("api_key", "API key", "credentials", {
+              kind: "secret",
+              required: true,
+            }),
+          ],
+        },
+        config_fields: [
+          field("organization", "Organization", "config", { required: true }),
+          field("workspace_id", "Default workspace ID", "config"),
+        ],
         capabilities: [
           {
             action: "plan",
@@ -139,6 +270,24 @@ beforeEach(() => {
         supports_base_url: false,
         auth_types: ["oauth", "custom"],
         adapter_available: true,
+        credential_fields: {
+          oauth: [
+            field("access_token", "Access token", "credentials", {
+              kind: "secret",
+              required: true,
+            }),
+          ],
+          custom: [
+            field("client_email", "Service-account email", "credentials", {
+              required: true,
+            }),
+            field("private_key", "Private key", "credentials", {
+              kind: "textarea",
+              required: true,
+            }),
+          ],
+        },
+        config_fields: [],
         capabilities: [
           {
             action: "read_doc",
@@ -181,7 +330,7 @@ describe("Integrations page", () => {
     expect(screen.queryByText("top-secret")).toBeNull();
   });
 
-  it("creates a connector from JSON credentials and configuration", async () => {
+  it("creates a connector from structured credential and config fields", async () => {
     apiMocks.listIntegrationConnectors.mockResolvedValueOnce({
       items: [],
       total: 0,
@@ -194,12 +343,8 @@ describe("Integrations page", () => {
       screen.getByLabelText("Base URL"),
       "https://build.example.test",
     );
-    fireEvent.change(screen.getByLabelText("Credentials JSON"), {
-      target: { value: '{"token":"secret"}' },
-    });
-    fireEvent.change(screen.getByLabelText("Configuration JSON"), {
-      target: { value: '{"health_path":"/ready"}' },
-    });
+    await user.type(screen.getByLabelText("Token *"), "secret");
+    await user.type(screen.getByLabelText("Health path"), "/ready");
     await user.click(
       screen.getByRole("button", { name: "Create integration" }),
     );
@@ -209,7 +354,7 @@ describe("Integrations page", () => {
           name: "Build API",
           base_url: "https://build.example.test",
           auth: { token: "secret" },
-          config: { health_path: "/ready" },
+          config: expect.objectContaining({ health_path: "/ready" }),
         }),
       ),
     );
@@ -223,7 +368,10 @@ describe("Integrations page", () => {
     expect(
       screen.getByText(/Hosted default: https:\/\/api.github.com/),
     ).toBeTruthy();
-    expect(screen.getByText(/App: \{"app_id"/)).toBeTruthy();
+    expect(screen.getByLabelText("Personal access token *")).toBeTruthy();
+    expect(screen.getByLabelText("Default owner")).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText("Authentication"), "app");
+    expect(screen.getByLabelText("App ID *")).toBeTruthy();
     expect(
       screen.getByText(/create_pull_request · approval-gated write/),
     ).toBeTruthy();
@@ -237,7 +385,8 @@ describe("Integrations page", () => {
     expect(
       screen.getByText(/collection URL for a self-hosted deployment/),
     ).toBeTruthy();
-    expect(screen.getByText(/"organization":"acme"/)).toBeTruthy();
+    expect(screen.getByLabelText("Organization *")).toBeTruthy();
+    expect(screen.getByLabelText("Default repository")).toBeTruthy();
     expect(
       screen.getByText(/create_work_item · approval-gated write/),
     ).toBeTruthy();
@@ -249,8 +398,9 @@ describe("Integrations page", () => {
     await screen.findByRole("heading", { name: "Add integration" });
     await user.selectOptions(screen.getByLabelText("Kind"), "jenkins");
     expect(screen.getByText(/Jenkins controller URL/)).toBeTruthy();
-    expect(screen.getByText(/"api_token"/)).toBeTruthy();
-    expect(screen.getByText(/"job":"folder\/service"/)).toBeTruthy();
+    expect(screen.getByLabelText("Username *")).toBeTruthy();
+    expect(screen.getByLabelText("Password *")).toBeTruthy();
+    expect(screen.getByLabelText("Default job")).toBeTruthy();
     expect(
       screen.getByText(/trigger_build · approval-gated write/),
     ).toBeTruthy();
@@ -262,7 +412,8 @@ describe("Integrations page", () => {
     await screen.findByRole("heading", { name: "Add integration" });
     await user.selectOptions(screen.getByLabelText("Kind"), "terraform_cloud");
     expect(screen.getByText(/Terraform Enterprise API v2 base/)).toBeTruthy();
-    expect(screen.getByText(/"workspace_id":"ws-/)).toBeTruthy();
+    expect(screen.getByLabelText("API key *")).toBeTruthy();
+    expect(screen.getByLabelText("Default workspace ID")).toBeTruthy();
     expect(screen.getByText(/plan · always approval/)).toBeTruthy();
   });
 
@@ -271,10 +422,29 @@ describe("Integrations page", () => {
     render(<IntegrationsPage />);
     await screen.findByRole("heading", { name: "Add integration" });
     await user.selectOptions(screen.getByLabelText("Kind"), "google_docs");
-    expect(screen.getByText(/Google Docs and Drive APIs/)).toBeTruthy();
-    expect(screen.getByText(/Service account \(Custom\)/)).toBeTruthy();
-    expect(screen.getByText(/domain-wide delegation/)).toBeTruthy();
+    expect(screen.queryByLabelText("Base URL")).toBeNull();
+    expect(screen.getByLabelText("Access token *")).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText("Authentication"), "custom");
+    expect(screen.getByLabelText("Service-account email *")).toBeTruthy();
+    expect(screen.getByLabelText("Private key *")).toBeTruthy();
     expect(screen.getByText(/read_doc · read/)).toBeTruthy();
+  });
+
+  it("keeps saved credentials when their structured fields stay blank", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    expect(await screen.findByText("Status API")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const token = screen.getByLabelText("Token *") as HTMLInputElement;
+    expect(token.value).toBe("");
+    expect(token.placeholder).toMatch(/Saved/);
+    await user.click(screen.getByRole("button", { name: "Save integration" }));
+    await waitFor(() =>
+      expect(apiMocks.updateIntegrationConnector).toHaveBeenCalledWith(
+        connector.id,
+        expect.not.objectContaining({ auth: expect.anything() }),
+      ),
+    );
   });
 
   it("configures Jira status mapping and shows the signed webhook URL", async () => {

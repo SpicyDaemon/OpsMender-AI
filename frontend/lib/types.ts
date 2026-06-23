@@ -719,6 +719,27 @@ export interface IntegrationCapability {
   always_requires_approval: boolean;
 }
 
+export type IntegrationFieldKind =
+  | "text"
+  | "secret"
+  | "url"
+  | "number"
+  | "select"
+  | "textarea";
+
+export interface IntegrationField {
+  name: string;
+  label: string;
+  kind: IntegrationFieldKind;
+  group: "credentials" | "config";
+  required: boolean;
+  helper: string | null;
+  placeholder: string | null;
+  doc_url: string | null;
+  options: Array<{ value: string; label: string }>;
+  default: unknown;
+}
+
 export interface IntegrationKind {
   kind: string;
   label: string;
@@ -726,6 +747,10 @@ export interface IntegrationKind {
   auth_types: IntegrationAuthType[];
   adapter_available: boolean;
   capabilities: IntegrationCapability[];
+  credential_fields: Partial<
+    Record<IntegrationAuthType, IntegrationField[]>
+  >;
+  config_fields: IntegrationField[];
 }
 
 export interface IntegrationKindListResponse {

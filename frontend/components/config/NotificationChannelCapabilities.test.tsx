@@ -522,17 +522,12 @@ describe("Notification Channels capability rendering", () => {
     expect(screen.queryByText(/IMAP/i)).toBeNull();
     expect(screen.getByText("Enable this notification channel")).toBeTruthy();
 
-    fireEvent.change(platform, { target: { value: "smtp" } });
-    expect(await screen.findByText("SMTP Email can:")).toBeTruthy();
-    expect(screen.getByLabelText(/SMTP host/i)).toBeTruthy();
-    expect(screen.getByLabelText(/SMTP port/i)).toHaveProperty("value", "587");
-    expect(screen.getByLabelText(/Connection security/i)).toHaveProperty(
-      "value",
-      "starttls",
+    // "smtp" is retired as a notification channel — SMTP is now the single
+    // workspace setting under Config → Email / SMTP, so it is not offered as a
+    // creatable connector platform.
+    const smtpOption = Array.from(platform.querySelectorAll("option")).find(
+      (o) => (o as HTMLOptionElement).value === "smtp",
     );
-    expect(screen.getByLabelText(/SMTP password/i)).toHaveProperty(
-      "type",
-      "password",
-    );
+    expect(smtpOption).toBeUndefined();
   });
 });

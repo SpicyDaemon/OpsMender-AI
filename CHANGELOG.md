@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **One SMTP setting, with clear status.** Config → Email / SMTP now shows
+  whether SMTP is **Configured** and its **source** (saved here vs. from
+  environment), the active server, and a **Test now** result badge
+  (passed/failed). The admin DB config is authoritative with env fallback
+  (already resolved server-side). The duplicate **SMTP notification-channel**
+  platform is retired from new-connector creation — SMTP is configured in one
+  place; existing smtp connectors still render.
+
 ### Added
 
 - **Orchestration queue admin controls.** The Orchestration view now lets admins

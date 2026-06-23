@@ -3287,7 +3287,12 @@ function BotConnectorModal({
                 handlePlatformChange(e.target.value as BotConnectorPlatform)
               }
             >
-              {(Object.keys(PLATFORM_LABELS) as BotConnectorPlatform[]).map(
+              {(Object.keys(PLATFORM_LABELS) as BotConnectorPlatform[])
+                // "smtp" is retired as a notification channel: SMTP is now a
+                // single workspace setting under Config → Email / SMTP. Existing
+                // smtp connectors still render; they just can't be created here.
+                .filter((p) => p !== "smtp")
+                .map(
                 (p) => (
                   <option key={p} value={p}>
                     {PLATFORM_LABELS[p]}

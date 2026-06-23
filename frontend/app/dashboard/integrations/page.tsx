@@ -217,6 +217,149 @@ function valuesForFields(
   );
 }
 
+interface AdditionalVariable {
+  id: string;
+  key: string;
+  value: string;
+  saved?: boolean;
+  originalValue?: unknown;
+}
+
+let variableSequence = 0;
+
+function additionalVariable(
+  key = "",
+  value = "",
+  options: { saved?: boolean; originalValue?: unknown } = {},
+): AdditionalVariable {
+  variableSequence += 1;
+  return {
+    id: `integration-variable-${variableSequence}`,
+    key,
+    value,
+    ...options,
+  };
+}
+
+function additionalCredentialRows(
+  connector: IntegrationConnectorResponse | null,
+  fields: IntegrationField[],
+): AdditionalVariable[] {
+  if (!connector) return [];
+  const covered = new Set(fields.map((field) => field.name));
+  return connector.auth_keys
+    .filter((key) => !covered.has(key))
+    .map((key) => additionalVariable(key, "", { saved: true }));
+}
+
+function additionalConfigRows(
+  source: Record<string, unknown>,
+  fields: IntegrationField[],
+): AdditionalVariable[] {
+  const covered = new Set(fields.map((field) => field.name));
+  return Object.entries(source)
+    .filter(([key]) => !covered.has(key))
+    .map(([key, value]) =>
+      additionalVariable(key, formatFieldValue(value), {
+        originalValue: value,
+      }),
+    );
+}
+
+function parseAdditionalValue(row: AdditionalVariable): unknown | undefined {
+  if (!row.value.trim()) {
+    return row.originalValue === "" ? "" : undefined;
+  }
+  if (
+    row.originalValue !== undefined &&
+    row.value === formatFieldValue(row.originalValue)
+  ) {
+    return row.originalValue;
+  }
+  try {
+    return JSON.parse(row.value);
+  } catch {
+    return row.value;
+  }
+}
+
+function AdditionalVariables({
+  group,
+  rows,
+  onChange,
+  onRemove,
+  onAdd,
+}: {
+  group: "credentials" | "config";
+  rows: AdditionalVariable[];
+  onChange: (id: string, patch: Partial<AdditionalVariable>) => void;
+  onRemove: (row: AdditionalVariable) => void;
+  onAdd: () => void;
+}) {
+  const label = group === "credentials" ? "credential" : "config";
+  return (
+    <div className="border-t border-border-subtle pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-fg-primary">
+            Additional variables
+          </h3>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            Keys not covered by this integration&apos;s schema.
+          </p>
+        </div>
+        <Button type="button" size="sm" variant="secondary" onClick={onAdd}>
+          Add variable
+        </Button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="mt-3 text-xs text-fg-muted">
+          No additional {label} variables.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {rows.map((row, index) => (
+            <div
+              key={row.id}
+              className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+            >
+              <Input
+                aria-label={`Additional ${label} key ${index + 1}`}
+                value={row.key}
+                placeholder="key"
+                disabled={row.saved}
+                onChange={(event) =>
+                  onChange(row.id, { key: event.target.value })
+                }
+              />
+              <Input
+                aria-label={`Additional ${label} value ${index + 1}`}
+                type={group === "credentials" ? "password" : "text"}
+                value={row.value}
+                placeholder={
+                  row.saved ? "Saved — leave blank to keep" : "value"
+                }
+                autoComplete="off"
+                onChange={(event) =>
+                  onChange(row.id, { value: event.target.value })
+                }
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => onRemove(row)}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StructuredField({
   field,
   value,
@@ -437,9 +580,15 @@ export default function IntegrationsPage() {
     Record<string, string>
   >({});
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
-  const [preservedConfig, setPreservedConfig] = useState<
-    Record<string, unknown>
-  >({});
+  const [additionalCredentials, setAdditionalCredentials] = useState<
+    AdditionalVariable[]
+  >([]);
+  const [additionalConfig, setAdditionalConfig] = useState<
+    AdditionalVariable[]
+  >([]);
+  const [removedCredentialKeys, setRemovedCredentialKeys] = useState<string[]>(
+    [],
+  );
   const [enabled, setEnabled] = useState(true);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -480,7 +629,9 @@ export default function IntegrationsPage() {
     setAuthType("pat");
     setCredentialValues({});
     setConfigValues({});
-    setPreservedConfig({});
+    setAdditionalCredentials([]);
+    setAdditionalConfig([]);
+    setRemovedCredentialKeys([]);
     setEnabled(true);
   }
 
@@ -492,10 +643,19 @@ export default function IntegrationsPage() {
     setAuthType(connector.auth_type);
     setCredentialValues({});
     const definition = kinds.find((item) => item.kind === connector.kind);
+    const fields =
+      definition?.credential_fields?.[connector.auth_type] ?? [];
     setConfigValues(
       valuesForFields(definition?.config_fields ?? [], connector.config ?? {}),
     );
-    setPreservedConfig(connector.config ?? {});
+    setAdditionalCredentials(additionalCredentialRows(connector, fields));
+    setAdditionalConfig(
+      additionalConfigRows(
+        connector.config ?? {},
+        definition?.config_fields ?? [],
+      ),
+    );
+    setRemovedCredentialKeys([]);
     setEnabled(connector.is_enabled);
     setNotice(
       connector.has_auth
@@ -532,11 +692,49 @@ export default function IntegrationsPage() {
         );
         if (value !== undefined) auth[field.name] = value;
       }
-      const config: Record<string, unknown> = { ...preservedConfig };
+      const credentialKeys = new Set(credentialFields.map((field) => field.name));
+      for (const row of additionalCredentials) {
+        const key = row.key.trim();
+        if (!key && !row.value.trim()) continue;
+        if (!key) throw new Error("Every additional credential needs a key.");
+        if (credentialKeys.has(key)) {
+          throw new Error(`Credential key '${key}' is already a structured field.`);
+        }
+        if (credentialKeys.has(`additional:${key}`)) {
+          throw new Error(`Credential key '${key}' is duplicated.`);
+        }
+        credentialKeys.add(`additional:${key}`);
+        const value = parseAdditionalValue(row);
+        if (value !== undefined) auth[key] = value;
+        else if (!row.saved) {
+          throw new Error(`Additional credential '${key}' needs a value.`);
+        }
+      }
+      for (const key of removedCredentialKeys) auth[key] = null;
+
+      const config: Record<string, unknown> = {};
       for (const field of configFields) {
         const value = parseFieldValue(field, fieldValue(configValues, field));
         if (value === undefined) delete config[field.name];
         else config[field.name] = value;
+      }
+      const configKeys = new Set(configFields.map((field) => field.name));
+      for (const row of additionalConfig) {
+        const key = row.key.trim();
+        if (!key && !row.value.trim()) continue;
+        if (!key) throw new Error("Every additional config variable needs a key.");
+        if (configKeys.has(key)) {
+          throw new Error(`Config key '${key}' is already a structured field.`);
+        }
+        if (configKeys.has(`additional:${key}`)) {
+          throw new Error(`Config key '${key}' is duplicated.`);
+        }
+        configKeys.add(`additional:${key}`);
+        const value = parseAdditionalValue(row);
+        if (value === undefined) {
+          throw new Error(`Additional config variable '${key}' needs a value.`);
+        }
+        config[key] = value;
       }
       const payload: IntegrationConnectorUpsert = {
         kind,
@@ -625,8 +823,25 @@ export default function IntegrationsPage() {
                   setAuthType(definition.auth_types[0]);
                 }
                 setCredentialValues({});
-                setConfigValues({});
-                setPreservedConfig({});
+                const nextCredentialFields =
+                  definition?.credential_fields?.[definition.auth_types[0]] ??
+                  [];
+                setAdditionalCredentials(
+                  additionalCredentialRows(editing, nextCredentialFields),
+                );
+                setConfigValues(
+                  valuesForFields(
+                    definition?.config_fields ?? [],
+                    editing?.config ?? {},
+                  ),
+                );
+                setAdditionalConfig(
+                  additionalConfigRows(
+                    editing?.config ?? {},
+                    definition?.config_fields ?? [],
+                  ),
+                );
+                setRemovedCredentialKeys([]);
               }}
             >
               {kinds.map((item) => (
@@ -664,8 +879,16 @@ export default function IntegrationsPage() {
               id="integration-auth-type"
               value={authType}
               onChange={(event) => {
-                setAuthType(event.target.value as IntegrationAuthType);
+                const nextAuthType = event.target.value as IntegrationAuthType;
+                setAuthType(nextAuthType);
                 setCredentialValues({});
+                setAdditionalCredentials(
+                  additionalCredentialRows(
+                    editing,
+                    selectedKind?.credential_fields?.[nextAuthType] ?? [],
+                  ),
+                );
+                setRemovedCredentialKeys([]);
               }}
             >
               {(selectedKind?.auth_types ?? ["pat"]).map((item) => (
@@ -704,6 +927,31 @@ export default function IntegrationsPage() {
             <p className="text-xs text-fg-muted">
               Credential values are encrypted and never returned by the API.
             </p>
+            <AdditionalVariables
+              group="credentials"
+              rows={additionalCredentials}
+              onAdd={() =>
+                setAdditionalCredentials((rows) => [
+                  ...rows,
+                  additionalVariable(),
+                ])
+              }
+              onChange={(id, patch) =>
+                setAdditionalCredentials((rows) =>
+                  rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+                )
+              }
+              onRemove={(target) => {
+                setAdditionalCredentials((rows) =>
+                  rows.filter((row) => row.id !== target.id),
+                );
+                if (target.saved) {
+                  setRemovedCredentialKeys((keys) => [
+                    ...new Set([...keys, target.key]),
+                  ]);
+                }
+              }}
+            />
           </fieldset>
           <fieldset className="space-y-4 rounded-lg border border-border-subtle bg-bg-elevated p-4">
             <legend className="px-1 text-sm font-semibold text-fg-primary">
@@ -728,6 +976,26 @@ export default function IntegrationsPage() {
                 />
               ))
             )}
+            <AdditionalVariables
+              group="config"
+              rows={additionalConfig}
+              onAdd={() =>
+                setAdditionalConfig((rows) => [
+                  ...rows,
+                  additionalVariable(),
+                ])
+              }
+              onChange={(id, patch) =>
+                setAdditionalConfig((rows) =>
+                  rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+                )
+              }
+              onRemove={(target) =>
+                setAdditionalConfig((rows) =>
+                  rows.filter((row) => row.id !== target.id),
+                )
+              }
+            />
           </fieldset>
         </div>
         {selectedKind && selectedKind.capabilities.length > 0 && (

@@ -447,6 +447,108 @@ describe("Integrations page", () => {
     );
   });
 
+  it("hydrates and round-trips additional credential and config variables", async () => {
+    const legacyConnector = {
+      ...connector,
+      auth_keys: ["legacy_secret", "token"],
+      config: { health_path: "/old", legacy_timeout: 30 },
+    };
+    apiMocks.listIntegrationConnectors.mockResolvedValue({
+      items: [legacyConnector],
+      total: 1,
+    });
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    expect(await screen.findByText("Status API")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(
+      (screen.getByLabelText("Additional credential key 1") as HTMLInputElement)
+        .value,
+    ).toBe("legacy_secret");
+    expect(
+      (
+        screen.getByLabelText(
+          "Additional credential value 1",
+        ) as HTMLInputElement
+      ).placeholder,
+    ).toMatch(/Saved/);
+    expect(
+      (screen.getByLabelText("Additional config key 1") as HTMLInputElement)
+        .value,
+    ).toBe("legacy_timeout");
+    expect(
+      (screen.getByLabelText("Additional config value 1") as HTMLInputElement)
+        .value,
+    ).toBe("30");
+
+    await user.click(screen.getByRole("button", { name: "Save integration" }));
+    await waitFor(() =>
+      expect(apiMocks.updateIntegrationConnector).toHaveBeenCalledWith(
+        legacyConnector.id,
+        expect.objectContaining({
+          config: expect.objectContaining({
+            health_path: "/old",
+            legacy_timeout: 30,
+          }),
+        }),
+      ),
+    );
+    const payload = apiMocks.updateIntegrationConnector.mock.calls.at(-1)?.[1];
+    expect(payload.auth).toBeUndefined();
+  });
+
+  it("merges new additional variables and explicitly removes saved secrets", async () => {
+    const legacyConnector = {
+      ...connector,
+      auth_keys: ["legacy_secret", "token"],
+      config: { legacy_timeout: 30 },
+    };
+    apiMocks.listIntegrationConnectors.mockResolvedValue({
+      items: [legacyConnector],
+      total: 1,
+    });
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    expect(await screen.findByText("Status API")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[0]);
+    const addButtons = screen.getAllByRole("button", { name: "Add variable" });
+    await user.click(addButtons[0]);
+    await user.type(
+      screen.getByLabelText("Additional credential key 1"),
+      "region_token",
+    );
+    await user.type(
+      screen.getByLabelText("Additional credential value 1"),
+      "secret-2",
+    );
+    await user.click(addButtons[1]);
+    await user.type(screen.getByLabelText("Additional config key 2"), "region");
+    await user.type(
+      screen.getByLabelText("Additional config value 2"),
+      "us-east-1",
+    );
+    await user.click(screen.getByRole("button", { name: "Save integration" }));
+
+    await waitFor(() =>
+      expect(apiMocks.updateIntegrationConnector).toHaveBeenCalledWith(
+        legacyConnector.id,
+        expect.objectContaining({
+          auth: {
+            legacy_secret: null,
+            region_token: "secret-2",
+          },
+          config: expect.objectContaining({
+            legacy_timeout: 30,
+            region: "us-east-1",
+          }),
+        }),
+      ),
+    );
+  });
+
   it("configures Jira status mapping and shows the signed webhook URL", async () => {
     const jiraConnector = {
       ...connector,

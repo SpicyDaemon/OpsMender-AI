@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Integration additional variables (Phase 3).** Credential and config panels
+  now include key/value repeaters for keys outside the selected schema.
+  Existing unknown config values hydrate and round-trip with their original
+  types; unknown credentials hydrate by key with write-only saved placeholders.
+  Operators can add, replace, or explicitly remove those keys without dropping
+  unrelated stored data.
+
 - **Integration form schemas (Phase 1).** `GET /integrations/kinds` now returns
   typed credential fields per authentication method plus typed config fields
   for every integration kind. Field names are derived from the adapter/tool

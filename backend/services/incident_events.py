@@ -91,6 +91,16 @@ async def dispatch_incident_created(
         incident_id=incident_id,
         auto_start_tier=auto_start_tier,
     )
+
+    # Open + link tickets for the incident's service-allowlisted ticketing
+    # integrations (PagerDuty-style auto-create). Runs on the API node in both
+    # deployment modes and is idempotent, so it's safe regardless of auto-start.
+    from backend.services.ticket_sync import schedule_incident_ticket_provisioning
+
+    schedule_incident_ticket_provisioning(
+        app, org_id=org_id, incident_id=incident_id
+    )
+
     if app.state.config.deployment.mode == "monolith":
         if auto_start_tier is not None:
             from backend.ingest.autostart import schedule_auto_started_session

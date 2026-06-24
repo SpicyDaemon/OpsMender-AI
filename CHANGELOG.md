@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Auto-open + link tickets on incident creation (per service).** When an
+  incident opens, OpsMender now opens a ticket in each ticketing integration
+  (Jira / ServiceNow) that is in the incident service's allowlist and has ticket
+  sync enabled, links it to the incident, and pushes the incident's current
+  status onto it via the existing status map (e.g. open → the admin-mapped
+  status). Runs on every creation path through `dispatch_incident_created`, is
+  idempotent (never opens a duplicate), and reuses the existing
+  `IncidentIntegrationLink` + `TicketSyncState` plumbing so subsequent
+  acknowledge/resolve transitions sync automatically. *(Lifecycle-actions
+  Phase 1; matches how PagerDuty auto-creates + bidirectionally syncs tickets.)*
+
 - **Sentry / New Relic / Splunk integration fields.** The three catalog-only
   providers (no outbound adapter yet) gained proper guided fields: Sentry —
   organization slug (required) + project + environment; New Relic — account ID

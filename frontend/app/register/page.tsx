@@ -7,7 +7,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { register } from "@/lib/api";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
-import { FormError, Input, Label } from "@/components/ui/Input";
+import { FormAlert, Input, Label } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
 
 export default function RegisterPage() {
@@ -54,8 +54,9 @@ export default function RegisterPage() {
       )}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <FormAlert message={error} />}
         <div>
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email" required>Email</Label>
           <Input
             id="email"
             type="email"
@@ -79,8 +80,6 @@ export default function RegisterPage() {
           onChange={(e) => set("password", e.target.value)}
           placeholder="Minimum 8 characters"
         />
-
-        {error && <FormError message={error} />}
 
         <Button type="submit" loading={loading} className="w-full justify-center">
           Create account

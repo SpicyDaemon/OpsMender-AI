@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
-import { FormError, Input, Label } from "@/components/ui/Input";
+import { FormAlert, Input, Label } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
 import {
   getMe,
@@ -160,8 +160,9 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <FormAlert message={error} />}
         <div>
-          <Label htmlFor="username">Email</Label>
+          <Label htmlFor="username" required>Email</Label>
           <Input
             id="username"
             type="email"
@@ -190,8 +191,6 @@ export default function LoginPage() {
             placeholder="••••••••"
           />
         ) : null}
-
-        {error && <FormError message={error} />}
 
         {ssoHint?.login_path &&
         (ssoHint.provider === "oidc" || ssoHint.provider === "saml") ? (

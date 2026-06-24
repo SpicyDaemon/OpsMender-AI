@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Required-field marker convention.** The shared `Label` now takes a
+  `required` prop that renders a red asterisk via a CSS `::after` pseudo-element
+  (so it never leaks into the accessible name or `getByLabelText`), plus a new
+  prominent `FormAlert` banner for form-level errors. Applied to the login,
+  register, and profile forms; rolling out to the remaining forms as each page
+  is touched.
+
+### Fixed
+
+- **Login/auth failures are now impossible to miss.** Sign-in, registration,
+  and profile errors render in a bordered `role="alert"` banner at the top of
+  the form instead of a single line of small red text, so a failed login (e.g.
+  wrong password → `Invalid username or password`) is clearly surfaced.
+
 ### Changed
 
 - **Structured integration form (Phase 2).** Integrations now render the

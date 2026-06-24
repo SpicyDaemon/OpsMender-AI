@@ -18,7 +18,9 @@ export function PasswordField({
 
   return (
     <div>
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id} required={props.required}>
+        {label}
+      </Label>
       <div className="relative">
         <Input
           {...props}

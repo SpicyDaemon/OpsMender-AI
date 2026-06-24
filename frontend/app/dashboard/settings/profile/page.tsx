@@ -154,7 +154,7 @@ export default function ProfileSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="pf-username">Username</Label>
+            <Label htmlFor="pf-username" required>Username</Label>
             <Input
               id="pf-username"
               value={form.username}
@@ -162,7 +162,7 @@ export default function ProfileSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="pf-email">Email</Label>
+            <Label htmlFor="pf-email" required>Email</Label>
             <Input
               id="pf-email"
               type="email"

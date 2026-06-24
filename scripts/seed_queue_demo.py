@@ -47,6 +47,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.config_loader import AppConfig
 from backend.db.engine import resolve_database_url
 from backend.db.models import (
+    Base,
     Incident,
     ModelConfig,
     Organization,
@@ -138,36 +139,64 @@ async def seed(factory) -> None:
 
 async def clean(factory) -> None:
     async with factory() as db:
-        incidents = (
-            await db.execute(
-                select(Incident).where(Incident.title.like(f"{TITLE_PREFIX}%"))
-            )
-        ).scalars().all()
-        removed = 0
-        for incident in incidents:
-            sessions = (
+        incident_ids = list(
+            (
                 await db.execute(
-                    select(SessionModel).where(
-                        SessionModel.incident_id == incident.id
+                    select(Incident.id).where(
+                        Incident.title.like(f"{TITLE_PREFIX}%")
                     )
                 )
-            ).scalars().all()
-            for session in sessions:
-                await db.delete(session)
-                removed += 1
-            await db.delete(incident)
+            ).scalars()
+        )
+        session_ids = list(
+            (
+                await db.execute(
+                    select(SessionModel.id).where(
+                        SessionModel.incident_id.in_(incident_ids)
+                    )
+                )
+            ).scalars()
+        ) if incident_ids else []
+
+        # Bulk-delete child-first via table metadata (dialect-agnostic, and it
+        # avoids the ORM relationship cascade — a force-started demo session may
+        # have written audit_entries whose session_id is NOT NULL, which a
+        # cascade would try to null and fail on). Tables that reference a session
+        # go first, then tables that reference an incident, then the incidents.
+        if session_ids:
+            for table in reversed(Base.metadata.sorted_tables):
+                if "session_id" in table.c:
+                    await db.execute(
+                        table.delete().where(table.c.session_id.in_(session_ids))
+                    )
+        if incident_ids:
+            for table in reversed(Base.metadata.sorted_tables):
+                if table.name == "incidents":
+                    continue
+                if "incident_id" in table.c:
+                    await db.execute(
+                        table.delete().where(
+                            table.c.incident_id.in_(incident_ids)
+                        )
+                    )
+            incidents_table = Incident.__table__
+            await db.execute(
+                incidents_table.delete().where(
+                    incidents_table.c.id.in_(incident_ids)
+                )
+            )
+
         # Restore any model cap we may have set.
-        models = (
+        for model in (
             await db.execute(
                 select(ModelConfig).where(ModelConfig.max_concurrent_sessions == 1)
             )
-        ).scalars().all()
-        for model in models:
+        ).scalars().all():
             model.max_concurrent_sessions = None
         await db.commit()
         print(
-            f"Removed {len(incidents)} demo incidents and {removed} sessions; "
-            "restored model caps to unlimited."
+            f"Removed {len(incident_ids)} demo incidents and "
+            f"{len(session_ids)} sessions; restored model caps to unlimited."
         )
 
 

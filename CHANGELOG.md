@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sentry / New Relic / Splunk integration fields.** The three catalog-only
+  providers (no outbound adapter yet) gained proper guided fields: Sentry —
+  organization slug (required) + project + environment; New Relic — account ID
+  (required) + US/EU region; Splunk — default index + app context; plus auth
+  helpers and doc links. A full per-kind audit confirmed the adapter-backed
+  kinds were already correct (the drift test couples their fields to adapter
+  reads; alternate auth keys like `api_token`/`access_token` are intentional
+  fallback aliases of the exposed primary key).
+
 - **Strict per-service integration allowlist.** A service now carries
   `allowed_integration_connector_ids` (migration `b2c3d4e5f6a7`): the AI agent
   for an incident on that service may use **only** the selected integration

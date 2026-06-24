@@ -339,10 +339,40 @@ _AUTH_FIELDS: dict[str, dict[str, tuple[IntegrationFieldSpec, ...]]] = {
     "ansible": {"pat": (TOKEN,), "basic": (USERNAME, PASSWORD)},
     "statuspage": {"api_key": (API_KEY,)},
     # These catalog entries currently represent inbound alert providers and do
-    # not have outbound adapters. Keep their forms conservative and auth-only.
-    "sentry": {"pat": (TOKEN,), "oauth": (ACCESS_TOKEN,)},
-    "newrelic": {"api_key": (API_KEY,)},
-    "splunk": {"pat": (TOKEN,), "basic": (USERNAME, PASSWORD)},
+    # not have outbound adapters yet. Their fields capture what an outbound
+    # adapter (or a richer inbound correlation) will need and guide the operator.
+    "sentry": {
+        "pat": (
+            _credential(
+                "token",
+                "Auth token",
+                helper="A Sentry internal-integration or user auth token.",
+                doc_url="https://sentry.io/settings/account/api/auth-tokens/",
+            ),
+        ),
+        "oauth": (ACCESS_TOKEN,),
+    },
+    "newrelic": {
+        "api_key": (
+            _credential(
+                "api_key",
+                "User API key",
+                helper="A New Relic User key (starts with 'NRAK-').",
+                doc_url="https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys/",
+            ),
+        ),
+    },
+    "splunk": {
+        "pat": (
+            _credential(
+                "token",
+                "Auth token",
+                helper="A Splunk authentication (bearer) token for the management API.",
+                doc_url="https://docs.splunk.com/Documentation/Splunk/latest/Security/CreateauthtokensonSplunkWeb",
+            ),
+        ),
+        "basic": (USERNAME, PASSWORD),
+    },
     "kubernetes": {
         "pat": (
             TOKEN,
@@ -518,9 +548,61 @@ _CONFIG_FIELDS: dict[str, tuple[IntegrationFieldSpec, ...]] = {
     ),
     "ansible": (),
     "statuspage": (_config("page_id", "Page ID", required=True),),
-    "sentry": (),
-    "newrelic": (),
-    "splunk": (),
+    "sentry": (
+        _config(
+            "organization",
+            "Organization slug",
+            required=True,
+            placeholder="acme",
+            helper="Your Sentry organization slug (the /organizations/<slug>/ path segment).",
+        ),
+        _config(
+            "project",
+            "Project slug",
+            placeholder="backend",
+            helper="Optional default project slug for project-scoped queries.",
+        ),
+        _config(
+            "environment",
+            "Environment",
+            placeholder="production",
+            helper="Optional environment filter (e.g. production, staging).",
+        ),
+    ),
+    "newrelic": (
+        _config(
+            "account_id",
+            "Account ID",
+            required=True,
+            placeholder="1234567",
+            helper="Your New Relic account ID — NerdGraph queries are account-scoped.",
+        ),
+        _config(
+            "region",
+            "Region",
+            kind="select",
+            options=(
+                ("us", "US (api.newrelic.com)"),
+                ("eu", "EU (api.eu.newrelic.com)"),
+            ),
+            default="us",
+            helper="The data-center region your New Relic account lives in.",
+        ),
+    ),
+    "splunk": (
+        _config(
+            "index",
+            "Default index",
+            placeholder="main",
+            helper="Optional default index to search.",
+        ),
+        _config(
+            "app",
+            "App context",
+            placeholder="search",
+            helper="Optional Splunk app namespace for searches.",
+        ),
+    ),
     "kubernetes": (
         _config("namespace", "Default namespace", placeholder="default", default="default"),
         _config(

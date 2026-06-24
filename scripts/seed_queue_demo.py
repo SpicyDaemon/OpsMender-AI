@@ -7,13 +7,20 @@ title prefix so a follow-up ``--clean`` run removes exactly this demo data and
 nothing else.
 
 This talks to whatever database your server is configured to use
-(``OPSMENDER_DATABASE_URL`` / config), so run it on the same host/env as the
-backend.
+(``OPSMENDER_DATABASE_URL`` / config). IMPORTANT: it must reach the SAME
+database the running server uses. If the app runs in Docker, the configured DB
+host is usually a compose service name that does not resolve from your host
+shell — run the script INSIDE the container, or point it at the published port.
 
 Usage (PowerShell):
-    $env:OPSMENDER_DATABASE_URL = "<your db url>"   # if not already set
-    uv run python scripts/seed_queue_demo.py            # seed
-    uv run python scripts/seed_queue_demo.py --clean    # remove the demo data
+    # A) Run inside the backend container (DB host resolves there):
+    docker compose exec <backend-service> uv run python scripts/seed_queue_demo.py
+
+    # B) Or target the host-published Postgres port directly:
+    uv run python scripts/seed_queue_demo.py --database-url `
+        "postgresql+asyncpg://<user>:<pass>@localhost:5432/<db>"
+
+    # Add --clean to either form to remove the demo data and restore caps.
 
 Notes:
 - It does NOT start real AI work; the "active" rows are placeholders so the
@@ -29,6 +36,7 @@ import asyncio
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 os.environ.setdefault("OPSMENDER_DEPLOYMENT_MODE", "development")
@@ -163,21 +171,49 @@ async def clean(factory) -> None:
         )
 
 
+def _mask(url: str) -> str:
+    """Show scheme + host:port + db, hiding any password."""
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or "?"
+        port = f":{parsed.port}" if parsed.port else ""
+        return f"{parsed.scheme}://***@{host}{port}{parsed.path}"
+    except Exception:  # noqa: BLE001
+        return url
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--clean", action="store_true", help="Remove previously seeded demo data."
     )
+    parser.add_argument(
+        "--database-url",
+        default=None,
+        help="Override the DB URL (e.g. when the configured host isn't reachable "
+        "from this shell). Otherwise OPSMENDER_DATABASE_URL / config is used.",
+    )
     args = parser.parse_args()
 
-    config = AppConfig.load()
-    engine = create_async_engine(resolve_database_url(config.db), echo=False)
+    url = args.database_url or resolve_database_url(AppConfig.load().db)
+    print(f"Target database: {_mask(url)}")
+    engine = create_async_engine(url, echo=False)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         if args.clean:
             await clean(factory)
         else:
             await seed(factory)
+    except OSError as exc:
+        print(
+            f"\nCould not reach the database ({exc}).\n"
+            "The configured DB host doesn't resolve/connect from this shell. "
+            "If the app runs in Docker, either run this INSIDE the backend "
+            "container (`docker compose exec <service> uv run python "
+            "scripts/seed_queue_demo.py`) or pass --database-url pointing at the "
+            "host-published port (e.g. postgresql+asyncpg://user:pass@localhost:5432/db)."
+        )
+        raise SystemExit(1) from exc
     finally:
         await engine.dispose()
 

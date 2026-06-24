@@ -265,7 +265,10 @@ async def _wait_for_session_status(
     headers: dict[str, str],
     *,
     statuses: set[str],
-    timeout_seconds: float = 2.0,
+    # 10s (not 2s): the loop returns the instant the status is reached, so this
+    # only bounds the failure path. 2s was too tight under heavy parallel-suite
+    # load and flaked test_create_session_with_incident_autoruns_workflow.
+    timeout_seconds: float = 10.0,
 ):
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     while True:

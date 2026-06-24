@@ -2009,6 +2009,14 @@ class Service(Base):
     preferred_model_config_ids: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
     )
+    # Strict allowlist of integration connector ids this service may use. Empty
+    # means NO integrations are available for the service (the owner chose
+    # strict allowlist semantics). Existing services are backfilled with every
+    # connector in their org by the migration so behavior is preserved; new
+    # services start empty and must be granted explicitly.
+    allowed_integration_connector_ids: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
     ai_default_tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
     external_refs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

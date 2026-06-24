@@ -63,6 +63,7 @@ from backend.api.schemas import (
 from backend.db.models import User
 from backend.db.repos import (
     IngestTokenRepo,
+    IntegrationConnectorRepo,
     MCPServerRepo,
     ModelConfigRepo,
     PriorityRuleRepo,
@@ -107,6 +108,35 @@ async def _validate_preferred_mcp_servers(
                 detail="Preferred MCP server not found",
             )
         ordered.append(str(server_id))
+    return ordered
+
+
+async def _validate_allowed_integrations(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    ids: list[uuid.UUID],
+) -> list[str]:
+    """Validate a service's strict integration allowlist.
+
+    Every id must be an integration connector in this org. Order is preserved
+    and duplicates are dropped. An empty list is valid (it means the service
+    may use no integrations)."""
+
+    seen: set[uuid.UUID] = set()
+    ordered: list[str] = []
+    for connector_id in ids:
+        if connector_id in seen:
+            continue
+        seen.add(connector_id)
+        connector = await IntegrationConnectorRepo.get_by_id(
+            db, org_id, connector_id
+        )
+        if connector is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Allowed integration not found",
+            )
+        ordered.append(str(connector_id))
     return ordered
 
 
@@ -377,6 +407,9 @@ async def create_service(
     preferred_model_config_ids = await _validate_preferred_models(
         db, org_id, body.preferred_model_config_ids
     )
+    allowed_integration_connector_ids = await _validate_allowed_integrations(
+        db, org_id, body.allowed_integration_connector_ids
+    )
     intake_token = _new_service_intake_token()
     try:
         svc = await ServiceRepo.create(
@@ -390,6 +423,7 @@ async def create_service(
             intake_token=intake_token,
             preferred_mcp_server_ids=preferred_mcp_server_ids,
             preferred_model_config_ids=preferred_model_config_ids,
+            allowed_integration_connector_ids=allowed_integration_connector_ids,
             ai_default_tier=body.ai_default_tier,
             external_refs=body.external_refs,
             is_active=body.is_active,
@@ -451,6 +485,11 @@ async def update_service(
             body.preferred_model_config_ids,
             existing_ids=existing_model_ids,
         )
+    allowed_integration_connector_ids = None
+    if body.allowed_integration_connector_ids is not None:
+        allowed_integration_connector_ids = await _validate_allowed_integrations(
+            db, org_id, body.allowed_integration_connector_ids
+        )
     updated = await ServiceRepo.update(
         db,
         org_id,
@@ -467,6 +506,10 @@ async def update_service(
         preferred_model_config_ids=preferred_model_config_ids,
         preferred_model_config_ids_provided=(
             "preferred_model_config_ids" in body.model_fields_set
+        ),
+        allowed_integration_connector_ids=allowed_integration_connector_ids,
+        allowed_integration_connector_ids_provided=(
+            "allowed_integration_connector_ids" in body.model_fields_set
         ),
         ai_default_tier=body.ai_default_tier,
         ai_default_tier_provided="ai_default_tier" in body.model_fields_set,

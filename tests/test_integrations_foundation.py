@@ -168,6 +168,59 @@ async def test_internal_tool_runtime_returns_mcp_shape_and_updates_status(
         assert rows[0].last_checked_at is not None
 
 
+async def test_runtime_enforces_strict_service_integration_allowlist(
+    integration_factory,
+):
+    """Item 5 — a service's strict integration allowlist filters the tools.
+
+    ``None`` exposes every enabled connector; a set restricts to it; an empty
+    set exposes nothing (strict allowlist → no integrations)."""
+
+    factory, org_id = integration_factory
+    async with factory() as db:
+        a = await IntegrationConnectorRepo.create(
+            db,
+            org_id,
+            kind="custom",
+            name="Allowed",
+            base_url="https://a.test",
+            auth_type="none",
+            auth=None,
+            config={},
+            is_enabled=True,
+        )
+        b = await IntegrationConnectorRepo.create(
+            db,
+            org_id,
+            kind="custom",
+            name="Blocked",
+            base_url="https://b.test",
+            auth_type="none",
+            auth=None,
+            config={},
+            is_enabled=True,
+        )
+        await db.commit()
+        a_id, b_id = a.id, b.id
+
+    # None → all connectors exposed (no service context / back-compat).
+    everything = await IntegrationToolRuntime.create(factory, org_id)
+    exposed = {d.connector_id for d in everything.descriptors}
+    assert exposed == {a_id, b_id}
+
+    # Non-empty allowlist → only the selected connector's tools.
+    restricted = await IntegrationToolRuntime.create(
+        factory, org_id, allowed_connector_ids={a_id}
+    )
+    assert {d.connector_id for d in restricted.descriptors} == {a_id}
+
+    # Empty allowlist → no integration tools at all (strict semantics).
+    none_allowed = await IntegrationToolRuntime.create(
+        factory, org_id, allowed_connector_ids=set()
+    )
+    assert none_allowed.descriptors == []
+
+
 async def test_audited_internal_tool_awaits_async_logger():
     connector_id = uuid.uuid4()
     descriptor = IntegrationToolDescriptor(

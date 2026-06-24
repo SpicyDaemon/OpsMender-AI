@@ -1818,6 +1818,7 @@ export interface ServiceResponse {
   priority: Priority;
   preferred_mcp_server_ids: string[];
   preferred_model_config_ids: string[];
+  allowed_integration_connector_ids: string[];
   ai_default_tier?: number | null;
   intake_url: string | null;
   external_refs: Record<string, unknown> | null;
@@ -1838,6 +1839,7 @@ export interface ServiceCreate {
   priority?: Priority;
   preferred_mcp_server_ids?: string[];
   preferred_model_config_ids?: string[];
+  allowed_integration_connector_ids?: string[];
   ai_default_tier?: number | null;
   external_refs?: Record<string, unknown>;
   is_active?: boolean;
@@ -1850,6 +1852,7 @@ export interface ServiceUpdate {
   priority?: Priority;
   preferred_mcp_server_ids?: string[];
   preferred_model_config_ids?: string[];
+  allowed_integration_connector_ids?: string[];
   ai_default_tier?: number | null;
   external_refs?: Record<string, unknown>;
   is_active?: boolean;

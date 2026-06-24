@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Strict per-service integration allowlist.** A service now carries
+  `allowed_integration_connector_ids` (migration `b2c3d4e5f6a7`): the AI agent
+  for an incident on that service may use **only** the selected integration
+  connectors. An empty allowlist means **no** integrations are available to the
+  service (strict semantics). Enforced where the agent's integration tool
+  surface is built (`IntegrationToolRuntime.create` filters by the service's
+  allowlist; `None` — a session with no service context — keeps the prior
+  all-connectors behavior). The Services form gained an "Allowed integrations"
+  picker. **Back-compat:** the migration backfills every existing service with
+  all connectors in its org, so upgrades don't silently strip integrations.
+
 - **Profile phone number for SMS / Voice Call paging.** Users can set an
   optional phone on their profile (digits and an optional leading `+` only;
   formatting is stripped on entry and normalized server-side). Migration

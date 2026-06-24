@@ -71,6 +71,7 @@ import {
   listEscalationChains,
   listEscalationSteps,
   listIncidents,
+  listIntegrationConnectors,
   listMCPServers,
   listModelConfigs,
   listRosterMembers,
@@ -103,6 +104,7 @@ import type {
   EscalationStepResponse,
   EscalationTargetType,
   IncidentResponse,
+  IntegrationConnectorResponse,
   MaintenanceWindowResponse,
   MaintenanceWindowScopeType,
   MCPServerResponse,
@@ -755,6 +757,7 @@ function ServicesPanel({
     priority: "P2" as Priority,
     preferred_mcp_server_ids: [] as string[],
     preferred_model_config_ids: [] as string[],
+    allowed_integration_connector_ids: [] as string[],
     ai_default_tier: "",
     escalation_chain_id: "",
     is_active: true,
@@ -770,6 +773,9 @@ function ServicesPanel({
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
   const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
+  const [integrationConnectors, setIntegrationConnectors] = useState<
+    IntegrationConnectorResponse[]
+  >([]);
   const [onCallByTeam, setOnCallByTeam] = useState<Map<string, string | null>>(
     new Map(),
   );
@@ -801,23 +807,29 @@ function ServicesPanel({
     let cancelled = false;
     (async () => {
       try {
-        const [incList, uList, mcpList, modelList] = await Promise.all([
-          listIncidents({ limit: 200 }).catch(() => ({
-            items: [] as IncidentResponse[],
-            total: 0,
-          })),
-          listUsers().catch(() => ({ items: [] as UserResponse[], total: 0 })),
-          listMCPServers().catch(() => ({ items: [] as MCPServerResponse[], total: 0 })),
-          listModelConfigs().catch(() => ({
-            items: [] as ModelConfigResponse[],
-            total: 0,
-          })),
-        ]);
+        const [incList, uList, mcpList, modelList, integrationList] =
+          await Promise.all([
+            listIncidents({ limit: 200 }).catch(() => ({
+              items: [] as IncidentResponse[],
+              total: 0,
+            })),
+            listUsers().catch(() => ({ items: [] as UserResponse[], total: 0 })),
+            listMCPServers().catch(() => ({ items: [] as MCPServerResponse[], total: 0 })),
+            listModelConfigs().catch(() => ({
+              items: [] as ModelConfigResponse[],
+              total: 0,
+            })),
+            listIntegrationConnectors().catch(() => ({
+              items: [] as IntegrationConnectorResponse[],
+              total: 0,
+            })),
+          ]);
         if (cancelled) return;
         setIncidents(incList.items);
         setUsers(uList.items);
         setMcpServers(mcpList.items);
         setModelConfigs(modelList.items);
+        setIntegrationConnectors(integrationList.items);
 
         // Resolve on-call once per team via the team's first roster.
         const teamRoster = new Map<string, string>(); // team_id → roster_id
@@ -886,6 +898,8 @@ function ServicesPanel({
         priority: form.priority,
         preferred_mcp_server_ids: form.preferred_mcp_server_ids,
         preferred_model_config_ids: form.preferred_model_config_ids,
+        allowed_integration_connector_ids:
+          form.allowed_integration_connector_ids,
         ai_default_tier:
           form.ai_default_tier === "" ? null : Number(form.ai_default_tier),
         is_active: form.is_active,
@@ -935,6 +949,8 @@ function ServicesPanel({
       priority: service.priority,
       preferred_mcp_server_ids: service.preferred_mcp_server_ids ?? [],
       preferred_model_config_ids: service.preferred_model_config_ids ?? [],
+      allowed_integration_connector_ids:
+        service.allowed_integration_connector_ids ?? [],
       ai_default_tier:
         service.ai_default_tier == null ? "" : String(service.ai_default_tier),
       escalation_chain_id: chainId,
@@ -1380,6 +1396,32 @@ function ServicesPanel({
               Ordered preference list. OpsMender tries these first to reduce
               tool noise; operators can still ask for another configured MCP
               server manually.
+            </p>
+          </div>
+          <div>
+            <Label>Allowed integrations</Label>
+            <MultiSelect
+              ariaLabel="Allowed integrations"
+              options={integrationConnectors.map((c) => ({
+                value: c.id,
+                label: c.name,
+                sublabel: c.is_enabled
+                  ? c.kind
+                  : `${c.kind} · disabled`,
+                disabled: !c.is_enabled,
+              }))}
+              selected={form.allowed_integration_connector_ids}
+              onChange={(next) =>
+                setForm({ ...form, allowed_integration_connector_ids: next })
+              }
+              emptyLabel="No integrations configured yet."
+            />
+            <p className="mt-1 text-xs text-fg-muted">
+              Strict allowlist — the AI agent for this service can use{" "}
+              <strong>only</strong> the integrations selected here.{" "}
+              <strong>Leaving this empty means no integrations</strong> are
+              available for the service. Configure integrations under{" "}
+              <span className="text-fg-secondary">Integrations</span>.
             </p>
           </div>
           <div>

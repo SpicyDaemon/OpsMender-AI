@@ -485,6 +485,34 @@ async def _preferred_mcp_ids_for_incident(
     return ids
 
 
+async def _allowed_integration_ids_for_incident(
+    factory,
+    org_id: uuid.UUID,
+    incident,
+) -> set[uuid.UUID] | None:
+    """Resolve a session's strict integration allowlist.
+
+    Returns ``None`` when there is no service context (no incident or no
+    service) so the runtime keeps its prior all-connectors behavior. When the
+    incident's service exists, returns the set of its allowed connector ids —
+    possibly **empty**, which means the service may use no integrations at all
+    (strict-allowlist semantics)."""
+
+    if incident is None or getattr(incident, "service_id", None) is None:
+        return None
+    async with factory() as db:
+        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+    if service is None:
+        return None
+    allowed: set[uuid.UUID] = set()
+    for raw in getattr(service, "allowed_integration_connector_ids", None) or []:
+        try:
+            allowed.add(raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    return allowed
+
+
 async def _service_context_for_incident(
     factory,
     org_id: uuid.UUID,
@@ -644,7 +672,12 @@ async def _run_session_workflow_inner(
             config,
             preferred_mcp_server_ids=preferred_mcp_server_ids,
         )
-        integration_runtime = await IntegrationToolRuntime.create(factory, org_id)
+        allowed_integration_ids = await _allowed_integration_ids_for_incident(
+            factory, org_id, incident
+        )
+        integration_runtime = await IntegrationToolRuntime.create(
+            factory, org_id, allowed_connector_ids=allowed_integration_ids
+        )
         skill_def = merge_integration_skill(
             skill_def, integration_runtime.descriptors
         )

@@ -101,11 +101,33 @@ class IntegrationToolRuntime:
         self._by_name = {item.name: item for item in descriptors}
 
     @classmethod
-    async def create(cls, factory, org_id: uuid.UUID) -> "IntegrationToolRuntime":
+    async def create(
+        cls,
+        factory,
+        org_id: uuid.UUID,
+        *,
+        allowed_connector_ids: set[uuid.UUID] | None = None,
+    ) -> "IntegrationToolRuntime":
+        """Build the integration tool surface for one org.
+
+        ``allowed_connector_ids`` is the strict per-service integration
+        allowlist. When it is ``None`` (no service context — e.g. a session not
+        bound to an incident/service) every enabled connector is exposed, which
+        preserves prior behavior. When it is a set (including an **empty** set)
+        only connectors in that set are exposed — an empty allowlist therefore
+        yields no integration tools at all, which is the strict-allowlist
+        semantics services opt into."""
+
         async with factory() as db:
             connectors = await IntegrationConnectorRepo.list_for_org(
                 db, org_id, enabled_only=True
             )
+        if allowed_connector_ids is not None:
+            connectors = [
+                connector
+                for connector in connectors
+                if connector.id in allowed_connector_ids
+            ]
         descriptors: list[IntegrationToolDescriptor] = []
         for connector in connectors:
             adapter = get_adapter(connector.kind)

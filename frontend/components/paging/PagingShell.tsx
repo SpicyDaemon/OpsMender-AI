@@ -760,6 +760,10 @@ function ServicesPanel({
     preferred_mcp_server_ids: [] as string[],
     preferred_model_config_ids: [] as string[],
     allowed_integration_connector_ids: [] as string[],
+    integration_action_overrides: {} as Record<
+      string,
+      Record<string, boolean>
+    >,
     ai_default_tier: "",
     escalation_chain_id: "",
     is_active: true,
@@ -910,6 +914,7 @@ function ServicesPanel({
         preferred_model_config_ids: form.preferred_model_config_ids,
         allowed_integration_connector_ids:
           form.allowed_integration_connector_ids,
+        integration_action_overrides: form.integration_action_overrides,
         ai_default_tier:
           form.ai_default_tier === "" ? null : Number(form.ai_default_tier),
         is_active: form.is_active,
@@ -961,6 +966,8 @@ function ServicesPanel({
       preferred_model_config_ids: service.preferred_model_config_ids ?? [],
       allowed_integration_connector_ids:
         service.allowed_integration_connector_ids ?? [],
+      integration_action_overrides:
+        service.integration_action_overrides ?? {},
       ai_default_tier:
         service.ai_default_tier == null ? "" : String(service.ai_default_tier),
       escalation_chain_id: chainId,
@@ -1468,8 +1475,46 @@ function ServicesPanel({
                       <ul className="mt-1 space-y-0.5 text-xs text-fg-secondary">
                         {isTicketing && syncOn && (
                           <li>
-                            Opens a ticket when an incident is created, then
-                            transitions it on acknowledge / resolve.
+                            <label className="flex items-start gap-2">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={
+                                  form.integration_action_overrides[id]
+                                    ?.ticket_lifecycle !== false
+                                }
+                                onChange={(e) => {
+                                  const next = {
+                                    ...form.integration_action_overrides,
+                                  };
+                                  if (e.target.checked) {
+                                    delete next[id];
+                                  } else {
+                                    next[id] = {
+                                      ...(next[id] ?? {}),
+                                      ticket_lifecycle: false,
+                                    };
+                                  }
+                                  setForm({
+                                    ...form,
+                                    integration_action_overrides: next,
+                                  });
+                                }}
+                              />
+                              <span>
+                                Auto-manage tickets: opens one when an incident
+                                is created, then transitions it on acknowledge /
+                                resolve.
+                                {form.integration_action_overrides[id]
+                                  ?.ticket_lifecycle === false && (
+                                  <span className="text-fg-muted">
+                                    {" "}
+                                    Off — the agent can still use this
+                                    integration on demand.
+                                  </span>
+                                )}
+                              </span>
+                            </label>
                           </li>
                         )}
                         {isTicketing && !syncOn && (

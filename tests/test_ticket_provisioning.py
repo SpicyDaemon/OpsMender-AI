@@ -102,7 +102,7 @@ async def env(monkeypatch):
     await engine.dispose()
 
 
-async def _make_incident(factory, org_id, team_id, *, allowed):
+async def _make_incident(factory, org_id, team_id, *, allowed, overrides=None):
     async with factory() as db:
         service = Service(
             org_id=org_id,
@@ -110,6 +110,7 @@ async def _make_incident(factory, org_id, team_id, *, allowed):
             name="DevOps",
             slug=f"svc-{uuid.uuid4().hex[:6]}",
             allowed_integration_connector_ids=[str(c) for c in allowed],
+            integration_action_overrides=overrides or {},
         )
         db.add(service)
         await db.flush()
@@ -176,6 +177,24 @@ async def test_respects_the_service_allowlist(env):
     factory, org_id, team_id, connector_id, fake = env
     # Connector exists + sync-enabled, but the service does NOT allow it.
     incident_id = await _make_incident(factory, org_id, team_id, allowed=[])
+    created = await provision_incident_tickets(
+        factory, org_id=org_id, incident_id=incident_id
+    )
+    assert created == 0
+    assert fake.created == []
+
+
+async def test_per_service_override_disables_auto_ticketing(env):
+    factory, org_id, team_id, connector_id, fake = env
+    # Connector is allowed + sync-enabled, but the service opts this connector
+    # out of the ticket lifecycle — it stays available to the agent, no auto-open.
+    incident_id = await _make_incident(
+        factory,
+        org_id,
+        team_id,
+        allowed=[connector_id],
+        overrides={str(connector_id): {"ticket_lifecycle": False}},
+    )
     created = await provision_incident_tickets(
         factory, org_id=org_id, incident_id=incident_id
     )

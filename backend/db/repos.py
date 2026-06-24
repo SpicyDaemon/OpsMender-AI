@@ -5842,6 +5842,7 @@ class ServiceRepo:
         preferred_mcp_server_ids: list[str] | None = None,
         preferred_model_config_ids: list[str] | None = None,
         allowed_integration_connector_ids: list[str] | None = None,
+        integration_action_overrides: dict | None = None,
         ai_default_tier: int | None = None,
         external_refs: dict | None = None,
         is_active: bool = True,
@@ -5857,6 +5858,7 @@ class ServiceRepo:
             preferred_mcp_server_ids=preferred_mcp_server_ids or [],
             preferred_model_config_ids=preferred_model_config_ids or [],
             allowed_integration_connector_ids=allowed_integration_connector_ids or [],
+            integration_action_overrides=integration_action_overrides or {},
             ai_default_tier=ai_default_tier,
             external_refs=external_refs,
             is_active=is_active,
@@ -5928,6 +5930,8 @@ class ServiceRepo:
         preferred_model_config_ids_provided: bool = False,
         allowed_integration_connector_ids: list[str] | None = None,
         allowed_integration_connector_ids_provided: bool = False,
+        integration_action_overrides: dict | None = None,
+        integration_action_overrides_provided: bool = False,
         ai_default_tier: int | None = None,
         ai_default_tier_provided: bool = False,
         external_refs: dict | None = None,
@@ -5952,6 +5956,10 @@ class ServiceRepo:
         if allowed_integration_connector_ids_provided:
             values["allowed_integration_connector_ids"] = (
                 allowed_integration_connector_ids or []
+            )
+        if integration_action_overrides_provided:
+            values["integration_action_overrides"] = (
+                integration_action_overrides or {}
             )
         if ai_default_tier_provided:
             values["ai_default_tier"] = ai_default_tier

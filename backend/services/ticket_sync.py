@@ -227,12 +227,22 @@ async def provision_incident_tickets(
                     db, org_id, incident_id
                 )
             }
+            overrides = service.integration_action_overrides or {}
             for raw_id in service.allowed_integration_connector_ids or []:
                 try:
                     connector_id = uuid.UUID(str(raw_id))
                 except (TypeError, ValueError):
                     continue
                 if connector_id in already_linked:
+                    continue
+                # Per-service opt-out: an explicit ticket_lifecycle=false keeps
+                # the connector available to the agent but skips auto-ticketing.
+                override = overrides.get(str(connector_id)) or overrides.get(
+                    str(raw_id)
+                )
+                if isinstance(override, dict) and override.get(
+                    "ticket_lifecycle"
+                ) is False:
                     continue
                 connector = await IntegrationConnectorRepo.get_by_id(
                     db, org_id, connector_id

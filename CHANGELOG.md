@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-service integration action toggle.** A service can now opt a ticketing
+  integration out of the automatic ticket lifecycle while keeping it available
+  to the agent — an "Auto-manage tickets" checkbox per connector in the service
+  form. Stored as `services.integration_action_overrides` (migration
+  `d4e5f6a7b8c9`); only an explicit `ticket_lifecycle: false` disables it, so
+  existing services are unaffected. *(Lifecycle-actions Phase 4 — completes the
+  arc.)*
+
 - **"What OpsMender will do" on the service integration picker.** Selecting an
   integration for a service now shows, per connector, what it does: ticketing
   connectors with sync on read "Opens a ticket when an incident is created, then

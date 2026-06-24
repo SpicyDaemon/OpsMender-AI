@@ -1819,6 +1819,7 @@ export interface ServiceResponse {
   preferred_mcp_server_ids: string[];
   preferred_model_config_ids: string[];
   allowed_integration_connector_ids: string[];
+  integration_action_overrides: Record<string, Record<string, boolean>>;
   ai_default_tier?: number | null;
   intake_url: string | null;
   external_refs: Record<string, unknown> | null;
@@ -1840,6 +1841,7 @@ export interface ServiceCreate {
   preferred_mcp_server_ids?: string[];
   preferred_model_config_ids?: string[];
   allowed_integration_connector_ids?: string[];
+  integration_action_overrides?: Record<string, Record<string, boolean>>;
   ai_default_tier?: number | null;
   external_refs?: Record<string, unknown>;
   is_active?: boolean;
@@ -1853,6 +1855,7 @@ export interface ServiceUpdate {
   preferred_mcp_server_ids?: string[];
   preferred_model_config_ids?: string[];
   allowed_integration_connector_ids?: string[];
+  integration_action_overrides?: Record<string, Record<string, boolean>>;
   ai_default_tier?: number | null;
   external_refs?: Record<string, unknown>;
   is_active?: boolean;

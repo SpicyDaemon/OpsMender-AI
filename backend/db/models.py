@@ -2023,6 +2023,15 @@ class Service(Base):
     allowed_integration_connector_ids: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
     )
+    # Per-service, per-connector action overrides keyed by connector id, e.g.
+    # ``{"<connector_id>": {"ticket_lifecycle": false}}``. Only an explicit
+    # ``false`` disables an action for this service; absent/true keeps the
+    # connector's default behavior — so existing services are unaffected. Lets a
+    # service keep an integration available to the agent while opting out of its
+    # automatic ticket lifecycle (open/sync).
+    integration_action_overrides: Mapped[dict] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
     ai_default_tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
     external_refs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

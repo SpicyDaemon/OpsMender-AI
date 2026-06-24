@@ -424,6 +424,7 @@ async def create_service(
             preferred_mcp_server_ids=preferred_mcp_server_ids,
             preferred_model_config_ids=preferred_model_config_ids,
             allowed_integration_connector_ids=allowed_integration_connector_ids,
+            integration_action_overrides=body.integration_action_overrides,
             ai_default_tier=body.ai_default_tier,
             external_refs=body.external_refs,
             is_active=body.is_active,
@@ -510,6 +511,10 @@ async def update_service(
         allowed_integration_connector_ids=allowed_integration_connector_ids,
         allowed_integration_connector_ids_provided=(
             "allowed_integration_connector_ids" in body.model_fields_set
+        ),
+        integration_action_overrides=body.integration_action_overrides,
+        integration_action_overrides_provided=(
+            "integration_action_overrides" in body.model_fields_set
         ),
         ai_default_tier=body.ai_default_tier,
         ai_default_tier_provided="ai_default_tier" in body.model_fields_set,

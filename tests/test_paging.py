@@ -1554,6 +1554,74 @@ class TestPagingAPI:
             if not item["is_override"]:
                 assert item["user_id"] == str(u1.id)
 
+    async def test_on_call_range_resolves_from_midnight_start(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """Regression: the calendar starts at local midnight, but a 09:00–17:00
+        roster must still resolve each day's on-call. Daily steps are sampled
+        inside the coverage window, not at the cursor's raw 00:00 time."""
+        team = await client.post(
+            "/teams",
+            json={"name": "MidnightTeam", "slug": f"mid-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        team_id = team.json()["id"]
+        roster_resp = await client.post(
+            "/rosters",
+            json={
+                "team_id": team_id,
+                "name": "Daytime",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-05-20",
+                "coverage_start_time": "09:00",
+                "coverage_end_time": "17:00",
+                "handoff_time": "09:00",
+                "time_zone": "UTC",
+            },
+            headers=auth_headers,
+        )
+        assert roster_resp.status_code == 201
+        roster_id = roster_resp.json()["id"]
+
+        from backend.db.repos import UserRepo
+
+        async with app.state.session_factory() as db:
+            member = await UserRepo.create(
+                db,
+                username=f"mid-{uuid.uuid4().hex[:6]}",
+                email=f"mid-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+        await client.post(
+            f"/teams/{team_id}/members",
+            json={"user_id": str(member.id)},
+            headers=auth_headers,
+        )
+        await client.post(
+            f"/rosters/{roster_id}/members",
+            json={"user_id": str(member.id), "position_index": 0},
+            headers=auth_headers,
+        )
+
+        from urllib.parse import quote
+
+        # Midnight start — exactly how the calendar modal queries it.
+        frm = quote("2026-05-21T00:00:00+00:00", safe="")
+        to = quote("2026-05-24T00:00:00+00:00", safe="")
+        resp = await client.get(
+            f"/rosters/{roster_id}/on-call/range?from={frm}&to={to}&step_hours=24",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 4
+        # Every day must resolve to the single member — not None ("—").
+        assert all(item["user_id"] == str(member.id) for item in items)
+
     async def test_on_call_range_rejects_oversize_request(
         self, client: AsyncClient, auth_headers
     ):

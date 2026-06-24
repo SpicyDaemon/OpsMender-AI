@@ -64,6 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Roster calendar shows the on-call person again.** The Rosters calendar
+  starts at local midnight, but the range resolver sampled each day at that raw
+  00:00 time — outside a 09:00–17:00 coverage window — so every cell showed
+  "—". Daily-step on-call ranges now resolve at a time *inside* each day's
+  coverage window (matching the escalation-chain calendar), so coverage holders
+  render correctly.
+
 - **Login/auth failures are now impossible to miss.** Sign-in, registration,
   and profile errors render in a bordered `role="alert"` banner at the top of
   the form instead of a single line of small red text, so a failed login (e.g.

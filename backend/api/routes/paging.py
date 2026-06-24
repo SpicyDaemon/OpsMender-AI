@@ -1022,13 +1022,24 @@ async def resolve_on_call_range(
     cursor = from_at if from_at.tzinfo is not None else from_at.replace(tzinfo=timezone.utc)
     end_cursor = to_at if to_at.tzinfo is not None else to_at.replace(tzinfo=timezone.utc)
     step = timedelta(hours=step_hours)
+    # For a daily (or coarser) calendar view, resolve each day at a time *inside*
+    # the roster's coverage window rather than at the cursor's raw time-of-day.
+    # Otherwise a calendar that starts at local midnight samples 00:00 every day,
+    # which is outside a 09:00–17:00 window, so every cell resolves to nobody.
+    roster_tz = ZoneInfo(roster.time_zone)
+    align_to_coverage = step_hours % 24 == 0
     while cursor <= end_cursor:
-        user_id = on_call_at(ctx, cursor)
+        sample = (
+            _calendar_sample_at(roster, cursor.astimezone(roster_tz).date())
+            if align_to_coverage
+            else cursor
+        )
+        user_id = on_call_at(ctx, sample)
         active = next(
             (
                 o
                 for o in overrides
-                if _aware(o.starts_at) <= cursor < _aware(o.ends_at)
+                if _aware(o.starts_at) <= sample < _aware(o.ends_at)
             ),
             None,
         )

@@ -28,6 +28,7 @@ export default function ProfileSettingsPage() {
     first_name: "",
     last_name: "",
     avatar_color: "" as string,
+    phone: "",
   });
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -47,6 +48,7 @@ export default function ProfileSettingsPage() {
       first_name: user.first_name ?? "",
       last_name: user.last_name ?? "",
       avatar_color: user.avatar_color ?? "",
+      phone: user.phone ?? "",
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -76,6 +78,7 @@ export default function ProfileSettingsPage() {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         avatar_color: form.avatar_color || null,
+        phone: form.phone.trim() || null,
       });
       await refresh();
       toast.success("Profile updated");
@@ -169,6 +172,30 @@ export default function ProfileSettingsPage() {
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="pf-phone">Phone (for SMS / Voice Call paging)</Label>
+            <Input
+              id="pf-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={form.phone}
+              // Accept only digits and a single leading "+". Strip anything else
+              // as it is typed so the stored value is already clean.
+              onChange={(e) => {
+                const raw = e.target.value;
+                const plus = raw.trimStart().startsWith("+") ? "+" : "";
+                const digits = raw.replace(/[^0-9]/g, "");
+                setForm({ ...form, phone: `${plus}${digits}` });
+              }}
+              placeholder="+14155550100"
+            />
+            <p className="mt-1 text-xs text-fg-muted">
+              Optional. Digits and an optional leading “+” only. Used to reach
+              you by SMS or an automated phone call when your paging routing
+              includes those channels.
+            </p>
           </div>
         </div>
 

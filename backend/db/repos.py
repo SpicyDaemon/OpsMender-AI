@@ -87,6 +87,10 @@ from backend.db.models import (
     UserOrganization,
 )
 
+# Sentinel distinguishing "argument omitted" from "explicitly set to None" so
+# nullable fields can be cleared through keyword-only patch helpers.
+_UNSET = object()
+
 
 class UserRepo:
     @staticmethod
@@ -255,9 +259,14 @@ class UserRepo:
         first_name: str | None = None,
         last_name: str | None = None,
         avatar_color: str | None = None,
+        phone: str | None | object = _UNSET,
     ) -> User | None:
         """Admin or self patch — change role/active/profile fields. Only
-        non-None arguments are applied."""
+        non-None arguments are applied.
+
+        ``phone`` is the exception: it uses an ``_UNSET`` sentinel so an
+        explicit ``None`` *clears* the stored number (the field is nullable and
+        operators legitimately remove it), while omitting it leaves it intact."""
 
         values: dict[str, Any] = {}
         if role is not None:
@@ -276,6 +285,8 @@ class UserRepo:
             values["last_name"] = last_name
         if avatar_color is not None:
             values["avatar_color"] = avatar_color
+        if phone is not _UNSET:
+            values["phone"] = phone
         if not values:
             return await db.get(User, user_id)
         stmt = update(User).where(User.id == user_id).values(**values)

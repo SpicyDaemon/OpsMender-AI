@@ -27,6 +27,12 @@ vi.mock("@/components/ui/Toast", () => ({
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
+// The panel reads the current user (profile phone) for the Voice Call hint.
+const mockUser: { phone: string | null } = { phone: "+14155550100" };
+vi.mock("@/context/auth", () => ({
+  useAuth: () => ({ user: mockUser }),
+}));
+
 import {
   ChannelMultiSelect,
   NotificationPreferencesPanel,
@@ -50,6 +56,7 @@ const CONNECTORS = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockUser.phone = "+14155550100";
   getMyNotificationPreferences.mockResolvedValue(basePref);
   listBotConnectors.mockResolvedValue({ items: CONNECTORS, total: CONNECTORS.length });
   updateMyNotificationPreferences.mockResolvedValue(basePref);
@@ -105,6 +112,30 @@ describe("NotificationPreferencesPanel (My Routing — staged)", () => {
     expect(opts).toContain("Slack NOC");
     expect(opts).toContain("Telegram Ops");
     expect(opts).not.toContain("Disabled Discord"); // disabled connectors excluded
+  });
+
+  it("explains a Voice Call stage will phone the profile number", async () => {
+    getMyNotificationPreferences.mockResolvedValue({
+      ...basePref,
+      routing: { P0: [{ channel_id: "voice", delay_seconds: 0 }] },
+    });
+    render(<NotificationPreferencesPanel />);
+    // The profile number is shown only in the per-stage Voice Call hint (the
+    // footer note references "the number on your profile" generically).
+    expect(await screen.findByText("+14155550100")).toBeTruthy();
+  });
+
+  it("warns when a Voice Call stage has no profile phone number", async () => {
+    mockUser.phone = null;
+    getMyNotificationPreferences.mockResolvedValue({
+      ...basePref,
+      routing: { P0: [{ channel_id: "voice", delay_seconds: 0 }] },
+    });
+    render(<NotificationPreferencesPanel />);
+    expect(
+      await screen.findByText(/No phone number on your profile/i),
+    ).toBeTruthy();
+    mockUser.phone = "+14155550100"; // restore for other tests
   });
 
   it("shows the empty channel state + CTA when no channels are configured", async () => {

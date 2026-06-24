@@ -11,6 +11,7 @@ import re
 import uuid
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -394,6 +395,14 @@ async def update_me(
                 detail=f"Email '{email}' is already in use.",
             )
 
+    # Only touch the phone when the client actually sent it, so a partial
+    # profile PATCH never silently wipes a stored number. Omitting the kwarg
+    # falls back to update_fields' _UNSET default (no change); an explicit
+    # null/"" (normalized to None by the schema) clears it.
+    phone_kwarg: dict[str, Any] = (
+        {"phone": body.phone} if "phone" in body.model_fields_set else {}
+    )
+
     updated = await UserRepo.update_fields(
         db,
         user.id,
@@ -402,6 +411,7 @@ async def update_me(
         first_name=body.first_name,
         last_name=body.last_name,
         avatar_color=body.avatar_color,
+        **phone_kwarg,
     )
     await db.commit()
     return updated

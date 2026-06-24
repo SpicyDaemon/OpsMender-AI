@@ -6,11 +6,47 @@ to see the full API surface at a glance.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+# ---------------------------------------------------------------------------
+# Shared validators
+# ---------------------------------------------------------------------------
+
+_PHONE_RE = re.compile(r"^\+?[0-9]{6,20}$")
+
+
+def _normalize_optional_phone(value: Optional[str]) -> Optional[str]:
+    """Validate an optional phone number — only ``+`` and digits allowed.
+
+    Strips spaces/dashes/parentheses/dots (common formatting) before checking,
+    so operators can paste "+1 (415) 555-0100" and we store "+14155550100".
+    Empty/blank clears the value (returns ``None``). A leading ``+`` is the only
+    non-digit permitted in the stored form.
+    """
+
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    cleaned = (
+        stripped.replace(" ", "")
+        .replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace(".", "")
+    )
+    if not _PHONE_RE.match(cleaned):
+        raise ValueError(
+            "Phone number may contain only digits and an optional leading '+' "
+            "(6–20 digits)."
+        )
+    return cleaned
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -103,6 +139,7 @@ class UserResponse(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     avatar_color: Optional[str] = None
+    phone: Optional[str] = None
     must_change_password: bool = False
     mfa_enabled: bool = False
     mfa_enrollment_required: bool = False
@@ -168,6 +205,14 @@ class MeUpdateRequest(BaseModel):
     first_name: Optional[str] = Field(default=None, max_length=100)
     last_name: Optional[str] = Field(default=None, max_length=100)
     avatar_color: Optional[str] = Field(default=None, max_length=20)
+    # Optional phone for SMS / Voice Call paging. "" clears it; otherwise only
+    # digits and an optional leading "+" are accepted (normalized on save).
+    phone: Optional[str] = Field(default=None, max_length=32)
+
+    @field_validator("phone")
+    @classmethod
+    def _validate_phone(cls, value: Optional[str]) -> Optional[str]:
+        return _normalize_optional_phone(value)
 
 
 class MePasswordChangeRequest(BaseModel):

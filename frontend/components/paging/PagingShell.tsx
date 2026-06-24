@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   Bell,
   BellOff,
   Calendar,
@@ -23,6 +24,7 @@ import {
   Info,
   ListOrdered,
   Pencil,
+  Phone,
   PlusCircle,
   Repeat,
   Search,
@@ -4103,6 +4105,7 @@ export function NotificationPreferencesPanel({
   onGoToChannels?: () => void;
 }) {
   const toast = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -4458,6 +4461,40 @@ export function NotificationPreferencesPanel({
                             <Trash2 size={14} />
                           </button>
                         </div>
+                        {stage.channel_id === "voice" && (
+                          <div className="w-full">
+                            {user?.phone ? (
+                              <p className="flex items-center gap-1.5 text-xs text-fg-muted">
+                                <Phone size={12} className="shrink-0" />
+                                We&apos;ll place an automated phone call to{" "}
+                                <span className="font-mono text-fg-secondary">
+                                  {user.phone}
+                                </span>{" "}
+                                (from your{" "}
+                                <a
+                                  href="/dashboard/settings/profile"
+                                  className="text-accent underline"
+                                >
+                                  profile
+                                </a>
+                                ). This is a phone call — not a Slack or Teams
+                                call.
+                              </p>
+                            ) : (
+                              <p className="flex items-center gap-1.5 text-xs text-status-high">
+                                <AlertTriangle size={12} className="shrink-0" />
+                                No phone number on your profile — add one in your{" "}
+                                <a
+                                  href="/dashboard/settings/profile"
+                                  className="text-accent underline"
+                                >
+                                  profile
+                                </a>{" "}
+                                or this Voice Call stage won&apos;t reach you.
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </li>
                     );
                   })}
@@ -4494,7 +4531,15 @@ export function NotificationPreferencesPanel({
             "Notification Channels"
           )}
           . Chat-capable channels (Slack, Teams) can also host incident
-          sessions; Email and SMS are delivery-only.
+          sessions; Email and SMS are delivery-only. <strong>Voice Call</strong>{" "}
+          places an automated phone call to the number on your{" "}
+          <a
+            href="/dashboard/settings/profile"
+            className="text-accent underline"
+          >
+            profile
+          </a>{" "}
+          — it is a phone call, not a Slack or Teams call.
         </span>
       </div>
 

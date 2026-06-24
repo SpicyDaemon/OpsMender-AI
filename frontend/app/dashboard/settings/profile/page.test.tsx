@@ -68,6 +68,19 @@ describe("Profile & Settings page", () => {
     expect(apiMocks.updateMe.mock.calls[0][0]).toMatchObject({ first_name: "Augusta" });
   });
 
+  it("filters the phone field to digits + a leading plus and saves it", async () => {
+    render(<ProfileSettingsPage />);
+    const phone = screen.getByLabelText(/Phone/) as HTMLInputElement;
+    // Letters and formatting are stripped; the leading "+" is preserved.
+    fireEvent.change(phone, { target: { value: "+1 (415) 555-01ab00" } });
+    expect(phone.value).toBe("+14155550100");
+    fireEvent.click(screen.getByRole("button", { name: /save profile/i }));
+    await waitFor(() => expect(apiMocks.updateMe).toHaveBeenCalledTimes(1));
+    expect(apiMocks.updateMe.mock.calls[0][0]).toMatchObject({
+      phone: "+14155550100",
+    });
+  });
+
   it("has a password change section", () => {
     render(<ProfileSettingsPage />);
     expect(screen.getByText(/change password/i)).toBeTruthy();

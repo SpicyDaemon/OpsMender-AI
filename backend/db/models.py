@@ -263,6 +263,11 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     avatar_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Optional E.164-ish phone number for SMS / Voice Call paging. Stored as
+    # entered ("+" and digits only); used as the default recipient for the
+    # `sms` / `voice` personal-routing channels when no per-channel address is
+    # set. Optional — no phone means those channels simply have no recipient.
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Forced password change (temp passwords from admin create / temp reset).
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False

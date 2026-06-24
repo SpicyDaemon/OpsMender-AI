@@ -23,6 +23,7 @@ export interface UserResponse {
   first_name?: string | null;
   last_name?: string | null;
   avatar_color?: string | null;
+  phone?: string | null;
   must_change_password?: boolean;
   mfa_enabled?: boolean;
   mfa_enrollment_required?: boolean;
@@ -445,6 +446,7 @@ export interface MeUpdateRequest {
   first_name?: string | null;
   last_name?: string | null;
   avatar_color?: string | null;
+  phone?: string | null;
 }
 
 export interface MePasswordChangeRequest {

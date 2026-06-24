@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Profile phone number for SMS / Voice Call paging.** Users can set an
+  optional phone on their profile (digits and an optional leading `+` only;
+  formatting is stripped on entry and normalized server-side). Migration
+  `a1b2c3d4e5f6` adds nullable `users.phone`. The number is the default
+  recipient for the `sms` / `voice` personal-routing channels (a per-channel
+  address override still wins; with neither set, those stages record as
+  skipped). `PATCH /auth/me` accepts `phone`; an explicit empty value clears it
+  while omitting the field leaves it intact.
+- **Honest Voice Call routing copy.** A Voice Call routing stage now states it
+  places an automated **phone call to your profile number** (with a link to set
+  it, or a warning when it's missing) — and that it is a phone call, **not** a
+  Slack or Teams call. (Slack bots can't place calls; Teams calling would
+  require a heavyweight Teams Phone calling-bot setup that's out of scope.)
+
 - **Required-field marker convention.** The shared `Label` now takes a
   `required` prop that renders a red asterisk via a CSS `::after` pseudo-element
   (so it never leaks into the accessible name or `getByLabelText`), plus a new

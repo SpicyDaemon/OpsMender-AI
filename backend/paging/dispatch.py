@@ -310,6 +310,14 @@ async def dispatch_page(
     if not addresses.get("email") and getattr(user, "email", None):
         addresses.setdefault("email", user.email)
 
+    # The profile phone is the default recipient for telephony channels. A
+    # per-channel override in prefs.channels still wins; with neither set the
+    # sms/voice page records as skipped ("no_recipient").
+    user_phone = getattr(user, "phone", None)
+    if user_phone:
+        addresses.setdefault("sms", user_phone)
+        addresses.setdefault("voice", user_phone)
+
     from backend.paging.slack_cards import build_page_card_blocks
 
     subject = f"OpsMender: {incident.title or 'Incident page'}"

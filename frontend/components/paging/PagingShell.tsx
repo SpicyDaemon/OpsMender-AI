@@ -72,6 +72,7 @@ import {
   listEscalationSteps,
   listIncidents,
   listIntegrationConnectors,
+  listIntegrationKinds,
   listMCPServers,
   listModelConfigs,
   listRosterMembers,
@@ -105,6 +106,7 @@ import type {
   EscalationTargetType,
   IncidentResponse,
   IntegrationConnectorResponse,
+  IntegrationKind,
   MaintenanceWindowResponse,
   MaintenanceWindowScopeType,
   MCPServerResponse,
@@ -776,6 +778,9 @@ function ServicesPanel({
   const [integrationConnectors, setIntegrationConnectors] = useState<
     IntegrationConnectorResponse[]
   >([]);
+  const [integrationKinds, setIntegrationKinds] = useState<IntegrationKind[]>(
+    [],
+  );
   const [onCallByTeam, setOnCallByTeam] = useState<Map<string, string | null>>(
     new Map(),
   );
@@ -807,7 +812,7 @@ function ServicesPanel({
     let cancelled = false;
     (async () => {
       try {
-        const [incList, uList, mcpList, modelList, integrationList] =
+        const [incList, uList, mcpList, modelList, integrationList, kindList] =
           await Promise.all([
             listIncidents({ limit: 200 }).catch(() => ({
               items: [] as IncidentResponse[],
@@ -823,6 +828,10 @@ function ServicesPanel({
               items: [] as IntegrationConnectorResponse[],
               total: 0,
             })),
+            listIntegrationKinds().catch(() => ({
+              items: [] as IntegrationKind[],
+              total: 0,
+            })),
           ]);
         if (cancelled) return;
         setIncidents(incList.items);
@@ -830,6 +839,7 @@ function ServicesPanel({
         setMcpServers(mcpList.items);
         setModelConfigs(modelList.items);
         setIntegrationConnectors(integrationList.items);
+        setIntegrationKinds(kindList.items);
 
         // Resolve on-call once per team via the team's first roster.
         const teamRoster = new Map<string, string>(); // team_id → roster_id
@@ -1423,6 +1433,79 @@ function ServicesPanel({
               available for the service. Configure integrations under{" "}
               <span className="text-fg-secondary">Integrations</span>.
             </p>
+            {form.allowed_integration_connector_ids.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                  What OpsMender will do with these
+                </p>
+                {form.allowed_integration_connector_ids.map((id) => {
+                  const c = integrationConnectors.find((x) => x.id === id);
+                  if (!c) return null;
+                  const kind = integrationKinds.find((k) => k.kind === c.kind);
+                  const isTicketing =
+                    c.kind === "jira" || c.kind === "servicenow";
+                  const syncOn = Boolean(
+                    (c.config as Record<string, unknown> | undefined)?.[
+                      "ticket_sync_enabled"
+                    ],
+                  );
+                  const caps = (kind?.capabilities ?? []).filter(
+                    (cap) => cap.action !== "test_connection",
+                  );
+                  const actions = caps
+                    .filter((cap) => cap.mutating)
+                    .map((cap) => cap.action);
+                  const reads = caps.filter((cap) => !cap.mutating).length;
+                  return (
+                    <div
+                      key={id}
+                      className="rounded-md border border-border-subtle bg-bg-elevated p-2.5"
+                    >
+                      <p className="text-xs font-medium text-fg-primary">
+                        {c.name}
+                        <span className="text-fg-muted"> · {c.kind}</span>
+                      </p>
+                      <ul className="mt-1 space-y-0.5 text-xs text-fg-secondary">
+                        {isTicketing && syncOn && (
+                          <li>
+                            Opens a ticket when an incident is created, then
+                            transitions it on acknowledge / resolve.
+                          </li>
+                        )}
+                        {isTicketing && !syncOn && (
+                          <li className="text-status-high">
+                            Ticket sync is off — enable it on this integration to
+                            auto-open and sync tickets.
+                          </li>
+                        )}
+                        {reads > 0 && (
+                          <li>
+                            Agent can read {reads} resource type
+                            {reads === 1 ? "" : "s"} during a session.
+                          </li>
+                        )}
+                        {actions.length > 0 && (
+                          <li>
+                            Agent actions (approval-gated):{" "}
+                            <span className="text-fg-primary">
+                              {actions.join(", ")}
+                            </span>
+                            .
+                          </li>
+                        )}
+                        {!isTicketing &&
+                          reads === 0 &&
+                          actions.length === 0 && (
+                            <li className="text-fg-muted">
+                              No adapter actions yet — stored for reference.
+                            </li>
+                          )}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div>
             <Label>Preferred Models</Label>

@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **"What OpsMender will do" on the service integration picker.** Selecting an
+  integration for a service now shows, per connector, what it does: ticketing
+  connectors with sync on read "Opens a ticket when an incident is created, then
+  transitions it on acknowledge / resolve" (or a warning when sync is off), and
+  every connector lists how many resources the agent can read plus the
+  approval-gated actions it can take — so admins see the concrete effect of an
+  attached integration (PagerDuty-style). *(Lifecycle-actions Phase 3.)*
+
 - **Acknowledged in the ticket lifecycle + no-backward-move guardrail.**
   Acknowledging an incident now transitions its linked Jira/ServiceNow tickets
   to the acknowledged-mapped status (defaults to the in-progress state), and the

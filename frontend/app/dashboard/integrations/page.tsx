@@ -100,6 +100,8 @@ interface AdditionalVariable {
   id: string;
   key: string;
   value: string;
+  /** Encrypted/write-only (stored with the credentials) vs plaintext config. */
+  secret: boolean;
   saved?: boolean;
   originalValue?: unknown;
 }
@@ -109,14 +111,16 @@ let variableSequence = 0;
 function additionalVariable(
   key = "",
   value = "",
-  options: { saved?: boolean; originalValue?: unknown } = {},
+  options: { secret?: boolean; saved?: boolean; originalValue?: unknown } = {},
 ): AdditionalVariable {
   variableSequence += 1;
+  const { secret = false, ...rest } = options;
   return {
     id: `integration-variable-${variableSequence}`,
     key,
     value,
-    ...options,
+    secret,
+    ...rest,
   };
 }
 
@@ -128,7 +132,7 @@ function additionalCredentialRows(
   const covered = new Set(fields.map((field) => field.name));
   return connector.auth_keys
     .filter((key) => !covered.has(key))
-    .map((key) => additionalVariable(key, "", { saved: true }));
+    .map((key) => additionalVariable(key, "", { secret: true, saved: true }));
 }
 
 function additionalConfigRows(
@@ -140,9 +144,26 @@ function additionalConfigRows(
     .filter(([key]) => !covered.has(key))
     .map(([key, value]) =>
       additionalVariable(key, formatFieldValue(value), {
+        secret: false,
         originalValue: value,
       }),
     );
+}
+
+/**
+ * The single merged additional-variables list: encrypted credential extras
+ * first (write-only, marked Secret), then plaintext config extras. Replaces
+ * the old split credential/config repeaters.
+ */
+function mergedAdditionalRows(
+  connector: IntegrationConnectorResponse | null,
+  credentialFields: IntegrationField[],
+  configFields: IntegrationField[],
+): AdditionalVariable[] {
+  return [
+    ...additionalCredentialRows(connector, credentialFields),
+    ...additionalConfigRows(connector?.config ?? {}, configFields),
+  ];
 }
 
 function parseAdditionalValue(row: AdditionalVariable): unknown | undefined {
@@ -165,47 +186,38 @@ function parseAdditionalValue(row: AdditionalVariable): unknown | undefined {
 }
 
 function AdditionalVariables({
-  group,
   rows,
   onChange,
   onRemove,
   onAdd,
 }: {
-  group: "credentials" | "config";
   rows: AdditionalVariable[];
   onChange: (id: string, patch: Partial<AdditionalVariable>) => void;
   onRemove: (row: AdditionalVariable) => void;
   onAdd: () => void;
 }) {
-  const label = group === "credentials" ? "credential" : "config";
   return (
-    <div className="border-t border-border-subtle pt-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-medium text-fg-primary">
-            Additional variables
-          </h3>
-          <p className="mt-0.5 text-xs text-fg-muted">
-            Keys not covered by this integration&apos;s schema.
-          </p>
-        </div>
-        <Button type="button" size="sm" variant="secondary" onClick={onAdd}>
-          Add variable
-        </Button>
-      </div>
+    <fieldset className="space-y-4 rounded-lg border border-border-subtle bg-bg-elevated p-4">
+      <legend className="px-1 text-sm font-semibold text-fg-primary">
+        Additional variables
+      </legend>
+      <p className="text-xs text-fg-muted">
+        Extra keys this integration&apos;s structured fields don&apos;t cover.
+        Toggle <strong className="text-fg-secondary">Secret</strong> to store a
+        value encrypted and write-only (alongside the credentials); leave it off
+        to store plaintext configuration.
+      </p>
       {rows.length === 0 ? (
-        <p className="mt-3 text-xs text-fg-muted">
-          No additional {label} variables.
-        </p>
+        <p className="text-xs text-fg-muted">No additional variables.</p>
       ) : (
-        <div className="mt-3 space-y-3">
+        <div className="space-y-3">
           {rows.map((row, index) => (
             <div
               key={row.id}
-              className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+              className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
             >
               <Input
-                aria-label={`Additional ${label} key ${index + 1}`}
+                aria-label={`Additional variable key ${index + 1}`}
                 value={row.key}
                 placeholder="key"
                 disabled={row.saved}
@@ -214,8 +226,8 @@ function AdditionalVariables({
                 }
               />
               <Input
-                aria-label={`Additional ${label} value ${index + 1}`}
-                type={group === "credentials" ? "password" : "text"}
+                aria-label={`Additional variable value ${index + 1}`}
+                type={row.secret ? "password" : "text"}
                 value={row.value}
                 placeholder={
                   row.saved ? "Saved — leave blank to keep" : "value"
@@ -225,6 +237,25 @@ function AdditionalVariables({
                   onChange(row.id, { value: event.target.value })
                 }
               />
+              <label
+                className="inline-flex items-center gap-1.5 text-xs text-fg-secondary"
+                title={
+                  row.saved
+                    ? "Storage can't change for a saved key — remove and re-add it"
+                    : "Store this value encrypted (write-only)"
+                }
+              >
+                <input
+                  type="checkbox"
+                  aria-label={`Additional variable secret ${index + 1}`}
+                  checked={row.secret}
+                  disabled={row.saved}
+                  onChange={(event) =>
+                    onChange(row.id, { secret: event.target.checked })
+                  }
+                />
+                Secret
+              </label>
               <Button
                 type="button"
                 size="sm"
@@ -237,7 +268,10 @@ function AdditionalVariables({
           ))}
         </div>
       )}
-    </div>
+      <Button type="button" size="sm" variant="secondary" onClick={onAdd}>
+        Add variable
+      </Button>
+    </fieldset>
   );
 }
 
@@ -259,9 +293,8 @@ function StructuredField({
       : (field.placeholder ?? "");
   return (
     <div>
-      <Label htmlFor={id}>
+      <Label htmlFor={id} required={field.required}>
         {field.label}
-        {field.required ? " *" : ""}
       </Label>
       {field.kind === "textarea" ? (
         <Textarea
@@ -461,10 +494,7 @@ export default function IntegrationsPage() {
     Record<string, string>
   >({});
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
-  const [additionalCredentials, setAdditionalCredentials] = useState<
-    AdditionalVariable[]
-  >([]);
-  const [additionalConfig, setAdditionalConfig] = useState<
+  const [additionalVariables, setAdditionalVariables] = useState<
     AdditionalVariable[]
   >([]);
   const [removedCredentialKeys, setRemovedCredentialKeys] = useState<string[]>(
@@ -509,8 +539,7 @@ export default function IntegrationsPage() {
     setAuthType("pat");
     setCredentialValues({});
     setConfigValues({});
-    setAdditionalCredentials([]);
-    setAdditionalConfig([]);
+    setAdditionalVariables([]);
     setRemovedCredentialKeys([]);
     setEnabled(true);
   }
@@ -528,12 +557,8 @@ export default function IntegrationsPage() {
     setConfigValues(
       valuesForFields(definition?.config_fields ?? [], connector.config ?? {}),
     );
-    setAdditionalCredentials(additionalCredentialRows(connector, fields));
-    setAdditionalConfig(
-      additionalConfigRows(
-        connector.config ?? {},
-        definition?.config_fields ?? [],
-      ),
+    setAdditionalVariables(
+      mergedAdditionalRows(connector, fields, definition?.config_fields ?? []),
     );
     setRemovedCredentialKeys([]);
     setEnabled(connector.is_enabled);
@@ -572,48 +597,53 @@ export default function IntegrationsPage() {
         );
         if (value !== undefined) auth[field.name] = value;
       }
-      const credentialKeys = new Set(credentialFields.map((field) => field.name));
       for (const key of removedCredentialKeys) auth[key] = null;
-      for (const row of additionalCredentials) {
-        const key = row.key.trim();
-        if (!key && !row.value.trim()) continue;
-        if (!key) throw new Error("Every additional credential needs a key.");
-        if (credentialKeys.has(key)) {
-          throw new Error(`Credential key '${key}' is already a structured field.`);
-        }
-        if (credentialKeys.has(`additional:${key}`)) {
-          throw new Error(`Credential key '${key}' is duplicated.`);
-        }
-        credentialKeys.add(`additional:${key}`);
-        const value = parseAdditionalValue(row);
-        if (value !== undefined) auth[key] = value;
-        else if (!row.saved) {
-          throw new Error(`Additional credential '${key}' needs a value.`);
-        }
-      }
+
       const config: Record<string, unknown> = {};
       for (const field of configFields) {
         const value = parseFieldValue(field, fieldValue(configValues, field));
         if (value === undefined) delete config[field.name];
         else config[field.name] = value;
       }
+
+      // One merged list of extra keys: each row is routed to the encrypted
+      // credential bag (Secret) or the plaintext config bag. Structured-field
+      // names and same-bag duplicate keys are rejected.
+      const credentialKeys = new Set(credentialFields.map((field) => field.name));
       const configKeys = new Set(configFields.map((field) => field.name));
-      for (const row of additionalConfig) {
+      const seenSecretKeys = new Set<string>();
+      const seenConfigKeys = new Set<string>();
+      for (const row of additionalVariables) {
         const key = row.key.trim();
         if (!key && !row.value.trim()) continue;
-        if (!key) throw new Error("Every additional config variable needs a key.");
-        if (configKeys.has(key)) {
-          throw new Error(`Config key '${key}' is already a structured field.`);
+        if (!key) throw new Error("Every additional variable needs a key.");
+        if (row.secret) {
+          if (credentialKeys.has(key)) {
+            throw new Error(`'${key}' is already a credential field.`);
+          }
+          if (seenSecretKeys.has(key)) {
+            throw new Error(`Secret variable '${key}' is duplicated.`);
+          }
+          seenSecretKeys.add(key);
+          const value = parseAdditionalValue(row);
+          if (value !== undefined) auth[key] = value;
+          else if (!row.saved) {
+            throw new Error(`Secret variable '${key}' needs a value.`);
+          }
+        } else {
+          if (configKeys.has(key)) {
+            throw new Error(`'${key}' is already a configuration field.`);
+          }
+          if (seenConfigKeys.has(key)) {
+            throw new Error(`Variable '${key}' is duplicated.`);
+          }
+          seenConfigKeys.add(key);
+          const value = parseAdditionalValue(row);
+          if (value === undefined) {
+            throw new Error(`Variable '${key}' needs a value.`);
+          }
+          config[key] = value;
         }
-        if (configKeys.has(`additional:${key}`)) {
-          throw new Error(`Config key '${key}' is duplicated.`);
-        }
-        configKeys.add(`additional:${key}`);
-        const value = parseAdditionalValue(row);
-        if (value === undefined) {
-          throw new Error(`Additional config variable '${key}' needs a value.`);
-        }
-        config[key] = value;
       }
       const payload: IntegrationConnectorUpsert = {
         kind,
@@ -682,7 +712,7 @@ export default function IntegrationsPage() {
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <Label htmlFor="integration-name">Name</Label>
+            <Label htmlFor="integration-name" required>Name</Label>
             <Input
               id="integration-name"
               value={name}
@@ -705,18 +735,16 @@ export default function IntegrationsPage() {
                 const nextCredentialFields =
                   definition?.credential_fields?.[definition.auth_types[0]] ??
                   [];
-                setAdditionalCredentials(
-                  additionalCredentialRows(editing, nextCredentialFields),
-                );
                 setConfigValues(
                   valuesForFields(
                     definition?.config_fields ?? [],
                     editing?.config ?? {},
                   ),
                 );
-                setAdditionalConfig(
-                  additionalConfigRows(
-                    editing?.config ?? {},
+                setAdditionalVariables(
+                  mergedAdditionalRows(
+                    editing,
+                    nextCredentialFields,
                     definition?.config_fields ?? [],
                   ),
                 );
@@ -764,12 +792,15 @@ export default function IntegrationsPage() {
                 const nextAuthType = event.target.value as IntegrationAuthType;
                 setAuthType(nextAuthType);
                 setCredentialValues({});
-                setAdditionalCredentials(
-                  additionalCredentialRows(
+                // The credential schema is auth-specific, so rebuild the secret
+                // rows from the saved connector; preserve any config rows.
+                setAdditionalVariables((rows) => [
+                  ...additionalCredentialRows(
                     editing,
                     selectedKind?.credential_fields?.[nextAuthType] ?? [],
                   ),
-                );
+                  ...rows.filter((row) => !row.secret),
+                ]);
                 setRemovedCredentialKeys([]);
               }}
             >
@@ -809,31 +840,6 @@ export default function IntegrationsPage() {
             <p className="text-xs text-fg-muted">
               Credential values are encrypted and never returned by the API.
             </p>
-            <AdditionalVariables
-              group="credentials"
-              rows={additionalCredentials}
-              onAdd={() =>
-                setAdditionalCredentials((rows) => [
-                  ...rows,
-                  additionalVariable(),
-                ])
-              }
-              onChange={(id, patch) =>
-                setAdditionalCredentials((rows) =>
-                  rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-                )
-              }
-              onRemove={(target) => {
-                setAdditionalCredentials((rows) =>
-                  rows.filter((row) => row.id !== target.id),
-                );
-                if (target.saved) {
-                  setRemovedCredentialKeys((keys) => [
-                    ...new Set([...keys, target.key]),
-                  ]);
-                }
-              }}
-            />
           </fieldset>
           <fieldset className="space-y-4 rounded-lg border border-border-subtle bg-bg-elevated p-4">
             <legend className="px-1 text-sm font-semibold text-fg-primary">
@@ -858,28 +864,31 @@ export default function IntegrationsPage() {
                 />
               ))
             )}
-            <AdditionalVariables
-              group="config"
-              rows={additionalConfig}
-              onAdd={() =>
-                setAdditionalConfig((rows) => [
-                  ...rows,
-                  additionalVariable(),
-                ])
-              }
-              onChange={(id, patch) =>
-                setAdditionalConfig((rows) =>
-                  rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-                )
-              }
-              onRemove={(target) =>
-                setAdditionalConfig((rows) =>
-                  rows.filter((row) => row.id !== target.id),
-                )
-              }
-            />
           </fieldset>
         </div>
+        <AdditionalVariables
+          rows={additionalVariables}
+          onAdd={() =>
+            setAdditionalVariables((rows) => [...rows, additionalVariable()])
+          }
+          onChange={(id, patch) =>
+            setAdditionalVariables((rows) =>
+              rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+            )
+          }
+          onRemove={(target) => {
+            setAdditionalVariables((rows) =>
+              rows.filter((row) => row.id !== target.id),
+            );
+            // A removed *saved* secret key must be explicitly nulled so the
+            // credential patch drops it (plaintext config rows just vanish).
+            if (target.saved && target.secret) {
+              setRemovedCredentialKeys((keys) => [
+                ...new Set([...keys, target.key]),
+              ]);
+            }
+          }}
+        />
         {selectedKind && selectedKind.capabilities.length > 0 && (
           <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">

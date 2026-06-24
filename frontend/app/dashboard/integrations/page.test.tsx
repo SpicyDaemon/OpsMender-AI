@@ -360,7 +360,7 @@ describe("Integrations page", () => {
       screen.getByLabelText("Base URL"),
       "https://build.example.test",
     );
-    await user.type(screen.getByLabelText("Token *"), "secret");
+    await user.type(screen.getByLabelText("Token"), "secret");
     await user.type(screen.getByLabelText("Health path"), "/ready");
     await user.click(
       screen.getByRole("button", { name: "Create integration" }),
@@ -385,10 +385,10 @@ describe("Integrations page", () => {
     expect(
       screen.getByText(/Hosted default: https:\/\/api.github.com/),
     ).toBeTruthy();
-    expect(screen.getByLabelText("Personal access token *")).toBeTruthy();
+    expect(screen.getByLabelText("Personal access token")).toBeTruthy();
     expect(screen.getByLabelText("Default owner")).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("Authentication"), "app");
-    expect(screen.getByLabelText("App ID *")).toBeTruthy();
+    expect(screen.getByLabelText("App ID")).toBeTruthy();
     expect(
       screen.getByText(/create_pull_request · approval-gated write/),
     ).toBeTruthy();
@@ -402,7 +402,7 @@ describe("Integrations page", () => {
     expect(
       screen.getByText(/collection URL for a self-hosted deployment/),
     ).toBeTruthy();
-    expect(screen.getByLabelText("Organization *")).toBeTruthy();
+    expect(screen.getByLabelText("Organization")).toBeTruthy();
     expect(screen.getByLabelText("Default repository")).toBeTruthy();
     expect(
       screen.getByText(/create_work_item · approval-gated write/),
@@ -415,8 +415,8 @@ describe("Integrations page", () => {
     await screen.findByRole("heading", { name: "Add integration" });
     await user.selectOptions(screen.getByLabelText("Kind"), "jenkins");
     expect(screen.getByText(/Jenkins controller URL/)).toBeTruthy();
-    expect(screen.getByLabelText("Username *")).toBeTruthy();
-    expect(screen.getByLabelText("Password *")).toBeTruthy();
+    expect(screen.getByLabelText("Username")).toBeTruthy();
+    expect(screen.getByLabelText("Password")).toBeTruthy();
     expect(screen.getByLabelText("Default job")).toBeTruthy();
     expect(
       screen.getByText(/trigger_build · approval-gated write/),
@@ -429,7 +429,7 @@ describe("Integrations page", () => {
     await screen.findByRole("heading", { name: "Add integration" });
     await user.selectOptions(screen.getByLabelText("Kind"), "terraform_cloud");
     expect(screen.getByText(/Terraform Enterprise API v2 base/)).toBeTruthy();
-    expect(screen.getByLabelText("API key *")).toBeTruthy();
+    expect(screen.getByLabelText("API key")).toBeTruthy();
     expect(screen.getByLabelText("Default workspace ID")).toBeTruthy();
     expect(screen.getByText(/plan · always approval/)).toBeTruthy();
   });
@@ -440,10 +440,10 @@ describe("Integrations page", () => {
     await screen.findByRole("heading", { name: "Add integration" });
     await user.selectOptions(screen.getByLabelText("Kind"), "google_docs");
     expect(screen.queryByLabelText("Base URL")).toBeNull();
-    expect(screen.getByLabelText("Access token *")).toBeTruthy();
+    expect(screen.getByLabelText("Access token")).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("Authentication"), "custom");
-    expect(screen.getByLabelText("Service-account email *")).toBeTruthy();
-    expect(screen.getByLabelText("Private key *")).toBeTruthy();
+    expect(screen.getByLabelText("Service-account email")).toBeTruthy();
+    expect(screen.getByLabelText("Private key")).toBeTruthy();
     expect(screen.getByText(/read_doc · read/)).toBeTruthy();
   });
 
@@ -452,7 +452,7 @@ describe("Integrations page", () => {
     render(<IntegrationsPage />);
     expect(await screen.findByText("Status API")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Edit" }));
-    const token = screen.getByLabelText("Token *") as HTMLInputElement;
+    const token = screen.getByLabelText("Token") as HTMLInputElement;
     expect(token.value).toBe("");
     expect(token.placeholder).toMatch(/Saved/);
     await user.click(screen.getByRole("button", { name: "Save integration" }));
@@ -483,27 +483,35 @@ describe("Integrations page", () => {
     expect(await screen.findByText("Status API")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
+    // The single merged list lists secret (credential) extras first, then
+    // plaintext config extras.
     expect(
-      (screen.getByLabelText("Additional credential key 1") as HTMLInputElement)
+      (screen.getByLabelText("Additional variable key 1") as HTMLInputElement)
         .value,
     ).toBe("legacy_secret");
     expect(
+      (screen.getByLabelText("Additional variable secret 1") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
       (
-        screen.getByLabelText(
-          "Additional credential value 1",
-        ) as HTMLInputElement
+        screen.getByLabelText("Additional variable value 1") as HTMLInputElement
       ).placeholder,
     ).toMatch(/Saved/);
     expect(
-      (screen.getByLabelText("Additional config key 1") as HTMLInputElement)
+      (screen.getByLabelText("Additional variable key 2") as HTMLInputElement)
         .value,
     ).toBe("legacy_timeout");
     expect(
-      (screen.getByLabelText("Additional config value 1") as HTMLInputElement)
+      (screen.getByLabelText("Additional variable value 2") as HTMLInputElement)
         .value,
     ).toBe("30");
     expect(
-      (screen.getByLabelText("Additional config key 2") as HTMLInputElement)
+      (screen.getByLabelText("Additional variable secret 2") as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(
+      (screen.getByLabelText("Additional variable key 3") as HTMLInputElement)
         .value,
     ).toBe("legacy_empty");
 
@@ -539,21 +547,26 @@ describe("Integrations page", () => {
     expect(await screen.findByText("Status API")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
+    // Remove the saved secret row (legacy_secret); legacy_timeout shifts up.
     await user.click(screen.getAllByRole("button", { name: "Remove" })[0]);
-    const addButtons = screen.getAllByRole("button", { name: "Add variable" });
-    await user.click(addButtons[0]);
+    // Re-add legacy_secret as a Secret variable and add a plaintext one.
+    await user.click(screen.getByRole("button", { name: "Add variable" }));
     await user.type(
-      screen.getByLabelText("Additional credential key 1"),
+      screen.getByLabelText("Additional variable key 2"),
       "legacy_secret",
     );
+    await user.click(screen.getByLabelText("Additional variable secret 2"));
     await user.type(
-      screen.getByLabelText("Additional credential value 1"),
+      screen.getByLabelText("Additional variable value 2"),
       "secret-2",
     );
-    await user.click(addButtons[1]);
-    await user.type(screen.getByLabelText("Additional config key 2"), "region");
+    await user.click(screen.getByRole("button", { name: "Add variable" }));
     await user.type(
-      screen.getByLabelText("Additional config value 2"),
+      screen.getByLabelText("Additional variable key 3"),
+      "region",
+    );
+    await user.type(
+      screen.getByLabelText("Additional variable value 3"),
       "us-east-1",
     );
     await user.click(screen.getByRole("button", { name: "Save integration" }));

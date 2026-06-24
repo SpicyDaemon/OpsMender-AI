@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Integrations: one merged "Additional variables" list with a Secret toggle.**
+  The two separate credential/config additional-variable repeaters are replaced
+  by a single list below the Credentials/Configuration panels. Each row has a
+  **Secret** checkbox that routes the value to the encrypted, write-only
+  credential store (checked) or to plaintext config (unchecked). Saved keys keep
+  their write-only placeholder and can't change storage in place (remove +
+  re-add). The red-star required convention now applies to the integration form
+  (Name + required structured fields); the decorative `*` is a CSS marker, not
+  part of the field's accessible name.
+
 ### Added
 
 - **Strict per-service integration allowlist.** A service now carries

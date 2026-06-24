@@ -23,7 +23,10 @@ from backend.db.repos import (
 )
 from backend.integrations.base import IntegrationAdapter, IntegrationResult
 from backend.integrations.registry import _ADAPTERS
-from backend.services.ticket_sync import provision_incident_tickets
+from backend.services.ticket_sync import (
+    provision_incident_tickets,
+    sync_incident_status,
+)
 
 
 class FakeJiraAdapter(IntegrationAdapter):
@@ -178,3 +181,47 @@ async def test_respects_the_service_allowlist(env):
     )
     assert created == 0
     assert fake.created == []
+
+
+async def test_acknowledged_transitions_the_ticket(env):
+    factory, org_id, team_id, connector_id, fake = env
+    incident_id = await _make_incident(
+        factory, org_id, team_id, allowed=[connector_id]
+    )
+    await provision_incident_tickets(
+        factory, org_id=org_id, incident_id=incident_id
+    )
+    fake.synced.clear()  # drop the initial "open" sync from provisioning
+
+    await sync_incident_status(
+        factory, org_id=org_id, incident_id=incident_id, new_status="acknowledged"
+    )
+    # The connector's status_map has no explicit "acknowledged", so the kind
+    # default (In Progress) applies.
+    assert fake.synced == ["OPS-1:In Progress"]
+    async with factory() as db:
+        states = await TicketSyncStateRepo.list_for_incident(db, org_id, incident_id)
+    assert states[0].last_synced_status == "acknowledged"
+
+
+async def test_no_backward_move_guardrail(env):
+    factory, org_id, team_id, connector_id, fake = env
+    incident_id = await _make_incident(
+        factory, org_id, team_id, allowed=[connector_id]
+    )
+    await provision_incident_tickets(
+        factory, org_id=org_id, incident_id=incident_id
+    )
+    # Drive it forward to resolved, then attempt a backward move to open.
+    await sync_incident_status(
+        factory, org_id=org_id, incident_id=incident_id, new_status="resolved"
+    )
+    fake.synced.clear()
+    await sync_incident_status(
+        factory, org_id=org_id, incident_id=incident_id, new_status="open"
+    )
+    # Backward move (resolved -> open) is skipped — no transition attempted.
+    assert fake.synced == []
+    async with factory() as db:
+        states = await TicketSyncStateRepo.list_for_incident(db, org_id, incident_id)
+    assert states[0].last_synced_status == "resolved"

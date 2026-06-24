@@ -5025,9 +5025,12 @@ class TicketSyncStateRepo:
         row: TicketSyncState,
         *,
         direction: str,
+        internal_status: str | None = None,
     ) -> None:
         row.sync_direction = direction
         row.last_synced_at = datetime.now(timezone.utc)
+        if internal_status is not None:
+            row.last_synced_status = internal_status
         await db.flush()
 
     @staticmethod

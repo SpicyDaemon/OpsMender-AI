@@ -362,15 +362,25 @@ function statusClass(status: string): string {
 const DEFAULT_TICKET_STATUS_MAP: Record<string, Record<string, string>> = {
   jira: {
     open: "To Do",
+    acknowledged: "In Progress",
     in_progress: "In Progress",
     resolved: "Done",
   },
   servicenow: {
     open: "1",
+    acknowledged: "2",
     in_progress: "2",
     resolved: "6",
   },
 };
+
+// OpsMender lifecycle statuses synced onto the external ticket, in order.
+const TICKET_SYNC_STATUSES = [
+  "open",
+  "acknowledged",
+  "in_progress",
+  "resolved",
+] as const;
 
 function TicketSyncPanel({
   connector,
@@ -389,11 +399,14 @@ function TicketSyncPanel({
   const [enabled, setEnabled] = useState(
     Boolean(connector.config.ticket_sync_enabled),
   );
-  const [statusMap, setStatusMap] = useState<Record<string, string>>({
-    open: String(configuredMap.open ?? defaults.open ?? ""),
-    in_progress: String(configuredMap.in_progress ?? defaults.in_progress ?? ""),
-    resolved: String(configuredMap.resolved ?? defaults.resolved ?? ""),
-  });
+  const [statusMap, setStatusMap] = useState<Record<string, string>>(
+    Object.fromEntries(
+      TICKET_SYNC_STATUSES.map((status) => [
+        status,
+        String(configuredMap[status] ?? defaults[status] ?? ""),
+      ]),
+    ),
+  );
   const [saving, setSaving] = useState(false);
 
   async function saveSyncSettings() {
@@ -438,8 +451,8 @@ function TicketSyncPanel({
           Sync enabled
         </label>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        {(["open", "in_progress", "resolved"] as const).map((status) => (
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {TICKET_SYNC_STATUSES.map((status) => (
           <div key={status}>
             <Label htmlFor={`sync-${connector.id}-${status}`}>
               {status.replace("_", " ")}

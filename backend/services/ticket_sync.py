@@ -23,14 +23,22 @@ logger = logging.getLogger(__name__)
 # an ``incident_id`` (see the jira/servicenow adapters).
 TICKETING_KINDS = {"jira", "servicenow"}
 
+# OpsMender lifecycle statuses synced onto a ticket, lowest → highest. The
+# guardrail refuses to push a status whose rank is below the last one synced
+# (e.g. a reopen must not drag a Done ticket backward), matching PagerDuty.
+SYNC_STATUSES: tuple[str, ...] = ("open", "acknowledged", "in_progress", "resolved")
+STATUS_RANK: dict[str, int] = {name: i for i, name in enumerate(SYNC_STATUSES)}
+
 DEFAULT_STATUS_MAPS: dict[str, dict[str, str]] = {
     "jira": {
         "open": "To Do",
+        "acknowledged": "In Progress",
         "in_progress": "In Progress",
         "resolved": "Done",
     },
     "servicenow": {
         "open": "1",
+        "acknowledged": "2",
         "in_progress": "2",
         "resolved": "6",
     },
@@ -41,7 +49,7 @@ def normalized_status_map(kind: str, value: Any) -> dict[str, str]:
     base = dict(DEFAULT_STATUS_MAPS.get(kind, {}))
     if isinstance(value, dict):
         for key, mapped in value.items():
-            if key in {"open", "in_progress", "resolved"} and mapped is not None:
+            if key in STATUS_RANK and mapped is not None:
                 base[key] = str(mapped)
     return base
 
@@ -83,6 +91,25 @@ async def sync_incident_status(
                 adapter = get_adapter(connector.kind)
                 if adapter is None:
                     continue
+                # No-backward-move guardrail: never push a status that ranks
+                # below the last one synced onto this ticket (e.g. a reopen must
+                # not drag a resolved/Done ticket back). Unknown statuses and a
+                # NULL last status fall through and sync normally.
+                last = state.last_synced_status
+                if (
+                    last in STATUS_RANK
+                    and new_status in STATUS_RANK
+                    and STATUS_RANK[new_status] < STATUS_RANK[last]
+                ):
+                    logger.info(
+                        "ticket sync skipped backward move %s->%s connector=%s "
+                        "incident=%s",
+                        last,
+                        new_status,
+                        connector.id,
+                        incident_id,
+                    )
+                    continue
                 status_map = normalized_status_map(
                     connector.kind,
                     state.status_map or connector.config.get("status_map"),
@@ -106,6 +133,7 @@ async def sync_incident_status(
                             db,
                             state,
                             direction="outbound",
+                            internal_status=new_status,
                         )
                     else:
                         logger.warning(

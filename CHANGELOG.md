@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Acknowledged in the ticket lifecycle + no-backward-move guardrail.**
+  Acknowledging an incident now transitions its linked Jira/ServiceNow tickets
+  to the acknowledged-mapped status (defaults to the in-progress state), and the
+  status map gains an **`acknowledged`** row in the per-connector ticket-sync
+  editor. A new `ticket_sync_state.last_synced_status` (migration
+  `c3d4e5f6a7b8`) lets the outbound sync **refuse backward moves** — a reopen
+  can't drag a resolved/Done ticket back — matching PagerDuty. *(Lifecycle-
+  actions Phase 2.)*
+
 - **Auto-open + link tickets on incident creation (per service).** When an
   incident opens, OpsMender now opens a ticket in each ticketing integration
   (Jira / ServiceNow) that is in the incident service's allowlist and has ticket

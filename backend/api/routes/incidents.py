@@ -2166,6 +2166,17 @@ async def ack_incident(
             session_id=session.id,
         )
     await _notify_channels(db, incident_id, org_id, "incident.acknowledged")
+    # Transition linked tickets to the acknowledged-mapped status (PagerDuty-
+    # style). The no-backward guardrail in the sync service protects already-
+    # progressed tickets.
+    from backend.services.ticket_sync import schedule_ticket_status_sync
+
+    schedule_ticket_status_sync(
+        request.app,
+        org_id=org_id,
+        incident_id=incident_id,
+        new_status="acknowledged",
+    )
     # T1/T2 sessions start on acknowledgment (T0 already started at creation).
     # Duplicate acks are safe — an active session short-circuits this.
     auto_status, reason, tier = await _resolve_auto_start_on_ack(

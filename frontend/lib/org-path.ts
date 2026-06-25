@@ -1,5 +1,5 @@
 const ORG_SLUG_KEY = "opsmender_org_slug";
-const ORG_SCOPE_RE = /^\/o\/([^/]+)(\/dashboard(?:\/.*)?)$/;
+const ORG_SCOPE_RE = /^\/org\/([^/]+)(\/dashboard(?:\/.*)?)$/;
 
 export function getOrgSlug(): string | null {
   if (typeof window === "undefined") return null;
@@ -33,5 +33,5 @@ export function stripOrgScope(pathname: string): string {
 
 export function scopeDashboardPath(pathname: string, slug = getOrgSlug()): string {
   if (!slug || !pathname.startsWith("/dashboard")) return pathname;
-  return `/o/${encodeURIComponent(slug)}${pathname}`;
+  return `/org/${encodeURIComponent(slug)}${pathname}`;
 }

@@ -101,7 +101,7 @@ class TestFrontendMount:
     async def test_org_scoped_dashboard_route_reuses_static_export(
         self, client: AsyncClient
     ):
-        resp = await client.get("/o/test-org/dashboard/incidents/detail")
+        resp = await client.get("/org/test-org/dashboard/incidents/detail")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
 

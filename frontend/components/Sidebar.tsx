@@ -59,16 +59,6 @@ type NavGroup = {
   items: NavItem[];
 };
 
-/**
- * Sprint 64 Step 2 — single-workspace label policy (D-027).
- *
- * In single-workspace mode (``multi_org_enabled === false``), the
- * "Organizations" admin entry renames to "Workspace Settings" so the
- * sidebar reads naturally for self-hosted operators who never need to
- * think in terms of a tenant boundary. The route stays put so existing
- * deep-links keep working. When the flag flips on, the entry reverts
- * to "Organizations" because the page is now genuinely multi-tenant.
- */
 /** Whether a nav item is visible to a given role. Omitting both gates =
  *  visible to everyone. Exported for tests + the render filter. */
 export function navItemVisibleForRole(
@@ -100,7 +90,11 @@ export function requiredRolesForPath(pathname: string): string[] | null {
   return null;
 }
 
-export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
+export function buildNavGroups(
+  // Retained for signature/back-compat; the Organizations entry no longer
+  // relabels by multi-org mode (it's always "Organizations").
+  _multiOrgEnabled: boolean,
+): NavGroup[] {
   return [
     {
       id: "incident-management",
@@ -156,12 +150,12 @@ export function buildNavGroups(multiOrgEnabled: boolean): NavGroup[] {
         { href: "/dashboard/people", label: "People", icon: UserCog, roles: ["admin"] },
         {
           href: "/dashboard/organizations",
-          label: multiOrgEnabled ? "Organizations" : "Workspace Settings",
+          label: "Organizations",
           icon: Building2,
           roles: ["admin"],
         },
         { href: "/dashboard/integrations", label: "Integrations", icon: Plug, roles: ["admin"] },
-        { href: "/dashboard/config", label: "Config", icon: Settings, roles: ["admin"] },
+        { href: "/dashboard/config", label: "Settings", icon: Settings, roles: ["admin"] },
       ],
     },
   ];
@@ -436,10 +430,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [tier, setTier] = useState<number | null>(null);
-  // Sprint 64 Step 2: read from /config so the Admin → Organizations
-  // entry can rename to "Workspace Settings" in single-workspace mode.
-  // Defaults to false (= single-workspace) until the first /config
-  // response lands, matching the simple-by-default posture.
+  // Kept for the buildNavGroups signature; the Organizations entry no longer
+  // relabels by multi-org mode. The /config fetch below is what drives `tier`.
   const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
   const [orgSlug, setOrgSlug] = useState<string | null>(null);
   const previousPathnameRef = useRef(pathname);

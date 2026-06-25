@@ -1,5 +1,5 @@
 /**
- * Sprint 64 regression — Workspace Settings page renders, and clicking
+ * Sprint 64 regression — Organizations page renders, and clicking
  * Manage Users / Domains does not crash the dashboard error boundary.
  *
  * The page itself is a large composite, so these tests render the
@@ -145,19 +145,19 @@ beforeEach(() => {
   listOrganizationDomains.mockResolvedValue({ items: [], total: 0 });
 });
 
-describe("Workspace Settings page (single-workspace mode)", () => {
-  it("renders with the Workspace Settings label", async () => {
+describe("Organizations page (single-workspace mode)", () => {
+  it("renders with the Organizations label", async () => {
     render(<OrganizationsPage />);
     await waitFor(() => expect(listOrganizations).toHaveBeenCalled());
     expect(
-      await screen.findByRole("heading", { name: /Workspace Settings/i }),
+      await screen.findByRole("heading", { name: /Organizations/i }),
     ).toBeTruthy();
   });
 
   it("hides multi-org-only affordances", async () => {
     render(<OrganizationsPage />);
     await waitFor(() => expect(listOrganizations).toHaveBeenCalled());
-    await screen.findByRole("heading", { name: /Workspace Settings/i });
+    await screen.findByRole("heading", { name: /Organizations/i });
     // No "New Organization" / "Create Organization" buttons in single-workspace mode.
     expect(screen.queryByRole("button", { name: /New Organization/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Create Organization/i })).toBeNull();
@@ -166,7 +166,7 @@ describe("Workspace Settings page (single-workspace mode)", () => {
   it("does not crash when Manage Users is clicked", async () => {
     const user = (await import("@testing-library/user-event")).default.setup();
     render(<OrganizationsPage />);
-    await screen.findByRole("heading", { name: /Workspace Settings/i });
+    await screen.findByRole("heading", { name: /Organizations/i });
     // Two orgs render; click Manage Users on the first row.
     const manageButtons = await screen.findAllByRole("button", {
       name: /Manage Users/i,
@@ -190,7 +190,7 @@ describe("Workspace Settings page (single-workspace mode)", () => {
   it("does not crash when Domains is clicked", async () => {
     const user = (await import("@testing-library/user-event")).default.setup();
     render(<OrganizationsPage />);
-    await screen.findByRole("heading", { name: /Workspace Settings/i });
+    await screen.findByRole("heading", { name: /Organizations/i });
     const domainButtons = await screen.findAllByRole("button", {
       name: /Domains/i,
     });

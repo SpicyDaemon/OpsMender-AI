@@ -321,7 +321,7 @@ export function TopBar({
                   className="flex w-full items-center gap-2 border-b border-border-subtle px-3 py-2.5 text-sm text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
                 >
                   <UserCircle size={14} />
-                  Profile &amp; settings
+                  Edit Profile
                 </Link>
                 <div className="border-b border-border-subtle px-3 py-2.5">
                   <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">

@@ -1184,7 +1184,7 @@ export default function OrganizationsPage() {
   const [orgs, setOrgs] = useState<OrganizationResponse[]>([]);
   const [loading, setLoading] = useState(true);
   // Sprint 64 Step 2: in single-workspace mode the page reads as
-  // "Workspace Settings" and the create-organization affordances hide.
+  // "Organizations" and the create-organization affordances hide.
   // Defaults to false so a slow /config call doesn't briefly flash the
   // multi-org chrome on a fresh paint.
   const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
@@ -1306,12 +1306,10 @@ export default function OrganizationsPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-fg-primary">
-            {multiOrgEnabled ? "Organizations" : "Workspace Settings"}
+            Organizations
           </h1>
           <p className="mt-1 text-sm text-fg-secondary">
-            {multiOrgEnabled
-              ? "Manage multi-tenant organizations and their members."
-              : "Manage this workspace's members, domains, and authentication."}
+            Manage organizations and their members, domains, and authentication.
           </p>
         </div>
         {/* Sprint 64 Step 2: multi-org create only makes sense when

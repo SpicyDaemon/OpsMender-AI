@@ -75,7 +75,7 @@ describe("TopBar account dropdown", () => {
     await waitFor(() => expect(screen.getByText("Ada Lovelace")).toBeTruthy());
     openMenu();
 
-    expect(screen.getByText("Profile & settings")).toBeTruthy();
+    expect(screen.getByText("Edit Profile")).toBeTruthy();
     expect(screen.getByText("Sign out")).toBeTruthy();
     // Theme selector with all three modes visible (no clipping of Dark).
     expect(screen.getByRole("button", { name: /system/i })).toBeTruthy();
@@ -90,7 +90,7 @@ describe("TopBar account dropdown", () => {
 
     // The panel that contains the menu items must carry a high z-index and an
     // opaque background so it sits above page controls and is not click-through.
-    const panel = screen.getByText("Profile & settings").closest("div.absolute");
+    const panel = screen.getByText("Edit Profile").closest("div.absolute");
     expect(panel).toBeTruthy();
     const cls = panel!.className;
     expect(cls).toContain("z-50");
@@ -122,11 +122,11 @@ describe("TopBar account dropdown", () => {
     );
     await waitFor(() => expect(screen.getByText("Ada Lovelace")).toBeTruthy());
     openMenu();
-    expect(screen.getByText("Profile & settings")).toBeTruthy();
+    expect(screen.getByText("Edit Profile")).toBeTruthy();
     // The outside-click handler listens on mousedown.
     fireEvent.mouseDown(screen.getByText("outside"));
     await waitFor(() =>
-      expect(screen.queryByText("Profile & settings")).toBeNull(),
+      expect(screen.queryByText("Edit Profile")).toBeNull(),
     );
   });
 });

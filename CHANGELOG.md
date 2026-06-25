@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Navigation relabels + org URL prefix.** The org-scoped dashboard URL prefix
+  is now `/org/<slug>/…` (was `/o/<slug>/…`; old `/o/…` links still resolve and
+  rewrite forward). The Admin sidebar entry **Config → Settings** and the
+  account menu's **Profile & settings → Edit Profile**; the Organizations admin
+  page now always reads "Organizations" (the single-workspace "Workspace
+  Settings" relabel is retired) — multi-tenancy itself is unchanged.
+
 - **Integrations: one merged "Additional variables" list with a Secret toggle.**
   The two separate credential/config additional-variable repeaters are replaced
   by a single list below the Credentials/Configuration panels. Each row has a

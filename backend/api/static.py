@@ -58,7 +58,12 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
         if ".." in safe_path.split("/"):
             raise HTTPException(status_code=400, detail="invalid path")
         parts = safe_path.split("/")
-        if len(parts) >= 3 and parts[0] == "o" and parts[2] == "dashboard":
+        # Path-based org scoping: /org/<slug>/dashboard/... serves the same SPA
+        # page as /dashboard/... (the org is resolved from the X-Org-ID header,
+        # not the URL). Strip the /org/<slug> prefix to find the static file.
+        # The legacy /o/<slug> prefix is also accepted so old bookmarks still
+        # load (the client then rewrites them to /org/<slug>).
+        if len(parts) >= 3 and parts[0] in ("org", "o") and parts[2] == "dashboard":
             safe_path = "/".join(parts[2:])
 
         candidates: list[pathlib.Path] = []

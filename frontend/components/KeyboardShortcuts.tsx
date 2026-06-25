@@ -21,7 +21,7 @@ const NAV_SHORTCUTS: Shortcut[] = [
   { keys: [ALT_LABEL, "R"], label: "Reliability", target: "/dashboard/reliability" },
   { keys: [ALT_LABEL, "S"], label: "Skills", target: "/dashboard/skills" },
   { keys: [ALT_LABEL, "L"], label: "Activity", target: "/dashboard/activity" },
-  { keys: [ALT_LABEL, "C"], label: "Config", target: "/dashboard/config" },
+  { keys: [ALT_LABEL, "C"], label: "Settings", target: "/dashboard/config" },
 ];
 
 const CMD_LABEL =

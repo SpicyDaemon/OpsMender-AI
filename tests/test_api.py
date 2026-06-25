@@ -8664,6 +8664,42 @@ class TestUserAvatar:
         assert me.json()["has_avatar"] is True
         assert me.json()["avatar_url"].startswith("data:image/png;base64,")
 
+    async def test_animated_gif_stays_animated(self, client, auth_headers):
+        from io import BytesIO
+        from PIL import Image
+
+        frames = [
+            Image.new("RGB", (300, 300), (255, 0, 0)),
+            Image.new("RGB", (300, 300), (0, 0, 255)),
+            Image.new("RGB", (300, 300), (0, 255, 0)),
+        ]
+        buf = BytesIO()
+        frames[0].save(
+            buf,
+            "GIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=120,
+            loop=0,
+        )
+        resp = await client.post(
+            "/auth/me/avatar",
+            files={"file": ("anim.gif", buf.getvalue(), "image/gif")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        url = resp.json()["avatar_url"]
+        assert url.startswith("data:image/gif;base64,")
+
+        import base64
+
+        raw = base64.b64decode(url.split(",", 1)[1])
+        img = Image.open(BytesIO(raw))
+        assert img.format == "GIF"
+        assert getattr(img, "is_animated", False) is True
+        assert img.n_frames == 3  # all frames preserved
+        assert img.width <= 200 and img.height <= 200
+
     async def test_rejects_oversized_upload(self, client, auth_headers):
         resp = await client.post(
             "/auth/me/avatar",

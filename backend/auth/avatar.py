@@ -1,11 +1,14 @@
 """Profile-picture validation + normalization.
 
 Accepts a handful of common image formats, enforces a 5 MB upload ceiling, then
-normalizes every upload to a PNG that fits within 200x200 (aspect preserved,
-never upscaled). Normalizing to PNG guarantees the browser can render it (TIFF
-and some BMP/ICO variants don't render in ``<img>``) and keeps the stored bytes
-small. Raises :class:`ValueError` with an operator-friendly message on any
-rejection.
+fits the image within 200x200 (aspect preserved, never upscaled). Output:
+
+* an **animated GIF** stays an animated GIF — every frame is resized so the
+  avatar keeps moving; and
+* everything else is normalized to a **PNG** (which also guarantees the browser
+  can render it — TIFF and some BMP/ICO variants don't render in ``<img>``).
+
+Raises :class:`ValueError` with an operator-friendly message on any rejection.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from __future__ import annotations
 import base64
 from io import BytesIO
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps, ImageSequence, UnidentifiedImageError
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 TARGET_SIZE = (200, 200)
@@ -60,6 +63,13 @@ def process_avatar(raw: bytes, filename: str | None = None) -> bytes:
             opened.load()  # force-decode to catch truncated/corrupt files
             if opened.format not in ALLOWED_FORMATS:
                 raise ValueError(f"Unsupported image format. Allowed: {_ALLOWED_HINT}.")
+            # Keep an animated GIF animated; everything else becomes a PNG.
+            if (
+                opened.format == "GIF"
+                and getattr(opened, "is_animated", False)
+                and getattr(opened, "n_frames", 1) > 1
+            ):
+                return _resize_animated_gif(opened)
             # Honor EXIF orientation (phone photos) then flatten + shrink.
             oriented = ImageOps.exif_transpose(opened)
             image = oriented.convert("RGBA")
@@ -72,9 +82,42 @@ def process_avatar(raw: bytes, filename: str | None = None) -> bytes:
     return out.getvalue()
 
 
-def to_data_url(png_bytes: bytes | None) -> str | None:
-    """Encode normalized PNG bytes as a ``data:`` URL for inline rendering."""
-    if not png_bytes:
+def _resize_animated_gif(img: Image.Image) -> bytes:
+    """Resize every frame of an animated GIF to fit 200x200, preserving timing.
+
+    Each frame is read fully composited (Pillow applies GIF disposal on seek),
+    resized independently, then re-assembled with the original per-frame
+    durations and loop count."""
+
+    frames: list[Image.Image] = []
+    durations: list[int] = []
+    for frame in ImageSequence.Iterator(img):
+        composited = frame.convert("RGBA")
+        composited.thumbnail(TARGET_SIZE)
+        frames.append(composited)
+        durations.append(int(frame.info.get("duration", 100)))
+
+    out = BytesIO()
+    frames[0].save(
+        out,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        loop=int(img.info.get("loop", 0)),
+        duration=durations,
+        disposal=2,
+        optimize=True,
+    )
+    return out.getvalue()
+
+
+def to_data_url(image_bytes: bytes | None) -> str | None:
+    """Encode stored avatar bytes as a ``data:`` URL for inline rendering.
+
+    The stored bytes are a normalized PNG, or an animated GIF — sniff which from
+    the magic header so the data URL carries the right media type."""
+    if not image_bytes:
         return None
-    encoded = base64.b64encode(png_bytes).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    mime = "image/gif" if image_bytes[:4] == b"GIF8" else "image/png"
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:{mime};base64,{encoded}"

@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transitions it on acknowledge / resolve" (or a warning when sync is off), and
   every connector lists how many resources the agent can read plus the
   approval-gated actions it can take — so admins see the concrete effect of an
-  attached integration (PagerDuty-style). *(Lifecycle-actions Phase 3.)*
+  attached integration. *(Lifecycle-actions Phase 3.)*
 
 - **Acknowledged in the ticket lifecycle + no-backward-move guardrail.**
   Acknowledging an incident now transitions its linked Jira/ServiceNow tickets
@@ -43,8 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   status map gains an **`acknowledged`** row in the per-connector ticket-sync
   editor. A new `ticket_sync_state.last_synced_status` (migration
   `c3d4e5f6a7b8`) lets the outbound sync **refuse backward moves** — a reopen
-  can't drag a resolved/Done ticket back — matching PagerDuty. *(Lifecycle-
-  actions Phase 2.)*
+  can't drag a resolved/Done ticket back. *(Lifecycle-actions Phase 2.)*
 
 - **Auto-open + link tickets on incident creation (per service).** When an
   incident opens, OpsMender now opens a ticket in each ticketing integration
@@ -55,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   idempotent (never opens a duplicate), and reuses the existing
   `IncidentIntegrationLink` + `TicketSyncState` plumbing so subsequent
   acknowledge/resolve transitions sync automatically. *(Lifecycle-actions
-  Phase 1; matches how PagerDuty auto-creates + bidirectionally syncs tickets.)*
+  Phase 1 — auto-create + bidirectional status sync.)*
 
 - **Sentry / New Relic / Splunk integration fields.** The three catalog-only
   providers (no outbound adapter yet) gained proper guided fields: Sentry —

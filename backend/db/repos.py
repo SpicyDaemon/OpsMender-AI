@@ -295,6 +295,25 @@ class UserRepo:
         return await db.get(User, user_id)
 
     @staticmethod
+    async def set_avatar(
+        db: AsyncSession, user_id: uuid.UUID, image: bytes | None
+    ) -> User | None:
+        """Set (or clear when ``image`` is None) the user's uploaded avatar.
+
+        ``image`` must already be the normalized PNG bytes. The updated-at
+        timestamp is set on upload and cleared on removal."""
+
+        user = await db.get(User, user_id)
+        if user is None:
+            return None
+        user.avatar_image = image
+        user.avatar_image_updated_at = (
+            datetime.now(timezone.utc) if image is not None else None
+        )
+        await db.flush()
+        return user
+
+    @staticmethod
     async def count_roster_memberships(
         db: AsyncSession, user_id: uuid.UUID
     ) -> int:

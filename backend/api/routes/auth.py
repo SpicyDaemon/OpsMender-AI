@@ -13,7 +13,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +36,7 @@ from backend.api.auth import (
     verify_password,
 )
 from backend.api.deps import get_db
+from backend.auth.avatar import process_avatar, to_data_url
 from backend.api.schemas import (
     LoginRequest,
     LoginResponse,
@@ -354,6 +364,7 @@ async def me(
     )
     return UserResponse.model_validate(user).model_copy(
         update={
+            "avatar_url": to_data_url(user.avatar_image),
             "mfa_enabled": bool(mfa and mfa.enabled_at),
             "mfa_enrollment_required": bool(
                 user.auth_source == "local"
@@ -415,6 +426,48 @@ async def update_me(
     )
     await db.commit()
     return updated
+
+
+@router.post(
+    "/me/avatar",
+    response_model=UserResponse,
+    summary="Upload the current user's profile picture",
+)
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Accept a .png/.jpg/.jpeg/.gif/.bmp/.ico/.tiff (<=5 MB), normalize it to a
+    PNG that fits within 200x200, and store it as the user's avatar."""
+    raw = await file.read()
+    try:
+        png = process_avatar(raw, file.filename)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    updated = await UserRepo.set_avatar(db, user.id, png)
+    assert updated is not None
+    await db.commit()
+    return UserResponse.model_validate(updated).model_copy(
+        update={"avatar_url": to_data_url(updated.avatar_image)}
+    )
+
+
+@router.delete(
+    "/me/avatar",
+    response_model=UserResponse,
+    summary="Remove the current user's profile picture",
+)
+async def delete_my_avatar(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    updated = await UserRepo.set_avatar(db, user.id, None)
+    assert updated is not None
+    await db.commit()
+    return UserResponse.model_validate(updated)
 
 
 @router.post(

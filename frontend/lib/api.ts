@@ -160,6 +160,35 @@ export async function changeMyPassword(
   await api.post("/auth/me/password", body);
 }
 
+export async function uploadMyAvatar(file: File): Promise<UserResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Don't set Content-Type — the browser adds the multipart boundary.
+  const res = await fetch(`${BASE_URL}/auth/me/avatar`, {
+    method: "POST",
+    body: form,
+    headers,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? JSON.stringify(body);
+    } catch {
+      // non-JSON response
+    }
+    throw new Error(detail);
+  }
+  return res.json() as Promise<UserResponse>;
+}
+
+export async function deleteMyAvatar(): Promise<UserResponse> {
+  return api.del<UserResponse>("/auth/me/avatar");
+}
+
 export async function getMFAStatus(): Promise<import("./types").MFAStatusResponse> {
   return api.get<import("./types").MFAStatusResponse>("/auth/mfa/status");
 }

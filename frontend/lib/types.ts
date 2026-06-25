@@ -24,6 +24,10 @@ export interface UserResponse {
   last_name?: string | null;
   avatar_color?: string | null;
   phone?: string | null;
+  /** Whether an uploaded profile picture exists (cheap flag). */
+  has_avatar?: boolean;
+  /** Data URL of the uploaded picture; present on /auth/me, null in lists. */
+  avatar_url?: string | null;
   must_change_password?: boolean;
   mfa_enabled?: boolean;
   mfa_enrollment_required?: boolean;

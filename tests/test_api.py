@@ -8622,3 +8622,80 @@ class TestNotificationAccountEvents:
         assert r.status_code == 200
         nr = await client.get("/notifications/unread-count", headers=viewer_headers)
         assert nr.json()["unread"] == 0
+
+
+class TestUserAvatar:
+    """Uploaded profile pictures: normalize to a <=200x200 PNG; validate."""
+
+    @staticmethod
+    def _png(size: tuple[int, int] = (300, 300)) -> bytes:
+        from io import BytesIO
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGB", size, (12, 34, 56)).save(buf, "PNG")
+        return buf.getvalue()
+
+    async def test_upload_resizes_and_serves_data_url(self, client, auth_headers):
+        png = self._png((300, 240))
+        resp = await client.post(
+            "/auth/me/avatar",
+            files={"file": ("me.png", png, "image/png")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["has_avatar"] is True
+        assert body["avatar_url"].startswith("data:image/png;base64,")
+
+        # The normalized image fits within 200x200 (aspect preserved).
+        import base64
+        from io import BytesIO
+        from PIL import Image
+
+        raw = base64.b64decode(body["avatar_url"].split(",", 1)[1])
+        img = Image.open(BytesIO(raw))
+        assert img.format == "PNG"
+        assert img.width <= 200 and img.height <= 200
+        assert max(img.size) == 200  # the long edge was scaled to the cap
+
+        # /auth/me also carries the data URL for the owner.
+        me = await client.get("/auth/me", headers=auth_headers)
+        assert me.json()["has_avatar"] is True
+        assert me.json()["avatar_url"].startswith("data:image/png;base64,")
+
+    async def test_rejects_oversized_upload(self, client, auth_headers):
+        resp = await client.post(
+            "/auth/me/avatar",
+            files={"file": ("big.png", b"\x00" * (5 * 1024 * 1024 + 1), "image/png")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "5 MB" in resp.json()["detail"]
+
+    async def test_rejects_non_image(self, client, auth_headers):
+        resp = await client.post(
+            "/auth/me/avatar",
+            files={"file": ("notreally.png", b"this is not an image", "image/png")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_rejects_unsupported_extension(self, client, auth_headers):
+        resp = await client.post(
+            "/auth/me/avatar",
+            files={"file": ("avatar.svg", b"<svg/>", "image/svg+xml")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_delete_clears_avatar(self, client, auth_headers):
+        await client.post(
+            "/auth/me/avatar",
+            files={"file": ("me.png", self._png(), "image/png")},
+            headers=auth_headers,
+        )
+        resp = await client.delete("/auth/me/avatar", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["has_avatar"] is False
+        assert resp.json()["avatar_url"] is None

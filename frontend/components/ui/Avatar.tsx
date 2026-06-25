@@ -74,10 +74,25 @@ export function Avatar({
     first_name?: string | null;
     last_name?: string | null;
     avatar_color?: string | null;
+    avatar_url?: string | null;
   };
   size?: number;
   className?: string;
 }) {
+  // An uploaded picture wins over the generated initials avatar.
+  if (user.avatar_url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={user.avatar_url}
+        alt={`${userDisplayName(user)} avatar`}
+        width={size}
+        height={size}
+        className={`inline-block shrink-0 rounded-md object-cover ${className}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   return (
     <span
       className={`inline-flex shrink-0 items-center justify-center rounded-md font-semibold text-white ${className}`}

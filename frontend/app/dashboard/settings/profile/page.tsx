@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Bell, Save, UserCircle } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { Bell, ImageUp, Save, Trash2, UserCircle } from "lucide-react";
 import { useAuth } from "@/context/auth";
-import { changeMyPassword, updateMe } from "@/lib/api";
+import {
+  changeMyPassword,
+  deleteMyAvatar,
+  updateMe,
+  uploadMyAvatar,
+} from "@/lib/api";
 import {
   Avatar,
   AVATAR_COLOR_KEYS,
@@ -32,6 +37,9 @@ export default function ProfileSettingsPage() {
   });
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState("");
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
 
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [savingPw, setSavingPw] = useState(false);
@@ -62,6 +70,7 @@ export default function ProfileSettingsPage() {
     first_name: form.first_name,
     last_name: form.last_name,
     avatar_color: form.avatar_color || null,
+    avatar_url: user.avatar_url ?? null,
   };
 
   async function saveProfile() {
@@ -114,6 +123,35 @@ export default function ProfileSettingsPage() {
     }
   }
 
+  async function onAvatarSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setAvatarBusy(true);
+    try {
+      await uploadMyAvatar(file);
+      await refresh();
+      toast.success("Profile picture updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function removeAvatar() {
+    setAvatarBusy(true);
+    try {
+      await deleteMyAvatar();
+      await refresh();
+      toast.success("Profile picture removed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
@@ -126,7 +164,7 @@ export default function ProfileSettingsPage() {
       <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
         <div className="mb-5 flex items-center gap-4">
           <Avatar user={previewUser} size={56} />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-base font-semibold text-fg-primary">
               {`${form.first_name} ${form.last_name}`.trim() || form.username || user.username}
             </p>
@@ -134,6 +172,37 @@ export default function ProfileSettingsPage() {
               <Badge variant="default">{user.role}</Badge>
               <span className="text-xs text-fg-muted">{user.auth_source || "local"}</span>
             </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.gif,.bmp,.ico,.tiff,.tif,image/*"
+                className="hidden"
+                onChange={onAvatarSelected}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => avatarInputRef.current?.click()}
+                loading={avatarBusy}
+              >
+                <ImageUp size={14} /> {user.has_avatar ? "Change photo" : "Upload photo"}
+              </Button>
+              {user.has_avatar && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={removeAvatar}
+                  disabled={avatarBusy}
+                >
+                  <Trash2 size={14} /> Remove
+                </Button>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-fg-muted">
+              PNG, JPG, GIF, BMP, ICO, or TIFF up to 5 MB — resized to fit
+              200×200.
+            </p>
           </div>
         </div>
 

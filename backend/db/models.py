@@ -31,6 +31,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -268,6 +269,14 @@ class User(Base):
     # `sms` / `voice` personal-routing channels when no per-channel address is
     # set. Optional — no phone means those channels simply have no recipient.
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Optional uploaded profile picture, normalized server-side to a PNG that
+    # fits within 200x200. Stored inline (small after resize); served to the
+    # owner as a data URL on /auth/me to avoid <img> auth-header limitations.
+    # When unset the generated initials avatar is used.
+    avatar_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    avatar_image_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Forced password change (temp passwords from admin create / temp reset).
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
@@ -294,6 +303,11 @@ class User(Base):
     mfa: Mapped["UserMFA | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
+
+    @property
+    def has_avatar(self) -> bool:
+        """Cheap flag (no bytes loaded) — does the user have an uploaded pic."""
+        return self.avatar_image_updated_at is not None
 
     __table_args__ = (
         Index(

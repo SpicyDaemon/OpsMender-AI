@@ -140,6 +140,11 @@ class UserResponse(BaseModel):
     last_name: Optional[str] = None
     avatar_color: Optional[str] = None
     phone: Optional[str] = None
+    # Uploaded profile picture. ``has_avatar`` is cheap (set from a timestamp
+    # column); ``avatar_url`` is a data URL populated only where the image bytes
+    # are loaded (e.g. /auth/me), so list responses stay lean.
+    has_avatar: bool = False
+    avatar_url: Optional[str] = None
     must_change_password: bool = False
     mfa_enabled: bool = False
     mfa_enrollment_required: bool = False

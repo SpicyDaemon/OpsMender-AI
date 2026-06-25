@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Uploadable profile pictures.** Users can upload a profile photo
+  (.png/.jpg/.jpeg/.gif/.bmp/.ico/.tiff, ≤5 MB) from Edit Profile; it's
+  validated, EXIF-oriented, resized to fit 200×200, and normalized to PNG
+  server-side (migration `e5f6a7b8c9d0` adds `users.avatar_image` +
+  `avatar_image_updated_at`). `POST` / `DELETE /auth/me/avatar`; the image is
+  returned as a data URL on `/auth/me` (so the `<img>` needs no auth header) and
+  the avatar component renders it in place of the generated initials. List
+  responses stay lean (`has_avatar` flag only; no bytes).
+
 ### Changed
 
 - **Navigation relabels + org URL prefix.** The org-scoped dashboard URL prefix

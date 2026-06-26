@@ -362,7 +362,9 @@ async def dispatch_page(
                 blocks: list[dict] | None = None
                 if key == "slack_dm":
                     blocks = build_page_card_blocks(
-                        incident, base_url=os.environ.get("OPSMENDER_PUBLIC_URL")
+                        incident,
+                        base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+                        org_name=org_name,
                     )
                 elif key == "teams_dm_graph":
                     from backend.paging.teams_cards import (
@@ -375,6 +377,7 @@ async def dispatch_page(
                             build_page_card_adaptive(
                                 incident,
                                 base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+                                org_name=org_name,
                             )
                         )
                     ]

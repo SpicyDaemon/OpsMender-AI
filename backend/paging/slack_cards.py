@@ -60,6 +60,7 @@ def build_page_card_blocks(
     base_url: str | None = None,
     include_native_actions: bool = False,
     status_update: bool = False,
+    org_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Block Kit JSON for an actionable page card. ``base_url`` is the
     OpsMender web UI origin (e.g. ``https://opsmender.example.com``); when
@@ -93,7 +94,14 @@ def build_page_card_blocks(
         {
             "type": "context",
             "elements": [
-                {"type": "mrkdwn", "text": f"Incident `{incident_id_str}`"}
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"Org: *{org_name}*  •  Incident `{incident_id_str}`"
+                        if org_name
+                        else f"Incident `{incident_id_str}`"
+                    ),
+                }
             ],
         },
     ]

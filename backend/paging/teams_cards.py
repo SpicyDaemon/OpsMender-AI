@@ -58,6 +58,7 @@ def build_page_card_adaptive(
     base_url: str | None = None,
     include_native_actions: bool = False,
     status_update: bool = False,
+    org_name: str | None = None,
 ) -> dict[str, Any]:
     """Return a single adaptive card payload (the value that goes inside
     an attachment's ``content`` field). Use :func:`wrap_card_as_attachment`
@@ -74,7 +75,10 @@ def build_page_card_adaptive(
         first_line = incident.description.strip().splitlines()[0]
         snippet = first_line[:300]
 
-    facts: list[dict[str, str]] = [
+    facts: list[dict[str, str]] = []
+    if org_name:
+        facts.append({"title": "Org", "value": org_name})
+    facts += [
         {"title": "Priority", "value": priority},
         {"title": "Status", "value": status_label},
     ]

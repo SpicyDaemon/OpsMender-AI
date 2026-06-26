@@ -70,6 +70,7 @@ def build_incident_message(
     responder: dict | None = None,
     service_name: str | None = None,
     team_name: str | None = None,
+    org_name: str | None = None,
     ai_summary: str | None = None,
     supports_actions: bool = False,
 ) -> str:
@@ -101,6 +102,8 @@ def build_incident_message(
     context_bits = [f"Service/source: {source}"]
     if team_name:
         context_bits.append(f"Team: {team_name}")
+    if org_name:
+        context_bits.append(f"Org: {org_name}")
     lines.append(" · ".join(context_bits))
 
     if responder:

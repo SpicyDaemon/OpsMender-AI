@@ -31,11 +31,18 @@ from backend.db.repos import (
     IncidentTrackPostRepo,
     IncidentPageRepo,
     IncidentRepo,
+    OrganizationRepo,
     ServiceRepo,
     SessionRepo,
     TeamRepo,
     UserRepo,
 )
+
+
+async def _resolve_org_name(db: AsyncSession, org_id: uuid.UUID) -> str | None:
+    """Org name for comms surfaces (None only if it can't be found)."""
+    org = await OrganizationRepo.get_by_id(db, org_id)
+    return org.name if org is not None else None
 
 log = logging.getLogger(__name__)
 
@@ -155,6 +162,7 @@ def _format_session_event(
     incident,
     service_name: str | None = None,
     team_name: str | None = None,
+    org_name: str | None = None,
     actor_name: str | None = None,
     base_url: str | None = None,
 ) -> str:
@@ -189,6 +197,8 @@ def _format_session_event(
         lines.append(f"Service: `{service_name}`")
     if team_name:
         lines.append(f"Team: `{team_name}`")
+    if org_name:
+        lines.append(f"Org: `{org_name}`")
     # Richer completion post: surface the AI's summary so responders get the
     # outcome in-channel, not just a status change.
     if event_type == "session.completed" and session is not None:
@@ -580,6 +590,7 @@ async def deliver_session_chat_event(
         team_id, team_name, service_name = await _resolve_incident_team(
             db, org_id, incident
         )
+        org_name = await _resolve_org_name(db, org_id)
         actor = await UserRepo.get_by_id(db, actor_user_id) if actor_user_id else None
         connectors = list(
             await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
@@ -595,6 +606,7 @@ async def deliver_session_chat_event(
         incident=incident,
         service_name=service_name,
         team_name=team_name,
+        org_name=org_name,
         actor_name=_display_name(actor),
         base_url=base_url,
     )
@@ -742,6 +754,7 @@ async def deliver_incident_event(
         team_id, team_name, service_name = await _resolve_incident_team(
             db, org_id, incident
         )
+        org_name = await _resolve_org_name(db, org_id)
 
         responder = await _resolve_incident_responder(db, org_id, incident.id)
         connectors = list(
@@ -780,6 +793,7 @@ async def deliver_incident_event(
             responder=responder,
             service_name=service_name,
             team_name=team_name,
+            org_name=org_name,
             supports_actions=native_actions_ready,
         )
         chat_ids = _allowed_chat_ids(connector)

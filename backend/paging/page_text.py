@@ -2,9 +2,8 @@
 
 Used by both the immediate fan-out (``dispatch``) and the staged
 notification-escalation path so SMS / voice / email / text-fallback pages read
-identically. The org name is included only when the deployment actually has more
-than one organization — in a single-org install the org is unambiguous, so we
-keep the page clean.
+identically. Every page names its organization so a responder always knows which
+org a page is for.
 """
 
 from __future__ import annotations
@@ -39,14 +38,9 @@ def format_page_subject_body(
 
 
 async def org_name_for_page(db: AsyncSession, org_id: uuid.UUID) -> str | None:
-    """Resolve the org name to show on a page, or ``None`` for single-org.
+    """Resolve the org name to show on a page (``None`` only if it can't be
+    found). Every page names its org so a responder always knows which
+    organization a page is for."""
 
-    Returns the org's name only when the deployment has more than one
-    organization (so an operator on-call across orgs can tell them apart);
-    otherwise returns ``None`` so the page stays clean."""
-
-    orgs = await OrganizationRepo.list_all(db)
-    if len(orgs) <= 1:
-        return None
-    match = next((o for o in orgs if o.id == org_id), None)
-    return match.name if match is not None else None
+    org = await OrganizationRepo.get_by_id(db, org_id)
+    return org.name if org is not None else None

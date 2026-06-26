@@ -9,12 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Pages name the org (multi-org deployments).** An incident page's text
-  (SMS / voice / email / text fallback) now leads with an `Org: <name>` line so
-  an operator on-call across organizations can tell incidents apart. Shown only
-  when the deployment actually has more than one org — single-org installs stay
-  clean. Applied to both the immediate fan-out and the staged
-  notification-escalation path via a shared formatter.
+- **Every comms surface names the org.** Incident communications now identify
+  the organization so a responder always knows which org a page/notification is
+  for: the personal page text (SMS / voice / email / text fallback), the Slack
+  and Teams DM page cards, the incident lifecycle channel posts (created /
+  acknowledged / escalated / resolved), and the AI-session channel posts all
+  carry the org name.
 
 - **Uploadable profile pictures.** Users can upload a profile photo
   (.png/.jpg/.jpeg/.gif/.bmp/.ico/.tiff, ≤5 MB) from Edit Profile; it's

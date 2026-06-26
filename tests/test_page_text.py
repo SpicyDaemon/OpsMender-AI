@@ -47,19 +47,13 @@ async def factory():
     await engine.dispose()
 
 
-async def test_org_name_omitted_for_single_org(factory):
-    org_id = uuid.uuid4()
-    async with factory() as db:
-        db.add(Organization(id=org_id, name="Main", slug="main"))
-        await db.commit()
-        assert await org_name_for_page(db, org_id) is None
-
-
-async def test_org_name_shown_when_multiple_orgs(factory):
+async def test_org_name_always_resolved(factory):
     a, b = uuid.uuid4(), uuid.uuid4()
     async with factory() as db:
         db.add(Organization(id=a, name="Acme", slug="acme"))
         db.add(Organization(id=b, name="Globex", slug="globex"))
         await db.commit()
+        # The org is named regardless of how many orgs exist.
         assert await org_name_for_page(db, a) == "Acme"
         assert await org_name_for_page(db, b) == "Globex"
+        assert await org_name_for_page(db, uuid.uuid4()) is None  # unknown org

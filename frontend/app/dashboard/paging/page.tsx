@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { DashboardRedirect } from "@/components/DashboardRedirect";
 
 export default function PagingIndexPage() {
-  redirect("/dashboard/paging/services");
+  return <DashboardRedirect to="/dashboard/paging/services" />;
 }

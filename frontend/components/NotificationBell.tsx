@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -21,6 +20,8 @@ import {
   markNotificationRead,
   type Notification,
 } from "@/lib/api";
+import { useDashboardHref } from "@/lib/use-dashboard-href";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 const PANEL_LIMIT = 10;
 const POLL_MS = 60_000;
@@ -53,7 +54,8 @@ function timeAgo(iso: string): string {
 }
 
 export function NotificationBell() {
-  const router = useRouter();
+  const dashboardHref = useDashboardHref();
+  const navigateDashboard = useDashboardNavigation();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -149,7 +151,7 @@ export function NotificationBell() {
       });
     }
     setOpen(false);
-    if (item.link) router.push(item.link);
+    if (item.link) navigateDashboard(item.link);
   }
 
   async function handleMarkAll() {
@@ -259,7 +261,7 @@ export function NotificationBell() {
           </ul>
 
           <Link
-            href="/dashboard/notifications"
+            href={dashboardHref("/dashboard/notifications")}
             onClick={() => setOpen(false)}
             className="block border-t border-border-subtle px-3 py-2.5 text-center text-xs font-medium text-accent hover:bg-bg-hover transition-colors"
           >

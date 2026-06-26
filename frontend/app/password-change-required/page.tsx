@@ -8,6 +8,7 @@ import { changeMyPassword } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 /**
  * Forced password change. Reached when the signed-in user has a temporary
@@ -17,6 +18,7 @@ import { PasswordField } from "@/components/ui/PasswordField";
  */
 export default function PasswordChangeRequiredPage() {
   const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const { user, loading, refresh } = useAuth();
 
   const [current, setCurrent] = useState("");
@@ -28,8 +30,8 @@ export default function PasswordChangeRequiredPage() {
   useEffect(() => {
     if (!loading && !user) router.push("/login");
     // If the flag is already cleared (e.g. navigated here directly), move on.
-    else if (!loading && user && !user.must_change_password) router.push("/dashboard");
-  }, [loading, user, router]);
+    else if (!loading && user && !user.must_change_password) navigateDashboard("/dashboard");
+  }, [loading, user, router, navigateDashboard]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -46,7 +48,7 @@ export default function PasswordChangeRequiredPage() {
     try {
       await changeMyPassword({ current_password: current, new_password: next });
       await refresh();
-      router.push("/dashboard");
+      navigateDashboard("/dashboard");
     } catch (err) {
       setError(
         err instanceof Error && err.message

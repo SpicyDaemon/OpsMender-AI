@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useAuth } from "@/context/auth";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import { responderDisplay } from "@/lib/responder";
 import type {
   FireTestIncidentResponse,
@@ -404,7 +405,7 @@ export default function IncidentsPage() {
   const [customTo, setCustomTo] = useState("");
   const toast = useToast();
   const { user } = useAuth();
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const searchParams = useSearchParams();
   const canManage = user?.role === "admin" || user?.role === "operator";
   // Creating incidents + firing test incidents is admin-only (Operators
@@ -430,9 +431,9 @@ export default function IncidentsPage() {
       next.delete("new");
       next.delete("test");
       const qs = next.toString();
-      router.replace(`/dashboard/incidents${qs ? `?${qs}` : ""}`);
+      navigateDashboard(`/dashboard/incidents${qs ? `?${qs}` : ""}`, { replace: true });
     }
-  }, [searchParams, router, isAdmin]);
+  }, [searchParams, navigateDashboard, isAdmin]);
 
   const loadMetadata = useCallback(async () => {
     try {

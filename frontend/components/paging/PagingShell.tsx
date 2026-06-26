@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Bell,
@@ -40,6 +39,8 @@ import {
 import { RosterCalendarModal } from "@/components/RosterCalendarModal";
 import { NotificationChannelsPage } from "@/components/NotificationChannelsPage";
 import { useAuth } from "@/context/auth";
+import { useDashboardHref } from "@/lib/use-dashboard-href";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 import {
   approveMaintenanceWindow,
@@ -242,9 +243,10 @@ const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
 
 export function PagingShell({ initialTab }: { initialTab: Tab }) {
   const toast = useToast();
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const tab = initialTab;
   const { user } = useAuth();
+  const dashboardHref = useDashboardHref();
   // Operators can view paging setup in read-only mode; only admins can create/edit/delete.
   const canEdit = user?.role === "admin";
   const [showFlow, setShowFlow] = useState(false);
@@ -308,7 +310,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
             <button
               key={t.id}
               type="button"
-              onClick={() => router.push(`/dashboard/paging/${TAB_SLUGS[t.id]}`)}
+              onClick={() => navigateDashboard(`/dashboard/paging/${TAB_SLUGS[t.id]}`)}
               aria-current={isActive ? "page" : undefined}
               className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
                 isActive
@@ -4276,6 +4278,7 @@ export function NotificationPreferencesPanel({
 }) {
   const toast = useToast();
   const { user } = useAuth();
+  const dashboardHref = useDashboardHref();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -4642,7 +4645,7 @@ export function NotificationPreferencesPanel({
                                 </span>{" "}
                                 (from your{" "}
                                 <a
-                                  href="/dashboard/settings/profile"
+                                  href={dashboardHref("/dashboard/settings/profile")}
                                   className="text-accent underline"
                                 >
                                   profile
@@ -4655,7 +4658,7 @@ export function NotificationPreferencesPanel({
                                 <AlertTriangle size={12} className="shrink-0" />
                                 No phone number on your profile — add one in your{" "}
                                 <a
-                                  href="/dashboard/settings/profile"
+                                  href={dashboardHref("/dashboard/settings/profile")}
                                   className="text-accent underline"
                                 >
                                   profile
@@ -4704,7 +4707,7 @@ export function NotificationPreferencesPanel({
           sessions; Email and SMS are delivery-only. <strong>Voice Call</strong>{" "}
           places an automated phone call to the number on your{" "}
           <a
-            href="/dashboard/settings/profile"
+            href={dashboardHref("/dashboard/settings/profile")}
             className="text-accent underline"
           >
             profile

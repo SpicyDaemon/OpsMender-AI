@@ -249,6 +249,32 @@ export function TopBar({
             )}
           </div>
         )}
+        {user && !tenant?.pinned && activeOrg && !multiOrgEnabled && (
+          <div
+            title={
+              activeOrgRole
+                ? `Current organization: ${activeOrg.name} — your role: ${activeOrgRole}`
+                : `Current organization: ${activeOrg.name}`
+            }
+            aria-label={`Current organization: ${activeOrg.name}${activeOrgRole ? `, role ${activeOrgRole}` : ""}`}
+            className="hidden h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary sm:flex"
+          >
+            <Building2 size={14} className="shrink-0 text-fg-muted" />
+            <span className="hidden text-[10px] font-semibold uppercase tracking-wide text-fg-muted lg:inline">
+              Org
+            </span>
+            <span className="max-w-[120px] truncate font-medium text-fg-primary lg:max-w-[160px]">
+              {activeOrg.name}
+            </span>
+            {activeOrgRole && (
+              <span
+                className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
+              >
+                {activeOrgRole}
+              </span>
+            )}
+          </div>
+        )}
         <button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent("opsmender:open-shortcuts"))}

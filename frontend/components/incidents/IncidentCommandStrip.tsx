@@ -22,7 +22,6 @@
  */
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Check,
   CheckCircle2,
@@ -45,6 +44,7 @@ import {
   deleteIncident,
   releaseIncident,
 } from "@/lib/api";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import type {
   IncidentAssignmentResponse,
   IncidentResponse,
@@ -74,7 +74,7 @@ export function IncidentCommandStrip({
   className,
 }: Props) {
   const toast = useToast();
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const { user } = useAuth();
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -139,9 +139,9 @@ export function IncidentCommandStrip({
       "resolve",
       () => bulkIncidentAction("resolve", [incident.id]),
       "Incident resolved",
-    );
+  );
   const handlePostmortem = () => {
-    router.push(`/dashboard/incidents/postmortem?id=${incident.id}`);
+    navigateDashboard(`/dashboard/incidents/postmortem?id=${incident.id}`);
   };
   const handleDelete = async () => {
     if (
@@ -155,7 +155,7 @@ export function IncidentCommandStrip({
     try {
       await deleteIncident(incident.id);
       toast.success("Incident permanently deleted.");
-      router.push("/dashboard/incidents");
+      navigateDashboard("/dashboard/incidents");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
       setBusy(null);

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Bell,
@@ -30,6 +29,7 @@ import { FilterChips } from "@/components/ui/FilterChips";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 const PAGE_SIZE = 25;
 
@@ -63,7 +63,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["value"];
 
 export default function NotificationsPage() {
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("all");
   const [items, setItems] = useState<Notification[]>([]);
@@ -161,7 +161,7 @@ export default function NotificationsPage() {
       setUnread((u) => Math.max(0, u - 1));
       markNotificationRead(item.id, true).catch(() => load(true));
     }
-    if (item.link) router.push(item.link);
+    if (item.link) navigateDashboard(item.link);
   }
 
   const hasMore = items.length < total;

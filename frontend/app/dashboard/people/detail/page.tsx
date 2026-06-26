@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -27,6 +27,7 @@ import type {
   UserResponse,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -105,7 +106,7 @@ function PersonDetailGuard() {
 
 function PersonDetail() {
   const searchParams = useSearchParams();
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const { user: actor } = useAuth();
   const toast = useToast();
   const id = searchParams.get("id") ?? "";
@@ -176,7 +177,7 @@ function PersonDetail() {
       <ActionsCard
         user={target}
         onChanged={reload}
-        onDeleted={() => router.push("/dashboard/people")}
+        onDeleted={() => navigateDashboard("/dashboard/people")}
         isSelf={isSelf}
       />
     </div>

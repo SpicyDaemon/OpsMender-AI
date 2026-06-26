@@ -9,10 +9,12 @@ import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 import { FormAlert, Input, Label } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 export default function RegisterPage() {
   const { login } = useAuth();
   const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -32,7 +34,7 @@ export default function RegisterPage() {
       await register(form.email, form.password);
       // Auto-login after registration
       await login(form.email, form.password);
-      router.push("/dashboard");
+      navigateDashboard("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

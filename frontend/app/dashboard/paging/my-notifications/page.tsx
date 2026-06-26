@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { DashboardRedirect } from "@/components/DashboardRedirect";
 
 export default function PagingMyNotificationsPage() {
-  redirect("/dashboard/paging/notifications");
+  return <DashboardRedirect to="/dashboard/paging/notifications" />;
 }

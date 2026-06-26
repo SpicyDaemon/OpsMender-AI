@@ -9,6 +9,7 @@ import type { InvitePublicResponse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { FormError, Input, Label } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 
 /**
@@ -37,6 +38,7 @@ export default function InviteAcceptPage() {
 
 function InviteAcceptContent() {
   const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
 
@@ -101,7 +103,7 @@ function InviteAcceptContent() {
       setToken(resp.access_token);
       // Drop straight into the dashboard. We don't have primary_org_id
       // in the response, but /auth/me on the next page load will set it.
-      router.push("/dashboard");
+      navigateDashboard("/dashboard");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
     } finally {

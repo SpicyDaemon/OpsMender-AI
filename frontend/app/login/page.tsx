@@ -18,10 +18,12 @@ import {
 } from "@/lib/api";
 import type { SSOHintResponse, TenantContextResponse } from "@/lib/types";
 import { setOrgSlug } from "@/lib/org-path";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -58,7 +60,7 @@ export default function LoginPage() {
       try {
         const me = await getMe();
         if (me.primary_org_id) setOrgId(me.primary_org_id);
-        router.push("/dashboard");
+        navigateDashboard("/dashboard");
       } catch (err) {
         setError(err instanceof Error ? err.message : "SSO login failed");
       }
@@ -85,7 +87,7 @@ export default function LoginPage() {
       } else if (outcome.mfaEnrollmentRequired) {
         router.push("/mfa-setup");
       } else {
-        router.push("/dashboard");
+        navigateDashboard("/dashboard");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

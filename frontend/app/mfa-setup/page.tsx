@@ -6,6 +6,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { MFASettings } from "@/components/MFASettings";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { useAuth } from "@/context/auth";
+import { scopeDashboardHref } from "@/lib/org-path";
 
 export default function MFASetupPage() {
   const { user, loading, refresh } = useAuth();
@@ -19,7 +20,7 @@ export default function MFASetupPage() {
 
   async function finish() {
     await refresh();
-    window.location.href = "/dashboard";
+    window.location.href = scopeDashboardHref("/dashboard");
   }
 
   return (

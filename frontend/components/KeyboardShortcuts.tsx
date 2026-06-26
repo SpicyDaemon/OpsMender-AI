@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 type Shortcut = {
   keys: string[];
@@ -55,7 +55,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 export function KeyboardShortcuts() {
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const [helpOpen, setHelpOpen] = useState(false);
 
   const handleKey = useCallback(
@@ -79,11 +79,11 @@ export function KeyboardShortcuts() {
         const dest = NAV_CODE_MAP[event.code];
         if (dest) {
           event.preventDefault();
-          router.push(dest);
+          navigateDashboard(dest);
         }
       }
     },
-    [router],
+    [navigateDashboard],
   );
 
   useEffect(() => {

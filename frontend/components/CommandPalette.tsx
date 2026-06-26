@@ -22,7 +22,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import {
   Activity,
   AlertOctagon,
@@ -49,6 +48,7 @@ import {
   Workflow,
   Wrench,
 } from "lucide-react";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 type CommandKind = "navigate" | "action";
 
@@ -149,7 +149,7 @@ function filterItems(items: CommandItem[], query: string): CommandItem[] {
 }
 
 export function CommandPalette() {
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
@@ -204,10 +204,10 @@ export function CommandPalette() {
         return;
       }
       if (item.href) {
-        router.push(item.href);
+        navigateDashboard(item.href);
       }
     },
-    [router],
+    [navigateDashboard],
   );
 
   const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {

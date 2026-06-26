@@ -13,7 +13,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Bot, Brain, Check, Circle, Download, Eye, Pencil, Save, ScrollText, Sparkles, Trash2 } from "lucide-react";
 import {
   draftIncidentPostmortemFromSessions,
@@ -22,6 +22,7 @@ import {
   getIncidentPostmortem,
   putIncidentPostmortem,
 } from "@/lib/api";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import { responderDisplay } from "@/lib/responder";
 import type {
   IncidentPostmortemResponse,
@@ -266,7 +267,7 @@ export default function IncidentPostmortemPage() {
 }
 
 function IncidentPostmortemContent() {
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
   const toast = useToast();
@@ -491,7 +492,7 @@ function IncidentPostmortemContent() {
     <div className="mx-auto max-w-5xl space-y-5">
       <div>
         <button
-          onClick={() => router.push(`/dashboard/incidents/detail?id=${id}`)}
+          onClick={() => navigateDashboard(`/dashboard/incidents/detail?id=${id}`)}
           className="mb-2 inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-primary"
         >
           <ArrowLeft size={12} /> Back to incident

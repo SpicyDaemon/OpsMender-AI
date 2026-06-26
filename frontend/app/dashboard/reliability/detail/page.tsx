@@ -1,12 +1,13 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ServerCrash, ShieldAlert, CalendarX, Plus, Trash2, Pencil, ExternalLink, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { createIncident } from "@/lib/api";
+import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { SLOModal } from "@/components/reliability/SLOModal";
@@ -72,7 +73,7 @@ function UptimeSummaryCard({ label, uptime }: { label: string; uptime: Uptime })
 function TargetDetailContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") || "";
-  const router = useRouter();
+  const navigateDashboard = useDashboardNavigation();
   const toast = useToast();
 
   const [target, setTarget] = useState<SLATargetResponse | null>(null);
@@ -202,7 +203,7 @@ function TargetDetailContent() {
         href: `/dashboard/incidents/detail?id=${result.id}`,
       });
       setConfirmRec(null);
-      router.push(`/dashboard/incidents/detail?id=${result.id}`);
+      navigateDashboard(`/dashboard/incidents/detail?id=${result.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create incident");
     } finally {
@@ -241,7 +242,7 @@ function TargetDetailContent() {
       <header className="flex shrink-0 flex-col gap-2 border-b border-border-subtle px-6 py-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/dashboard/reliability")}
+            onClick={() => navigateDashboard("/dashboard/reliability")}
             className="flex h-8 w-8 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-primary"
           >
             <ArrowLeft size={18} />

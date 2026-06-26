@@ -92,7 +92,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u);
         await syncOrganization(u);
       })
-      .catch(() => clearToken())
+      // Don't clear the token here. A genuine 401 is already handled inside
+      // `request()` (it clears the token and redirects to /login). This catch
+      // only fires for non-auth failures — a transient network error or a
+      // getMe aborted because we're mid-redirect (e.g. /dashboard ->
+      // /org/<slug>/dashboard). Clearing the token in those cases logged the
+      // user out spuriously; leaving it lets the redirected page re-hydrate.
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [syncOrganization]);
 

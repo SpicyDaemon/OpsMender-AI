@@ -137,19 +137,6 @@ def build_notification_sender(
     return sender
 
 
-def _format_subject_body(incident: Incident) -> tuple[str, str]:
-    subject = f"OpsMender: {incident.title or 'Incident page'}"
-    lines = [
-        f"Priority: {incident.priority or 'P?'}",
-        f"Status: {incident.status}",
-        f"Incident: {incident.id}",
-    ]
-    if incident.description:
-        lines.append("")
-        lines.append(incident.description)
-    return subject, "\n".join(lines)
-
-
 async def _fire_stage(
     db: AsyncSession,
     org_id: uuid.UUID,
@@ -160,7 +147,13 @@ async def _fire_stage(
     stage_index: int,
     sender: NotificationSender,
 ) -> None:
-    subject, body = _format_subject_body(incident)
+    from backend.paging.page_text import (
+        format_page_subject_body,
+        org_name_for_page,
+    )
+
+    org_name = await org_name_for_page(db, org_id)
+    subject, body = format_page_subject_body(incident, org_name=org_name)
     status, error = await sender(
         db,
         org_id,

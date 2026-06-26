@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pages name the org (multi-org deployments).** An incident page's text
+  (SMS / voice / email / text fallback) now leads with an `Org: <name>` line so
+  an operator on-call across organizations can tell incidents apart. Shown only
+  when the deployment actually has more than one org — single-org installs stay
+  clean. Applied to both the immediate fan-out and the staged
+  notification-escalation path via a shared formatter.
+
 - **Uploadable profile pictures.** Users can upload a profile photo
   (.png/.jpg/.jpeg/.gif/.bmp/.ico/.tiff, ≤5 MB) from Edit Profile; it's
   validated, EXIF-oriented, and resized to fit 200×200 server-side (migration

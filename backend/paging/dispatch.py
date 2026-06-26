@@ -319,17 +319,10 @@ async def dispatch_page(
         addresses.setdefault("voice", user_phone)
 
     from backend.paging.slack_cards import build_page_card_blocks
+    from backend.paging.page_text import format_page_subject_body, org_name_for_page
 
-    subject = f"OpsMender: {incident.title or 'Incident page'}"
-    body_lines = [
-        f"Priority: {incident.priority or 'P?'}",
-        f"Status: {incident.status}",
-        f"Incident: {incident.id}",
-    ]
-    if incident.description:
-        body_lines.append("")
-        body_lines.append(incident.description)
-    body = "\n".join(body_lines)
+    org_name = await org_name_for_page(db, org_id)
+    subject, body = format_page_subject_body(incident, org_name=org_name)
 
     # 3. Per-channel delivery
     cutoff = now - timedelta(minutes=dedup_window)

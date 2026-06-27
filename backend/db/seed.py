@@ -32,7 +32,7 @@ async def seed(database_url: str) -> None:
     async with factory() as db:
         # -- Organization ----------------------------------------------------
         from backend.db.repos import OrganizationRepo
-        main_org = await OrganizationRepo.create(db, name="Main Organization", slug="main")
+        main_org = await OrganizationRepo.create(db, name="Main", slug="main")
         org_id = main_org.id
         print(f"  Created default organization: {main_org.name} ({org_id})")
 

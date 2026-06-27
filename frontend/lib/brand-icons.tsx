@@ -39,6 +39,10 @@ import {
   SiWhatsapp,
   SiZendesk,
 } from "react-icons/si";
+// AWS + Microsoft/Azure marks aren't in Simple Icons (trademark), so pull them
+// from Font Awesome / the VS Code icon set.
+import { FaAws } from "react-icons/fa6";
+import { VscAzure, VscAzureDevops } from "react-icons/vsc";
 import {
   Boxes,
   Cloud,
@@ -49,7 +53,6 @@ import {
   Phone,
   Plug,
   Puzzle,
-  Workflow,
   Zap,
 } from "lucide-react";
 
@@ -65,8 +68,8 @@ const INTEGRATION_ICONS: Record<string, Brand> = {
   ansible: { Icon: SiAnsible },
   argocd: { Icon: SiArgo, color: "#EF7B4D" },
   asana: { Icon: SiAsana, color: "#F06A6A" },
-  azure_devops: { Icon: Workflow },
-  azure_pipelines: { Icon: Workflow },
+  azure_devops: { Icon: VscAzureDevops, color: "#0078D4" },
+  azure_pipelines: { Icon: VscAzureDevops, color: "#0078D4" },
   bitbucket: { Icon: SiBitbucket, color: "#2684FF" },
   circleci: { Icon: SiCircleci },
   confluence: { Icon: SiConfluence, color: "#2684FF" },
@@ -121,8 +124,8 @@ const PROVIDER_ICONS: Record<string, Brand> = {
   openai: { Icon: SiOpenai },
   ollama: { Icon: SiOllama },
   vertex_ai: { Icon: SiGooglecloud, color: "#4285F4" },
-  azure_openai: { Icon: Cloud },
-  bedrock: { Icon: Cloud },
+  azure_openai: { Icon: VscAzure, color: "#0078D4" },
+  bedrock: { Icon: FaAws, color: "#FF9900" },
   openai_compatible: { Icon: Boxes },
 };
 

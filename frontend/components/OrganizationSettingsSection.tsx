@@ -28,11 +28,7 @@ import { FormAlert, Input, Label, Select, Textarea } from "@/components/ui/Input
 import { useToast } from "@/components/ui/Toast";
 
 type Role = "admin" | "operator" | "viewer";
-
-function notFound(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("404") || message.toLowerCase().includes("not found");
-}
+type SsoMethod = "disabled" | "oidc" | "saml";
 
 export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
   const toast = useToast();
@@ -46,19 +42,12 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
   const [savingDomain, setSavingDomain] = useState(false);
   const [savingSso, setSavingSso] = useState(false);
   const [savingSaml, setSavingSaml] = useState(false);
+  const [removingSso, setRemovingSso] = useState(false);
 
-  const [orgForm, setOrgForm] = useState({
-    name: "",
-    slug: "",
-    company_name: "",
-    logo_url: "",
-    primary_color: "",
-    secondary_color: "",
-    favicon_url: "",
-  });
+  const [orgName, setOrgName] = useState("");
+  const [ssoMethod, setSsoMethod] = useState<SsoMethod>("disabled");
   const [newDomain, setNewDomain] = useState("");
   const [ssoForm, setSsoForm] = useState({
-    is_active: false,
     discovery_url: "",
     client_id: "",
     client_secret: "",
@@ -69,7 +58,6 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
     allowed_email_domains: "",
   });
   const [samlForm, setSamlForm] = useState({
-    is_active: false,
     metadataMode: "url" as "url" | "xml",
     idp_metadata_url: "",
     idp_metadata_xml: "",
@@ -83,35 +71,34 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setNotice("");
     try {
+      // A missing SSO/SAML config is the normal state (the endpoint 404s), so
+      // it must never break loading the rest of the section.
       const [orgRes, domainRes, ssoRes, samlRes] = await Promise.all([
         getOrganization(orgId),
         listOrganizationDomains(orgId),
-        getOrgSSOConfig(orgId).catch((err) => {
-          if (notFound(err)) return null;
-          throw err;
-        }),
-        getOrgSAMLConfig(orgId).catch((err) => {
-          if (notFound(err)) return null;
-          throw err;
-        }),
+        getOrgSSOConfig(orgId).catch(() => null),
+        getOrgSAMLConfig(orgId).catch(() => null),
       ]);
       setOrg(orgRes);
+      setOrgName(orgRes.name);
       setDomains(domainRes.items);
       setSso(ssoRes);
       setSaml(samlRes);
-      setOrgForm({
-        name: orgRes.name,
-        slug: orgRes.slug,
-        company_name: orgRes.branding?.company_name ?? "",
-        logo_url: orgRes.branding?.logo_url ?? "",
-        primary_color: orgRes.branding?.primary_color ?? "",
-        secondary_color: orgRes.branding?.secondary_color ?? "",
-        favicon_url: orgRes.branding?.favicon_url ?? "",
-      });
+      setSsoMethod(
+        ssoRes?.is_active
+          ? "oidc"
+          : samlRes?.is_active
+            ? "saml"
+            : ssoRes
+              ? "oidc"
+              : samlRes
+                ? "saml"
+                : "disabled",
+      );
       if (ssoRes) {
         setSsoForm({
-          is_active: ssoRes.is_active,
           discovery_url: ssoRes.discovery_url,
           client_id: ssoRes.client_id,
           client_secret: "",
@@ -124,7 +111,6 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
       }
       if (samlRes) {
         setSamlForm({
-          is_active: samlRes.is_active,
           metadataMode: samlRes.idp_metadata_url ? "url" : "xml",
           idp_metadata_url: samlRes.idp_metadata_url ?? "",
           idp_metadata_xml: "",
@@ -137,7 +123,7 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
         });
       }
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Failed to load workspace settings.");
+      setNotice(err instanceof Error ? err.message : "Failed to load organization settings.");
     } finally {
       setLoading(false);
     }
@@ -148,22 +134,19 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
   }, [load]);
 
   async function saveOrg() {
+    if (!orgName.trim()) {
+      setNotice("Organization name is required.");
+      return;
+    }
     setSavingOrg(true);
     setNotice("");
     try {
-      const saved = await updateOrganization(orgId, {
-        name: orgForm.name.trim(),
-        slug: orgForm.slug.trim(),
-        branding: {
-          company_name: orgForm.company_name.trim() || undefined,
-          logo_url: orgForm.logo_url.trim() || undefined,
-          primary_color: orgForm.primary_color.trim() || undefined,
-          secondary_color: orgForm.secondary_color.trim() || undefined,
-          favicon_url: orgForm.favicon_url.trim() || undefined,
-        },
-      });
+      const saved = await updateOrganization(orgId, { name: orgName.trim() });
       setOrg(saved);
-      toast.success("Workspace settings saved");
+      setOrgName(saved.name);
+      // Let the top bar refresh its org-name badge immediately.
+      window.dispatchEvent(new CustomEvent("opsmender:org-updated"));
+      toast.success("Organization saved");
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Save failed.");
     } finally {
@@ -210,13 +193,14 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
     }
   }
 
-  async function saveSso() {
+  // Activate OIDC. One SSO method at a time, so any SAML config is removed.
+  async function saveOidc() {
     setSavingSso(true);
     setNotice("");
     try {
       const saved = await upsertOrgSSOConfig(orgId, {
         provider: "oidc",
-        is_active: ssoForm.is_active,
+        is_active: true,
         discovery_url: ssoForm.discovery_url.trim(),
         client_id: ssoForm.client_id.trim(),
         client_secret: ssoForm.client_secret.trim() || undefined,
@@ -226,9 +210,14 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
         default_role: ssoForm.default_role,
         allowed_email_domains: ssoForm.allowed_email_domains.trim() || null,
       });
+      if (saml) {
+        await deleteOrgSAMLConfig(orgId).catch(() => {});
+        setSaml(null);
+      }
       setSso(saved);
       setSsoForm((form) => ({ ...form, client_secret: "" }));
-      toast.success("OIDC settings saved");
+      setSsoMethod("oidc");
+      toast.success("OIDC sign-in enabled");
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "OIDC save failed.");
     } finally {
@@ -236,32 +225,17 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
     }
   }
 
-  async function disableSso() {
-    if (!confirm("Disable OIDC sign-in?")) return;
-    setNotice("");
-    try {
-      await deleteOrgSSOConfig(orgId);
-      setSso(null);
-      setSsoForm((form) => ({ ...form, is_active: false, client_secret: "" }));
-    } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Could not disable OIDC.");
-    }
-  }
-
+  // Activate SAML. One SSO method at a time, so any OIDC config is removed.
   async function saveSaml() {
     setSavingSaml(true);
     setNotice("");
     try {
       const saved = await upsertOrgSAMLConfig(orgId, {
-        is_active: samlForm.is_active,
+        is_active: true,
         idp_metadata_url:
-          samlForm.metadataMode === "url"
-            ? samlForm.idp_metadata_url.trim()
-            : null,
+          samlForm.metadataMode === "url" ? samlForm.idp_metadata_url.trim() : null,
         idp_metadata_xml:
-          samlForm.metadataMode === "xml"
-            ? samlForm.idp_metadata_xml.trim()
-            : null,
+          samlForm.metadataMode === "xml" ? samlForm.idp_metadata_xml.trim() : null,
         email_attribute: samlForm.email_attribute.trim() || "email",
         name_attribute: samlForm.name_attribute.trim() || "name",
         default_role: samlForm.default_role,
@@ -269,13 +243,18 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
         want_assertions_signed: samlForm.want_assertions_signed,
         want_response_signed: samlForm.want_response_signed,
       });
+      if (sso) {
+        await deleteOrgSSOConfig(orgId).catch(() => {});
+        setSso(null);
+      }
       setSaml(saved);
       setSamlForm((form) => ({
         ...form,
         idp_metadata_xml: "",
         metadataMode: saved.idp_metadata_url ? "url" : "xml",
       }));
-      toast.success("SAML settings saved");
+      setSsoMethod("saml");
+      toast.success("SAML sign-in enabled");
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "SAML save failed.");
     } finally {
@@ -283,22 +262,40 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
     }
   }
 
-  async function disableSaml() {
-    if (!confirm("Disable SAML sign-in?")) return;
+  // Turn SSO off entirely — remove whichever config exists.
+  async function disableSso() {
+    if (!confirm("Disable single sign-on? Members will sign in with email + password.")) {
+      setSsoMethod(sso ? "oidc" : saml ? "saml" : "disabled");
+      return;
+    }
+    setRemovingSso(true);
     setNotice("");
     try {
-      await deleteOrgSAMLConfig(orgId);
+      if (sso) await deleteOrgSSOConfig(orgId).catch(() => {});
+      if (saml) await deleteOrgSAMLConfig(orgId).catch(() => {});
+      setSso(null);
       setSaml(null);
-      setSamlForm((form) => ({ ...form, is_active: false, idp_metadata_xml: "" }));
+      setSsoMethod("disabled");
+      toast.success("Single sign-on disabled");
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Could not disable SAML.");
+      setNotice(err instanceof Error ? err.message : "Could not disable SSO.");
+    } finally {
+      setRemovingSso(false);
     }
+  }
+
+  function onMethodChange(method: SsoMethod) {
+    if (method === "disabled" && (sso || saml)) {
+      void disableSso();
+      return;
+    }
+    setSsoMethod(method);
   }
 
   if (loading) {
     return (
       <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 text-sm text-fg-muted">
-        Loading workspace settings...
+        Loading organization settings…
       </section>
     );
   }
@@ -307,88 +304,42 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
     <section id="organization-auth" className="space-y-5 rounded-xl border border-border-subtle bg-bg-panel p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-fg-primary">Workspace</h2>
+          <h2 className="text-base font-semibold text-fg-primary">Organization</h2>
           <p className="mt-1 text-sm text-fg-secondary">
-            {org?.name ?? "Current workspace"} is the only active organization for this instance.
+            The single organization for this instance. Its name appears across the
+            app and on incident communications.
           </p>
         </div>
-        {org && <Badge variant="info">{org.slug}</Badge>}
+        {org && <Badge variant="default">{org.slug}</Badge>}
       </div>
 
       <FormAlert message={notice} />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <Label htmlFor="org-name" required>Name</Label>
-          <Input
-            id="org-name"
-            value={orgForm.name}
-            onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label htmlFor="org-slug" required>Slug</Label>
-          <Input
-            id="org-slug"
-            value={orgForm.slug}
-            onChange={(e) => setOrgForm({ ...orgForm, slug: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label htmlFor="company-name">Display name</Label>
-          <Input
-            id="company-name"
-            value={orgForm.company_name}
-            onChange={(e) => setOrgForm({ ...orgForm, company_name: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label htmlFor="logo-url">Logo URL</Label>
-          <Input
-            id="logo-url"
-            value={orgForm.logo_url}
-            onChange={(e) => setOrgForm({ ...orgForm, logo_url: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label htmlFor="primary-color">Primary color</Label>
-          <Input
-            id="primary-color"
-            value={orgForm.primary_color}
-            placeholder="#2563eb"
-            onChange={(e) => setOrgForm({ ...orgForm, primary_color: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label htmlFor="secondary-color">Secondary color</Label>
-          <Input
-            id="secondary-color"
-            value={orgForm.secondary_color}
-            placeholder="#0f172a"
-            onChange={(e) => setOrgForm({ ...orgForm, secondary_color: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label htmlFor="favicon-url">Favicon URL</Label>
-          <Input
-            id="favicon-url"
-            value={orgForm.favicon_url}
-            onChange={(e) => setOrgForm({ ...orgForm, favicon_url: e.target.value })}
-          />
-        </div>
+      <div className="max-w-md">
+        <Label htmlFor="org-name" required>Name</Label>
+        <Input
+          id="org-name"
+          value={orgName}
+          onChange={(e) => setOrgName(e.target.value)}
+          required
+        />
+        <p className="mt-1 text-xs text-fg-muted">
+          Shown in the top bar and on paging / chat messages.
+        </p>
       </div>
       <Button onClick={saveOrg} loading={savingOrg}>
-        Save workspace
+        Save organization
       </Button>
 
       <div className="border-t border-border-subtle pt-5">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-1 flex items-center gap-2">
           <Globe2 size={16} className="text-fg-muted" />
           <h3 className="text-sm font-semibold text-fg-primary">Custom domains</h3>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <p className="mb-3 text-xs text-fg-muted">
+          Optional. Serve this instance on your own hostname (e.g. for SSO branding).
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:max-w-xl">
           <Input
             value={newDomain}
             placeholder="ops.example.com"
@@ -430,205 +381,212 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
         </div>
       </div>
 
-      <div className="grid gap-5 border-t border-border-subtle pt-5 xl:grid-cols-2">
-        <div className="space-y-4 rounded-md border border-border-subtle bg-bg-elevated p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <KeyRound size={16} className="text-fg-muted" />
-              <h3 className="text-sm font-semibold text-fg-primary">OIDC SSO</h3>
-            </div>
-            <Badge variant={sso?.is_active ? "low" : "default"}>
-              {sso?.is_active ? "Active" : "Inactive"}
-            </Badge>
-          </div>
-          <AuthFields
-            idPrefix="oidc"
-            active={ssoForm.is_active}
-            setActive={(is_active) => setSsoForm({ ...ssoForm, is_active })}
-            defaultRole={ssoForm.default_role}
-            setDefaultRole={(default_role) => setSsoForm({ ...ssoForm, default_role })}
-            allowedDomains={ssoForm.allowed_email_domains}
-            setAllowedDomains={(allowed_email_domains) =>
-              setSsoForm({ ...ssoForm, allowed_email_domains })
-            }
-          />
-          <div>
-            <Label htmlFor="oidc-discovery" required>Discovery URL</Label>
-            <Input
-              id="oidc-discovery"
-              value={ssoForm.discovery_url}
-              onChange={(e) => setSsoForm({ ...ssoForm, discovery_url: e.target.value })}
-              required
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="oidc-client-id" required>Client ID</Label>
-              <Input
-                id="oidc-client-id"
-                value={ssoForm.client_id}
-                onChange={(e) => setSsoForm({ ...ssoForm, client_id: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="oidc-client-secret">
-                Client secret{sso?.has_client_secret ? " (saved)" : ""}
-              </Label>
-              <Input
-                id="oidc-client-secret"
-                type="password"
-                value={ssoForm.client_secret}
-                onChange={(e) => setSsoForm({ ...ssoForm, client_secret: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <Label htmlFor="oidc-scopes">Scopes</Label>
-              <Input
-                id="oidc-scopes"
-                value={ssoForm.scopes}
-                onChange={(e) => setSsoForm({ ...ssoForm, scopes: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="oidc-email-claim">Email claim</Label>
-              <Input
-                id="oidc-email-claim"
-                value={ssoForm.email_claim}
-                onChange={(e) => setSsoForm({ ...ssoForm, email_claim: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="oidc-name-claim">Name claim</Label>
-              <Input
-                id="oidc-name-claim"
-                value={ssoForm.name_claim}
-                onChange={(e) => setSsoForm({ ...ssoForm, name_claim: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={saveSso} loading={savingSso}>
-              Save OIDC
-            </Button>
-            {sso && (
-              <Button type="button" variant="ghost" onClick={disableSso}>
-                Disable
-              </Button>
-            )}
-          </div>
+      <div className="border-t border-border-subtle pt-5">
+        <div className="mb-1 flex items-center gap-2">
+          <KeyRound size={16} className="text-fg-muted" />
+          <h3 className="text-sm font-semibold text-fg-primary">Single sign-on (SSO)</h3>
+        </div>
+        <p className="mb-3 text-xs text-fg-muted">
+          Optional. Let members sign in through your identity provider. Pick one
+          method — OpenID Connect (OIDC) or SAML.
+        </p>
+
+        <div className="max-w-xs">
+          <Label htmlFor="sso-method">Method</Label>
+          <Select
+            id="sso-method"
+            value={ssoMethod}
+            onChange={(e) => onMethodChange(e.target.value as SsoMethod)}
+            disabled={removingSso}
+          >
+            <option value="disabled">Disabled (email + password)</option>
+            <option value="oidc">OpenID Connect (OIDC)</option>
+            <option value="saml">SAML</option>
+          </Select>
         </div>
 
-        <div className="space-y-4 rounded-md border border-border-subtle bg-bg-elevated p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ShieldCheck size={16} className="text-fg-muted" />
-              <h3 className="text-sm font-semibold text-fg-primary">SAML</h3>
+        {ssoMethod === "oidc" && (
+          <div className="mt-4 space-y-4 rounded-md border border-border-subtle bg-bg-elevated p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-sm font-semibold text-fg-primary">OpenID Connect</h4>
+              <Badge variant={sso?.is_active ? "low" : "default"}>
+                {sso?.is_active ? "Active" : "Not saved"}
+              </Badge>
             </div>
-            <Badge variant={saml?.is_active ? "low" : "default"}>
-              {saml?.is_active ? "Active" : "Inactive"}
-            </Badge>
-          </div>
-          <AuthFields
-            idPrefix="saml"
-            active={samlForm.is_active}
-            setActive={(is_active) => setSamlForm({ ...samlForm, is_active })}
-            defaultRole={samlForm.default_role}
-            setDefaultRole={(default_role) => setSamlForm({ ...samlForm, default_role })}
-            allowedDomains={samlForm.allowed_email_domains}
-            setAllowedDomains={(allowed_email_domains) =>
-              setSamlForm({ ...samlForm, allowed_email_domains })
-            }
-          />
-          <div>
-            <Label htmlFor="saml-metadata-mode">Metadata source</Label>
-            <Select
-              id="saml-metadata-mode"
-              value={samlForm.metadataMode}
-              onChange={(e) =>
-                setSamlForm({ ...samlForm, metadataMode: e.target.value as "url" | "xml" })
+            <AuthFields
+              idPrefix="oidc"
+              defaultRole={ssoForm.default_role}
+              setDefaultRole={(default_role) => setSsoForm({ ...ssoForm, default_role })}
+              allowedDomains={ssoForm.allowed_email_domains}
+              setAllowedDomains={(allowed_email_domains) =>
+                setSsoForm({ ...ssoForm, allowed_email_domains })
               }
-            >
-              <option value="url">Metadata URL</option>
-              <option value="xml">Raw XML</option>
-            </Select>
-          </div>
-          {samlForm.metadataMode === "url" ? (
+            />
             <div>
-              <Label htmlFor="saml-metadata-url" required>Metadata URL</Label>
+              <Label htmlFor="oidc-discovery" required>Discovery URL</Label>
               <Input
-                id="saml-metadata-url"
-                value={samlForm.idp_metadata_url}
-                onChange={(e) => setSamlForm({ ...samlForm, idp_metadata_url: e.target.value })}
+                id="oidc-discovery"
+                value={ssoForm.discovery_url}
+                placeholder="https://idp.example.com/.well-known/openid-configuration"
+                onChange={(e) => setSsoForm({ ...ssoForm, discovery_url: e.target.value })}
                 required
               />
             </div>
-          ) : (
-            <div>
-              <Label htmlFor="saml-metadata-xml" required>Raw metadata XML</Label>
-              <Textarea
-                id="saml-metadata-xml"
-                rows={5}
-                value={samlForm.idp_metadata_xml}
-                placeholder={saml?.has_idp_metadata_xml ? "Raw XML is already saved. Paste new XML to replace it." : ""}
-                onChange={(e) => setSamlForm({ ...samlForm, idp_metadata_xml: e.target.value })}
-                required={!saml?.has_idp_metadata_xml}
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="oidc-client-id" required>Client ID</Label>
+                <Input
+                  id="oidc-client-id"
+                  value={ssoForm.client_id}
+                  onChange={(e) => setSsoForm({ ...ssoForm, client_id: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="oidc-client-secret">
+                  Client secret{sso?.has_client_secret ? " (saved)" : ""}
+                </Label>
+                <Input
+                  id="oidc-client-secret"
+                  type="password"
+                  value={ssoForm.client_secret}
+                  onChange={(e) => setSsoForm({ ...ssoForm, client_secret: e.target.value })}
+                />
+              </div>
             </div>
-          )}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="saml-email-attribute">Email attribute</Label>
-              <Input
-                id="saml-email-attribute"
-                value={samlForm.email_attribute}
-                onChange={(e) => setSamlForm({ ...samlForm, email_attribute: e.target.value })}
-              />
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="oidc-scopes">Scopes</Label>
+                <Input
+                  id="oidc-scopes"
+                  value={ssoForm.scopes}
+                  onChange={(e) => setSsoForm({ ...ssoForm, scopes: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="oidc-email-claim">Email claim</Label>
+                <Input
+                  id="oidc-email-claim"
+                  value={ssoForm.email_claim}
+                  onChange={(e) => setSsoForm({ ...ssoForm, email_claim: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="oidc-name-claim">Name claim</Label>
+                <Input
+                  id="oidc-name-claim"
+                  value={ssoForm.name_claim}
+                  onChange={(e) => setSsoForm({ ...ssoForm, name_claim: e.target.value })}
+                />
+              </div>
             </div>
-            <div>
-              <Label htmlFor="saml-name-attribute">Name attribute</Label>
-              <Input
-                id="saml-name-attribute"
-                value={samlForm.name_attribute}
-                onChange={(e) => setSamlForm({ ...samlForm, name_attribute: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm text-fg-secondary">
-              <input
-                type="checkbox"
-                checked={samlForm.want_assertions_signed}
-                onChange={(e) =>
-                  setSamlForm({ ...samlForm, want_assertions_signed: e.target.checked })
-                }
-              />
-              Signed assertions
-            </label>
-            <label className="flex items-center gap-2 text-sm text-fg-secondary">
-              <input
-                type="checkbox"
-                checked={samlForm.want_response_signed}
-                onChange={(e) =>
-                  setSamlForm({ ...samlForm, want_response_signed: e.target.checked })
-                }
-              />
-              Signed responses
-            </label>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={saveSaml} loading={savingSaml}>
-              Save SAML
+            <Button onClick={saveOidc} loading={savingSso}>
+              Save &amp; enable OIDC
             </Button>
-            {saml && (
-              <Button type="button" variant="ghost" onClick={disableSaml}>
-                Disable
-              </Button>
-            )}
           </div>
-        </div>
+        )}
+
+        {ssoMethod === "saml" && (
+          <div className="mt-4 space-y-4 rounded-md border border-border-subtle bg-bg-elevated p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} className="text-fg-muted" />
+                <h4 className="text-sm font-semibold text-fg-primary">SAML</h4>
+              </div>
+              <Badge variant={saml?.is_active ? "low" : "default"}>
+                {saml?.is_active ? "Active" : "Not saved"}
+              </Badge>
+            </div>
+            <AuthFields
+              idPrefix="saml"
+              defaultRole={samlForm.default_role}
+              setDefaultRole={(default_role) => setSamlForm({ ...samlForm, default_role })}
+              allowedDomains={samlForm.allowed_email_domains}
+              setAllowedDomains={(allowed_email_domains) =>
+                setSamlForm({ ...samlForm, allowed_email_domains })
+              }
+            />
+            <div>
+              <Label htmlFor="saml-metadata-mode">Metadata source</Label>
+              <Select
+                id="saml-metadata-mode"
+                value={samlForm.metadataMode}
+                onChange={(e) =>
+                  setSamlForm({ ...samlForm, metadataMode: e.target.value as "url" | "xml" })
+                }
+              >
+                <option value="url">Metadata URL</option>
+                <option value="xml">Raw XML</option>
+              </Select>
+            </div>
+            {samlForm.metadataMode === "url" ? (
+              <div>
+                <Label htmlFor="saml-metadata-url" required>Metadata URL</Label>
+                <Input
+                  id="saml-metadata-url"
+                  value={samlForm.idp_metadata_url}
+                  onChange={(e) => setSamlForm({ ...samlForm, idp_metadata_url: e.target.value })}
+                  required
+                />
+              </div>
+            ) : (
+              <div>
+                <Label htmlFor="saml-metadata-xml" required>Raw metadata XML</Label>
+                <Textarea
+                  id="saml-metadata-xml"
+                  rows={5}
+                  value={samlForm.idp_metadata_xml}
+                  placeholder={saml?.has_idp_metadata_xml ? "Raw XML is already saved. Paste new XML to replace it." : ""}
+                  onChange={(e) => setSamlForm({ ...samlForm, idp_metadata_xml: e.target.value })}
+                  required={!saml?.has_idp_metadata_xml}
+                />
+              </div>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="saml-email-attribute">Email attribute</Label>
+                <Input
+                  id="saml-email-attribute"
+                  value={samlForm.email_attribute}
+                  onChange={(e) => setSamlForm({ ...samlForm, email_attribute: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="saml-name-attribute">Name attribute</Label>
+                <Input
+                  id="saml-name-attribute"
+                  value={samlForm.name_attribute}
+                  onChange={(e) => setSamlForm({ ...samlForm, name_attribute: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm text-fg-secondary">
+                <input
+                  type="checkbox"
+                  checked={samlForm.want_assertions_signed}
+                  onChange={(e) =>
+                    setSamlForm({ ...samlForm, want_assertions_signed: e.target.checked })
+                  }
+                />
+                Signed assertions
+              </label>
+              <label className="flex items-center gap-2 text-sm text-fg-secondary">
+                <input
+                  type="checkbox"
+                  checked={samlForm.want_response_signed}
+                  onChange={(e) =>
+                    setSamlForm({ ...samlForm, want_response_signed: e.target.checked })
+                  }
+                />
+                Signed responses
+              </label>
+            </div>
+            <Button onClick={saveSaml} loading={savingSaml}>
+              Save &amp; enable SAML
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -636,16 +594,12 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
 
 function AuthFields({
   idPrefix,
-  active,
-  setActive,
   defaultRole,
   setDefaultRole,
   allowedDomains,
   setAllowedDomains,
 }: {
   idPrefix: string;
-  active: boolean;
-  setActive: (value: boolean) => void;
   defaultRole: Role;
   setDefaultRole: (value: Role) => void;
   allowedDomains: string;
@@ -653,27 +607,17 @@ function AuthFields({
 }) {
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="mt-6 flex items-center gap-2 text-sm text-fg-secondary">
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={(e) => setActive(e.target.checked)}
-          />
-          Active
-        </label>
-        <div>
-          <Label htmlFor={`${idPrefix}-default-role`}>Default role</Label>
-          <Select
-            id={`${idPrefix}-default-role`}
-            value={defaultRole}
-            onChange={(e) => setDefaultRole(e.target.value as Role)}
-          >
-            <option value="admin">Admin</option>
-            <option value="operator">Operator</option>
-            <option value="viewer">Viewer</option>
-          </Select>
-        </div>
+      <div>
+        <Label htmlFor={`${idPrefix}-default-role`}>Default role for new members</Label>
+        <Select
+          id={`${idPrefix}-default-role`}
+          value={defaultRole}
+          onChange={(e) => setDefaultRole(e.target.value as Role)}
+        >
+          <option value="admin">Admin</option>
+          <option value="operator">Operator</option>
+          <option value="viewer">Viewer</option>
+        </Select>
       </div>
       <div>
         <Label htmlFor={`${idPrefix}-allowed-domains`}>Allowed email domains</Label>

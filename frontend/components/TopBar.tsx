@@ -45,10 +45,18 @@ export function TopBar({
 
   useEffect(() => {
     let cancelled = false;
-    resolveTenant()
-      .then((t) => { if (!cancelled) setTenant(t); })
-      .catch(() => { if (!cancelled) setTenant(null); });
-    return () => { cancelled = true; };
+    function refresh() {
+      resolveTenant()
+        .then((t) => { if (!cancelled) setTenant(t); })
+        .catch(() => { if (!cancelled) setTenant(null); });
+    }
+    refresh();
+    // Refresh the org-name badge the moment it's renamed in Settings.
+    window.addEventListener("opsmender:org-updated", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("opsmender:org-updated", refresh);
+    };
   }, []);
 
   const orgName = tenant?.org_name ?? null;

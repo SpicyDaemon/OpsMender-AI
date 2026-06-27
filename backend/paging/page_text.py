@@ -37,6 +37,68 @@ def format_page_subject_body(
     return subject, "\n".join(lines)
 
 
+# Spoken severity words keyed by priority. Reading "P1" aloud is unclear; a
+# severity word is the telephony convention.
+_PRIORITY_WORDS = {"P0": "critical", "P1": "high", "P2": "medium", "P3": "low"}
+
+
+def _voice_escape(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def format_voice_summary(
+    incident: Incident,
+    *,
+    org_name: str | None = None,
+    service_name: str | None = None,
+) -> str:
+    """A concise, speakable one-line summary of a page.
+
+    Unlike the text body, this omits the incident UUID and status (which read
+    badly aloud) and leads with severity + the affected service, the way an
+    on-call voice page conventionally does.
+    """
+    parts: list[str] = []
+    if org_name:
+        parts.append(f"{org_name}.")
+    severity = _PRIORITY_WORDS.get((incident.priority or "").upper())
+    parts.append(f"{severity.capitalize()} severity incident" if severity else "Incident")
+    if service_name:
+        parts.append(f"on {service_name}")
+    title = (incident.title or "untitled").strip().rstrip(".")
+    return f"{' '.join(parts)}: {title}."
+
+
+def format_voice_menu_twiml(summary: str, action_url: str) -> str:
+    """TwiML that speaks the page then gathers one keypad digit.
+
+    1 = acknowledge (take ownership), 2 = escalate to the next responder,
+    * = repeat. No input falls through and hangs up — the escalation chain's
+    timer re-pages as usual.
+    """
+    say = (
+        f"This is OpsMender. {summary} "
+        "Press 1 to acknowledge and take ownership. "
+        "Press 2 to escalate to the next responder. "
+        "Press star to repeat this message."
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<Response>"
+        f'<Gather numDigits="1" timeout="12" method="POST" action="{_voice_escape(action_url)}">'
+        f"<Say>{_voice_escape(say)}</Say>"
+        "</Gather>"
+        "<Say>No input received. Goodbye.</Say>"
+        "<Hangup/>"
+        "</Response>"
+    )
+
+
 async def org_name_for_page(db: AsyncSession, org_id: uuid.UUID) -> str | None:
     """Resolve the org name to show on a page (``None`` only if it can't be
     found). Every page names its org so a responder always knows which

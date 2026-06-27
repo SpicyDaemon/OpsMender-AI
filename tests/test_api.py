@@ -8559,3 +8559,42 @@ class TestVoiceAck:
         )
         assert resp.status_code == 200
         assert "invalid or has expired" in resp.text.lower()
+
+    async def test_press_2_escalates(self, client, app, auth_headers):
+        from backend.api.routes.voice import encode_voice_ack_token
+
+        user_id = await self._user_id(app)
+        incident_id = await self._new_incident(app)
+        token = encode_voice_ack_token(
+            org_id=TEST_ORG_ID, incident_id=incident_id, user_id=user_id
+        )
+        resp = await client.post(
+            f"/paging/voice/ack/{token}", data={"Digits": "2"}
+        )
+        assert resp.status_code == 200
+        # No escalation chain on this incident, so it reports nobody to escalate
+        # to — but it took the escalate branch (not the ack/decline copy).
+        assert "escalat" in resp.text.lower()
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            assert incident.acknowledged_at is None
+
+    async def test_star_repeats_the_menu(self, client, app, auth_headers):
+        from backend.api.routes.voice import encode_voice_ack_token
+
+        user_id = await self._user_id(app)
+        incident_id = await self._new_incident(app)
+        token = encode_voice_ack_token(
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            user_id=user_id,
+            summary="High severity incident: disk full.",
+        )
+        resp = await client.post(
+            f"/paging/voice/ack/{token}", data={"Digits": "*"}
+        )
+        assert resp.status_code == 200
+        text = resp.text.lower()
+        assert "<gather" in text
+        assert "press 1 to acknowledge" in text
+        assert "press 2 to escalate" in text

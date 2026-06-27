@@ -42,6 +42,7 @@ from backend.db.repos import (
     IncidentPageRepo,
     MaintenanceWindowRepo,
     OrganizationRepo,
+    ServiceRepo,
     UserNotificationPrefRepo,
 )
 
@@ -319,7 +320,11 @@ async def dispatch_page(
         addresses.setdefault("voice", user_phone)
 
     from backend.paging.slack_cards import build_page_card_blocks
-    from backend.paging.page_text import format_page_subject_body, org_name_for_page
+    from backend.paging.page_text import (
+        format_page_subject_body,
+        format_voice_summary,
+        org_name_for_page,
+    )
 
     org_name = await org_name_for_page(db, org_id)
     subject, body = format_page_subject_body(incident, org_name=org_name)
@@ -381,10 +386,21 @@ async def dispatch_page(
                             )
                         )
                     ]
-                # Voice pages can offer a keypad acknowledgement: build a signed
-                # ack callback URL the call's <Gather> POSTs to on "press 1".
+                # Voice pages speak a concise summary (severity + service +
+                # title) and offer a keypad menu (1 ack / 2 escalate / * repeat).
+                # The signed ack URL is the call's <Gather> action target.
                 voice_ack_url: str | None = None
+                voice_summary: str | None = None
                 if key == "voice":
+                    service_name = None
+                    if incident.service_id is not None:
+                        svc = await ServiceRepo.get_by_id(
+                            db, org_id, incident.service_id
+                        )
+                        service_name = svc.name if svc is not None else None
+                    voice_summary = format_voice_summary(
+                        incident, org_name=org_name, service_name=service_name
+                    )
                     base = os.environ.get("OPSMENDER_PUBLIC_URL")
                     if base:
                         from backend.api.routes.voice import encode_voice_ack_token
@@ -393,15 +409,17 @@ async def dispatch_page(
                             org_id=org_id,
                             incident_id=incident.id,
                             user_id=user.id,
+                            summary=voice_summary,
                         )
                         voice_ack_url = f"{base.rstrip('/')}/paging/voice/ack/{token}"
                 try:
-                    if voice_ack_url is not None:
+                    if key == "voice":
                         attempt = await channel.send(
                             recipient=recipient,
                             subject=subject,
                             body=body,
                             blocks=blocks,
+                            summary=voice_summary,
                             ack_url=voice_ack_url,
                         )
                     else:

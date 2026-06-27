@@ -437,25 +437,19 @@ class VoiceChannel:
         subject: str,
         body: str,
         blocks: list[dict] | None = None,
+        summary: str | None = None,
         ack_url: str | None = None,
     ) -> DeliveryAttempt:
-        spoken = f"{subject}. {body}"
-        if len(spoken) > 900:
-            spoken = spoken[:897] + "..."
-        if ack_url:
-            # Speak the page, then gather one keypad digit. Pressing 1 POSTs to
-            # the signed ack callback (see routes/voice.py); no input just hangs
-            # up — the escalation chain proceeds as if unacknowledged.
-            twiml = (
-                "<Response>"
-                f'<Gather numDigits="1" timeout="12" method="POST" '
-                f'action="{_xml_escape(ack_url)}">'
-                f"<Say>{_xml_escape(spoken)} Press 1 to acknowledge.</Say>"
-                "</Gather>"
-                "<Say>No key was pressed. Goodbye.</Say>"
-                "</Response>"
-            )
+        if ack_url and summary:
+            # Speak a concise summary, then gather a keypad digit (1 = ack,
+            # 2 = escalate, * = repeat) POSTed to the signed ack callback.
+            from backend.paging.page_text import format_voice_menu_twiml
+
+            twiml = format_voice_menu_twiml(summary, ack_url)
         else:
+            spoken = summary or f"{subject}. {body}"
+            if len(spoken) > 900:
+                spoken = spoken[:897] + "..."
             twiml = f"<Response><Say>{_xml_escape(spoken)}</Say></Response>"
         url = f"https://api.twilio.com/2010-04-01/Accounts/{self._sid}/Calls.json"
         data = {"From": self._from, "To": recipient, "Twiml": twiml}

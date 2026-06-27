@@ -31,15 +31,24 @@ _TOKEN_TTL_SECONDS = 1800
 
 
 def encode_voice_ack_token(
-    *, org_id: uuid.UUID, incident_id: uuid.UUID, user_id: uuid.UUID
+    *,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    user_id: uuid.UUID,
+    summary: str = "",
 ) -> str:
-    """Mint a short-lived signed token authorizing a single voice acknowledgement."""
+    """Mint a short-lived signed token authorizing a single voice acknowledgement.
+
+    ``summary`` (truncated) is carried so the keypad "repeat" option can re-read
+    the page without extra server state.
+    """
     cfg = _auth_config()
     now = datetime.now(timezone.utc)
     payload = {
         "org_id": str(org_id),
         "incident_id": str(incident_id),
         "user_id": str(user_id),
+        "summary": summary[:240],
         "purpose": "voice_ack",
         "iat": now,
         "exp": now + timedelta(seconds=_TOKEN_TTL_SECONDS),
@@ -78,27 +87,54 @@ async def voice_ack(
     Digits: str = Form(default=""),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Twilio ``<Gather>`` action callback. Press ``1`` acknowledges the incident."""
+    """Twilio ``<Gather>`` callback: 1 = acknowledge, 2 = escalate, * = repeat."""
     try:
         payload = _decode_voice_ack_token(token)
     except JWTError:
         return _twiml("This acknowledgement link is invalid or has expired. Goodbye.")
 
-    if Digits.strip() != "1":
-        return _twiml("No acknowledgement was recorded. Goodbye.")
-
     org_id = uuid.UUID(payload["org_id"])
     incident_id = uuid.UUID(payload["incident_id"])
     user_id = uuid.UUID(payload["user_id"])
+    digit = Digits.strip()
+
+    # Repeat: re-read the menu (relative action posts back to this same URL).
+    if digit == "*":
+        from backend.paging.page_text import format_voice_menu_twiml
+
+        twiml = format_voice_menu_twiml(
+            payload.get("summary") or "Incident page.", f"/paging/voice/ack/{token}"
+        )
+        return Response(content=twiml, media_type="application/xml")
 
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
         return _twiml("That incident could not be found. Goodbye.")
-    if incident.acknowledged_at is not None:
-        return _twiml("This incident was already acknowledged. Goodbye.")
 
-    await IncidentAssignmentRepo.assign(
-        db, org_id, incident_id=incident_id, user_id=user_id, assigned_by="self_ack"
-    )
-    await db.commit()
-    return _twiml("Incident acknowledged. You are now the owner. Goodbye.")
+    if digit == "1":
+        if incident.acknowledged_at is not None:
+            return _twiml("This incident was already acknowledged. Goodbye.")
+        await IncidentAssignmentRepo.assign(
+            db, org_id, incident_id=incident_id, user_id=user_id, assigned_by="self_ack"
+        )
+        await db.commit()
+        return _twiml("Incident acknowledged. You are now the owner. Goodbye.")
+
+    if digit == "2":
+        from backend.paging.channel_factory import build_channel_factory
+        from backend.paging.escalation import escalate_now
+
+        result = await escalate_now(
+            db,
+            org_id,
+            incident_id=incident_id,
+            channel_factory=build_channel_factory(),
+        )
+        await db.commit()
+        if result is None:
+            return _twiml(
+                "There are no further responders to escalate to. Goodbye."
+            )
+        return _twiml("Escalating to the next responder. Goodbye.")
+
+    return _twiml("No acknowledgement was recorded. Goodbye.")

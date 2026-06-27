@@ -136,3 +136,15 @@ class TestFrontendMount:
             "javascript" in resp.headers["content-type"]
             or "text" in resp.headers["content-type"]
         )
+
+    async def test_rsc_payload_served_as_x_component(self, client: AsyncClient):
+        """RSC navigation payloads (.txt) must be text/x-component, not
+        text/plain — otherwise the App Router client rejects them and every
+        in-app navigation becomes a full-page reload."""
+        payloads = list(FRONTEND_OUT.rglob("*.txt"))
+        if not payloads:
+            pytest.skip("no RSC .txt payloads found in build output")
+        rel = payloads[0].relative_to(FRONTEND_OUT).as_posix()
+        resp = await client.get(f"/{rel}")
+        assert resp.status_code == 200
+        assert "text/x-component" in resp.headers["content-type"]

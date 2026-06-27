@@ -92,6 +92,15 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
             if root not in resolved.parents and resolved != root:
                 continue
             if resolved.is_file():
+                # Next.js App Router navigation payloads are emitted as `.txt`
+                # files. The client router only accepts them as RSC flight data
+                # when served as `text/x-component`; the default `text/plain`
+                # (guessed from the extension) makes it reject the payload and
+                # fall back to a full-page reload — the whole-shell black flash
+                # on every in-app navigation. Force the correct content type so
+                # client-side navigation works and the layout persists.
+                if resolved.suffix == ".txt":
+                    return FileResponse(resolved, media_type="text/x-component")
                 return FileResponse(resolved)
 
         if not_found_file.is_file():

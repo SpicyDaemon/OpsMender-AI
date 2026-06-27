@@ -128,7 +128,7 @@ import {
 import { IconSelect } from "@/components/ui/IconSelect";
 import { Modal } from "@/components/ui/Modal";
 import { StatusDot } from "@/components/ui/StatusDot";
-import { notificationPlatformIcon } from "@/lib/brand-icons";
+import { modelProviderIcon, notificationPlatformIcon } from "@/lib/brand-icons";
 
 export function ConfigCard({
   title,
@@ -575,17 +575,16 @@ function ModelConfigModal({
           </div>
           <div>
             <Label htmlFor="model-provider">Provider</Label>
-            <Select
+            <IconSelect
               id="model-provider"
               value={form.provider}
-              onChange={(e) => handleProviderChange(e.target.value)}
-            >
-              {providers.map((provider) => (
-                <option key={provider.provider} value={provider.provider}>
-                  {provider.label}
-                </option>
-              ))}
-            </Select>
+              onChange={(next) => handleProviderChange(next)}
+              options={providers.map((provider) => ({
+                value: provider.provider,
+                label: provider.label,
+                icon: modelProviderIcon(provider.provider),
+              }))}
+            />
           </div>
         </div>
 

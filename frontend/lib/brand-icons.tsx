@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import {
   SiAnsible,
+  SiAnthropic,
   SiApple,
   SiArgo,
   SiAsana,
@@ -12,6 +13,7 @@ import {
   SiGithub,
   SiGitlab,
   SiGooglechat,
+  SiGooglecloud,
   SiGoogledocs,
   SiHomeassistant,
   SiJenkins,
@@ -23,14 +25,22 @@ import {
   SiMatrix,
   SiNewrelic,
   SiNotion,
+  SiOllama,
+  SiOpenai,
+  SiSentry,
   SiSignal,
   SiSlack,
+  SiSplunk,
+  SiStatuspage,
   SiTelegram,
+  SiTerraform,
   SiTwilio,
   SiWechat,
   SiWhatsapp,
+  SiZendesk,
 } from "react-icons/si";
 import {
+  Boxes,
   Cloud,
   Globe,
   LifeBuoy,
@@ -45,9 +55,9 @@ import {
 
 // A brand glyph: a Simple-Icons component (with brand color where it reads well
 // on both themes) or a neutral Lucide fallback for brands Simple Icons doesn't
-// ship (Microsoft/Azure, ServiceNow, Lark/Feishu, DingTalk, AWS, …). Glyphs
-// without a `color` inherit `currentColor` (we render them in fg-secondary) so
-// near-black/near-white marks like GitHub or Notion stay visible in both modes.
+// ship (Microsoft/Azure, AWS, …). Glyphs without a `color` inherit
+// `currentColor` (we render them in fg-secondary) so near-black/near-white
+// marks like GitHub, Notion, or OpenAI stay visible in both modes.
 type IconComponent = ComponentType<{ size?: number; color?: string; className?: string }>;
 type Brand = { Icon: IconComponent; color?: string };
 
@@ -72,7 +82,12 @@ const INTEGRATION_ICONS: Record<string, Brand> = {
   linear: { Icon: SiLinear, color: "#5E6AD2" },
   newrelic: { Icon: SiNewrelic, color: "#00AC69" },
   notion: { Icon: SiNotion },
+  sentry: { Icon: SiSentry, color: "#8C5CF4" },
   servicenow: { Icon: Cloud },
+  splunk: { Icon: SiSplunk },
+  statuspage: { Icon: SiStatuspage, color: "#2684FF" },
+  terraform_cloud: { Icon: SiTerraform, color: "#7B42BC" },
+  zendesk: { Icon: SiZendesk },
 };
 
 const PLATFORM_ICONS: Record<string, Brand> = {
@@ -101,6 +116,16 @@ const PLATFORM_ICONS: Record<string, Brand> = {
   voice: { Icon: Phone },
 };
 
+const PROVIDER_ICONS: Record<string, Brand> = {
+  anthropic: { Icon: SiAnthropic, color: "#D97757" },
+  openai: { Icon: SiOpenai },
+  ollama: { Icon: SiOllama },
+  vertex_ai: { Icon: SiGooglecloud, color: "#4285F4" },
+  azure_openai: { Icon: Cloud },
+  bedrock: { Icon: Cloud },
+  openai_compatible: { Icon: Boxes },
+};
+
 function glyph(brand: Brand | undefined, fallback: IconComponent, size: number): ReactNode {
   const Icon = brand?.Icon ?? fallback;
   return (
@@ -120,4 +145,9 @@ export function integrationKindIcon(kind: string, size = 16): ReactNode {
 /** Brand glyph for a notification platform (e.g. "slack", "telegram", "voice"). */
 export function notificationPlatformIcon(platform: string, size = 16): ReactNode {
   return glyph(PLATFORM_ICONS[platform], Plug, size);
+}
+
+/** Brand glyph for a model provider (e.g. "anthropic", "openai", "bedrock"). */
+export function modelProviderIcon(provider: string, size = 16): ReactNode {
+  return glyph(PROVIDER_ICONS[provider], Boxes, size);
 }

@@ -3,6 +3,18 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// The Kind picker is a custom IconSelect (a button + listbox), not a native
+// <select>, so drive it by opening it and clicking the option by data-value.
+async function pickKind(
+  user: ReturnType<typeof userEvent.setup>,
+  value: string,
+) {
+  await user.click(screen.getByLabelText("Kind"));
+  const target = document.querySelector(`[role="option"][data-value="${value}"]`);
+  if (!target) throw new Error(`Kind option not found: ${value}`);
+  await user.click(target as HTMLElement);
+}
+
 const apiMocks = vi.hoisted(() => ({
   createIntegrationConnector: vi.fn(),
   deleteIntegrationConnector: vi.fn(),
@@ -381,7 +393,7 @@ describe("Integrations page", () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
     await screen.findByRole("heading", { name: "Add integration" });
-    await user.selectOptions(screen.getByLabelText("Kind"), "github");
+    await pickKind(user, "github");
     expect(
       screen.getByText(/Hosted default: https:\/\/api.github.com/),
     ).toBeTruthy();
@@ -398,7 +410,7 @@ describe("Integrations page", () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
     await screen.findByRole("heading", { name: "Add integration" });
-    await user.selectOptions(screen.getByLabelText("Kind"), "azure_devops");
+    await pickKind(user, "azure_devops");
     expect(
       screen.getByText(/collection URL for a self-hosted deployment/),
     ).toBeTruthy();
@@ -413,7 +425,7 @@ describe("Integrations page", () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
     await screen.findByRole("heading", { name: "Add integration" });
-    await user.selectOptions(screen.getByLabelText("Kind"), "jenkins");
+    await pickKind(user, "jenkins");
     expect(screen.getByText(/Jenkins controller URL/)).toBeTruthy();
     expect(screen.getByLabelText("Username")).toBeTruthy();
     expect(screen.getByLabelText("Password")).toBeTruthy();
@@ -427,7 +439,7 @@ describe("Integrations page", () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
     await screen.findByRole("heading", { name: "Add integration" });
-    await user.selectOptions(screen.getByLabelText("Kind"), "terraform_cloud");
+    await pickKind(user, "terraform_cloud");
     expect(screen.getByText(/Terraform Enterprise API v2 base/)).toBeTruthy();
     expect(screen.getByLabelText("API key")).toBeTruthy();
     expect(screen.getByLabelText("Default workspace ID")).toBeTruthy();
@@ -438,7 +450,7 @@ describe("Integrations page", () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
     await screen.findByRole("heading", { name: "Add integration" });
-    await user.selectOptions(screen.getByLabelText("Kind"), "google_docs");
+    await pickKind(user, "google_docs");
     expect(screen.queryByLabelText("Base URL")).toBeNull();
     expect(screen.getByLabelText("Access token")).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("Authentication"), "custom");

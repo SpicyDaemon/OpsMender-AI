@@ -40,6 +40,7 @@ import { RosterCalendarModal } from "@/components/RosterCalendarModal";
 import { NotificationChannelsPage } from "@/components/NotificationChannelsPage";
 import { useAuth } from "@/context/auth";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
+import { notificationPlatformIcon } from "@/lib/brand-icons";
 
 import {
   approveMaintenanceWindow,
@@ -4320,6 +4321,16 @@ export function NotificationPreferencesPanel({
     [botConnectors],
   );
 
+  // Brand glyph for the channel a stage delivers to (Voice Call -> phone).
+  const channelIcon = useCallback(
+    (channelId: string) => {
+      if (channelId === "voice") return notificationPlatformIcon("voice", 16);
+      const platform = botConnectors.find((c) => c.id === channelId)?.platform;
+      return notificationPlatformIcon(platform ?? "", 16);
+    },
+    [botConnectors],
+  );
+
   useEffect(() => {
     (async () => {
       try {
@@ -4560,6 +4571,9 @@ export function NotificationPreferencesPanel({
                       >
                         <span className="w-16 shrink-0 font-mono text-xs text-fg-muted">
                           Stage {idx + 1}
+                        </span>
+                        <span className="shrink-0" aria-hidden>
+                          {channelIcon(stage.channel_id)}
                         </span>
                         <Select
                           aria-label={`${p} stage ${idx + 1} channel`}

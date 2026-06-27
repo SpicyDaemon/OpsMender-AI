@@ -125,8 +125,10 @@ import {
   Select,
   Textarea,
 } from "@/components/ui/Input";
+import { IconSelect } from "@/components/ui/IconSelect";
 import { Modal } from "@/components/ui/Modal";
 import { StatusDot } from "@/components/ui/StatusDot";
+import { notificationPlatformIcon } from "@/lib/brand-icons";
 
 export function ConfigCard({
   title,
@@ -3280,26 +3282,21 @@ function BotConnectorModal({
           </div>
           <div>
             <Label htmlFor="bot-platform">Platform</Label>
-            <Select
+            <IconSelect
               id="bot-platform"
               value={form.platform}
-              onChange={(e) =>
-                handlePlatformChange(e.target.value as BotConnectorPlatform)
-              }
-            >
-              {(Object.keys(PLATFORM_LABELS) as BotConnectorPlatform[])
+              onChange={(next) => handlePlatformChange(next as BotConnectorPlatform)}
+              options={(Object.keys(PLATFORM_LABELS) as BotConnectorPlatform[])
                 // "smtp" is retired as a notification channel: SMTP is now a
                 // single workspace setting under Config → Email / SMTP. Existing
                 // smtp connectors still render; they just can't be created here.
                 .filter((p) => p !== "smtp")
-                .map(
-                (p) => (
-                  <option key={p} value={p}>
-                    {PLATFORM_LABELS[p]}
-                  </option>
-                ),
-              )}
-            </Select>
+                .map((p) => ({
+                  value: p,
+                  label: PLATFORM_LABELS[p],
+                  icon: notificationPlatformIcon(p),
+                }))}
+            />
           </div>
         </div>
 
@@ -4198,7 +4195,7 @@ export function BotConnectorSection({
                   >
                     <td className="px-4 py-3 align-top">
                       <div className="flex items-center gap-2">
-                        <Plug size={14} className="text-fg-muted" />
+                        {notificationPlatformIcon(connector.platform, 14)}
                         <span className="font-medium text-fg-primary">
                           {connector.name}
                         </span>

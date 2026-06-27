@@ -18,6 +18,8 @@ import type {
 } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
+import { IconSelect } from "@/components/ui/IconSelect";
+import { integrationKindIcon } from "@/lib/brand-icons";
 
 // Friendly Title-Case labels for authentication methods (acronyms stay upper).
 const AUTH_TYPE_LABELS: Record<string, string> = {
@@ -734,11 +736,10 @@ export default function IntegrationsPage() {
           </div>
           <div>
             <Label htmlFor="integration-kind">Kind</Label>
-            <Select
+            <IconSelect
               id="integration-kind"
               value={kind}
-              onChange={(event) => {
-                const next = event.target.value;
+              onChange={(next) => {
                 setKind(next);
                 const definition = kinds.find((item) => item.kind === next);
                 if (definition?.auth_types[0]) {
@@ -763,13 +764,12 @@ export default function IntegrationsPage() {
                 );
                 setRemovedCredentialKeys([]);
               }}
-            >
-              {kinds.map((item) => (
-                <option key={item.kind} value={item.kind}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
+              options={kinds.map((item) => ({
+                value: item.kind,
+                label: item.label,
+                icon: integrationKindIcon(item.kind),
+              }))}
+            />
             {selectedKind && !selectedKind.adapter_available && (
               <p className="mt-1 text-xs text-fg-muted">
                 Configuration can be saved; the adapter lands in its Wave 1

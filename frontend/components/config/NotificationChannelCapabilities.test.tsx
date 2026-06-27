@@ -11,6 +11,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
+// The Platform picker is a custom IconSelect (button + listbox), not a native
+// <select>: open it and click the option carrying the target data-value.
+function pickPlatform(value: string) {
+  fireEvent.click(screen.getByLabelText("Platform"));
+  const option = document.querySelector(`[role="option"][data-value="${value}"]`);
+  if (!option) throw new Error(`Platform option not found: ${value}`);
+  fireEvent.click(option);
+}
+
 const platformSchemas = vi.hoisted(() => [
   {
     platform: "discord",
@@ -501,9 +510,8 @@ describe("Notification Channels capability rendering", () => {
     await act(async () => {});
 
     fireEvent.click(screen.getByRole("button", { name: /add channel/i }));
-    const platform = screen.getByLabelText("Platform");
 
-    fireEvent.change(platform, { target: { value: "discord" } });
+    pickPlatform("discord");
     expect(await screen.findByLabelText(/Discord Channel ID/i)).toBeTruthy();
     expect(screen.getByLabelText(/Track/) as HTMLInputElement).toBeTruthy();
     expect(
@@ -513,7 +521,7 @@ describe("Notification Channels capability rendering", () => {
     ).toBeTruthy();
     expect(screen.queryByText(/Snowflake/i)).toBeNull();
 
-    fireEvent.change(platform, { target: { value: "email" } });
+    pickPlatform("email");
     expect(await screen.findByText("Mailgun Email can:")).toBeTruthy();
     expect(screen.getByLabelText(/Mailgun API key/i)).toBeTruthy();
     expect(screen.getByLabelText(/Mailgun sending domain/i)).toBeTruthy();
@@ -525,9 +533,9 @@ describe("Notification Channels capability rendering", () => {
     // "smtp" is retired as a notification channel — SMTP is now the single
     // workspace setting under Config → Email / SMTP, so it is not offered as a
     // creatable connector platform.
-    const smtpOption = Array.from(platform.querySelectorAll("option")).find(
-      (o) => (o as HTMLOptionElement).value === "smtp",
-    );
-    expect(smtpOption).toBeUndefined();
+    fireEvent.click(screen.getByLabelText("Platform"));
+    expect(
+      document.querySelector('[role="option"][data-value="smtp"]'),
+    ).toBeNull();
   });
 });

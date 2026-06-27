@@ -8494,3 +8494,68 @@ class TestUserAvatar:
         assert resp.status_code == 200
         assert resp.json()["has_avatar"] is False
         assert resp.json()["avatar_url"] is None
+
+
+class TestVoiceAck:
+    """Twilio voice-page keypad acknowledgement (routes/voice.py)."""
+
+    async def _user_id(self, app):
+        async with app.state.session_factory() as db:
+            user = await UserRepo.get_by_username(db, "testadmin")
+            return user.id
+
+    async def _new_incident(self, app):
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="Voice page",
+                description="API latency spike",
+                severity="high",
+            )
+            await db.commit()
+            return incident.id
+
+    async def test_press_1_acknowledges(self, client, app, auth_headers):
+        from backend.api.routes.voice import encode_voice_ack_token
+
+        user_id = await self._user_id(app)
+        incident_id = await self._new_incident(app)
+        token = encode_voice_ack_token(
+            org_id=TEST_ORG_ID, incident_id=incident_id, user_id=user_id
+        )
+        resp = await client.post(
+            f"/paging/voice/ack/{token}", data={"Digits": "1"}
+        )
+        assert resp.status_code == 200
+        assert "xml" in resp.headers["content-type"]
+        assert "acknowledged" in resp.text.lower()
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            assert incident.acknowledged_at is not None
+
+    async def test_no_keypress_does_not_acknowledge(
+        self, client, app, auth_headers
+    ):
+        from backend.api.routes.voice import encode_voice_ack_token
+
+        user_id = await self._user_id(app)
+        incident_id = await self._new_incident(app)
+        token = encode_voice_ack_token(
+            org_id=TEST_ORG_ID, incident_id=incident_id, user_id=user_id
+        )
+        resp = await client.post(
+            f"/paging/voice/ack/{token}", data={"Digits": "9"}
+        )
+        assert resp.status_code == 200
+        assert "no acknowledgement" in resp.text.lower()
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            assert incident.acknowledged_at is None
+
+    async def test_invalid_token_is_rejected(self, client, app):
+        resp = await client.post(
+            "/paging/voice/ack/not-a-real-token", data={"Digits": "1"}
+        )
+        assert resp.status_code == 200
+        assert "invalid or has expired" in resp.text.lower()

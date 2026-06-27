@@ -381,13 +381,36 @@ async def dispatch_page(
                             )
                         )
                     ]
+                # Voice pages can offer a keypad acknowledgement: build a signed
+                # ack callback URL the call's <Gather> POSTs to on "press 1".
+                voice_ack_url: str | None = None
+                if key == "voice":
+                    base = os.environ.get("OPSMENDER_PUBLIC_URL")
+                    if base:
+                        from backend.api.routes.voice import encode_voice_ack_token
+
+                        token = encode_voice_ack_token(
+                            org_id=org_id,
+                            incident_id=incident.id,
+                            user_id=user.id,
+                        )
+                        voice_ack_url = f"{base.rstrip('/')}/paging/voice/ack/{token}"
                 try:
-                    attempt = await channel.send(
-                        recipient=recipient,
-                        subject=subject,
-                        body=body,
-                        blocks=blocks,
-                    )
+                    if voice_ack_url is not None:
+                        attempt = await channel.send(
+                            recipient=recipient,
+                            subject=subject,
+                            body=body,
+                            blocks=blocks,
+                            ack_url=voice_ack_url,
+                        )
+                    else:
+                        attempt = await channel.send(
+                            recipient=recipient,
+                            subject=subject,
+                            body=body,
+                            blocks=blocks,
+                        )
                 except Exception as exc:  # noqa: BLE001
                     attempt = DeliveryAttempt(key, "failed", str(exc))
 

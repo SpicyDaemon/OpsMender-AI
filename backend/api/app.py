@@ -363,6 +363,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     )
     from backend.api.routes.notifications import router as notifications_router
     from backend.api.routes.ticket_sync import router as ticket_sync_router
+    from backend.api.routes.voice import router as voice_router
 
     api_routers = [
         auth_router,
@@ -403,6 +404,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         slack_paging_router,
         teams_paging_router,
         ticket_sync_router,
+        voice_router,
     ]
 
     deployment = config.deployment

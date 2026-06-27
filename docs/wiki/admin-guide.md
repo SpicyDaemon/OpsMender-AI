@@ -3,7 +3,7 @@ This guide covers the core configuration and integration points for administrato
 For authentication see two dedicated guides:
 
 - **[Auth Guide](auth-guide.md)** — default email + admin-invite flow used by ~95% of self-hosted installs.
-- **[Advanced Auth Guide](advanced-auth-guide.md)** — optional OIDC + SAML + multi-tenancy + host-based domain isolation. Both `OPSMENDER_ADVANCED_AUTH_ENABLED` and `OPSMENDER_MULTI_ORG_ENABLED` are documented there.
+- **[Advanced Auth Guide](advanced-auth-guide.md)** — optional OIDC, SAML, and custom-domain login behavior for the single workspace.
 
 For day-to-day user-lifecycle operations (invites, password resets, deactivation, soft delete, bootstrap admins, auth-method badges) see the [People Guide](people-guide.md).
 
@@ -11,8 +11,8 @@ For day-to-day user-lifecycle operations (invites, password resets, deactivation
 
 OpsMender ships **simple by default, enterprise-ready underneath**.
 
-- **Default mode** (`OPSMENDER_ADVANCED_AUTH_ENABLED=false`, `OPSMENDER_MULTI_ORG_ENABLED=false`): one workspace, email + admin invites, three roles (`admin` / `operator` / `viewer`), no SSO/SAML buttons on the login page, no org switcher in the TopBar. Full details in [Auth Guide](auth-guide.md).
-- **Advanced mode** (either flag flipped to `true`, or a provider is already configured for any tenant): per-tenant OIDC / SAML buttons surface on the Organizations page, optional multi-tenant org switcher in the TopBar, host-based domain isolation lets each tenant have its own URL. Full details in [Advanced Auth Guide](advanced-auth-guide.md).
+- **Default mode** (`OPSMENDER_ADVANCED_AUTH_ENABLED=false`): one workspace, email + admin invites, three roles (`admin` / `operator` / `viewer`), no org switcher in the TopBar. Full details in [Auth Guide](auth-guide.md).
+- **Advanced auth** (`OPSMENDER_ADVANCED_AUTH_ENABLED=true`, or an already-configured provider): OIDC / SAML forms surface in **Settings -> Workspace**; custom domains can show the right login buttons before authentication. Full details in [Advanced Auth Guide](advanced-auth-guide.md).
 
 Existing configured SSO/SAML providers keep working regardless of the flag — settings never silently disappear when the flag flips off (D-027 "settings never silently disappear" rule).
 

@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthShell } from "@/components/auth/AuthShell";
-import { acceptInvite, getInviteByToken, setOrgId, setToken } from "@/lib/api";
+import { acceptInvite, getInviteByToken, setToken } from "@/lib/api";
 import type { InvitePublicResponse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { FormError, Input, Label } from "@/components/ui/Input";

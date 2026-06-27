@@ -2,7 +2,7 @@
 
 This is the default OpsMender auth model: one workspace, email + password, admin-issued invites, three roles (admin / operator / viewer). It's what 95% of self-hosted installs run on, and it's what a fresh `docker run` lands you in.
 
-If you need **SSO (OIDC), SAML, or multi-tenant organizations**, those features are still in the product — they just hide behind explicit opt-ins so the default install stays simple. See [Advanced Auth Guide](advanced-auth-guide.md).
+If you need **SSO (OIDC) or SAML**, those features are still in the product — they live in Settings for the single workspace so the default install stays simple. See [Advanced Auth Guide](advanced-auth-guide.md).
 
 > **Companion guide:** [People Guide](people-guide.md) covers day-to-day People-page operations (invites, password resets, soft delete, etc.) in detail. This page is the conceptual auth model — who can sign in, how accounts are created, what changes when you opt in to advanced features.
 
@@ -16,7 +16,7 @@ If you need **SSO (OIDC), SAML, or multi-tenant organizations**, those features 
 4. **Admins manage users** from the People page — change role, deactivate, reset password, soft-delete.
 5. **Roles gate behavior** — `admin` can do everything, `operator` can run incident response + change runtime state, `viewer` is read-only.
 
-That's the entire default model. No tenant configuration, no SSO buttons on the login page, no org switcher in the TopBar.
+That's the entire default model. No tenant picker, no org switcher in the TopBar.
 
 ---
 
@@ -63,7 +63,7 @@ Password
 [Sign in]
 ```
 
-No SSO/SAML buttons. No org switcher. No tenant picker.
+No SSO/SAML buttons until a provider is configured. No org switcher. No tenant picker.
 
 The Register link only appears when self-signup is still open (i.e. no users exist yet). Once an admin exists, the link is hidden and that route returns 403.
 
@@ -102,10 +102,8 @@ Invites are single-use and expire after **72 hours**. Lost or expired? Use the
 **resend** action on a pending row — it revokes the old token and mints a fresh
 one.
 
-After sign-in, dashboard links use
-`/o/{organization-slug}/dashboard/...`. The slug selects the active workspace
-for bookmarkable links; existing bare `/dashboard/...` links remain compatible
-and redirect after the active workspace is loaded.
+After sign-in, dashboard links use plain `/dashboard/...` paths. The instance
+has one active workspace, so there is no org slug in dashboard URLs.
 
 ---
 
@@ -157,23 +155,21 @@ Soft delete has prerequisites that the People page walks you through (deactivate
 
 ---
 
-## What changes when you opt in to advanced auth
+## Optional SSO and SAML
 
-OpsMender ships two env flags that flip on the optional auth surfaces:
+OpsMender ships one env flag that exposes the optional SSO/SAML setup surface in
+a fresh install:
 
 ```dotenv
-OPSMENDER_MULTI_ORG_ENABLED=false        # default
 OPSMENDER_ADVANCED_AUTH_ENABLED=false    # default
 ```
 
 | Flag | When `true` |
 |------|-------------|
-| `OPSMENDER_MULTI_ORG_ENABLED` | Sidebar Admin → "Workspace Settings" renames to "Organizations". TopBar shows the org switcher when the user belongs to more than one org. "Create another organization" affordances become visible. |
-| `OPSMENDER_ADVANCED_AUTH_ENABLED` | The Organizations / Workspace Settings page surfaces per-org **SSO** and **SAML** action buttons so an admin can wire up an IdP. |
+| `OPSMENDER_ADVANCED_AUTH_ENABLED` | Settings surfaces the workspace **OIDC SSO** and **SAML** forms so an admin can wire up an IdP. |
 
-Both flags are **visibility hints only**:
+The flag is a **visibility hint only**:
 
-- The backend org model has always been there (every entity is org-scoped).
 - The SSO/SAML runtime routes (`/auth/sso/...`, `/auth/saml/...`) work regardless of the flag.
 - **An org with an already-configured SSO or SAML provider keeps its admin settings visible even when `advanced_auth_enabled=false`.** Settings never silently disappear when you flip a flag off. That's the explicit D-027 rule.
 
@@ -184,6 +180,6 @@ Set up details and operator flow live in [Advanced Auth Guide](advanced-auth-gui
 ## Related guides
 
 - [People Guide](people-guide.md) — day-to-day People-page operations: invites, password resets, soft delete, troubleshooting matrix.
-- [Advanced Auth Guide](advanced-auth-guide.md) — SSO (OIDC), SAML, multi-tenancy, host-based domain isolation.
+- [Advanced Auth Guide](advanced-auth-guide.md) — SSO (OIDC), SAML, and custom-domain login behavior.
 - [Getting Started](getting-started.md) — first local boot and first login.
 - [Administrator Guide](admin-guide.md) — everything else: runtime config, MCP, integrations, models.

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
-import { scopeDashboardHref } from "@/lib/org-path";
+import { useRouter } from "next/navigation";
 
+/** Client-side redirect helper for legacy/alias dashboard routes. */
 export function DashboardRedirect({ to }: { to: string }) {
+  const router = useRouter();
   useEffect(() => {
-    window.location.replace(scopeDashboardHref(to));
-  }, [to]);
+    router.replace(to);
+  }, [router, to]);
 
   return null;
 }

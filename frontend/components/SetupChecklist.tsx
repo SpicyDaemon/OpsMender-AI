@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Check, ChevronRight, X as XIcon } from "lucide-react";
 import { getSetupChecklist } from "@/lib/api";
 import type { SetupChecklistResponse } from "@/lib/types";
-import { useDashboardHref } from "@/lib/use-dashboard-href";
 
 type Row = {
   key: keyof Omit<SetupChecklistResponse, "all_complete">;
@@ -50,7 +49,6 @@ const ROWS: Row[] = [
 export function SetupChecklist() {
   const [state, setState] = useState<SetupChecklistResponse | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const dashboardHref = useDashboardHref();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -110,7 +108,7 @@ export function SetupChecklist() {
           return (
             <li key={row.key}>
               <Link
-                href={dashboardHref(row.href)}
+                href={row.href}
                 className={`flex items-center gap-3 rounded px-2 py-1.5 text-sm transition-colors hover:bg-bg-hover ${
                   done ? "text-fg-muted" : "text-fg-primary"
                 }`}

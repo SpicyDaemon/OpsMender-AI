@@ -39,13 +39,13 @@ vi.mock("@/context/theme", () => ({
 }));
 
 const apiMocks = vi.hoisted(() => ({
-  getConfig: vi.fn().mockResolvedValue({ multi_org_enabled: false }),
-  getOrgId: vi.fn().mockReturnValue(null),
   listApprovals: vi.fn().mockResolvedValue({ items: [] }),
-  listMyOrganizations: vi.fn().mockResolvedValue({ items: [] }),
-  resolveTenant: vi.fn().mockResolvedValue({ pinned: false }),
-  setMyPrimaryOrganization: vi.fn().mockResolvedValue(undefined),
-  setOrgId: vi.fn(),
+  resolveTenant: vi.fn().mockResolvedValue({
+    pinned: false,
+    org_id: "org-1",
+    org_name: "Main",
+    org_slug: "main",
+  }),
   // NotificationBell (rendered inside TopBar) calls these on mount.
   getUnreadCount: vi.fn().mockResolvedValue({ unread: 0 }),
   listNotifications: vi.fn().mockResolvedValue({ items: [], total: 0, unread: 0 }),
@@ -64,15 +64,19 @@ function openMenu() {
 describe("TopBar account dropdown", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiMocks.getConfig.mockResolvedValue({ multi_org_enabled: false });
     apiMocks.listApprovals.mockResolvedValue({ items: [] });
-    apiMocks.listMyOrganizations.mockResolvedValue({ items: [] });
-    apiMocks.resolveTenant.mockResolvedValue({ pinned: false });
+    apiMocks.resolveTenant.mockResolvedValue({
+      pinned: false,
+      org_id: "org-1",
+      org_name: "Main",
+      org_slug: "main",
+    });
   });
 
   it("opens on click and shows profile link, theme selector, and sign out", async () => {
     render(<TopBar />);
     await waitFor(() => expect(screen.getByText("Ada Lovelace")).toBeTruthy());
+    expect(screen.getAllByText("Main").length).toBeGreaterThan(0);
     openMenu();
 
     expect(screen.getByText("Edit Profile")).toBeTruthy();

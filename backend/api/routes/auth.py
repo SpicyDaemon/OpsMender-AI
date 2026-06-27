@@ -40,8 +40,6 @@ from backend.auth.avatar import process_avatar, to_data_url
 from backend.api.schemas import (
     LoginRequest,
     LoginResponse,
-    MyOrganizationListResponse,
-    MyOrganizationResponse,
     PasswordResetConsumeRequest,
     PasswordResetMintResponse,
     RegisterRequest,
@@ -882,48 +880,3 @@ def _ensure_aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
-
-
-@router.get(
-    "/me/organizations",
-    response_model=MyOrganizationListResponse,
-    summary="List organizations the current user belongs to",
-)
-async def my_organizations(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    rows = await UserRepo.list_organizations(db, user.id)
-    items = [
-        MyOrganizationResponse(
-            id=r["id"],
-            name=r["name"],
-            slug=r["slug"],
-            branding=r["branding"],
-            role=r["role"],
-            is_primary=(user.primary_org_id == r["id"]),
-        )
-        for r in rows
-    ]
-    return MyOrganizationListResponse(items=items, total=len(items))
-
-
-@router.put(
-    "/me/primary-org/{org_id}",
-    response_model=UserResponse,
-    summary="Set the current user's primary (active) organization",
-)
-async def set_my_primary_org(
-    org_id: uuid.UUID,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    if not await UserRepo.is_member(db, user.id, org_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is not a member of this organization.",
-        )
-    await UserRepo.set_primary_org(db, user.id, org_id)
-    await db.commit()
-    await db.refresh(user)
-    return user

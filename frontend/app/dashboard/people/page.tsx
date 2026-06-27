@@ -67,9 +67,7 @@ function authMethodMeta(user: UserResponse) {
     return {
       label: `oidc:${slug}`,
       variant: "medium" as const,
-      href: user.primary_org_id
-        ? `/dashboard/organizations?org=${user.primary_org_id}&auth=oidc`
-        : "/dashboard/organizations",
+      href: "/dashboard/config#organization-auth",
     };
   }
   if (value.startsWith("saml:")) {
@@ -77,9 +75,7 @@ function authMethodMeta(user: UserResponse) {
     return {
       label: `saml:${slug}`,
       variant: "default" as const,
-      href: user.primary_org_id
-        ? `/dashboard/organizations?org=${user.primary_org_id}&auth=saml`
-        : "/dashboard/organizations",
+      href: "/dashboard/config#organization-auth",
     };
   }
   return { label: "local", variant: "low" as const, href: null };

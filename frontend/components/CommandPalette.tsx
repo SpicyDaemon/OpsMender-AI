@@ -29,7 +29,6 @@ import {
   ArrowRight,
   Bell,
   Brain,
-  Building2,
   CheckSquare,
   Cpu,
   FileText,
@@ -84,8 +83,7 @@ const NAVIGATE_ITEMS: Omit<CommandItem, "kind">[] = [
   { id: "n-reliability", label: "Observe — Reliability", icon: Activity, href: "/dashboard/reliability", keywords: "sla mttr uptime" },
   { id: "n-activity", label: "Observe — Activity", icon: Activity, href: "/dashboard/activity", keywords: "audit log" },
   { id: "n-people", label: "Admin — People", icon: UserCog, href: "/dashboard/people", keywords: "users invites" },
-  { id: "n-organizations", label: "Admin — Organizations", icon: Building2, href: "/dashboard/organizations" },
-  { id: "n-config", label: "Admin — Config", icon: Settings, href: "/dashboard/config", keywords: "runtime retention" },
+  { id: "n-config", label: "Admin — Settings", icon: Settings, href: "/dashboard/config", keywords: "runtime retention config" },
 ];
 
 const ACTION_ITEMS: Omit<CommandItem, "kind">[] = [

@@ -11,7 +11,6 @@ import {
   LayoutDashboard,
   BookOpen,
   Brain,
-  Building2,
   CheckSquare,
   ChevronLeft,
   ChevronRight,
@@ -34,7 +33,6 @@ import {
 import { useAuth } from "@/context/auth";
 import { useTheme } from "@/context/theme";
 import { getConfig } from "@/lib/api";
-import { getOrgSlug, scopeDashboardPath, stripOrgScope } from "@/lib/org-path";
 
 type NavItem = {
   href: string;
@@ -77,7 +75,7 @@ export function navItemVisibleForRole(
  * Uses the most specific (longest) matching nav href.
  */
 export function requiredRolesForPath(pathname: string): string[] | null {
-  const items = buildNavGroups(true).flatMap((g) => g.items);
+  const items = buildNavGroups().flatMap((g) => g.items);
   let best: NavItem | null = null;
   for (const item of items) {
     if (pathname === item.href || pathname.startsWith(item.href + "/")) {
@@ -90,11 +88,7 @@ export function requiredRolesForPath(pathname: string): string[] | null {
   return null;
 }
 
-export function buildNavGroups(
-  // Retained for signature/back-compat; the Organizations entry no longer
-  // relabels by multi-org mode (it's always "Organizations").
-  _multiOrgEnabled: boolean,
-): NavGroup[] {
+export function buildNavGroups(): NavGroup[] {
   return [
     {
       id: "incident-management",
@@ -148,12 +142,6 @@ export function buildNavGroups(
       label: "Admin",
       items: [
         { href: "/dashboard/people", label: "People", icon: UserCog, roles: ["admin"] },
-        {
-          href: "/dashboard/organizations",
-          label: "Organizations",
-          icon: Building2,
-          roles: ["admin"],
-        },
         { href: "/dashboard/integrations", label: "Integrations", icon: Plug, roles: ["admin"] },
         { href: "/dashboard/config", label: "Settings", icon: Settings, roles: ["admin"] },
       ],
@@ -187,7 +175,6 @@ type NavLinkArgs = {
   active: boolean;
   collapsed: boolean;
   onClick?: () => void;
-  orgSlug?: string | null;
 };
 
 function renderNavLink({
@@ -198,12 +185,11 @@ function renderNavLink({
   active,
   collapsed,
   onClick,
-  orgSlug,
 }: NavLinkArgs) {
   return (
     <Link
       key={href}
-      href={scopeDashboardPath(href, orgSlug)}
+      href={href}
       onClick={onClick}
       title={collapsed ? label : undefined}
       className={`group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
@@ -251,7 +237,6 @@ type SidebarContentProps = {
   showCollapseToggle?: boolean;
   mobile?: boolean;
   onMobileClose?: () => void;
-  orgSlug: string | null;
 };
 
 function SidebarContent({
@@ -268,7 +253,6 @@ function SidebarContent({
   showCollapseToggle = true,
   mobile = false,
   onMobileClose,
-  orgSlug,
 }: SidebarContentProps) {
   const tierInfo = tier !== null ? TIER_STYLES[tier] : null;
   const { resolvedTheme } = useTheme();
@@ -349,7 +333,6 @@ function SidebarContent({
                 active: exact ? pathname === href : pathname.startsWith(href),
                 collapsed: true,
                 onClick: onNavigate,
-                orgSlug,
               }),
             )
           : visibleGroups.map((group) => (
@@ -367,7 +350,6 @@ function SidebarContent({
                       active: exact ? pathname === href : pathname.startsWith(href),
                       collapsed: false,
                       onClick: onNavigate,
-                      orgSlug,
                     }),
                   )}
                 </div>
@@ -425,20 +407,12 @@ function SidebarContent({
 }
 
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
-  const pathname = stripOrgScope(usePathname());
+  const pathname = usePathname();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [tier, setTier] = useState<number | null>(null);
-  // Kept for the buildNavGroups signature; the Organizations entry no longer
-  // relabels by multi-org mode. The /config fetch below is what drives `tier`.
-  const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
-  const [orgSlug, setOrgSlug] = useState<string | null>(null);
   const previousPathnameRef = useRef(pathname);
-
-  useEffect(() => {
-    setOrgSlug(getOrgSlug());
-  }, [pathname]);
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
@@ -459,7 +433,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     getConfig()
       .then((c) => {
         setTier(c.tier);
-        setMultiOrgEnabled(c.multi_org_enabled ?? false);
       })
       .catch(() => {});
   }, [user]);
@@ -498,10 +471,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const width = collapsed ? "w-16" : "w-60";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
 
-  // Filter items by role and drop any group that ends up empty. The
-  // nav-group list itself is rebuilt per render so the Admin entry
-  // label tracks `multiOrgEnabled` without an extra useMemo dance.
-  const navGroups = buildNavGroups(multiOrgEnabled);
+  // Filter items by role and drop any group that ends up empty.
+  const navGroups = buildNavGroups();
   const visibleGroups: NavGroup[] = navGroups.map((group) => ({
     ...group,
     items: group.items.filter((item) =>
@@ -528,7 +499,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           flatVisibleItems={flatVisibleItems}
           user={user}
           logout={logout}
-          orgSlug={orgSlug}
           onToggleCollapse={() => setCollapsed((c) => !c)}
         />
       </aside>
@@ -551,7 +521,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
               flatVisibleItems={flatVisibleItems}
               user={user}
               logout={logout}
-              orgSlug={orgSlug}
               mobile
               onMobileClose={onMobileClose}
               onNavigate={onMobileClose}

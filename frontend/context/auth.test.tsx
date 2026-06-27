@@ -14,8 +14,6 @@ const apiMocks = vi.hoisted(() => ({
   getToken: vi.fn(),
   setToken: vi.fn(),
   clearToken: vi.fn(),
-  setOrgId: vi.fn(),
-  clearOrgId: vi.fn(),
   getMe: vi.fn(),
   login: vi.fn(),
 }));
@@ -24,8 +22,6 @@ vi.mock("@/lib/api", () => ({
   getToken: apiMocks.getToken,
   setToken: apiMocks.setToken,
   clearToken: apiMocks.clearToken,
-  setOrgId: apiMocks.setOrgId,
-  clearOrgId: apiMocks.clearOrgId,
   getMe: apiMocks.getMe,
   login: apiMocks.login,
 }));
@@ -167,7 +163,6 @@ describe("AuthProvider", () => {
     fireEvent.click(screen.getByText("logout"));
 
     expect(apiMocks.clearToken).toHaveBeenCalledTimes(1);
-    expect(apiMocks.clearOrgId).toHaveBeenCalledTimes(1);
     await waitFor(() =>
       expect(screen.getByTestId("state").textContent).toBe("anon"),
     );

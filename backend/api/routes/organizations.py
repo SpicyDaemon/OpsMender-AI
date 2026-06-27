@@ -1,10 +1,6 @@
-"""Organization management endpoints (Phase 4).
-
-Only global admins (User.role == 'admin') can manage organizations.
-"""
+"""Single-workspace organization settings endpoints."""
 
 import uuid
-from typing import List
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,30 +14,24 @@ from backend.api.schemas import (
     OrgEmailSettingsUpsert,
     EmailSettingsTestRequest,
     EmailSettingsTestResponse,
-    OrganizationCreate,
     OrganizationDomainCreate,
     OrganizationDomainListResponse,
     OrganizationDomainResponse,
-    OrganizationListResponse,
     OrganizationResponse,
     OrganizationUpdate,
-    OrganizationUserListResponse,
     OrgSAMLConfigCreate,
     OrgSAMLConfigResponse,
     OrgSSOConfigCreate,
     OrgSSOConfigResponse,
     TenantContextResponse,
-    UserOrganizationLink,
 )
 from backend.auth.secrets import encrypt_secret
-from backend.db.models import User
 from backend.db.repos import (
     OrganizationDomainRepo,
     OrgEmailSettingsRepo,
     OrganizationRepo,
     OrgSAMLConfigRepo,
     OrgSSOConfigRepo,
-    UserRepo,
 )
 from backend.reports.email import build_email_channel, resolve_email_settings
 
@@ -61,7 +51,7 @@ async def resolve_tenant(
 
     Used by the frontend to:
     - Show org branding on login/register before the user authenticates.
-    - Hide the org switcher when the host pins a tenant (no ambiguity).
+    - Surface custom-domain context for the single workspace.
     """
     raw_host = x_forwarded_host or host
     normalized = OrganizationDomainRepo.normalize(raw_host or "")
@@ -98,40 +88,6 @@ async def resolve_tenant(
 admin_dependency = Depends(require_role("admin"))
 
 
-@router.get("", response_model=OrganizationListResponse, dependencies=[admin_dependency])
-async def list_organizations(db: AsyncSession = Depends(get_db)):
-    """List all organizations in the system."""
-    items = await OrganizationRepo.list_all(db)
-    return {"items": items, "total": len(items)}
-
-
-@router.post(
-    "",
-    response_model=OrganizationResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[admin_dependency],
-)
-async def create_organization(
-    req: OrganizationCreate, db: AsyncSession = Depends(get_db)
-):
-    """Create a new organization."""
-    # Check for slug collision
-    if req.slug:
-        # Note: OrganizationRepo.create handles default slug if None
-        pass
-
-    try:
-        org = await OrganizationRepo.create(db, name=req.name, slug=req.slug, branding=req.branding)
-        await db.commit()
-        return org
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to create organization: {str(e)}",
-        )
-
-
 @router.get(
     "/{org_id}", response_model=OrganizationResponse, dependencies=[admin_dependency]
 )
@@ -155,36 +111,6 @@ async def update_organization(
         raise HTTPException(status_code=404, detail="Organization not found")
     await db.commit()
     return org
-
-
-@router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_organization(
-    org_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
-):
-    """Delete an organization."""
-    org = await OrganizationRepo.get_by_id(db, org_id)
-    if org is None:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    org_count = await OrganizationRepo.count(db)
-    if org_count <= 1:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete the last organization.",
-        )
-
-    if current_user.primary_org_id == org_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Switch to another organization before deleting this one.",
-        )
-
-    success = await OrganizationRepo.delete(db, org_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Organization not found")
-    await db.commit()
 
 
 @router.get(
@@ -351,50 +277,6 @@ async def test_email_settings(
 
 
 @router.get(
-    "/{org_id}/users",
-    response_model=OrganizationUserListResponse,
-    dependencies=[admin_dependency],
-)
-async def list_organization_users(org_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    """List all users belonging to an organization."""
-    items = await UserRepo.list_by_org(db, org_id)
-    return {"items": items, "total": len(items)}
-
-
-@router.post(
-    "/{org_id}/users", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_dependency]
-)
-async def add_user_to_organization(
-    org_id: uuid.UUID, req: UserOrganizationLink, db: AsyncSession = Depends(get_db)
-):
-    """Link a user to an organization."""
-    # Verify user exists
-    user = await UserRepo.get_by_id(db, req.user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Verify org exists
-    org = await OrganizationRepo.get_by_id(db, org_id)
-    if org is None:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    try:
-        await UserRepo.add_to_organization(db, user_id=req.user_id, org_id=org_id, role=req.role)
-        
-        # If user has no primary org, set this one
-        if user.primary_org_id is None:
-            await UserRepo.set_primary_org(db, user.id, org_id)
-            
-        await db.commit()
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to add user to organization: {str(e)}",
-        )
-
-
-@router.get(
     "/{org_id}/domains",
     response_model=OrganizationDomainListResponse,
     dependencies=[admin_dependency],
@@ -492,28 +374,6 @@ async def delete_organization_domain(
     if row is None or row.org_id != org_id:
         raise HTTPException(status_code=404, detail="Domain not found for this org")
     await OrganizationDomainRepo.delete(db, domain_id)
-    await db.commit()
-
-
-@router.delete(
-    "/{org_id}/users/{user_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[admin_dependency],
-)
-async def remove_user_from_organization(
-    org_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession = Depends(get_db)
-):
-    """Remove a user from an organization."""
-    success = await UserRepo.remove_from_organization(db, user_id=user_id, org_id=org_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="User-Organization link not found")
-    
-    # If this was the user's primary org, clear it
-    user = await UserRepo.get_by_id(db, user_id)
-    if user and user.primary_org_id == org_id:
-        # Set to None or pick another one? For now, None.
-        await UserRepo.set_primary_org(db, user_id, None) # type: ignore
-
     await db.commit()
 
 

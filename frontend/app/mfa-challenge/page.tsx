@@ -6,7 +6,6 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/Button";
 import { FormError, Input, Label } from "@/components/ui/Input";
 import { setToken, verifyMFA } from "@/lib/api";
-import { scopeDashboardHref } from "@/lib/org-path";
 
 export default function MFAChallengePage() {
   const router = useRouter();
@@ -38,7 +37,7 @@ export default function MFAChallengePage() {
       );
       setToken(response.access_token);
       sessionStorage.removeItem("opsmender_mfa_token");
-      window.location.href = scopeDashboardHref("/dashboard");
+      window.location.href = "/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed");
     } finally {

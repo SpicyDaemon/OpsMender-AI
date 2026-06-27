@@ -175,17 +175,14 @@ This is the preferred path for production automation because it removes the need
 
 ---
 
-## 8. Multi-org behavior
+## 8. Workspace context
 
-**Default install:** OpsMender runs as a single workspace and `OPSMENDER_MULTI_ORG_ENABLED=false`. The People surface targets the one workspace; no org context to think about. This section is only relevant if you've explicitly opted in to multi-tenancy. Full multi-tenancy details live in [Advanced Auth Guide](advanced-auth-guide.md).
+OpsMender runs one active workspace per instance. The People surface targets
+that workspace, and there is no org switcher or invite org picker to manage.
 
-When `OPSMENDER_MULTI_ORG_ENABLED=true`:
-
-- With multiple orgs enabled, the current org context matters. An invite created while you are switched into Org A belongs to Org A.
-- The same human can exist in multiple organizations through separate membership rows.
-- Auth-method badges still show the source that actually provisioned the user (`local`, `oidc:<slug>`, or `saml:<slug>`).
-
-If you need to move a user between orgs, treat that as org membership management plus identity-provider access, not as a People-page rename/reset workflow.
+Auth-method badges still show the source that actually provisioned the user
+(`local`, `oidc:<slug>`, or `saml:<slug>`). Clicking an OIDC/SAML badge takes
+admins to **Settings -> Workspace**, where the provider is configured.
 
 ---
 
@@ -237,14 +234,14 @@ That keeps day-to-day identity in your IdP while preserving an OpsMender-native 
 | Password reset email failed | Same SMTP path as invites | Use the returned reset URL directly and then fix SMTP. |
 | Delete button stays disabled | User is still active or still appears on one or more rosters | Deactivate the user first, then remove them from all roster memberships. |
 | User should be SSO-backed, but shows Local | They were created locally and have not yet come through a successful OIDC/SAML login | Have them sign in through the IdP once; OpsMender updates the recorded auth source on success. |
-| OIDC/SAML badge opens the wrong place | The user's primary org is not the org you expected | Check the active org context and the user's membership/primary-org settings. |
+| OIDC/SAML badge opens the wrong place | The Settings route failed to load or the provider was removed | Open **Settings -> Workspace** directly and verify the provider row. |
 
 ---
 
 ## 12. Related guides
 
 - [Auth Guide](auth-guide.md) — the default auth model: single workspace, email + admin invite, three roles.
-- [Advanced Auth Guide](advanced-auth-guide.md) — optional OIDC + SAML + multi-tenancy + host-based domain isolation.
+- [Advanced Auth Guide](advanced-auth-guide.md) — optional OIDC + SAML + custom-domain login behavior.
 - [Administrator Guide](admin-guide.md) — runtime config, MCP, integrations, models.
 - [Getting Started](getting-started.md) — first local boot and first login.
 - [Notification Preferences](notification-preferences.md) — channel routing for a specific operator.

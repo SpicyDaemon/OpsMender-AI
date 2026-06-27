@@ -100,7 +100,7 @@ async def admin_headers(client: AsyncClient) -> dict[str, str]:
         json={"username": "rbadmin", "password": "securepass123"},
     )
     token = resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}", "X-Org-ID": str(TEST_ORG_ID)}
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ async def viewer_headers(client: AsyncClient, admin_headers) -> dict[str, str]:
         json={"username": "rbviewer", "password": "pw12345678"},
     )
     token = resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}", "X-Org-ID": str(TEST_ORG_ID)}
+    return {"Authorization": f"Bearer {token}"}
 
 
 _SKILL_MD = (

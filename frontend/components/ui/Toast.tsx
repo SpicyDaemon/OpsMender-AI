@@ -10,7 +10,6 @@ import {
   type ReactNode,
 } from "react";
 import { CheckCircle2, AlertCircle, Info, X, AlertTriangle } from "lucide-react";
-import { useDashboardHref } from "@/lib/use-dashboard-href";
 
 type ToastVariant = "success" | "error" | "info" | "warning";
 
@@ -65,7 +64,6 @@ const STYLES: Record<ToastVariant, { bg: string; border: string; icon: typeof Ch
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const dashboardHref = useDashboardHref();
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -126,7 +124,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <p className="text-sm text-fg-primary">{t.message}</p>
                 {t.action && (
                   <Link
-                    href={dashboardHref(t.action.href)}
+                    href={t.action.href}
                     className="mt-1 inline-flex text-xs font-medium text-accent hover:underline"
                     onClick={() => dismiss(t.id)}
                   >

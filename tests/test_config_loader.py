@@ -112,7 +112,6 @@ class TestConfigLoad:
         env_file = tmp_path / ".env"
         env_file.write_text("")
         cfg = Config.load(env_file)
-        assert cfg.people.multi_org_enabled is False
         assert cfg.people.advanced_auth_enabled is False
 
     def test_advanced_auth_enabled_reads_env_flag(self, tmp_path):
@@ -123,8 +122,6 @@ class TestConfigLoad:
         env_file.write_text("OPSMENDER_ADVANCED_AUTH_ENABLED=true\n")
         cfg = Config.load(env_file)
         assert cfg.people.advanced_auth_enabled is True
-        # multi_org stays off — flags are independent of each other.
-        assert cfg.people.multi_org_enabled is False
 
 
 class TestMCPServerConfig:

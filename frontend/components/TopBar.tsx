@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   Building2,
-  Check,
   ChevronDown,
   Keyboard,
   LogOut,
@@ -15,20 +14,8 @@ import { useAuth } from "@/context/auth";
 import { Avatar, userDisplayName } from "@/components/ui/Avatar";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { NotificationBell } from "@/components/NotificationBell";
-import {
-  getConfig,
-  getOrgId,
-  listMyOrganizations,
-  resolveTenant,
-  setMyPrimaryOrganization,
-  setOrgId,
-} from "@/lib/api";
-import {
-  scopeDashboardPath,
-  setOrgSlug,
-  stripOrgScope,
-} from "@/lib/org-path";
-import type { MyOrganizationResponse, TenantContextResponse } from "@/lib/types";
+import { resolveTenant } from "@/lib/api";
+import type { TenantContextResponse } from "@/lib/types";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-status-info-bg text-status-info border-status-info-border",
@@ -44,23 +31,12 @@ export function TopBar({
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const [orgs, setOrgs] = useState<MyOrganizationResponse[]>([]);
-  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
-  const [orgMenuOpen, setOrgMenuOpen] = useState(false);
-  const [switching, setSwitching] = useState(false);
-  const orgMenuRef = useRef<HTMLDivElement | null>(null);
   const [tenant, setTenant] = useState<TenantContextResponse | null>(null);
-  // Sprint 64 Step 2: gate the org switcher on multi_org_enabled.
-  // Default false = single-workspace mode (don't show the switcher).
-  const [multiOrgEnabled, setMultiOrgEnabled] = useState(false);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
-      }
-      if (orgMenuRef.current && !orgMenuRef.current.contains(e.target as Node)) {
-        setOrgMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", onDocClick);
@@ -75,71 +51,9 @@ export function TopBar({
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    getConfig()
-      .then((c) => { if (!cancelled) setMultiOrgEnabled(c.multi_org_enabled ?? false); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    listMyOrganizations()
-      .then((res) => {
-        if (cancelled) return;
-        setOrgs(res.items);
-        const stored = getOrgId();
-        const primary = res.items.find((o) => o.is_primary);
-        const current =
-          (stored && res.items.find((o) => o.id === stored)?.id) ||
-          primary?.id ||
-          res.items[0]?.id ||
-          null;
-        setActiveOrgId(current);
-        const currentOrg = res.items.find((org) => org.id === current);
-        if (currentOrg) setOrgSlug(currentOrg.slug);
-        if (current && current !== stored) setOrgId(current);
-      })
-      .catch(() => {
-        if (!cancelled) setOrgs([]);
-      });
-    return () => { cancelled = true; };
-  }, [user]);
-
-  async function handleSwitchOrg(org: MyOrganizationResponse) {
-    if (org.id === activeOrgId || switching) return;
-    setSwitching(true);
-    try {
-      setOrgId(org.id);
-      setOrgSlug(org.slug);
-      await setMyPrimaryOrganization(org.id);
-      setActiveOrgId(org.id);
-      setOrgMenuOpen(false);
-      // Reload so every page-level fetch reruns under the new org context.
-      const target = scopeDashboardPath(
-        stripOrgScope(window.location.pathname),
-        org.slug,
-      );
-      window.location.href = `${target}${window.location.search}`;
-    } catch {
-      setSwitching(false);
-    }
-  }
-
-  const activeOrg = orgs.find((o) => o.id === activeOrgId) ?? null;
-  // Per-org role for the *currently displayed* tenant. When the host pins a
-  // tenant, we look up the user's role in that org from the listMyOrganizations
-  // response — `tenant.org_id` is set, so we match by that.
-  const activeOrgRole = tenant?.pinned
-    ? orgs.find((o) => o.id === tenant.org_id)?.role ?? null
-    : activeOrg?.role ?? null;
-  const orgRoleClass = activeOrgRole
-    ? ROLE_STYLES[activeOrgRole] ?? ROLE_STYLES.viewer
-    : "";
-
+  const orgName = tenant?.org_name ?? null;
+  const orgRole = user?.role ?? null;
+  const orgRoleClass = orgRole ? ROLE_STYLES[orgRole] ?? ROLE_STYLES.viewer : "";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
 
   return (
@@ -156,121 +70,25 @@ export function TopBar({
         </button>
       </div>
       <div className="flex min-w-0 items-center gap-1.5">
-        {user && tenant?.pinned && (
+        {user && orgName && (
           <div
             title={
-              activeOrgRole
-                ? `Active organization: ${tenant.org_name} — your role: ${activeOrgRole} (pinned by host ${tenant.host})`
-                : `Active organization: ${tenant.org_name} (pinned by host ${tenant.host})`
+              orgRole
+                ? `Organization: ${orgName} — your role: ${orgRole}`
+                : `Organization: ${orgName}`
             }
-            aria-label={`Active organization: ${tenant.org_name}, pinned by host${activeOrgRole ? `, role ${activeOrgRole}` : ""}`}
-            className="flex h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary"
-          >
-            <Building2 size={14} className="shrink-0 text-fg-muted" />
-            <span className="max-w-[140px] sm:max-w-[180px] truncate font-medium text-fg-primary">
-              {tenant.org_name}
-            </span>
-            {activeOrgRole && (
-              <span
-                className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
-              >
-                {activeOrgRole}
-              </span>
-            )}
-            <span className="hidden lg:inline rounded-pill border border-border-subtle bg-bg-panel px-1.5 py-px font-mono text-[10px] uppercase tracking-wide text-fg-muted">
-              host-pinned
-            </span>
-          </div>
-        )}
-        {/* Sprint 64 Step 2: org switcher only renders in multi-workspace
-            mode. In single-workspace mode (the default) the active org
-            is implicit and the switcher would be noise. Host-pinned
-            tenants always show the read-only badge above regardless. */}
-        {user && !tenant?.pinned && orgs.length > 0 && multiOrgEnabled && (
-          <div ref={orgMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setOrgMenuOpen((o) => !o)}
-              title={
-                activeOrg
-                  ? activeOrgRole
-                    ? `Active organization: ${activeOrg.name} — your role: ${activeOrgRole} (click to switch)`
-                    : `Active organization: ${activeOrg.name} — click to switch`
-                  : "Switch organization"
-              }
-              aria-label={
-                activeOrg
-                  ? `Active organization: ${activeOrg.name}${activeOrgRole ? `, role ${activeOrgRole}` : ""}`
-                  : "Select organization"
-              }
-              className="flex h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary hover:border-border-strong hover:bg-bg-hover hover:text-fg-primary transition-colors"
-            >
-              <Building2 size={14} className="shrink-0 text-fg-muted" />
-              <span className="max-w-[120px] sm:max-w-[160px] truncate font-medium text-fg-primary">
-                {activeOrg?.name ?? "Select org"}
-              </span>
-              {activeOrgRole && (
-                <span
-                  className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
-                >
-                  {activeOrgRole}
-                </span>
-              )}
-              <ChevronDown size={14} className="text-fg-muted" />
-            </button>
-            {orgMenuOpen && (
-              <div className="absolute right-0 top-full z-20 mt-2 w-64 overflow-hidden rounded-md border border-border-subtle bg-bg-panel shadow-lg">
-                <div className="border-b border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
-                  Organizations
-                </div>
-                <ul className="max-h-72 overflow-y-auto py-1">
-                  {orgs.map((org) => {
-                    const isActive = org.id === activeOrgId;
-                    return (
-                      <li key={org.id}>
-                        <button
-                          onClick={() => handleSwitchOrg(org)}
-                          disabled={switching}
-                          className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-bg-hover transition-colors disabled:opacity-50"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium text-fg-primary">{org.name}</p>
-                            <p className="truncate font-mono text-[11px] text-fg-muted">
-                              {org.slug} · {org.role}
-                            </p>
-                          </div>
-                          {isActive && <Check size={14} className="mt-1 shrink-0 text-status-low" />}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-        {user && !tenant?.pinned && activeOrg && !multiOrgEnabled && (
-          <div
-            title={
-              activeOrgRole
-                ? `Current organization: ${activeOrg.name} — your role: ${activeOrgRole}`
-                : `Current organization: ${activeOrg.name}`
-            }
-            aria-label={`Current organization: ${activeOrg.name}${activeOrgRole ? `, role ${activeOrgRole}` : ""}`}
+            aria-label={`Organization: ${orgName}${orgRole ? `, role ${orgRole}` : ""}`}
             className="hidden h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary sm:flex"
           >
             <Building2 size={14} className="shrink-0 text-fg-muted" />
-            <span className="hidden text-[10px] font-semibold uppercase tracking-wide text-fg-muted lg:inline">
-              Org
+            <span className="max-w-[140px] truncate font-medium text-fg-primary lg:max-w-[180px]">
+              {orgName}
             </span>
-            <span className="max-w-[120px] truncate font-medium text-fg-primary lg:max-w-[160px]">
-              {activeOrg.name}
-            </span>
-            {activeOrgRole && (
+            {orgRole && (
               <span
                 className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
               >
-                {activeOrgRole}
+                {orgRole}
               </span>
             )}
           </div>
@@ -315,34 +133,22 @@ export function TopBar({
                   >
                     {user.role}
                   </span>
-                  {(tenant?.pinned ? tenant.org_name : activeOrg?.name) && (
+                  {orgName && (
                     <div className="mt-2 flex items-start gap-1.5 text-xs text-fg-secondary">
                       <Building2 size={12} className="mt-0.5 shrink-0 text-fg-muted" />
                       <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
-                          Active org{tenant?.pinned ? " · host-pinned" : ""}
+                          Organization
                         </p>
-                        <div className="flex items-center gap-1.5">
-                          <p className="truncate font-medium text-fg-primary">
-                            {tenant?.pinned ? tenant.org_name : activeOrg?.name}
-                          </p>
-                          {activeOrgRole && (
-                            <span
-                              className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
-                            >
-                              {activeOrgRole}
-                            </span>
-                          )}
-                        </div>
+                        <p className="truncate font-medium text-fg-primary">
+                          {orgName}
+                        </p>
                       </div>
                     </div>
                   )}
                 </div>
                 <Link
-                  href={scopeDashboardPath(
-                    "/dashboard/settings/profile",
-                    tenant?.org_slug ?? activeOrg?.slug ?? null,
-                  )}
+                  href="/dashboard/settings/profile"
                   onClick={() => setMenuOpen(false)}
                   className="flex w-full items-center gap-2 border-b border-border-subtle px-3 py-2.5 text-sm text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
                 >

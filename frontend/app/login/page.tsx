@@ -13,11 +13,9 @@ import {
   getRegistrationOpen,
   getSSOHint,
   resolveTenant,
-  setOrgId,
   setToken,
 } from "@/lib/api";
 import type { SSOHintResponse, TenantContextResponse } from "@/lib/types";
-import { setOrgSlug } from "@/lib/org-path";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 export default function LoginPage() {
@@ -58,8 +56,7 @@ export default function LoginPage() {
     window.history.replaceState(null, "", window.location.pathname);
     (async () => {
       try {
-        const me = await getMe();
-        if (me.primary_org_id) setOrgId(me.primary_org_id);
+        await getMe();
         navigateDashboard("/dashboard");
       } catch (err) {
         setError(err instanceof Error ? err.message : "SSO login failed");
@@ -73,7 +70,6 @@ export default function LoginPage() {
       ssoHint?.login_path &&
       (ssoHint.provider === "oidc" || ssoHint.provider === "saml")
     ) {
-      setOrgSlug(ssoHint.org_slug ?? null);
       window.location.href = ssoHint.login_path;
       return;
     }
@@ -138,7 +134,6 @@ export default function LoginPage() {
           {tenant?.sso_enabled && tenant.sso_login_path && (
             <a
               href={tenant.sso_login_path}
-              onClick={() => setOrgSlug(tenant.org_slug ?? null)}
               className="flex w-full items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
             >
               Sign in with {tenant.org_name ?? "SSO"}
@@ -147,7 +142,6 @@ export default function LoginPage() {
           {tenant?.saml_enabled && tenant.saml_login_path && (
             <a
               href={tenant.saml_login_path}
-              onClick={() => setOrgSlug(tenant.org_slug ?? null)}
               className="flex w-full items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
             >
               Sign in with SAML
@@ -198,7 +192,6 @@ export default function LoginPage() {
         (ssoHint.provider === "oidc" || ssoHint.provider === "saml") ? (
           <a
             href={ssoHint.login_path}
-            onClick={() => setOrgSlug(ssoHint.org_slug ?? null)}
             className="flex w-full items-center justify-center rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
           >
             {ssoHint.label}

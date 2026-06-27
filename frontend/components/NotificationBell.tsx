@@ -20,7 +20,6 @@ import {
   markNotificationRead,
   type Notification,
 } from "@/lib/api";
-import { useDashboardHref } from "@/lib/use-dashboard-href";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 const PANEL_LIMIT = 10;
@@ -54,7 +53,6 @@ function timeAgo(iso: string): string {
 }
 
 export function NotificationBell() {
-  const dashboardHref = useDashboardHref();
   const navigateDashboard = useDashboardNavigation();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
@@ -261,7 +259,7 @@ export function NotificationBell() {
           </ul>
 
           <Link
-            href={dashboardHref("/dashboard/notifications")}
+            href="/dashboard/notifications"
             onClick={() => setOpen(false)}
             className="block border-t border-border-subtle px-3 py-2.5 text-center text-xs font-medium text-accent hover:bg-bg-hover transition-colors"
           >

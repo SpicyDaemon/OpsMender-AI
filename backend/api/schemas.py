@@ -798,10 +798,8 @@ class ConfigResponse(BaseModel):
     mcp_servers: list[dict[str, Any]]
     audit_output: str
     logging_level: str
-    # Sprint 56: surface the deployment-level booleans the UI needs to
-    # render the People surface correctly. Read from env at process
-    # start; not editable from the UI.
-    multi_org_enabled: bool = False
+    # Sprint 56: surface the deployment-level booleans the UI needs.
+    # Read from env at process start; not editable from the UI.
     smtp_configured: bool = False
     # Sprint 64: visibility flags for the simple-by-default auth UX.
     # ``advanced_auth_enabled`` (env-driven) and the two
@@ -1974,14 +1972,8 @@ class BotUserLinkListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Organizations (Phase 4)
+# Workspace settings
 # ---------------------------------------------------------------------------
-
-
-class OrganizationCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    slug: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    branding: Optional[dict] = None
 
 
 class OrganizationUpdate(BaseModel):
@@ -1999,49 +1991,6 @@ class OrganizationResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class OrganizationListResponse(BaseModel):
-    items: list[OrganizationResponse]
-    total: int
-
-
-class UserOrganizationLink(BaseModel):
-    user_id: uuid.UUID
-    role: str = Field(default="viewer", pattern="^(admin|operator|viewer)$")
-
-
-class UserOrganizationResponse(BaseModel):
-    user_id: uuid.UUID
-    username: str
-    email: str
-    role: str
-    joined_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class OrganizationUserListResponse(BaseModel):
-    items: list[UserOrganizationResponse]
-    total: int
-
-
-class MyOrganizationResponse(BaseModel):
-    """An organization the current user belongs to."""
-
-    id: uuid.UUID
-    name: str
-    slug: str
-    branding: Optional[dict] = None
-    role: str
-    is_primary: bool
-
-    model_config = {"from_attributes": True}
-
-
-class MyOrganizationListResponse(BaseModel):
-    items: list[MyOrganizationResponse]
-    total: int
 
 
 class OrganizationDomainCreate(BaseModel):

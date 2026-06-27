@@ -527,10 +527,8 @@ export interface ConfigResponse {
   mcp_servers: Record<string, unknown>[];
   audit_output: string;
   logging_level: string;
-  // Sprint 56: deployment-level flags the People surface reads to decide
-  // whether to show the multi-org affordances and whether to advertise
-  // SMTP delivery alongside the copy-paste invite URLs.
-  multi_org_enabled?: boolean;
+  // Sprint 56: deployment-level flag the People surface reads to decide
+  // whether to advertise SMTP delivery alongside the copy-paste invite URLs.
   smtp_configured?: boolean;
   // Sprint 64: simple-by-default auth visibility flags.
   // `advanced_auth_enabled` is env-driven; the two `*_configured`
@@ -1526,7 +1524,7 @@ export interface BotUserLinkCreate {
 }
 
 // ---------------------------------------------------------------------------
-// Organizations (Phase 4)
+// Workspace settings
 // ---------------------------------------------------------------------------
 
 export interface BrandingConfig {
@@ -1546,53 +1544,10 @@ export interface OrganizationResponse {
   created_at: string;
 }
 
-export interface OrganizationListResponse {
-  items: OrganizationResponse[];
-  total: number;
-}
-
-export interface OrganizationCreate {
-  name: string;
-  slug?: string;
-  branding?: BrandingConfig;
-}
-
 export interface OrganizationUpdate {
   name?: string;
   slug?: string;
   branding?: BrandingConfig;
-}
-
-export interface UserOrganizationResponse {
-  user_id: string;
-  username: string;
-  email: string;
-  role: "admin" | "operator" | "viewer";
-  joined_at: string;
-}
-
-export interface OrganizationUserListResponse {
-  items: UserOrganizationResponse[];
-  total: number;
-}
-
-export interface UserOrganizationLink {
-  user_id: string;
-  role: "admin" | "operator" | "viewer";
-}
-
-export interface MyOrganizationResponse {
-  id: string;
-  name: string;
-  slug: string;
-  branding?: BrandingConfig | null;
-  role: "admin" | "operator" | "viewer";
-  is_primary: boolean;
-}
-
-export interface MyOrganizationListResponse {
-  items: MyOrganizationResponse[];
-  total: number;
 }
 
 export interface OrganizationDomainResponse {

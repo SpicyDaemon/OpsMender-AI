@@ -29,12 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Navigation relabels + org URL prefix.** The org-scoped dashboard URL prefix
-  is now `/org/<slug>/…` (was `/o/<slug>/…`; old `/o/…` links still resolve and
-  rewrite forward). The Admin sidebar entry **Config → Settings** and the
-  account menu's **Profile & settings → Edit Profile**; the Organizations admin
-  page now always reads "Organizations" (the single-workspace "Workspace
-  Settings" relabel is retired) — multi-tenancy itself is unchanged.
+- **Single-workspace dashboard model.** Multi-org switching and org-scoped
+  dashboard URLs are removed. Links now stay on plain `/dashboard/...`, the
+  frontend no longer stores/sends `X-Org-ID`, `/org/<slug>/dashboard/...` is no
+  longer mounted, and the TopBar shows the current workspace name without a
+  switcher. Workspace name, branding, custom domains, OIDC SSO, SAML, email/SMTP,
+  and MFA settings live under Settings for the one active workspace; `org_id`
+  remains as the internal data boundary.
 
 - **Integrations: one merged "Additional variables" list with a Secret toggle.**
   The two separate credential/config additional-variable repeaters are replaced

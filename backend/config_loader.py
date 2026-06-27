@@ -378,11 +378,6 @@ class PeopleConfig:
     admin when the users table is empty. Both must be set together; if
     either is missing or the table already has rows, bootstrap is a no-op.
 
-    `multi_org_enabled` gates multi-tenant UI affordances (org switcher,
-    "create another organization", per-invite org picker). The
-    multi-tenant schema + SSO/SAML-per-tenant work from Sprints 29-30
-    stays intact regardless — only the UI changes.
-
     `advanced_auth_enabled` (Sprint 64) gates the SSO + SAML admin
     settings UI. It is **purely a visibility flag** — the SSO/SAML
     runtime routes (`/auth/sso/...`, `/auth/saml/...`) keep working
@@ -398,7 +393,6 @@ class PeopleConfig:
 
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None
-    multi_org_enabled: bool = False
     advanced_auth_enabled: bool = False
     public_base_url: str | None = None
 
@@ -644,7 +638,6 @@ class AppConfig:
                 bootstrap_admin_password=_env_str(
                     env, "OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD"
                 ),
-                multi_org_enabled=_env_bool(env, "OPSMENDER_MULTI_ORG_ENABLED", False),
                 advanced_auth_enabled=_env_bool(
                     env, "OPSMENDER_ADVANCED_AUTH_ENABLED", False
                 ),

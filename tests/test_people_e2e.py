@@ -93,7 +93,6 @@ async def test_people_full_lifecycle(env):
     assert login.status_code == 200
     admin_headers = {
         "Authorization": f"Bearer {login.json()['access_token']}",
-        "X-Org-ID": org_id,
     }
 
     # ----- (2) Admin mints an invite -------------------------------------

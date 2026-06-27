@@ -12,7 +12,7 @@ const pagingShellSource = readFileSync(
 
 describe("v1 paging IA", () => {
   it("shows the simplified Paging & On-call sidebar entries", () => {
-    const paging = buildNavGroups(false).find((group) => group.id === "paging");
+    const paging = buildNavGroups().find((group) => group.id === "paging");
     expect(paging?.items.map((item) => item.label)).toEqual([
       "Teams",
       "Escalation Chains",

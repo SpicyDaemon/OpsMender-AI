@@ -73,7 +73,6 @@ async def _admin_setup(env) -> tuple[dict[str, str], str]:
     )
     headers = {
         "Authorization": f"Bearer {login.json()['access_token']}",
-        "X-Org-ID": str(org_id),
     }
     return headers, str(org_id)
 

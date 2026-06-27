@@ -12,6 +12,7 @@ import {
   TierSection,
 } from "@/components/config/ConfigSections";
 import { EmailSettingsSection } from "@/components/EmailSettingsSection";
+import { OrganizationSettingsSection } from "@/components/OrganizationSettingsSection";
 
 export default function ConfigPage() {
   const { user } = useAuth();
@@ -44,6 +45,10 @@ export default function ConfigPage() {
         </h2>
         <TierSection config={config} onSaved={reload} canEdit={canEdit} />
       </section>
+
+      {user?.primary_org_id && (
+        <OrganizationSettingsSection orgId={user.primary_org_id} />
+      )}
 
       {user?.primary_org_id && <EmailSettingsSection orgId={user.primary_org_id} />}
 

@@ -12,7 +12,7 @@ import {
 } from "@/components/Sidebar";
 
 function visibleHrefs(role: string): string[] {
-  return buildNavGroups(false)
+  return buildNavGroups()
     .flatMap((g) => g.items)
     .filter((item) => navItemVisibleForRole(item, role))
     .map((item) => item.href);
@@ -20,8 +20,13 @@ function visibleHrefs(role: string): string[] {
 
 describe("Sidebar nav model", () => {
   it("no longer includes Agent Teams (deferred from v1)", () => {
-    const all = buildNavGroups(false).flatMap((g) => g.items.map((i) => i.href));
+    const all = buildNavGroups().flatMap((g) => g.items.map((i) => i.href));
     expect(all).not.toContain("/dashboard/agent-teams");
+  });
+
+  it("no longer includes multi-org management", () => {
+    const all = buildNavGroups().flatMap((g) => g.items.map((i) => i.href));
+    expect(all).not.toContain("/dashboard/organizations");
   });
 
   it("admin sees admin/config surfaces", () => {
@@ -34,7 +39,7 @@ describe("Sidebar nav model", () => {
   });
 
   it("labels the skills surface 'MCP Skills'", () => {
-    const skillsItem = buildNavGroups(false)
+    const skillsItem = buildNavGroups()
       .flatMap((g) => g.items)
       .find((i) => i.href === "/dashboard/skills");
     expect(skillsItem?.label).toBe("MCP Skills");

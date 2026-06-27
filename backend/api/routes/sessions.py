@@ -263,6 +263,10 @@ async def create_session(
 
     await db.commit()
     await db.refresh(session)
+    # ``refresh`` opens a new read transaction. Close it before returning so
+    # the in-memory SQLite test harness cannot roll it back over a following
+    # request on the shared connection.
+    await db.commit()
 
     if admission.created or admission.start_required:
         if admission.started_from_queue:
@@ -583,13 +587,9 @@ async def stop_session(
     was_queued = session.status == "queued"
     cancel_session_workflow(request.app, session_id=session_id)
     await _expire_pending_approvals(db, org_id, session_id)
-    await SessionRepo.set_status(
-        db,
-        org_id,
-        session_id,
-        status="cancelled" if was_queued else "stopped",
-        ended_at=_utcnow(),
-    )
+    session.status = "cancelled" if was_queued else "stopped"
+    session.ended_at = _utcnow()
+    await db.flush()
     if was_queued:
         from backend.services.session_orchestration import notify_capacity_event
 
@@ -602,7 +602,8 @@ async def stop_session(
             body=f"Cancelled by {user.username}.",
         )
     await db.commit()
-    schedule_queue_drain(request.app, org_id=org_id)
+    if was_queued or session.model_config_id is not None:
+        schedule_queue_drain(request.app, org_id=org_id)
     if was_queued:
         schedule_session_chat_event(
             request.app.state.session_factory,

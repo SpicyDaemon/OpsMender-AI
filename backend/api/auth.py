@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt as _bcrypt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config_loader import AppConfig
 from backend.api.deps import get_db
 from backend.db.models import User
-from backend.db.repos import OrganizationDomainRepo, UserRepo
+from backend.db.repos import UserRepo
 
 def _auth_config():
     return AppConfig.load().auth
@@ -150,53 +150,14 @@ async def get_current_user(
 async def get_current_org(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    x_org_id: str | None = Header(default=None, alias="X-Org-ID"),
-    host: str | None = Header(default=None, alias="Host"),
-    x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ) -> uuid.UUID:
     """Dependency — returns the active organization ID for the request.
 
-    Resolution order:
-    1. **Host header** — if the request hostname is registered in
-       ``organization_domains``, that org is *pinned* for the request.
-       The authenticated user must be a member or the request is 403.
-       Pinned hosts ignore ``X-Org-ID`` so a tenant subdomain cannot
-       be subverted by a header from a malicious client.
-    2. ``X-Org-ID`` request header — opt-in switching when the deployment
-       is single-host; must reference an org the user belongs to.
-    3. ``user.primary_org_id`` — the user's persisted default.
-
-    Raises 400 if none yield a valid org.
+    OpsMender now runs as a single-workspace instance. ``org_id`` remains in
+    the schema as an internal boundary, but requests no longer switch orgs via
+    headers or host names. The authenticated user's primary org is the one
+    workspace context for the request.
     """
-    # 1. Host pin (X-Forwarded-Host beats Host so reverse-proxy deployments work).
-    raw_host = x_forwarded_host or host
-    if raw_host:
-        match = await OrganizationDomainRepo.find_by_host(db, raw_host)
-        if match is not None:
-            if not await UserRepo.is_member(db, user.id, match.org_id):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User is not a member of the organization for this host.",
-                )
-            return match.org_id
-
-    # 2. X-Org-ID header.
-    if x_org_id:
-        try:
-            requested = uuid.UUID(x_org_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid X-Org-ID header.",
-            )
-        if not await UserRepo.is_member(db, user.id, requested):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User is not a member of the requested organization.",
-            )
-        return requested
-
-    # 3. Primary org fallback.
     if user.primary_org_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

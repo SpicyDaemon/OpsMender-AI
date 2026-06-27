@@ -71,7 +71,6 @@ def _config_to_response(
         mcp_servers=servers,
         audit_output=cfg.audit.output,
         logging_level=logging_level,
-        multi_org_enabled=cfg.people.multi_org_enabled,
         smtp_configured=cfg.smtp.configured,
         advanced_auth_enabled=cfg.people.advanced_auth_enabled,
         sso_configured=sso_configured,

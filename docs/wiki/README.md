@@ -16,7 +16,7 @@ If you are a developer looking for internal architecture documentation, API deta
 * **Authentication** — start here, then branch:
   * [Auth Guide](auth-guide.md) — **default model**: single workspace, email + password, admin-issued invites, three roles. What 95% of self-hosted installs use.
   * [People Guide](people-guide.md) — day-to-day People-page operations: invites, password resets, auth-method badges, deactivation vs soft delete, bootstrap admins, SMTP.
-  * [Advanced Auth Guide](advanced-auth-guide.md) — optional surfaces: per-tenant OIDC, per-tenant SAML 2.0, multi-tenant organizations, host-based domain isolation, and the two env flags (`OPSMENDER_ADVANCED_AUTH_ENABLED`, `OPSMENDER_MULTI_ORG_ENABLED`) that gate them.
+  * [Advanced Auth Guide](advanced-auth-guide.md) — optional surfaces: OIDC, SAML 2.0, custom-domain login behavior, and the `OPSMENDER_ADVANCED_AUTH_ENABLED` setup flag.
 * [Integrations Guide](integrations-guide.md) — Encrypted external-system connectors, tier-governed actions, alert intake, and notification channels.
 * [Skills Guide](skills-guide.md) — Managing MCP servers, enforcement tiers, and capability examples.
 * [MCP Skills (Skill Studio)](mcp-skills.md) — The MCP Skills builder: per-tier classification, deny lists, the generic-command guardrail, templates, and the invariant that the backend tier gate is the execution authority. (Deep-linked from the in-product Skills page.)

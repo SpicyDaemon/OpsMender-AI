@@ -57,15 +57,6 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
         # Reject traversal attempts up-front.
         if ".." in safe_path.split("/"):
             raise HTTPException(status_code=400, detail="invalid path")
-        parts = safe_path.split("/")
-        # Path-based org scoping: /org/<slug>/dashboard/... serves the same SPA
-        # page as /dashboard/... (the org is resolved from the X-Org-ID header,
-        # not the URL). Strip the /org/<slug> prefix to find the static file.
-        # The legacy /o/<slug> prefix is also accepted so old bookmarks still
-        # load (the client then rewrites them to /org/<slug>).
-        if len(parts) >= 3 and parts[0] in ("org", "o") and parts[2] == "dashboard":
-            safe_path = "/".join(parts[2:])
-
         candidates: list[pathlib.Path] = []
         if not safe_path:
             candidates.append(index_file)
@@ -74,9 +65,9 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
             candidates.append(root / f"{safe_path}.html")
             candidates.append(root / safe_path / "index.html")
             # Next.js 16 RSC prefetch payload rewrite. Requests like
-            #   /dashboard/organizations/__next.dashboard.organizations.__PAGE__.txt
+            #   /dashboard/incidents/__next.dashboard.incidents.__PAGE__.txt
             # actually map to the nested file
-            #   /dashboard/organizations/__next.dashboard/organizations/__PAGE__.txt
+            #   /dashboard/incidents/__next.dashboard/incidents/__PAGE__.txt
             # i.e. the first dot after `__next` is part of the directory name
             # `__next.<first>`; all subsequent dots in the basename are
             # directory separators. Add the rewritten path as a fallback

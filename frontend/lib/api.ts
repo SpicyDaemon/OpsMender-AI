@@ -25,19 +25,6 @@ export function clearToken(): void {
   localStorage.removeItem("opsmender_token");
 }
 
-export function getOrgId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("opsmender_org_id");
-}
-
-export function setOrgId(orgId: string): void {
-  localStorage.setItem("opsmender_org_id", orgId);
-}
-
-export function clearOrgId(): void {
-  localStorage.removeItem("opsmender_org_id");
-}
-
 // ---------------------------------------------------------------------------
 // Core fetch wrapper
 // ---------------------------------------------------------------------------
@@ -55,11 +42,6 @@ async function request<T>(
   const token = getToken();
   if (token && !skipAuth) {
     headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const orgId = getOrgId();
-  if (orgId) {
-    headers["X-Org-ID"] = orgId;
   }
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
@@ -553,8 +535,6 @@ export async function downloadAuditCsv(params?: {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const orgId = getOrgId();
-  if (orgId) headers["X-Org-ID"] = orgId;
 
   const res = await fetch(`${BASE_URL}/audit/export.csv${q ? `?${q}` : ""}`, {
     headers,
@@ -1192,39 +1172,22 @@ export function connectSessionStream(
 }
 
 // ---------------------------------------------------------------------------
-// Organizations (Phase 4)
+// Workspace settings
 // ---------------------------------------------------------------------------
 
 
 import type {
-  MyOrganizationListResponse,
-  OrganizationCreate,
   OrganizationDomainCreate,
   OrganizationDomainListResponse,
   OrganizationDomainResponse,
-  OrganizationListResponse,
   OrganizationResponse,
   OrganizationUpdate,
-  OrganizationUserListResponse,
   OrgSAMLConfigCreate,
   OrgSAMLConfigResponse,
   OrgSSOConfigCreate,
   OrgSSOConfigResponse,
   TenantContextResponse,
-  UserOrganizationLink,
 } from "./types";
-
-
-export async function listOrganizations(): Promise<OrganizationListResponse> {
-  return api.get<OrganizationListResponse>("/organizations");
-}
-
-
-export async function createOrganization(
-  body: OrganizationCreate,
-): Promise<OrganizationResponse> {
-  return api.post<OrganizationResponse>("/organizations", body);
-}
 
 
 export async function getOrganization(id: string): Promise<OrganizationResponse> {
@@ -1237,46 +1200,6 @@ export async function updateOrganization(
   body: OrganizationUpdate,
 ): Promise<OrganizationResponse> {
   return api.put<OrganizationResponse>(`/organizations/${id}`, body);
-}
-
-
-export async function deleteOrganization(id: string): Promise<void> {
-  return api.del<void>(`/organizations/${id}`);
-}
-
-
-export async function listOrganizationUsers(
-  id: string,
-): Promise<OrganizationUserListResponse> {
-  return api.get<OrganizationUserListResponse>(`/organizations/${id}/users`);
-}
-
-
-export async function addUserToOrganization(
-  id: string,
-  body: UserOrganizationLink,
-): Promise<void> {
-  return api.post<void>(`/organizations/${id}/users`, body);
-}
-
-
-export async function removeUserFromOrganization(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  return api.del<void>(`/organizations/${orgId}/users/${userId}`);
-}
-
-
-export async function listMyOrganizations(): Promise<MyOrganizationListResponse> {
-  return api.get<MyOrganizationListResponse>("/auth/me/organizations");
-}
-
-
-export async function setMyPrimaryOrganization(
-  orgId: string,
-): Promise<UserResponse> {
-  return api.put<UserResponse>(`/auth/me/primary-org/${orgId}`);
 }
 
 
@@ -2223,9 +2146,7 @@ export async function downloadIncidentReport(
   const params = new URLSearchParams({ format, from, to });
   const headers: Record<string, string> = {};
   const token = getToken();
-  const orgId = getOrgId();
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (orgId) headers["X-Org-ID"] = orgId;
   const response = await fetch(`${BASE_URL}/reports/incidents?${params}`, { headers });
   if (!response.ok) throw new Error(`Report export failed: HTTP ${response.status}`);
   return response.blob();

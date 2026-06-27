@@ -25,7 +25,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 
 > **alert → AI → acknowledge → fix → resolve** — with a full audit trail and an authored postmortem at the end.
 
-**Simple by default, enterprise-ready underneath:** start as a single-workspace tool with email + admin invites; multi-tenant, SSO, SAML, and host-isolation are in the box and turn on when you need them.
+**Simple by default, enterprise-ready underneath:** start as a single-workspace tool with email + admin invites; OIDC SSO, SAML, custom domains, and branding are available for that one workspace when you need them.
 
 ## Features
 
@@ -63,13 +63,13 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **Universal alert ingest** — native Sentry, New Relic, Splunk, Rollbar,
   BugSnag, Elastic/OpenSearch, Honeycomb, Dynatrace, AppDynamics, Loki, and
   cloud-monitor parsing plus auto-learned JSON webhooks.
-- **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, per-org, operator-curated.
+- **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, workspace-scoped, operator-curated.
 - **Reliability / SLA** — HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.
 - **Audit everything** — every tool call, approval, rollback, and state transition recorded.
 - **Supply-chain security baseline** — CycloneDX SBOM generation, high/critical
   container scanning, CodeQL, Dependabot, and digest-only image-signing
   guidance are included for self-hosted security review.
-- **RBAC + multi-tenant (opt-in)** — Admin / Operator / Viewer; per-org isolation with per-tenant SSO/SAML.
+- **RBAC + workspace auth** — Admin / Operator / Viewer, local accounts, optional OIDC/SAML, custom domains, and workspace-scoped data boundaries.
 - **Local-account MFA** — encrypted TOTP enrollment, one-time recovery codes,
   and optional organization-wide enforcement.
 - **Dashboard** — Next.js console with a `Cmd/Ctrl-K` command palette.
@@ -277,10 +277,9 @@ in `.env.example`.
 
 Signup is email-first; OpsMender derives a display username when public
 registration is open. Admin invites expire after 72 hours and support resend
-and revoke. After sign-in, dashboard URLs use
-`/o/{organization-slug}/dashboard/...` so workspace links are bookmarkable.
-The login page can switch to OIDC or SAML after the email field identifies a
-configured organization domain.
+and revoke. After sign-in, dashboard URLs use plain `/dashboard/...` routes for
+the single workspace. The login page can switch to OIDC or SAML after the email
+field identifies a configured workspace domain.
 Local accounts can enable TOTP from **Profile & Settings**. Admins can require
 MFA for the active organization; recovery codes are shown once and stored only
 as bcrypt hashes.

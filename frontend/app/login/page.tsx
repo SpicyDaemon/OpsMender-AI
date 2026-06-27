@@ -88,7 +88,7 @@ export default function LoginPage() {
   return (
     <AuthShell
       title="Sign in to OpsMender"
-      description="Open the operator console and pick up the next incident with full session context."
+      description="AI-powered incident response for production infrastructure — from alert to resolution, with you in control."
       eyebrow=""
       footer={
         registrationOpen ? (
@@ -98,10 +98,6 @@ export default function LoginPage() {
               Register
             </Link>
           </>
-        ) : registrationOpen === false ? (
-          <span className="text-fg-muted">
-            Self-signup is closed. Ask an admin for an invite.
-          </span>
         ) : null
       }
     >

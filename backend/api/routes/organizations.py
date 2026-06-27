@@ -47,22 +47,31 @@ async def resolve_tenant(
     host: str | None = Header(default=None, alias="Host"),
     x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ):
-    """Public — return the tenant pinned to the request hostname, if any.
+    """Public — return the single workspace's context (name, branding, SSO).
 
-    Used by the frontend to:
-    - Show org branding on login/register before the user authenticates.
-    - Surface custom-domain context for the single workspace.
+    OpsMender runs one organization per instance, so this always resolves the
+    sole workspace. That lets the org name/branding render everywhere — the top
+    bar after login *and* the login/register pages before authentication.
+
+    A request whose host matches a registered custom domain is additionally
+    flagged ``pinned`` (the canonical branded host); otherwise the same single
+    workspace is returned unpinned. No host or no org yields an empty context.
     """
     raw_host = x_forwarded_host or host
-    normalized = OrganizationDomainRepo.normalize(raw_host or "")
-    if not raw_host:
-        return TenantContextResponse(pinned=False)
+    normalized = OrganizationDomainRepo.normalize(raw_host or "") or None
 
-    match = await OrganizationDomainRepo.find_by_host(db, raw_host)
-    if match is None:
-        return TenantContextResponse(pinned=False, host=normalized)
+    org = None
+    pinned = False
+    if raw_host:
+        match = await OrganizationDomainRepo.find_by_host(db, raw_host)
+        if match is not None:
+            org = await OrganizationRepo.get_by_id(db, match.org_id)
+            pinned = org is not None
 
-    org = await OrganizationRepo.get_by_id(db, match.org_id)
+    if org is None:
+        orgs = await OrganizationRepo.list_all(db)
+        org = orgs[0] if orgs else None
+
     if org is None:
         return TenantContextResponse(pinned=False, host=normalized)
 
@@ -71,7 +80,7 @@ async def resolve_tenant(
     saml = await OrgSAMLConfigRepo.get_for_org(db, org.id)
     saml_enabled = saml is not None and saml.is_active
     return TenantContextResponse(
-        pinned=True,
+        pinned=pinned,
         org_id=org.id,
         org_name=org.name,
         org_slug=org.slug,

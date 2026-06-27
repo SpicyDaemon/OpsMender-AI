@@ -1035,8 +1035,12 @@ class TestDomainIsolation:
         )
         assert resp.status_code == 200
         data = resp.json()
+        # Single-org: an unrecognized host is not *pinned*, but the sole
+        # workspace is still resolved so its name/branding render everywhere.
         assert data["pinned"] is False
         assert data["host"] == "unknown.example.com"
+        assert data["org_id"] == str(TEST_ORG_ID)
+        assert data["org_name"]
 
     async def test_admin_can_create_domain(
         self, client: AsyncClient, app, auth_headers

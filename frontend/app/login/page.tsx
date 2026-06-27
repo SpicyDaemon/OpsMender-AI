@@ -88,7 +88,7 @@ export default function LoginPage() {
   return (
     <AuthShell
       title="Sign in to OpsMender"
-      description="AI-powered incident response for production infrastructure — from alert to resolution, with you in control."
+      description="Detect. Mend. Prevail."
       eyebrow=""
       footer={
         registrationOpen ? (

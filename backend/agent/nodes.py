@@ -5,7 +5,7 @@ and returns a partial state update.  Nodes that need an LLM are built
 via factory functions (closures) that capture the LLM instance, keeping
 the node signature compatible with LangGraph.
 
-Node order (from REFERENCE.md)
+Node order (from PROMPT_CONTEXT.md)
 ------------------------------
 observe → diagnose → plan → tier_gate → execute → verify → summarize
 

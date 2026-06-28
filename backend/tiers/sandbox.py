@@ -2,7 +2,7 @@
 
 Sprint 17 (sandbox pillar).
 
-Design decision (see docs/REFERENCE.md → "Tier 0 sandbox"):
+Design decision (see docs/PROMPT_CONTEXT.md → "Tier 0 sandbox"):
 
     For Tier 0 sessions we wrap every MCP interaction with a spawn-time
     allowlist derived from the skill definition.  Only tools that clear

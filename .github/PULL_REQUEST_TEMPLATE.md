@@ -33,7 +33,7 @@ cd frontend && npm run build
 - [ ] `uv run python -m pytest -q` passes locally
 - [ ] `cd frontend && npm run build` passes locally (if frontend changed)
 - [ ] Added or updated tests covering the behavior change
-- [ ] Updated `docs/REFERENCE.md` if the change affects architecture, data model, or a locked decision
+- [ ] Updated `docs/PROMPT_CONTEXT.md` if the change affects architecture, data model, or a locked decision
 - [ ] Added an entry to `CHANGELOG.md` under `[Unreleased]` for user-visible changes
 - [ ] No secrets committed (API keys, tokens, DB passwords, webhook URLs with embedded credentials)
 

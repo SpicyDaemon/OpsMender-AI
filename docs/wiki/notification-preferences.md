@@ -23,7 +23,7 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > active OpsMender user, checked for Admin/Operator RBAC, deduplicated, and
 > audited. Other chat platforms still use the link fallback, and message
 > edit-in-place remains deferred
-> (see [`ROADMAP.md`](../ROADMAP.md) → "Native Chat Buttons Are Deferred From v1").
+> (see [`PROMPT_CONTEXT.md`](../PROMPT_CONTEXT.md) → "Native Chat Buttons Are Deferred From v1").
 > The foundation is intentionally dormant — tokens alone never mutate incidents, and OpsMender
 > never posts a public, unauthenticated action URL. The capability chips on the
 > Notification Channels table reflect this honestly: a platform only shows
@@ -153,7 +153,7 @@ no provider receives a public action URL.
 
 ## Future direction
 
-> The full long-term model — Personal Operator Routing vs. Team Channels vs. Viewer Notifications, interactive incident cards, and the end-to-end incident flow — lives in [`docs/ROADMAP.md`](../ROADMAP.md) Part II (Incident communication model).
+> The full long-term model — Personal Operator Routing vs. Team Channels vs. Viewer Notifications, interactive incident cards, and the end-to-end incident flow — lives in [`docs/PROMPT_CONTEXT.md`](../PROMPT_CONTEXT.md) Part II (Incident communication model).
 
 The staged-routing architecture is intentionally channel-agnostic so the following can be layered on without changing routing:
 

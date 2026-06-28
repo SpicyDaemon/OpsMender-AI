@@ -7,7 +7,7 @@
 
 > Open-source, self-hosted **AI incident manager / AI SRE / AI on-call** for production infrastructure — **tier-gated, MCP-first, human-in-the-loop**.
 
-📚 **[Wiki](docs/wiki/README.md)** · 🛠 **[Architecture & API](docs/REFERENCE.md)** · 🗺 **[Roadmap](docs/ROADMAP.md)** · 🤝 **[Contributing](CONTRIBUTING.md)**
+📚 **[Wiki](docs/wiki/README.md)** · 🛠 **[Architecture & decisions](docs/PROMPT_CONTEXT.md)** · 🤝 **[Contributing](CONTRIBUTING.md)**
 
 ---
 

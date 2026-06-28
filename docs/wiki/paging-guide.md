@@ -11,7 +11,7 @@ This is the v1 guide to OpsMender's paging and on-call surface. The product mode
 
 If you only want a one-line summary: create a Team, create its Escalation Chain, add a Service with an intake endpoint, attach a Roster schedule, then configure Notifications.
 
-For the deep-dive data-model spec, see [`docs/REFERENCE.md` D-021 — Paging Model](../REFERENCE.md#d-021--built-in-paging-on-call-rosters-and-escalation-chains). For platform-specific chat details, see [Slack as your paging surface](slack-paging-surface.md) and [Teams as your paging surface](teams-paging-surface.md). For the broader notification model, version-scope decisions, and the notification action/security decision record, see [`docs/ROADMAP.md`](../ROADMAP.md).
+For the data-model + algorithm overview (former D-021 — Paging Model), see [`docs/PROMPT_CONTEXT.md`](../PROMPT_CONTEXT.md) (Architecture → Paging model) and `backend/paging/on_call.py`. For platform-specific chat details, see [Slack as your paging surface](slack-paging-surface.md) and [Teams as your paging surface](teams-paging-surface.md). For the broader notification model and version-scope decisions, see [`docs/PROMPT_CONTEXT.md`](../PROMPT_CONTEXT.md) (Scope & Roadmap Guardrail).
 
 ---
 

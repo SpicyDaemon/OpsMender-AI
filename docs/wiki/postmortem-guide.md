@@ -65,7 +65,7 @@ The default template, returned by `GET /incidents/{id}/postmortem`, ships these 
 
 ## How postmortems feed memory
 
-The **Memory candidates** section is the bridge between a postmortem and OpsMender's AI incident memory ([D-025](../REFERENCE.md), [memory-guide.md](memory-guide.md)). Bullets in that section are intended as *durable lessons* you want the agent to recall the next time a similar incident fires.
+The **Memory candidates** section is the bridge between a postmortem and OpsMender's AI incident memory ([D-025](../PROMPT_CONTEXT.md), [memory-guide.md](memory-guide.md)). Bullets in that section are intended as *durable lessons* you want the agent to recall the next time a similar incident fires.
 
 **Save candidates to memory (v1.2).** Once the postmortem is saved, click **Save N to memory** in the editor toolbar. OpsMender parses each bullet under `## Memory candidates` (skipping template scaffolding) and creates one memory per bullet, tied to the incident's service. These land as **pending** in `/dashboard/memories` and are recalled by the agent only after an admin/operator **approves** them (the same review gate AI-written memories pass — see [memory-guide.md](memory-guide.md)). Re-running is safe: candidates that already exist as memories for the service are skipped, not duplicated. Backend: `POST /incidents/{id}/postmortem/memory-candidates`.
 

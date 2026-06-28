@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for OpsMender AI.
 
-Maps the data model from REFERENCE.md to Postgres tables:
+Maps the data model from PROMPT_CONTEXT.md to Postgres tables:
 - ``users``              — auth users with roles
 - ``incidents``          — top-level incident records
 - ``sessions``           — incident response sessions (one per ``opsmender run``)
@@ -1963,7 +1963,7 @@ class AuditFinding(Base):
 
 # ---------------------------------------------------------------------------
 # Paging (Sprint 33) — teams, services, rosters, priority rules, assignments.
-# Full data model lives in docs/REFERENCE.md (D-021 — Paging Model).
+# Full data model lives in docs/PROMPT_CONTEXT.md (D-021 — Paging Model).
 # ---------------------------------------------------------------------------
 
 

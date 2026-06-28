@@ -50,7 +50,7 @@ class AuditEntryType(str, enum.Enum):
 class AuditEntry:
     """A single audit log entry.
 
-    Matches the ``AuditEntry`` data model defined in REFERENCE.md.
+    Matches the ``AuditEntry`` data model defined in PROMPT_CONTEXT.md.
     """
 
     entry_id: str

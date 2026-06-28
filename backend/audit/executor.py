@@ -60,7 +60,7 @@ async def audited_tool_call(
     """Execute an MCP tool call with full audit logging.
 
     This function implements the core enforcement contract described in
-    REFERENCE.md: every tool call passes through tier enforcement,
+    PROMPT_CONTEXT.md: every tool call passes through tier enforcement,
     skill-definition check, audit log entry, then MCP execution.
 
     Parameters

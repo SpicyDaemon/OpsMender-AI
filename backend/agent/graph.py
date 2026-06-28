@@ -1,6 +1,6 @@
 """LangGraph workflow builder for the incident response graph.
 
-Builds the default graph described in REFERENCE.md::
+Builds the default graph described in PROMPT_CONTEXT.md::
 
     observe → diagnose → plan → tier_gate → execute → verify → summarize
 

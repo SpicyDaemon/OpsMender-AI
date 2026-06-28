@@ -88,7 +88,7 @@ Before you open a PR:
 1. Both the backend suite and the frontend build pass locally.
 2. User-visible changes have an entry queued for the next `CHANGELOG.md` release section.
 3. New features have tests. New bug fixes include a regression test.
-4. If you touched the session workflow, tier gate, or audit log, re-read `docs/REFERENCE.md` — those areas have hard architectural constraints documented there.
+4. If you touched the session workflow, tier gate, or audit log, re-read `docs/PROMPT_CONTEXT.md` — those areas have hard architectural constraints documented there.
 
 Use the PR template. Reviewers will focus on:
 
@@ -99,14 +99,14 @@ Use the PR template. Reviewers will focus on:
 
 ## Architecture guardrails
 
-OpsMender has a few deliberate invariants — please read [docs/REFERENCE.md](docs/REFERENCE.md) before proposing changes in these areas:
+OpsMender has a few deliberate invariants — please read [docs/PROMPT_CONTEXT.md](docs/PROMPT_CONTEXT.md) before proposing changes in these areas:
 
 - **Tier gate is programmatic.** It cannot be bypassed by agent reasoning.
 - **MCP-first.** No provider-specific integrations for infrastructure access.
 - **Skill definitions are org-owned.** The framework never edits or overrides a `SKILL.md`.
 - **Audit on everything.** Every tool call and every state transition is logged.
 
-Proposed changes that conflict with a locked decision in `docs/REFERENCE.md` should be raised as an issue first — they need a design discussion before code.
+Proposed changes that conflict with a locked decision in `docs/PROMPT_CONTEXT.md` should be raised as an issue first — they need a design discussion before code.
 
 ## Reporting security issues
 

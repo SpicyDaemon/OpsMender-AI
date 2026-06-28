@@ -17,9 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   codenames**, not SemVer versions. Public GA will be tagged `v1.0.0`.
 - **Docs condensed + made honest.** `docs/CURRENT_STATE.md` (1811→~110 lines) and
   `docs/TASKS.md` (2786→~95 lines) were rewritten to current/active content only;
-  the session-by-session history remains in `docs/LOGS.md` and git. ROADMAP +
-  PROMPT_CONTEXT gained a pre-public status banner and now say "built & merged"
-  instead of "Shipped/Released" for internal milestones.
+  the session-by-session history remains in `docs/LOGS.md` and git. PROMPT_CONTEXT
+  gained a pre-public status banner and now says "built & merged" instead of
+  "Shipped/Released" for internal milestones.
+- **docs/ slimmed to five planning docs + the wiki.** `docs/` now holds only
+  `CURRENT_STATE.md`, `GUIDE_FOR_HUMAN.md` (renamed from `Guide_for_Human.md`),
+  `LOGS.md`, `PROMPT_CONTEXT.md`, `TASKS.md`, and the `wiki/` user manual.
+  `ROADMAP.md` (version scope + decision records) and `REFERENCE.md`
+  (architecture, data model, locked decisions D-001–D-035, paging spec) were
+  folded into `PROMPT_CONTEXT.md`; `E2E_TESTING_PLAN.md` was summarized into
+  `TASKS.md`. The verbose originals remain in git history. All cross-references
+  (README, CONTRIBUTING, wiki, `.github/` templates, and ~10 backend code
+  comments) were repointed accordingly.
 
 ### Added
 

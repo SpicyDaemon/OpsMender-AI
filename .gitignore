@@ -70,6 +70,7 @@ CLAUDE.local.md
 .anthropic/
 .gemini/
 .copilot/
+.agents/
 
 # macOS
 .DS_Store

@@ -38,7 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   REFERENCE/admin-guide/people-guide/E2E plan wording that implied a live
   multi-tenant model is reframed around the internal `org_id` boundary. No code
   changes — the 2026-06-27 simplification already removed the multi-org code
-  paths; LOGS session history is left intact (append-only).
+  paths; LOGS session history is left intact (append-only). Also closed the
+  now-obsolete "Org-scoped URLs" task in TASKS.md and synced the v2 status across
+  PROMPT_CONTEXT + ROADMAP (all 8 v2 phases marked shipped; v2.0 is
+  feature-complete on `main`, awaiting the `v2.0.0` tag).
 
 - **Single-workspace dashboard model.** Multi-org switching and org-scoped
   dashboard URLs are removed. Links now stay on plain `/dashboard/...`, the

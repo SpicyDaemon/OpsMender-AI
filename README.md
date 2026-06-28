@@ -1,7 +1,7 @@
 # OpsMender AI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![Node 24+](https://img.shields.io/badge/node-24%2B-339933.svg)](https://nodejs.org/)
 [![Release](https://img.shields.io/github/v/release/SpicyDaemon/OpsMender-AI?include_prereleases&sort=semver)](https://github.com/SpicyDaemon/OpsMender-AI/releases)
 
@@ -160,7 +160,7 @@ docker compose -f docker/docker-compose.yml down -v
 
 ## Development setup
 
-Requires **Python 3.11+**, **Node 24+**, and [`uv`](https://docs.astral.sh/uv/).
+Requires **Python 3.12+**, **Node 24+**, and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
 # Backend — SQLite, auto-migrates, seeds admin/admin123, serves the built UI on :8000

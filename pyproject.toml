@@ -3,7 +3,7 @@ name = "opsmender"
 version = "1.0.0"
 description = "OpsMender AI — open-source AI incident manager / AI SRE / AI on-call. Tier-gated, MCP-first, human-in-the-loop AI incident response for production infrastructure."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "SpicyDaemon"}]
@@ -20,7 +20,6 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: System :: Monitoring",
@@ -103,10 +102,10 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 check_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.black]
 line-length = 88
-target-version = ["py311"]
+target-version = ["py312"]

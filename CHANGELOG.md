@@ -16,8 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `deploy-site.yml` (`node-version: 24`), `frontend/package.json`
   (`@types/node ^24` + `engines.node >=24`), a new `frontend/.nvmrc`, and the
   README badge / CONTRIBUTING requirement. Verified: frontend build + 203 vitest
-  pass; clean Docker build boots healthy with bundled node `v24.18.0`. (Python
-  stays at 3.11 floor / 3.12 runtime — still supported, no change needed.)
+  pass; clean Docker build boots healthy with bundled node `v24.18.0`.
+- **Raised the Python floor to 3.12.** `requires-python` is now `>=3.12` (was
+  `>=3.11`); the 3.11 classifier is dropped and the mypy / ruff targets move to
+  `3.12` / `py312` (Docker + CI already ran 3.12). `uv.lock` regenerated; README
+  badge + CONTRIBUTING updated. Backend suite green (2020 passed, 2 skipped).
 
 ## [1.0.0] - 2026-06-28
 

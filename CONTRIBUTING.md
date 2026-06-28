@@ -12,7 +12,7 @@ OpsMender has a Python backend (FastAPI + LangGraph) and a Next.js static export
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Node.js 24+ (the Docker image bundles one — needed locally only if you want to run MCP servers that ship as `npx` packages)
 - [`uv`](https://docs.astral.sh/uv/) for Python dependency management
 - Docker (optional — for running the full stack with Postgres)

@@ -72,9 +72,9 @@ To add a model config:
    response model is full, incident sessions enter the durable priority queue;
    ingest/triage classification does not consume these slots.
 
-Capacity is enforced per organization and saved model config. If multiple
-organizations share one provider API key, these per-organization caps do not
-protect the provider account's combined global limit. Queue wait, approval hold,
+Capacity is enforced per saved model config. The cap is local to OpsMender, so it
+does not protect a provider account's combined global limit if the same API key
+is used elsewhere. Queue wait, approval hold,
 extension warning, and scheduler sweep intervals are configured with
 `OPSMENDER_SESSION_QUEUE_TTL_SECONDS`,
 `OPSMENDER_APPROVAL_HOLD_TTL_SECONDS`,

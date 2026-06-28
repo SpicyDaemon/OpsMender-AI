@@ -43,7 +43,7 @@ Each user row shows an **Auth method** badge:
 - **OIDC** — the user was provisioned through the org's OpenID Connect provider, shown as `oidc:<org-slug>`. Only appears when OIDC is configured for the tenant.
 - **SAML** — the user was provisioned through the org's SAML 2.0 provider, shown as `saml:<org-slug>`. Only appears when SAML is configured for the tenant.
 
-Clicking an **OIDC** or **SAML** badge deep-links into **Workspace Settings** (or **Organizations** in multi-org mode) and opens the matching auth configuration modal for that org. That is the fastest way to answer "which IdP owns this user?"
+Clicking an **OIDC** or **SAML** badge deep-links into **Workspace Settings** and opens the matching auth configuration modal. That is the fastest way to answer "which IdP owns this user?"
 
 For the default install (local auth only), every row reads **Local** and no IdP setup is required. See [Auth Guide](auth-guide.md) for the default model.
 

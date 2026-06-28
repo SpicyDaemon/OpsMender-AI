@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Docs: multi-org cleanup.** Forward-looking docs now consistently reflect the
+  single-workspace product model. ROADMAP drops "Multi-org polish" as a future
+  candidate and records multi-org/multi-tenant UX as **retired** under
+  "Explicitly NOT planned" (with the org-scoped-URL removal noted on the v1.3.0
+  shipped line); PROMPT_CONTEXT's "KEY DECISIONS" replaces the stale
+  "Multi-tenancy deferred to Phase 4" with the retirement decision;
+  REFERENCE/admin-guide/people-guide/E2E plan wording that implied a live
+  multi-tenant model is reframed around the internal `org_id` boundary. No code
+  changes — the 2026-06-27 simplification already removed the multi-org code
+  paths; LOGS session history is left intact (append-only).
+
 - **Single-workspace dashboard model.** Multi-org switching and org-scoped
   dashboard URLs are removed. Links now stay on plain `/dashboard/...`, the
   frontend no longer stores/sends `X-Org-ID`, `/org/<slug>/dashboard/...` is no

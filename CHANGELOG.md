@@ -7,14 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-28
+
+**Initial public release.** OpsMender AI — a self-hosted, single-workspace AI
+incident-response platform: tier-gated (0 Autonomous / 1 Approval / 2 Advisory),
+MCP-first, human-in-the-loop. Includes governed AI sessions, paging & on-call,
+notification channels with verified native actions, 26 integration kinds with
+bi-directional ticket sync, reliability/SLA, incident memory + postmortems, SSO
+(OIDC) + SAML + TOTP MFA, concurrent capacity-aware session orchestration, and
+Docker + binary distribution. Release-verified: clean-machine Docker build boots
+healthy (`/health` ok, frontend served); backend suite green; frontend build
+clean.
+
 ### Changed
 
-- **Pre-public version reset to `0.9.0`.** The product is not yet publicly
-  released, so versions now use SemVer `0.x` (pre-release). `pyproject.toml` and
-  `frontend/package.json` are bumped `1.3.0` → `0.9.0`. The earlier `v1.0.0` /
-  `v1.1.0` / `v1.3.0` tags were internal milestones (never a public release) and
-  have been removed; the "v1.x" / "v2" labels in the docs are **roadmap
-  codenames**, not SemVer versions. Public GA will be tagged `v1.0.0`.
+- **Version set to `1.0.0` — first public release.** Earlier internal milestones
+  (`v1.0.0` / `v1.1.0` / `v1.3.0`) were never publicly released and their tags
+  were removed; the "v1.x" / "v2" labels in the docs and history are roadmap
+  **codenames**, not prior public versions. This `1.0.0` is the first published
+  version (`pyproject.toml` + `frontend/package.json`).
 - **Docs condensed + made honest.** `docs/CURRENT_STATE.md` (1811→~110 lines) and
   `docs/TASKS.md` (2786→~95 lines) were rewritten to current/active content only;
   the session-by-session history remains in `docs/LOGS.md` and git. PROMPT_CONTEXT

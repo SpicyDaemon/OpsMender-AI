@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Pre-public version reset to `0.9.0`.** The product is not yet publicly
+  released, so versions now use SemVer `0.x` (pre-release). `pyproject.toml` and
+  `frontend/package.json` are bumped `1.3.0` → `0.9.0`. The earlier `v1.0.0` /
+  `v1.1.0` / `v1.3.0` tags were internal milestones (never a public release) and
+  have been removed; the "v1.x" / "v2" labels in the docs are **roadmap
+  codenames**, not SemVer versions. Public GA will be tagged `v1.0.0`.
+- **Docs condensed + made honest.** `docs/CURRENT_STATE.md` (1811→~110 lines) and
+  `docs/TASKS.md` (2786→~95 lines) were rewritten to current/active content only;
+  the session-by-session history remains in `docs/LOGS.md` and git. ROADMAP +
+  PROMPT_CONTEXT gained a pre-public status banner and now say "built & merged"
+  instead of "Shipped/Released" for internal milestones.
+
 ### Added
 
 - **Every comms surface names the org.** Incident communications now identify

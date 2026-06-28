@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Standardized on Node.js 24 (Active LTS).** Previously the toolchain was split
+  — Docker ran Node 22 while CI, `@types/node`, and the docs said Node 20 (which
+  is now EOL). Everything is now Node 24: `docker/Dockerfile` (frontend-builder +
+  node-runtime → `node:24-*`), `.github/workflows/release.yml` +
+  `deploy-site.yml` (`node-version: 24`), `frontend/package.json`
+  (`@types/node ^24` + `engines.node >=24`), a new `frontend/.nvmrc`, and the
+  README badge / CONTRIBUTING requirement. Verified: frontend build + 203 vitest
+  pass; clean Docker build boots healthy with bundled node `v24.18.0`. (Python
+  stays at 3.11 floor / 3.12 runtime — still supported, no change needed.)
+
 ## [1.0.0] - 2026-06-28
 
 **Initial public release.** OpsMender AI — a self-hosted, single-workspace AI

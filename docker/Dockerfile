@@ -1,8 +1,8 @@
 # OpsMender AI — single container (frontend + backend)
 #
 # Four stages:
-#   1. frontend-builder  — Node 22, produces /app/frontend/out (static export)
-#   2. node-runtime      — Node 22 slim, provides node/npm/npx for the runtime
+#   1. frontend-builder  — Node 24, produces /app/frontend/out (static export)
+#   2. node-runtime      — Node 24 slim, provides node/npm/npx for the runtime
 #   3. backend-builder   — Python 3.12, installs deps into /app/.venv via uv
 #   4. runtime           — slim Python image, copies venv + Node + static export + source
 #
@@ -12,7 +12,7 @@
 # (e.g. `npx -y @anthropic/mcp-server-k8s`) work out of the box.
 
 # ── Stage 1: frontend (static export) ───────────────────────────────────────
-FROM node:22-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -31,7 +31,7 @@ RUN npm run build
 
 # ── Stage 2: Node.js runtime (for npx-based MCP servers) ────────────────────
 # Same Debian bookworm base as python:3.12-slim → glibc-compatible binaries.
-FROM node:22-slim AS node-runtime
+FROM node:24-slim AS node-runtime
 
 # Upgrade the bundled npm so its own vendored dependencies (e.g. picomatch,
 # flagged by Trivy as CVE-2026-33671) are patched before this stage's global

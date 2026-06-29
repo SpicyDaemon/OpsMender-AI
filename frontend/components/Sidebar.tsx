@@ -105,11 +105,12 @@ export function buildNavGroups(): NavGroup[] {
       id: "paging",
       label: "Paging & On-call",
       items: [
-        // Operators can view Teams/Chains/Services/Rosters in read-only mode.
+        // Operators can view Teams/Rosters/Chains/Services in read-only mode.
+        // Ordered by build flow: team → roster → chain → service.
         { href: "/dashboard/paging/teams", label: "Teams", icon: Users, roles: ["admin", "operator"] },
+        { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat, roles: ["admin", "operator"] },
         { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch, roles: ["admin", "operator"] },
         { href: "/dashboard/paging/services", label: "Services", icon: Server, roles: ["admin", "operator"] },
-        { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat, roles: ["admin", "operator"] },
         // Operators can request (not approve) maintenance windows.
         { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench, roles: ["admin", "operator"] },
         // Notifications hosts each user's own routing — operators need it too.

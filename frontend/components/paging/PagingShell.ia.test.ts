@@ -15,9 +15,9 @@ describe("v1 paging IA", () => {
     const paging = buildNavGroups().find((group) => group.id === "paging");
     expect(paging?.items.map((item) => item.label)).toEqual([
       "Teams",
+      "Rosters",
       "Escalation Chains",
       "Services",
-      "Rosters",
       "Maintenance Windows",
       "Notifications",
     ]);
@@ -26,9 +26,9 @@ describe("v1 paging IA", () => {
   it("orders the Paging tabs around the v1 workflow", () => {
     expect(TABS.map((tab) => tab.label)).toEqual([
       "Teams",
+      "Rosters",
       "Escalation Chains",
       "Services",
-      "Rosters",
       "Maintenance Windows",
       "Notifications",
     ]);

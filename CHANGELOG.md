@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Paging nav reordered to the build flow.** Both the in-page tabs and the
+  "Paging & On-call" sidebar now read **Teams → Rosters → Escalation Chains →
+  Services → Maintenance Windows → Notifications** (rosters before chains, chains
+  before services) so the order matches how you actually set things up. No
+  behavior change; deep-link routes/ids unchanged.
 - **Standardized on Node.js 24 (Active LTS).** Previously the toolchain was split
   — Docker ran Node 22 while CI, `@types/node`, and the docs said Node 20 (which
   is now EOL). Everything is now Node 24: `docker/Dockerfile` (frontend-builder +

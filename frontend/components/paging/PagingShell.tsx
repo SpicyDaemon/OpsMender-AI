@@ -168,6 +168,12 @@ export const TABS: {
     icon: Users,
   },
   {
+    id: "rosters",
+    label: "Rosters",
+    description: "Schedules with coverage windows and ordered rotations.",
+    icon: Repeat,
+  },
+  {
     id: "chains",
     label: "Escalation Chains",
     description: "Team-owned levels that page operators and backups.",
@@ -178,12 +184,6 @@ export const TABS: {
     label: "Services",
     description: "Alert sources with fixed priority, intake URL, and preferred MCP servers.",
     icon: Server,
-  },
-  {
-    id: "rosters",
-    label: "Rosters",
-    description: "Schedules with coverage windows and ordered rotations.",
-    icon: Repeat,
   },
   {
     id: "maintenance",

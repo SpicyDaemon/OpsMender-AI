@@ -16,8 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   breakdown. Global + team-scoped maintenance windows blank that day's coverage
   and show a maintenance marker. Backed by a new
   `GET /paging/teams/{team_id}/on-call-calendar?start=&days=` endpoint
-  (readable by any authenticated user, including viewers). Day-click creation of
-  overrides / maintenance windows (admin/operator) lands next.
+  (readable by any authenticated user, including viewers). Admins/operators can
+  **click a day to create a coverage override** (pick roster + covering person)
+  or a **team maintenance window** (defaults to the full day); viewers get a
+  read-only calendar.
 
 ### Changed
 

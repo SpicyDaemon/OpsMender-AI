@@ -2,8 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Wrench } from "lucide-react";
-import { getTeamOnCallCalendar, listTeams } from "@/lib/api";
+import {
+  createRosterOverride,
+  getTeamOnCallCalendar,
+  listRosters,
+  listTeamMembers,
+  listTeams,
+  listUsers,
+} from "@/lib/api";
+import { createMaintenanceWindow } from "@/lib/api_reliability";
 import type {
+  RosterResponse,
   TeamCalendarChain,
   TeamOnCallCalendarDay,
   TeamOnCallCalendarResponse,
@@ -11,8 +20,12 @@ import type {
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { personColor } from "@/lib/calendarColor";
+import {
+  eligibleRosterMemberOptions,
+} from "@/lib/rosterEligibility";
+import type { MultiSelectOption } from "@/components/ui/MultiSelect";
 import { Button } from "@/components/ui/Button";
-import { Select } from "@/components/ui/Input";
+import { Input, Label, Select } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
@@ -80,6 +93,10 @@ export default function OnCallSchedulePage() {
   const [selectedDay, setSelectedDay] = useState<TeamOnCallCalendarDay | null>(
     null,
   );
+  // Edit affordances (admin/operator): the team's rosters + eligible covering
+  // users, loaded only when the user can create overrides.
+  const [rosters, setRosters] = useState<RosterResponse[]>([]);
+  const [memberOptions, setMemberOptions] = useState<MultiSelectOption[]>([]);
 
   const today = isoDate(new Date());
   const realMonth = firstOfMonth(new Date());
@@ -119,6 +136,35 @@ export default function OnCallSchedulePage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Load rosters + eligible covering users for the day-click create forms.
+  useEffect(() => {
+    if (!teamId || !canEdit) {
+      setRosters([]);
+      setMemberOptions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [rostersRes, usersRes, membersRes] = await Promise.all([
+          listRosters(teamId),
+          listUsers({ limit: 1000 }),
+          listTeamMembers(teamId),
+        ]);
+        if (cancelled) return;
+        setRosters(rostersRes.items);
+        const memberIds = new Set(membersRes.items.map((m) => m.user_id));
+        setMemberOptions(eligibleRosterMemberOptions(usersRes.items, memberIds));
+      } catch (err) {
+        if (!cancelled)
+          toast.error(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId, canEdit, toast]);
 
   const daysByDate = useMemo(() => {
     const map = new Map<string, TeamOnCallCalendarDay>();
@@ -275,8 +321,16 @@ export default function OnCallSchedulePage() {
       {selectedDay && (
         <DayDetailModal
           day={selectedDay}
+          teamId={teamId}
           teamName={data?.team_name ?? null}
+          canEdit={canEdit}
+          rosters={rosters}
+          memberOptions={memberOptions}
           onClose={() => setSelectedDay(null)}
+          onCreated={() => {
+            setSelectedDay(null);
+            void refresh();
+          }}
         />
       )}
     </div>
@@ -285,12 +339,22 @@ export default function OnCallSchedulePage() {
 
 function DayDetailModal({
   day,
+  teamId,
   teamName,
+  canEdit,
+  rosters,
+  memberOptions,
   onClose,
+  onCreated,
 }: {
   day: TeamOnCallCalendarDay;
+  teamId: string;
   teamName: string | null;
+  canEdit: boolean;
+  rosters: RosterResponse[];
+  memberOptions: MultiSelectOption[];
   onClose: () => void;
+  onCreated: () => void;
 }) {
   const dateLabel = new Date(`${day.date}T00:00:00`).toLocaleDateString(
     undefined,
@@ -319,8 +383,161 @@ function DayDetailModal({
             <ChainBlock key={chain.chain_id} chain={chain} />
           ))
         )}
+
+        {canEdit && (
+          <DayActions
+            day={day}
+            teamId={teamId}
+            rosters={rosters}
+            memberOptions={memberOptions}
+            onCreated={onCreated}
+          />
+        )}
       </div>
     </Modal>
+  );
+}
+
+// ISO datetime bounds for a whole calendar day (UTC), used as quick defaults
+// for an inline override / maintenance window. Operators can fine-tune times in
+// the dedicated Rosters / Maintenance Windows forms.
+function dayBounds(dateIso: string): { start: string; end: string } {
+  const start = new Date(`${dateIso}T00:00:00.000Z`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function DayActions({
+  day,
+  teamId,
+  rosters,
+  memberOptions,
+  onCreated,
+}: {
+  day: TeamOnCallCalendarDay;
+  teamId: string;
+  rosters: RosterResponse[];
+  memberOptions: MultiSelectOption[];
+  onCreated: () => void;
+}) {
+  const toast = useToast();
+  const [rosterId, setRosterId] = useState("");
+  const [coveringUserId, setCoveringUserId] = useState("");
+  const [mwName, setMwName] = useState(`Maintenance — ${day.date}`);
+  const [busy, setBusy] = useState(false);
+
+  const submitOverride = async () => {
+    if (!rosterId || !coveringUserId) {
+      toast.error("Pick a roster and a covering person.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { start, end } = dayBounds(day.date);
+      await createRosterOverride(rosterId, {
+        covering_user_id: coveringUserId,
+        starts_at: start,
+        ends_at: end,
+      });
+      toast.success("Override created.");
+      onCreated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitMaintenance = async () => {
+    if (!mwName.trim()) {
+      toast.error("Name the maintenance window.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { start, end } = dayBounds(day.date);
+      await createMaintenanceWindow({
+        name: mwName.trim(),
+        scope_type: "team",
+        scope_id: teamId,
+        starts_at: start,
+        ends_at: end,
+      });
+      toast.success(
+        "Maintenance window created (admin approval may be required before it suppresses paging).",
+      );
+      onCreated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 border-t border-border-subtle pt-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label className="text-xs">Add coverage override</Label>
+          <div className="mt-1 space-y-2">
+            <Select
+              aria-label="Roster"
+              value={rosterId}
+              onChange={(e) => setRosterId(e.target.value)}
+            >
+              <option value="">Select roster…</option>
+              {rosters.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Covering person"
+              value={coveringUserId}
+              onChange={(e) => setCoveringUserId(e.target.value)}
+            >
+              <option value="">Select person…</option>
+              {memberOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+            <Button
+              variant="secondary"
+              onClick={submitOverride}
+              disabled={busy}
+              className="w-full"
+            >
+              Add override for {day.date}
+            </Button>
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs">Add maintenance window</Label>
+          <div className="mt-1 space-y-2">
+            <Input
+              aria-label="Maintenance window name"
+              value={mwName}
+              onChange={(e) => setMwName(e.target.value)}
+            />
+            <Button
+              variant="secondary"
+              onClick={submitMaintenance}
+              disabled={busy}
+              className="w-full"
+            >
+              Suppress {day.date} (team)
+            </Button>
+          </div>
+        </div>
+      </div>
+      <p className="text-[11px] text-fg-muted">
+        Quick actions default to the full day. Fine-tune times in Rosters →
+        overrides or Maintenance Windows.
+      </p>
+    </div>
   );
 }
 

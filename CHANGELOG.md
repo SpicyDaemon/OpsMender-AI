@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Roster time zone is now a dropdown.** The roster schedule form's "Time zone
+  (IANA)" free-text field is replaced with a select of all IANA zones
+  (`Intl.supportedValuesOf("timeZone")`, with a fallback list); a legacy/free-form
+  saved value is preserved as the selected option.
+- **People show real names, not usernames, across paging.** Team member, roster
+  rotation/override, and escalation "User" pickers (and the resolved on-call /
+  escalation-target labels) now render the user's display name ("First Last",
+  falling back to username when no name is set) via a shared `displayName()`
+  helper.
 - **Paging nav reordered to the build flow.** Both the in-page tabs and the
   "Paging & On-call" sidebar now read **Teams → Rosters → Escalation Chains →
   Services → Maintenance Windows → Notifications** (rosters before chains, chains

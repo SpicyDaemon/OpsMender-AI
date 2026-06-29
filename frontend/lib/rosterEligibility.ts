@@ -8,6 +8,7 @@
 
 import type { MultiSelectOption } from "@/components/ui/MultiSelect";
 import type { UserResponse } from "@/lib/types";
+import { displayName } from "@/lib/users";
 
 // A user may sit on a rotation (or cover one) only when they are an active,
 // non-deleted Admin/Operator who also belongs to the roster's owning team.
@@ -27,7 +28,7 @@ export function eligibleRosterMemberOptions(
     )
     .map((u) => ({
       value: u.id,
-      label: u.username,
+      label: displayName(u),
       sublabel: `${u.email} · ${u.role}`,
     }));
 }

@@ -129,6 +129,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/MultiSelect";
+import { displayName } from "@/lib/users";
+import { timeZoneOptions } from "@/lib/timezones";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PagingFilterBar } from "@/components/ui/PagingFilterBar";
 import { useToast } from "@/components/ui/Toast";
@@ -419,7 +421,7 @@ function TeamsPanel({
         .filter((u) => u.is_active && !u.deleted_at)
         .map((u) => ({
           value: u.id,
-          label: u.username,
+          label: displayName(u),
           sublabel: `${u.email} · ${u.role}`,
         })),
     [users],
@@ -1009,7 +1011,7 @@ function ServicesPanel({
 
   const userById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const u of users) map.set(u.id, u.username);
+    for (const u of users) map.set(u.id, displayName(u));
     return map;
   }, [users]);
 
@@ -2199,13 +2201,18 @@ function RostersPanel({
             </div>
             <div>
               <Label>Time zone (IANA)</Label>
-              <Input
+              <Select
                 value={form.time_zone}
                 onChange={(e) =>
                   setForm({ ...form, time_zone: e.target.value })
                 }
-                placeholder="America/Chicago"
-              />
+              >
+                {timeZoneOptions(form.time_zone).map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </Select>
             </div>
             <div>
               <Label>Coverage start time</Label>
@@ -2967,7 +2974,7 @@ function StepsEditor({
             !u.deleted_at &&
             (u.role === "admin" || u.role === "operator"),
         )
-        .map((u) => ({ id: u.id, name: u.username })),
+        .map((u) => ({ id: u.id, name: displayName(u) })),
     [users],
   );
   const labelForTarget = useCallback(
@@ -2976,7 +2983,8 @@ function StepsEditor({
         return rosters.find((r) => r.id === targetId)?.name ?? targetId;
       }
       if (targetType === "user") {
-        return users.find((u) => u.id === targetId)?.username ?? targetId;
+        const u = users.find((usr) => usr.id === targetId);
+        return u ? displayName(u) : targetId;
       }
       return teams.find((t) => t.id === targetId)?.name ?? targetId;
     },

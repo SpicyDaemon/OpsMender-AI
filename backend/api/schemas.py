@@ -2746,6 +2746,37 @@ class EscalationCalendarResponse(BaseModel):
     days: list[EscalationCalendarDay]
 
 
+# --- Team "On Call Schedule" calendar (all chains + levels per day) ---------
+
+
+class TeamCalendarChain(BaseModel):
+    chain_id: uuid.UUID
+    chain_name: str
+    levels: list[EscalationCalendarLevel]
+
+
+class TeamCalendarMaintenance(BaseModel):
+    id: uuid.UUID
+    name: str
+    scope_type: str
+
+
+class TeamOnCallCalendarDay(BaseModel):
+    date: date
+    chains: list[TeamCalendarChain]
+    maintenance: list[TeamCalendarMaintenance] = Field(default_factory=list)
+    # True when a global/team maintenance window suppresses paging this day.
+    suppressed: bool = False
+
+
+class TeamOnCallCalendarResponse(BaseModel):
+    team_id: uuid.UUID
+    team_name: Optional[str] = None
+    start: date
+    end: date
+    days: list[TeamOnCallCalendarDay]
+
+
 class IncidentPageResponse(BaseModel):
     id: uuid.UUID
     incident_id: uuid.UUID

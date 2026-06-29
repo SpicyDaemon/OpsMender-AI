@@ -1708,6 +1708,7 @@ export async function bulkIncidentAction(
 import type {
   ChainWhereUsedResponse,
   EscalationCalendarResponse,
+  TeamOnCallCalendarResponse,
   EscalationChainCreate,
   EscalationChainListResponse,
   EscalationChainResponse,
@@ -1809,6 +1810,19 @@ export async function getEscalationChainCalendar(
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return api.get<EscalationCalendarResponse>(
     `/escalation-chains/${chainId}/calendar${suffix}`,
+  );
+}
+
+export async function getTeamOnCallCalendar(
+  teamId: string,
+  options?: { start?: string; days?: number },
+): Promise<TeamOnCallCalendarResponse> {
+  const qs = new URLSearchParams();
+  if (options?.start) qs.set("start", options.start);
+  if (options?.days) qs.set("days", String(options.days));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return api.get<TeamOnCallCalendarResponse>(
+    `/teams/${teamId}/on-call-calendar${suffix}`,
   );
 }
 

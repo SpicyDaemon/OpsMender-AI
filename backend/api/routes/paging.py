@@ -31,6 +31,10 @@ from backend.api.schemas import (
     EscalationCalendarDay,
     EscalationCalendarLevel,
     EscalationCalendarResponse,
+    TeamCalendarChain,
+    TeamCalendarMaintenance,
+    TeamOnCallCalendarDay,
+    TeamOnCallCalendarResponse,
     UserNotificationPrefResponse,
     UserNotificationPrefUpdate,
     PriorityRuleCreate,
@@ -1177,6 +1181,7 @@ from backend.api.schemas import (
 from backend.db.repos import (
     EscalationChainRepo,
     EscalationStepRepo,
+    MaintenanceWindowRepo,
     ServiceEscalationChainRepo,
 )
 
@@ -1687,6 +1692,107 @@ async def escalation_chain_calendar(
         end=end_day,
         range=range_,
         days=days,
+    )
+
+
+@router.get(
+    "/teams/{team_id}/on-call-calendar",
+    response_model=TeamOnCallCalendarResponse,
+    summary="Resolve a team's on-call coverage (all chains + levels) over a range",
+)
+async def team_on_call_calendar(
+    team_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator", "viewer")),
+    start: date | None = Query(default=None),
+    days: int = Query(default=42, ge=1, le=366),
+):
+    """All-chains on-call coverage for one team across a day range — powers the
+    team "On Call Schedule" month grid. Readable by any authenticated user;
+    editing (overrides / maintenance windows) is gated on the mutating routes.
+    Global + team-scoped maintenance windows blank that day's coverage.
+    """
+
+    team = await TeamRepo.get_by_id(db, org_id, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    start_day = start or datetime.now(timezone.utc).date()
+    end_day = start_day + timedelta(days=days - 1)
+
+    chains = await EscalationChainRepo.list_all(db, org_id, team_id=team_id)
+    steps_by_chain = {
+        chain.id: await EscalationStepRepo.list_for_chain(db, org_id, chain.id)
+        for chain in chains
+    }
+
+    out_days: list[TeamOnCallCalendarDay] = []
+    for offset in range(days):
+        day = start_day + timedelta(days=offset)
+        # Suppression: check midday for global + team-scoped active windows.
+        sample_dt = datetime.combine(day, time(12, 0), tzinfo=timezone.utc)
+        windows = await MaintenanceWindowRepo.list_active_at(
+            db, org_id, sample_dt, scope_type="team", scope_id=team_id
+        )
+        suppressed = len(windows) > 0
+        maintenance = [
+            TeamCalendarMaintenance(id=w.id, name=w.name, scope_type=w.scope_type)
+            for w in windows
+        ]
+
+        chain_entries: list[TeamCalendarChain] = []
+        for chain in chains:
+            levels: list[EscalationCalendarLevel] = []
+            for idx, step in enumerate(steps_by_chain[chain.id], start=1):
+                if step.target_type == "roster":
+                    level = await _resolve_roster_calendar_level(
+                        db=db, org_id=org_id, step=step, day=day, level=idx
+                    )
+                elif step.target_type == "user":
+                    level = await _resolve_user_calendar_level(
+                        db=db, step=step, level=idx
+                    )
+                else:
+                    level = EscalationCalendarLevel(
+                        level=idx,
+                        target_type=step.target_type,
+                        target_id=step.target_id,
+                        target_name=f"Unsupported target {str(step.target_id)[:8]}",
+                        status="unknown",
+                        warnings=["Team targets are planned for a later release."],
+                    )
+                if suppressed and level.status != "unknown":
+                    level.resolved_user_id = None
+                    level.resolved_user_name = None
+                    level.resolved_user_email = None
+                    level.status = "maintenance"
+                    level.warnings = [
+                        *level.warnings,
+                        "Suppressed by maintenance window.",
+                    ]
+                levels.append(level)
+            chain_entries.append(
+                TeamCalendarChain(
+                    chain_id=chain.id, chain_name=chain.name, levels=levels
+                )
+            )
+
+        out_days.append(
+            TeamOnCallCalendarDay(
+                date=day,
+                chains=chain_entries,
+                maintenance=maintenance,
+                suppressed=suppressed,
+            )
+        )
+
+    return TeamOnCallCalendarResponse(
+        team_id=team.id,
+        team_name=team.name,
+        start=start_day,
+        end=end_day,
+        days=out_days,
     )
 
 

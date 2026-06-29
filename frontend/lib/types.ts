@@ -2033,6 +2033,7 @@ export type EscalationCalendarStatus =
   | "empty_roster"
   | "inactive_user"
   | "deleted_user"
+  | "maintenance"
   | "unknown";
 
 export interface EscalationCalendarLevel {
@@ -2063,6 +2064,34 @@ export interface EscalationCalendarResponse {
   end: string;
   range: "today" | "7d" | "30d" | "90d";
   days: EscalationCalendarDay[];
+}
+
+// Team "On Call Schedule" calendar (all chains + levels per day).
+export interface TeamCalendarChain {
+  chain_id: string;
+  chain_name: string;
+  levels: EscalationCalendarLevel[];
+}
+
+export interface TeamCalendarMaintenance {
+  id: string;
+  name: string;
+  scope_type: string;
+}
+
+export interface TeamOnCallCalendarDay {
+  date: string;
+  chains: TeamCalendarChain[];
+  maintenance: TeamCalendarMaintenance[];
+  suppressed: boolean;
+}
+
+export interface TeamOnCallCalendarResponse {
+  team_id: string;
+  team_name: string | null;
+  start: string;
+  end: string;
+  days: TeamOnCallCalendarDay[];
 }
 
 export interface IncidentPageRecord {

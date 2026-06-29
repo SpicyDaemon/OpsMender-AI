@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **On Call Schedule (team calendar).** A new viewer-visible month-grid calendar
+  (Incident Management → On Call Schedule) shows who is on call for a selected
+  team across **all of its escalation chains, by level**, color-coded per person,
+  navigable up to ~12 months out. Clicking a day opens a per-chain / per-level
+  breakdown. Global + team-scoped maintenance windows blank that day's coverage
+  and show a maintenance marker. Backed by a new
+  `GET /paging/teams/{team_id}/on-call-calendar?start=&days=` endpoint
+  (readable by any authenticated user, including viewers). Day-click creation of
+  overrides / maintenance windows (admin/operator) lands next.
+
 ### Changed
 
 - **Roster time zone is now a dropdown.** The roster schedule form's "Time zone

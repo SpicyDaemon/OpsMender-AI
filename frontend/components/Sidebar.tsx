@@ -8,6 +8,7 @@ import {
   Activity,
   AlertTriangle,
   Bell,
+  CalendarClock,
   LayoutDashboard,
   BookOpen,
   Brain,
@@ -94,9 +95,11 @@ export function buildNavGroups(): NavGroup[] {
       id: "incident-management",
       label: "Incident Management",
       items: [
-        // Dashboard + Incidents are visible to everyone (Viewer = read-only).
+        // Dashboard + Incidents + On Call Schedule are visible to everyone
+        // (Viewer = read-only); editing the schedule is gated in the page itself.
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
         { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
+        { href: "/dashboard/on-call-schedule", label: "On Call Schedule", icon: CalendarClock },
         { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare, roles: ["admin", "operator"] },
       ],
     },

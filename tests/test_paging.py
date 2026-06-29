@@ -2018,6 +2018,106 @@ class TestPagingAPI:
             )
             assert resp.status_code == (200 if role == "operator" else 403)
 
+    async def test_team_on_call_calendar_aggregates_chains_and_levels(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "Sched", "slug": f"sched-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        team_id = team.json()["id"]
+
+        async with app.state.session_factory() as db:
+            u1 = await UserRepo.create(
+                db,
+                username=f"sched-a-{uuid.uuid4().hex[:6]}",
+                email=f"sched-a-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+
+        # Two chains in the same team, each with one user level.
+        chain_ids = []
+        for name in ("Chain A", "Chain B"):
+            chain = await client.post(
+                "/escalation-chains",
+                json={"team_id": team_id, "name": name},
+                headers=auth_headers,
+            )
+            assert chain.status_code == 201
+            cid = chain.json()["id"]
+            chain_ids.append(cid)
+            step = await client.post(
+                f"/escalation-chains/{cid}/steps",
+                json={
+                    "step_index": 0,
+                    "target_type": "user",
+                    "target_id": str(u1.id),
+                    "timeout_seconds": 300,
+                },
+                headers=auth_headers,
+            )
+            assert step.status_code == 201, step.text
+
+        resp = await client.get(
+            f"/teams/{team_id}/on-call-calendar?start=2026-06-05&days=14",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["team_id"] == team_id
+        assert len(body["days"]) == 14
+        day0 = body["days"][0]
+        assert day0["date"] == "2026-06-05"
+        assert day0["suppressed"] is False
+        # Both chains appear, each with its single resolved level.
+        assert len(day0["chains"]) == 2
+        names = {c["chain_name"] for c in day0["chains"]}
+        assert names == {"Chain A", "Chain B"}
+        for c in day0["chains"]:
+            assert c["levels"][0]["resolved_user_id"] == str(u1.id)
+
+    async def test_team_on_call_calendar_viewer_can_read(
+        self, client: AsyncClient, auth_headers
+    ):
+        team = await client.post(
+            "/teams",
+            json={"name": "SchedView", "slug": f"sv-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        team_id = team.json()["id"]
+        create = await client.post(
+            "/auth/users",
+            headers=auth_headers,
+            json={
+                "username": f"sched-viewer-{uuid.uuid4().hex[:6]}",
+                "email": f"sched-viewer-{uuid.uuid4().hex[:6]}@test.com",
+                "role": "viewer",
+                "password": "temp-pass-123",
+                "require_password_change": False,
+            },
+        )
+        assert create.status_code == 201
+        login = await client.post(
+            "/auth/login",
+            json={
+                "username": create.json()["username"],
+                "password": "temp-pass-123",
+            },
+        )
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        # Unlike the per-chain escalation calendar, the team On Call Schedule is
+        # readable by viewers.
+        resp = await client.get(
+            f"/teams/{team_id}/on-call-calendar?start=2026-06-05",
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert len(resp.json()["days"]) == 42  # default span
+
     async def test_priority_rule_crud(self, client: AsyncClient, auth_headers):
         resp = await client.post(
             "/priority-rules",

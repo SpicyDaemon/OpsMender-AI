@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **On Call Schedule — full-depth calendar + multi-day actions.** The team
+  calendar got a major usability pass:
+  - **Cells now show the real coverage picture** — every escalation chain
+    renders as a caption with its **L1/L2/L3 person chips** (color-coded per
+    person), instead of only the first chain's Level 1. Overflow collapses to
+    "+N more levels / chains"; hover tooltips carry the full detail.
+  - **Multi-day selection.** Admins/operators can **drag across days** (or
+    Ctrl/Cmd-click individual days) to select them; a floating actions bar
+    appears with **Override coverage…** and **Maintenance window…**. When all
+    selected days are covered by the same person, the bar says so and the
+    override modal pre-fills that person's roster; mixed-coverage selections
+    get an explicit warning. Non-contiguous selections create one
+    override/window per contiguous run. Esc or a plain click clears the
+    selection.
+  - **Per-level override shortcut.** In the day detail modal every
+    roster-backed level row has an **Override** button that opens the create
+    form with that roster pre-selected — replacing the always-visible
+    two-column form with progressive disclosure (Add coverage override… /
+    Add maintenance window…).
+  - **Sidebar move:** On Call Schedule now lives under **Paging & On-call**
+    (still visible to viewers, read-only) instead of Incident Management.
+
 ### Fixed
 
 - **Feishu/Lark outbound messages crashed with `NameError`.** The Feishu

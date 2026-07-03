@@ -95,11 +95,9 @@ export function buildNavGroups(): NavGroup[] {
       id: "incident-management",
       label: "Incident Management",
       items: [
-        // Dashboard + Incidents + On Call Schedule are visible to everyone
-        // (Viewer = read-only); editing the schedule is gated in the page itself.
+        // Dashboard + Incidents are visible to everyone (Viewer = read-only).
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
         { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
-        { href: "/dashboard/on-call-schedule", label: "On Call Schedule", icon: CalendarClock },
         { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare, roles: ["admin", "operator"] },
       ],
     },
@@ -108,6 +106,9 @@ export function buildNavGroups(): NavGroup[] {
       id: "paging",
       label: "Paging & On-call",
       items: [
+        // On Call Schedule is visible to everyone (Viewer = read-only);
+        // editing the schedule is gated in the page itself.
+        { href: "/dashboard/on-call-schedule", label: "On Call Schedule", icon: CalendarClock },
         // Operators can view Teams/Rosters/Chains/Services in read-only mode.
         // Ordered by build flow: team → roster → chain → service.
         { href: "/dashboard/paging/teams", label: "Teams", icon: Users, roles: ["admin", "operator"] },

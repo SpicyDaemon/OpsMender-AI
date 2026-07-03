@@ -13,7 +13,10 @@ const pagingShellSource = readFileSync(
 describe("v1 paging IA", () => {
   it("shows the simplified Paging & On-call sidebar entries", () => {
     const paging = buildNavGroups().find((group) => group.id === "paging");
+    // On Call Schedule (viewer-visible, read-only) leads the group; the
+    // admin/operator config surfaces follow in build-flow order.
     expect(paging?.items.map((item) => item.label)).toEqual([
+      "On Call Schedule",
       "Teams",
       "Rosters",
       "Escalation Chains",

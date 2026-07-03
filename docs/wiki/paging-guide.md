@@ -134,7 +134,40 @@ The Escalation Chain Calendar shows who is expected to respond at each escalatio
 
 ---
 
-## 6. Maintenance Windows
+## 6. On Call Schedule
+
+The On Call Schedule (`Paging & On-call → On Call Schedule`) is the team-level
+month calendar. Every user can view it — Viewers read-only, Admins/Operators
+can also change coverage from it.
+
+Each day cell shows the **full coverage picture**: every escalation chain of
+the selected team as a caption with its **Level 1 / 2 / 3 person chips**
+(color-coded per person, consistent across days). Hover any chip for the chain,
+level, and person; days under a maintenance window show a maintenance marker.
+
+Interactions:
+
+- **Click a day** to open its detail: every chain's levels with the resolved
+  person, coverage window, and status. Roster-backed levels have an
+  **Override** button that opens the create form with that roster
+  pre-selected. `Add coverage override…` and `Add maintenance window…` cover
+  the whole day; fine-tune times in Rosters → overrides or Maintenance
+  Windows.
+- **Drag across days** (or Ctrl/Cmd-click individual days) to select multiple
+  days. A floating actions bar appears with **Override coverage…** and
+  **Maintenance window…**:
+  - When every selected day is covered by the same person, the bar names them
+    and the override modal pre-fills that person's roster — the quick path
+    for "cover Sid's days next week".
+  - Mixed-coverage selections warn that the override replaces whoever is
+    scheduled per day.
+  - Non-contiguous selections create one override / maintenance window per
+    contiguous run of days.
+  - `Esc` (or a plain click on the calendar) clears the selection.
+
+---
+
+## 7. Maintenance Windows
 
 Maintenance windows suppress known noisy periods.
 
@@ -144,7 +177,7 @@ In v1, maintenance windows support selecting multiple services. Team scopes may 
 
 ---
 
-## 7. Notifications
+## 8. Notifications
 
 Notifications is the Paging & On-call surface for personal and operator delivery.
 
@@ -162,7 +195,7 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 
 ---
 
-## 8. Setup Walkthrough
+## 9. Setup Walkthrough
 
 1. Create a team at `/dashboard/paging/teams`.
 2. Create the team's escalation chain at `/dashboard/paging/escalation-chains`.
@@ -179,7 +212,7 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 
 ---
 
-## 9. Surfaces
+## 10. Surfaces
 
 | Concept | UI route | API surface |
 |---|---|---|
@@ -187,6 +220,7 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 | Escalation Chains | `/dashboard/paging/escalation-chains` | `/escalation-chains`, `/services/{id}/escalation-chains` |
 | Services and intake | `/dashboard/paging/services` | `/services`, `/api/v1/intake/{service_token}` |
 | Rosters | `/dashboard/paging/rosters` | `/rosters` |
+| On Call Schedule | `/dashboard/on-call-schedule` | `/paging/teams/{id}/on-call-calendar` |
 | Maintenance Windows | `/dashboard/paging/maintenance-windows` | `/maintenance-windows` |
 | Notifications | `/dashboard/paging/notifications` | `/users/me/notification-preferences`, `/webhook-triggers`, notification connector APIs |
 | Incident ack / take / release / paging panel | `/dashboard/incidents/*` | `/incidents/{id}/ack`, `/take`, `/release`, `/paging` |

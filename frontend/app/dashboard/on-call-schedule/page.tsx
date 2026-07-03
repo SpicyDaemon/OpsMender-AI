@@ -1,7 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Wrench } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ChevronLeft, ChevronRight, Wrench, X } from "lucide-react";
 import {
   createRosterOverride,
   getTeamOnCallCalendar,
@@ -12,6 +18,7 @@ import {
 } from "@/lib/api";
 import { createMaintenanceWindow } from "@/lib/api_reliability";
 import type {
+  EscalationCalendarLevel,
   RosterResponse,
   TeamCalendarChain,
   TeamOnCallCalendarDay,
@@ -33,6 +40,9 @@ import { useToast } from "@/components/ui/Toast";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const GRID_DAYS = 42; // 6 weeks
 const MAX_MONTHS_AHEAD = 12;
+// Cap on rendered rows (level chips + chain captions) per day cell.
+const MAX_CELL_ROWS = 6;
+const MAX_LEVELS_PER_CHAIN = 3;
 
 function isoDate(d: Date): string {
   const y = d.getFullYear();
@@ -80,6 +90,93 @@ function statusShort(status: string): string {
   }
 }
 
+/** All ISO dates from a to b inclusive (either order). */
+function rangeDates(a: string, b: string): string[] {
+  let start = new Date(`${a}T00:00:00`);
+  let end = new Date(`${b}T00:00:00`);
+  if (start > end) [start, end] = [end, start];
+  const out: string[] = [];
+  for (let d = start; d <= end; d = new Date(d.getTime() + 86_400_000)) {
+    out.push(isoDate(d));
+  }
+  return out;
+}
+
+/** Split sorted ISO dates into runs of consecutive days. */
+function contiguousRuns(dates: string[]): string[][] {
+  const sorted = [...dates].sort();
+  const runs: string[][] = [];
+  for (const date of sorted) {
+    const last = runs[runs.length - 1];
+    if (
+      last &&
+      new Date(`${date}T00:00:00`).getTime() -
+        new Date(`${last[last.length - 1]}T00:00:00`).getTime() ===
+        86_400_000
+    ) {
+      last.push(date);
+    } else {
+      runs.push([date]);
+    }
+  }
+  return runs;
+}
+
+// ISO datetime bounds for a run of whole calendar days (UTC). Quick actions
+// default to full days; operators fine-tune times in the dedicated Rosters /
+// Maintenance Windows forms.
+function runBounds(run: string[]): { start: string; end: string } {
+  const start = new Date(`${run[0]}T00:00:00.000Z`);
+  const end = new Date(
+    new Date(`${run[run.length - 1]}T00:00:00.000Z`).getTime() + 86_400_000,
+  );
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function formatDayList(dates: string[]): string {
+  const runs = contiguousRuns(dates);
+  return runs
+    .map((run) =>
+      run.length === 1 ? run[0] : `${run[0]} → ${run[run.length - 1]}`,
+    )
+    .join(", ");
+}
+
+/**
+ * What the selected days have in common, driving the "same person → quick
+ * override" affordance: if every selected day resolves the same roster-backed
+ * person at Level 1 of the same chain, we can pre-fill the override.
+ */
+function analyzeSelection(
+  dates: string[],
+  daysByDate: Map<string, TeamOnCallCalendarDay>,
+): {
+  samePersonName: string | null;
+  prefillRosterId: string | null;
+} {
+  const personIds = new Set<string>();
+  const rosterIds = new Set<string>();
+  let personName: string | null = null;
+  for (const date of dates) {
+    const day = daysByDate.get(date);
+    if (!day) return { samePersonName: null, prefillRosterId: null };
+    const l1 = day.chains[0]?.levels[0];
+    if (!l1 || !l1.resolved_user_id) {
+      return { samePersonName: null, prefillRosterId: null };
+    }
+    personIds.add(l1.resolved_user_id);
+    personName = l1.resolved_user_name;
+    if (l1.target_type === "roster") rosterIds.add(l1.target_id);
+  }
+  if (personIds.size === 1) {
+    return {
+      samePersonName: personName,
+      prefillRosterId: rosterIds.size === 1 ? [...rosterIds][0] : null,
+    };
+  }
+  return { samePersonName: null, prefillRosterId: null };
+}
+
 export default function OnCallSchedulePage() {
   const { user } = useAuth();
   const canEdit = user?.role === "admin" || user?.role === "operator";
@@ -97,6 +194,20 @@ export default function OnCallSchedulePage() {
   // users, loaded only when the user can create overrides.
   const [rosters, setRosters] = useState<RosterResponse[]>([]);
   const [memberOptions, setMemberOptions] = useState<MultiSelectOption[]>([]);
+
+  // Multi-day selection (admin/operator): drag across days or Ctrl/Cmd-click
+  // to build a selection, then act on it from the floating actions bar.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dragRange, setDragRange] = useState<{ a: string; b: string } | null>(
+    null,
+  );
+  const dragRangeRef = useRef<{ a: string; b: string } | null>(null);
+  const dragAnchor = useRef<string | null>(null);
+  const dragMoved = useRef(false);
+  const dragUnion = useRef(false);
+  const [bulkAction, setBulkAction] = useState<null | "override" | "maintenance">(
+    null,
+  );
 
   const today = isoDate(new Date());
   const realMonth = firstOfMonth(new Date());
@@ -137,7 +248,16 @@ export default function OnCallSchedulePage() {
     void refresh();
   }, [refresh]);
 
-  // Load rosters + eligible covering users for the day-click create forms.
+  // The selection refers to dates resolved against the loaded window — drop it
+  // when the team or visible month changes.
+  useEffect(() => {
+    setSelected(new Set());
+    setDragRange(null);
+    dragRangeRef.current = null;
+    dragAnchor.current = null;
+  }, [teamId, viewMonth]);
+
+  // Load rosters + eligible covering users for the create forms.
   useEffect(() => {
     if (!teamId || !canEdit) {
       setRosters([]);
@@ -180,6 +300,100 @@ export default function OnCallSchedulePage() {
     });
   }, [viewMonth]);
 
+  // Live preview of the range while dragging.
+  const previewSet = useMemo(() => {
+    if (!dragRange) return null;
+    return new Set(
+      rangeDates(dragRange.a, dragRange.b).filter((d) => daysByDate.has(d)),
+    );
+  }, [dragRange, daysByDate]);
+
+  const commitDrag = useCallback(() => {
+    const range = dragRangeRef.current;
+    if (range && dragMoved.current) {
+      const picked = rangeDates(range.a, range.b).filter((d) =>
+        daysByDate.has(d),
+      );
+      setSelected((prev) => {
+        const next = dragUnion.current ? new Set(prev) : new Set<string>();
+        for (const d of picked) next.add(d);
+        return next;
+      });
+    }
+    dragAnchor.current = null;
+    dragMoved.current = false;
+    dragRangeRef.current = null;
+    setDragRange(null);
+  }, [daysByDate]);
+
+  // Finalize a drag even when the pointer is released outside the grid.
+  useEffect(() => {
+    const up = () => {
+      if (dragAnchor.current) commitDrag();
+    };
+    window.addEventListener("pointerup", up);
+    return () => window.removeEventListener("pointerup", up);
+  }, [commitDrag]);
+
+  // Esc clears the selection.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelected(new Set());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const onCellPointerDown = (iso: string, e: React.PointerEvent) => {
+    if (!canEdit || e.button !== 0) return;
+    dragAnchor.current = iso;
+    dragMoved.current = false;
+    dragUnion.current = e.ctrlKey || e.metaKey;
+  };
+
+  const onCellPointerEnter = (iso: string) => {
+    if (!dragAnchor.current) return;
+    if (iso !== dragAnchor.current) dragMoved.current = true;
+    const range = { a: dragAnchor.current, b: iso };
+    dragRangeRef.current = range;
+    setDragRange(range);
+  };
+
+  const onCellPointerUp = (iso: string, e: React.PointerEvent) => {
+    const wasDrag = dragAnchor.current && dragMoved.current;
+    if (wasDrag) {
+      commitDrag();
+      return;
+    }
+    dragAnchor.current = null;
+    dragRangeRef.current = null;
+    setDragRange(null);
+    const day = daysByDate.get(iso);
+    if (canEdit && (e.ctrlKey || e.metaKey)) {
+      if (!day) return;
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(iso)) next.delete(iso);
+        else next.add(iso);
+        return next;
+      });
+      return;
+    }
+    // Plain click: with an active selection it deselects; otherwise it opens
+    // the day details.
+    if (selected.size > 0) {
+      setSelected(new Set());
+      return;
+    }
+    if (day) setSelectedDay(day);
+  };
+
+  const selectedDates = useMemo(() => [...selected].sort(), [selected]);
+  const selectionInfo = useMemo(
+    () => analyzeSelection(selectedDates, daysByDate),
+    [selectedDates, daysByDate],
+  );
+
   const monthLabel = viewMonth.toLocaleString(undefined, {
     month: "long",
     year: "numeric",
@@ -192,7 +406,7 @@ export default function OnCallSchedulePage() {
         <p className="text-sm text-fg-muted">
           Who is on call for a team across all of its escalation chains, by level.
           {canEdit
-            ? " Click a day to add an override or maintenance window."
+            ? " Click a day for details. Drag (or Ctrl-click) days to select them, then act from the bar below."
             : " Read-only."}
         </p>
       </div>
@@ -240,7 +454,7 @@ export default function OnCallSchedulePage() {
         </div>
       </div>
 
-      <div className="relative rounded-lg border border-border-subtle bg-bg-surface">
+      <div className="relative select-none rounded-lg border border-border-subtle bg-bg-surface">
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg-surface/60">
             <Spinner />
@@ -261,13 +475,21 @@ export default function OnCallSchedulePage() {
             const inMonth = date.getMonth() === viewMonth.getMonth();
             const day = daysByDate.get(iso);
             const isToday = iso === today;
+            const isSelected = selected.has(iso);
+            const isPreview = previewSet?.has(iso) ?? false;
             return (
               <button
                 key={iso}
                 type="button"
-                onClick={() => day && setSelectedDay(day)}
-                className={`min-h-[7rem] border-b border-r border-border-subtle p-1.5 text-left align-top transition-colors hover:bg-bg-elevated ${
+                onPointerDown={(e) => onCellPointerDown(iso, e)}
+                onPointerEnter={() => onCellPointerEnter(iso)}
+                onPointerUp={(e) => onCellPointerUp(iso, e)}
+                className={`min-h-[8.5rem] border-b border-r border-border-subtle p-1.5 text-left align-top transition-colors hover:bg-bg-elevated ${
                   inMonth ? "" : "opacity-40"
+                } ${
+                  isSelected || isPreview
+                    ? "bg-accent/10 ring-2 ring-inset ring-accent"
+                    : ""
                 }`}
               >
                 <div className="mb-1 flex items-center justify-between">
@@ -284,39 +506,46 @@ export default function OnCallSchedulePage() {
                     <Wrench className="h-3 w-3 text-amber-400" />
                   )}
                 </div>
-                {day?.suppressed ? (
-                  <div className="rounded border border-amber-400/40 bg-amber-500/10 px-1.5 py-1 text-[11px] text-amber-200">
-                    Maintenance
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {(day?.chains ?? []).slice(0, 2).map((chain) => {
-                      const l1 = chain.levels[0];
-                      const short = l1 ? statusShort(l1.status) : "No levels";
-                      return (
-                        <div
-                          key={chain.chain_id}
-                          className={`truncate rounded border px-1.5 py-0.5 text-[11px] ${personColor(
-                            l1?.resolved_user_id,
-                          )}`}
-                          title={`${chain.chain_name} · L1`}
-                        >
-                          {l1?.resolved_user_name || short || "—"}
-                        </div>
-                      );
-                    })}
-                    {(day?.chains.length ?? 0) > 2 && (
-                      <div className="px-1 text-[11px] text-fg-muted">
-                        +{(day?.chains.length ?? 0) - 2} more
-                      </div>
-                    )}
-                  </div>
-                )}
+                {day && <DayCellContent day={day} />}
               </button>
             );
           })}
         </div>
       </div>
+
+      {canEdit && selected.size > 0 && (
+        <div className="sticky bottom-4 z-20 mx-auto flex w-fit flex-wrap items-center gap-3 rounded-full border border-border-subtle bg-bg-elevated px-4 py-2 shadow-lg">
+          <span className="text-sm text-fg-default">
+            <span className="font-semibold">{selected.size}</span>{" "}
+            {selected.size === 1 ? "day" : "days"} selected
+            {selectionInfo.samePersonName && (
+              <span className="text-fg-muted">
+                {" "}
+                · all covered by{" "}
+                <span className="font-medium text-fg-default">
+                  {selectionInfo.samePersonName}
+                </span>
+              </span>
+            )}
+          </span>
+          <Button variant="secondary" onClick={() => setBulkAction("override")}>
+            Override coverage…
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setBulkAction("maintenance")}
+          >
+            Maintenance window…
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setSelected(new Set())}
+            aria-label="Clear selection"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       {selectedDay && (
         <DayDetailModal
@@ -332,6 +561,111 @@ export default function OnCallSchedulePage() {
             void refresh();
           }}
         />
+      )}
+
+      {bulkAction === "override" && (
+        <BulkOverrideModal
+          dates={selectedDates}
+          rosters={rosters}
+          memberOptions={memberOptions}
+          samePersonName={selectionInfo.samePersonName}
+          prefillRosterId={selectionInfo.prefillRosterId}
+          onClose={() => setBulkAction(null)}
+          onCreated={() => {
+            setBulkAction(null);
+            setSelected(new Set());
+            void refresh();
+          }}
+        />
+      )}
+
+      {bulkAction === "maintenance" && (
+        <BulkMaintenanceModal
+          dates={selectedDates}
+          teamId={teamId}
+          teamName={data?.team_name ?? null}
+          onClose={() => setBulkAction(null)}
+          onCreated={() => {
+            setBulkAction(null);
+            setSelected(new Set());
+            void refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Compact per-day cell body: every chain's levels as "L1 · person" chips with
+ * the chain name as a caption, capped to keep the cell readable.
+ */
+function DayCellContent({ day }: { day: TeamOnCallCalendarDay }) {
+  if (day.suppressed) {
+    return (
+      <div className="rounded border border-amber-400/40 bg-amber-500/10 px-1.5 py-1 text-[11px] text-amber-200">
+        Maintenance
+      </div>
+    );
+  }
+  const rows: React.ReactNode[] = [];
+  let rendered = 0;
+  let truncated = 0;
+  for (const chain of day.chains) {
+    const levels = chain.levels.slice(0, MAX_LEVELS_PER_CHAIN);
+    const needed = 1 + levels.length; // caption + level rows
+    if (rendered + needed > MAX_CELL_ROWS) {
+      truncated += 1;
+      continue;
+    }
+    rows.push(
+      <div
+        key={`${chain.chain_id}-caption`}
+        className="truncate px-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-muted"
+        title={chain.chain_name}
+      >
+        {chain.chain_name}
+      </div>,
+    );
+    for (const level of levels) {
+      rows.push(
+        <div
+          key={`${chain.chain_id}-l${level.level}`}
+          className={`flex items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[11px] ${personColor(
+            level.resolved_user_id,
+          )}`}
+          title={`${chain.chain_name} · Level ${level.level} · ${
+            level.resolved_user_name || statusShort(level.status) || "—"
+          }`}
+        >
+          <span className="shrink-0 font-semibold opacity-70">
+            L{level.level}
+          </span>
+          <span className="truncate">
+            {level.resolved_user_name || statusShort(level.status) || "—"}
+          </span>
+        </div>,
+      );
+    }
+    if (chain.levels.length > MAX_LEVELS_PER_CHAIN) {
+      rows.push(
+        <div
+          key={`${chain.chain_id}-more`}
+          className="px-1 text-[10px] text-fg-muted"
+        >
+          +{chain.levels.length - MAX_LEVELS_PER_CHAIN} more levels
+        </div>,
+      );
+    }
+    rendered += needed;
+  }
+  return (
+    <div className="space-y-0.5">
+      {rows}
+      {truncated > 0 && (
+        <div className="px-1 text-[11px] text-fg-muted">
+          +{truncated} more {truncated === 1 ? "chain" : "chains"}
+        </div>
       )}
     </div>
   );
@@ -356,10 +690,22 @@ function DayDetailModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  // Progressive disclosure: the create forms open on demand — either from the
+  // action buttons or from a level row's "Override" shortcut (which pre-fills
+  // the roster that backs that level).
+  const [mode, setMode] = useState<null | "override" | "maintenance">(null);
+  const [prefillRosterId, setPrefillRosterId] = useState<string>("");
+
   const dateLabel = new Date(`${day.date}T00:00:00`).toLocaleDateString(
     undefined,
     { weekday: "long", month: "long", day: "numeric", year: "numeric" },
   );
+
+  const startOverrideFor = (level: EscalationCalendarLevel) => {
+    setPrefillRosterId(level.target_type === "roster" ? level.target_id : "");
+    setMode("override");
+  };
+
   return (
     <Modal
       open
@@ -380,7 +726,12 @@ function DayDetailModal({
           </p>
         ) : (
           day.chains.map((chain) => (
-            <ChainBlock key={chain.chain_id} chain={chain} />
+            <ChainBlock
+              key={chain.chain_id}
+              chain={chain}
+              canEdit={canEdit}
+              onOverrideLevel={startOverrideFor}
+            />
           ))
         )}
 
@@ -390,6 +741,9 @@ function DayDetailModal({
             teamId={teamId}
             rosters={rosters}
             memberOptions={memberOptions}
+            mode={mode}
+            onModeChange={setMode}
+            prefillRosterId={prefillRosterId}
             onCreated={onCreated}
           />
         )}
@@ -398,26 +752,23 @@ function DayDetailModal({
   );
 }
 
-// ISO datetime bounds for a whole calendar day (UTC), used as quick defaults
-// for an inline override / maintenance window. Operators can fine-tune times in
-// the dedicated Rosters / Maintenance Windows forms.
-function dayBounds(dateIso: string): { start: string; end: string } {
-  const start = new Date(`${dateIso}T00:00:00.000Z`);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  return { start: start.toISOString(), end: end.toISOString() };
-}
-
 function DayActions({
   day,
   teamId,
   rosters,
   memberOptions,
+  mode,
+  onModeChange,
+  prefillRosterId,
   onCreated,
 }: {
   day: TeamOnCallCalendarDay;
   teamId: string;
   rosters: RosterResponse[];
   memberOptions: MultiSelectOption[];
+  mode: null | "override" | "maintenance";
+  onModeChange: (mode: null | "override" | "maintenance") => void;
+  prefillRosterId: string;
   onCreated: () => void;
 }) {
   const toast = useToast();
@@ -426,6 +777,11 @@ function DayActions({
   const [mwName, setMwName] = useState(`Maintenance — ${day.date}`);
   const [busy, setBusy] = useState(false);
 
+  // A level row's "Override" shortcut pre-picks the roster backing it.
+  useEffect(() => {
+    if (prefillRosterId) setRosterId(prefillRosterId);
+  }, [prefillRosterId]);
+
   const submitOverride = async () => {
     if (!rosterId || !coveringUserId) {
       toast.error("Pick a roster and a covering person.");
@@ -433,7 +789,7 @@ function DayActions({
     }
     setBusy(true);
     try {
-      const { start, end } = dayBounds(day.date);
+      const { start, end } = runBounds([day.date]);
       await createRosterOverride(rosterId, {
         covering_user_id: coveringUserId,
         starts_at: start,
@@ -455,7 +811,7 @@ function DayActions({
     }
     setBusy(true);
     try {
-      const { start, end } = dayBounds(day.date);
+      const { start, end } = runBounds([day.date]);
       await createMaintenanceWindow({
         name: mwName.trim(),
         scope_type: "team",
@@ -475,11 +831,27 @@ function DayActions({
   };
 
   return (
-    <div className="space-y-4 border-t border-border-subtle pt-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <Label className="text-xs">Add coverage override</Label>
-          <div className="mt-1 space-y-2">
+    <div className="space-y-3 border-t border-border-subtle pt-4">
+      {mode === null && (
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => onModeChange("override")}>
+            Add coverage override…
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => onModeChange("maintenance")}
+          >
+            Add maintenance window…
+          </Button>
+        </div>
+      )}
+
+      {mode === "override" && (
+        <div className="space-y-2">
+          <Label className="text-xs">
+            Coverage override for {day.date} (full day)
+          </Label>
+          <div className="grid gap-2 sm:grid-cols-2">
             <Select
               aria-label="Roster"
               value={rosterId}
@@ -504,35 +876,39 @@ function DayActions({
                 </option>
               ))}
             </Select>
-            <Button
-              variant="secondary"
-              onClick={submitOverride}
-              disabled={busy}
-              className="w-full"
-            >
-              Add override for {day.date}
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={submitOverride} disabled={busy}>
+              Create override
+            </Button>
+            <Button variant="ghost" onClick={() => onModeChange(null)}>
+              Cancel
             </Button>
           </div>
         </div>
-        <div>
-          <Label className="text-xs">Add maintenance window</Label>
-          <div className="mt-1 space-y-2">
-            <Input
-              aria-label="Maintenance window name"
-              value={mwName}
-              onChange={(e) => setMwName(e.target.value)}
-            />
-            <Button
-              variant="secondary"
-              onClick={submitMaintenance}
-              disabled={busy}
-              className="w-full"
-            >
-              Suppress {day.date} (team)
+      )}
+
+      {mode === "maintenance" && (
+        <div className="space-y-2">
+          <Label className="text-xs">
+            Maintenance window for {day.date} (team-wide, full day)
+          </Label>
+          <Input
+            aria-label="Maintenance window name"
+            value={mwName}
+            onChange={(e) => setMwName(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <Button onClick={submitMaintenance} disabled={busy}>
+              Create window
+            </Button>
+            <Button variant="ghost" onClick={() => onModeChange(null)}>
+              Cancel
             </Button>
           </div>
         </div>
-      </div>
+      )}
+
       <p className="text-[11px] text-fg-muted">
         Quick actions default to the full day. Fine-tune times in Rosters →
         overrides or Maintenance Windows.
@@ -541,7 +917,15 @@ function DayActions({
   );
 }
 
-function ChainBlock({ chain }: { chain: TeamCalendarChain }) {
+function ChainBlock({
+  chain,
+  canEdit,
+  onOverrideLevel,
+}: {
+  chain: TeamCalendarChain;
+  canEdit: boolean;
+  onOverrideLevel: (level: EscalationCalendarLevel) => void;
+}) {
   return (
     <div className="rounded-lg border border-border-subtle">
       <div className="border-b border-border-subtle px-3 py-2 text-sm font-medium text-fg-default">
@@ -568,16 +952,234 @@ function ChainBlock({ chain }: { chain: TeamCalendarChain }) {
               >
                 {level.resolved_user_name || statusShort(level.status) || "—"}
               </span>
-              <span className="truncate text-xs text-fg-muted">
+              <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
                 {level.resolved_user_email ?? level.target_name}
                 {level.coverage_start && level.coverage_end
                   ? ` · ${level.coverage_start}–${level.coverage_end}`
                   : ""}
               </span>
+              {canEdit && level.target_type === "roster" && (
+                <Button
+                  variant="ghost"
+                  className="shrink-0 text-xs"
+                  onClick={() => onOverrideLevel(level)}
+                >
+                  Override
+                </Button>
+              )}
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function BulkOverrideModal({
+  dates,
+  rosters,
+  memberOptions,
+  samePersonName,
+  prefillRosterId,
+  onClose,
+  onCreated,
+}: {
+  dates: string[];
+  rosters: RosterResponse[];
+  memberOptions: MultiSelectOption[];
+  samePersonName: string | null;
+  prefillRosterId: string | null;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const toast = useToast();
+  const [rosterId, setRosterId] = useState(prefillRosterId ?? "");
+  const [coveringUserId, setCoveringUserId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const runs = useMemo(() => contiguousRuns(dates), [dates]);
+
+  const submit = async () => {
+    if (!rosterId || !coveringUserId) {
+      toast.error("Pick a roster and a covering person.");
+      return;
+    }
+    setBusy(true);
+    try {
+      for (const run of runs) {
+        const { start, end } = runBounds(run);
+        await createRosterOverride(rosterId, {
+          covering_user_id: coveringUserId,
+          starts_at: start,
+          ends_at: end,
+        });
+      }
+      toast.success(
+        `Created ${runs.length} override${runs.length === 1 ? "" : "s"} covering ${dates.length} day${dates.length === 1 ? "" : "s"}.`,
+      );
+      onCreated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Override coverage — ${dates.length} day${dates.length === 1 ? "" : "s"}`}
+      maxWidth="max-w-lg"
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-fg-muted">{formatDayList(dates)}</p>
+        {samePersonName ? (
+          <p className="text-sm text-fg-default">
+            All selected days are currently covered by{" "}
+            <span className="font-medium">{samePersonName}</span>. The override
+            replaces them for those days.
+          </p>
+        ) : (
+          <p className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            The selected days are covered by different people — this override
+            replaces whoever is scheduled on the chosen roster for each day.
+          </p>
+        )}
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs">Roster</Label>
+            <Select
+              aria-label="Roster"
+              value={rosterId}
+              onChange={(e) => setRosterId(e.target.value)}
+            >
+              <option value="">Select roster…</option>
+              {rosters.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Covering person</Label>
+            <Select
+              aria-label="Covering person"
+              value={coveringUserId}
+              onChange={(e) => setCoveringUserId(e.target.value)}
+            >
+              <option value="">Select person…</option>
+              {memberOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+        {runs.length > 1 && (
+          <p className="text-[11px] text-fg-muted">
+            The selection is non-contiguous — {runs.length} separate overrides
+            will be created, one per run of days.
+          </p>
+        )}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={busy}>
+            Create override{runs.length === 1 ? "" : "s"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function BulkMaintenanceModal({
+  dates,
+  teamId,
+  teamName,
+  onClose,
+  onCreated,
+}: {
+  dates: string[];
+  teamId: string;
+  teamName: string | null;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const toast = useToast();
+  const runs = useMemo(() => contiguousRuns(dates), [dates]);
+  const [name, setName] = useState(
+    `Maintenance — ${dates[0]}${dates.length > 1 ? ` → ${dates[dates.length - 1]}` : ""}`,
+  );
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!name.trim()) {
+      toast.error("Name the maintenance window.");
+      return;
+    }
+    setBusy(true);
+    try {
+      for (let i = 0; i < runs.length; i += 1) {
+        const { start, end } = runBounds(runs[i]);
+        await createMaintenanceWindow({
+          name:
+            runs.length === 1 ? name.trim() : `${name.trim()} (${i + 1}/${runs.length})`,
+          scope_type: "team",
+          scope_id: teamId,
+          starts_at: start,
+          ends_at: end,
+        });
+      }
+      toast.success(
+        `Created ${runs.length} maintenance window${runs.length === 1 ? "" : "s"} (admin approval may be required before paging is suppressed).`,
+      );
+      onCreated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Maintenance window — ${dates.length} day${dates.length === 1 ? "" : "s"}`}
+      maxWidth="max-w-lg"
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-fg-muted">
+          {teamName ? `${teamName} · ` : ""}
+          {formatDayList(dates)} (full days)
+        </p>
+        <div>
+          <Label className="text-xs">Name</Label>
+          <Input
+            aria-label="Maintenance window name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        {runs.length > 1 && (
+          <p className="text-[11px] text-fg-muted">
+            The selection is non-contiguous — {runs.length} separate windows
+            will be created, one per run of days.
+          </p>
+        )}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={busy}>
+            Create window{runs.length === 1 ? "" : "s"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_org, get_current_user, require_role
+from backend.api.auth import get_current_org, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     RetentionCategoryConfig,

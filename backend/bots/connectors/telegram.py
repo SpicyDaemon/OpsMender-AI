@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from backend.bots.telegram import send_message as telegram_send
 from backend.db.models import BotConnector
 
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 class TelegramAdapter:

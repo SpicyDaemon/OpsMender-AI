@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import uuid
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

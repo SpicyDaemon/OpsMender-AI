@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from .base import LLM, LLMProvider
+from .base import LLMProvider
 
 
 @dataclasses.dataclass
@@ -526,6 +526,15 @@ class OllamaProvider:
 
     def __post_init__(self) -> None:
         self.base_url = self.base_url.rstrip("/")
+        # Defense-in-depth for the urllib.request calls below: the base URL is
+        # operator config, but refuse surprising schemes (file:, ftp:, custom)
+        # outright so a misconfigured value can never read local files.
+        scheme = urllib.parse.urlparse(self.base_url).scheme.lower()
+        if scheme not in {"http", "https"}:
+            raise ValueError(
+                "OLLAMA_BASE_URL must be an http:// or https:// URL, "
+                f"got scheme {scheme!r} in {self.base_url!r}"
+            )
 
     def complete(self, prompt: str) -> str:
         payload = self._post_generate(prompt=prompt, stream=False)

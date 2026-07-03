@@ -70,7 +70,11 @@ WORKDIR /app
 
 # System deps: curl for healthcheck, tini as PID 1 for clean shutdown,
 # libxml2 / libxmlsec1 for python3-saml (Sprint 30).
+# `apt-get upgrade` pulls the latest base-image security patches (e.g. the
+# libssh2 deb13u1 fixes flagged by the 2026-07-03 trivy scan) on top of
+# whatever the pinned python:3.12-slim tag shipped with.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends \
         curl \
         tini \

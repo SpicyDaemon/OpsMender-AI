@@ -47,7 +47,6 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

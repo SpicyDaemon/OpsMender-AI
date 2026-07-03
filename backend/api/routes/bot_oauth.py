@@ -34,7 +34,6 @@ from backend.auth.bot_oauth import (
     sign_state,
     verify_state,
 )
-from backend.config_loader import Config
 from backend.db.models import User
 from backend.db.repos import BotConnectorRepo
 

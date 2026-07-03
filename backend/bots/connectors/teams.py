@@ -22,7 +22,7 @@ from backend.auth.graph_oauth import GraphOAuthError, acquire_app_only_token
 from backend.bots.delivery import DeliveryReceipt
 from backend.db.models import BotConnector
 from backend.paging.teams_cards import build_graph_chat_message
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 class TeamsAdapter:

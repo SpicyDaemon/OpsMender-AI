@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 from jose import JWTError

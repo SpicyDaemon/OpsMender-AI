@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
-import httpx
 
 from backend.db.models import IntegrationConnector
 from backend.integrations.base import (

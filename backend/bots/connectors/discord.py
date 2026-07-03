@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Callable, Mapping
 
 from fastapi import HTTPException, status
@@ -12,7 +11,7 @@ from cryptography.exceptions import InvalidSignature
 
 from backend.bots.delivery import DeliveryReceipt, UpdateResult
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 class DiscordAdapter:

@@ -33,7 +33,7 @@ import os
 import uuid
 import zoneinfo
 from datetime import datetime, timedelta, timezone
-from typing import Awaitable, Callable, ClassVar, Protocol
+from typing import Callable, ClassVar, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

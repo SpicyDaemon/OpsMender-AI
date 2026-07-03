@@ -17,8 +17,6 @@ from backend.db.models import Incident
 from backend.db.repos import (
     IncidentRepo,
     MaintenanceWindowRepo,
-    SessionRepo,
-    SLATargetRepo,
     SLATargetRepo,
     SLORepo,
     UptimeSampleRepo,

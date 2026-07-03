@@ -14,7 +14,6 @@ from __future__ import annotations
 import pathlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Awaitable, Callable
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker

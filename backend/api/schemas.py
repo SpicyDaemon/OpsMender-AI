@@ -11,7 +11,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # Shared validators

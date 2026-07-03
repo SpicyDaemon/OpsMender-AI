@@ -46,7 +46,6 @@ from backend.api.schemas import (
     SSOHintRequest,
     SSOHintResponse,
     SoftDeletePreconditions,
-    TokenResponse,
     MePasswordChangeRequest,
     MeUpdateRequest,
     TemporaryPasswordResponse,

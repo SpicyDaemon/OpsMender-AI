@@ -7,10 +7,9 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Iterable
 
 import sqlalchemy
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import backend.bots  # noqa: F401  -- registers built-in adapters

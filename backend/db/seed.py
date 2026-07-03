@@ -11,7 +11,7 @@ Requires: running Postgres with migrations applied.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from backend.api.auth import hash_password
 from backend.config_loader import AppConfig
@@ -66,7 +66,7 @@ async def seed(database_url: str) -> None:
             primary_org_id=org_id,
         )
         await UserRepo.add_to_organization(db, viewer.id, org_id, role="viewer")
-        print(f"  Created users: admin, operator, viewer (all assigned to Main Org)")
+        print("  Created users: admin, operator, viewer (all assigned to Main Org)")
 
         # -- Model configs ---------------------------------------------------
         anthropic_cfg = await ModelConfigRepo.create(
@@ -94,7 +94,7 @@ async def seed(database_url: str) -> None:
             model_id="llama3.2",
             base_url="http://localhost:11434",
         )
-        print(f"  Created model configs: claude-sonnet (default), gpt-4o, llama3-local")
+        print("  Created model configs: claude-sonnet (default), gpt-4o, llama3-local")
 
         # -- Incidents -------------------------------------------------------
         inc1 = await IncidentRepo.create(
@@ -122,7 +122,7 @@ async def seed(database_url: str) -> None:
             model_provider="anthropic",
             model_id="claude-sonnet-4-20250514",
         )
-        print(f"  Created session for incident 1 (tier 2)")
+        print("  Created session for incident 1 (tier 2)")
 
         # -- Audit entries ---------------------------------------------------
         now = datetime.now(timezone.utc)
@@ -170,7 +170,7 @@ async def seed(database_url: str) -> None:
             tier=2,
             entry_type="session_end",
         )
-        print(f"  Created 5 audit entries for session")
+        print("  Created 5 audit entries for session")
 
         await db.commit()
 

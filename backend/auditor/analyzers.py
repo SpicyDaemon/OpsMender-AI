@@ -21,7 +21,6 @@ not registered by default.
 
 from __future__ import annotations
 
-from typing import Any
 
 from backend.auditor._helpers import (
     execute_call,
@@ -85,9 +84,7 @@ class EnvironmentScanAnalyzer(Analyzer):
 
     async def run(self, ctx: AnalyzerContext) -> list[FindingDraft]:
         from backend.db.repos import (
-            MCPServerRepo,
             ModelConfigRepo,
-            SkillRepo,
         )
         from backend.llm.factory import create_provider
 

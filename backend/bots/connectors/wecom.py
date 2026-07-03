@@ -4,20 +4,17 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
-import socket
 import struct
-import time
 from typing import Any, Mapping
 import defusedxml.ElementTree as ET
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 import httpx
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 class WeComAdapter:

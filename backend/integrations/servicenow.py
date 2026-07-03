@@ -6,7 +6,6 @@ import base64
 from typing import Any
 from urllib.parse import quote
 
-import httpx
 
 from backend.db.models import IntegrationConnector
 from backend.integrations.base import (

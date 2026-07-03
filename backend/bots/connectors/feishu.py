@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 class FeishuAdapter:

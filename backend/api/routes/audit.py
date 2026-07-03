@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user
 from backend.api.deps import get_db
-from backend.api.schemas import AuditEntryResponse, AuditListResponse
+from backend.api.schemas import AuditListResponse
 from backend.db.models import User
 from backend.db.repos import AuditEntryRepo
 

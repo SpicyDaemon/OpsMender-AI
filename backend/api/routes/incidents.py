@@ -2096,7 +2096,6 @@ from backend.api.schemas import (
     IncidentPageResponse,
     IncidentTakeRequest,
 )
-from backend.db.repos import IncidentChainStateRepo, IncidentPageRepo
 from backend.paging import escalation as _esc
 
 

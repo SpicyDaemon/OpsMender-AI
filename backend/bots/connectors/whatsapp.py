@@ -45,7 +45,7 @@ from fastapi import HTTPException, status
 from backend.bots.whatsapp_client import send_message as whatsapp_send
 from backend.db.models import BotConnector
 
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 class WhatsAppAdapter:

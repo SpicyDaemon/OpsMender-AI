@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import _auth_config, create_access_token, hash_password
+from backend.api.auth import create_access_token, hash_password
 from backend.api.deps import get_db
 from backend.auth.saml import (
     SAMLError,

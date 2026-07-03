@@ -12,7 +12,7 @@ the rules list and (if enabled) invoking the LLM via the injected callback.
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Awaitable, Callable, Iterable, Sequence
+from typing import Any, Awaitable, Callable, Iterable
 
 
 # Higher rank = more urgent. Used to ensure LLM escalation is one-way.

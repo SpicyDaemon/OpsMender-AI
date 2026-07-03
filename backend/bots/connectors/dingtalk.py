@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import hmac
 import hashlib
-import json
 import time
 from typing import Any, Mapping
 
@@ -13,7 +12,7 @@ from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 class DingTalkAdapter:

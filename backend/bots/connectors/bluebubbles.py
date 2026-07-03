@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import secrets
 from typing import Any, Mapping
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 import httpx
 
 from backend.db.models import BotConnector
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 class BlueBubblesAdapter:

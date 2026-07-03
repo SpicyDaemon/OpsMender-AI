@@ -152,7 +152,7 @@ async def sso_callback(
         if allowed and not any(email.endswith("@" + d) for d in allowed):
             raise HTTPException(
                 status_code=403,
-                detail=f"Email domain not allowed for this organization.",
+                detail="Email domain not allowed for this organization.",
             )
 
     name = claims.get(sso.name_claim) or claims.get("name") or email.split("@")[0]

@@ -44,11 +44,10 @@ from __future__ import annotations
 import base64
 import dataclasses
 import hashlib
-import os
 import re
 import secrets
 import time
-from typing import Any, Callable, Mapping
+from typing import Any, Callable
 from urllib.parse import quote, urlencode, urlparse
 
 import httpx

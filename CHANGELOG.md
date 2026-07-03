@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `usedforsecurity=False` with explanatory comments (no behavior change).
   - **`pydantic-settings` 2.14.1 → 2.14.2** (GHSA-4xgf-cpjx-pc3j; transitive
     via `mcp`, not exploitable here — bumped as hygiene).
+  - **Container image CVE scan (trivy).** `apt-get upgrade -y` added to the
+    Dockerfile runtime stage pulls the base-image security patches (fixes the
+    3 `libssh2` HIGH CVEs; re-scan shows 0 fixable CRITICAL/HIGH). Remaining
+    OS findings are Debian `fix_deferred` (no upstream patch yet) and clear on
+    base-image refresh.
+  - **Ollama URL scheme allowlist.** `OllamaProvider` now rejects any
+    `OLLAMA_BASE_URL` that isn't `http`/`https`, so a misconfigured value
+    can't turn the client's `urllib` calls into `file:`/`ftp:` reads.
   - **API docs no longer exposed in production.** `/docs`, `/redoc`, and
     `/openapi.json` were served unauthenticated in production mode,
     disclosing the full API surface. They are now disabled when

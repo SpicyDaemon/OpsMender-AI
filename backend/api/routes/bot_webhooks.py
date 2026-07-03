@@ -21,7 +21,6 @@ from backend.api.deps import get_db
 from backend.bots.connectors import get_adapter
 from backend.bots.dispatcher import dispatch_inbound
 from backend.db.models import BotConnector
-from backend.db.repos import BotConnectorRepo
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-webhooks"])
 

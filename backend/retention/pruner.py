@@ -38,7 +38,6 @@ from backend.db.models import (
     IngestLog,
 )
 from backend.db.repos import (
-    DEFAULT_RETENTION_TTL_DAYS,
     RETENTION_CATEGORIES,
     RetentionConfigRepo,
 )

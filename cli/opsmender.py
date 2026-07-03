@@ -27,7 +27,7 @@ from backend.db.engine import get_engine, get_session_factory, resolve_database_
 from backend.db.models import Organization
 from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
-from backend.mcp.client import MCPClientError, connect, list_tools
+from backend.mcp.client import connect, list_tools
 from backend.mcp.pool import MCPServerPool
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.workflow.rollback import (
@@ -1453,21 +1453,21 @@ def _print_result(result: dict) -> None:
     blocked = result.get("blocked_actions", [])
     tool_calls = result.get("tool_calls", [])
 
-    print(f"\n--- Actions ---")
+    print("\n--- Actions ---")
     print(f"Planned:  {len(approved) + len(blocked)}")
     print(f"Approved: {len(approved)}")
     print(f"Blocked:  {len(blocked)}")
     print(f"Executed: {len(tool_calls)}")
 
     if blocked:
-        print(f"\nBlocked actions:")
+        print("\nBlocked actions:")
         for action in blocked:
             name = action.get("tool_name", "?")
             reason = action.get("block_reason", "unknown")
             print(f"  ✗ {name} — {reason}")
 
     if tool_calls:
-        print(f"\nExecuted tool calls:")
+        print("\nExecuted tool calls:")
         for tc in tool_calls:
             name = tc.get("tool_name", "?")
             status = "error" if tc.get("error") else "ok"

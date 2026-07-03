@@ -557,6 +557,17 @@ class _FakeURLResponse:
 
 
 class TestOllamaProvider:
+    def test_rejects_non_http_base_url_scheme(self):
+        # 2026-07-03 audit follow-up: refuse file:/ftp:/custom schemes outright
+        # so a misconfigured OLLAMA_BASE_URL can never read local files.
+        for bad in ("file:///etc/passwd", "ftp://host", "gopher://host"):
+            with pytest.raises(ValueError, match="http:// or https://"):
+                OllamaProvider(base_url=bad)
+
+    def test_accepts_http_and_https_base_url(self):
+        assert OllamaProvider(base_url="http://localhost:11434").base_url
+        assert OllamaProvider(base_url="https://ollama.internal:443").base_url
+
     def test_complete_calls_native_generate_api(self, monkeypatch):
         seen = {}
 

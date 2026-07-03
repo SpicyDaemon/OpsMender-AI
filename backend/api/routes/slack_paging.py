@@ -58,9 +58,6 @@ from backend.db.repos import (
 )
 from backend.paging import escalation as _esc
 from backend.paging.slack_cards import (
-    ACTION_ACK,
-    ACTION_RESOLVE,
-    ACTION_TAKE,
     ACTION_VIEW,
     parse_incident_id_from_action,
 )

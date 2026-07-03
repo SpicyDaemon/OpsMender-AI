@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hmac
 import hashlib
-import json
 import time
 from typing import Any, Mapping
 
@@ -14,7 +13,7 @@ import httpx
 from backend.db.models import BotConnector
 from backend.bots.delivery import DeliveryReceipt, UpdateResult
 from backend.paging.slack_cards import build_page_card_blocks
-from .base import BotConnectorAdapter, FieldSpec, InboundMessage
+from .base import FieldSpec, InboundMessage
 
 
 # Slack chat.update errors that mean the original message can no longer be

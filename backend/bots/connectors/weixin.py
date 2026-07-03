@@ -9,7 +9,7 @@ import socket
 import struct
 import time
 from typing import Any, Mapping
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
 from fastapi import HTTPException, status
 import httpx
@@ -65,7 +65,11 @@ class WeixinAdapter:
 
     def _get_signature(self, token: str, timestamp: str, nonce: str) -> str:
         v = sorted([token, timestamp, nonce])
-        return hashlib.sha1("".join(v).encode("utf-8")).hexdigest()
+        # SHA-1 is mandated by the WeChat (Weixin) callback signature spec; it is
+        # not a security-sensitive digest of our choosing.
+        return hashlib.sha1(  # noqa: S324
+            "".join(v).encode("utf-8"), usedforsecurity=False
+        ).hexdigest()
 
     def verify_webhook(
         self,

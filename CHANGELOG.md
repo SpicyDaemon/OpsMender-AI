@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Feishu/Lark outbound messages crashed with `NameError`.** The Feishu
+  connector's `send_message` called `json.dumps(...)` but `json` was only
+  imported locally inside the inbound-parse method, so every outbound
+  Feishu/Lark send raised `NameError: name 'json' is not defined`. The import
+  is now module-scoped. (Found by the 2026-07-03 security/quality audit —
+  full report in `docs/SECURITY_AUDIT_2026-07-03.md`.)
+
+### Security
+
+- **Full SAST / dependency / complexity audit** (bandit, ruff `F,B,S`, radon,
+  pip-audit) against the production Docker image — report in
+  `docs/SECURITY_AUDIT_2026-07-03.md`. Remediations:
+  - **XXE hardening (CWE-611).** Inbound WeCom/Weixin webhook XML (three
+    attacker-reachable parse sites in `bot_webhooks.py`, `wecom.py`,
+    `weixin.py`) now parses via `defusedxml` instead of stdlib
+    `xml.etree.ElementTree`, guarding against entity-expansion and
+    external-entity attacks. `defusedxml` added as a declared runtime
+    dependency.
+  - **SHA-1 signature checks annotated.** WeCom/Weixin callback signatures
+    are SHA-1 **by Tencent's protocol spec**; marked
+    `usedforsecurity=False` with explanatory comments (no behavior change).
+  - **`pydantic-settings` 2.14.1 → 2.14.2** (GHSA-4xgf-cpjx-pc3j; transitive
+    via `mcp`, not exploitable here — bumped as hygiene).
+  - **API docs no longer exposed in production.** `/docs`, `/redoc`, and
+    `/openapi.json` were served unauthenticated in production mode,
+    disclosing the full API surface. They are now disabled when
+    `OPSMENDER_ENVIRONMENT` resolves to production (development keeps them;
+    `OPSMENDER_ENABLE_API_DOCS=true` opts back in).
+  - **Security response headers.** Every response now carries
+    `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and
+    `Referrer-Policy: strict-origin-when-cross-origin` (CSP/HSTS left to the
+    operator's TLS-terminating proxy). Covered by new tests in
+    `tests/test_security_headers_and_docs.py`.
+  - Fixed an undefined `AsyncSession` annotation name in
+    `backend/api/session_runner.py` (added a `TYPE_CHECKING` import).
+
 ### Added
 
 - **On Call Schedule (team calendar).** A new viewer-visible month-grid calendar

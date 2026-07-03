@@ -363,7 +363,7 @@ async def wecom_webhook(
 
     raw_body = await request.body()
     # WeCom sends XML with an 'Encrypt' field
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
     root = ET.fromstring(raw_body)
     encrypt = root.findtext("Encrypt")
     

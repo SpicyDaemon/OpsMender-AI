@@ -17,9 +17,12 @@ import pathlib
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.graph import build_graph
 from backend.agent.service_context import format_service_context

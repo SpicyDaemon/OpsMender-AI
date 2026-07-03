@@ -9,7 +9,7 @@ import socket
 import struct
 import time
 from typing import Any, Mapping
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
 from fastapi import HTTPException, status
 import httpx
@@ -81,7 +81,11 @@ class WeComAdapter:
 
     def _get_signature(self, token: str, timestamp: str, nonce: str, msg_encrypt: str) -> str:
         v = sorted([token, timestamp, nonce, msg_encrypt])
-        return hashlib.sha1("".join(v).encode("utf-8")).hexdigest()
+        # SHA-1 is mandated by the WeCom callback signature spec; it is not a
+        # security-sensitive digest of our choosing.
+        return hashlib.sha1(  # noqa: S324
+            "".join(v).encode("utf-8"), usedforsecurity=False
+        ).hexdigest()
 
     def _decrypt(self, aes_key: str, msg_encrypt: str) -> str:
         key = base64.b64decode(aes_key + "=")

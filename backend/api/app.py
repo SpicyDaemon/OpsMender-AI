@@ -276,11 +276,22 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     # this once the DB is reachable.
     configure_logging(config.app.log_level)
 
+    # Interactive API docs (/docs, /redoc, /openapi.json) enumerate the full
+    # attack surface, so they are disabled by default in production. Operators
+    # can opt back in with OPSMENDER_ENABLE_API_DOCS=true; development keeps
+    # them on.
+    docs_enabled = config.deployment.environment == "development" or (
+        os.environ.get("OPSMENDER_ENABLE_API_DOCS", "").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
     app = FastAPI(
         title=config.app.name,
         description="AI-powered incident response with tiered access controls",
         version=config.app.version,
         lifespan=_lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
     )
     app.state.config = config
     app.state.session_factory = None
@@ -315,6 +326,21 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # -- Security response headers -------------------------------------------
+    # Conservative browser hardening for every response (API + served
+    # frontend). Deliberately no CSP/HSTS here: CSP needs tuning against the
+    # Next.js bundle, and HSTS is only meaningful behind TLS — both belong to
+    # the operator's reverse proxy.
+    @app.middleware("http")
+    async def _security_headers(request, call_next):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault(
+            "Referrer-Policy", "strict-origin-when-cross-origin"
+        )
+        return response
 
     # -- Routes -------------------------------------------------------------
     from backend.api.routes.auth import router as auth_router

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 from typing import Any, Mapping
 
@@ -124,7 +125,6 @@ class FeishuAdapter:
         
         content_raw = message.get("content")
         try:
-            import json
             content = json.loads(content_raw)
             text = content.get("text", "")
         except Exception:

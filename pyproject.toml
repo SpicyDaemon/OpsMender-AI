@@ -59,6 +59,9 @@ dependencies = [
     # these; PyInstaller builds fail-loud if they are missing on the host.
     "python3-saml>=1.16.0",
     "reportlab>=4.4.0",
+    # Hardened XML parsing for untrusted inbound webhook bodies (WeCom / Weixin
+    # callbacks) — guards against XXE / billion-laughs entity expansion.
+    "defusedxml>=0.7.1",
 ]
 
 [project.scripts]

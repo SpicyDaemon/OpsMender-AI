@@ -2046,6 +2046,7 @@ export interface EscalationCalendarLevel {
   resolved_user_email: string | null;
   coverage_start: string | null;
   coverage_end: string | null;
+  coverage_time_zone: string | null;
   status: EscalationCalendarStatus;
   warnings: string[];
 }

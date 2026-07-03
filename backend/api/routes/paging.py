@@ -1256,6 +1256,7 @@ async def _resolve_roster_calendar_level(
         "target_name": roster.name,
         "coverage_start": roster.coverage_start_time,
         "coverage_end": roster.coverage_end_time,
+        "coverage_time_zone": roster.time_zone,
     }
     if not roster.is_active:
         return EscalationCalendarLevel(

@@ -9,27 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **On Call Schedule — full-depth calendar + multi-day actions.** The team
-  calendar got a major usability pass:
-  - **Cells now show the real coverage picture** — every escalation chain
-    renders as a caption with its **L1/L2/L3 person chips** (color-coded per
-    person), instead of only the first chain's Level 1. Overflow collapses to
-    "+N more levels / chains"; hover tooltips carry the full detail.
-  - **Multi-day selection.** Admins/operators can **drag across days** (or
-    Ctrl/Cmd-click individual days) to select them; a floating actions bar
-    appears with **Override coverage…** and **Maintenance window…**. When all
-    selected days are covered by the same person, the bar says so and the
-    override modal pre-fills that person's roster; mixed-coverage selections
-    get an explicit warning. Non-contiguous selections create one
-    override/window per contiguous run. Esc or a plain click clears the
-    selection.
-  - **Per-level override shortcut.** In the day detail modal every
-    roster-backed level row has an **Override** button that opens the create
-    form with that roster pre-selected — replacing the always-visible
-    two-column form with progressive disclosure (Add coverage override… /
-    Add maintenance window…).
+- **On Call Schedule — full-depth calendar with per-person, timezone-aware
+  shifts and direct on-call replacement.** The team calendar got a major
+  usability pass:
+  - **Cells show the real coverage picture with shift times.** Every
+    escalation chain renders as a caption with its **L1/L2/L3 chips**; each
+    chip shows the level, the on-call person (color-coded), and that
+    level's **shift window in the roster's own time zone** (e.g.
+    `L1 · on-call · 09:00–17:00 EDT`). Overflow collapses to "+N more
+    levels/chains"; tooltips carry the full detail.
+  - **Click a person to replace who's on call.** Each roster-backed level
+    chip is individually clickable (admin): it opens a **"Replace who's on
+    call"** modal showing the chain/level, the roster, and the current
+    person, with a **Cover with** picker (the current person excluded) and a
+    **Through** date so one action can cover a single day or a whole span —
+    the "X is out this week, Y covers" flow. Creates a roster override for
+    the range. Direct user-target levels (not roster-backed) are shown but
+    not reassignable.
+  - **Maintenance stays day-level.** Drag across day backgrounds (or
+    Ctrl/Cmd-click) to select days → **Maintenance window…** in the floating
+    bar; non-contiguous selections create one window per contiguous run. The
+    day detail modal also has an inline maintenance action.
+  - **Calendar edits are admin-only** (previously admin/operator); operators
+    and viewers get a read-only schedule.
   - **Sidebar move:** On Call Schedule now lives under **Paging & On-call**
-    (still visible to viewers, read-only) instead of Incident Management.
+    (still visible to everyone, read-only) instead of Incident Management.
+  - Backend: the team on-call-calendar payload's levels now include
+    `coverage_time_zone` alongside `coverage_start`/`coverage_end`.
 
 ### Fixed
 

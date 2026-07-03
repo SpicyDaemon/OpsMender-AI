@@ -2118,6 +2118,84 @@ class TestPagingAPI:
         assert resp.status_code == 200, resp.text
         assert len(resp.json()["days"]) == 42  # default span
 
+    async def test_team_on_call_calendar_roster_level_carries_shift(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """Roster-backed levels expose the coverage window + timezone so the
+        On Call Schedule can render the shift (e.g. 09:00–17:00 in the roster's
+        time zone)."""
+        team = await client.post(
+            "/teams",
+            json={"name": "ShiftTeam", "slug": f"shift-{uuid.uuid4().hex[:6]}"},
+            headers=auth_headers,
+        )
+        team_id = team.json()["id"]
+        roster = await client.post(
+            "/rosters",
+            json={
+                "team_id": team_id,
+                "name": "Day shift",
+                "pattern": "daily",
+                "pattern_length": 1,
+                "anchor_date": "2026-06-01",
+                "coverage_start_time": "09:00",
+                "coverage_end_time": "17:00",
+                "handoff_time": "09:00",
+                "time_zone": "America/New_York",
+            },
+            headers=auth_headers,
+        )
+        assert roster.status_code == 201, roster.text
+        roster_id = roster.json()["id"]
+
+        async with app.state.session_factory() as db:
+            u1 = await UserRepo.create(
+                db,
+                username=f"shift-a-{uuid.uuid4().hex[:6]}",
+                email=f"shift-a-{uuid.uuid4().hex[:6]}@test.com",
+                password_hash="x",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await db.commit()
+        await client.post(
+            f"/teams/{team_id}/members",
+            json={"user_id": str(u1.id)},
+            headers=auth_headers,
+        )
+        await client.post(
+            f"/rosters/{roster_id}/members",
+            json={"user_id": str(u1.id), "position_index": 0},
+            headers=auth_headers,
+        )
+        chain = await client.post(
+            "/escalation-chains",
+            json={"team_id": team_id, "name": "Primary"},
+            headers=auth_headers,
+        )
+        cid = chain.json()["id"]
+        await client.post(
+            f"/escalation-chains/{cid}/steps",
+            json={
+                "step_index": 0,
+                "target_type": "roster",
+                "target_id": roster_id,
+                "timeout_seconds": 300,
+            },
+            headers=auth_headers,
+        )
+
+        resp = await client.get(
+            f"/teams/{team_id}/on-call-calendar?start=2026-06-05&days=1",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        level = resp.json()["days"][0]["chains"][0]["levels"][0]
+        assert level["coverage_start"] == "09:00"
+        assert level["coverage_end"] == "17:00"
+        assert level["coverage_time_zone"] == "America/New_York"
+        assert level["target_type"] == "roster"
+
     async def test_priority_rule_crud(self, client: AsyncClient, auth_headers):
         resp = await client.post(
             "/priority-rules",

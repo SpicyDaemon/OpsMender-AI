@@ -2726,6 +2726,7 @@ class EscalationCalendarLevel(BaseModel):
     resolved_user_email: Optional[str] = None
     coverage_start: Optional[str] = None
     coverage_end: Optional[str] = None
+    coverage_time_zone: Optional[str] = None
     status: str
     warnings: list[str] = Field(default_factory=list)
 

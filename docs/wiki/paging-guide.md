@@ -137,33 +137,36 @@ The Escalation Chain Calendar shows who is expected to respond at each escalatio
 ## 6. On Call Schedule
 
 The On Call Schedule (`Paging & On-call → On Call Schedule`) is the team-level
-month calendar. Every user can view it — Viewers read-only, Admins/Operators
-can also change coverage from it.
+month calendar. Everyone can view it (read-only); **calendar changes are
+admin-only**.
 
 Each day cell shows the **full coverage picture**: every escalation chain of
-the selected team as a caption with its **Level 1 / 2 / 3 person chips**
-(color-coded per person, consistent across days). Hover any chip for the chain,
-level, and person; days under a maintenance window show a maintenance marker.
+the selected team as a caption with its **Level 1 / 2 / 3 chips**. Each chip
+shows the level, the on-call person (color-coded, consistent across days), and
+that level's **shift window in the roster's own time zone** — for example
+`L1 · on-call · 09:00–17:00 EDT`. Days under a maintenance window show a
+maintenance marker.
 
-Interactions:
+Interactions (admin):
 
-- **Click a day** to open its detail: every chain's levels with the resolved
-  person, coverage window, and status. Roster-backed levels have an
-  **Override** button that opens the create form with that roster
-  pre-selected. `Add coverage override…` and `Add maintenance window…` cover
-  the whole day; fine-tune times in Rosters → overrides or Maintenance
-  Windows.
-- **Drag across days** (or Ctrl/Cmd-click individual days) to select multiple
-  days. A floating actions bar appears with **Override coverage…** and
-  **Maintenance window…**:
-  - When every selected day is covered by the same person, the bar names them
-    and the override modal pre-fills that person's roster — the quick path
-    for "cover Sid's days next week".
-  - Mixed-coverage selections warn that the override replaces whoever is
-    scheduled per day.
-  - Non-contiguous selections create one override / maintenance window per
-    contiguous run of days.
-  - `Esc` (or a plain click on the calendar) clears the selection.
+- **Click a person (chip)** to replace who's on call for that level. The
+  "Replace who's on call" dialog shows the chain, level, roster, and the
+  current person; pick who **covers** instead and, optionally, a **Through**
+  date to cover a whole span in one action (the "a teammate is out this week, John
+  covers" flow). This writes a roster override for the chosen day(s). Levels
+  that point directly at a user (not a roster) are shown but not reassignable
+  here — edit the escalation chain instead.
+- **Click a day background** (not a chip) to open the day detail: every
+  chain's levels with the resolved person, shift window, and status, plus a
+  **Replace** shortcut per roster-backed level and an inline maintenance
+  action.
+- **Drag across day backgrounds** (or Ctrl/Cmd-click days) to select multiple
+  days, then **Maintenance window…** in the floating bar to suppress paging
+  for them. Non-contiguous selections create one window per contiguous run of
+  days. `Esc` (or a plain click) clears the selection.
+
+Quick actions default to full days; fine-tune times in Rosters → overrides or
+Maintenance Windows.
 
 ---
 

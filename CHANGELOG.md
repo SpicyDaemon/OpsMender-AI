@@ -88,7 +88,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `3.12` / `py312` (Docker + CI already ran 3.12). `uv.lock` regenerated; README
   badge + CONTRIBUTING updated. Backend suite green (2020 passed, 2 skipped).
 
-## [1.0.0] - 2026-06-28
+## [1.0.0] - 2026-06-28 *(retracted — tag removed 2026-07-03)*
+
+> **Retraction note (2026-07-03).** The `v1.0.0` tag was cut on 2026-06-28 but
+> the repo was never flipped public; the owner retracted the tag (local +
+> remote, along with the stale internal `v1.1.0` tag) on 2026-07-03. The
+> content below still describes this milestone accurately. **`v1.0.0` will be
+> re-tagged when the product is finished and made public.**
 
 **Initial public release.** OpsMender AI — a self-hosted, single-workspace AI
 incident-response platform: tier-gated (0 Autonomous / 1 Approval / 2 Advisory),

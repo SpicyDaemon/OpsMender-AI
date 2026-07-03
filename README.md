@@ -35,7 +35,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   general execution path; encrypted connectors add capability-scoped tools for
   source control, tickets, docs, observability, and infrastructure.
 - **Org-owned skills** — one `SKILL.md` classifies every operation as safe / caution / destructive.
-- **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + on-call calendar, maintenance windows.
+- **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
 - **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
 - **Shared incident tracking** — update-in-place Slack, Discord, and Google
   Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
@@ -261,9 +261,10 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 2. **MCP servers** (`/dashboard/mcp-servers`) — add and test connectivity.
 3. **Skills** (`/dashboard/skills`) — import/create a `SKILL.md` (start from `examples/`).
 4. **Services / Teams / Rosters / Escalation** (`/dashboard/paging/*`) — define routing and on-call.
-5. **Notification channels** (`/dashboard/paging/notifications`) — Slack / Teams / Email / SMS.
-6. **People** (`/dashboard/people`) — invite operators (Admin / Operator / Viewer).
-7. **Tier** (`/dashboard/config`) — default is `2` (advisory); raise to `1`/`0` when ready.
+5. **On Call Schedule** (`/dashboard/on-call-schedule`) — see who's on call per level, replace coverage, and view shifts in any time zone.
+6. **Notification channels** (`/dashboard/paging/notifications`) — Slack / Teams / Email / SMS.
+7. **People** (`/dashboard/people`) — invite operators (Admin / Operator / Viewer).
+8. **Tier** (`/dashboard/config`) — default is `2` (advisory); raise to `1`/`0` when ready.
 
 </details>
 

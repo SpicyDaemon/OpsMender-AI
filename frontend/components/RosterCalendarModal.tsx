@@ -24,6 +24,7 @@ import type {
   UserResponse,
 } from "@/lib/types";
 import { eligibleRosterMemberOptions } from "@/lib/rosterEligibility";
+import { tzOffsetLabel } from "@/lib/timezones";
 import type { MultiSelectOption } from "@/components/ui/MultiSelect";
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
@@ -178,7 +179,8 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
             </Badge>
             {isOvernight && <Badge variant="default">overnight</Badge>}
             <span className="text-xs text-fg-muted">
-              {roster.time_zone} · {roster.pattern}
+              {roster.time_zone} ({tzOffsetLabel(roster.time_zone)}) ·{" "}
+              {roster.pattern}
               {roster.pattern === "custom_n_days"
                 ? ` (${roster.pattern_length}d)`
                 : ""}

@@ -28,6 +28,11 @@ import type {
 import { useAuth } from "@/context/auth";
 import { personColor } from "@/lib/calendarColor";
 import {
+  convertWallTime,
+  timeZoneOptionsWithOffset,
+  tzAbbrev,
+} from "@/lib/timezones";
+import {
   eligibleRosterMemberOptions,
 } from "@/lib/rosterEligibility";
 import type { MultiSelectOption } from "@/components/ui/MultiSelect";
@@ -90,26 +95,26 @@ function statusShort(status: string): string {
   }
 }
 
-/** Short timezone label (e.g. "EDT") for a zone on a given day, else the raw
- * IANA name. */
-function tzAbbrev(tz: string | null | undefined, dateIso: string): string {
-  if (!tz) return "";
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      timeZoneName: "short",
-    }).formatToParts(new Date(`${dateIso}T12:00:00`));
-    return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
-  } catch {
-    return tz;
-  }
-}
-
-/** "09:00–17:00 EDT" for a roster-backed level, else null. */
-function shiftLabel(level: EscalationCalendarLevel, dateIso: string): string | null {
+/**
+ * The level's coverage window as a label, re-expressed in `displayTz` when it
+ * differs from the roster's own zone — e.g. "09:00–17:00 UTC", or
+ * "04:00–12:00 CDT" when viewing a UTC roster in US Central. A ⁺¹/⁻¹
+ * superscript marks a start/end that lands on the next/previous day.
+ */
+function shiftLabel(
+  level: EscalationCalendarLevel,
+  dateIso: string,
+  displayTz: string,
+): string | null {
   if (!level.coverage_start || !level.coverage_end) return null;
-  const tz = tzAbbrev(level.coverage_time_zone, dateIso);
-  return `${level.coverage_start}–${level.coverage_end}${tz ? ` ${tz}` : ""}`;
+  const fromTz = level.coverage_time_zone || "UTC";
+  const start = convertWallTime(dateIso, level.coverage_start, fromTz, displayTz);
+  const end = convertWallTime(dateIso, level.coverage_end, fromTz, displayTz);
+  const mark = (d: number) => (d > 0 ? "⁺¹" : d < 0 ? "⁻¹" : "");
+  const abbrev = tzAbbrev(displayTz, dateIso);
+  return `${start.time}${mark(start.dayShift)}–${end.time}${mark(
+    end.dayShift,
+  )}${abbrev ? ` ${abbrev}` : ""}`;
 }
 
 /** All ISO dates from a to b inclusive (either order). */
@@ -173,6 +178,10 @@ export default function OnCallSchedulePage() {
 
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [teamId, setTeamId] = useState<string>("");
+  // Which time zone to render shift windows in. Rosters store their own zone
+  // (usually UTC); this lets a viewer re-express every shift in a zone of
+  // their choosing without changing the underlying schedule.
+  const [displayTz, setDisplayTz] = useState<string>("UTC");
   const [viewMonth, setViewMonth] = useState<Date>(firstOfMonth(new Date()));
   const [data, setData] = useState<TeamOnCallCalendarResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -394,6 +403,10 @@ export default function OnCallSchedulePage() {
   };
 
   const selectedDates = useMemo(() => [...selected].sort(), [selected]);
+  const tzOptions = useMemo(
+    () => timeZoneOptionsWithOffset(displayTz),
+    [displayTz],
+  );
 
   const monthLabel = viewMonth.toLocaleString(undefined, {
     month: "long",
@@ -429,6 +442,21 @@ export default function OnCallSchedulePage() {
         </Select>
 
         <div className="ml-auto flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+            <span className="whitespace-nowrap">Show times in</span>
+            <Select
+              aria-label="Display time zone"
+              value={displayTz}
+              onChange={(e) => setDisplayTz(e.target.value)}
+              className="w-56"
+            >
+              {tzOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </label>
           <Button
             variant="ghost"
             onClick={() => setViewMonth((m) => addMonths(m, -1))}
@@ -511,6 +539,7 @@ export default function OnCallSchedulePage() {
                 {day && (
                   <DayCellContent
                     day={day}
+                    displayTz={displayTz}
                     canEdit={canEdit}
                     onOverride={(chainName, level) =>
                       openOverride(iso, chainName, level)
@@ -547,6 +576,7 @@ export default function OnCallSchedulePage() {
           day={selectedDay}
           teamId={teamId}
           teamName={data?.team_name ?? null}
+          displayTz={displayTz}
           canEdit={canEdit}
           onClose={() => setSelectedDay(null)}
           onOverride={(chainName, level) => {
@@ -599,17 +629,19 @@ function LevelChip({
   chainName,
   level,
   dateIso,
+  displayTz,
   canEdit,
   onOverride,
 }: {
   chainName: string;
   level: EscalationCalendarLevel;
   dateIso: string;
+  displayTz: string;
   canEdit: boolean;
   onOverride: (chainName: string, level: EscalationCalendarLevel) => void;
 }) {
   const name = level.resolved_user_name || statusShort(level.status) || "—";
-  const shift = shiftLabel(level, dateIso);
+  const shift = shiftLabel(level, dateIso, displayTz);
   // Only roster-backed levels can be reassigned via an override; direct
   // user-target levels are fixed by the chain definition.
   const overridable = canEdit && level.target_type === "roster";
@@ -665,10 +697,12 @@ function LevelChip({
  */
 function DayCellContent({
   day,
+  displayTz,
   canEdit,
   onOverride,
 }: {
   day: TeamOnCallCalendarDay;
+  displayTz: string;
   canEdit: boolean;
   onOverride: (chainName: string, level: EscalationCalendarLevel) => void;
 }) {
@@ -705,6 +739,7 @@ function DayCellContent({
           chainName={chain.chain_name}
           level={level}
           dateIso={day.date}
+          displayTz={displayTz}
           canEdit={canEdit}
           onOverride={onOverride}
         />,
@@ -738,6 +773,7 @@ function DayDetailModal({
   day,
   teamId,
   teamName,
+  displayTz,
   canEdit,
   onClose,
   onOverride,
@@ -746,6 +782,7 @@ function DayDetailModal({
   day: TeamOnCallCalendarDay;
   teamId: string;
   teamName: string | null;
+  displayTz: string;
   canEdit: boolean;
   onClose: () => void;
   onOverride: (chainName: string, level: EscalationCalendarLevel) => void;
@@ -780,6 +817,7 @@ function DayDetailModal({
               key={chain.chain_id}
               chain={chain}
               dateIso={day.date}
+              displayTz={displayTz}
               canEdit={canEdit}
               onOverrideLevel={(level) => onOverride(chain.chain_name, level)}
             />
@@ -873,11 +911,13 @@ function DayMaintenanceAction({
 function ChainBlock({
   chain,
   dateIso,
+  displayTz,
   canEdit,
   onOverrideLevel,
 }: {
   chain: TeamCalendarChain;
   dateIso: string;
+  displayTz: string;
   canEdit: boolean;
   onOverrideLevel: (level: EscalationCalendarLevel) => void;
 }) {
@@ -893,7 +933,7 @@ function ChainBlock({
       ) : (
         <ul className="divide-y divide-border-subtle">
           {chain.levels.map((level) => {
-            const shift = shiftLabel(level, dateIso);
+            const shift = shiftLabel(level, dateIso, displayTz);
             return (
               <li
                 key={level.level}

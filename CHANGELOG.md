@@ -34,8 +34,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     and viewers get a read-only schedule.
   - **Sidebar move:** On Call Schedule now lives under **Paging & On-call**
     (still visible to everyone, read-only) instead of Incident Management.
+  - **Display time zone picker.** A "Show times in" dropdown (left of the
+    month nav) re-expresses every shift in a zone of the viewer's choosing —
+    rosters store their own zone (usually UTC) and the calendar converts on
+    the fly (e.g. a `09:00–17:00 UTC` shift reads `04:00–12:00 CDT`), with a
+    ⁺¹/⁻¹ marker when a converted time crosses midnight. Defaults to UTC.
   - Backend: the team on-call-calendar payload's levels now include
     `coverage_time_zone` alongside `coverage_start`/`coverage_end`.
+
+- **UTC offsets in every time-zone picker.** IANA time-zone dropdowns now label
+  each option with its current offset — `UTC (+00:00)`,
+  `America/Chicago (-05:00)`, `Asia/Kolkata (+05:30)` — across the roster form,
+  quiet-hours settings (upgraded from a free-text field to a proper picker),
+  and the new calendar display-zone selector. Roster tables and the roster
+  calendar modal show the offset next to the zone too. (New `lib/timezones`
+  helpers: `tzOffsetLabel`, `timeZoneOptionsWithOffset`, `convertWallTime`.)
 
 ### Fixed
 

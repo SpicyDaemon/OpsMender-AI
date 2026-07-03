@@ -130,7 +130,7 @@ import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/MultiSelect";
 import { displayName } from "@/lib/users";
-import { timeZoneOptions } from "@/lib/timezones";
+import { timeZoneOptionsWithOffset, tzOffsetLabel } from "@/lib/timezones";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PagingFilterBar } from "@/components/ui/PagingFilterBar";
 import { useToast } from "@/components/ui/Toast";
@@ -1987,7 +1987,8 @@ function RostersPanel({
         sortable: true,
         cell: (r) => (
           <span className="font-mono text-xs text-fg-secondary">
-            {r.time_zone}
+            {r.time_zone}{" "}
+            <span className="text-fg-muted">({tzOffsetLabel(r.time_zone)})</span>
           </span>
         ),
       },
@@ -2207,9 +2208,9 @@ function RostersPanel({
                   setForm({ ...form, time_zone: e.target.value })
                 }
               >
-                {timeZoneOptions(form.time_zone).map((tz) => (
-                  <option key={tz} value={tz}>
-                    {tz}
+                {timeZoneOptionsWithOffset(form.time_zone).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
                   </option>
                 ))}
               </Select>
@@ -4755,13 +4756,18 @@ export function NotificationPreferencesPanel({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <Label className="text-xs">Time zone (IANA)</Label>
-                <Input
+                <Select
                   value={quiet.time_zone}
                   onChange={(e) =>
                     setQuiet({ ...quiet, time_zone: e.target.value })
                   }
-                  placeholder="UTC"
-                />
+                >
+                  {timeZoneOptionsWithOffset(quiet.time_zone).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
               </div>
               <div>
                 <Label className="text-xs">Start time</Label>

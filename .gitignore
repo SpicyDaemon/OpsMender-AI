@@ -89,6 +89,10 @@ frontend/out/
 # Scratch / temp scripts
 scratch/
 
+# Design-audit harness output (scripts/design_audit.mjs)
+.design-audit/
+screenshots/
+
 # Helm chart dependencies (downloaded by `helm dependency update`)
 deploy/helm/opsmender/charts/
 deploy/helm/opsmender/Chart.lock

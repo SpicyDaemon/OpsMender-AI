@@ -24,7 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (still-queued or cancelled-out-of-queue).
   - **Co-pilot markdown renderer** no longer leaks literal `*` markers from
     malformed LLM bold/italic (e.g. "**Severity:* Medium"): bold matching is
-    now resilient and orphan emphasis markers are stripped.
+    now resilient and orphan emphasis markers are stripped. Markdown list
+    lines (`* item` / `- item`) render with a real bullet glyph and hanging
+    indent instead of a raw star.
+  - **Incidents "Critical" tile is no longer alarm-red at zero** — the number
+    uses the critical color only when the count is > 0, matching the
+    dashboard's value-based stat coloring.
   - **Mobile page headers no longer overlap their actions.** `PageHeader`
     now stacks the title over its action buttons below `sm` (they previously
     sat in a non-wrapping `shrink-0` row that collided with the title at

@@ -115,6 +115,19 @@ function renderMarkdown(text: string): React.ReactNode[] {
       );
       continue;
     }
+    // List item — render the `*`/`-` marker as a real bullet glyph so raw
+    // markdown list stars never show in the bubble.
+    const listMatch = lines[i].match(/^(\s*)[*-]\s+(.*)$/);
+    if (listMatch) {
+      result.push(
+        <span key={`ln-${result.length}`} className="block pl-4 -indent-2.5">
+          <span aria-hidden="true">• </span>
+          {renderInline(listMatch[2])}
+        </span>,
+      );
+      i++;
+      continue;
+    }
     // Inline code + bold + italic in a paragraph line
     result.push(
       <span key={`ln-${result.length}`} className="block">

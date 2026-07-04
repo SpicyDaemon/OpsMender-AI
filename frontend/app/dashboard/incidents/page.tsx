@@ -644,6 +644,7 @@ export default function IncidentsPage() {
   );
 
   const overview = useMemo(() => {
+    const criticalCount = items.filter((item) => item.severity === "critical").length;
     return [
       {
         label: "Matching filters",
@@ -652,8 +653,10 @@ export default function IncidentsPage() {
       },
       {
         label: "Critical",
-        value: String(items.filter((item) => item.severity === "critical").length),
-        tone: "text-status-critical",
+        value: String(criticalCount),
+        // Alarm red only when something is actually critical — a red zero
+        // signals danger for a healthy state.
+        tone: criticalCount > 0 ? "text-status-critical" : "text-fg-primary",
       },
       {
         label: "Open",

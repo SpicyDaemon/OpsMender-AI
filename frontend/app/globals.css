@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* The app themes via a `data-theme` attribute on <html> (see context/theme.tsx),
+   not the OS `prefers-color-scheme`. Expose a `light:` variant so utilities can
+   opt into light-theme overrides consistently with the token system. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 @theme {
   /* Background scale — near-black slate with subtle elevation */
   --color-bg-base: #0B0D10;

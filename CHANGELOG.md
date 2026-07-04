@@ -40,6 +40,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `lib/formatDate.ts` (formatDate / formatDateTime / formatTime /
     formatRelative) as the single date/time formatting system; used here for
     the "Ended · {relative}" chip (call-site sweep continues under G-4).
+  - **On-Call Schedule: readable in light theme, on phones, and to screen
+    readers.** Calendar person-chips hardcoded dark-only classes
+    (`text-purple-100` on a translucent tint), so in light theme they became
+    near-white text on pale tints — unreadable. `lib/calendarColor.ts` now
+    carries a `light:` override per hue (dark text on a light tint), keyed
+    off the app's `[data-theme]` via a new `light:` Tailwind custom-variant.
+    Day cells no longer declare `role="gridcell"` without a `row` parent
+    (cleared 42 `aria-required-parent` violations). On phones the 7-column
+    month (unreadable at 390px) is replaced by an **agenda list** — one row
+    per covered day with the date tappable to open details and the same
+    clickable level chips — and the "Show times in" timezone picker no longer
+    collapses to a zero-width box (given a min width; controls stack on
+    mobile).
   - **Muted-text contrast (WCAG AA).** Raised `--color-fg-muted` from
     `#6B7280` → `#8A94A3` (dark) and `#64748b` → `#55617a` (light) in
     `globals.css`. The old values failed WCAG AA on panels, hover rows, and

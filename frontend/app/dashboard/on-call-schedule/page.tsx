@@ -426,12 +426,12 @@ export default function OnCallSchedulePage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Select
           aria-label="Team"
           value={teamId}
           onChange={(e) => setTeamId(e.target.value)}
-          className="w-56"
+          className="w-full sm:w-56"
         >
           {teams.length === 0 && <option value="">No teams</option>}
           {teams.map((t) => (
@@ -441,14 +441,14 @@ export default function OnCallSchedulePage() {
           ))}
         </Select>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
           <label className="flex items-center gap-1.5 text-xs text-fg-muted">
             <span className="whitespace-nowrap">Show times in</span>
             <Select
               aria-label="Display time zone"
               value={displayTz}
               onChange={(e) => setDisplayTz(e.target.value)}
-              className="w-56"
+              className="w-44 sm:w-56"
             >
               {tzOptions.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -484,7 +484,9 @@ export default function OnCallSchedulePage() {
         </div>
       </div>
 
-      <div className="relative select-none rounded-lg border border-border-subtle bg-bg-surface">
+      {/* Desktop / tablet: month grid. Hidden on phones, which get the
+          agenda list below (a 7-column month is unreadable at 390px). */}
+      <div className="relative hidden select-none rounded-lg border border-border-subtle bg-bg-surface sm:block">
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg-surface/60">
             <Spinner />
@@ -510,7 +512,6 @@ export default function OnCallSchedulePage() {
             return (
               <div
                 key={iso}
-                role="gridcell"
                 onPointerDown={(e) => onCellPointerDown(iso, e)}
                 onPointerEnter={() => onCellPointerEnter(iso)}
                 onPointerUp={(e) => onCellPointerUp(iso, e)}
@@ -550,6 +551,75 @@ export default function OnCallSchedulePage() {
             );
           })}
         </div>
+      </div>
+
+      {/* Phone: agenda list. Same day data as the grid, one row per in-month
+          day that has coverage, with the date tappable to open day details
+          and the same clickable level chips. */}
+      <div className="sm:hidden">
+        {loading ? (
+          <div className="flex items-center justify-center rounded-lg border border-border-subtle bg-bg-surface py-12">
+            <Spinner />
+          </div>
+        ) : (
+          (() => {
+            const agendaDays = cells
+              .filter((c) => c.date.getMonth() === viewMonth.getMonth())
+              .map((c) => ({ ...c, day: daysByDate.get(c.iso) }))
+              .filter((c) => c.day && (c.day.suppressed || c.day.chains.length > 0));
+            if (agendaDays.length === 0) {
+              return (
+                <div className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-8 text-center text-sm text-fg-muted">
+                  No on-call coverage this month.
+                </div>
+              );
+            }
+            return (
+              <ul className="space-y-2">
+                {agendaDays.map(({ date, iso, day }) => {
+                  const isToday = iso === today;
+                  const weekday = WEEKDAYS[date.getDay()];
+                  return (
+                    <li
+                      key={iso}
+                      className="rounded-lg border border-border-subtle bg-bg-surface p-3"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => day && setSelectedDay(day)}
+                        className="mb-2 flex w-full items-center gap-2 text-left"
+                      >
+                        <span
+                          className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-sm font-semibold ${
+                            isToday ? "bg-accent text-white" : "bg-bg-elevated text-fg-default"
+                          }`}
+                        >
+                          {date.getDate()}
+                        </span>
+                        <span className="text-sm font-medium text-fg-default">
+                          {weekday}
+                        </span>
+                        {day?.suppressed && (
+                          <Wrench className="h-3.5 w-3.5 text-amber-400" />
+                        )}
+                      </button>
+                      {day && (
+                        <DayCellContent
+                          day={day}
+                          displayTz={displayTz}
+                          canEdit={canEdit}
+                          onOverride={(chainName, level) =>
+                            openOverride(iso, chainName, level)
+                          }
+                        />
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()
+        )}
       </div>
 
       {canEdit && selected.size > 0 && (

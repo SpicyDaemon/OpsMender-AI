@@ -1,15 +1,18 @@
 "use client";
 
-interface ToggleProps {
+import { type ButtonHTMLAttributes } from "react";
+
+interface ToggleProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> {
   id?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   className?: string;
 }
 
-export function Toggle({ id, checked, onChange, className = "" }: ToggleProps) {
+export function Toggle({ id, checked, onChange, className = "", ...props }: ToggleProps) {
   return (
     <button
+      {...props}
       id={id}
       type="button"
       role="switch"

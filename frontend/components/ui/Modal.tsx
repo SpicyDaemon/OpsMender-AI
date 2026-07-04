@@ -46,6 +46,8 @@ export function Modal({
           <div className="flex items-center gap-2">
             {headerExtra}
             <button
+              aria-label={`Close ${title}`}
+              title={`Close ${title}`}
               onClick={onClose}
               className="rounded-md p-1 text-fg-muted hover:bg-bg-hover hover:text-fg-primary transition-colors"
             >

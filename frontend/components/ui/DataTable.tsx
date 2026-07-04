@@ -542,6 +542,7 @@ export function DataTable<T>({
               <div className="flex flex-wrap items-center gap-2">
                 <Input
                   type="datetime-local"
+                  aria-label={`${dateRangeColumn.label ?? "Date range"} from`}
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
                   className="max-w-[14rem]"
@@ -549,6 +550,7 @@ export function DataTable<T>({
                 <span className="text-xs text-fg-muted">→</span>
                 <Input
                   type="datetime-local"
+                  aria-label={`${dateRangeColumn.label ?? "Date range"} to`}
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
                   className="max-w-[14rem]"
@@ -654,6 +656,7 @@ export function DataTable<T>({
             <div className="flex flex-wrap items-center gap-2">
               <Input
                 type="datetime-local"
+                aria-label={`${dateRangeColumn.label ?? "Date range"} from`}
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
                 className="max-w-[14rem]"
@@ -661,6 +664,7 @@ export function DataTable<T>({
               <span className="text-xs text-fg-muted">→</span>
               <Input
                 type="datetime-local"
+                aria-label={`${dateRangeColumn.label ?? "Date range"} to`}
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
                 className="max-w-[14rem]"
@@ -754,6 +758,7 @@ export function DataTable<T>({
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <span className="whitespace-nowrap">Rows per page</span>
           <select
+            aria-label="Rows per page"
             value={String(pageSize)}
             onChange={(e) => setPageSize(Number(e.target.value))}
             className="h-7 w-14 rounded-md border border-border-default bg-bg-input px-2 py-0 text-xs font-medium text-fg-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"

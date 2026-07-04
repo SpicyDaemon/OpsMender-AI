@@ -1371,6 +1371,8 @@ export default function SkillsPage() {
                 <Button
                   variant="danger"
                   size="sm"
+                  aria-label={`Delete skill ${skill.name}`}
+                  title={`Delete skill ${skill.name}`}
                   onClick={() => handleDelete(skill)}
                 >
                   <Trash2 size={14} />

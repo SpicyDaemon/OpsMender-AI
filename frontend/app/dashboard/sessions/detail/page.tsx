@@ -1135,6 +1135,7 @@ function SessionPageContent() {
             )}
             <div className="flex items-end gap-2">
               <textarea
+                aria-label="Message the co-pilot"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -1150,6 +1151,8 @@ function SessionPageContent() {
               />
               <Button
                 size="sm"
+                aria-label="Send message"
+                title="Send message"
                 onClick={handleSend}
                 loading={sending}
                 disabled={chatDisabled || !draft.trim()}

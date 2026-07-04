@@ -242,6 +242,8 @@ function TargetDetailContent() {
       <header className="flex shrink-0 flex-col gap-2 border-b border-border-subtle px-6 py-4">
         <div className="flex items-center gap-3">
           <button
+            aria-label="Return to Reliability"
+            title="Return to Reliability"
             onClick={() => navigateDashboard("/dashboard/reliability")}
             className="flex h-8 w-8 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-primary"
           >
@@ -375,8 +377,9 @@ function TargetDetailContent() {
           <div className="mt-4 rounded-xl border border-border-subtle bg-bg-panel p-4 shadow-sm">
             <div className="flex flex-wrap items-end gap-3">
               <div>
-                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-fg-muted">From</label>
+                <label htmlFor="reliability-range-from" className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-fg-muted">From</label>
                 <input
+                  id="reliability-range-from"
                   type="datetime-local"
                   value={customStart}
                   onChange={(e) => setCustomStart(e.target.value)}
@@ -384,8 +387,9 @@ function TargetDetailContent() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-fg-muted">To</label>
+                <label htmlFor="reliability-range-to" className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-fg-muted">To</label>
                 <input
+                  id="reliability-range-to"
                   type="datetime-local"
                   value={customEnd}
                   onChange={(e) => setCustomEnd(e.target.value)}

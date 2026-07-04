@@ -48,8 +48,6 @@ function makeIncident(status: IncidentResponse["status"]): IncidentResponse {
     external_source: null,
     external_id: null,
     service_id: null,
-    resolved_at: null,
-    closed_at: null,
   };
 }
 

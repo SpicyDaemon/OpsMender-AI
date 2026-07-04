@@ -189,6 +189,7 @@ export default function NotificationPreferencesPage() {
               </div>
               <Toggle
                 id="quiet-enabled"
+                aria-label="Enable quiet hours"
                 checked={quietEnabled}
                 onChange={setQuietEnabled}
               />

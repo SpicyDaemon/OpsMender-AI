@@ -60,6 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     violations app-wide (~1,100 nodes). Both new values clear ≥5:1 on every
     surface in their theme. No component-level gray text utilities exist
     (the token is used consistently), so this is the complete fix.
+  - **Accessible names for controls (G-2).** The shared table controls now
+    label date-range inputs and rows-per-page selectors; modal close buttons,
+    quiet-hour toggles, session chat/send controls, Reliability detail's back
+    button/custom range fields, People detail's role picker, profile password
+    fields, and Skills row delete actions all expose explicit accessible
+    names. Model status dots no longer put `aria-label` on non-interactive
+    spans. The design audit now reports **0 axe critical nodes** (0
+    `select-name`, `label`, `button-name`, and `aria-prohibited-attr` nodes).
 
 ### Added
 

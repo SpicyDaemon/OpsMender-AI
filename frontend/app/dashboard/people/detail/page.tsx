@@ -340,8 +340,9 @@ function RoleEditor({
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 sm:min-w-[200px]">
-          <Label>Global role</Label>
+          <Label htmlFor="people-detail-global-role">Global role</Label>
           <Select
+            id="people-detail-global-role"
             value={role}
             onChange={(e) => setRole(e.target.value as UserResponse["role"])}
             disabled={disabled || saving}

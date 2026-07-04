@@ -21,12 +21,12 @@ export function StatusDot({
     <span
       className={`inline-flex items-center gap-2 ${className}`}
       title={title}
-      aria-label={label ?? title}
     >
       <span
         aria-hidden
         className={`h-2.5 w-2.5 rounded-full ring-2 ring-offset-1 ring-offset-bg-panel ${STATUS_DOT_STYLES[tone]}`}
       />
+      {!label && title && <span className="sr-only">{title}</span>}
       {label && <span className="text-xs text-fg-secondary">{label}</span>}
     </span>
   );

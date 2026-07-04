@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
-import { useState, type InputHTMLAttributes } from "react";
+import { useId, useState, type InputHTMLAttributes } from "react";
 import { Input, Label } from "@/components/ui/Input";
 
 interface PasswordFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
@@ -15,16 +15,18 @@ export function PasswordField({
   ...props
 }: PasswordFieldProps) {
   const [visible, setVisible] = useState(false);
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
 
   return (
     <div>
-      <Label htmlFor={id} required={props.required}>
+      <Label htmlFor={inputId} required={props.required}>
         {label}
       </Label>
       <div className="relative">
         <Input
           {...props}
-          id={id}
+          id={inputId}
           type={visible ? "text" : "password"}
           className={`pr-11 ${className}`}
         />

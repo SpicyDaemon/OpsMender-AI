@@ -26,6 +26,7 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { titleCaseIdentifier } from "@/lib/displayNames";
 import { formatDateTime } from "@/lib/formatDate";
 
 function fmtDate(iso: string) {
@@ -48,22 +49,15 @@ const STATUS_OPTIONS: { value: ApprovalStatus | ""; label: string }[] = [
   { value: "expired", label: "Expired" },
 ];
 
-function humanize(value: string | null | undefined) {
-  if (!value) return "Unknown";
-  return value
-    .replace(/[_-]/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
 function approvalActionLabel(action: Record<string, unknown>) {
   const tool = action.tool ?? action.tool_name ?? action.name ?? action.action;
-  if (typeof tool === "string" && tool.trim()) return humanize(tool);
+  if (typeof tool === "string" && tool.trim()) return titleCaseIdentifier(tool);
   return "Requested action";
 }
 
 function approvalActionDetail(action: Record<string, unknown>) {
   const target = action.target ?? action.resource ?? action.service ?? action.kind;
-  if (typeof target === "string" && target.trim()) return humanize(target);
+  if (typeof target === "string" && target.trim()) return titleCaseIdentifier(target);
   const keys = Object.keys(action).filter((key) => !["tool", "tool_name", "name", "action"].includes(key));
   return keys.length > 0 ? `${keys.length} parameter${keys.length === 1 ? "" : "s"}` : "Review required";
 }
@@ -203,7 +197,7 @@ export default function ApprovalsPage() {
       ) : data?.items.length === 0 ? (
         <EmptyState
           icon={CheckSquare}
-          title={statusFilter ? `No ${humanize(statusFilter).toLowerCase()} approvals` : "No approvals yet"}
+          title={statusFilter ? `No ${titleCaseIdentifier(statusFilter).toLowerCase()} approvals` : "No approvals yet"}
           description={
             statusFilter
               ? "Try a different status filter."
@@ -278,7 +272,7 @@ export default function ApprovalsPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={a.status}>{humanize(a.status)}</Badge>
+                      <Badge variant={a.status}>{titleCaseIdentifier(a.status)}</Badge>
                     </td>
                     <td className="px-4 py-3 text-fg-secondary whitespace-nowrap text-xs tabular-nums font-mono">
                       {fmtDate(a.requested_at)}
@@ -374,7 +368,7 @@ export default function ApprovalsPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Status</p>
-                <Badge variant={selected.status}>{humanize(selected.status)}</Badge>
+                <Badge variant={selected.status}>{titleCaseIdentifier(selected.status)}</Badge>
               </div>
               <div>
                 <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Requested</p>

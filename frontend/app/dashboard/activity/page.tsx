@@ -20,28 +20,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { auditEntryTypeLabel } from "@/lib/displayNames";
 import { formatDateTime } from "@/lib/formatDate";
 
 const FETCH_LIMIT = 500;
 
 function fmtDate(iso: string) {
   return formatDateTime(iso);
-}
-
-// Audit entry_type is a machine enum (session_start, session_end, pre/post for
-// tool calls). Render human labels instead of the raw "SESSION_START".
-const ENTRY_TYPE_LABELS: Record<string, string> = {
-  session_start: "Session started",
-  session_end: "Session ended",
-  pre: "Tool call",
-  post: "Tool result",
-};
-
-function entryTypeLabel(t: string): string {
-  return (
-    ENTRY_TYPE_LABELS[t] ??
-    t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-  );
 }
 
 function PermittedDot({ permitted }: { permitted: boolean }) {
@@ -174,10 +159,10 @@ export default function ActivityPage() {
       {
         id: "entry_type",
         label: "Type",
-        accessor: (entry) => entryTypeLabel(entry.entry_type),
+        accessor: (entry) => auditEntryTypeLabel(entry.entry_type),
         cell: (entry) => (
           <span className="inline-flex items-center whitespace-nowrap rounded-pill border border-border-subtle bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-fg-secondary">
-            {entryTypeLabel(entry.entry_type)}
+            {auditEntryTypeLabel(entry.entry_type)}
           </span>
         ),
         sortable: true,

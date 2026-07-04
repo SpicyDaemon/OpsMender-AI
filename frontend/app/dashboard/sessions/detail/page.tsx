@@ -57,6 +57,7 @@ import { SessionMemoriesPanel } from "@/components/SessionMemoriesPanel";
 import { SessionWorkflowState } from "@/components/sessions/SessionWorkflowState";
 import { TierCapabilitySummary } from "@/components/sessions/TierCapabilitySummary";
 import { ToolCallCard } from "@/components/sessions/ToolCallCard";
+import { titleCaseIdentifier, workflowNodeLabel } from "@/lib/displayNames";
 import { formatRelative, formatTime } from "@/lib/formatDate";
 import { useAuth } from "@/context/auth";
 
@@ -82,10 +83,7 @@ function isTerminalStatus(status: SessionResponse["status"]): boolean {
 }
 
 function displayStatus(value: string | null | undefined): string {
-  if (!value) return "Unknown";
-  return value
-    .replace(/[_-]/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return titleCaseIdentifier(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +253,7 @@ function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
       return {
         id: idGen(),
         kind,
-        label: node === "tier_gate" ? "Tier Gate" : `${node.charAt(0).toUpperCase()}${node.slice(1)}`,
+        label: workflowNodeLabel(node),
         detail: msg.data.status as string | undefined,
         ts,
         durationMs: typeof msg.data.duration_ms === "number" ? msg.data.duration_ms : undefined,

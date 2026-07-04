@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase B: no machine
+  strings (G-3).** Added `lib/displayNames.ts` as the shared source for
+  audit-entry labels, workflow-node labels, provider brand casing, generic
+  identifier labels, and dashboard session primary labels. Session Profile
+  phase chips now show operator-facing labels such as "Tier gate" instead of
+  raw node ids, session-detail workflow events use the same labels, provider
+  names preserve brand casing such as OpenAI/OpenAI-compatible/AWS Bedrock,
+  and dashboard session cards no longer fall back to a short UUID as the
+  primary title.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase B: one date/time
   system (G-4).** Every user-facing timestamp now routes through
   `lib/formatDate.ts` instead of ad-hoc `toLocale*` calls (there were three

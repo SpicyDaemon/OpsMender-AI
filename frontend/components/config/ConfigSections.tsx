@@ -129,6 +129,7 @@ import { IconSelect } from "@/components/ui/IconSelect";
 import { Modal } from "@/components/ui/Modal";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { modelProviderIcon, notificationPlatformIcon } from "@/lib/brand-icons";
+import { providerName, workflowNodeLabel } from "@/lib/displayNames";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 
 export function ConfigCard({
@@ -843,24 +844,6 @@ function ModelConfigModal({
   );
 }
 
-const PROVIDER_NAME_OVERRIDES: Record<string, string> = {
-  openai: "OpenAI",
-  azure_openai: "Azure OpenAI",
-  openai_compatible: "OpenAI-compatible",
-  vertex_ai: "Vertex AI",
-  gcp_vertex: "Vertex AI",
-  bedrock: "AWS Bedrock",
-  ollama: "Ollama",
-  anthropic: "Anthropic",
-};
-
-function formatProviderName(provider: string): string {
-  return PROVIDER_NAME_OVERRIDES[provider] ??
-    provider
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
 export function ModelSection({
   bootstrap,
   providers,
@@ -885,7 +868,7 @@ export function ModelSection({
     providers.map((provider) => [provider.provider, provider]),
   );
   const providerLabel = (provider: string) =>
-    providerById.get(provider)?.label ?? formatProviderName(provider);
+    providerById.get(provider)?.label ?? providerName(provider);
 
   async function handleTest(config: ModelConfigResponse) {
     setTestingId(config.id);
@@ -5040,8 +5023,8 @@ function AgentTeamProfileModal({
           <p className="mt-1 text-xs text-fg-muted">
             Selected roles each produce their own reasoning pass for observe,
             diagnose, plan, verify, and summarize. OpsMender then synthesizes
-            them into one final answer while keeping `tier_gate` and `execute`
-            single-path and deterministic.
+            them into one final answer while keeping the Tier gate and Execute
+            phases single-path and deterministic.
           </p>
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             {AGENT_ROLE_OPTIONS.map((role) => {
@@ -5339,13 +5322,13 @@ export function AgentTeamProfileSection({
 // ---------------------------------------------------------------------------
 
 const WORKFLOW_NODE_OPTIONS: Array<{ value: WorkflowNode; label: string }> = [
-  { value: "observe", label: "Observe" },
-  { value: "diagnose", label: "Diagnose" },
-  { value: "plan", label: "Plan" },
-  { value: "tier_gate", label: "Tier Gate" },
-  { value: "execute", label: "Execute" },
-  { value: "verify", label: "Verify" },
-  { value: "summarize", label: "Summarize" },
+  { value: "observe", label: workflowNodeLabel("observe") },
+  { value: "diagnose", label: workflowNodeLabel("diagnose") },
+  { value: "plan", label: workflowNodeLabel("plan") },
+  { value: "tier_gate", label: workflowNodeLabel("tier_gate") },
+  { value: "execute", label: workflowNodeLabel("execute") },
+  { value: "verify", label: workflowNodeLabel("verify") },
+  { value: "summarize", label: workflowNodeLabel("summarize") },
 ];
 
 type WorkflowProfileFormState = {
@@ -5459,7 +5442,7 @@ function WorkflowProfileModal({
           <p className="mt-1 text-xs text-fg-muted">
             Advanced: reorder the phases the agent runs during a session. Safety
             rules are enforced automatically — Execute always runs immediately
-            after the Tier Gate.
+            after the Tier gate.
           </p>
           <div className="mt-3 space-y-2">
             {form.node_order.map((node, index) => {
@@ -5679,12 +5662,17 @@ export function WorkflowProfileSection({
       {
         id: "phases",
         label: "Phases",
-        accessor: (profile) => profile.node_order.join(" "),
+        accessor: (profile) => profile.node_order.map(workflowNodeLabel).join(" "),
         searchable: true,
         cell: (profile) => (
           <div className="flex flex-wrap gap-1.5">
             {profile.node_order.map((node) => (
-              <Badge key={node}>{node}</Badge>
+              <span
+                key={node}
+                className="inline-flex items-center rounded-pill border border-status-neutral-border bg-status-neutral-bg px-2 py-0.5 text-[11px] font-medium text-fg-secondary"
+              >
+                {workflowNodeLabel(node)}
+              </span>
             ))}
           </div>
         ),

@@ -62,6 +62,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useToast } from "@/components/ui/Toast";
+import { sessionPrimaryLabel, titleCaseIdentifier } from "@/lib/displayNames";
 import { formatRelative } from "@/lib/formatDate";
 
 /**
@@ -167,7 +168,7 @@ function medianResolveTime(
 /**
  * Median millisecond acknowledgment time (MTTA) for incidents that were
  * first acknowledged within the last `windowMs` milliseconds. Uses the
- * `acknowledged_at` stamp (time from `created_at` to first ack/take).
+ * acknowledgement stamp (time from incident creation to first ack/take).
  * Returns null when the window has no acknowledged incidents.
  */
 function medianAckTime(
@@ -192,25 +193,6 @@ function medianAckTime(
       ? durations[mid]
       : (durations[mid - 1] + durations[mid]) / 2;
   return { medianMs: median, count: durations.length };
-}
-
-function humanizeStatus(value: string | null | undefined): string {
-  if (!value) return "Unknown";
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
-}
-
-function sessionLabel(
-  session: SessionResponse,
-  incidentById: Map<string, IncidentResponse>,
-): string {
-  if (session.incident_id) {
-    const incident = incidentById.get(session.incident_id);
-    if (incident?.title) return incident.title;
-  }
-  if (session.summary) return session.summary;
-  return `Session ${session.id.slice(0, 8)}`;
 }
 
 export default function DashboardIndex() {
@@ -414,8 +396,7 @@ export default function DashboardIndex() {
   }, [serviceStats]);
 
   // Sprint 59 Step 5 — MTTR rolling-window medians. MTTR uses
-  // `updated_at - created_at` for incidents that hit `resolved` or
-  // `resolved` within each window.
+  // Resolution duration for incidents that were resolved within each window.
   const mttr = useMemo(() => {
     return {
       d1: medianResolveTime(incidents, 86_400_000), // 24h
@@ -425,7 +406,7 @@ export default function DashboardIndex() {
   }, [incidents]);
 
   // MTTA rolling-window medians (Sprint 59 follow-up). Time from
-  // `created_at` to the `acknowledged_at` stamp, for incidents first
+  // Incident creation to first-acknowledgement duration, for incidents first
   // acknowledged within each window.
   const mtta = useMemo(() => {
     return {
@@ -548,7 +529,7 @@ export default function DashboardIndex() {
               key={inc.id}
               href={`/dashboard/incidents/detail?id=${inc.id}`}
               title={inc.title}
-              meta={`${humanizeStatus(inc.status)} · opened ${formatRelative(inc.created_at)}`}
+              meta={`${titleCaseIdentifier(inc.status)} · opened ${formatRelative(inc.created_at)}`}
               accent="critical"
             />
           ))}
@@ -589,8 +570,8 @@ export default function DashboardIndex() {
             <RowLink
               key={s.id}
               href={`/dashboard/sessions/detail?id=${s.id}`}
-              title={sessionLabel(s, incidentById)}
-              meta={`${humanizeStatus(s.status)} · started ${formatRelative(s.started_at)} · Tier ${s.tier}`}
+              title={sessionPrimaryLabel(s, incidentById)}
+              meta={`${titleCaseIdentifier(s.status)} · started ${formatRelative(s.started_at)} · Tier ${s.tier}`}
               accent="medium"
             />
           ))}
@@ -610,8 +591,8 @@ export default function DashboardIndex() {
             <RowLink
               key={s.id}
               href={`/dashboard/sessions/detail?id=${s.id}`}
-              title={sessionLabel(s, incidentById)}
-              meta={`${humanizeStatus(s.status)} · ${formatRelative(s.ended_at ?? s.started_at)}`}
+              title={sessionPrimaryLabel(s, incidentById)}
+              meta={`${titleCaseIdentifier(s.status)} · ${formatRelative(s.ended_at ?? s.started_at)}`}
               accent="critical"
             />
           ))}

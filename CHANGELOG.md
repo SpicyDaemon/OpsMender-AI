@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase B: scoped live
+  data refresh (G-9).** Approvals and Orchestration now distinguish initial
+  loading from background refreshes, so 30-second/focus/visibility refetches
+  keep existing rows on screen instead of flashing loading UI. Incidents now
+  silently refetches AI-session badges on window focus in addition to its
+  visible-tab interval and visibility refresh. Dashboard already used the
+  same background-refresh pattern.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase B: no machine
   strings (G-3).** Added `lib/displayNames.ts` as the shared source for
   audit-entry labels, workflow-node labels, provider brand casing, generic

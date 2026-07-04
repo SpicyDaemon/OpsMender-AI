@@ -4,8 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { OrchestrationOverview } from "@/lib/types";
 
@@ -83,9 +83,14 @@ vi.mock("@/context/auth", () => ({
   useAuth: () => ({ user: { role: "admin" } }),
 }));
 
+import { getSessionOrchestration } from "@/lib/api";
 import OrchestrationPage from "@/app/dashboard/orchestration/page";
 
 describe("Session Orchestration page", () => {
+  beforeEach(() => {
+    vi.mocked(getSessionOrchestration).mockClear();
+  });
+
   it("renders model occupancy, the queue, and running sessions", async () => {
     render(<OrchestrationPage />);
 
@@ -102,5 +107,26 @@ describe("Session Orchestration page", () => {
     expect(screen.getByText("All preferred models at capacity")).toBeTruthy();
     expect(screen.getByTestId("active-session-row")).toBeTruthy();
     expect(screen.getByText("AWS Critical outage")).toBeTruthy();
+  });
+
+  it("refreshes on focus without clearing loaded rows", async () => {
+    render(<OrchestrationPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("AWS Critical outage")).toBeTruthy(),
+    );
+    const callsAfterInitialLoad = vi.mocked(getSessionOrchestration).mock.calls.length;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() =>
+      expect(vi.mocked(getSessionOrchestration).mock.calls.length).toBeGreaterThan(
+        callsAfterInitialLoad,
+      ),
+    );
+    expect(screen.getByText("AWS Critical outage")).toBeTruthy();
+    expect(screen.getByTestId("queued-session-row")).toBeTruthy();
   });
 });

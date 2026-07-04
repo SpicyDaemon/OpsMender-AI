@@ -65,28 +65,37 @@ function approvalActionDetail(action: Record<string, unknown>) {
 export default function ApprovalsPage() {
   const [data, setData] = useState<ApprovalListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | "">("pending");
   const [selected, setSelected] = useState<ApprovalRequestResponse | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const toast = useToast();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ background = false } = {}) => {
+    if (background) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const res = await listApprovals({ status: statusFilter || undefined, limit: 100 });
       setData(res);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load approvals");
     } finally {
-      setLoading(false);
+      if (background) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [statusFilter, toast]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
     const refreshIfVisible = () => {
-      if (document.visibilityState === "visible") void load();
+      if (document.visibilityState === "visible") void load({ background: true });
     };
     const interval = window.setInterval(refreshIfVisible, 30_000);
     window.addEventListener("focus", refreshIfVisible);
@@ -104,7 +113,7 @@ export default function ApprovalsPage() {
       await approveRequest(id);
       toast.success("Approval granted");
       setSelected(null);
-      load();
+      void load({ background: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Approval failed");
     } finally {
@@ -118,7 +127,7 @@ export default function ApprovalsPage() {
       await rejectRequest(id);
       toast.info("Approval rejected");
       setSelected(null);
-      load();
+      void load({ background: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Rejection failed");
     } finally {
@@ -132,7 +141,7 @@ export default function ApprovalsPage() {
       const updated = await extendApprovalRequest(id);
       toast.success("Session hold extended");
       setSelected(updated);
-      load();
+      void load({ background: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Extension failed");
     } finally {
@@ -159,8 +168,16 @@ export default function ApprovalsPage() {
           subtitle={data ? `${data.total} total requests` : undefined}
           icon={<Shield size={18} />}
           actions={
-            <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
-              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void load()}
+              disabled={loading || refreshing}
+            >
+              <RefreshCw
+                size={14}
+                className={loading || refreshing ? "animate-spin" : ""}
+              />
               Refresh
             </Button>
           }

@@ -71,17 +71,26 @@ export default function OrchestrationPage() {
   const [data, setData] = useState<OrchestrationOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    setLoading(true);
+  const reload = useCallback(async ({ background = false } = {}) => {
+    if (background) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       setData(await getSessionOrchestration());
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
-      setLoading(false);
+      if (background) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -91,7 +100,7 @@ export default function OrchestrationPage() {
       setError(null);
       try {
         await fn();
-        await reload();
+        await reload({ background: true });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Action failed");
       } finally {
@@ -112,7 +121,7 @@ export default function OrchestrationPage() {
 
   useEffect(() => {
     const refreshIfVisible = () => {
-      if (document.visibilityState === "visible") void reload();
+      if (document.visibilityState === "visible") void reload({ background: true });
     };
     const interval = window.setInterval(refreshIfVisible, 30_000);
     window.addEventListener("focus", refreshIfVisible);
@@ -133,8 +142,12 @@ export default function OrchestrationPage() {
             Per-model AI-session capacity, running sessions, and the priority queue.
           </p>
         </div>
-        <Button variant="secondary" onClick={() => reload()} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh"}
+        <Button
+          variant="secondary"
+          onClick={() => void reload()}
+          disabled={loading || refreshing}
+        >
+          {loading || refreshing ? "Refreshing…" : "Refresh"}
         </Button>
       </div>
 

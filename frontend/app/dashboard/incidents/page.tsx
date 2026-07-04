@@ -502,9 +502,9 @@ export default function IncidentsPage() {
   }, [loadIncidents]);
 
   // Live-ish refresh: silently re-fetch on an interval while the tab is
-  // visible, and immediately on regaining visibility, so AI-session badges and
-  // statuses stay current without a manual refresh. Paused while hidden to
-  // avoid needless load.
+  // visible, and immediately on focus / regaining visibility, so AI-session
+  // badges and statuses stay current without a manual refresh. Paused while
+  // hidden to avoid needless load.
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
     const start = () => {
@@ -526,10 +526,17 @@ export default function IncidentsPage() {
         stop();
       }
     };
+    const onFocus = () => {
+      if (document.visibilityState === "visible") {
+        void loadIncidents({ silent: true });
+      }
+    };
     if (document.visibilityState === "visible") start();
+    window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       stop();
+      window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [loadIncidents]);

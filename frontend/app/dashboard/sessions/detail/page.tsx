@@ -878,9 +878,10 @@ function SessionPageContent() {
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
-                  variant="danger"
+                  variant="ghost"
                   onClick={handleStop}
                   loading={intercepting}
+                  className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
                 >
                   <StopCircle size={14} />
                   {session.status === "queued" ? "Cancel queued session" : "Stop"}
@@ -998,9 +999,9 @@ function SessionPageContent() {
                 </Button>
                 <Button
                   size="sm"
-                  variant="danger"
+                  variant="ghost"
                   onClick={() => handleReject(a.id)}
-                  className="justify-center sm:min-w-[100px]"
+                  className="justify-center text-status-critical hover:bg-status-critical-bg hover:text-status-critical sm:min-w-[100px]"
                 >
                   <XCircle size={14} />
                   Reject

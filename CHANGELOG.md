@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C:
+  destructive-action pattern (G-7).** Row/default destructive actions now use
+  quiet ghost styling with icon labels and confirmations instead of filled-red
+  buttons across config, paging, integrations, and reports. Busy action rows
+  have stable minimum widths so they do not stack vertically. Filled danger
+  styling remains reserved for confirmation-style flows.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C: button
   taxonomy (G-6).** Creation controls now use "New ..." labels on the affected
   config and Reliability surfaces, with "New profile" replacing the wrapped

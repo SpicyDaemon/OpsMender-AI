@@ -388,7 +388,12 @@ export function IncidentSessionSidecar({
                       <Button size="sm" variant="success" onClick={() => handleApprove(approval.id)}>
                         Approve
                       </Button>
-                      <Button size="sm" variant="danger" onClick={() => handleReject(approval.id)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
+                        onClick={() => handleReject(approval.id)}
+                      >
                         Reject
                       </Button>
                     </div>

@@ -218,7 +218,8 @@ export function MFASettings({
             </button>
           </div>
           <Button
-            variant="danger"
+            variant="ghost"
+            className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
             onClick={turnOff}
             loading={busy}
             disabled={!disableCode.trim()}

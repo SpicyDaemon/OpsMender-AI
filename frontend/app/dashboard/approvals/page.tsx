@@ -327,10 +327,10 @@ export default function ApprovalsPage() {
                             </Button>
                             <Button
                               size="sm"
-                              variant="danger"
+                              variant="ghost"
                               onClick={() => handleReject(a.id)}
                               loading={actionLoading}
-                              className="min-w-[80px]"
+                              className="min-w-[80px] text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
                             >
                               <XCircle size={14} />
                               Reject
@@ -413,10 +413,10 @@ export default function ApprovalsPage() {
                   Extend session
                 </Button>
                 <Button
-                  variant="danger"
+                  variant="ghost"
                   onClick={() => handleReject(selected.id)}
                   loading={actionLoading}
-                  className="min-w-[110px]"
+                  className="min-w-[110px] text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
                 >
                   <XCircle size={16} />
                   Reject

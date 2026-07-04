@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Trash2 } from "lucide-react";
 import {
   createIntegrationConnector,
   deleteIntegrationConnector,
@@ -990,7 +991,7 @@ export default function IntegrationsPage() {
                   </p>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-nowrap gap-2">
                 <Button
                   size="sm"
                   variant="secondary"
@@ -1014,14 +1015,17 @@ export default function IntegrationsPage() {
                 </Button>
                 <Button
                   size="sm"
-                  variant="danger"
+                  variant="ghost"
+                  className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
+                  aria-label={`Delete integration connector ${connector.name}`}
+                  title={`Delete integration connector ${connector.name}`}
                   onClick={async () => {
                     if (!window.confirm(`Delete ${connector.name}?`)) return;
                     await deleteIntegrationConnector(connector.id);
                     await reload();
                   }}
                 >
-                  Delete
+                  <Trash2 size={13} />
                 </Button>
               </div>
             </div>

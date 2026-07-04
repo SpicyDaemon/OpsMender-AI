@@ -132,6 +132,9 @@ import { modelProviderIcon, notificationPlatformIcon } from "@/lib/brand-icons";
 import { providerName, workflowNodeLabel } from "@/lib/displayNames";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 
+const DESTRUCTIVE_GHOST_CLASS =
+  "text-status-critical hover:bg-status-critical-bg hover:text-status-critical";
+
 export function ConfigCard({
   title,
   description,
@@ -1187,7 +1190,7 @@ export function ModelSection({
           </div>
         }
         rowActions={(config) => (
-          <div className="flex justify-end gap-2">
+          <div className="flex min-w-[22rem] flex-nowrap justify-end gap-2">
             <Button
               variant="secondary"
               size="sm"
@@ -1241,11 +1244,13 @@ export function ModelSection({
             <Button
               variant="ghost"
               size="sm"
-              className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
+              className={DESTRUCTIVE_GHOST_CLASS}
               onClick={() => handleDelete(config)}
               disabled={!canEdit}
+              aria-label={`Delete model config ${config.name}`}
+              title={`Delete model config ${config.name}`}
             >
-              <Trash2 size={13} /> Delete
+              <Trash2 size={13} />
             </Button>
           </div>
         )}
@@ -1666,10 +1671,12 @@ function MCPServerModal({
                     />
                     <Button
                       type="button"
-                      variant="danger"
+                      variant="ghost"
                       size="sm"
+                      className={DESTRUCTIVE_GHOST_CLASS}
                       onClick={() => removeEnvPair(idx)}
                       aria-label={`Remove env var ${idx + 1}`}
+                      title={`Remove env var ${idx + 1}`}
                     >
                       <Trash2 size={12} />
                     </Button>
@@ -2448,7 +2455,7 @@ export function MCPSection({
             status: "idle",
           };
           return (
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="flex min-w-[15rem] flex-nowrap justify-end gap-2">
               <Button
                 variant="secondary"
                 size="sm"
@@ -2460,10 +2467,11 @@ export function MCPSection({
               </Button>
               {server.transport !== "stdio" && (
                 <Button
-                  variant={
+                  variant="secondary"
+                  className={
                     server.oauth_status === "reconnect_needed"
-                      ? "danger"
-                      : "secondary"
+                      ? "border-status-high-border bg-status-high-bg text-status-high hover:bg-status-high-bg/80"
+                      : ""
                   }
                   size="sm"
                   onClick={() => handleConnectOAuth(server)}
@@ -2485,12 +2493,15 @@ export function MCPSection({
                 <Pencil size={13} /> Edit
               </Button>
               <Button
-                variant="danger"
+                variant="ghost"
                 size="sm"
+                className={DESTRUCTIVE_GHOST_CLASS}
                 onClick={() => handleDelete(server)}
                 disabled={!canEdit}
+                aria-label={`Delete MCP server ${server.name}`}
+                title={`Delete MCP server ${server.name}`}
               >
-                <Trash2 size={13} /> Delete
+                <Trash2 size={13} />
               </Button>
             </div>
           );
@@ -3007,8 +3018,9 @@ function DynamicConnectorForm({
                 </Button>
                 <Button
                   type="button"
-                  variant="danger"
+                  variant="ghost"
                   size="sm"
+                  className={DESTRUCTIVE_GHOST_CLASS}
                   onClick={() => setCredentialMode("clear")}
                 >
                   Remove
@@ -3502,8 +3514,9 @@ function BotConnectorModal({
                     </Button>
                     <Button
                       type="button"
-                      variant="danger"
+                      variant="ghost"
                       size="sm"
+                      className={DESTRUCTIVE_GHOST_CLASS}
                       onClick={() => setField("credentialMode", "clear")}
                     >
                       Remove
@@ -3900,9 +3913,12 @@ function BotUserLinksModal({
                       </td>
                       <td className="px-4 py-2 text-right">
                         <Button
-                          variant="danger"
+                          variant="ghost"
                           size="sm"
+                          className={DESTRUCTIVE_GHOST_CLASS}
                           onClick={() => handleDeleteLink(link)}
+                          aria-label={`Remove identity link for ${link.platform_user_id}`}
+                          title={`Remove identity link for ${link.platform_user_id}`}
                         >
                           <Trash2 size={12} />
                         </Button>
@@ -4309,7 +4325,7 @@ export function BotConnectorSection({
                       </div>
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <div className="flex flex-wrap justify-end gap-2">
+                      <div className="flex min-w-[15rem] flex-nowrap justify-end gap-2">
                         <Button
                           variant="secondary"
                           size="sm"
@@ -4336,12 +4352,15 @@ export function BotConnectorSection({
                           <Pencil size={13} /> Edit
                         </Button>
                         <Button
-                          variant="danger"
+                          variant="ghost"
                           size="sm"
+                          className={DESTRUCTIVE_GHOST_CLASS}
                           onClick={() => handleDelete(connector)}
                           disabled={!canEdit}
+                          aria-label={`Delete notification channel ${connector.name}`}
+                          title={`Delete notification channel ${connector.name}`}
                         >
-                          <Trash2 size={13} /> Delete
+                          <Trash2 size={13} />
                         </Button>
                       </div>
                     </td>
@@ -4712,7 +4731,7 @@ export function IngestTokenSection({
           </div>
         }
         rowActions={(token) => (
-          <div className="flex justify-end gap-2">
+          <div className="flex min-w-[7rem] flex-nowrap justify-end gap-2">
             {token.is_active && (
               <Button
                 variant="secondary"
@@ -4724,12 +4743,15 @@ export function IngestTokenSection({
               </Button>
             )}
             <Button
-              variant="danger"
+              variant="ghost"
               size="sm"
+              className={DESTRUCTIVE_GHOST_CLASS}
               onClick={() => handleDelete(token)}
               disabled={!canEdit}
+              aria-label={`Delete intake token ${token.name}`}
+              title={`Delete intake token ${token.name}`}
             >
-              <Trash2 size={13} /> Delete
+              <Trash2 size={13} />
             </Button>
           </div>
         )}
@@ -5279,7 +5301,7 @@ export function AgentTeamProfileSection({
           </div>
         }
         rowActions={(profile) => (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex min-w-[5.5rem] flex-nowrap justify-end gap-2">
             <Button
               variant="secondary"
               size="sm"
@@ -5289,12 +5311,15 @@ export function AgentTeamProfileSection({
               <Pencil size={13} /> Edit
             </Button>
             <Button
-              variant="danger"
+              variant="ghost"
               size="sm"
+              className={DESTRUCTIVE_GHOST_CLASS}
               onClick={() => handleDelete(profile)}
               disabled={!canEdit}
+              aria-label={`Delete agent team ${profile.name}`}
+              title={`Delete agent team ${profile.name}`}
             >
-              <Trash2 size={13} /> Delete
+              <Trash2 size={13} />
             </Button>
           </div>
         )}
@@ -5748,7 +5773,7 @@ export function WorkflowProfileSection({
           </div>
         }
         rowActions={(profile) => (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex min-w-[5.5rem] flex-nowrap justify-end gap-2">
             <Button
               variant="secondary"
               size="sm"
@@ -5758,12 +5783,15 @@ export function WorkflowProfileSection({
               <Pencil size={13} /> Edit
             </Button>
             <Button
-              variant="danger"
+              variant="ghost"
               size="sm"
+              className={DESTRUCTIVE_GHOST_CLASS}
               onClick={() => handleDelete(profile)}
               disabled={!canEdit}
+              aria-label={`Delete session profile ${profile.name}`}
+              title={`Delete session profile ${profile.name}`}
             >
-              <Trash2 size={13} /> Delete
+              <Trash2 size={13} />
             </Button>
           </div>
         )}

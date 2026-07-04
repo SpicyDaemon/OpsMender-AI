@@ -3853,8 +3853,9 @@ function MaintenanceWindowsPanel({
                 )}
                 {canEdit && !w.approved && (
                   <Button
-                    variant="danger"
+                    variant="ghost"
                     size="sm"
+                    className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
                     onClick={async () => {
                       try {
                         await rejectMaintenanceWindow(w.id);

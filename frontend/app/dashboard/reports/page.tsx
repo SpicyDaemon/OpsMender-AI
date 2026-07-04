@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import {
   createReportSchedule,
   deleteReportSchedule,
@@ -100,7 +101,7 @@ export default function ReportsPage() {
             {schedules.map((schedule) => (
               <div key={schedule.id} className="flex items-center justify-between gap-4 py-3">
                 <div><p className="font-medium text-fg-primary">{schedule.name}</p><p className="text-xs text-fg-muted">{schedule.cadence} · {schedule.format.toUpperCase()} · next {formatDateTime(schedule.next_run_at)}</p>{schedule.last_error && <p className="text-xs text-status-critical">{schedule.last_error}</p>}</div>
-                <div className="flex gap-2">
+                <div className="flex flex-nowrap gap-2">
                   <Button variant="secondary" size="sm" onClick={() => {
                     setEditingId(schedule.id);
                     setName(schedule.name);
@@ -121,7 +122,20 @@ export default function ReportsPage() {
                     });
                     await reload();
                   }}>{schedule.enabled ? "Disable" : "Enable"}</Button>
-                  <Button variant="danger" size="sm" onClick={async () => { await deleteReportSchedule(schedule.id); await reload(); }}>Delete</Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
+                    aria-label={`Delete report schedule ${schedule.name}`}
+                    title={`Delete report schedule ${schedule.name}`}
+                    onClick={async () => {
+                      if (!window.confirm(`Delete report schedule "${schedule.name}"?`)) return;
+                      await deleteReportSchedule(schedule.id);
+                      await reload();
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </Button>
                 </div>
               </div>
             ))}

@@ -129,6 +129,7 @@ import { IconSelect } from "@/components/ui/IconSelect";
 import { Modal } from "@/components/ui/Modal";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { modelProviderIcon, notificationPlatformIcon } from "@/lib/brand-icons";
+import { formatDate, formatDateTime } from "@/lib/formatDate";
 
 export function ConfigCard({
   title,
@@ -160,7 +161,7 @@ export function formatLastSeen(timestamp: string | null): string {
   if (!timestamp) return "Never connected successfully";
   const parsed = new Date(timestamp);
   if (Number.isNaN(parsed.getTime())) return "Unknown timestamp";
-  return parsed.toLocaleString();
+  return formatDateTime(parsed);
 }
 
 export function describeMCPStatus(
@@ -2122,7 +2123,7 @@ export function MCPSection({
               <span>{server.name}</span>
             </div>
             <p className="mt-1 text-xs text-fg-muted">
-              Created {new Date(server.created_at).toLocaleDateString()}
+              Created {formatDate(server.created_at)}
             </p>
           </div>
         ),
@@ -2263,7 +2264,7 @@ export function MCPSection({
         hiddenByDefault: true,
         cell: (server) => (
           <span className="whitespace-nowrap text-xs text-fg-secondary">
-            {new Date(server.created_at).toLocaleString()}
+            {formatDateTime(server.created_at)}
           </span>
         ),
       },
@@ -2569,7 +2570,7 @@ function formatRelativeTimestamp(timestamp: string | null): string {
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
   const diffDays = Math.floor(diffHours / 24);
-  return diffDays < 30 ? `${diffDays}d ago` : value.toLocaleDateString();
+  return diffDays < 30 ? `${diffDays}d ago` : formatDate(value);
 }
 
 type CredentialMode = "keep" | "replace" | "clear";
@@ -4678,7 +4679,7 @@ export function IngestTokenSection({
         sortable: true,
         cell: (token) => (
           <span className="text-xs text-fg-secondary">
-            {new Date(token.created_at).toLocaleDateString()}
+            {formatDate(token.created_at)}
           </span>
         ),
       },
@@ -6058,7 +6059,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
                   </td>
                   <td className="px-4 py-3 text-xs text-fg-muted">
                     {cfg.last_pruned_at
-                      ? `${new Date(cfg.last_pruned_at).toLocaleString()} · ${cfg.last_pruned_count ?? 0} row${
+                      ? `${formatDateTime(cfg.last_pruned_at)} · ${cfg.last_pruned_count ?? 0} row${
                           (cfg.last_pruned_count ?? 0) === 1 ? "" : "s"
                         }`
                       : "—"}
@@ -6172,7 +6173,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
       {lastRun && (
         <div className="rounded-lg border border-border-subtle bg-bg-panel px-4 py-3 text-xs">
           <p className="font-medium text-fg-primary">
-            Last manual run · {new Date(lastRun.started_at).toLocaleString()}
+            Last manual run · {formatDateTime(lastRun.started_at)}
           </p>
           <ul className="mt-2 space-y-1 text-fg-secondary">
             {lastRun.items.map((item) => (

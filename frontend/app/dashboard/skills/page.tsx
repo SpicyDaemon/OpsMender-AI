@@ -44,6 +44,7 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { formatDateTime } from "@/lib/formatDate";
 
 const GLOBAL_SERVER = "__global";
 const UNASSIGNED_FILTER = "__unassigned";
@@ -86,12 +87,7 @@ without tiers retain legacy behavior.
 `;
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 type FormState = {

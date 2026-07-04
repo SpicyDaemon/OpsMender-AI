@@ -1,6 +1,7 @@
 "use client";
 
 import type { UptimeSeriesPoint } from "@/lib/types";
+import { formatDateTime } from "@/lib/formatDate";
 
 /**
  * Lightweight uptime history strip: one segment per series bucket, coloured
@@ -43,8 +44,8 @@ export function UptimeStrip({
               : "bg-border-subtle";
         const title =
           point.status === "unknown"
-            ? `${new Date(point.ts).toLocaleString()} — no data`
-            : `${new Date(point.ts).toLocaleString()} — ${point.up_pct.toFixed(2)}% up`;
+            ? `${formatDateTime(point.ts)} — no data`
+            : `${formatDateTime(point.ts)} — ${point.up_pct.toFixed(2)}% up`;
         return (
           <div
             key={i}

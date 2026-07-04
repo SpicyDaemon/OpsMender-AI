@@ -33,6 +33,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { MCPServerResponse } from "@/lib/types";
+import { formatTime } from "@/lib/formatDate";
 
 // -- Input shape --------------------------------------------------------
 
@@ -239,7 +240,7 @@ export function ToolCallCard({
             )}
           </div>
           <span className="shrink-0 font-mono text-[10px] tabular-nums text-fg-muted">
-            {ts.toLocaleTimeString()}
+            {formatTime(ts)}
           </span>
         </div>
 

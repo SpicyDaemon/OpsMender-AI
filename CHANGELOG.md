@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase B: one date/time
+  system (G-4).** Every user-facing timestamp now routes through
+  `lib/formatDate.ts` instead of ad-hoc `toLocale*` calls (there were three
+  visibly different formats before). Added calendar-label helpers
+  (`formatMonthYear`, `formatDayLong`, `formatWeekdayDate`, `formatWeekday`)
+  so month pickers and weekday labels share the same source. Swept ~50 call
+  sites across incidents, sessions, activity, people, skills, memories,
+  postmortem, reports, integrations, reliability (incl. chart hover
+  tooltips), paging, config, and roster calendar; consolidated three
+  duplicated local relative-time helpers onto the shared `formatRelative`
+  (which switches to an absolute date past 7 days — no more "215h ago").
+  Seconds are dropped from timestamps. Only number formatters (`row_count`)
+  and chart axis-tick formatters keep locale APIs, per the audit spec.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase A.**
   - **Session detail no longer contradicts itself on ended sessions.** A
     terminal session (cancelled/stopped/failed/timed-out/completed) previously

@@ -12,6 +12,7 @@ import type {
   IncidentMemoryResponse,
   SessionMemoriesUsedItem,
 } from "@/lib/types";
+import { formatDateTime } from "@/lib/formatDate";
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
@@ -120,7 +121,7 @@ export function SessionMemoriesPanel({ sessionId, defaultOpen = false }: Props) 
                         {item.memory.title}
                       </h4>
                       <p className="mt-0.5 text-[11px] text-fg-muted">
-                        Surfaced {new Date(item.surfaced_at).toLocaleString()}
+                        Surfaced {formatDateTime(item.surfaced_at)}
                         {item.score != null &&
                           ` · relevance ${item.score.toFixed(2)}`}
                       </p>

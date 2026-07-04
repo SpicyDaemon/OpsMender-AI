@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ResponseTimeSeriesPoint } from "@/lib/types";
+import { formatDateTime } from "@/lib/formatDate";
 
 const WIDTH = 1000;
 const PLOT_HEIGHT = 180;
@@ -172,7 +173,7 @@ export function ResponseTimeChart({
           }}
         >
           <div className="font-medium text-fg-primary">
-            {new Date(series[hover].ts).toLocaleString()}
+            {formatDateTime(series[hover].ts)}
           </div>
           {series[hover].avg_latency_ms == null ? (
             <div className="mt-1 text-fg-muted">No data</div>

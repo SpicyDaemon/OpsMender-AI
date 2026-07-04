@@ -24,6 +24,7 @@ import type {
   UserResponse,
 } from "@/lib/types";
 import { eligibleRosterMemberOptions } from "@/lib/rosterEligibility";
+import { formatDateTime, formatWeekday, formatWeekdayDate } from "@/lib/formatDate";
 import { tzOffsetLabel } from "@/lib/timezones";
 import type { MultiSelectOption } from "@/components/ui/MultiSelect";
 import { useAuth } from "@/context/auth";
@@ -79,11 +80,7 @@ function fmtIso(d: Date): string {
 }
 
 function fmtDay(d: Date): string {
-  return d.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  return formatWeekdayDate(d);
 }
 
 const WINDOW_DAYS = 14;
@@ -229,9 +226,7 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
           <div className="grid grid-cols-7 gap-1.5">
             {range.map((item) => {
               const d = new Date(item.at);
-              const dayLabel = d.toLocaleDateString(undefined, {
-                weekday: "short",
-              });
+              const dayLabel = formatWeekday(d);
               const dateLabel = d.getDate();
               const userName = item.user_id
                 ? userNameById.get(item.user_id) ??
@@ -298,8 +293,8 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
                         {u?.username ?? o.covering_user_id.slice(0, 8)}
                       </div>
                       <div className="text-fg-muted">
-                        {new Date(o.starts_at).toLocaleString()} →{" "}
-                        {new Date(o.ends_at).toLocaleString()}
+                        {formatDateTime(o.starts_at)} →{" "}
+                        {formatDateTime(o.ends_at)}
                         {o.reason && (
                           <span className="ml-2 italic">· {o.reason}</span>
                         )}

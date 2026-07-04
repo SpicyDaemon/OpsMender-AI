@@ -30,6 +30,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
+import { formatDateTime } from "@/lib/formatDate";
 
 const PAGE_SIZE = 25;
 
@@ -47,12 +48,7 @@ function categoryIcon(category: string) {
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 const TABS = [

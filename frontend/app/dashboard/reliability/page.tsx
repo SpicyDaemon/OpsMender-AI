@@ -17,6 +17,7 @@ import {
   getSLORecommendations,
 } from "@/lib/api_reliability";
 import { formatUptimePct, STATUS_LABEL, statusColors } from "@/lib/uptime";
+import { formatDate, formatDateTime } from "@/lib/formatDate";
 import type {
   SLATargetResponse,
   SLASummaryResponse,
@@ -32,7 +33,7 @@ function fmtLastCheck(iso: string | null): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
@@ -309,7 +310,7 @@ export default function ReliabilityPage() {
                             </div>
                           </td>
                           <td className="whitespace-nowrap px-4 py-3">
-                            <p className="text-sm text-fg-primary">{start.toLocaleString()} - {end.toLocaleString()}</p>
+                            <p className="text-sm text-fg-primary">{formatDateTime(start)} - {formatDateTime(end)}</p>
                             {mw.rrule && <p className="mt-0.5 font-mono text-xs text-fg-muted">Repeats: {mw.rrule}</p>}
                           </td>
                           <td className="px-4 py-3 text-right">

@@ -9,6 +9,7 @@ import {
   updateReportSchedule,
 } from "@/lib/api";
 import type { ReportScheduleResponse } from "@/lib/types";
+import { formatDateTime } from "@/lib/formatDate";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
@@ -98,7 +99,7 @@ export default function ReportsPage() {
           <div className="divide-y divide-border-subtle">
             {schedules.map((schedule) => (
               <div key={schedule.id} className="flex items-center justify-between gap-4 py-3">
-                <div><p className="font-medium text-fg-primary">{schedule.name}</p><p className="text-xs text-fg-muted">{schedule.cadence} · {schedule.format.toUpperCase()} · next {new Date(schedule.next_run_at).toLocaleString()}</p>{schedule.last_error && <p className="text-xs text-status-critical">{schedule.last_error}</p>}</div>
+                <div><p className="font-medium text-fg-primary">{schedule.name}</p><p className="text-xs text-fg-muted">{schedule.cadence} · {schedule.format.toUpperCase()} · next {formatDateTime(schedule.next_run_at)}</p>{schedule.last_error && <p className="text-xs text-status-critical">{schedule.last_error}</p>}</div>
                 <div className="flex gap-2">
                   <Button variant="secondary" size="sm" onClick={() => {
                     setEditingId(schedule.id);

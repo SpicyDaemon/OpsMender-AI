@@ -27,6 +27,7 @@ import type {
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { personColor } from "@/lib/calendarColor";
+import { formatDayLong, formatMonthYear } from "@/lib/formatDate";
 import {
   convertWallTime,
   timeZoneOptionsWithOffset,
@@ -408,10 +409,7 @@ export default function OnCallSchedulePage() {
     [displayTz],
   );
 
-  const monthLabel = viewMonth.toLocaleString(undefined, {
-    month: "long",
-    year: "numeric",
-  });
+  const monthLabel = formatMonthYear(viewMonth);
 
   return (
     <div className="space-y-4">
@@ -860,10 +858,7 @@ function DayDetailModal({
   onOverride: (chainName: string, level: EscalationCalendarLevel) => void;
   onCreated: () => void;
 }) {
-  const dateLabel = new Date(`${day.date}T00:00:00`).toLocaleDateString(
-    undefined,
-    { weekday: "long", month: "long", day: "numeric", year: "numeric" },
-  );
+  const dateLabel = formatDayLong(`${day.date}T00:00:00`);
 
   return (
     <Modal

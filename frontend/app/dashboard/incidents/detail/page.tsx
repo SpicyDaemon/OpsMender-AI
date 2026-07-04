@@ -47,27 +47,13 @@ import { Modal } from "@/components/ui/Modal";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { IncidentSessionSidecar } from "@/components/sessions/IncidentSessionSidecar";
+import { formatDateTime, formatRelative } from "@/lib/formatDate";
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
-function fmtRelative(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return fmtDate(iso);
-}
+const fmtRelative = formatRelative;
 
 function sourceMeta(incident: IncidentResponse) {
   if (!incident.external_source) {
@@ -134,7 +120,7 @@ export default function IncidentDetailPage() {
  * session content, tool activity, paging, approvals, or action buttons.
  */
 function ViewerIncidentView({ incident }: { incident: IncidentResponse }) {
-  const fmt = (iso: string) => new Date(iso).toLocaleString();
+  const fmt = (iso: string) => formatDateTime(iso);
   return (
     <div className="mx-auto max-w-3xl">
       <Link
@@ -394,13 +380,13 @@ function IncidentDetailContent() {
                     {pagingPanel.suppressed_by_maintenance_window.name}
                   </span>{" "}
                   ({pagingPanel.suppressed_by_maintenance_window.scope_type}){" "}
-                  · {new Date(
+                  · {formatDateTime(
                     pagingPanel.suppressed_by_maintenance_window.starts_at,
-                  ).toLocaleString()}
+                  )}
                   {" → "}
-                  {new Date(
+                  {formatDateTime(
                     pagingPanel.suppressed_by_maintenance_window.ends_at,
-                  ).toLocaleString()}
+                  )}
                   . No one was paged for this incident.
                 </div>
               </div>

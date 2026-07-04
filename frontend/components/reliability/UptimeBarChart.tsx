@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { UptimeSeriesPoint } from "@/lib/types";
+import { formatDateTime } from "@/lib/formatDate";
 
 /**
  * Enlarged up/down uptime chart (v1.2). One bar per series bucket with a
@@ -106,7 +107,7 @@ export function UptimeBarChart({
               }}
             >
               <div className="font-medium text-fg-primary">
-                {new Date(series[hover].ts).toLocaleString()}
+                {formatDateTime(series[hover].ts)}
               </div>
               <div
                 className={

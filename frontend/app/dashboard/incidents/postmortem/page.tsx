@@ -106,6 +106,7 @@ import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { formatDateTime } from "@/lib/formatDate";
 
 const SECTIONS = [
   { heading: "Summary", hint: "What happened, in one paragraph." },
@@ -178,13 +179,7 @@ function parseMemoryCandidates(md: string): string[] {
 
 function fmtTimestamp(iso: string | null): string {
   if (!iso) return "Never edited";
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 function renderMarkdownPreview(md: string): React.ReactNode {

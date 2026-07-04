@@ -22,14 +22,10 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Textarea } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
+import { formatDateTime } from "@/lib/formatDate";
 
 function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 function timelineAccent(item: IncidentTimelineItemResponse) {

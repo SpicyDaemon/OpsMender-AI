@@ -21,17 +21,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { formatDateTime } from "@/lib/formatDate";
 
 const FETCH_LIMIT = 500;
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 function PermittedDot({ permitted }: { permitted: boolean }) {

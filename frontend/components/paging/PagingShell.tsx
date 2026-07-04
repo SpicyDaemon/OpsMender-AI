@@ -139,6 +139,7 @@ import {
   keepRosterMembersOnTeam,
 } from "@/lib/rosterEligibility";
 import { fullIntakeUrl } from "@/lib/intake";
+import { formatDate, formatDateTime, formatWeekdayDate } from "@/lib/formatDate";
 
 export type Tab =
   | "teams"
@@ -569,7 +570,7 @@ function TeamsPanel({
         accessor: (t) => t.created_at,
         cell: (t) => (
           <span className="whitespace-nowrap text-sm text-fg-secondary">
-            {new Date(t.created_at).toLocaleDateString()}
+            {formatDate(t.created_at)}
           </span>
         ),
         sortable: true,
@@ -1168,7 +1169,7 @@ function ServicesPanel({
       accessor: (r) => r.last_incident_at ?? "",
       cell: (r) =>
         r.last_incident_at ? (
-          new Date(r.last_incident_at).toLocaleString()
+          formatDateTime(r.last_incident_at)
         ) : (
           <span className="text-fg-muted">—</span>
         ),
@@ -2711,11 +2712,7 @@ function todayIsoDate(): string {
 
 function fmtCalendarDate(value: string): string {
   const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    weekday: "short",
-  });
+  return formatWeekdayDate(new Date(year, month - 1, day));
 }
 
 function calendarStatusLabel(status: EscalationCalendarLevel["status"]): string {
@@ -3677,7 +3674,7 @@ function MaintenanceWindowsPanel({
         sortable: true,
         cell: (w) => (
           <span className="whitespace-nowrap text-xs text-fg-secondary">
-            {new Date(w.starts_at).toLocaleString()}
+            {formatDateTime(w.starts_at)}
           </span>
         ),
       },
@@ -3688,7 +3685,7 @@ function MaintenanceWindowsPanel({
         sortable: true,
         cell: (w) => (
           <span className="whitespace-nowrap text-xs text-fg-secondary">
-            {new Date(w.ends_at).toLocaleString()}
+            {formatDateTime(w.ends_at)}
           </span>
         ),
       },
@@ -4824,9 +4821,9 @@ export function NotificationPreferencesPanel({
       <div className="flex items-center justify-between">
         <div className="text-xs text-fg-tertiary">
           {pref &&
-            `Routing changes apply immediately. Last updated ${new Date(
+            `Routing changes apply immediately. Last updated ${formatDateTime(
               pref.updated_at,
-            ).toLocaleString()}.`}
+            )}.`}
         </div>
         <Button onClick={save} disabled={saving}>
           {saving ? "Saving…" : "Save routing"}

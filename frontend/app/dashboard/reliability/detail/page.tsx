@@ -10,6 +10,7 @@ import { createIncident } from "@/lib/api";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import { formatDate, formatDateTime, formatTime } from "@/lib/formatDate";
 import { SLOModal } from "@/components/reliability/SLOModal";
 import { UptimeStrip } from "@/components/reliability/UptimeStrip";
 import { UptimeBarChart } from "@/components/reliability/UptimeBarChart";
@@ -342,10 +343,10 @@ function TargetDetailContent() {
           <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm">
             <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Last Check</p>
             <p className="mt-2 text-2xl font-semibold text-fg-primary">
-              {target?.last_check_at ? new Date(target.last_check_at).toLocaleTimeString() : "—"}
+              {target?.last_check_at ? formatTime(target.last_check_at) : "—"}
             </p>
             <p className="mt-3 border-t border-border-subtle pt-3 text-xs text-fg-secondary">
-              {target?.last_check_at ? new Date(target.last_check_at).toLocaleDateString() : "No checks recorded yet"}
+              {target?.last_check_at ? formatDate(target.last_check_at) : "No checks recorded yet"}
             </p>
           </div>
 
@@ -601,11 +602,11 @@ function TargetDetailContent() {
                           className={ep.maintenance ? "bg-status-info-bg/40" : ""}
                         >
                           <td className="px-3 py-2 text-fg-primary">
-                            {new Date(ep.started_at).toLocaleString()}
+                            {formatDateTime(ep.started_at)}
                           </td>
                           <td className="px-3 py-2 text-fg-secondary">
                             {ep.ended_at ? (
-                              new Date(ep.ended_at).toLocaleString()
+                              formatDateTime(ep.ended_at)
                             ) : (
                               <span className="text-status-critical">Ongoing</span>
                             )}

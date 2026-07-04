@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { IconSelect } from "@/components/ui/IconSelect";
 import { integrationKindIcon } from "@/lib/brand-icons";
+import { formatDateTime } from "@/lib/formatDate";
 
 // Friendly Title-Case labels for authentication methods (acronyms stay upper).
 const AUTH_TYPE_LABELS: Record<string, string> = {
@@ -980,7 +981,7 @@ export default function IntegrationsPage() {
                     ? `Credentials configured (${connector.auth_keys.join(", ") || "encrypted"})`
                     : "No credentials stored"}
                   {connector.last_checked_at
-                    ? ` · checked ${new Date(connector.last_checked_at).toLocaleString()}`
+                    ? ` · checked ${formatDateTime(connector.last_checked_at)}`
                     : ""}
                 </p>
                 {connector.last_error && (

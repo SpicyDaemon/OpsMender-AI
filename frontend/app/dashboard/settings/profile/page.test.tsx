@@ -1,5 +1,5 @@
 /**
- * Profile & Settings page — fields render from the current user and a profile
+ * My profile page — fields render from the current user and a profile
  * save calls the self-update API.
  */
 
@@ -49,10 +49,10 @@ beforeEach(() => {
   apiMocks.updateMe.mockClear();
 });
 
-describe("Profile & Settings page", () => {
+describe("My profile page", () => {
   it("renders profile fields populated from the current user", () => {
     render(<ProfileSettingsPage />);
-    expect(screen.getByText("Profile & Settings")).toBeTruthy();
+    expect(screen.getByText("My profile")).toBeTruthy();
     expect((screen.getByLabelText("First name") as HTMLInputElement).value).toBe("Ada");
     expect((screen.getByLabelText("Username") as HTMLInputElement).value).toBe("ada");
     expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("ada@test.com");

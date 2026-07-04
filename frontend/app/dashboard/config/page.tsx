@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, ChevronRight, Cpu, Network, SlidersHorizontal } from "lucide-react";
+import { Bell, Bot, ChevronRight, Cpu, Network, Workflow } from "lucide-react";
 import { getConfig } from "@/lib/api";
 import type { ConfigResponse } from "@/lib/types";
 import { useAuth } from "@/context/auth";
@@ -39,7 +39,7 @@ export default function ConfigPage() {
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {[
           {
             href: "/dashboard/models",
@@ -54,10 +54,22 @@ export default function ConfigPage() {
             description: "Tool server connections and runtime health.",
           },
           {
-            href: "/dashboard/paging/notifications",
+            href: "/dashboard/agent-teams",
+            icon: Bot,
+            title: "Agent Teams",
+            description: "Role profiles for multi-agent response.",
+          },
+          {
+            href: "/dashboard/workflows",
+            icon: Workflow,
+            title: "Session Profiles",
+            description: "How AI incident sessions run.",
+          },
+          {
+            href: "/dashboard/paging/notification-channels",
             icon: Bell,
-            title: "Notifications",
-            description: "Paging routes, channels, and delivery policy.",
+            title: "Notification Channels",
+            description: "Delivery channels and channel capabilities.",
           },
         ].map(({ href, icon: Icon, title, description }) => (
           <Link
@@ -95,29 +107,6 @@ export default function ConfigPage() {
           Storage &amp; retention
         </h2>
         <RetentionSection canEdit={canEdit} />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-primary">
-          Advanced
-        </h2>
-        <Link
-          href="/dashboard/workflows"
-          className="flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-bg-panel px-4 py-4 shadow-sm transition-colors hover:bg-bg-hover sm:px-6"
-        >
-          <div className="flex items-start gap-3">
-            <SlidersHorizontal size={18} className="mt-0.5 shrink-0 text-fg-muted" />
-            <div>
-              <p className="text-sm font-semibold text-fg-primary">Session Profiles</p>
-              <p className="mt-0.5 text-sm text-fg-secondary">
-                Control how an AI incident session runs — read-only investigation,
-                standard assisted response, fast triage, and more. Most teams only
-                need the default.
-              </p>
-            </div>
-          </div>
-          <ChevronRight size={18} className="shrink-0 text-fg-muted" />
-        </Link>
       </section>
     </div>
   );

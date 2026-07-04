@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C:
+  Settings/Profile (P-20).** Settings now uses a five-card pointer row for
+  Models, MCP Servers, Agent Teams, Session Profiles, and Notification
+  Channels; the duplicate Advanced Session Profiles pointer is gone,
+  Organization save is bottom-right in its card, and the profile page is titled
+  "My profile."
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase D:
   Inbox/preferences (P-18).** Inbox rows now coalesce duplicate notifications
   with ×N chips and grouped read/delete actions, linked subjects render as real

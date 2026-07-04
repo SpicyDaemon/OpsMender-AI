@@ -327,9 +327,11 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
           Shown in the top bar and on paging / chat messages.
         </p>
       </div>
-      <Button onClick={saveOrg} loading={savingOrg}>
-        Save organization
-      </Button>
+      <div className="flex justify-end">
+        <Button onClick={saveOrg} loading={savingOrg}>
+          Save organization
+        </Button>
+      </div>
 
       <div className="border-t border-border-subtle pt-5">
         <div className="mb-1 flex items-center gap-2">

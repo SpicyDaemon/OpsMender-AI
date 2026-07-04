@@ -155,7 +155,7 @@ export default function ProfileSettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
-        title="Profile & Settings"
+        title="My profile"
         subtitle="Manage your account details, avatar, and password."
         icon={<UserCircle size={18} />}
       />

@@ -448,7 +448,7 @@ describe("Notification Channels capability rendering", () => {
     );
     await act(async () => {});
 
-    fireEvent.click(screen.getByRole("button", { name: /add channel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /new channel/i }));
     expect(screen.getAllByText("Team Scope").length).toBeGreaterThan(1);
     expect(screen.getByLabelText("Workspace-wide")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Specific teams"));
@@ -509,7 +509,7 @@ describe("Notification Channels capability rendering", () => {
     );
     await act(async () => {});
 
-    fireEvent.click(screen.getByRole("button", { name: /add channel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /new channel/i }));
 
     pickPlatform("discord");
     expect(await screen.findByLabelText(/Discord Channel ID/i)).toBeTruthy();

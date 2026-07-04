@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C: button
+  taxonomy (G-6).** Creation controls now use "New ..." labels on the affected
+  config and Reliability surfaces, with "New profile" replacing the wrapped
+  "Add Session Profile" label. MCP Skills no longer repeats the same action
+  row inside the empty state, model setup no longer duplicates the create
+  action, and Reliability keeps one primary action by demoting maintenance
+  window creation to secondary.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase B:
   investigation cleanup (I-1..I-4).** Services now resolve the "On call now"
   user from the service's linked escalation-chain calendar before falling back

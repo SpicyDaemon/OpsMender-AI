@@ -1289,21 +1289,6 @@ export default function SkillsPage() {
           }
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/mcp-skills.md"
           learnMoreLabel="MCP Skills guide"
-          action={
-            canEdit ? (
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setShowImport(true)}>
-                  <FileUp size={14} /> Import .md
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => setShowGenerate(true)}>
-                  <Wand2 size={14} /> Generate from MCP
-                </Button>
-                <Button size="sm" onClick={handleNewFromTemplate}>
-                  <Sparkles size={14} /> New skill
-                </Button>
-              </div>
-            ) : undefined
-          }
         />
       ) : (
         <DataTable

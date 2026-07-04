@@ -162,7 +162,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
     <Modal
       open={open}
       onClose={onClose}
-      title={initialData ? "Edit SLA Target" : "Create SLA Target"}
+      title={initialData ? "Edit SLA Target" : "New SLA Target"}
       maxWidth="max-w-md"
     >
       <div className="space-y-4">

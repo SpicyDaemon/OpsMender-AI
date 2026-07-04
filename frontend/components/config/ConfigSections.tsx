@@ -566,7 +566,7 @@ function ModelConfigModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={initialConfig ? "Edit Model Config" : "Add Model Config"}
+      title={initialConfig ? "Edit Model Config" : "New Model Config"}
       maxWidth="max-w-2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -1136,14 +1136,11 @@ export function ModelSection({
               </p>
               <p className="mt-1 text-sm text-fg-secondary">
                 OpsMender falls back to offline stub responses until one saved
-                model config is marked as default. Bootstrap your first model
-                here; secrets stay in `.env` or your deployment environment and
-                only the env-var name is stored.
+                model config is marked as default. Create a model config or
+                mark a saved one as default; secrets stay in `.env` or your
+                deployment environment and only the env-var name is stored.
               </p>
             </div>
-            <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Bootstrap first model
-            </Button>
           </div>
         </div>
       )}
@@ -1179,7 +1176,7 @@ export function ModelSection({
               {configs.length} saved config{configs.length === 1 ? "" : "s"}
             </span>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> New model
+              <Plus size={14} /> New model config
             </Button>
           </>
         }
@@ -1551,7 +1548,7 @@ function MCPServerModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={initialServer ? "Edit MCP Server" : "Add MCP Server"}
+      title={initialServer ? "Edit MCP Server" : "New MCP Server"}
       maxWidth={templatesOpen ? "max-w-4xl" : "max-w-lg"}
       headerExtra={
         showTemplatesButton ? (
@@ -2437,7 +2434,7 @@ export function MCPSection({
               <Plus size={14} /> Import from JSON
             </Button>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Add MCP
+              <Plus size={14} /> New MCP server
             </Button>
           </>
         }
@@ -3266,7 +3263,7 @@ function BotConnectorModal({
       title={
         initialConnector
           ? "Edit Notification Channel"
-          : "Add Notification Channel"
+          : "New Notification Channel"
       }
       maxWidth="max-w-2xl"
     >
@@ -4157,7 +4154,7 @@ export function BotConnectorSection({
           )}
         </div>
         <Button onClick={openCreateModal} disabled={!canEdit}>
-          <Plus size={14} /> Add Channel
+          <Plus size={14} /> New channel
         </Button>
       </div>
 
@@ -4992,7 +4989,7 @@ function AgentTeamProfileModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={initialProfile ? "Edit Agent Team" : "Add Agent Team"}
+      title={initialProfile ? "Edit Agent Team" : "New Agent Team"}
       maxWidth="max-w-2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -5271,7 +5268,7 @@ export function AgentTeamProfileSection({
               {profiles.length} saved team{profiles.length === 1 ? "" : "s"}
             </span>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Add Agent Team
+              <Plus size={14} /> New agent team
             </Button>
           </>
         }
@@ -5411,7 +5408,7 @@ function WorkflowProfileModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={initialProfile ? "Edit Session Profile" : "Add Session Profile"}
+      title={initialProfile ? "Edit Session Profile" : "New Session Profile"}
       maxWidth="max-w-2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -5740,7 +5737,7 @@ export function WorkflowProfileSection({
               </Select>
             )}
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Add Session Profile
+              <Plus size={14} /> New profile
             </Button>
           </>
         }

@@ -113,7 +113,7 @@ export default function ReliabilityPage() {
           </div>
         </div>
         <Button onClick={() => { setEditingTarget(null); setShowTargetModal(true); }}>
-          <Plus size={14} /> New Target
+          <Plus size={14} /> New target
         </Button>
       </header>
 
@@ -257,8 +257,12 @@ export default function ReliabilityPage() {
                   Planned downtime where uptime alerts are suppressed and the time is excluded from SLA calculations.
                 </p>
               </div>
-              <Button size="sm" onClick={() => { setEditingMW(null); setShowMWModal(true); }}>
-                <Plus size={14} /> Schedule Maintenance
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => { setEditingMW(null); setShowMWModal(true); }}
+              >
+                <Plus size={14} /> New maintenance window
               </Button>
             </div>
 

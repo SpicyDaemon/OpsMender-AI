@@ -102,7 +102,7 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={initialData ? "Edit SLO" : "Add SLO"} maxWidth="max-w-md">
+    <Modal open={open} onClose={onClose} title={initialData ? "Edit SLO" : "New SLO"} maxWidth="max-w-md">
       <div className="space-y-4">
         <div>
           <Label htmlFor="slo-name">SLO Name</Label>
@@ -185,7 +185,7 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
             Cancel
           </Button>
           <Button onClick={handleSubmit} loading={saving}>
-            {initialData ? "Save Changes" : "Add SLO"}
+            {initialData ? "Save Changes" : "Create SLO"}
           </Button>
         </div>
       </div>

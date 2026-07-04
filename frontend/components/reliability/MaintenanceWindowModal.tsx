@@ -102,7 +102,7 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
     <Modal
       open={open}
       onClose={onClose}
-      title={initialData ? "Edit Maintenance Window" : "Schedule Maintenance"}
+      title={initialData ? "Edit Maintenance Window" : "New Maintenance Window"}
       maxWidth="max-w-md"
     >
       <div className="space-y-4">

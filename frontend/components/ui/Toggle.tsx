@@ -21,7 +21,7 @@ export function Toggle({ id, checked, onChange, className = "", ...props }: Togg
       className={`
         relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent 
         transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg-base
-        ${checked ? "bg-status-success" : "bg-bg-input"}
+        ${checked ? "bg-status-low" : "bg-bg-input"}
         ${className}
       `}
     >

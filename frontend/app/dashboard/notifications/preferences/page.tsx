@@ -9,11 +9,12 @@ import {
   type NotificationPreferences,
 } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
-import { FormError, Input, Label } from "@/components/ui/Input";
+import { FormError, Input, Label, Select } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
+import { timeZoneOptionsWithOffset } from "@/lib/timezones";
 
 const CATEGORY_LABELS: Record<string, string> = {
   incident: "Incidents",
@@ -218,12 +219,18 @@ export default function NotificationPreferencesPage() {
               </div>
               <div>
                 <Label htmlFor="quiet-tz">Timezone</Label>
-                <Input
+                <Select
                   id="quiet-tz"
                   value={quietTz}
                   onChange={(e) => setQuietTz(e.target.value)}
                   disabled={!quietEnabled}
-                />
+                >
+                  {timeZoneOptionsWithOffset(quietTz).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
               </div>
             </div>
           </section>

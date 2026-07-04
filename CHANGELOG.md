@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase D:
+  Inbox/preferences (P-18).** Inbox rows now coalesce duplicate notifications
+  with ×N chips and grouped read/delete actions, linked subjects render as real
+  dashboard deep links, preference switches use the shared tracked switch
+  styling, and quiet-hours timezone uses the offset-labelled IANA select.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase D: heading effect
   policy (P-22).** Dashboard headings are now covered by a regression test that
   forbids glitch/chromatic/text-shadow treatment in in-app pages and the shared

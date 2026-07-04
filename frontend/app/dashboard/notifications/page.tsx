@@ -29,7 +29,6 @@ import { FilterChips } from "@/components/ui/FilterChips";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import { formatDateTime } from "@/lib/formatDate";
 
 const PAGE_SIZE = 25;
@@ -51,6 +50,48 @@ function fmtDate(iso: string) {
   return formatDateTime(iso);
 }
 
+type NotificationGroup = {
+  key: string;
+  item: Notification;
+  items: Notification[];
+  count: number;
+  unreadCount: number;
+};
+
+function notificationGroupKey(item: Notification) {
+  return JSON.stringify([
+    item.event_type,
+    item.category,
+    item.title,
+    item.body ?? "",
+    item.link ?? "",
+    item.incident_id ?? "",
+    item.session_id ?? "",
+  ]);
+}
+
+function coalesceNotifications(items: Notification[]): NotificationGroup[] {
+  const groups = new Map<string, NotificationGroup>();
+  for (const item of items) {
+    const key = notificationGroupKey(item);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.items.push(item);
+      existing.count += 1;
+      if (!item.read_at) existing.unreadCount += 1;
+    } else {
+      groups.set(key, {
+        key,
+        item,
+        items: [item],
+        count: 1,
+        unreadCount: item.read_at ? 0 : 1,
+      });
+    }
+  }
+  return Array.from(groups.values());
+}
+
 const TABS = [
   { value: "all" as const, label: "All" },
   { value: "unread" as const, label: "Unread" },
@@ -59,7 +100,6 @@ const TABS = [
 type Tab = (typeof TABS)[number]["value"];
 
 export default function NotificationsPage() {
-  const navigateDashboard = useDashboardNavigation();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("all");
   const [items, setItems] = useState<Notification[]>([]);
@@ -101,30 +141,38 @@ export default function NotificationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  async function handleToggleRead(item: Notification) {
-    const makeRead = !item.read_at;
+  async function handleToggleRead(group: NotificationGroup) {
+    const makeRead = group.unreadCount > 0;
     const now = new Date().toISOString();
+    const ids = new Set(group.items.map((item) => item.id));
     setItems((prev) =>
       prev.map((p) =>
-        p.id === item.id ? { ...p, read_at: makeRead ? now : null } : p,
+        ids.has(p.id) ? { ...p, read_at: makeRead ? now : null } : p,
       ),
     );
-    setUnread((u) => Math.max(0, u + (makeRead ? -1 : 1)));
+    setUnread((u) =>
+      Math.max(0, u + (makeRead ? -group.unreadCount : group.count)),
+    );
     try {
-      await markNotificationRead(item.id, makeRead);
+      await Promise.all(
+        group.items.map((item) => markNotificationRead(item.id, makeRead)),
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
       load(true);
     }
   }
 
-  async function handleDelete(item: Notification) {
+  async function handleDelete(group: NotificationGroup) {
     const prevItems = items;
-    setItems((prev) => prev.filter((p) => p.id !== item.id));
-    setTotal((t) => Math.max(0, t - 1));
-    if (!item.read_at) setUnread((u) => Math.max(0, u - 1));
+    const ids = new Set(group.items.map((item) => item.id));
+    setItems((prev) => prev.filter((p) => !ids.has(p.id)));
+    setTotal((t) => Math.max(0, t - group.count));
+    if (group.unreadCount > 0) {
+      setUnread((u) => Math.max(0, u - group.unreadCount));
+    }
     try {
-      await deleteNotification(item.id);
+      await Promise.all(group.items.map((item) => deleteNotification(item.id)));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete");
       setItems(prevItems);
@@ -148,19 +196,23 @@ export default function NotificationsPage() {
     }
   }
 
-  function handleOpen(item: Notification) {
-    if (!item.read_at) {
+  function handleOpen(group: NotificationGroup) {
+    const unreadItems = group.items.filter((item) => !item.read_at);
+    if (unreadItems.length > 0) {
       const now = new Date().toISOString();
+      const ids = new Set(unreadItems.map((item) => item.id));
       setItems((prev) =>
-        prev.map((p) => (p.id === item.id ? { ...p, read_at: now } : p)),
+        prev.map((p) => (ids.has(p.id) ? { ...p, read_at: now } : p)),
       );
-      setUnread((u) => Math.max(0, u - 1));
-      markNotificationRead(item.id, true).catch(() => load(true));
+      setUnread((u) => Math.max(0, u - unreadItems.length));
+      Promise.all(unreadItems.map((item) => markNotificationRead(item.id, true))).catch(() =>
+        load(true),
+      );
     }
-    if (item.link) navigateDashboard(item.link);
   }
 
   const hasMore = items.length < total;
+  const groups = coalesceNotifications(items);
 
   return (
     <div>
@@ -224,42 +276,70 @@ export default function NotificationsPage() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
           <ul className="divide-y divide-border-subtle">
-            {items.map((item) => {
+            {groups.map((group) => {
+              const { item } = group;
               const Icon = categoryIcon(item.category);
-              const isUnread = !item.read_at;
+              const isUnread = group.unreadCount > 0;
+              const content = (
+                <>
+                  <p className="flex items-center gap-2 text-sm font-medium text-fg-primary">
+                    {isUnread && (
+                      <span
+                        aria-label={
+                          group.unreadCount > 1
+                            ? `${group.unreadCount} unread`
+                            : "unread"
+                        }
+                        className="h-2 w-2 shrink-0 rounded-full bg-status-info"
+                      />
+                    )}
+                    <span className="truncate">{item.title}</span>
+                    {group.count > 1 && (
+                      <span
+                        aria-label={`${group.count} duplicate notifications`}
+                        className="shrink-0 rounded-full border border-border-subtle bg-bg-elevated px-1.5 py-0.5 text-[10px] font-semibold text-fg-secondary"
+                      >
+                        ×{group.count}
+                      </span>
+                    )}
+                  </p>
+                  {item.body && (
+                    <p className="mt-0.5 text-xs text-fg-secondary">{item.body}</p>
+                  )}
+                  <p className="mt-1 font-mono text-[11px] text-fg-muted">
+                    {fmtDate(item.created_at)}
+                  </p>
+                </>
+              );
               return (
                 <li
-                  key={item.id}
+                  key={group.key}
                   className={`flex items-start gap-3 px-4 py-3 transition-colors ${
                     isUnread ? "bg-accent-bg/30" : ""
                   }`}
                 >
                   <Icon size={16} className="mt-0.5 shrink-0 text-fg-muted" />
-                  <button
-                    type="button"
-                    onClick={() => handleOpen(item)}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <p className="flex items-center gap-2 text-sm font-medium text-fg-primary">
-                      {isUnread && (
-                        <span
-                          aria-label="unread"
-                          className="h-2 w-2 shrink-0 rounded-full bg-status-info"
-                        />
-                      )}
-                      <span className="truncate">{item.title}</span>
-                    </p>
-                    {item.body && (
-                      <p className="mt-0.5 text-xs text-fg-secondary">{item.body}</p>
-                    )}
-                    <p className="mt-1 font-mono text-[11px] text-fg-muted">
-                      {fmtDate(item.created_at)}
-                    </p>
-                  </button>
+                  {item.link ? (
+                    <Link
+                      href={item.link}
+                      onClick={() => handleOpen(group)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleOpen(group)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      {content}
+                    </button>
+                  )}
                   <div className="flex shrink-0 items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => handleToggleRead(item)}
+                      onClick={() => handleToggleRead(group)}
                       title={isUnread ? "Mark as read" : "Mark as unread"}
                       aria-label={isUnread ? "Mark as read" : "Mark as unread"}
                       className="rounded-md p-1.5 text-fg-muted hover:bg-bg-hover hover:text-fg-primary transition-colors"
@@ -272,7 +352,7 @@ export default function NotificationsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(item)}
+                      onClick={() => handleDelete(group)}
                       title="Delete"
                       aria-label="Delete notification"
                       className="rounded-md p-1.5 text-fg-muted hover:bg-status-critical-bg hover:text-status-critical transition-colors"

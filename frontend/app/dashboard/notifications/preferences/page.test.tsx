@@ -59,6 +59,8 @@ describe("Notification preferences", () => {
     // ON (receive) by default
     const incident = await screen.findByRole("switch", { name: /Incidents/i });
     expect(incident.getAttribute("aria-checked")).toBe("true");
+    expect(incident.className).toContain("rounded-full");
+    expect(incident.className).toContain("bg-status-low");
     // one switch per category + quiet-hours enable toggle
     const switches = screen.getAllByRole("switch");
     expect(switches.length).toBe(CATEGORIES.length + 1);
@@ -91,5 +93,24 @@ describe("Notification preferences", () => {
     expect(body.quiet_hours.start).toBe("22:00");
     expect(body.quiet_hours.end).toBe("07:00");
     expect(body.quiet_hours.tz).toBeTruthy();
+  });
+
+  it("uses the offset-labelled timezone select for quiet hours", async () => {
+    render(<NotificationPreferencesPage />);
+    await screen.findByRole("switch", { name: /Incidents/i });
+
+    expect(screen.getByRole("option", { name: /America\/New_York \([+-]\d{2}:\d{2}\)/i })).toBeTruthy();
+
+    fireEvent.click(document.getElementById("quiet-enabled")!);
+    fireEvent.change(screen.getByLabelText("Timezone"), {
+      target: { value: "America/Chicago" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Save preferences/i }));
+
+    await waitFor(() =>
+      expect(apiMocks.updateNotificationPreferences).toHaveBeenCalled(),
+    );
+    const body = apiMocks.updateNotificationPreferences.mock.calls[0][0];
+    expect(body.quiet_hours.tz).toBe("America/Chicago");
   });
 });

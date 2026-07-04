@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { downloadAuditCsv, listAudit } from "@/lib/api";
 import type { AuditEntryResponse, AuditListResponse } from "@/lib/types";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import {
   DataTable,
@@ -27,6 +26,22 @@ const FETCH_LIMIT = 500;
 
 function fmtDate(iso: string) {
   return formatDateTime(iso);
+}
+
+// Audit entry_type is a machine enum (session_start, session_end, pre/post for
+// tool calls). Render human labels instead of the raw "SESSION_START".
+const ENTRY_TYPE_LABELS: Record<string, string> = {
+  session_start: "Session started",
+  session_end: "Session ended",
+  pre: "Tool call",
+  post: "Tool result",
+};
+
+function entryTypeLabel(t: string): string {
+  return (
+    ENTRY_TYPE_LABELS[t] ??
+    t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
 }
 
 function PermittedDot({ permitted }: { permitted: boolean }) {
@@ -159,18 +174,20 @@ export default function ActivityPage() {
       {
         id: "entry_type",
         label: "Type",
-        accessor: (entry) => entry.entry_type,
+        accessor: (entry) => entryTypeLabel(entry.entry_type),
         cell: (entry) => (
-          <Badge variant={entry.entry_type === "pre" ? "info" : "default"}>
-            {entry.entry_type}
-          </Badge>
+          <span className="inline-flex items-center whitespace-nowrap rounded-pill border border-border-subtle bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-fg-secondary">
+            {entryTypeLabel(entry.entry_type)}
+          </span>
         ),
         sortable: true,
         searchable: true,
         filterChips: {
           options: [
-            { value: "pre", label: "Pre" },
-            { value: "post", label: "Post" },
+            { value: "session_start", label: "Session started" },
+            { value: "session_end", label: "Session ended" },
+            { value: "pre", label: "Tool call" },
+            { value: "post", label: "Tool result" },
           ],
           valueOf: (entry) => entry.entry_type,
         },

@@ -397,18 +397,15 @@ function IncidentDetailContent() {
             <div className="border-b border-border-subtle bg-[linear-gradient(135deg,rgba(59,130,246,0.12),transparent_45%),linear-gradient(225deg,rgba(234,179,8,0.10),transparent_50%)] px-4 py-4 sm:px-6 sm:py-6">
               <div className="flex flex-col gap-4 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
+                  {/* Status/severity live in the sticky command strip above
+                      (persistent on scroll); the session posture is in the
+                      "Session history" metric below — so the hero shows only
+                      the alert source to avoid repeating the same pills. */}
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${source?.tone}`}>
                       <Radar size={12} />
                       {source?.label}
                     </span>
-                    <Badge variant={incident.status as Parameters<typeof Badge>[0]["variant"]}>
-                      {incident.status.replace("_", " ")}
-                    </Badge>
-                    {incident.severity && (
-                      <Badge variant={incident.severity}>{incident.severity}</Badge>
-                    )}
-                    <Badge variant={sessionSummary.variant}>{sessionSummary.label}</Badge>
                   </div>
                   <h1 className="mt-3 text-xl font-semibold tracking-tight text-fg-primary sm:mt-4 sm:text-3xl">
                     {incident.title}
@@ -465,7 +462,7 @@ function IncidentDetailContent() {
               />
               <DetailMetric
                 icon={ShieldAlert}
-                label="Session posture"
+                label="Session history"
                 value={sessionSummary.label}
                 hint={sessions.length > 0 ? `${sessions.length} session${sessions.length === 1 ? "" : "s"} recorded` : "Ready for first response run"}
               />

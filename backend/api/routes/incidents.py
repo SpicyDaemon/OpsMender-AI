@@ -1296,7 +1296,10 @@ async def get_incident_timeline(
                 happened_at=_aware(session.started_at) or session.started_at,
                 lane="response",
                 event_type="session_started",
-                title=f"{session_label or 'Session'} started",
+                # The session label (S1/S2…), tier, and status ride as
+                # separate structured chips on the timeline item, so the title
+                # stays a plain description instead of repeating them.
+                title="Session started",
                 body=provider,
                 session_id=session.id,
                 session_label=session_label,
@@ -1315,7 +1318,8 @@ async def get_incident_timeline(
                     happened_at=_aware(session.ended_at) or session.ended_at,
                     lane="response",
                     event_type="session_ended",
-                    title=f"{session_label or 'Session'} {session.status.replace('_', ' ')}",
+                    # Status shows as a colored chip; keep the title plain.
+                    title="Session ended",
                     body=session.summary,
                     session_id=session.id,
                     session_label=session_label,

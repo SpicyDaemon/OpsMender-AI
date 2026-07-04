@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ComponentProps } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Bell,
   CheckCircle2,
@@ -2046,6 +2046,49 @@ function TestPill({ state }: { state: TestState }) {
   );
 }
 
+function MCPRuntimeStatus({
+  status,
+}: {
+  status: MCPServerStatusResponse | undefined;
+}) {
+  const tooltipId = useId();
+  const runtimeStatus = describeMCPStatus(status);
+  if (status?.status !== "error") {
+    return (
+      <StatusDot
+        tone={runtimeStatus.tone}
+        label={runtimeStatus.label}
+        title={runtimeStatus.title}
+      />
+    );
+  }
+
+  const lastSeen = formatLastSeen(status.last_successful_call_at);
+  const errorMessage = status.last_error?.trim() || "No error message recorded.";
+  return (
+    <span
+      className="group relative inline-flex"
+      tabIndex={0}
+      aria-label={`Runtime Error. Error: ${errorMessage}. Run Test for details.`}
+      aria-describedby={tooltipId}
+    >
+      <StatusDot tone={runtimeStatus.tone} label={runtimeStatus.label} />
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-72 rounded-md border border-border-strong bg-bg-panel p-3 text-left text-xs text-fg-secondary shadow-lg group-hover:block group-focus:block"
+      >
+        <span className="block font-medium text-fg-primary">Runtime error</span>
+        <span className="mt-1 block">Last successful call: {lastSeen}</span>
+        <span className="mt-1 block break-words text-status-critical">
+          Error: {errorMessage}
+        </span>
+        <span className="mt-2 block text-fg-muted">Run Test for details.</span>
+      </span>
+    </span>
+  );
+}
+
 export function MCPSection({
   servers,
   statuses,
@@ -2210,19 +2253,12 @@ export function MCPSection({
           valueOf: (server) => getRuntimeState(server),
         },
         cell: (server) => {
-          const runtimeStatus = describeMCPStatus(
-            statusByServerId.get(server.id),
-          );
           const testState: TestState = testStates[server.id] ?? {
             status: "idle",
           };
           return (
             <div className="flex flex-col items-start gap-1.5">
-              <StatusDot
-                tone={runtimeStatus.tone}
-                label={runtimeStatus.label}
-                title={runtimeStatus.title}
-              />
+              <MCPRuntimeStatus status={statusByServerId.get(server.id)} />
               <TestPill state={testState} />
             </div>
           );

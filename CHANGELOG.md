@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C:
+  Models/MCP/Skills (P-12).** MCP runtime Error chips now explain themselves
+  on hover/focus with last successful call, last error detail, and a "Run Test
+  for details" hint. Earlier Phase C work already covered the shared header,
+  action, provider-casing, duplicated Skills action, and labelled delete
+  cleanup for these surfaces.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C: incidents list
   (P-7).** The incidents list now shows one unclipped Last activity value with
   an absolute timestamp tooltip, and "Fire Test Incident" stays prominent only

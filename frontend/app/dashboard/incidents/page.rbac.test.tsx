@@ -146,6 +146,20 @@ describe("Incidents page RBAC", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("demotes Fire Test Incident once real incidents exist", async () => {
+    role.current = "admin";
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [incident("inc-real", "open", "svc-real")],
+      total: 1,
+    });
+    await renderAndSettle();
+
+    expect(screen.queryByRole("button", { name: /fire test incident/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /more incident actions/i }));
+    expect(screen.getByRole("button", { name: /fire test incident/i })).toBeTruthy();
+  });
+
   it("requires an active service before creating a manual incident", async () => {
     apiMocks.listServices.mockResolvedValue({
       items: [

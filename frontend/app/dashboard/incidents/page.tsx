@@ -62,6 +62,10 @@ function fmtDate(iso: string) {
 
 const fmtRelative = formatRelative;
 
+function isSyntheticTestIncident(incident: IncidentResponse) {
+  return incident.external_source === "opsmender-test";
+}
+
 function displayValue(value: string | null | undefined) {
   if (!value) return "Unknown";
   return value
@@ -292,12 +296,17 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
       id: "updated_at",
       label: "Last activity",
       accessor: (inc) => inc.updated_at,
-      cell: (inc) => (
-        <div className="whitespace-nowrap">
-          <p className="text-sm text-fg-primary">{fmtRelative(inc.updated_at)}</p>
-          <p className="mt-0.5 text-[11px] text-fg-muted">{fmtDate(inc.updated_at)}</p>
-        </div>
-      ),
+      cell: (inc) => {
+        const absolute = fmtDate(inc.updated_at);
+        return (
+          <span
+            className="block min-w-[8.5rem] whitespace-nowrap text-sm text-fg-primary"
+            title={absolute}
+          >
+            {fmtRelative(inc.updated_at)}
+          </span>
+        );
+      },
       sortable: true,
     },
   ];
@@ -350,8 +359,9 @@ function IncidentPhoneCard({
           <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
             Last activity
           </p>
-          <p className="mt-1 text-fg-primary">{fmtRelative(incident.updated_at)}</p>
-          <p className="text-xs text-fg-muted">{fmtDate(incident.updated_at)}</p>
+          <p className="mt-1 text-fg-primary" title={fmtDate(incident.updated_at)}>
+            {fmtRelative(incident.updated_at)}
+          </p>
         </div>
       </div>
       <p className="text-[11px] text-fg-muted">
@@ -386,6 +396,7 @@ export default function IncidentsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [headerActionsOpen, setHeaderActionsOpen] = useState(false);
   const [confirmingAction, setConfirmingAction] =
     useState<ConfirmedBulkAction | null>(null);
   const [search, setSearch] = useState("");
@@ -542,6 +553,10 @@ export default function IncidentsPage() {
   }, [loadIncidents]);
 
   const items = useMemo(() => data?.items ?? [], [data]);
+  const hasRealIncidents = useMemo(
+    () => items.some((incident) => !isSyntheticTestIncident(incident)),
+    [items],
+  );
   const selectedIncidents = useMemo(
     () => items.filter((incident) => selectedIds.has(incident.id)),
     [items, selectedIds],
@@ -787,9 +802,49 @@ export default function IncidentsPage() {
               </Button>
               {isAdmin && (
                 <>
-                  <Button variant="secondary" size="sm" onClick={() => setShowTest(true)}>
-                    Fire Test Incident
-                  </Button>
+                  {hasRealIncidents ? (
+                    <div className="relative">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        aria-label="More incident actions"
+                        aria-expanded={headerActionsOpen}
+                        onClick={() => setHeaderActionsOpen((open) => !open)}
+                      >
+                        More <ChevronDown size={13} />
+                      </Button>
+                      {headerActionsOpen ? (
+                        <>
+                          <button
+                            type="button"
+                            className="fixed inset-0 z-10 cursor-default"
+                            aria-label="Close incident header actions"
+                            onClick={() => setHeaderActionsOpen(false)}
+                          />
+                          <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border-default bg-bg-panel p-1 shadow-lg">
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover"
+                              onClick={() => {
+                                setHeaderActionsOpen(false);
+                                setShowTest(true);
+                              }}
+                            >
+                              Fire Test Incident
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setShowTest(true)}
+                    >
+                      Fire Test Incident
+                    </Button>
+                  )}
                   <Button size="sm" onClick={() => setShowCreate(true)}>
                     <Plus size={14} />
                     New Incident

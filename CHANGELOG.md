@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C: incidents list
+  (P-7).** The incidents list now shows one unclipped Last activity value with
+  an absolute timestamp tooltip, and "Fire Test Incident" stays prominent only
+  for empty/synthetic-only lists before moving into a More menu once real
+  incident history exists.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C: keyboard entry
   (G-10).** Dashboard pages now expose a first-focus "Skip to content" link
   that targets the main content region. Session activity streams use

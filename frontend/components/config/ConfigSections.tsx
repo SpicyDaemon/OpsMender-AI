@@ -208,18 +208,24 @@ export function Section({
   description,
   children,
 }: {
-  title: string;
+  // Optional: when a standalone page already renders its own page-level
+  // heading, the section omits its title so the header isn't duplicated.
+  title?: string;
   description?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-base font-semibold text-fg-primary">{title}</h3>
-        {description && (
-          <p className="text-sm text-fg-secondary">{description}</p>
-        )}
-      </div>
+      {(title || description) && (
+        <div>
+          {title && (
+            <h3 className="text-base font-semibold text-fg-primary">{title}</h3>
+          )}
+          {description && (
+            <p className="text-sm text-fg-secondary">{description}</p>
+          )}
+        </div>
+      )}
       {children}
     </div>
   );
@@ -1137,10 +1143,7 @@ export function ModelSection({
   }
 
   return (
-    <Section
-      title="Saved models"
-      description="Saved model configs are reusable profiles for new sessions. Set one as default, or keep multiple providers ready to switch."
-    >
+    <Section>
       {bootstrap.needs_setup && (
         <div className="rounded-lg border border-status-medium-border bg-status-medium-bg px-4 py-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -2416,10 +2419,7 @@ export function MCPSection({
   }, []);
 
   return (
-    <Section
-      title="MCP Servers"
-      description="Saved MCP servers are resolved dynamically. New servers are immediately available to running sessions."
-    >
+    <Section>
       {!canEdit && (
         <p className="text-sm text-fg-secondary">
           Admin role required to add, edit, or test MCP servers.
@@ -5265,10 +5265,7 @@ export function AgentTeamProfileSection({
   );
 
   return (
-    <Section
-      title="Agent Teams"
-      description="Saved agent teams run multiple specialist reasoning passes inside the same OpsMender workflow, while execution still flows through the normal tier gate and execute path."
-    >
+    <Section>
       {!canEdit && (
         <p className="text-sm text-fg-secondary">
           Admin role required to manage agent teams.
@@ -5715,10 +5712,7 @@ export function WorkflowProfileSection({
   );
 
   return (
-    <Section
-      title="Session Profiles"
-      description="Session Profiles control how an AI incident session runs — which phases the agent goes through and in what order. Sessions use the built-in default unless a profile is assigned; the tier-gate safety rules are always preserved."
-    >
+    <Section>
       {!canEdit && (
         <p className="text-sm text-fg-secondary">
           Admin role required to manage session profiles.

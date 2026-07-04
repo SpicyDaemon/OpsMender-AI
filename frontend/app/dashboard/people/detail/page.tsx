@@ -143,20 +143,20 @@ function PersonDetail() {
   }
 
   const isSelf = actor?.id === target.id;
+  const displayName =
+    [target.first_name, target.last_name].filter(Boolean).join(" ") || target.username;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <Link
+        href="/dashboard/people"
+        className="inline-flex items-center gap-1 text-sm text-fg-secondary hover:text-fg-primary"
+      >
+        <ArrowLeft className="h-4 w-4" /> People
+      </Link>
       <PageHeader
-        title={target.username}
+        title={displayName}
         subtitle={target.email}
-        actions={
-          <Link
-            href="/dashboard/people"
-            className="inline-flex items-center gap-1 text-sm text-fg-secondary hover:text-fg-primary"
-          >
-            <ArrowLeft className="h-4 w-4" /> People
-          </Link>
-        }
       />
 
       <SummaryCard user={target} />

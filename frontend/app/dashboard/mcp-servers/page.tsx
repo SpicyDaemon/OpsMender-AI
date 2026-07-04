@@ -49,7 +49,7 @@ export default function MCPServersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">MCP servers</h1>
+        <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">MCP Servers</h1>
         <p className="mt-1 text-sm text-fg-secondary">
           Tool surface for the agent. Stdio, SSE, or HTTP — with optional OAuth.
         </p>

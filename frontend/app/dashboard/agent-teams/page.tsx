@@ -29,7 +29,7 @@ export default function AgentTeamsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Agent teams</h1>
+        <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Agent Teams</h1>
         <p className="mt-1 text-sm text-fg-secondary">
           Saved OpsMender role profiles for multi-agent workflows.
         </p>

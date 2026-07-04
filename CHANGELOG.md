@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **UI/UX Polish sprint (design-audit remediation) — Phase A.**
+  - **Session detail no longer contradicts itself on ended sessions.** A
+    terminal session (cancelled/stopped/failed/timed-out/completed) previously
+    showed a green "Live" pill, a running "Tier 0 time left 0:00" countdown,
+    an "Initializing…" workflow state, and "Waiting for events…" all at once,
+    with an open co-pilot input. Now every header/stream signal derives from
+    the session status: terminal sessions show a neutral "Ended · {relative}"
+    chip (no Live/countdown), the workflow strip freezes reached stages and
+    shows a terminal label ("Cancelled — {summary}"), the empty event stream
+    reads "No events were recorded for this session.", and the co-pilot input
+    is disabled read-only (a message to an ended session was saved but never
+    answered). Rollback is hidden for sessions that never executed
+    (still-queued or cancelled-out-of-queue).
+  - **Co-pilot markdown renderer** no longer leaks literal `*` markers from
+    malformed LLM bold/italic (e.g. "**Severity:* Medium"): bold matching is
+    now resilient and orphan emphasis markers are stripped.
+  - Added `lib/formatDate.ts` (formatDate / formatDateTime / formatTime /
+    formatRelative) as the single date/time formatting system; used here for
+    the "Ended · {relative}" chip (call-site sweep continues under G-4).
   - **Muted-text contrast (WCAG AA).** Raised `--color-fg-muted` from
     `#6B7280` → `#8A94A3` (dark) and `#64748b` → `#55617a` (light) in
     `globals.css`. The old values failed WCAG AA on panels, hover rows, and

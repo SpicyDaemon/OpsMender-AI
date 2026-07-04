@@ -120,6 +120,16 @@ function nodeFromEvent(ev: { kind: string; label: string }): string | null {
   return ev.label.toLowerCase().replace(/\s+/g, "_");
 }
 
+/** Non-completed terminal statuses — the run ended without finishing. */
+function isFrozenTerminal(status: WorkflowStateInputs["sessionStatus"]): boolean {
+  return (
+    status === "failed" ||
+    status === "timed_out" ||
+    status === "stopped" ||
+    status === "cancelled"
+  );
+}
+
 /** Compute current stage + per-state status for the pipeline. */
 export function deriveStates(
   inputs: WorkflowStateInputs,
@@ -135,24 +145,25 @@ export function deriveStates(
     if (mapped) seen.add(mapped);
   }
 
+  // Non-completed terminal sessions freeze: whatever stages were reached
+  // read as "done", nothing is "current" (no pulsing step on an ended
+  // session), and the header shows a terminal label instead of a stage.
+  if (isFrozenTerminal(inputs.sessionStatus)) {
+    return PIPELINE.map((def) =>
+      def.key !== "completed" && seen.has(def.key)
+        ? { ...def, status: "done" as const }
+        : { ...def, status: "pending" as const },
+    );
+  }
+
   // Determine the current state.
   let current: WorkflowStateKey | null = null;
   if (inputs.sessionStatus === "completed") {
     current = "completed";
   } else if (inputs.sessionStatus === "awaiting_approval") {
     current = "awaiting_approval";
-  } else if (inputs.sessionStatus === "failed" || inputs.sessionStatus === "timed_out") {
-    // Failed/timed out: highlight the most recent node, no "Done" tick.
-    for (let i = inputs.events.length - 1; i >= 0; i--) {
-      const n = nodeFromEvent(inputs.events[i]);
-      const m = n ? NODE_TO_STATE[n] : null;
-      if (m) {
-        current = m;
-        break;
-      }
-    }
   } else {
-    // sessionStatus === "active" — the most recent node is current.
+    // sessionStatus === "active" | "queued" — the most recent node is current.
     for (let i = inputs.events.length - 1; i >= 0; i--) {
       const node = nodeFromEvent(inputs.events[i]);
       const mapped = node ? NODE_TO_STATE[node] : null;
@@ -184,6 +195,33 @@ export function deriveStates(
   });
 }
 
+const TERMINAL_LABELS: Partial<Record<WorkflowStateInputs["sessionStatus"], string>> = {
+  failed: "Failed",
+  timed_out: "Timed out",
+  stopped: "Stopped",
+  cancelled: "Cancelled",
+};
+
+/**
+ * Header label for the workflow state. A live session shows its current
+ * stage; a frozen terminal session shows a terminal word plus its summary
+ * ("Cancelled — queue wait expired"); an active session with no events yet
+ * shows "Initializing…".
+ */
+export function workflowHeaderLabel(
+  status: WorkflowStateInputs["sessionStatus"],
+  currentLabel: string | null,
+  summary?: string | null,
+): string {
+  if (currentLabel) return currentLabel;
+  const terminal = TERMINAL_LABELS[status];
+  if (terminal) {
+    const s = (summary ?? "").trim();
+    return s ? `${terminal} — ${s}` : terminal;
+  }
+  return "Initializing…";
+}
+
 // -- Component -----------------------------------------------------------
 
 interface Props {
@@ -193,11 +231,14 @@ interface Props {
   events: WorkflowStateInputs["events"];
   /** Optional Tier number for the small badge on the right. */
   tier?: number | null;
+  /** Session summary — used to enrich the terminal-state header label. */
+  summary?: string | null;
 }
 
-export function SessionWorkflowState({ sessionStatus, events, tier }: Props) {
+export function SessionWorkflowState({ sessionStatus, events, tier, summary }: Props) {
   const states = deriveStates({ sessionStatus, events });
   const current = states.find((s) => s.status === "current") ?? null;
+  const headerLabel = workflowHeaderLabel(sessionStatus, current?.label ?? null, summary);
 
   // tier_gate visual nudge: when the most recent node event is tier_gate
   // we surface a small inline indicator over the Execute pill so operators
@@ -215,7 +256,7 @@ export function SessionWorkflowState({ sessionStatus, events, tier }: Props) {
             Workflow state
           </p>
           <p className="mt-0.5 truncate text-sm font-semibold text-fg-primary">
-            {current ? current.label : "Initializing…"}
+            {headerLabel}
           </p>
         </div>
         {tier !== null && tier !== undefined && (

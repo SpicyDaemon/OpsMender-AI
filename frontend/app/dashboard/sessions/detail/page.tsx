@@ -57,7 +57,29 @@ import { SessionMemoriesPanel } from "@/components/SessionMemoriesPanel";
 import { SessionWorkflowState } from "@/components/sessions/SessionWorkflowState";
 import { TierCapabilitySummary } from "@/components/sessions/TierCapabilitySummary";
 import { ToolCallCard } from "@/components/sessions/ToolCallCard";
+import { formatRelative } from "@/lib/formatDate";
 import { useAuth } from "@/context/auth";
+
+// ---------------------------------------------------------------------------
+// Session status helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Terminal statuses — the session has ended and nothing is live. The header
+ * must not show a "Live" pill, a running countdown, an "Initializing…"
+ * workflow state, or a "Waiting for events…" stream for any of these.
+ */
+const TERMINAL_STATUSES: ReadonlySet<SessionResponse["status"]> = new Set([
+  "completed",
+  "failed",
+  "timed_out",
+  "stopped",
+  "cancelled",
+]);
+
+function isTerminalStatus(status: SessionResponse["status"]): boolean {
+  return TERMINAL_STATUSES.has(status);
+}
 
 // ---------------------------------------------------------------------------
 // Lightweight markdown renderer for co-pilot chat
@@ -97,16 +119,34 @@ function renderMarkdown(text: string): React.ReactNode[] {
   return result;
 }
 
+// Drop orphan emphasis markers that survive tokenization — malformed LLM
+// markdown (e.g. "**Severity:* Medium", where the bold was opened with `**`
+// but closed with a single `*`) otherwise leaks literal `*`/`_` into the
+// bubble. Matched, well-formed spans never reach this because they're
+// consumed as tokens first.
+function stripOrphanMarkers(text: string): string {
+  return text.replace(/\*\*|__|(?<=\S)\*(?=\s|$)|(?<=^|\s)\*(?=\S)/g, "");
+}
+
 function renderInline(text: string): React.ReactNode[] {
-  // Split by inline code first, then bold/italic
+  // Tokenize inline code, bold (**…** / __…__), then italic (*…* / _…_).
+  // Bold uses a lazy inner match so a stray single `*` inside doesn't break
+  // the pair; italic guards against matching list bullets ("* item") and
+  // spaced markers.
   const parts: React.ReactNode[] = [];
-  const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  const regex =
+    /(`[^`]+`|\*\*.+?\*\*|__.+?__|\*(?!\s)[^*\n]+?\*|_(?!\s)[^_\n]+?_)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
+  const pushPlain = (raw: string) => {
+    const cleaned = stripOrphanMarkers(raw);
+    if (cleaned) parts.push(cleaned);
+  };
+
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
+      pushPlain(text.slice(lastIndex, match.index));
     }
     const m = match[0];
     if (m.startsWith("`")) {
@@ -118,21 +158,19 @@ function renderInline(text: string): React.ReactNode[] {
           {m.slice(1, -1)}
         </code>,
       );
-    } else if (m.startsWith("**")) {
+    } else if (m.startsWith("**") || m.startsWith("__")) {
       parts.push(
         <strong key={`b-${parts.length}`} className="font-semibold">
           {m.slice(2, -2)}
         </strong>,
       );
-    } else if (m.startsWith("*")) {
-      parts.push(
-        <em key={`i-${parts.length}`}>{m.slice(1, -1)}</em>,
-      );
+    } else {
+      parts.push(<em key={`i-${parts.length}`}>{m.slice(1, -1)}</em>);
     }
     lastIndex = match.index + m.length;
   }
   if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
+    pushPlain(text.slice(lastIndex));
   }
   return parts;
 }
@@ -634,7 +672,10 @@ function SessionPageContent() {
 
   async function handleSend() {
     const content = draft.trim();
-    if (!content || sending || !id) return;
+    // Guard: no empty sends, no double-sends, and never post to an ended
+    // session (the input is also disabled, this is defense-in-depth).
+    if (!content || sending || !id || !canChat) return;
+    if (session && isTerminalStatus(session.status)) return;
     setSendError("");
     setSending(true);
     try {
@@ -648,16 +689,23 @@ function SessionPageContent() {
     }
   }
 
+  const chatDisabled = !canChat || (!!session && isTerminalStatus(session.status));
+
   const inputPlaceholder = useMemo(() => {
     if (!canChat) return "Chat is read-only for viewers.";
-    if (session?.status === "completed") return "Session complete — chat is still open.";
+    if (session && isTerminalStatus(session.status)) {
+      return "This session has ended — chat is read-only.";
+    }
     return "Add context or ask anything…";
-  }, [canChat, session?.status]);
+  }, [canChat, session]);
 
   const tier0Timer = useMemo(() => {
+    // Only a live tier-0 run has a meaningful countdown. Terminal and queued
+    // sessions never show it (a terminal session showing "0:00" is the core
+    // contradictory-state bug).
     if (
       !session
-      || session.status === "queued"
+      || (session.status !== "active" && session.status !== "awaiting_approval")
       || session.tier !== 0
       || !session.tier0_max_session_seconds
     ) {
@@ -668,12 +716,9 @@ function SessionPageContent() {
     const nowMs = Date.now() + timerTick * 0;
     const remainingSeconds = Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
     const expired = remainingSeconds <= 0;
-    const label =
-      session.status === "timed_out"
-        ? "Time limit reached"
-        : expired && session.status === "active"
-          ? "Time limit reached"
-          : `Tier 0 time left ${formatDuration(remainingSeconds)}`;
+    const label = expired
+      ? "Time limit reached"
+      : `Tier 0 time left ${formatDuration(remainingSeconds)}`;
     return {
       expired,
       label,
@@ -686,6 +731,16 @@ function SessionPageContent() {
   if (!session) return <p className="text-status-critical">Session not found.</p>;
 
   const isSyntheticTest = incident?.external_source === "opsmender-test";
+
+  // Rollback replays compensating inverses from audit metadata — only
+  // meaningful for a tier-0 session that actually reached execution. A
+  // still-queued session, or one cancelled out of the queue, never ran any
+  // remediation, so there is nothing to roll back.
+  const canRollbackSession =
+    canRollback
+    && session.tier === 0
+    && session.status !== "queued"
+    && session.status !== "cancelled";
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -759,18 +814,27 @@ function SessionPageContent() {
                 ) : null}
               </p>
             </div>
-            <span
-              className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${
-                connected ? "bg-status-low-bg text-status-low" : "bg-bg-elevated text-fg-secondary"
-              }`}
-            >
+            {isTerminalStatus(session.status) ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full shrink-0 bg-bg-elevated text-fg-secondary">
+                <span className="h-1.5 w-1.5 rounded-full bg-fg-muted" />
+                {session.ended_at
+                  ? `Ended · ${formatRelative(session.ended_at)}`
+                  : "Ended"}
+              </span>
+            ) : (
               <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  connected ? "bg-status-low animate-pulse" : "bg-bg-elevated"
+                className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${
+                  connected ? "bg-status-low-bg text-status-low" : "bg-bg-elevated text-fg-secondary"
                 }`}
-              />
-              {connected ? "Live" : "Disconnected"}
-            </span>
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    connected ? "bg-status-low animate-pulse" : "bg-bg-elevated"
+                  }`}
+                />
+                {connected ? "Live" : "Disconnected"}
+              </span>
+            )}
           </div>
           {session.status === "queued" && (
             <div className="mt-3 rounded-lg border border-status-high-border bg-status-high-bg px-3 py-2 text-xs text-status-high">
@@ -829,7 +893,7 @@ function SessionPageContent() {
           {interceptError && (
             <p className="mt-2 text-xs text-status-critical">{interceptError}</p>
           )}
-          {canRollback && session.tier === 0 && (
+          {canRollbackSession && (
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-border-subtle pt-3">
               <p className="text-xs text-fg-secondary">
                 Tier 0 sessions can replay compensating inverses in reverse order.
@@ -849,6 +913,7 @@ function SessionPageContent() {
         sessionStatus={session.status}
         events={events}
         tier={session.tier}
+        summary={session.summary}
       />
 
       {/* Sprint 58 Step 2: tier capability summary. Always-visible
@@ -955,8 +1020,15 @@ function SessionPageContent() {
           <div className="flex-1 overflow-y-auto">
             {events.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-fg-muted">
-                <CircleDot size={24} className="mb-2 animate-pulse" />
-                <p className="text-sm">Waiting for events…</p>
+                <CircleDot
+                  size={24}
+                  className={`mb-2 ${isTerminalStatus(session.status) ? "" : "animate-pulse"}`}
+                />
+                <p className="text-sm">
+                  {isTerminalStatus(session.status)
+                    ? "No events were recorded for this session."
+                    : "Waiting for events…"}
+                </p>
               </div>
             ) : (
               <div className="divide-y divide-border-subtle/50">
@@ -1068,7 +1140,7 @@ function SessionPageContent() {
                     handleSend();
                   }
                 }}
-                disabled={!canChat}
+                disabled={chatDisabled}
                 placeholder={inputPlaceholder}
                 rows={2}
                 className="flex-1 resize-none rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm shadow-sm placeholder:text-fg-muted focus:border-accent focus:ring-1 focus:ring-accent disabled:bg-bg-elevated disabled:text-fg-muted transition-colors"
@@ -1077,7 +1149,7 @@ function SessionPageContent() {
                 size="sm"
                 onClick={handleSend}
                 loading={sending}
-                disabled={!canChat || !draft.trim()}
+                disabled={chatDisabled || !draft.trim()}
               >
                 <Send size={13} />
               </Button>
@@ -1088,7 +1160,7 @@ function SessionPageContent() {
 
       <SessionMemoriesPanel sessionId={session.id} />
 
-      {canRollback && session.tier === 0 && (
+      {canRollbackSession && (
         <RollbackModal
           open={showRollback}
           onClose={() => setShowRollback(false)}

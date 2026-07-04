@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C: Integrations
+  layout (P-14).** The Integrations page now shows configured connectors first,
+  then a brand-icon kind gallery. The connector form stays collapsed until a
+  kind is selected or an existing connector is edited, while preserving the
+  existing field/API behavior.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C:
   Models/MCP/Skills (P-12).** MCP runtime Error chips now explain themselves
   on hover/focus with last successful call, last error detail, and a "Run Test

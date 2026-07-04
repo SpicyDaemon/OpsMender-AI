@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import {
   createIntegrationConnector,
@@ -187,6 +187,15 @@ function parseAdditionalValue(row: AdditionalVariable): unknown | undefined {
   } catch {
     return row.value;
   }
+}
+
+function defaultAuthTypeForKind(
+  definition: IntegrationKind | undefined,
+): IntegrationAuthType {
+  if (definition?.kind === "custom" && definition.auth_types.includes("pat")) {
+    return "pat";
+  }
+  return (definition?.auth_types[0] ?? "pat") as IntegrationAuthType;
 }
 
 function AdditionalVariables({
@@ -500,9 +509,11 @@ export default function IntegrationsPage() {
   const [connectors, setConnectors] = useState<IntegrationConnectorResponse[]>(
     [],
   );
+  const formRef = useRef<HTMLElement | null>(null);
   const [editing, setEditing] = useState<IntegrationConnectorResponse | null>(
     null,
   );
+  const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
   const [kind, setKind] = useState("custom");
   const [baseUrl, setBaseUrl] = useState("");
@@ -548,6 +559,52 @@ export default function IntegrationsPage() {
   );
   const configFields = selectedKind?.config_fields ?? [];
 
+  function revealForm() {
+    setFormOpen(true);
+    const scroll = () => {
+      formRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    };
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(scroll);
+    } else {
+      window.setTimeout(scroll, 0);
+    }
+  }
+
+  function applyKindSelection(
+    next: string,
+    connector: IntegrationConnectorResponse | null = editing,
+  ) {
+    setKind(next);
+    const definition = kinds.find((item) => item.kind === next);
+    const nextAuthType = defaultAuthTypeForKind(definition);
+    setAuthType(nextAuthType);
+    setCredentialValues({});
+    const nextCredentialFields =
+      definition?.credential_fields?.[nextAuthType] ?? [];
+    setConfigValues(
+      valuesForFields(definition?.config_fields ?? [], connector?.config ?? {}),
+    );
+    setAdditionalVariables(
+      mergedAdditionalRows(
+        connector,
+        nextCredentialFields,
+        definition?.config_fields ?? [],
+      ),
+    );
+    setRemovedCredentialKeys([]);
+  }
+
+  function startCreate(next: string) {
+    setEditing(null);
+    setName("");
+    setBaseUrl("");
+    setEnabled(true);
+    setNotice("");
+    applyKindSelection(next, null);
+    revealForm();
+  }
+
   function resetForm() {
     setEditing(null);
     setName("");
@@ -559,6 +616,7 @@ export default function IntegrationsPage() {
     setAdditionalVariables([]);
     setRemovedCredentialKeys([]);
     setEnabled(true);
+    setFormOpen(false);
   }
 
   function beginEdit(connector: IntegrationConnectorResponse) {
@@ -584,6 +642,7 @@ export default function IntegrationsPage() {
         ? "Credentials are stored. Leave saved credential fields blank to keep them."
         : "",
     );
+    revealForm();
   }
 
   async function save() {
@@ -716,7 +775,145 @@ export default function IntegrationsPage() {
         </p>
       </div>
 
+      {notice && (
+        <p className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
+          {notice}
+        </p>
+      )}
+
+      <section className="space-y-3">
+        <h2 className="font-semibold text-fg-primary">
+          Configured integrations
+        </h2>
+        {connectors.length === 0 && (
+          <div className="rounded-xl border border-dashed border-border-subtle p-8 text-center text-sm text-fg-muted">
+            No integrations configured yet.
+          </div>
+        )}
+        {connectors.map((connector) => (
+          <article
+            key={connector.id}
+            className="rounded-xl border border-border-subtle bg-bg-panel p-5"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-fg-primary">
+                    {connector.name}
+                  </h3>
+                  <span className="rounded-full border border-border-subtle px-2 py-0.5 text-xs text-fg-secondary">
+                    {connector.kind}
+                  </span>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(connector.status)}`}
+                  >
+                    {connector.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-fg-secondary">
+                  {connector.base_url || "Provider default endpoint"}
+                </p>
+                <p className="mt-1 text-xs text-fg-muted">
+                  {connector.has_auth
+                    ? `Credentials configured (${connector.auth_keys.join(", ") || "encrypted"})`
+                    : "No credentials stored"}
+                  {connector.last_checked_at
+                    ? ` · checked ${formatDateTime(connector.last_checked_at)}`
+                    : ""}
+                </p>
+                {connector.last_error && (
+                  <p className="mt-1 text-xs text-status-critical">
+                    {connector.last_error}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-nowrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => test(connector)}
+                >
+                  Test
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => beginEdit(connector)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => toggle(connector)}
+                >
+                  {connector.is_enabled ? "Disable" : "Enable"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
+                  aria-label={`Delete integration connector ${connector.name}`}
+                  title={`Delete integration connector ${connector.name}`}
+                  onClick={async () => {
+                    if (!window.confirm(`Delete ${connector.name}?`)) return;
+                    await deleteIntegrationConnector(connector.id);
+                    await reload();
+                  }}
+                >
+                  <Trash2 size={13} />
+                </Button>
+              </div>
+            </div>
+            {connector.kind === "jira" || connector.kind === "servicenow" ? (
+              <TicketSyncPanel connector={connector} onSaved={reload} />
+            ) : null}
+          </article>
+        ))}
+      </section>
+
       <section className="space-y-4 rounded-xl border border-border-subtle bg-bg-panel p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-fg-primary">Integration catalog</h2>
+            <p className="mt-1 text-sm text-fg-secondary">
+              Choose a connector kind to configure.
+            </p>
+          </div>
+          <span className="text-xs text-fg-muted">
+            {kinds.length} kind{kinds.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {kinds.map((item) => (
+            <button
+              key={item.kind}
+              type="button"
+              aria-label={`Configure ${item.label}`}
+              onClick={() => startCreate(item.kind)}
+              className="flex min-h-20 items-start gap-3 rounded-lg border border-border-subtle bg-bg-elevated p-3 text-left transition-colors hover:border-border-strong hover:bg-bg-hover focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-bg-panel">
+                {integrationKindIcon(item.kind, 20)}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-fg-primary">
+                  {item.label}
+                </span>
+                <span className="mt-1 block text-xs text-fg-muted">
+                  {item.adapter_available ? "Available" : "Config only"}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {formOpen && (
+      <section
+        ref={formRef}
+        className="space-y-4 rounded-xl border border-border-subtle bg-bg-panel p-5"
+      >
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-semibold text-fg-primary">
             {editing ? `Edit ${editing.name}` : "Add integration"}
@@ -741,31 +938,7 @@ export default function IntegrationsPage() {
             <IconSelect
               id="integration-kind"
               value={kind}
-              onChange={(next) => {
-                setKind(next);
-                const definition = kinds.find((item) => item.kind === next);
-                if (definition?.auth_types[0]) {
-                  setAuthType(definition.auth_types[0]);
-                }
-                setCredentialValues({});
-                const nextCredentialFields =
-                  definition?.credential_fields?.[definition.auth_types[0]] ??
-                  [];
-                setConfigValues(
-                  valuesForFields(
-                    definition?.config_fields ?? [],
-                    editing?.config ?? {},
-                  ),
-                );
-                setAdditionalVariables(
-                  mergedAdditionalRows(
-                    editing,
-                    nextCredentialFields,
-                    definition?.config_fields ?? [],
-                  ),
-                );
-                setRemovedCredentialKeys([]);
-              }}
+              onChange={(next) => applyKindSelection(next)}
               options={kinds.map((item) => ({
                 value: item.kind,
                 label: item.label,
@@ -938,103 +1111,7 @@ export default function IntegrationsPage() {
           {editing ? "Save integration" : "Create integration"}
         </Button>
       </section>
-
-      {notice && (
-        <p className="rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-secondary">
-          {notice}
-        </p>
       )}
-
-      <section className="space-y-3">
-        <h2 className="font-semibold text-fg-primary">
-          Configured integrations
-        </h2>
-        {connectors.length === 0 && (
-          <div className="rounded-xl border border-dashed border-border-subtle p-8 text-center text-sm text-fg-muted">
-            No integrations configured yet.
-          </div>
-        )}
-        {connectors.map((connector) => (
-          <article
-            key={connector.id}
-            className="rounded-xl border border-border-subtle bg-bg-panel p-5"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-fg-primary">
-                    {connector.name}
-                  </h3>
-                  <span className="rounded-full border border-border-subtle px-2 py-0.5 text-xs text-fg-secondary">
-                    {connector.kind}
-                  </span>
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(connector.status)}`}
-                  >
-                    {connector.status}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-fg-secondary">
-                  {connector.base_url || "Provider default endpoint"}
-                </p>
-                <p className="mt-1 text-xs text-fg-muted">
-                  {connector.has_auth
-                    ? `Credentials configured (${connector.auth_keys.join(", ") || "encrypted"})`
-                    : "No credentials stored"}
-                  {connector.last_checked_at
-                    ? ` · checked ${formatDateTime(connector.last_checked_at)}`
-                    : ""}
-                </p>
-                {connector.last_error && (
-                  <p className="mt-1 text-xs text-status-critical">
-                    {connector.last_error}
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-nowrap gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => test(connector)}
-                >
-                  Test
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => beginEdit(connector)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => toggle(connector)}
-                >
-                  {connector.is_enabled ? "Disable" : "Enable"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
-                  aria-label={`Delete integration connector ${connector.name}`}
-                  title={`Delete integration connector ${connector.name}`}
-                  onClick={async () => {
-                    if (!window.confirm(`Delete ${connector.name}?`)) return;
-                    await deleteIntegrationConnector(connector.id);
-                    await reload();
-                  }}
-                >
-                  <Trash2 size={13} />
-                </Button>
-              </div>
-            </div>
-            {connector.kind === "jira" || connector.kind === "servicenow" ? (
-              <TicketSyncPanel connector={connector} onSaved={reload} />
-            ) : null}
-          </article>
-        ))}
-      </section>
     </div>
   );
 }

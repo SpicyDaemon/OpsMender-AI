@@ -3,16 +3,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The Kind picker is a custom IconSelect (a button + listbox), not a native
-// <select>, so drive it by opening it and clicking the option by data-value.
-async function pickKind(
+async function openFormForKind(
   user: ReturnType<typeof userEvent.setup>,
-  value: string,
+  label = "Custom HTTP",
 ) {
-  await user.click(screen.getByLabelText("Kind"));
-  const target = document.querySelector(`[role="option"][data-value="${value}"]`);
-  if (!target) throw new Error(`Kind option not found: ${value}`);
-  await user.click(target as HTMLElement);
+  await user.click(
+    await screen.findByRole("button", { name: `Configure ${label}` }),
+  );
+  await screen.findByRole("heading", { name: "Add integration" });
 }
 
 const apiMocks = vi.hoisted(() => ({
@@ -359,6 +357,18 @@ describe("Integrations page", () => {
     expect(screen.queryByText("top-secret")).toBeNull();
   });
 
+  it("shows configured connectors and the kind gallery before the form", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+    expect(await screen.findByText("Status API")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Configured integrations" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Integration catalog" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Add integration" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Configure GitHub" }));
+    expect(await screen.findByRole("heading", { name: "Add integration" })).toBeTruthy();
+  });
+
   it("creates a connector from structured credential and config fields", async () => {
     apiMocks.listIntegrationConnectors.mockResolvedValueOnce({
       items: [],
@@ -366,7 +376,7 @@ describe("Integrations page", () => {
     });
     const user = userEvent.setup();
     render(<IntegrationsPage />);
-    await screen.findByRole("heading", { name: "Add integration" });
+    await openFormForKind(user);
     await user.type(screen.getByLabelText("Name"), "Build API");
     await user.type(
       screen.getByLabelText("Base URL"),
@@ -392,8 +402,7 @@ describe("Integrations page", () => {
   it("shows source-control auth guidance and capability policy", async () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
-    await screen.findByRole("heading", { name: "Add integration" });
-    await pickKind(user, "github");
+    await openFormForKind(user, "GitHub");
     expect(
       screen.getByText(/Hosted default: https:\/\/api.github.com/),
     ).toBeTruthy();
@@ -409,8 +418,7 @@ describe("Integrations page", () => {
   it("shows provider-specific setup guidance for phase-four adapters", async () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
-    await screen.findByRole("heading", { name: "Add integration" });
-    await pickKind(user, "azure_devops");
+    await openFormForKind(user, "Azure DevOps");
     expect(
       screen.getByText(/collection URL for a self-hosted deployment/),
     ).toBeTruthy();
@@ -424,8 +432,7 @@ describe("Integrations page", () => {
   it("shows CI/CD authentication and project guidance", async () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
-    await screen.findByRole("heading", { name: "Add integration" });
-    await pickKind(user, "jenkins");
+    await openFormForKind(user, "Jenkins");
     expect(screen.getByText(/Jenkins controller URL/)).toBeTruthy();
     expect(screen.getByLabelText("Username")).toBeTruthy();
     expect(screen.getByLabelText("Password")).toBeTruthy();
@@ -438,8 +445,7 @@ describe("Integrations page", () => {
   it("shows infrastructure automation approval and setup guidance", async () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
-    await screen.findByRole("heading", { name: "Add integration" });
-    await pickKind(user, "terraform_cloud");
+    await openFormForKind(user, "Terraform Cloud");
     expect(screen.getByText(/Terraform Enterprise API v2 base/)).toBeTruthy();
     expect(screen.getByLabelText("API key")).toBeTruthy();
     expect(screen.getByLabelText("Default workspace ID")).toBeTruthy();
@@ -449,8 +455,7 @@ describe("Integrations page", () => {
   it("shows Google Docs OAuth and service-account guidance", async () => {
     const user = userEvent.setup();
     render(<IntegrationsPage />);
-    await screen.findByRole("heading", { name: "Add integration" });
-    await pickKind(user, "google_docs");
+    await openFormForKind(user, "Google Docs");
     expect(screen.queryByLabelText("Base URL")).toBeNull();
     expect(screen.getByLabelText("Access token")).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("Authentication"), "custom");

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C: Reliability
+  maintenance polish (P-15).** Maintenance windows now cross-link to Paging
+  maintenance windows, explicitly note that they suppress paging too, and
+  populate the Targets column with "All Targets" or scoped target badges.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C:
   Settings/Profile (P-20).** Settings now uses a five-card pointer row for
   Models, MCP Servers, Agent Teams, Session Profiles, and Notification

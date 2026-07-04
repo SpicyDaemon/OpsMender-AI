@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **UI/UX Polish sprint (design-audit remediation) — Phase A.**
+  - **Muted-text contrast (WCAG AA).** Raised `--color-fg-muted` from
+    `#6B7280` → `#8A94A3` (dark) and `#64748b` → `#55617a` (light) in
+    `globals.css`. The old values failed WCAG AA on panels, hover rows, and
+    tinted light surfaces — the single largest source of accessibility
+    violations app-wide (~1,100 nodes). Both new values clear ≥5:1 on every
+    surface in their theme. No component-level gray text utilities exist
+    (the token is used consistently), so this is the complete fix.
+
 ### Added
 
 - **On Call Schedule — full-depth calendar with per-person, timezone-aware

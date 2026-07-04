@@ -16,7 +16,9 @@
   /* Foreground */
   --color-fg-primary: #E4E7EB;
   --color-fg-secondary: #9AA4B2;
-  --color-fg-muted: #6B7280;
+  /* Muted text — WCAG AA (>=4.5:1) on every dark surface incl. hover rows.
+     Do not lower toward #6B7280 (fails contrast on panels). */
+  --color-fg-muted: #8A94A3;
   --color-fg-inverse: #0B0D10;
 
   /* Status palette — severity + state */
@@ -79,7 +81,9 @@
 
   --color-fg-primary: #0f172a;
   --color-fg-secondary: #475569;
-  --color-fg-muted: #64748b;
+  /* Muted text — WCAG AA on tinted light surfaces (bg-base #f3f6fb,
+     bg-hover #e8eef7); #64748b fails on those. */
+  --color-fg-muted: #55617a;
   --color-fg-inverse: #f8fafc;
 
   --color-status-critical-bg: rgba(239, 68, 68, 0.10);

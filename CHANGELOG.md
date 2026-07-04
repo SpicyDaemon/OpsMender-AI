@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C: keyboard entry
+  (G-10).** Dashboard pages now expose a first-focus "Skip to content" link
+  that targets the main content region. Session activity streams use
+  keyboard-focusable polite `role="log"` regions with accessible labels, while
+  co-pilot chat panes remain labelled regions.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C: native
   form-control skinning (G-8).** Shared date/time inputs and selects now carry
   theme-aware native chrome, including calendar indicators and select chevrons.

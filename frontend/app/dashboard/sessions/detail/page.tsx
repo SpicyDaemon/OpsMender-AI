@@ -1042,8 +1042,10 @@ function SessionPageContent() {
           <div
             className="flex-1 overflow-y-auto"
             tabIndex={0}
-            role="region"
+            role="log"
             aria-label="Session event stream"
+            aria-live="polite"
+            aria-relevant="additions text"
           >
             {events.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-fg-muted">

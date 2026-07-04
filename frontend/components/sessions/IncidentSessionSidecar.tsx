@@ -415,8 +415,10 @@ export function IncidentSessionSidecar({
               <div
                 className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
                 tabIndex={0}
-                role="region"
+                role="log"
                 aria-label="Latest session activity"
+                aria-live="polite"
+                aria-relevant="additions text"
               >
                 {events.length === 0 ? (
                   <EmptyState

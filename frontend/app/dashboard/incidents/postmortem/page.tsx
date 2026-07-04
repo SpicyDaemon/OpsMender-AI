@@ -141,9 +141,28 @@ function sectionBody(md: string, heading: string): string {
   return body.join("\n");
 }
 
-/** A section counts as "filled" once it has real content (not just scaffolding). */
-function isSectionFilled(md: string, heading: string): boolean {
+/** Normalize a section body for comparison: strip comments, trim, drop blanks. */
+function normalizeBody(body: string): string {
+  return body
+    .split("\n")
+    .map((l) => l.replace(/<!--.*?-->/g, "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * A section counts as "filled" once it has real content — not the italic/comment
+ * scaffolding, and not the unedited default template prose. The template (from
+ * the API) is passed so its stock placeholder paragraphs (e.g. "Briefly describe
+ * what happened…") don't count as authored content, which otherwise showed a
+ * fresh postmortem as 7/7 complete.
+ */
+function isSectionFilled(md: string, heading: string, templateMd?: string): boolean {
   const body = sectionBody(md, heading);
+  if (templateMd) {
+    const templateBody = normalizeBody(sectionBody(templateMd, heading));
+    if (templateBody && normalizeBody(body) === templateBody) return false;
+  }
   for (const raw of body.split("\n")) {
     const line = raw.replace(/<!--.*?-->/g, "").trim();
     if (!line) continue;
@@ -629,7 +648,7 @@ function IncidentPostmortemContent() {
           <div className="rounded-xl border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm">
             {(() => {
               const filledCount = SECTIONS.filter((s) =>
-                isSectionFilled(draft, s.heading),
+                isSectionFilled(draft, s.heading, postmortem?.template),
               ).length;
               return (
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-secondary">
@@ -639,7 +658,7 @@ function IncidentPostmortemContent() {
             })()}
             <ul className="space-y-2">
               {SECTIONS.map((s) => {
-                const filled = isSectionFilled(draft, s.heading);
+                const filled = isSectionFilled(draft, s.heading, postmortem?.template);
                 return (
                   <li key={s.heading} className="flex items-start gap-1.5">
                     {filled ? (

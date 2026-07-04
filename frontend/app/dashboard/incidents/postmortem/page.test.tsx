@@ -110,6 +110,42 @@ describe("Postmortem page Phase 2 polish", () => {
     );
   });
 
+  it("shows 0/7 for an unedited default template", async () => {
+    const template = [
+      "## Summary",
+      "Briefly describe what happened and the user-visible impact.",
+      "",
+      "## Impact",
+      "Who was affected, for how long, and how badly.",
+      "",
+      "## Timeline",
+      "- HH:MM UTC — first signal",
+      "- HH:MM UTC — fully resolved",
+      "",
+      "## Root cause",
+      "What was the underlying technical cause.",
+      "",
+      "## Resolution",
+      "What you changed to stop the bleeding, and what's still in flight.",
+      "",
+      "## Lessons learned",
+      "What worked, what didn't, what to change for next time.",
+      "",
+      "## Memory candidates",
+      "Short, durable lessons to save into OpsMender memory. One bullet per memory.",
+    ].join("\n");
+    apiMocks.getIncidentPostmortem.mockResolvedValue({
+      incident_id: "inc-1",
+      postmortem_md: null,
+      postmortem_updated_at: null,
+      template,
+    });
+    await renderPage();
+    await waitFor(() => expect(screen.getByText(/Recommended sections/)).toBeTruthy());
+    expect(screen.getByText(/Recommended sections \(0\/7\)/)).toBeTruthy();
+    expect(screen.queryAllByLabelText("filled").length).toBe(0);
+  });
+
   it("hides the candidates button when there are none", async () => {
     apiMocks.getIncidentPostmortem.mockResolvedValue({
       incident_id: "inc-1",

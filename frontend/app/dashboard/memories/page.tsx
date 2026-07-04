@@ -26,7 +26,6 @@ import type {
   ServiceResponse,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import {
   DataTable,
@@ -200,17 +199,19 @@ export default function MemoriesPage() {
           memory.tags.length > 0 ? (
             <div className="flex max-w-sm flex-wrap gap-1">
               {memory.tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
-                <Badge key={tag} variant="default">
+                <span
+                  key={tag}
+                  className="inline-flex items-center whitespace-nowrap rounded-pill border border-border-subtle bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-fg-secondary"
+                >
                   {tagLabel(tag)}
-                </Badge>
+                </span>
               ))}
               {memory.tags.length > MAX_VISIBLE_TAGS && (
                 <span
+                  className="inline-flex items-center rounded-pill border border-border-subtle bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-fg-muted"
                   title={memory.tags.slice(MAX_VISIBLE_TAGS).map(tagLabel).join(", ")}
                 >
-                  <Badge variant="default">
-                    +{memory.tags.length - MAX_VISIBLE_TAGS}
-                  </Badge>
+                  +{memory.tags.length - MAX_VISIBLE_TAGS}
                 </span>
               )}
             </div>

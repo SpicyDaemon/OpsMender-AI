@@ -60,7 +60,7 @@ describe("Model config capacity", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /add model config/i }));
+    fireEvent.click(screen.getByRole("button", { name: /new model/i }));
     expect(screen.getByText(/0 means unlimited/i)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Display Name"), {

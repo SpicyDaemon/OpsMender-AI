@@ -188,7 +188,7 @@ export function IncidentContextRail({
             <Row icon={Server} label="Service">
               <Link
                 href="/dashboard/paging/services"
-                className="font-medium text-fg-primary hover:text-accent"
+                className="font-medium text-fg-primary hover:text-accent-text"
               >
                 {service.name}
               </Link>
@@ -203,7 +203,7 @@ export function IncidentContextRail({
             <Row icon={Users} label="Team">
               <Link
                 href="/dashboard/paging/teams"
-                className="text-fg-primary hover:text-accent"
+                className="text-fg-primary hover:text-accent-text"
               >
                 {team.name}
               </Link>

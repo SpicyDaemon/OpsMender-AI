@@ -125,7 +125,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 {t.action && (
                   <Link
                     href={t.action.href}
-                    className="mt-1 inline-flex text-xs font-medium text-accent hover:underline"
+                    className="mt-1 inline-flex text-xs font-medium text-accent-text hover:underline"
                     onClick={() => dismiss(t.id)}
                   >
                     {t.action.label}

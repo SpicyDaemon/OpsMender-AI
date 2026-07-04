@@ -42,7 +42,7 @@ export function ThemeToggle({
               full ? "min-w-0 flex-1" : ""
             } ${
               active
-                ? "bg-accent text-white"
+                ? "bg-accent text-accent-contrast"
                 : "text-fg-secondary hover:bg-bg-hover hover:text-fg-primary"
             }`}
           >

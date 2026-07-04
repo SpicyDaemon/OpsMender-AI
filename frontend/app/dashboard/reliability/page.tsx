@@ -103,7 +103,7 @@ export default function ReliabilityPage() {
     <div className="flex flex-col h-full max-h-screen overflow-y-auto">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-border-subtle px-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-bg text-accent">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-bg text-accent-text">
             <Activity size={18} />
           </div>
           <div>

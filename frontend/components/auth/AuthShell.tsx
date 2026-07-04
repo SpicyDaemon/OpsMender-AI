@@ -62,7 +62,7 @@ export function AuthShell({
         <div className="overflow-hidden rounded-lg border border-border-subtle bg-bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
           <div className="border-b border-border-subtle bg-bg-elevated px-6 py-5">
             {eyebrow ? (
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent-text">
                 {eyebrow}
               </p>
             ) : null}

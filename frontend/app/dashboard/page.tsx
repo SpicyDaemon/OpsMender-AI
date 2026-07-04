@@ -62,6 +62,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useToast } from "@/components/ui/Toast";
+import { formatRelative } from "@/lib/formatDate";
 
 /**
  * Sprint 61 Step 3 — layout-specific skeleton rows shared by the
@@ -193,16 +194,23 @@ function medianAckTime(
   return { medianMs: median, count: durations.length };
 }
 
-function fmtRelative(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function humanizeStatus(value: string | null | undefined): string {
+  if (!value) return "Unknown";
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function sessionLabel(
+  session: SessionResponse,
+  incidentById: Map<string, IncidentResponse>,
+): string {
+  if (session.incident_id) {
+    const incident = incidentById.get(session.incident_id);
+    if (incident?.title) return incident.title;
+  }
+  if (session.summary) return session.summary;
+  return `Session ${session.id.slice(0, 8)}`;
 }
 
 export default function DashboardIndex() {
@@ -298,6 +306,20 @@ export default function DashboardIndex() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    const interval = window.setInterval(refreshIfVisible, 30_000);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [load]);
+
   const criticalOpen = useMemo(
     () =>
       incidents.filter(
@@ -324,6 +346,11 @@ export default function DashboardIndex() {
     () => new Map(users.map((u) => [u.id, u])),
     [users],
   );
+  const incidentById = useMemo(
+    () => new Map(incidents.map((inc) => [inc.id, inc])),
+    [incidents],
+  );
+  const criticalCount = incidents.filter((i) => i.severity === "critical").length;
   const rostersByTeam = useMemo(() => {
     const m = new Map<string, RosterResponse[]>();
     for (const r of rosters) {
@@ -521,7 +548,7 @@ export default function DashboardIndex() {
               key={inc.id}
               href={`/dashboard/incidents/detail?id=${inc.id}`}
               title={inc.title}
-              meta={`${inc.status.replace("_", " ")} · opened ${fmtRelative(inc.created_at)}`}
+              meta={`${humanizeStatus(inc.status)} · opened ${formatRelative(inc.created_at)}`}
               accent="critical"
             />
           ))}
@@ -542,7 +569,7 @@ export default function DashboardIndex() {
               key={appr.id}
               href={`/dashboard/sessions/detail?id=${appr.session_id}`}
               title={extractToolName(appr) ?? "Pending approval"}
-              meta={`requested ${fmtRelative(appr.requested_at)}`}
+              meta={`requested ${formatRelative(appr.requested_at)}`}
               accent="high"
             />
           ))}
@@ -562,8 +589,8 @@ export default function DashboardIndex() {
             <RowLink
               key={s.id}
               href={`/dashboard/sessions/detail?id=${s.id}`}
-              title={`Session ${s.id.slice(0, 8)}…`}
-              meta={`${s.status.replace("_", " ")} · started ${fmtRelative(s.started_at)} · Tier ${s.tier}`}
+              title={sessionLabel(s, incidentById)}
+              meta={`${humanizeStatus(s.status)} · started ${formatRelative(s.started_at)} · Tier ${s.tier}`}
               accent="medium"
             />
           ))}
@@ -583,8 +610,8 @@ export default function DashboardIndex() {
             <RowLink
               key={s.id}
               href={`/dashboard/sessions/detail?id=${s.id}`}
-              title={`Session ${s.id.slice(0, 8)}…`}
-              meta={`${s.status.replace("_", " ")} · ${fmtRelative(s.ended_at ?? s.started_at)}`}
+              title={sessionLabel(s, incidentById)}
+              meta={`${humanizeStatus(s.status)} · ${formatRelative(s.ended_at ?? s.started_at)}`}
               accent="critical"
             />
           ))}
@@ -601,10 +628,10 @@ export default function DashboardIndex() {
         />
         <QuickStat
           label="Critical severity"
-          value={incidents.filter((i) => i.severity === "critical").length}
+          value={criticalCount}
           href="/dashboard/incidents"
           icon={ShieldAlert}
-          tone="critical"
+          tone={criticalCount > 0 ? "critical" : "default"}
         />
         <QuickStat
           label="Resolved last 24h"
@@ -630,7 +657,7 @@ export default function DashboardIndex() {
               MTTA · median time to acknowledge
             </p>
             <p className="text-[10px] text-fg-muted">
-              Time from `created_at` to first acknowledgment, by ack window.
+              From incident opening to first acknowledgment, by ack window.
             </p>
           </div>
         </div>
@@ -671,7 +698,7 @@ export default function DashboardIndex() {
               MTTR · median time to resolve
             </p>
             <p className="text-[10px] text-fg-muted">
-              Time from `created_at` to `resolved`, by resolution window.
+              From incident opening to resolution, by resolution window.
             </p>
           </div>
         </div>
@@ -732,7 +759,7 @@ export default function DashboardIndex() {
               No teams yet.{" "}
               <Link
                 href="/dashboard/paging/teams"
-                className="font-medium text-accent hover:underline"
+                className="font-medium text-accent-text hover:underline"
               >
                 Create your first team
               </Link>
@@ -748,7 +775,7 @@ export default function DashboardIndex() {
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <Link
                       href="/dashboard/paging/teams"
-                      className="truncate text-sm font-medium text-fg-primary hover:text-accent"
+                      className="truncate text-sm font-medium text-fg-primary hover:text-accent-text"
                     >
                       {team.name}
                     </Link>
@@ -824,7 +851,7 @@ export default function DashboardIndex() {
             metric: row.openCount,
             metricTone: row.openCount >= 3 ? "critical" : "high",
             footnote: row.lastIncidentAt
-              ? `Last activity ${fmtRelative(row.lastIncidentAt)}`
+              ? `Last activity ${formatRelative(row.lastIncidentAt)}`
               : "—",
           }))}
         />
@@ -842,7 +869,7 @@ export default function DashboardIndex() {
             metric: row.last24hCount,
             metricTone: row.last24hCount >= 5 ? "critical" : "medium",
             footnote: row.lastIncidentAt
-              ? `Last incident ${fmtRelative(row.lastIncidentAt)}`
+              ? `Last incident ${formatRelative(row.lastIncidentAt)}`
               : "—",
           }))}
         />
@@ -892,11 +919,11 @@ export default function DashboardIndex() {
                       <KindIcon size={14} className={`mt-0.5 shrink-0 ${meta.color}`} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
-                          <p className="truncate text-sm font-medium text-fg-primary group-hover:text-accent">
+                          <p className="truncate text-sm font-medium text-fg-primary group-hover:text-accent-text">
                             {meta.label}: {it.primary}
                           </p>
                           <span className="shrink-0 text-[10px] tabular-nums text-fg-muted">
-                            {fmtRelative(it.ts)}
+                            {formatRelative(it.ts)}
                           </span>
                         </div>
                         <p className="truncate text-[11px] text-fg-muted">
@@ -1113,7 +1140,7 @@ function RowLink({
         className="group flex items-start justify-between gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover"
       >
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium text-fg-primary group-hover:text-accent">
+          <p className="truncate text-xs font-medium text-fg-primary group-hover:text-accent-text">
             {title}
           </p>
           <p className="truncate text-[10px] text-fg-muted">{meta}</p>

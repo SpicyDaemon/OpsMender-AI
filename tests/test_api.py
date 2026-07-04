@@ -4703,6 +4703,13 @@ class TestReportsAndEmail:
     async def test_email_settings_encrypt_password_and_send_test(
         self, client: AsyncClient, app, auth_headers, monkeypatch
     ):
+        empty = await client.get(
+            f"/organizations/{TEST_ORG_ID}/email-settings",
+            headers=auth_headers,
+        )
+        assert empty.status_code == 200
+        assert empty.json()["configured"] is False
+
         response = await client.put(
             f"/organizations/{TEST_ORG_ID}/email-settings",
             json={

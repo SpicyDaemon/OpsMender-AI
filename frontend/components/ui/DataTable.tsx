@@ -705,7 +705,7 @@ export function DataTable<T>({
                           aria-pressed={isActive}
                           className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition ${
                             isActive
-                              ? "bg-accent text-white"
+                              ? "bg-accent text-accent-contrast"
                               : "border border-border-default bg-bg-surface text-fg-secondary hover:border-border-strong hover:text-fg-primary"
                           }`}
                         >

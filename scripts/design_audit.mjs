@@ -32,9 +32,32 @@ import path from "node:path";
 const require = createRequire(new URL("../frontend/node_modules/", import.meta.url));
 const { chromium } = require("playwright");
 
+function readDotEnv() {
+  const envPath = path.resolve(".env");
+  if (!fs.existsSync(envPath)) return {};
+  return Object.fromEntries(
+    fs
+      .readFileSync(envPath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#") && line.includes("="))
+      .map((line) => {
+        const i = line.indexOf("=");
+        return [line.slice(0, i), line.slice(i + 1)];
+      }),
+  );
+}
+
+const DOTENV = readDotEnv();
 const BASE = process.env.OPSMENDER_BASE_URL || "http://localhost:8000";
-const EMAIL = process.env.OPSMENDER_EMAIL || "admin";
-const PASSWORD = process.env.OPSMENDER_PASSWORD || "admin123";
+const EMAIL =
+  process.env.OPSMENDER_EMAIL ||
+  DOTENV.OPSMENDER_BOOTSTRAP_ADMIN_EMAIL ||
+  "admin";
+const PASSWORD =
+  process.env.OPSMENDER_PASSWORD ||
+  DOTENV.OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD ||
+  "admin123";
 const SMOKE = process.argv.includes("--smoke");
 
 const OUT = path.resolve(".design-audit");
@@ -171,12 +194,18 @@ await settle(page, 400);
 await page.fill('input[type="email"], input[name="email"], input[autocomplete*="username"]', EMAIL);
 await page.fill('input[type="password"]', "definitely-wrong");
 await page.click('button[type="submit"]');
-await page.waitForTimeout(1500);
+await page
+  .waitForFunction(() => {
+    const button = document.querySelector('button[type="submit"]');
+    return button && !button.disabled;
+  }, { timeout: 60000 })
+  .catch(() => {});
+await settle(page, 400);
 await capture(page, dDark, "00-login-error", { errBuf, runAxe: false });
 
 await page.fill('input[type="password"]', PASSWORD);
 await page.click('button[type="submit"]');
-await page.waitForURL("**/dashboard**", { timeout: 15000 });
+await page.waitForURL("**/dashboard**", { timeout: 60000 });
 await settle(page);
 
 // Fetch real record ids so detail pages render actual data, not error states.

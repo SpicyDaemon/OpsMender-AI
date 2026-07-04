@@ -226,7 +226,7 @@ function TargetDetailContent() {
       <div className="flex h-full flex-col items-center justify-center text-center">
         <ServerCrash className="mb-4 h-10 w-10 text-fg-muted" />
         <h2 className="text-lg font-semibold text-fg-primary">Target Not Found</h2>
-        <Link href="/dashboard/reliability" className="mt-4 text-sm text-accent hover:underline">
+        <Link href="/dashboard/reliability" className="mt-4 text-sm text-accent-text hover:underline">
           Return to Reliability
         </Link>
       </div>
@@ -272,7 +272,7 @@ function TargetDetailContent() {
             href={target.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="ml-11 inline-flex max-w-full items-center gap-1.5 truncate font-mono text-xs text-fg-secondary hover:text-accent"
+            className="ml-11 inline-flex max-w-full items-center gap-1.5 truncate font-mono text-xs text-fg-secondary hover:text-accent-text"
             title={target.url}
             onClick={(e) => e.stopPropagation()}
           >
@@ -315,7 +315,7 @@ function TargetDetailContent() {
                         type="button"
                         onClick={() => setConfirmRec(rec)}
                         disabled={creatingFor !== null}
-                        className="font-medium text-accent underline hover:no-underline disabled:opacity-50 disabled:no-underline"
+                        className="font-medium text-accent-text underline hover:no-underline disabled:opacity-50 disabled:no-underline"
                       >
                         here
                       </button>{" "}
@@ -470,7 +470,7 @@ function TargetDetailContent() {
             windowValue={responseWindow}
           />
           <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
-            <span><span className="text-accent">Line</span> average response time</span>
+            <span><span className="text-accent-text">Line</span> average response time</span>
             <span>{responseTime?.total_samples ?? 0} samples</span>
           </div>
         </div>
@@ -505,7 +505,7 @@ function TargetDetailContent() {
             windowValue={responseHistoryWindow}
           />
           <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
-            <span><span className="text-accent">Line</span> average response time</span>
+            <span><span className="text-accent-text">Line</span> average response time</span>
             <span>{responseHistory?.total_samples ?? 0} samples</span>
           </div>
         </div>

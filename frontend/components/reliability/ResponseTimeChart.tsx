@@ -104,7 +104,7 @@ export function ResponseTimeChart({
                 strokeWidth="3"
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                className="text-accent"
+                className="text-accent-text"
               />
               {segment.length === 1 && (
                 <circle
@@ -178,7 +178,7 @@ export function ResponseTimeChart({
             <div className="mt-1 text-fg-muted">No data</div>
           ) : (
             <div className="mt-1 text-fg-secondary">
-              <span>Avg <strong className="text-accent">{formatLatency(series[hover].avg_latency_ms)}</strong></span>
+              <span>Avg <strong className="text-accent-text">{formatLatency(series[hover].avg_latency_ms)}</strong></span>
             </div>
           )}
         </div>

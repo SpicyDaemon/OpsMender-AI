@@ -11,7 +11,7 @@ export function Spinner({ size = 6 }: { size?: number }) {
   const cls = SIZE_MAP[size] ?? "h-6 w-6";
   return (
     <svg
-      className={`${cls} animate-spin text-accent`}
+      className={`${cls} animate-spin text-accent-text`}
       fill="none"
       viewBox="0 0 24 24"
     >

@@ -7,7 +7,6 @@ import {
   FileText,
   FileUp,
   Pencil,
-  Plus,
   Sparkles,
   Trash2,
   Wand2,
@@ -1001,7 +1000,7 @@ function ImportModal({
             type="file"
             accept=".md,.markdown,text/markdown"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="block w-full text-sm text-fg-primary file:mr-3 file:rounded-md file:border-0 file:bg-accent-bg file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent hover:file:bg-accent-bg"
+            className="block w-full text-sm text-fg-primary file:mr-3 file:rounded-md file:border-0 file:bg-accent-bg file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent-text hover:file:bg-accent-bg"
           />
         </div>
         <div>
@@ -1103,12 +1102,6 @@ export default function SkillsPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
     }
-  }
-
-  function openCreate() {
-    setEditing(null);
-    setTemplateContent(undefined);
-    setShowEdit(true);
   }
 
   async function handleNewFromTemplate() {
@@ -1282,7 +1275,7 @@ export default function SkillsPage() {
                 <Wand2 size={14} /> Generate from MCP
               </Button>
               <Button onClick={handleNewFromTemplate}>
-                <Sparkles size={14} /> New from Template
+                <Sparkles size={14} /> New skill
               </Button>
             </div>
           ) : undefined
@@ -1310,7 +1303,7 @@ export default function SkillsPage() {
                   <Wand2 size={14} /> Generate from MCP
                 </Button>
                 <Button size="sm" onClick={handleNewFromTemplate}>
-                  <Sparkles size={14} /> New from Template
+                  <Sparkles size={14} /> New skill
                 </Button>
               </div>
             ) : undefined
@@ -1325,19 +1318,9 @@ export default function SkillsPage() {
           filterBar
           searchPlaceholder="Search skill, description, focus area, or server…"
           toolbarRight={
-            canEdit ? (
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setShowGenerate(true)}>
-                  <Wand2 size={14} /> Generate from MCP
-                </Button>
-                <Button variant="secondary" size="sm" onClick={handleNewFromTemplate}>
-                  <Sparkles size={14} /> New from Template
-                </Button>
-                <Button size="sm" onClick={openCreate}>
-                  <Plus size={14} /> New skill
-                </Button>
-              </div>
-            ) : undefined
+            <span className="text-sm text-fg-secondary">
+              {skills.length} skill{skills.length === 1 ? "" : "s"}
+            </span>
           }
           rowActions={(skill) => (
             <div className="flex justify-end gap-2">
@@ -1369,8 +1352,9 @@ export default function SkillsPage() {
               )}
               {canEdit && (
                 <Button
-                  variant="danger"
+                  variant="ghost"
                   size="sm"
+                  className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
                   aria-label={`Delete skill ${skill.name}`}
                   title={`Delete skill ${skill.name}`}
                   onClick={() => handleDelete(skill)}

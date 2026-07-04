@@ -1,11 +1,11 @@
 import { type ButtonHTMLAttributes, type ReactNode } from "react";
 
 const VARIANTS = {
-  primary: "bg-accent text-white hover:bg-accent-hover border border-transparent",
+  primary: "bg-accent text-accent-contrast hover:bg-accent-hover border border-transparent",
   secondary: "bg-bg-panel text-fg-primary border border-border-strong hover:bg-bg-hover",
-  danger: "bg-status-critical text-white hover:opacity-90 border border-transparent",
+  danger: "bg-red-700 text-white hover:bg-red-800 border border-transparent",
   ghost: "text-fg-secondary hover:bg-bg-hover hover:text-fg-primary border border-transparent",
-  success: "bg-status-low text-white hover:opacity-90 border border-transparent",
+  success: "bg-emerald-700 text-white hover:bg-emerald-800 border border-transparent",
 } as const;
 
 const SIZES = {

@@ -31,6 +31,7 @@ export function EmailSettingsSection({ orgId }: { orgId: string }) {
   const [testing, setTesting] = useState(false);
 
   function applySettings(settings: {
+    configured: boolean;
     host: string;
     port: number;
     security: "starttls" | "ssl" | "none";
@@ -38,7 +39,7 @@ export function EmailSettingsSection({ orgId }: { orgId: string }) {
     from_name: string | null;
     from_address: string;
     has_password: boolean;
-    source: "database" | "environment";
+    source: "database" | "environment" | null;
   }) {
     setForm({
       host: settings.host,
@@ -50,9 +51,9 @@ export function EmailSettingsSection({ orgId }: { orgId: string }) {
       from_address: settings.from_address,
     });
     setHasPassword(settings.has_password);
-    setConfigured(true);
+    setConfigured(settings.configured);
     setSource(settings.source);
-    setActiveHost(settings.host);
+    setActiveHost(settings.configured ? settings.host : "");
   }
 
   useEffect(() => {

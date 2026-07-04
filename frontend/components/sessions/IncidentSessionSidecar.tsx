@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
+import { formatTime } from "@/lib/formatDate";
 
 type EventKind = "node" | "tool" | "approval" | "error" | "end";
 
@@ -126,12 +127,19 @@ function chatMessageFromWS(msg: WSMessage): SessionMessageResponse | null {
 }
 
 const KIND_STYLES: Record<EventKind, { icon: React.ReactNode; accent: string }> = {
-  node: { icon: <CircleDot size={13} className="text-accent" />, accent: "border-accent" },
+  node: { icon: <CircleDot size={13} className="text-accent-text" />, accent: "border-accent" },
   tool: { icon: <Terminal size={13} className="text-fg-secondary" />, accent: "border-border-subtle" },
   approval: { icon: <Clock3 size={13} className="text-status-high" />, accent: "border-status-high-border" },
   error: { icon: <XCircle size={13} className="text-status-critical" />, accent: "border-status-critical-border" },
   end: { icon: <CheckCircle2 size={13} className="text-status-low" />, accent: "border-status-low-border" },
 };
+
+function displayStatus(value: string | null | undefined): string {
+  if (!value) return "Unknown";
+  return value
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 export function IncidentSessionSidecar({
   sessionId,
@@ -304,7 +312,7 @@ export function IncidentSessionSidecar({
               <p className="text-sm font-semibold text-fg-primary">Session Chat</p>
               {session && (
                 <Badge variant={session.status as Parameters<typeof Badge>[0]["variant"]}>
-                  {session.status.replace("_", " ")}
+                  {displayStatus(session.status)}
                 </Badge>
               )}
               <span
@@ -346,7 +354,7 @@ export function IncidentSessionSidecar({
           )}
           <Link
             href={`/dashboard/sessions/detail?id=${sessionId}`}
-            className="inline-flex items-center gap-1 text-xs font-medium text-accent transition-colors hover:text-accent-hover"
+            className="inline-flex items-center gap-1 text-xs font-medium text-accent-text transition-colors hover:text-accent-hover"
           >
             Open full session view <ExternalLink size={12} />
           </Link>
@@ -399,7 +407,12 @@ export function IncidentSessionSidecar({
                   Latest Activity
                 </p>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+              <div
+                className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+                tabIndex={0}
+                role="region"
+                aria-label="Latest session activity"
+              >
                 {events.length === 0 ? (
                   <EmptyState
                     icon={Terminal}
@@ -422,7 +435,7 @@ export function IncidentSessionSidecar({
                               <p className="text-xs font-medium text-fg-primary">{event.label}</p>
                             </div>
                             <span className="text-[11px] text-fg-muted">
-                              {event.ts.toLocaleTimeString()}
+                              {formatTime(event.ts)}
                             </span>
                           </div>
                           {event.detail && (
@@ -445,7 +458,12 @@ export function IncidentSessionSidecar({
                   Co-pilot Chat
                 </p>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+              <div
+                className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+                tabIndex={0}
+                role="region"
+                aria-label="Incident session co-pilot chat"
+              >
                 {messages.length === 0 ? (
                   <EmptyState
                     icon={MessageSquare}
@@ -519,14 +537,18 @@ function ChatBubble({ message }: { message: SessionMessageResponse }) {
       <div
         className={`max-w-[92%] min-w-0 overflow-hidden rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm ${
           isUser
-            ? "bg-accent text-fg-primary"
+            ? "bg-accent text-accent-contrast"
             : "border border-border-subtle bg-bg-panel text-fg-primary"
         }`}
       >
         {message.content}
-        <div className={`mt-1 text-[10px] ${isUser ? "text-accent" : "text-fg-muted"}`}>
-          {ts.toLocaleTimeString()}
-          {message.node_context ? <span className="ml-1.5 opacity-75">· {message.node_context}</span> : null}
+        <div className={`mt-1 text-[10px] ${isUser ? "text-accent-contrast" : "text-fg-muted"}`}>
+          {formatTime(ts)}
+          {message.node_context ? (
+            <span className={`ml-1.5 ${isUser ? "" : "opacity-75"}`}>
+              · {message.node_context}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

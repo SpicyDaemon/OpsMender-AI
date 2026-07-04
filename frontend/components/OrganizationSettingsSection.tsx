@@ -73,53 +73,53 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
     setLoading(true);
     setNotice("");
     try {
-      // A missing SSO/SAML config is the normal state (the endpoint 404s), so
-      // it must never break loading the rest of the section.
       const [orgRes, domainRes, ssoRes, samlRes] = await Promise.all([
         getOrganization(orgId),
         listOrganizationDomains(orgId),
         getOrgSSOConfig(orgId).catch(() => null),
         getOrgSAMLConfig(orgId).catch(() => null),
       ]);
+      const activeSso = ssoRes?.configured ? ssoRes : null;
+      const activeSaml = samlRes?.configured ? samlRes : null;
       setOrg(orgRes);
       setOrgName(orgRes.name);
       setDomains(domainRes.items);
-      setSso(ssoRes);
-      setSaml(samlRes);
+      setSso(activeSso);
+      setSaml(activeSaml);
       setSsoMethod(
-        ssoRes?.is_active
+        activeSso?.is_active
           ? "oidc"
-          : samlRes?.is_active
+          : activeSaml?.is_active
             ? "saml"
-            : ssoRes
+            : activeSso
               ? "oidc"
-              : samlRes
+              : activeSaml
                 ? "saml"
                 : "disabled",
       );
-      if (ssoRes) {
+      if (activeSso) {
         setSsoForm({
-          discovery_url: ssoRes.discovery_url,
-          client_id: ssoRes.client_id,
+          discovery_url: activeSso.discovery_url,
+          client_id: activeSso.client_id,
           client_secret: "",
-          scopes: ssoRes.scopes,
-          email_claim: ssoRes.email_claim,
-          name_claim: ssoRes.name_claim,
-          default_role: ssoRes.default_role,
-          allowed_email_domains: ssoRes.allowed_email_domains ?? "",
+          scopes: activeSso.scopes,
+          email_claim: activeSso.email_claim,
+          name_claim: activeSso.name_claim,
+          default_role: activeSso.default_role,
+          allowed_email_domains: activeSso.allowed_email_domains ?? "",
         });
       }
-      if (samlRes) {
+      if (activeSaml) {
         setSamlForm({
-          metadataMode: samlRes.idp_metadata_url ? "url" : "xml",
-          idp_metadata_url: samlRes.idp_metadata_url ?? "",
+          metadataMode: activeSaml.idp_metadata_url ? "url" : "xml",
+          idp_metadata_url: activeSaml.idp_metadata_url ?? "",
           idp_metadata_xml: "",
-          email_attribute: samlRes.email_attribute,
-          name_attribute: samlRes.name_attribute,
-          default_role: samlRes.default_role,
-          allowed_email_domains: samlRes.allowed_email_domains ?? "",
-          want_assertions_signed: samlRes.want_assertions_signed,
-          want_response_signed: samlRes.want_response_signed,
+          email_attribute: activeSaml.email_attribute,
+          name_attribute: activeSaml.name_attribute,
+          default_role: activeSaml.default_role,
+          allowed_email_domains: activeSaml.allowed_email_domains ?? "",
+          want_assertions_signed: activeSaml.want_assertions_signed,
+          want_response_signed: activeSaml.want_response_signed,
         });
       }
     } catch (err) {

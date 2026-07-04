@@ -76,6 +76,13 @@ function fmtRelative(iso: string) {
   return fmtDate(iso);
 }
 
+function displayValue(value: string | null | undefined) {
+  if (!value) return "Unknown";
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 function sourceMeta(incident: IncidentResponse) {
   if (!incident.external_source) {
     return {
@@ -198,7 +205,7 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
           <div className="flex items-center gap-2">
             <Link
               href={`/dashboard/incidents/detail?id=${inc.id}`}
-              className="font-medium text-fg-primary hover:text-accent"
+              className="font-medium text-fg-primary hover:text-accent-text"
             >
               {inc.title}
             </Link>
@@ -207,8 +214,8 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
           <p className="mt-0.5 max-w-md truncate text-xs text-fg-muted">
             {inc.description}
           </p>
-          <p className="mt-1 font-mono text-[11px] text-fg-muted">
-            {inc.id.slice(0, 8)}… • created {fmtDate(inc.created_at)}
+          <p className="mt-1 text-[11px] text-fg-muted">
+            Opened {fmtDate(inc.created_at)}
           </p>
         </div>
       ),
@@ -278,7 +285,7 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
       accessor: (inc) => inc.status,
       cell: (inc) => (
         <Badge variant={inc.status as Parameters<typeof Badge>[0]["variant"]}>
-          {inc.status.replace("_", " ")}
+          {displayValue(inc.status)}
         </Badge>
       ),
       sortable: true,
@@ -323,7 +330,7 @@ function IncidentPhoneCard({
       <div className="min-w-0">
         <Link
           href={`/dashboard/incidents/detail?id=${incident.id}`}
-          className="font-medium text-fg-primary hover:text-accent"
+          className="font-medium text-fg-primary hover:text-accent-text"
         >
           {incident.title}
         </Link>
@@ -331,7 +338,7 @@ function IncidentPhoneCard({
       </div>
       <div className="flex flex-wrap gap-2">
         <Badge variant={incident.status as Parameters<typeof Badge>[0]["variant"]}>
-          {incident.status.replace("_", " ")}
+          {displayValue(incident.status)}
         </Badge>
         {incident.severity ? (
           <Badge variant={incident.severity}>{incident.severity}</Badge>
@@ -361,8 +368,8 @@ function IncidentPhoneCard({
           <p className="text-xs text-fg-muted">{fmtDate(incident.updated_at)}</p>
         </div>
       </div>
-      <p className="font-mono text-[11px] text-fg-muted">
-        {incident.id.slice(0, 8)}… • created {fmtDate(incident.created_at)}
+      <p className="text-[11px] text-fg-muted">
+        Opened {fmtDate(incident.created_at)}
       </p>
     </div>
   );
@@ -639,7 +646,7 @@ export default function IncidentsPage() {
   const overview = useMemo(() => {
     return [
       {
-        label: "Visible",
+        label: "Matching filters",
         value: String(items.length),
         tone: "text-fg-primary",
       },
@@ -1235,7 +1242,7 @@ function IncidentTimeFilter({
                       onPresetChange(option.value);
                       setOpen(false);
                     }}
-                    className={`block w-full px-4 py-2.5 text-left text-sm hover:bg-bg-hover ${preset === option.value ? "text-accent" : "text-fg-primary"}`}
+                    className={`block w-full px-4 py-2.5 text-left text-sm hover:bg-bg-hover ${preset === option.value ? "text-accent-text" : "text-fg-primary"}`}
                   >
                     {option.label}
                   </button>
@@ -1778,8 +1785,8 @@ function CombineIncidentsModal({
                     <Badge variant="default">Merge in</Badge>
                   )}
                 </div>
-                <p className="mt-0.5 font-mono text-[11px] text-fg-muted">
-                  {inc.id.slice(0, 8)}… • {inc.status} • created {fmtDate(inc.created_at)}
+                <p className="mt-0.5 text-[11px] text-fg-muted">
+                  {displayValue(inc.status)} • opened {fmtDate(inc.created_at)}
                 </p>
               </div>
             </label>

@@ -27,34 +27,36 @@
   --color-fg-inverse: #0B0D10;
 
   /* Status palette — severity + state */
-  --color-status-critical: #EF4444;
+  --color-status-critical: #F87171;
   --color-status-critical-bg: rgba(239, 68, 68, 0.12);
   --color-status-critical-border: rgba(239, 68, 68, 0.35);
 
-  --color-status-high: #F59E0B;
+  --color-status-high: #FBBF24;
   --color-status-high-bg: rgba(245, 158, 11, 0.12);
   --color-status-high-border: rgba(245, 158, 11, 0.35);
 
-  --color-status-medium: #EAB308;
+  --color-status-medium: #FACC15;
   --color-status-medium-bg: rgba(234, 179, 8, 0.12);
   --color-status-medium-border: rgba(234, 179, 8, 0.35);
 
-  --color-status-low: #10B981;
+  --color-status-low: #34D399;
   --color-status-low-bg: rgba(16, 185, 129, 0.12);
   --color-status-low-border: rgba(16, 185, 129, 0.35);
 
-  --color-status-info: #3B82F6;
+  --color-status-info: #93C5FD;
   --color-status-info-bg: rgba(59, 130, 246, 0.12);
   --color-status-info-border: rgba(59, 130, 246, 0.35);
 
-  --color-status-neutral: #6B7280;
+  --color-status-neutral: #CBD5E1;
   --color-status-neutral-bg: rgba(107, 114, 128, 0.12);
   --color-status-neutral-border: rgba(107, 114, 128, 0.35);
 
   /* Accent — used sparingly for primary CTAs and active nav */
-  --color-accent: #3B82F6;
-  --color-accent-hover: #60A5FA;
-  --color-accent-bg: rgba(59, 130, 246, 0.12);
+  --color-accent: #2563EB;
+  --color-accent-hover: #1D4ED8;
+  --color-accent-contrast: #FFFFFF;
+  --color-accent-text: #93C5FD;
+  --color-accent-bg: rgba(37, 99, 235, 0.18);
 
   /* Typography */
   --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
@@ -91,21 +93,29 @@
   --color-fg-muted: #55617a;
   --color-fg-inverse: #f8fafc;
 
+  --color-status-critical: #B91C1C;
   --color-status-critical-bg: rgba(239, 68, 68, 0.10);
   --color-status-critical-border: rgba(239, 68, 68, 0.28);
+  --color-status-high: #92400E;
   --color-status-high-bg: rgba(245, 158, 11, 0.10);
   --color-status-high-border: rgba(245, 158, 11, 0.28);
+  --color-status-medium: #854D0E;
   --color-status-medium-bg: rgba(234, 179, 8, 0.10);
   --color-status-medium-border: rgba(234, 179, 8, 0.28);
+  --color-status-low: #047857;
   --color-status-low-bg: rgba(16, 185, 129, 0.10);
   --color-status-low-border: rgba(16, 185, 129, 0.28);
+  --color-status-info: #1D4ED8;
   --color-status-info-bg: rgba(59, 130, 246, 0.10);
   --color-status-info-border: rgba(59, 130, 246, 0.28);
+  --color-status-neutral: #475569;
   --color-status-neutral-bg: rgba(100, 116, 139, 0.10);
   --color-status-neutral-border: rgba(100, 116, 139, 0.22);
 
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
+  --color-accent: #1D4ED8;
+  --color-accent-hover: #1E40AF;
+  --color-accent-contrast: #FFFFFF;
+  --color-accent-text: #1D4ED8;
   --color-accent-bg: rgba(37, 99, 235, 0.12);
 }
 

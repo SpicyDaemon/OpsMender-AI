@@ -124,6 +124,16 @@ def _patch_idp(monkeypatch):
 
 
 class TestSSOCRUD:
+    async def test_get_missing_returns_unconfigured_state(self, client, auth_headers):
+        resp = await client.get(
+            f"/organizations/{TEST_ORG_ID}/sso", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["configured"] is False
+        assert body["is_active"] is False
+        assert body["id"] is None
+
     async def test_create_sso(self, client, auth_headers):
         resp = await client.put(
             f"/organizations/{TEST_ORG_ID}/sso",

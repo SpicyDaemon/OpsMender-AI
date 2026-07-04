@@ -186,9 +186,21 @@ async def get_email_settings(
     row = await OrgEmailSettingsRepo.get_for_org(db, org_id)
     settings = await resolve_email_settings(db, org_id)
     if settings is None:
-        raise HTTPException(status_code=404, detail="SMTP is not configured")
+        return OrgEmailSettingsResponse(
+            org_id=org_id,
+            configured=False,
+            host="",
+            port=587,
+            security="starttls",
+            username=None,
+            from_name="OpsMender",
+            from_address="",
+            has_password=False,
+            source=None,
+        )
     return OrgEmailSettingsResponse(
         org_id=org_id,
+        configured=True,
         host=settings.host,
         port=settings.port,
         security=settings.security,
@@ -417,9 +429,24 @@ def _sso_to_response(row) -> dict:
     dependencies=[admin_dependency],
 )
 async def get_organization_sso(org_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    if await OrganizationRepo.get_by_id(db, org_id) is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
     row = await OrgSSOConfigRepo.get_for_org(db, org_id)
     if row is None:
-        raise HTTPException(status_code=404, detail="No SSO config for this organization")
+        return OrgSSOConfigResponse(
+            configured=False,
+            org_id=org_id,
+            provider="oidc",
+            is_active=False,
+            discovery_url="",
+            client_id="",
+            has_client_secret=False,
+            scopes="openid email profile",
+            email_claim="email",
+            name_claim="name",
+            default_role="operator",
+            allowed_email_domains=None,
+        )
     return _sso_to_response(row)
 
 
@@ -513,10 +540,22 @@ def _saml_to_response(row) -> dict:
     dependencies=[admin_dependency],
 )
 async def get_organization_saml(org_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    if await OrganizationRepo.get_by_id(db, org_id) is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
     row = await OrgSAMLConfigRepo.get_for_org(db, org_id)
     if row is None:
-        raise HTTPException(
-            status_code=404, detail="No SAML config for this organization"
+        return OrgSAMLConfigResponse(
+            configured=False,
+            org_id=org_id,
+            is_active=False,
+            idp_metadata_url=None,
+            has_idp_metadata_xml=False,
+            email_attribute="email",
+            name_attribute="name",
+            default_role="operator",
+            allowed_email_domains=None,
+            want_assertions_signed=True,
+            want_response_signed=True,
         )
     return _saml_to_response(row)
 

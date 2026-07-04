@@ -130,7 +130,7 @@ function InviteAcceptContent() {
             Already have an account?{" "}
             <Link
               href="/login"
-              className="font-medium text-accent hover:underline"
+              className="font-medium text-accent-text hover:underline"
             >
               Sign in
             </Link>
@@ -153,7 +153,7 @@ function InviteAcceptContent() {
       footer={
         <>
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-accent hover:underline">
+          <Link href="/login" className="font-medium text-accent-text hover:underline">
             Sign in
           </Link>
         </>

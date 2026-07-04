@@ -478,7 +478,7 @@ function IncidentPostmortemContent() {
         </p>
         <Link
           href="/dashboard/incidents"
-          className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
+          className="inline-flex items-center gap-1 text-sm text-accent-text hover:underline"
         >
           <ArrowLeft size={14} /> Back to incidents
         </Link>
@@ -673,7 +673,7 @@ function IncidentPostmortemContent() {
             {canEdit && (
               <button
                 onClick={handleResetTemplate}
-                className="mt-3 text-[11px] text-accent hover:underline"
+                className="mt-3 text-[11px] text-accent-text hover:underline"
               >
                 Reset to template
               </button>

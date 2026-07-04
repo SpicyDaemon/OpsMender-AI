@@ -177,11 +177,15 @@ class TestSAMLCRUD:
         )
         assert resp.status_code == 400
 
-    async def test_get_404_when_missing(self, client, auth_headers):
+    async def test_get_missing_returns_unconfigured_state(self, client, auth_headers):
         resp = await client.get(
             f"/organizations/{TEST_ORG_ID}/saml", headers=auth_headers
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["configured"] is False
+        assert body["is_active"] is False
+        assert body["id"] is None
 
     async def test_delete_round_trip(self, client, auth_headers):
         await client.put(

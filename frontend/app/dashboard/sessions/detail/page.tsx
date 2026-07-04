@@ -57,7 +57,7 @@ import { SessionMemoriesPanel } from "@/components/SessionMemoriesPanel";
 import { SessionWorkflowState } from "@/components/sessions/SessionWorkflowState";
 import { TierCapabilitySummary } from "@/components/sessions/TierCapabilitySummary";
 import { ToolCallCard } from "@/components/sessions/ToolCallCard";
-import { formatRelative } from "@/lib/formatDate";
+import { formatRelative, formatTime } from "@/lib/formatDate";
 import { useAuth } from "@/context/auth";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +79,13 @@ const TERMINAL_STATUSES: ReadonlySet<SessionResponse["status"]> = new Set([
 
 function isTerminalStatus(status: SessionResponse["status"]): boolean {
   return TERMINAL_STATUSES.has(status);
+}
+
+function displayStatus(value: string | null | undefined): string {
+  if (!value) return "Unknown";
+  return value
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +160,7 @@ function renderInline(text: string): React.ReactNode[] {
       parts.push(
         <code
           key={`ic-${parts.length}`}
-          className="rounded bg-bg-elevated px-1.5 py-0.5 text-[12px] font-mono text-accent"
+          className="rounded bg-bg-elevated px-1.5 py-0.5 text-[12px] font-mono text-accent-text"
         >
           {m.slice(1, -1)}
         </code>,
@@ -306,7 +313,7 @@ function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
 
 const KIND_STYLES: Record<EventKind, { icon: React.ReactNode; line: string; bg: string }> = {
   node: {
-    icon: <CircleDot size={14} className="text-accent" />,
+    icon: <CircleDot size={14} className="text-accent-text" />,
     line: "border-accent/60",
     bg: "bg-accent/5",
   },
@@ -336,7 +343,7 @@ const KIND_STYLES: Record<EventKind, { icon: React.ReactNode; line: string; bg: 
     bg: "bg-status-low/5",
   },
   llm: {
-    icon: <Brain size={14} className="text-accent" />,
+    icon: <Brain size={14} className="text-accent-text" />,
     line: "border-accent/40",
     bg: "bg-accent/5",
   },
@@ -779,11 +786,11 @@ function SessionPageContent() {
                 )}
                 {incident && (
                   <Badge variant={incident.status as Parameters<typeof Badge>[0]["variant"]}>
-                    {incident.status.replace("_", " ")}
+                    {displayStatus(incident.status)}
                   </Badge>
                 )}
                 <Badge variant={session.status as Parameters<typeof Badge>[0]["variant"]}>
-                  {session.status.replace("_", " ")}
+                  {displayStatus(session.status)}
                 </Badge>
                 <span className="inline-flex items-center gap-1 text-xs text-fg-muted">
                   <Shield size={11} />
@@ -805,11 +812,11 @@ function SessionPageContent() {
                 session {session.id.slice(0, 8)}…
                 {session.status === "queued" && session.queued_at ? (
                   <span className="ml-2">
-                    queued {new Date(session.queued_at).toLocaleTimeString()}
+                    queued {formatTime(session.queued_at)}
                   </span>
                 ) : session.started_at ? (
                   <span className="ml-2">
-                    started {new Date(session.started_at).toLocaleTimeString()}
+                    started {formatTime(session.started_at)}
                   </span>
                 ) : null}
               </p>
@@ -840,7 +847,7 @@ function SessionPageContent() {
             <div className="mt-3 rounded-lg border border-status-high-border bg-status-high-bg px-3 py-2 text-xs text-status-high">
               Waiting for model capacity
               {session.queue_expires_at
-                ? ` until ${new Date(session.queue_expires_at).toLocaleTimeString()}`
+                ? ` until ${formatTime(session.queue_expires_at)}`
                 : ""}
               . The model is selected again when this session reaches the front
               of the queue.
@@ -950,7 +957,7 @@ function SessionPageContent() {
                   </p>
                 )}
                 <p className="text-xs text-fg-muted mt-1.5 tabular-nums font-mono">
-                  Expires {new Date(a.expires_at).toLocaleTimeString()}
+                  Expires {formatTime(a.expires_at)}
                 </p>
                 <div className="mt-2.5">
                   <Label htmlFor={`redirect-${a.id}`} className="text-[11px]">
@@ -1020,7 +1027,12 @@ function SessionPageContent() {
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div
+            className="flex-1 overflow-y-auto"
+            tabIndex={0}
+            role="region"
+            aria-label="Session event stream"
+          >
             {events.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-fg-muted">
                 <CircleDot
@@ -1071,7 +1083,7 @@ function SessionPageContent() {
                             )}
                           </div>
                           <span className="text-[10px] text-fg-muted shrink-0 tabular-nums font-mono">
-                            {ev.ts.toLocaleTimeString()}
+                            {formatTime(ev.ts)}
                           </span>
                         </div>
                         {ev.detail && (
@@ -1103,7 +1115,7 @@ function SessionPageContent() {
         {/* Co-pilot chat */}
         <div className="flex flex-col rounded-xl border border-border-subtle bg-bg-panel shadow-sm max-h-[70vh] lg:max-h-none lg:min-h-0">
           <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
-            <MessageSquare size={14} className="text-accent" />
+            <MessageSquare size={14} className="text-accent-text" />
             <span className="text-xs font-medium text-fg-secondary uppercase tracking-wide">
               Co-pilot
             </span>
@@ -1112,7 +1124,12 @@ function SessionPageContent() {
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-bg-elevated/30">
+          <div
+            className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-bg-elevated/30"
+            tabIndex={0}
+            role="region"
+            aria-label="Session co-pilot chat"
+          >
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-fg-muted">
                 <MessageSquare size={22} className="mb-2 opacity-60" />
@@ -1333,7 +1350,7 @@ function RollbackModal({
                             : "pending"
                       }
                     >
-                      {step.status.replaceAll("_", " ")}
+                      {displayStatus(step.status)}
                     </Badge>
                   </div>
                   {Object.keys(step.parameters).length > 0 && (
@@ -1366,7 +1383,7 @@ function ChatBubble({ message }: { message: SessionMessageResponse }) {
       <div
         className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm shadow-sm ${
           isUser
-            ? "bg-accent/90 text-fg-primary rounded-br-sm"
+            ? "bg-accent text-accent-contrast rounded-br-sm"
             : "bg-bg-panel text-fg-primary border border-border-subtle rounded-bl-sm"
         }`}
       >
@@ -1375,12 +1392,14 @@ function ChatBubble({ message }: { message: SessionMessageResponse }) {
         </div>
         <div
           className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${
-            isUser ? "text-fg-primary/60" : "text-fg-muted"
+            isUser ? "text-accent-contrast" : "text-fg-muted"
           }`}
         >
-          <span className="tabular-nums font-mono">{ts.toLocaleTimeString()}</span>
+          <span className="tabular-nums font-mono">{formatTime(ts)}</span>
           {message.node_context && (
-            <span className="opacity-75">· {message.node_context}</span>
+            <span className={isUser ? "" : "opacity-75"}>
+              · {message.node_context}
+            </span>
           )}
         </div>
       </div>

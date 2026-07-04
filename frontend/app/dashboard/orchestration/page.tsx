@@ -50,7 +50,7 @@ function SessionLink({ s }: { s: OrchestrationSession }) {
   return (
     <Link
       href={`/dashboard/incidents/detail?id=${s.incident_id}`}
-      className="text-accent hover:underline"
+      className="text-accent-text hover:underline"
     >
       {label}
     </Link>
@@ -101,6 +101,20 @@ export default function OrchestrationPage() {
 
   useEffect(() => {
     reload().catch(() => {});
+  }, [reload]);
+
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") void reload();
+    };
+    const interval = window.setInterval(refreshIfVisible, 30_000);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
   }, [reload]);
 
   return (

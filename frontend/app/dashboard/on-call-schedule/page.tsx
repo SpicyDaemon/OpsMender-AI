@@ -416,7 +416,7 @@ export default function OnCallSchedulePage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-fg-default">On Call Schedule</h1>
+        <h1 className="text-xl font-semibold text-fg-primary">On Call Schedule</h1>
         <p className="text-sm text-fg-muted">
           Who is on call for a team across all of its escalation chains, by level,
           with each level&apos;s shift in the roster&apos;s time zone.
@@ -464,7 +464,7 @@ export default function OnCallSchedulePage() {
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-[10rem] text-center text-sm font-medium text-fg-default">
+          <span className="min-w-[10rem] text-center text-sm font-medium text-fg-primary">
             {monthLabel}
           </span>
           <Button
@@ -517,7 +517,7 @@ export default function OnCallSchedulePage() {
                 onPointerUp={(e) => onCellPointerUp(iso, e)}
                 className={`min-h-[8.5rem] border-b border-r border-border-subtle p-1.5 align-top transition-colors ${
                   canEdit ? "cursor-pointer hover:bg-bg-elevated" : ""
-                } ${inMonth ? "" : "opacity-40"} ${
+                } ${inMonth ? "" : "bg-bg-elevated/60"} ${
                   isSelected || isPreview
                     ? "bg-accent/10 ring-2 ring-inset ring-accent"
                     : ""
@@ -527,8 +527,10 @@ export default function OnCallSchedulePage() {
                   <span
                     className={`text-xs ${
                       isToday
-                        ? "flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white"
-                        : "text-fg-muted"
+                        ? "flex h-5 w-5 items-center justify-center rounded-full bg-accent text-accent-contrast"
+                        : inMonth
+                          ? "text-fg-secondary"
+                          : "text-fg-muted"
                     }`}
                   >
                     {date.getDate()}
@@ -591,12 +593,12 @@ export default function OnCallSchedulePage() {
                       >
                         <span
                           className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-sm font-semibold ${
-                            isToday ? "bg-accent text-white" : "bg-bg-elevated text-fg-default"
+                            isToday ? "bg-accent text-accent-contrast" : "bg-bg-elevated text-fg-primary"
                           }`}
                         >
                           {date.getDate()}
                         </span>
-                        <span className="text-sm font-medium text-fg-default">
+                        <span className="text-sm font-medium text-fg-primary">
                           {weekday}
                         </span>
                         {day?.suppressed && (
@@ -624,7 +626,7 @@ export default function OnCallSchedulePage() {
 
       {canEdit && selected.size > 0 && (
         <div className="sticky bottom-4 z-20 mx-auto flex w-fit flex-wrap items-center gap-3 rounded-full border border-border-subtle bg-bg-elevated px-4 py-2 shadow-lg">
-          <span className="text-sm text-fg-default">
+          <span className="text-sm text-fg-primary">
             <span className="font-semibold">{selected.size}</span>{" "}
             {selected.size === 1 ? "day" : "days"} selected
           </span>
@@ -718,11 +720,11 @@ function LevelChip({
   const body = (
     <>
       <div className="flex items-center gap-1 truncate">
-        <span className="shrink-0 font-semibold opacity-70">L{level.level}</span>
+        <span className="shrink-0 font-semibold">L{level.level}</span>
         <span className="truncate">{name}</span>
       </div>
       {shift && (
-        <div className="flex items-center gap-0.5 truncate text-[10px] opacity-80">
+        <div className="flex items-center gap-0.5 truncate text-[10px]">
           <Clock className="h-2.5 w-2.5 shrink-0" />
           <span className="truncate">{shift}</span>
         </div>
@@ -796,7 +798,7 @@ function DayCellContent({
     rows.push(
       <div
         key={`${chain.chain_id}-caption`}
-        className="truncate px-0.5 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-muted"
+        className="truncate px-0.5 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-secondary"
         title={chain.chain_name}
       >
         {chain.chain_name}
@@ -819,7 +821,7 @@ function DayCellContent({
       rows.push(
         <div
           key={`${chain.chain_id}-more`}
-          className="px-1 text-[10px] text-fg-muted"
+          className="px-1 text-[10px] text-fg-secondary"
         >
           +{chain.levels.length - MAX_LEVELS_PER_CHAIN} more levels
         </div>,
@@ -831,7 +833,7 @@ function DayCellContent({
     <div className="space-y-0.5">
       {rows}
       {truncated > 0 && (
-        <div className="px-1 text-[11px] text-fg-muted">
+        <div className="px-1 text-[11px] text-fg-secondary">
           +{truncated} more {truncated === 1 ? "chain" : "chains"}
         </div>
       )}
@@ -993,7 +995,7 @@ function ChainBlock({
 }) {
   return (
     <div className="rounded-lg border border-border-subtle">
-      <div className="border-b border-border-subtle px-3 py-2 text-sm font-medium text-fg-default">
+      <div className="border-b border-border-subtle px-3 py-2 text-sm font-medium text-fg-primary">
         {chain.chain_name}
       </div>
       {chain.levels.length === 0 ? (
@@ -1126,13 +1128,13 @@ function OverrideLevelModal({
     >
       <div className="space-y-3">
         <div className="rounded border border-border-subtle bg-bg-surface px-3 py-2 text-sm">
-          <div className="text-fg-default">
+          <div className="text-fg-primary">
             {teamName ? `${teamName} · ` : ""}
             {chainName} · Level {level.level}
           </div>
           <div className="text-fg-muted">
-            Roster <span className="text-fg-default">{rosterName}</span> ·
-            currently <span className="text-fg-default">{currentName}</span>
+            Roster <span className="text-fg-primary">{rosterName}</span> ·
+            currently <span className="text-fg-primary">{currentName}</span>
           </div>
         </div>
 

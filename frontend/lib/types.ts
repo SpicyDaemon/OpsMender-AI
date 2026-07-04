@@ -1584,7 +1584,8 @@ export interface TenantContextResponse {
 }
 
 export interface OrgSSOConfigResponse {
-  id: string;
+  configured: boolean;
+  id: string | null;
   org_id: string;
   provider: "oidc";
   is_active: boolean;
@@ -1596,8 +1597,8 @@ export interface OrgSSOConfigResponse {
   name_claim: string;
   default_role: "admin" | "operator" | "viewer";
   allowed_email_domains: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface OrgSSOConfigCreate {
@@ -1614,7 +1615,8 @@ export interface OrgSSOConfigCreate {
 }
 
 export interface OrgSAMLConfigResponse {
-  id: string;
+  configured: boolean;
+  id: string | null;
   org_id: string;
   is_active: boolean;
   idp_metadata_url: string | null;
@@ -1625,8 +1627,8 @@ export interface OrgSAMLConfigResponse {
   allowed_email_domains: string | null;
   want_assertions_signed: boolean;
   want_response_signed: boolean;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface OrgSAMLConfigCreate {
@@ -2161,6 +2163,7 @@ export interface IncidentMemoryListResponse {
 
 export interface OrgEmailSettingsResponse {
   org_id: string;
+  configured: boolean;
   host: string;
   port: number;
   security: "starttls" | "ssl" | "none";
@@ -2168,7 +2171,7 @@ export interface OrgEmailSettingsResponse {
   from_name: string | null;
   from_address: string;
   has_password: boolean;
-  source: "database" | "environment";
+  source: "database" | "environment" | null;
 }
 
 export interface OrgEmailSettingsUpsert {

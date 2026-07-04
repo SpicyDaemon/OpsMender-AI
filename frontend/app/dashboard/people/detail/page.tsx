@@ -191,7 +191,7 @@ function UserNotFound() {
         action={
           <Link
             href="/dashboard/people"
-            className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline"
+            className="inline-flex items-center gap-1 text-sm font-medium text-accent-text hover:underline"
           >
             <ArrowLeft className="h-4 w-4" /> Back to People
           </Link>
@@ -212,7 +212,7 @@ function DeletedUserView({ user }: { user: UserResponse }) {
         action={
           <Link
             href="/dashboard/people"
-            className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline"
+            className="inline-flex items-center gap-1 text-sm font-medium text-accent-text hover:underline"
           >
             <ArrowLeft className="h-4 w-4" /> Back to People
           </Link>

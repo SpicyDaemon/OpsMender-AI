@@ -196,9 +196,9 @@ export function ToolCallCard({
     );
   } else {
     // phase === "start" — in flight
-    icon = <Loader2 size={14} className="animate-spin text-accent" />;
+    icon = <Loader2 size={14} className="animate-spin text-accent-text" />;
     phasePill = (
-      <span className="inline-flex items-center gap-1 rounded-pill border border-accent/40 bg-accent-bg/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+      <span className="inline-flex items-center gap-1 rounded-pill border border-accent/40 bg-accent-bg/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-text">
         Executing
       </span>
     );

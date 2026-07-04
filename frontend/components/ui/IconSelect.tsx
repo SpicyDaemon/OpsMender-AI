@@ -166,7 +166,7 @@ export function IconSelect({
                 onClick={() => commit(i)}
                 className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-sm ${
                   isActive ? "bg-bg-hover" : ""
-                } ${isSelected ? "text-accent" : "text-fg-primary"}`}
+                } ${isSelected ? "text-accent-text" : "text-fg-primary"}`}
               >
                 {opt.icon}
                 <span className="truncate">{opt.label}</span>

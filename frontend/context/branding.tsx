@@ -44,7 +44,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch((err) => {
-        console.error("Failed to load organization branding:", err);
+        console.warn("Organization branding unavailable:", err);
         clearBranding();
       })
       .finally(() => setLoading(false));

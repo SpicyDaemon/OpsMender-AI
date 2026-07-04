@@ -1170,6 +1170,7 @@ class OrgEmailSettingsUpsert(BaseModel):
 
 class OrgEmailSettingsResponse(BaseModel):
     org_id: uuid.UUID
+    configured: bool = True
     host: str
     port: int
     security: str
@@ -1177,7 +1178,7 @@ class OrgEmailSettingsResponse(BaseModel):
     from_name: Optional[str]
     from_address: str
     has_password: bool
-    source: str = "database"
+    source: Optional[str] = "database"
 
 
 class EmailSettingsTestRequest(BaseModel):
@@ -2050,7 +2051,8 @@ class OrgSSOConfigCreate(BaseModel):
 class OrgSSOConfigResponse(BaseModel):
     """SSO config response — never returns the encrypted client secret."""
 
-    id: uuid.UUID
+    configured: bool = True
+    id: Optional[uuid.UUID] = None
     org_id: uuid.UUID
     provider: str
     is_active: bool
@@ -2062,8 +2064,8 @@ class OrgSSOConfigResponse(BaseModel):
     name_claim: str
     default_role: str
     allowed_email_domains: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -2091,7 +2093,8 @@ class OrgSAMLConfigCreate(BaseModel):
 class OrgSAMLConfigResponse(BaseModel):
     """Per-tenant SAML config response."""
 
-    id: uuid.UUID
+    configured: bool = True
+    id: Optional[uuid.UUID] = None
     org_id: uuid.UUID
     is_active: bool
     idp_metadata_url: Optional[str]
@@ -2102,8 +2105,8 @@ class OrgSAMLConfigResponse(BaseModel):
     allowed_email_domains: Optional[str]
     want_assertions_signed: bool
     want_response_signed: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

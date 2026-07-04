@@ -42,7 +42,7 @@ function PasswordResetContent() {
   const signInFooter = (
     <>
       Remembered it?{" "}
-      <Link href="/login" className="font-medium text-accent hover:underline">
+      <Link href="/login" className="font-medium text-accent-text hover:underline">
         Sign in
       </Link>
     </>

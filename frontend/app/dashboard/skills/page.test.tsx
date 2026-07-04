@@ -1,5 +1,5 @@
 /**
- * MCP Skills page (MCP Skill Studio) — title, New from Template, Unassigned
+ * MCP Skills page (MCP Skill Studio) — title, New skill, Unassigned
  * assignment, and Markdown download.
  */
 
@@ -66,9 +66,9 @@ describe("MCP Skills page", () => {
     expect(screen.getByText(/MCP Skill Studio/i)).toBeTruthy();
   });
 
-  it("shows New from Template and loads the 3-tier template into the editor", async () => {
+  it("shows New skill and loads the 3-tier template into the editor", async () => {
     await renderPage();
-    const btns = screen.getAllByRole("button", { name: /new from template/i });
+    const btns = screen.getAllByRole("button", { name: /new skill/i });
     expect(btns.length).toBeGreaterThan(0);
     fireEvent.click(btns[0]);
     await waitFor(() => expect(apiMocks.getSkillTemplate).toHaveBeenCalled());

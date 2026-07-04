@@ -75,8 +75,8 @@ export default function LoginPage() {
       } else {
         navigateDashboard("/dashboard");
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+    } catch {
+      setError("Invalid email or password.");
     } finally {
       setLoading(false);
     }
@@ -94,7 +94,7 @@ export default function LoginPage() {
         registrationOpen ? (
           <>
             No account?{" "}
-            <Link href="/register" className="font-medium text-accent hover:underline">
+            <Link href="/register" className="font-medium text-accent-text hover:underline">
               Register
             </Link>
           </>
@@ -129,6 +129,11 @@ export default function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           placeholder="••••••••"
         />
+        <div className="-mt-2 text-right">
+          <Link href="/password-reset" className="text-xs font-medium text-accent-text hover:underline">
+            Forgot password?
+          </Link>
+        </div>
 
         <Button type="submit" loading={loading} className="w-full justify-center">
           Sign in

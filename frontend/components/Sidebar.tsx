@@ -199,7 +199,7 @@ function renderNavLink({
       title={collapsed ? label : undefined}
       className={`group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
         active
-          ? "bg-accent-bg text-accent"
+          ? "bg-accent-bg text-accent-text"
           : "text-fg-secondary hover:bg-bg-hover hover:text-fg-primary"
       }`}
     >
@@ -217,7 +217,7 @@ function renderNavLink({
         </span>
       )}
       {active && !collapsed && !badge && (
-        <span className="ml-auto h-1.5 w-1.5 rounded-pill bg-accent" />
+        <span className="ml-auto h-1.5 w-1.5 rounded-pill bg-accent-text" />
       )}
     </Link>
   );

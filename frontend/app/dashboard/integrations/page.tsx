@@ -341,7 +341,7 @@ function StructuredField({
                 href={field.doc_url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-accent hover:underline"
+                className="text-accent-text hover:underline"
               >
                 Where do I get this?
               </a>

@@ -44,10 +44,10 @@ function timelineAccent(item: IncidentTimelineItemResponse) {
 }
 
 function timelineIcon(item: IncidentTimelineItemResponse) {
-  if (item.lane === "tool") return <Terminal size={14} className="text-accent" />;
+  if (item.lane === "tool") return <Terminal size={14} className="text-accent-text" />;
   if (item.lane === "evidence") return <Activity size={14} className="text-status-medium" />;
   if (item.lane === "comment")
-    return <MessageSquare size={14} className="text-accent" />;
+    return <MessageSquare size={14} className="text-accent-text" />;
   if (item.lane === "notification")
     return <Bell size={14} className="text-fg-secondary" />;
   if (item.event_type === "escalation_step_fired") {

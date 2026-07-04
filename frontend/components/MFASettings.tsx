@@ -107,7 +107,7 @@ export function MFASettings({
   return (
     <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
       <div className="flex items-start gap-3">
-        <div className="rounded-lg bg-accent/10 p-2 text-accent">
+        <div className="rounded-lg bg-accent/10 p-2 text-accent-text">
           <ShieldCheck size={18} />
         </div>
         <div>
@@ -212,7 +212,7 @@ export function MFASettings({
             <button
               type="button"
               onClick={() => setUseRecovery((value) => !value)}
-              className="mt-2 text-xs text-accent hover:underline"
+              className="mt-2 text-xs text-accent-text hover:underline"
             >
               Use {useRecovery ? "an authenticator code" : "a recovery code"}
             </button>

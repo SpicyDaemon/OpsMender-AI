@@ -335,7 +335,7 @@ function PeopleTable({
             <div>
               <Link
                 href={`/dashboard/people/detail?id=${r.user.id}`}
-                className="font-medium text-fg-primary hover:text-accent"
+                className="font-medium text-fg-primary hover:text-accent-text"
               >
                 {personName(r)}
               </Link>
@@ -472,7 +472,7 @@ function PeopleTable({
         r.kind === "user" ? (
           <Link
             href={`/dashboard/people/detail?id=${r.user.id}`}
-            className="text-sm font-medium text-accent hover:underline"
+            className="text-sm font-medium text-accent-text hover:underline"
           >
             Manage
           </Link>
@@ -541,7 +541,7 @@ function NewPersonModal({
             aria-current={tab === id ? "page" : undefined}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
               tab === id
-                ? "bg-accent text-white"
+                ? "bg-accent text-accent-contrast"
                 : "border border-border-default bg-bg-surface text-fg-secondary hover:text-fg-primary"
             }`}
           >
@@ -695,7 +695,7 @@ function CreateUserForm({
         <label className="flex items-center gap-2 text-sm text-fg-primary">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+            className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
             checked={form.is_active}
             onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
           />

@@ -71,7 +71,7 @@ function JsonHighlight({ data }: { data: unknown }) {
       let cls = "text-status-medium"; // number
       if (/^"/.test(match)) {
         if (/:$/.test(match)) {
-          cls = "text-accent"; // key
+          cls = "text-accent-text"; // key
           return `<span class="${cls}">${escapeHtml(match.slice(0, -1))}</span>:`;
         }
         cls = "text-status-low"; // string value

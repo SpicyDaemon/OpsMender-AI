@@ -26,14 +26,10 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { formatDateTime } from "@/lib/formatDate";
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 function timeUntil(iso: string): string {
@@ -51,6 +47,26 @@ const STATUS_OPTIONS: { value: ApprovalStatus | ""; label: string }[] = [
   { value: "rejected", label: "Rejected" },
   { value: "expired", label: "Expired" },
 ];
+
+function humanize(value: string | null | undefined) {
+  if (!value) return "Unknown";
+  return value
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function approvalActionLabel(action: Record<string, unknown>) {
+  const tool = action.tool ?? action.tool_name ?? action.name ?? action.action;
+  if (typeof tool === "string" && tool.trim()) return humanize(tool);
+  return "Requested action";
+}
+
+function approvalActionDetail(action: Record<string, unknown>) {
+  const target = action.target ?? action.resource ?? action.service ?? action.kind;
+  if (typeof target === "string" && target.trim()) return humanize(target);
+  const keys = Object.keys(action).filter((key) => !["tool", "tool_name", "name", "action"].includes(key));
+  return keys.length > 0 ? `${keys.length} parameter${keys.length === 1 ? "" : "s"}` : "Review required";
+}
 
 export default function ApprovalsPage() {
   const [data, setData] = useState<ApprovalListResponse | null>(null);
@@ -73,6 +89,20 @@ export default function ApprovalsPage() {
   }, [statusFilter, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    const interval = window.setInterval(refreshIfVisible, 30_000);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [load]);
 
   async function handleApprove(id: string) {
     setActionLoading(true);
@@ -173,7 +203,7 @@ export default function ApprovalsPage() {
       ) : data?.items.length === 0 ? (
         <EmptyState
           icon={CheckSquare}
-          title={statusFilter ? `No ${statusFilter} approvals` : "No approvals yet"}
+          title={statusFilter ? `No ${humanize(statusFilter).toLowerCase()} approvals` : "No approvals yet"}
           description={
             statusFilter
               ? "Try a different status filter."
@@ -221,9 +251,14 @@ export default function ApprovalsPage() {
                     <td className="px-4 py-3">
                       <button
                         onClick={() => setSelected(a)}
-                        className="font-mono text-xs text-accent hover:underline text-left block"
+                        className="text-left"
                       >
-                        {JSON.stringify(a.action).slice(0, 60)}…
+                        <span className="block text-sm font-medium text-fg-primary hover:text-accent-text">
+                          {approvalActionLabel(a.action)}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-fg-muted">
+                          {approvalActionDetail(a.action)}
+                        </span>
                       </button>
                       {a.justification && (
                         <p className="text-xs text-fg-muted mt-0.5 truncate max-w-xs">
@@ -234,13 +269,16 @@ export default function ApprovalsPage() {
                     <td className="px-4 py-3">
                       <Link
                         href={`/dashboard/sessions/detail?id=${a.session_id}`}
-                        className="font-mono text-xs text-fg-secondary hover:text-accent transition-colors"
+                        className="text-xs text-fg-secondary hover:text-accent-text transition-colors"
                       >
-                        {a.session_id.slice(0, 8)}…
+                        Open session
+                        <span className="ml-1 font-mono text-fg-muted">
+                          {a.session_id.slice(0, 8)}
+                        </span>
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={a.status}>{a.status}</Badge>
+                      <Badge variant={a.status}>{humanize(a.status)}</Badge>
                     </td>
                     <td className="px-4 py-3 text-fg-secondary whitespace-nowrap text-xs tabular-nums font-mono">
                       {fmtDate(a.requested_at)}
@@ -329,23 +367,23 @@ export default function ApprovalsPage() {
                 <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Session</p>
                 <Link
                   href={`/dashboard/sessions/detail?id=${selected.session_id}`}
-                  className="font-mono text-xs text-accent hover:underline"
+                  className="font-mono text-xs text-accent-text hover:underline"
                 >
                   {selected.session_id}
                 </Link>
               </div>
               <div>
                 <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Status</p>
-                <Badge variant={selected.status}>{selected.status}</Badge>
+                <Badge variant={selected.status}>{humanize(selected.status)}</Badge>
               </div>
               <div>
                 <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Requested</p>
-                <p className="text-xs text-fg-primary tabular-nums font-mono">{new Date(selected.requested_at).toLocaleString()}</p>
+                <p className="text-xs text-fg-primary tabular-nums font-mono">{formatDateTime(selected.requested_at)}</p>
               </div>
               <div>
                 <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Expires</p>
                 <p className="text-xs text-fg-primary tabular-nums font-mono">
-                  {new Date(selected.expires_at).toLocaleString()}
+                  {formatDateTime(selected.expires_at)}
                   {selected.status === "pending" && (
                     <span className="ml-2 text-status-medium">({timeUntil(selected.expires_at)})</span>
                   )}

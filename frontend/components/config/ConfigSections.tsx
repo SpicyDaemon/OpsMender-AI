@@ -836,6 +836,24 @@ function ModelConfigModal({
   );
 }
 
+const PROVIDER_NAME_OVERRIDES: Record<string, string> = {
+  openai: "OpenAI",
+  azure_openai: "Azure OpenAI",
+  openai_compatible: "OpenAI-compatible",
+  vertex_ai: "Vertex AI",
+  gcp_vertex: "Vertex AI",
+  bedrock: "AWS Bedrock",
+  ollama: "Ollama",
+  anthropic: "Anthropic",
+};
+
+function formatProviderName(provider: string): string {
+  return PROVIDER_NAME_OVERRIDES[provider] ??
+    provider
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export function ModelSection({
   bootstrap,
   providers,
@@ -859,6 +877,8 @@ export function ModelSection({
   const providerById = new Map(
     providers.map((provider) => [provider.provider, provider]),
   );
+  const providerLabel = (provider: string) =>
+    providerById.get(provider)?.label ?? formatProviderName(provider);
 
   async function handleTest(config: ModelConfigResponse) {
     setTestingId(config.id);
@@ -1001,9 +1021,7 @@ export function ModelSection({
                 c.provider,
                 {
                   value: c.provider,
-                  label:
-                    providerById.get(c.provider)?.label ??
-                    c.provider.replace("_", " "),
+                  label: providerLabel(c.provider),
                 },
               ]),
             ).values(),
@@ -1011,19 +1029,19 @@ export function ModelSection({
           valueOf: (config) => config.provider,
         },
         cell: (config) => (
-          <div className="flex items-center gap-2 capitalize">
+          <div className="flex items-center gap-2">
             <StatusDot
               tone={
                 providerById.get(config.provider)?.available ? "green" : "red"
               }
               title={
                 providerById.get(config.provider)?.available
-                  ? `${providerById.get(config.provider)?.label ?? config.provider} is available.`
+                  ? `${providerLabel(config.provider)} is available.`
                   : (providerById.get(config.provider)?.error ??
-                    `${providerById.get(config.provider)?.label ?? config.provider} is unavailable.`)
+                    `${providerLabel(config.provider)} is unavailable.`)
               }
             />
-            <span>{config.provider.replace("_", " ")}</span>
+            <span>{providerLabel(config.provider)}</span>
           </div>
         ),
       },
@@ -1119,7 +1137,7 @@ export function ModelSection({
 
   return (
     <Section
-      title="Model Manager"
+      title="Saved models"
       description="Saved model configs are reusable profiles for new sessions. Set one as default, or keep multiple providers ready to switch."
     >
       {bootstrap.needs_setup && (
@@ -1137,7 +1155,7 @@ export function ModelSection({
               </p>
             </div>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Bootstrap First Model
+              <Plus size={14} /> Bootstrap first model
             </Button>
           </div>
         </div>
@@ -1174,7 +1192,7 @@ export function ModelSection({
               {configs.length} saved config{configs.length === 1 ? "" : "s"}
             </span>
             <Button onClick={openCreateModal} disabled={!canEdit}>
-              <Plus size={14} /> Add Model Config
+              <Plus size={14} /> New model
             </Button>
           </>
         }
@@ -1237,8 +1255,9 @@ export function ModelSection({
               <Pencil size={13} /> Edit
             </Button>
             <Button
-              variant="danger"
+              variant="ghost"
               size="sm"
+              className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
               onClick={() => handleDelete(config)}
               disabled={!canEdit}
             >
@@ -1682,7 +1701,7 @@ function MCPServerModal({
                 type="checkbox"
                 checked={form.is_active}
                 onChange={(e) => setField("is_active", e.target.checked)}
-                className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
               />
               Active (available for sessions)
             </label>
@@ -3308,7 +3327,7 @@ function BotConnectorModal({
                 onChange={(e) =>
                   setField("native_actions_enabled", e.target.checked)
                 }
-                className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
               />
               <span>
                 <span className="font-medium">
@@ -3366,7 +3385,7 @@ function BotConnectorModal({
                 type="checkbox"
                 checked={form.lanes.includes("respond")}
                 onChange={() => toggleLane("respond")}
-                className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
               />
               <span>
                 <span className="font-medium">Respond</span>
@@ -3387,7 +3406,7 @@ function BotConnectorModal({
                   type="checkbox"
                   checked={form.lanes.includes("track")}
                   onChange={() => toggleLane("track")}
-                  className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                  className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
                 />
                 <span>
                   <span className="font-medium">Track</span>
@@ -3412,7 +3431,7 @@ function BotConnectorModal({
                 name="bot-team-scope"
                 checked={form.team_scope === "workspace"}
                 onChange={() => setTeamScope("workspace")}
-                className="h-4 w-4 border-border-strong text-accent focus:ring-accent"
+                className="h-4 w-4 border-border-strong text-accent-text focus:ring-accent"
               />
               Workspace-wide
             </label>
@@ -3422,7 +3441,7 @@ function BotConnectorModal({
                 name="bot-team-scope"
                 checked={form.team_scope === "teams"}
                 onChange={() => setTeamScope("teams")}
-                className="h-4 w-4 border-border-strong text-accent focus:ring-accent"
+                className="h-4 w-4 border-border-strong text-accent-text focus:ring-accent"
               />
               Specific teams
             </label>
@@ -3445,7 +3464,7 @@ function BotConnectorModal({
                         type="checkbox"
                         checked={form.team_ids.includes(team.id)}
                         onChange={() => toggleTeam(team.id)}
-                        className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                        className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
                       />
                       {team.name}
                     </label>
@@ -3548,7 +3567,7 @@ function BotConnectorModal({
                   type="checkbox"
                   checked={form.allowed_capabilities.includes(option.value)}
                   onChange={() => toggleCapability(option.value)}
-                  className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                  className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
                 />
                 {option.label}
               </label>
@@ -3579,7 +3598,7 @@ function BotConnectorModal({
                 type="checkbox"
                 checked={form.is_enabled}
                 onChange={(e) => setField("is_enabled", e.target.checked)}
-                className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
               />
               Enable this notification channel
             </label>
@@ -4377,7 +4396,7 @@ export function BotConnectorSection({
 // ---------------------------------------------------------------------------
 
 const PROVIDER_COLORS: Record<string, string> = {
-  auto: "border-accent bg-accent-bg text-accent",
+  auto: "border-accent bg-accent-bg text-accent-text",
   cloudwatch: "border-status-high-border bg-status-high-bg text-status-high",
   azure_monitor: "border-status-info-border bg-status-info-bg text-status-info",
   gcp_monitoring: "border-status-low-border bg-status-low-bg text-status-low",
@@ -5040,7 +5059,7 @@ function AgentTeamProfileModal({
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggleRole(role.value)}
-                      className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+                      className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
                     />
                     <div>
                       <p className="font-medium text-fg-primary">
@@ -5063,7 +5082,7 @@ function AgentTeamProfileModal({
               type="checkbox"
               checked={form.is_active}
               onChange={(e) => setField("is_active", e.target.checked)}
-              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+              className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
             />
             Active (available when starting sessions)
           </label>
@@ -5072,7 +5091,7 @@ function AgentTeamProfileModal({
               type="checkbox"
               checked={form.is_default}
               onChange={(e) => setField("is_default", e.target.checked)}
-              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+              className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
             />
             Default agent team
           </label>
@@ -5492,7 +5511,7 @@ function WorkflowProfileModal({
               type="checkbox"
               checked={form.is_active}
               onChange={(e) => setField("is_active", e.target.checked)}
-              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+              className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
             />
             Active (available when starting sessions)
           </label>
@@ -5501,7 +5520,7 @@ function WorkflowProfileModal({
               type="checkbox"
               checked={form.is_default}
               onChange={(e) => setField("is_default", e.target.checked)}
-              className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent"
+              className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
             />
             Default workflow profile
           </label>
@@ -6120,7 +6139,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
                   Manual via{" "}
                   <Link
                     href="/dashboard/memories"
-                    className="text-accent hover:underline"
+                    className="text-accent-text hover:underline"
                   >
                     /dashboard/memories
                   </Link>

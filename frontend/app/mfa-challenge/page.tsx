@@ -74,7 +74,7 @@ export default function MFAChallengePage() {
             setUseRecovery((value) => !value);
             setCode("");
           }}
-          className="text-sm text-accent hover:underline"
+          className="text-sm text-accent-text hover:underline"
         >
           Use {useRecovery ? "an authenticator code" : "a recovery code"}
         </button>

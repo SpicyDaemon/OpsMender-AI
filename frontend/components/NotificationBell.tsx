@@ -261,7 +261,7 @@ export function NotificationBell() {
           <Link
             href="/dashboard/notifications"
             onClick={() => setOpen(false)}
-            className="block border-t border-border-subtle px-3 py-2.5 text-center text-xs font-medium text-accent hover:bg-bg-hover transition-colors"
+            className="block border-t border-border-subtle px-3 py-2.5 text-center text-xs font-medium text-accent-text hover:bg-bg-hover transition-colors"
           >
             View all
           </Link>

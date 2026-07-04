@@ -45,11 +45,11 @@ export default function RegisterPage() {
   return (
     <AuthShell
       title="Create an OpsMender account"
-      description="Set up access for operators, reviewers, or admins and jump straight into the dashboard."
+      description="Set up access for operators, viewers, or admins and jump straight into the dashboard."
       footer={(
         <>
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-accent hover:underline">
+          <Link href="/login" className="font-medium text-accent-text hover:underline">
             Sign in
           </Link>
         </>

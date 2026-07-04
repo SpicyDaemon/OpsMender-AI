@@ -78,7 +78,7 @@ export function SessionMemoriesPanel({ sessionId, defaultOpen = false }: Props) 
       >
         <div className="flex items-center gap-2">
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <Brain size={14} className="text-accent" />
+          <Brain size={14} className="text-accent-text" />
           <span className="text-xs font-medium uppercase tracking-wide text-fg-secondary">
             Memories used
           </span>

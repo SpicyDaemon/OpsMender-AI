@@ -315,7 +315,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
               aria-current={isActive ? "page" : undefined}
               className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
                 isActive
-                  ? "bg-accent text-white shadow-sm"
+                  ? "bg-accent text-accent-contrast shadow-sm"
                   : "border border-border-default bg-bg-surface text-fg-secondary hover:border-border-strong hover:text-fg-primary"
               }`}
             >
@@ -3385,7 +3385,7 @@ function PagingFlowModal({
 
   const toneStyles: Record<string, string> = {
     info: "border-status-info-border bg-status-info-bg text-status-info",
-    accent: "border-accent bg-accent-bg text-accent",
+    accent: "border-accent bg-accent-bg text-accent-text",
     warn: "border-status-medium-border bg-status-medium-bg text-status-medium",
   };
 
@@ -4666,7 +4666,7 @@ export function NotificationPreferencesPanel({
                                 (from your{" "}
                                 <a
                                   href="/dashboard/settings/profile"
-                                  className="text-accent underline"
+                                  className="text-accent-text underline"
                                 >
                                   profile
                                 </a>
@@ -4679,7 +4679,7 @@ export function NotificationPreferencesPanel({
                                 No phone number on your profile — add one in your{" "}
                                 <a
                                   href="/dashboard/settings/profile"
-                                  className="text-accent underline"
+                                  className="text-accent-text underline"
                                 >
                                   profile
                                 </a>{" "}
@@ -4716,7 +4716,7 @@ export function NotificationPreferencesPanel({
             <button
               type="button"
               onClick={onGoToChannels}
-              className="text-accent underline"
+              className="text-accent-text underline"
             >
               Notification Channels
             </button>
@@ -4728,7 +4728,7 @@ export function NotificationPreferencesPanel({
           places an automated phone call to the number on your{" "}
           <a
             href="/dashboard/settings/profile"
-            className="text-accent underline"
+            className="text-accent-text underline"
           >
             profile
           </a>{" "}
@@ -4803,7 +4803,7 @@ export function NotificationPreferencesPanel({
                       onClick={() => toggleDay(d.value)}
                       className={`rounded-md border px-3 py-1.5 text-xs transition ${
                         on
-                          ? "border-accent bg-accent text-white"
+                          ? "border-accent bg-accent text-accent-contrast"
                           : "border-border-strong bg-bg-input text-fg-secondary hover:text-fg-primary"
                       }`}
                     >

@@ -1003,10 +1003,13 @@ function SessionPageContent() {
         </div>
       )}
 
-      {/* Split view: event stream + co-pilot chat */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4 min-h-0">
+      {/* Split view: event stream + co-pilot chat. On mobile the two panels
+          stack as full-width blocks with their own bounded height (below), in
+          normal page flow — the grid only fills remaining height at lg+, where
+          the panels scroll internally instead of the page. */}
+      <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[3fr_2fr]">
         {/* Event stream */}
-        <div className="flex flex-col rounded-xl border border-border-subtle bg-bg-panel shadow-sm min-h-0">
+        <div className="flex flex-col rounded-xl border border-border-subtle bg-bg-panel shadow-sm max-h-[70vh] lg:max-h-none lg:min-h-0">
           <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
             <Terminal size={14} className="text-fg-muted" />
             <span className="text-xs font-medium text-fg-secondary uppercase tracking-wide">
@@ -1098,7 +1101,7 @@ function SessionPageContent() {
         </div>
 
         {/* Co-pilot chat */}
-        <div className="flex flex-col rounded-xl border border-border-subtle bg-bg-panel shadow-sm min-h-0">
+        <div className="flex flex-col rounded-xl border border-border-subtle bg-bg-panel shadow-sm max-h-[70vh] lg:max-h-none lg:min-h-0">
           <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
             <MessageSquare size={14} className="text-accent" />
             <span className="text-xs font-medium text-fg-secondary uppercase tracking-wide">

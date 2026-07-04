@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     390px, e.g. Incidents' "Refresh" rendering under the heading). Incident
     stat tiles render as a 2×2 grid with tighter padding on phones instead
     of four full-height stacked cards.
+  - **Session detail no longer overlaps its panels on mobile.** The event
+    stream and co-pilot columns collapsed into a fixed-height grid at 390px,
+    so the co-pilot header overlapped the event-stream summary and the chat
+    input floated over the memories panel. On phones the two panels now stack
+    as full-width blocks with a bounded height and their own internal scroll,
+    in normal page flow; the fill-remaining-height behavior is kept at `lg`+.
   - Added `lib/formatDate.ts` (formatDate / formatDateTime / formatTime /
     formatRelative) as the single date/time formatting system; used here for
     the "Ended · {relative}" chip (call-site sweep continues under G-4).

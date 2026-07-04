@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase D: People detail
+  (P-19).** People detail display-name headers and Joined metadata are now
+  covered by focused regression tests; the People list Joined / Sent column is
+  covered as well.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase D: Reports empty
   state (P-16).** Scheduled reports now show the shared empty-state treatment
   when no schedules exist, with report-specific copy and a compact action that

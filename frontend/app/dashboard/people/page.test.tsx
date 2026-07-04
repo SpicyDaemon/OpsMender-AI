@@ -75,6 +75,12 @@ describe("People page (v1)", () => {
     expect(screen.getByRole("button", { name: /new user/i })).toBeTruthy();
   });
 
+  it("shows the Joined / Sent column in the unified table", async () => {
+    render(<PeoplePage />);
+    await waitFor(() => expect(screen.getAllByText("jdoe").length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/joined \/ sent/i).length).toBeGreaterThan(0);
+  });
+
   it("has no separate Invites tab (unified People table)", async () => {
     render(<PeoplePage />);
     await waitFor(() => expect(screen.getAllByText("jdoe").length).toBeGreaterThan(0));

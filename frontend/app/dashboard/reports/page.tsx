@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { CalendarClock, Trash2 } from "lucide-react";
 import {
   createReportSchedule,
   deleteReportSchedule,
@@ -13,6 +13,7 @@ import type { ReportScheduleResponse } from "@/lib/types";
 import { formatDateTime } from "@/lib/formatDate";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select } from "@/components/ui/Input";
 
 function isoLocal(date: Date): string {
@@ -130,49 +131,66 @@ export default function ReportsPage() {
           </div>
           <Button onClick={saveSchedule} disabled={!name || !recipients}>{editingId ? "Save schedule" : "Create schedule"}</Button>
           {notice && <p className="text-sm text-fg-secondary">{notice}</p>}
-          <div className="divide-y divide-border-subtle">
-            {schedules.map((schedule) => (
-              <div key={schedule.id} className="flex items-center justify-between gap-4 py-3">
-                <div><p className="font-medium text-fg-primary">{schedule.name}</p><p className="text-xs text-fg-muted">{schedule.cadence} · {schedule.format.toUpperCase()} · next {formatDateTime(schedule.next_run_at)}</p>{schedule.last_error && <p className="text-xs text-status-critical">{schedule.last_error}</p>}</div>
-                <div className="flex flex-nowrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => {
-                    setEditingId(schedule.id);
-                    setName(schedule.name);
-                    setRecipients(schedule.recipients.join(", "));
-                    setCadence(schedule.cadence);
-                    setFormat(schedule.format);
-                    setTo(isoLocal(new Date(schedule.next_run_at)));
-                  }}>Edit</Button>
-                  <Button variant="secondary" size="sm" onClick={async () => {
-                    await updateReportSchedule(schedule.id, {
-                      name: schedule.name,
-                      cadence: schedule.cadence,
-                      recipients: schedule.recipients,
-                      filters: schedule.filters,
-                      format: schedule.format,
-                      next_run_at: schedule.next_run_at,
-                      enabled: !schedule.enabled,
-                    });
-                    await reload();
-                  }}>{schedule.enabled ? "Disable" : "Enable"}</Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
-                    aria-label={`Delete report schedule ${schedule.name}`}
-                    title={`Delete report schedule ${schedule.name}`}
-                    onClick={async () => {
-                      if (!window.confirm(`Delete report schedule "${schedule.name}"?`)) return;
-                      await deleteReportSchedule(schedule.id);
+          {schedules.length === 0 ? (
+            <EmptyState
+              icon={CalendarClock}
+              title="No scheduled reports yet"
+              description="Create a weekly, monthly, or quarterly email report when incident summaries need to land without a manual export."
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => document.getElementById("schedule-name")?.focus()}
+                >
+                  Create first schedule
+                </Button>
+              }
+            />
+          ) : (
+            <div className="divide-y divide-border-subtle">
+              {schedules.map((schedule) => (
+                <div key={schedule.id} className="flex items-center justify-between gap-4 py-3">
+                  <div><p className="font-medium text-fg-primary">{schedule.name}</p><p className="text-xs text-fg-muted">{schedule.cadence} · {schedule.format.toUpperCase()} · next {formatDateTime(schedule.next_run_at)}</p>{schedule.last_error && <p className="text-xs text-status-critical">{schedule.last_error}</p>}</div>
+                  <div className="flex flex-nowrap gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => {
+                      setEditingId(schedule.id);
+                      setName(schedule.name);
+                      setRecipients(schedule.recipients.join(", "));
+                      setCadence(schedule.cadence);
+                      setFormat(schedule.format);
+                      setTo(isoLocal(new Date(schedule.next_run_at)));
+                    }}>Edit</Button>
+                    <Button variant="secondary" size="sm" onClick={async () => {
+                      await updateReportSchedule(schedule.id, {
+                        name: schedule.name,
+                        cadence: schedule.cadence,
+                        recipients: schedule.recipients,
+                        filters: schedule.filters,
+                        format: schedule.format,
+                        next_run_at: schedule.next_run_at,
+                        enabled: !schedule.enabled,
+                      });
                       await reload();
-                    }}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
+                    }}>{schedule.enabled ? "Disable" : "Enable"}</Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
+                      aria-label={`Delete report schedule ${schedule.name}`}
+                      title={`Delete report schedule ${schedule.name}`}
+                      onClick={async () => {
+                        if (!window.confirm(`Delete report schedule "${schedule.name}"?`)) return;
+                        await deleteReportSchedule(schedule.id);
+                        await reload();
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>

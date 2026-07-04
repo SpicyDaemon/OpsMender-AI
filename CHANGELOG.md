@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase D: Reports empty
+  state (P-16).** Scheduled reports now show the shared empty-state treatment
+  when no schedules exist, with report-specific copy and a compact action that
+  returns focus to the schedule form.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C: Sidebar IA
   (P-17).** The global sidebar Paging group now exposes only On Call Schedule
   and the Paging hub. Detailed Paging setup remains in the hub tabs, and old

@@ -17,7 +17,7 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <header
-      className={`flex items-start justify-between gap-4 ${className}`}
+      className={`flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 ${className}`}
     >
       <div className="flex items-start gap-3 min-w-0">
         {icon && (
@@ -35,7 +35,7 @@ export function PageHeader({
         </div>
       </div>
       {actions && (
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
       )}
     </header>
   );

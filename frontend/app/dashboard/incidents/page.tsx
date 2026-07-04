@@ -798,16 +798,16 @@ export default function IncidentsPage() {
         />
       </div>
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {overview.map((item) => (
           <div
             key={item.label}
-            className="rounded-lg border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm"
+            className="rounded-lg border border-border-subtle bg-bg-panel px-3 py-2.5 shadow-sm sm:px-4 sm:py-3"
           >
             <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
               {item.label}
             </p>
-            <p className={`mt-2 text-2xl font-semibold tracking-tight ${item.tone}`}>
+            <p className={`mt-1.5 text-xl font-semibold tracking-tight sm:mt-2 sm:text-2xl ${item.tone}`}>
               {item.value}
             </p>
           </div>

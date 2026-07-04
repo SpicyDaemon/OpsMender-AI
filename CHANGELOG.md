@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Co-pilot markdown renderer** no longer leaks literal `*` markers from
     malformed LLM bold/italic (e.g. "**Severity:* Medium"): bold matching is
     now resilient and orphan emphasis markers are stripped.
+  - **Mobile page headers no longer overlap their actions.** `PageHeader`
+    now stacks the title over its action buttons below `sm` (they previously
+    sat in a non-wrapping `shrink-0` row that collided with the title at
+    390px, e.g. Incidents' "Refresh" rendering under the heading). Incident
+    stat tiles render as a 2×2 grid with tighter padding on phones instead
+    of four full-height stacked cards.
   - Added `lib/formatDate.ts` (formatDate / formatDateTime / formatTime /
     formatRelative) as the single date/time formatting system; used here for
     the "Ended · {relative}" chip (call-site sweep continues under G-4).

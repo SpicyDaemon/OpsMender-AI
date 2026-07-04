@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase D: heading effect
+  policy (P-22).** Dashboard headings are now covered by a regression test that
+  forbids glitch/chromatic/text-shadow treatment in in-app pages and the shared
+  PageHeader, preserving the auth-only visual decision.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase D: Approvals
   zero-state copy (P-21).** The default Pending empty state now explains that
   no approvals are waiting, All statuses keeps the onboarding/test-incident

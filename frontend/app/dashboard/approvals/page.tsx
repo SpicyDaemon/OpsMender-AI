@@ -62,6 +62,32 @@ function approvalActionDetail(action: Record<string, unknown>) {
   return keys.length > 0 ? `${keys.length} parameter${keys.length === 1 ? "" : "s"}` : "Review required";
 }
 
+function approvalEmptyStateCopy(statusFilter: ApprovalStatus | "") {
+  if (statusFilter === "pending") {
+    return {
+      title: "No approvals waiting",
+      description:
+        "Tier 1 actions that need human sign-off will appear here as soon as a session asks for approval.",
+      showTestAction: false,
+    };
+  }
+
+  if (!statusFilter) {
+    return {
+      title: "No approvals yet",
+      description:
+        "Tier 1 actions that need human sign-off show up here. You can also approve them directly from the session detail page or your chat — this is the catch-up inbox.",
+      showTestAction: true,
+    };
+  }
+
+  return {
+    title: `No ${titleCaseIdentifier(statusFilter).toLowerCase()} approvals`,
+    description: "No approvals match this status. Try another filter or switch back to Pending for work waiting on you.",
+    showTestAction: false,
+  };
+}
+
 export default function ApprovalsPage() {
   const [data, setData] = useState<ApprovalListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -150,6 +176,7 @@ export default function ApprovalsPage() {
   }
 
   const pendingCount = data?.items.filter((a) => a.status === "pending").length ?? 0;
+  const emptyStateCopy = approvalEmptyStateCopy(statusFilter);
 
   return (
     <div>
@@ -214,16 +241,12 @@ export default function ApprovalsPage() {
       ) : data?.items.length === 0 ? (
         <EmptyState
           icon={CheckSquare}
-          title={statusFilter ? `No ${titleCaseIdentifier(statusFilter).toLowerCase()} approvals` : "No approvals yet"}
-          description={
-            statusFilter
-              ? "Try a different status filter."
-              : "Tier 1 actions that need human sign-off show up here. You can also approve them directly from the session detail page or your chat — this is the catch-up inbox."
-          }
+          title={emptyStateCopy.title}
+          description={emptyStateCopy.description}
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
           action={
-            !statusFilter ? (
+            emptyStateCopy.showTestAction ? (
               <Link
                 href="/dashboard/incidents?test=1"
                 className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-panel px-2.5 py-1 text-xs font-medium text-fg-primary transition-colors hover:bg-bg-hover"

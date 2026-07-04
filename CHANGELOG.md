@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase D: Approvals
+  zero-state copy (P-21).** The default Pending empty state now explains that
+  no approvals are waiting, All statuses keeps the onboarding/test-incident
+  branch, and other status filters use filter-specific empty copy.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase D: People detail
   (P-19).** People detail display-name headers and Joined metadata are now
   covered by focused regression tests; the People list Joined / Sent column is

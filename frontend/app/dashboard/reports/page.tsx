@@ -34,6 +34,12 @@ export default function ReportsPage() {
   const [notice, setNotice] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  function setRange(days: number) {
+    const end = new Date();
+    setFrom(isoLocal(new Date(end.getTime() - days * 86400000)));
+    setTo(isoLocal(end));
+  }
+
   async function reload() {
     if (!admin) return;
     setSchedules((await listReportSchedules()).items);
@@ -80,11 +86,38 @@ export default function ReportsPage() {
       </div>
       <section className="space-y-4 rounded-xl border border-border-subtle bg-bg-panel p-5">
         <h2 className="font-semibold text-fg-primary">On-demand export</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div><Label htmlFor="report-from">From</Label><Input id="report-from" type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-          <div><Label htmlFor="report-to">To</Label><Input id="report-to" type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+          <div>
+            <Label htmlFor="report-from">From</Label>
+            <Input
+              id="report-from"
+              type="datetime-local"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="report-to">To</Label>
+            <Input
+              id="report-to"
+              type="datetime-local"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setRange(7)}>
+              7d
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setRange(30)}>
+              30d
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2"><Button onClick={() => download("csv")}>Download CSV</Button><Button variant="secondary" onClick={() => download("pdf")}>Download PDF</Button></div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => download("csv")}>Download CSV</Button>
+          <Button variant="secondary" onClick={() => download("pdf")}>Download PDF</Button>
+        </div>
       </section>
       {admin && (
         <section className="space-y-4 rounded-xl border border-border-subtle bg-bg-panel p-5">

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase C: native
+  form-control skinning (G-8).** Shared date/time inputs and selects now carry
+  theme-aware native chrome, including calendar indicators and select chevrons.
+  DataTable rows-per-page uses the shared `Select` instead of a one-off raw
+  native control, and Reports aligns its on-demand from/to range with matching
+  7d/30d quick range buttons.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C:
   destructive-action pattern (G-7).** Row/default destructive actions now use
   quiet ghost styling with icon labels and confirmations instead of filled-red

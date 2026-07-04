@@ -1,11 +1,23 @@
 import { type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes, forwardRef } from "react";
 
 const BASE = "block w-full rounded-md border border-border-strong bg-bg-input px-3 py-2 text-sm text-fg-primary placeholder:text-fg-muted transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:bg-bg-hover disabled:opacity-60";
+const TEMPORAL_INPUT_TYPES = new Set(["date", "datetime-local", "month", "time", "week"]);
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  ({ className = "", ...props }, ref) => (
-    <input ref={ref} className={`${BASE} ${className}`} {...props} />
-  ),
+  ({ className = "", type, ...props }, ref) => {
+    const nativeDateClass =
+      typeof type === "string" && TEMPORAL_INPUT_TYPES.has(type)
+        ? "opsmender-date-input"
+        : "";
+    return (
+      <input
+        ref={ref}
+        type={type}
+        className={`${BASE} ${nativeDateClass} ${className}`}
+        {...props}
+      />
+    );
+  },
 );
 Input.displayName = "Input";
 
@@ -18,7 +30,11 @@ Textarea.displayName = "Textarea";
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   ({ className = "", ...props }, ref) => (
-    <select ref={ref} className={`${BASE} appearance-none pr-8 ${className}`} {...props} />
+    <select
+      ref={ref}
+      className={`${BASE} opsmender-select appearance-none pr-8 ${className}`}
+      {...props}
+    />
   ),
 );
 Select.displayName = "Select";

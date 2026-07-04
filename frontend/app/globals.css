@@ -151,6 +151,46 @@ body {
   background: var(--color-fg-muted);
 }
 
+/* Native form-control chrome needs the app theme, not the browser default. */
+input.opsmender-date-input,
+select.opsmender-select {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] input.opsmender-date-input,
+:root[data-theme="light"] select.opsmender-select {
+  color-scheme: light;
+}
+
+input.opsmender-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  opacity: 0.75;
+  padding: 2px;
+  filter: invert(1) saturate(0.85) brightness(1.35);
+}
+
+:root[data-theme="light"] input.opsmender-date-input::-webkit-calendar-picker-indicator {
+  filter: none;
+  opacity: 0.65;
+}
+
+input.opsmender-date-input::-webkit-calendar-picker-indicator:hover {
+  background: var(--color-bg-hover);
+  opacity: 1;
+}
+
+select.opsmender-select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-fg-muted) 50%),
+    linear-gradient(135deg, var(--color-fg-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% + 1px),
+    calc(100% - 11px) calc(50% + 1px);
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+}
+
 /* Focus ring — consistent across interactive elements */
 *:focus-visible {
   outline: 2px solid var(--color-border-focus);

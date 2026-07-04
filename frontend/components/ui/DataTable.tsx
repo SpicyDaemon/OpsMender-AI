@@ -22,7 +22,7 @@ import {
 
 import { Button } from "@/components/ui/Button";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
-import { Input, Label } from "@/components/ui/Input";
+import { Input, Label, Select } from "@/components/ui/Input";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -757,18 +757,18 @@ export function DataTable<T>({
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <span className="whitespace-nowrap">Rows per page</span>
-          <select
+          <Select
             aria-label="Rows per page"
             value={String(pageSize)}
             onChange={(e) => setPageSize(Number(e.target.value))}
-            className="h-7 w-14 rounded-md border border-border-default bg-bg-input px-2 py-0 text-xs font-medium text-fg-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            className="h-7 w-16 rounded-md px-2 py-0 pr-6 text-xs font-medium"
           >
             {pageSizeOptions.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
             ))}
-          </select>
+          </Select>
           <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"

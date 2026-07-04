@@ -47,6 +47,37 @@ function fmtDate(iso: string | null) {
   return formatDate(iso);
 }
 
+// AI-authored summaries arrive as loose markdown with occasional LaTeX
+// artifacts (e.g. "**What went wrong:**", "$\rightarrow$"). We render them as
+// clean text rather than leaking the raw markers into the table.
+function normalizeMarkup(md: string): string {
+  return md
+    .replace(/\$\s*\\?rightarrow\s*\$/gi, "→")
+    .replace(/\\rightarrow/gi, "→")
+    .replace(/\$([^$\n]*)\$/g, "$1") // strip stray $…$ math delimiters
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "");
+}
+
+/** Single-line preview: normalized markup with whitespace collapsed. */
+function summaryPreview(md: string): string {
+  return normalizeMarkup(md)
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** "data-integrity" → "Data integrity" — display-only; stored value unchanged. */
+function tagLabel(tag: string): string {
+  const t = tag.replace(/[-_]/g, " ").trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : tag;
+}
+
+const MAX_VISIBLE_TAGS = 3;
+
 export default function MemoriesPage() {
   const toast = useToast();
   const { user } = useAuth();
@@ -134,7 +165,7 @@ export default function MemoriesPage() {
               </span>
             </div>
             <p className="mt-1 line-clamp-2 max-w-xl text-xs text-fg-muted">
-              {memory.summary_md}
+              {summaryPreview(memory.summary_md)}
             </p>
           </div>
         ),
@@ -168,11 +199,20 @@ export default function MemoriesPage() {
         cell: (memory) =>
           memory.tags.length > 0 ? (
             <div className="flex max-w-sm flex-wrap gap-1">
-              {memory.tags.map((tag) => (
+              {memory.tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
                 <Badge key={tag} variant="default">
-                  {tag}
+                  {tagLabel(tag)}
                 </Badge>
               ))}
+              {memory.tags.length > MAX_VISIBLE_TAGS && (
+                <span
+                  title={memory.tags.slice(MAX_VISIBLE_TAGS).map(tagLabel).join(", ")}
+                >
+                  <Badge variant="default">
+                    +{memory.tags.length - MAX_VISIBLE_TAGS}
+                  </Badge>
+                </span>
+              )}
             </div>
           ) : (
             <span className="text-fg-muted">—</span>
@@ -387,7 +427,7 @@ export default function MemoriesPage() {
                   Summary
                 </p>
                 <p className="whitespace-pre-wrap text-sm text-fg-secondary">
-                  {memory.summary_md}
+                  {normalizeMarkup(memory.summary_md)}
                 </p>
               </div>
             ),

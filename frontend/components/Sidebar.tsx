@@ -19,16 +19,11 @@ import {
   Gauge,
   FileText,
   FileBarChart,
-  GitBranch,
   LogOut,
   Network,
   Plug,
-  Repeat,
-  Server,
   Settings,
   UserCog,
-  Users,
-  Wrench,
   X,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
@@ -109,16 +104,9 @@ export function buildNavGroups(): NavGroup[] {
         // On Call Schedule is visible to everyone (Viewer = read-only);
         // editing the schedule is gated in the page itself.
         { href: "/dashboard/on-call-schedule", label: "On Call Schedule", icon: CalendarClock },
-        // Operators can view Teams/Rosters/Chains/Services in read-only mode.
-        // Ordered by build flow: team → roster → chain → service.
-        { href: "/dashboard/paging/teams", label: "Teams", icon: Users, roles: ["admin", "operator"] },
-        { href: "/dashboard/paging/rosters", label: "Rosters", icon: Repeat, roles: ["admin", "operator"] },
-        { href: "/dashboard/paging/escalation-chains", label: "Escalation Chains", icon: GitBranch, roles: ["admin", "operator"] },
-        { href: "/dashboard/paging/services", label: "Services", icon: Server, roles: ["admin", "operator"] },
-        // Operators can request (not approve) maintenance windows.
-        { href: "/dashboard/paging/maintenance-windows", label: "Maintenance Windows", icon: Wrench, roles: ["admin", "operator"] },
-        // Notifications hosts each user's own routing — operators need it too.
-        { href: "/dashboard/paging/notifications", label: "Notifications", icon: Bell, roles: ["admin", "operator"] },
+        // The hub owns Teams/Rosters/Chains/Services/Windows/Notifications
+        // as in-page tabs; operators can view it in read-only mode.
+        { href: "/dashboard/paging", label: "Paging", icon: Bell, roles: ["admin", "operator"] },
       ],
     },
     {

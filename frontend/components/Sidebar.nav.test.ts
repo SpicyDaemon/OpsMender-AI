@@ -34,7 +34,8 @@ describe("Sidebar nav model", () => {
     expect(hrefs).toContain("/dashboard/config");
     expect(hrefs).toContain("/dashboard/people");
     expect(hrefs).toContain("/dashboard/models");
-    expect(hrefs).toContain("/dashboard/paging/services");
+    expect(hrefs).toContain("/dashboard/paging");
+    expect(hrefs).not.toContain("/dashboard/paging/services");
     expect(hrefs).toContain("/dashboard/integrations");
   });
 
@@ -59,13 +60,13 @@ describe("Sidebar nav model", () => {
     ]) {
       expect(hrefs).not.toContain(adminOnly);
     }
-    // Operators CAN see paging setup in read-only mode (Part 1 QA fix).
-    expect(hrefs).toContain("/dashboard/paging/services");
-    expect(hrefs).toContain("/dashboard/paging/teams");
+    // Operators CAN see the Paging hub in read-only mode.
+    expect(hrefs).toContain("/dashboard/paging");
+    expect(hrefs).not.toContain("/dashboard/paging/services");
+    expect(hrefs).not.toContain("/dashboard/paging/teams");
     // Keeps incident-response surfaces.
     expect(hrefs).toContain("/dashboard/incidents");
     expect(hrefs).toContain("/dashboard/approvals");
-    expect(hrefs).toContain("/dashboard/paging/notifications");
   });
 
   it("viewer is limited to read-only surfaces", () => {
@@ -77,7 +78,7 @@ describe("Sidebar nav model", () => {
     expect(hrefs).not.toContain("/dashboard/approvals");
     expect(hrefs).not.toContain("/dashboard/config");
     expect(hrefs).not.toContain("/dashboard/people");
-    expect(hrefs).not.toContain("/dashboard/paging/services");
+    expect(hrefs).not.toContain("/dashboard/paging");
   });
 });
 

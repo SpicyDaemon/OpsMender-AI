@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **UI/UX Polish sprint (design-audit remediation) — Phase B:
+  investigation cleanup (I-1..I-4).** Services now resolve the "On call now"
+  user from the service's linked escalation-chain calendar before falling back
+  to a team roster, so service-level paging configuration is reflected in the
+  list. Dashboard active AI sessions now flag stale long-running rows and share
+  the same stale threshold as Orchestration. The Settings optional-config and
+  Reliability stale-id paths remain verified clean in the full design-audit
+  run.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase B: scoped live
   data refresh (G-9).** Approvals and Orchestration now distinguish initial
   loading from background refreshes, so 30-second/focus/visibility refetches

@@ -22,20 +22,11 @@ import type { OrchestrationOverview, OrchestrationSession } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 import { formatRelative } from "@/lib/formatDate";
+import { isStaleActiveSession } from "@/lib/sessionFreshness";
 
 function relTime(iso: string | null): string {
   if (!iso) return "—";
   return formatRelative(iso);
-}
-
-// A running AI session lasting well beyond any tier session limit (Tier 0's
-// default hard cap is ~10 min) is almost certainly a stuck/zombie session.
-// The orchestration payload doesn't carry the per-tier limit, so we flag on a
-// conservative wall-clock threshold that no healthy session should reach.
-const STALE_AFTER_MS = 60 * 60 * 1000; // 1 hour
-
-function isStaleRunning(s: OrchestrationSession): boolean {
-  return new Date(s.started_at).getTime() < Date.now() - STALE_AFTER_MS;
 }
 
 function priorityTone(p: string | null): string {
@@ -360,7 +351,7 @@ export default function OrchestrationPage() {
                         (forced)
                       </span>
                     )}
-                    {isStaleRunning(s) && (
+                    {isStaleActiveSession(s) && (
                       <span
                         className="ml-1.5 inline-flex rounded-pill border border-status-high-border bg-status-high-bg px-1.5 py-0.5 text-[10px] font-semibold text-status-high"
                         title="Running far longer than any tier session limit — likely stuck; consider stopping it"

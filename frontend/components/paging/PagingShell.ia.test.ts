@@ -3,12 +3,39 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildNavGroups } from "@/components/Sidebar";
-import { TABS } from "@/components/paging/PagingShell";
+import {
+  firstCoveredCalendarUserId,
+  TABS,
+} from "@/components/paging/PagingShell";
+import type {
+  EscalationCalendarLevel,
+  EscalationCalendarResponse,
+} from "@/lib/types";
 
 const pagingShellSource = readFileSync(
   join(process.cwd(), "components", "paging", "PagingShell.tsx"),
   "utf8",
 );
+
+function calendarLevel(
+  status: EscalationCalendarLevel["status"],
+  resolvedUserId: string | null,
+): EscalationCalendarLevel {
+  return {
+    level: 1,
+    target_type: "user",
+    target_id: "target-1",
+    target_name: "Primary",
+    resolved_user_id: resolvedUserId,
+    resolved_user_name: null,
+    resolved_user_email: null,
+    coverage_start: null,
+    coverage_end: null,
+    coverage_time_zone: null,
+    status,
+    warnings: [],
+  };
+}
 
 describe("v1 paging IA", () => {
   it("shows the simplified Paging & On-call sidebar entries", () => {
@@ -117,4 +144,25 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain("disabled_roster");
   });
 
+  it("resolves the service on-call user from covered escalation calendar levels", () => {
+    const calendar = {
+      days: [
+        {
+          date: "2026-07-04",
+          levels: [
+            calendarLevel("outside_coverage", null),
+            calendarLevel("covered", "user-primary"),
+            calendarLevel("covered", "user-secondary"),
+          ],
+        },
+      ],
+    } satisfies Pick<EscalationCalendarResponse, "days">;
+
+    expect(firstCoveredCalendarUserId(calendar)).toBe("user-primary");
+    expect(
+      firstCoveredCalendarUserId({
+        days: [{ date: "2026-07-04", levels: [calendarLevel("empty_roster", null)] }],
+      }),
+    ).toBeNull();
+  });
 });

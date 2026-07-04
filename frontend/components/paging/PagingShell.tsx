@@ -789,7 +789,7 @@ function ServicesPanel({
   const [integrationKinds, setIntegrationKinds] = useState<IntegrationKind[]>(
     [],
   );
-  const [onCallByTeam, setOnCallByTeam] = useState<Map<string, string | null>>(
+  const [onCallByService, setOnCallByService] = useState<Map<string, string | null>>(
     new Map(),
   );
   const deferredServiceSearch = useDeferredValue(serviceSearch);
@@ -815,7 +815,7 @@ function ServicesPanel({
     };
   }, []);
 
-  // Enrich rows: load incidents + users + per-team on-call resolution.
+  // Enrich rows: load incidents + users + service-level on-call resolution.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -849,12 +849,13 @@ function ServicesPanel({
         setIntegrationConnectors(integrationList.items);
         setIntegrationKinds(kindList.items);
 
-        // Resolve on-call once per team via the team's first roster.
+        // Team roster fallback for services that have not been linked to an
+        // escalation chain yet.
         const teamRoster = new Map<string, string>(); // team_id → roster_id
         for (const r of rosters) {
           if (!teamRoster.has(r.team_id)) teamRoster.set(r.team_id, r.id);
         }
-        const entries = await Promise.all(
+        const fallbackEntries = await Promise.all(
           Array.from(teamRoster.entries()).map(async ([teamId, rosterId]) => {
             try {
               const res = await resolveOnCall(rosterId);
@@ -864,8 +865,36 @@ function ServicesPanel({
             }
           }),
         );
+        const fallbackByTeam = new Map(fallbackEntries);
+
+        const entries = await Promise.all(
+          services.map(async (service) => {
+            try {
+              const links = await listServiceEscalationChains(service.id);
+              if (links.items.length > 0) {
+                for (const link of links.items) {
+                  const calendar = await getEscalationChainCalendar(link.chain_id, {
+                    range: "today",
+                    start: todayIsoDate(),
+                  });
+                  const coveredUserId = firstCoveredCalendarUserId(calendar);
+                  if (coveredUserId) {
+                    return [service.id, coveredUserId] as const;
+                  }
+                }
+                return [service.id, null] as const;
+              }
+            } catch {
+              /* fall through to the team roster fallback */
+            }
+            return [
+              service.id,
+              fallbackByTeam.get(service.team_id) ?? null,
+            ] as const;
+          }),
+        );
         if (cancelled) return;
-        setOnCallByTeam(new Map(entries));
+        setOnCallByService(new Map(entries));
       } catch (err) {
         if (!cancelled) {
           toast.error(err instanceof Error ? err.message : String(err));
@@ -875,7 +904,7 @@ function ServicesPanel({
     return () => {
       cancelled = true;
     };
-  }, [rosters, toast]);
+  }, [rosters, services, toast]);
 
   // Reconcile the single primary escalation-chain link for a service:
   // unlink any chains other than the chosen one, link the chosen one.
@@ -1019,7 +1048,7 @@ function ServicesPanel({
   const rows: ServiceRow[] = useMemo(() => {
     return services.map((s) => {
       const team = teams.find((t) => t.id === s.team_id);
-      const onCallId = onCallByTeam.get(s.team_id) ?? null;
+      const onCallId = onCallByService.get(s.id) ?? null;
       const stats = incidentStatsByService.get(s.id);
       return {
         service: s,
@@ -1030,7 +1059,7 @@ function ServicesPanel({
         last_incident_at: stats?.last_at ?? null,
       };
     });
-  }, [services, teams, onCallByTeam, incidentStatsByService, userById]);
+  }, [services, teams, onCallByService, incidentStatsByService, userById]);
 
   const filteredRows = useMemo(() => {
     const query = deferredServiceSearch.trim().toLowerCase();
@@ -2708,6 +2737,16 @@ const CALENDAR_RANGES: { value: CalendarRange; label: string }[] = [
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+export function firstCoveredCalendarUserId(
+  calendar: Pick<EscalationCalendarResponse, "days">,
+): string | null {
+  return (
+    calendar.days[0]?.levels.find(
+      (level) => level.status === "covered" && level.resolved_user_id,
+    )?.resolved_user_id ?? null
+  );
 }
 
 function fmtCalendarDate(value: string): string {

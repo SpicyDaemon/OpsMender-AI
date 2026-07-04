@@ -64,6 +64,7 @@ import { SetupChecklist } from "@/components/SetupChecklist";
 import { useToast } from "@/components/ui/Toast";
 import { sessionPrimaryLabel, titleCaseIdentifier } from "@/lib/displayNames";
 import { formatRelative } from "@/lib/formatDate";
+import { isStaleActiveSession } from "@/lib/sessionFreshness";
 
 /**
  * Sprint 61 Step 3 — layout-specific skeleton rows shared by the
@@ -566,15 +567,18 @@ export default function DashboardIndex() {
           emptyMessage="No active sessions."
           href="/dashboard/incidents"
         >
-          {activeSessions.slice(0, 4).map((s) => (
-            <RowLink
-              key={s.id}
-              href={`/dashboard/sessions/detail?id=${s.id}`}
-              title={sessionPrimaryLabel(s, incidentById)}
-              meta={`${titleCaseIdentifier(s.status)} · started ${formatRelative(s.started_at)} · Tier ${s.tier}`}
-              accent="medium"
-            />
-          ))}
+          {activeSessions.slice(0, 4).map((s) => {
+            const stale = isStaleActiveSession(s);
+            return (
+              <RowLink
+                key={s.id}
+                href={`/dashboard/sessions/detail?id=${s.id}`}
+                title={sessionPrimaryLabel(s, incidentById)}
+                meta={`${stale ? "Stale · " : ""}${titleCaseIdentifier(s.status)} · started ${formatRelative(s.started_at)} · Tier ${s.tier}`}
+                accent={stale ? "high" : "medium"}
+              />
+            );
+          })}
         </AttentionCard>
 
         <AttentionCard
@@ -1114,11 +1118,17 @@ function RowLink({
   meta: string;
   accent: "critical" | "high" | "medium" | "low";
 }) {
+  const accentClass: Record<"critical" | "high" | "medium" | "low", string> = {
+    critical: "border-status-critical-border",
+    high: "border-status-high-border",
+    medium: "border-status-medium-border",
+    low: "border-status-low-border",
+  };
   return (
     <li>
       <Link
         href={href}
-        className="group flex items-start justify-between gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover"
+        className={`group flex items-start justify-between gap-2 rounded-md border-l-2 px-2 py-1.5 transition-colors hover:bg-bg-hover ${accentClass[accent]}`}
       >
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium text-fg-primary group-hover:text-accent-text">

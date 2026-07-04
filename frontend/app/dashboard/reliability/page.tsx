@@ -216,6 +216,13 @@ export default function ReliabilityPage() {
                           {formatUptimePct(target.uptime_30d_pct)}
                         </span>
                         <span className="ml-1.5 text-xs text-fg-secondary">30d uptime</span>
+                        {/* Explain the red: without this, a red uptime next to
+                            an "Up" status pill reads as a mixed signal. */}
+                        {breaching && (
+                          <p className="mt-0.5 text-[11px] font-medium text-status-critical">
+                            Below SLO target
+                          </p>
+                        )}
                       </div>
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${colors.bg} ${colors.text}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${colors.dot}`} />

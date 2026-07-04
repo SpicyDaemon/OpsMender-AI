@@ -103,9 +103,20 @@ function TargetDetailContent() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    // Resolve the target first. If it 404s (bad/stale id) we bail immediately
+    // and render the Target-Not-Found state — firing the uptime/SLO/response
+    // requests for a nonexistent id just floods the console with 404s.
+    let targetData: SLATargetResponse;
     try {
-      const [targetData, u24, u7, u30, u365, allSlos, recs] = await Promise.all([
-        getSLATarget(id),
+      targetData = await getSLATarget(id);
+    } catch {
+      setTarget(null);
+      setLoading(false);
+      return;
+    }
+    setTarget(targetData);
+    try {
+      const [u24, u7, u30, u365, allSlos, recs] = await Promise.all([
         getSLATargetUptime(id, "24h").catch(() => null),
         getSLATargetUptime(id, "7d").catch(() => null),
         getSLATargetUptime(id, "30d").catch(() => null),
@@ -122,7 +133,6 @@ function TargetDetailContent() {
         })),
       );
 
-      setTarget(targetData);
       setLast24(u24);
       setD7(u7);
       setD30(u30);
@@ -138,25 +148,27 @@ function TargetDetailContent() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Uptime history strip follows the selected window.
+  // The history/response-time strips follow their window selectors, but must
+  // only fetch once the target is confirmed to exist — otherwise a bad id
+  // triggers extra 404s alongside the Target-Not-Found state.
   useEffect(() => {
-    if (!id) return;
+    if (!id || !target) return;
     getSLATargetUptime(id, historyWindow).then(setHistory).catch(() => setHistory(null));
-  }, [id, historyWindow]);
+  }, [id, target, historyWindow]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !target) return;
     getSLATargetResponseTime(id, responseWindow)
       .then(setResponseTime)
       .catch(() => setResponseTime(null));
-  }, [id, responseWindow]);
+  }, [id, target, responseWindow]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !target) return;
     getSLATargetResponseTime(id, responseHistoryWindow)
       .then(setResponseHistory)
       .catch(() => setResponseHistory(null));
-  }, [id, responseHistoryWindow]);
+  }, [id, target, responseHistoryWindow]);
 
   async function handleProbe() {
     setProbing(true);

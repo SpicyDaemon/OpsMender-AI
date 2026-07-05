@@ -61,7 +61,12 @@ import {
 // ship (Microsoft/Azure, AWS, …). Glyphs without a `color` inherit
 // `currentColor` (we render them in fg-secondary) so near-black/near-white
 // marks like GitHub, Notion, or OpenAI stay visible in both modes.
-type IconComponent = ComponentType<{ size?: number; color?: string; className?: string }>;
+type IconComponent = ComponentType<{
+  size?: number;
+  color?: string;
+  className?: string;
+  "aria-hidden"?: boolean | "true" | "false";
+}>;
 type Brand = { Icon: IconComponent; color?: string };
 
 const INTEGRATION_ICONS: Record<string, Brand> = {
@@ -131,11 +136,16 @@ const PROVIDER_ICONS: Record<string, Brand> = {
 
 function glyph(brand: Brand | undefined, fallback: IconComponent, size: number): ReactNode {
   const Icon = brand?.Icon ?? fallback;
+  // Brand glyphs are always decorative — the kind/platform/provider name is
+  // rendered as adjacent text wherever these appear. react-icons emits
+  // role="img" with no name (an axe svg-img-alt violation); hiding the svg
+  // from the accessibility tree is the correct treatment.
   return (
     <Icon
       size={size}
       color={brand?.color}
       className={brand?.color ? "shrink-0" : "shrink-0 text-fg-secondary"}
+      aria-hidden="true"
     />
   );
 }

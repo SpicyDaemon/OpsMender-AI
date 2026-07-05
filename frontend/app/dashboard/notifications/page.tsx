@@ -7,6 +7,7 @@ import {
   Bell,
   CheckCheck,
   CheckCircle2,
+  ChevronDown,
   Circle,
   MessageSquare,
   RefreshCw,
@@ -59,14 +60,16 @@ type NotificationGroup = {
 };
 
 function notificationGroupKey(item: Notification) {
+  // Group by content only. Subject ids (incident/session/link) are
+  // deliberately excluded: the flagship duplicate stack — four "Queued AI
+  // session expired" rows — comes from four *different* sessions, and keying
+  // on the subject would keep them apart. Per-item deep links stay reachable
+  // through the expanded group.
   return JSON.stringify([
     item.event_type,
     item.category,
     item.title,
     item.body ?? "",
-    item.link ?? "",
-    item.incident_id ?? "",
-    item.session_id ?? "",
   ]);
 }
 
@@ -107,6 +110,7 @@ export default function NotificationsPage() {
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const load = useCallback(
     async (reset: boolean) => {
@@ -211,6 +215,26 @@ export default function NotificationsPage() {
     }
   }
 
+  /** Mark a single item read when its deep link inside an expanded group is followed. */
+  function handleOpenItem(item: Notification) {
+    if (item.read_at) return;
+    const now = new Date().toISOString();
+    setItems((prev) =>
+      prev.map((p) => (p.id === item.id ? { ...p, read_at: now } : p)),
+    );
+    setUnread((u) => Math.max(0, u - 1));
+    markNotificationRead(item.id, true).catch(() => load(true));
+  }
+
+  function toggleGroupExpanded(key: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   const hasMore = items.length < total;
   const groups = coalesceNotifications(items);
 
@@ -280,6 +304,16 @@ export default function NotificationsPage() {
               const { item } = group;
               const Icon = categoryIcon(item.category);
               const isUnread = group.unreadCount > 0;
+              // A grouped stack may span different subjects (e.g. four
+              // expired sessions). Only hard-link the row when every item
+              // points at the same place; otherwise the row expands to the
+              // per-item deep links below.
+              const distinctLinks = new Set(
+                group.items.map((i) => i.link ?? ""),
+              );
+              const sharedLink =
+                distinctLinks.size === 1 ? item.link : null;
+              const isExpanded = expandedGroups.has(group.key);
               const content = (
                 <>
                   <p className="flex items-center gap-2 text-sm font-medium text-fg-primary">
@@ -294,14 +328,6 @@ export default function NotificationsPage() {
                       />
                     )}
                     <span className="truncate">{item.title}</span>
-                    {group.count > 1 && (
-                      <span
-                        aria-label={`${group.count} duplicate notifications`}
-                        className="shrink-0 rounded-full border border-border-subtle bg-bg-elevated px-1.5 py-0.5 text-[10px] font-semibold text-fg-secondary"
-                      >
-                        ×{group.count}
-                      </span>
-                    )}
                   </p>
                   {item.body && (
                     <p className="mt-0.5 text-xs text-fg-secondary">{item.body}</p>
@@ -314,14 +340,15 @@ export default function NotificationsPage() {
               return (
                 <li
                   key={group.key}
-                  className={`flex items-start gap-3 px-4 py-3 transition-colors ${
+                  className={`px-4 py-3 transition-colors ${
                     isUnread ? "bg-accent-bg/30" : ""
                   }`}
                 >
+                  <div className="flex items-start gap-3">
                   <Icon size={16} className="mt-0.5 shrink-0 text-fg-muted" />
-                  {item.link ? (
+                  {sharedLink ? (
                     <Link
-                      href={item.link}
+                      href={sharedLink}
                       onClick={() => handleOpen(group)}
                       className="min-w-0 flex-1 text-left"
                     >
@@ -330,10 +357,31 @@ export default function NotificationsPage() {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => handleOpen(group)}
+                      onClick={() =>
+                        group.count > 1
+                          ? toggleGroupExpanded(group.key)
+                          : handleOpen(group)
+                      }
                       className="min-w-0 flex-1 text-left"
                     >
                       {content}
+                    </button>
+                  )}
+                  {group.count > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleGroupExpanded(group.key)}
+                      aria-expanded={isExpanded}
+                      aria-label={`${group.count} duplicate notifications — ${
+                        isExpanded ? "collapse" : "expand"
+                      }`}
+                      className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full border border-border-subtle bg-bg-elevated px-1.5 py-0.5 text-[10px] font-semibold text-fg-secondary transition-colors hover:bg-bg-hover hover:text-fg-primary"
+                    >
+                      ×{group.count}
+                      <ChevronDown
+                        size={10}
+                        className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      />
                     </button>
                   )}
                   <div className="flex shrink-0 items-center gap-1">
@@ -360,6 +408,36 @@ export default function NotificationsPage() {
                       <Trash2 size={14} />
                     </button>
                   </div>
+                  </div>
+                  {isExpanded && group.count > 1 && (
+                    <ul className="mt-2 space-y-1 border-l border-border-subtle pl-7">
+                      {group.items.map((sub) => (
+                        <li
+                          key={sub.id}
+                          className="flex items-center gap-2 text-xs text-fg-secondary"
+                        >
+                          {!sub.read_at && (
+                            <span
+                              aria-label="unread"
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-info"
+                            />
+                          )}
+                          <span className="font-mono tabular-nums text-fg-muted">
+                            {fmtDate(sub.created_at)}
+                          </span>
+                          {sub.link && (
+                            <Link
+                              href={sub.link}
+                              onClick={() => handleOpenItem(sub)}
+                              className="text-accent-text hover:underline"
+                            >
+                              Open
+                            </Link>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}

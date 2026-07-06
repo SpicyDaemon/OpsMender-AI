@@ -5797,7 +5797,11 @@ export function WorkflowProfileSection({
                 ))}
               </Select>
             )}
-            <Button onClick={openCreateModal} disabled={!canEdit}>
+            <Button
+              onClick={openCreateModal}
+              disabled={!canEdit}
+              className="whitespace-nowrap"
+            >
               <Plus size={14} /> New profile
             </Button>
           </>

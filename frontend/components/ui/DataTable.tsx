@@ -757,18 +757,22 @@ export function DataTable<T>({
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <span className="whitespace-nowrap">Rows per page</span>
-          <Select
-            aria-label="Rows per page"
-            value={String(pageSize)}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="h-7 w-16 rounded-md px-2 py-0 pr-6 text-xs font-medium"
-          >
-            {pageSizeOptions.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </Select>
+          {/* Width comes from the wrapper, not utility overrides on Select —
+              conflicting w-full/w-16 and py-2/py-0 utilities resolve by
+              stylesheet order and were clipping the value text. */}
+          <div className="w-20 shrink-0">
+            <Select
+              aria-label="Rows per page"
+              value={String(pageSize)}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              {pageSizeOptions.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </Select>
+          </div>
           <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"

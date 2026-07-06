@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A+ closure sprint — final audit proof.** Added
+  `scripts/live_update_proof.mjs`, a Playwright two-context acceptance script
+  that proves the dashboard's live incident refresh updates within the
+  two-second budget with one notification WebSocket and no skeleton flash.
+  Sprint-end re-grade remains GATE PASS 0/0/0.
+
 ### Fixed
 
 - **A+ closure sprint — A-8 README screenshot set.** The screenshot capture

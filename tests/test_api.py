@@ -1297,6 +1297,24 @@ class TestIncidents:
         assert data["title"] == "High CPU on api-server"
         assert data["status"] == "open"
         assert data["severity"] == "high"
+        notifications = await client.get("/notifications", headers=auth_headers)
+        assert notifications.status_code == 200
+        created_notification = next(
+            (
+                item
+                for item in notifications.json()["items"]
+                if item["event_type"] == "incident.created"
+                and item["incident_id"] == data["id"]
+            ),
+            None,
+        )
+        assert created_notification is not None
+        assert created_notification["category"] == "incident"
+        assert created_notification["title"] == "New incident: High CPU on api-server"
+        assert (
+            created_notification["link"]
+            == f"/dashboard/incidents/detail?id={data['id']}"
+        )
 
     @pytest.mark.parametrize("incident_status", ["open", "in_progress", "resolved"])
     async def test_admin_can_permanently_delete_incident_in_any_status(

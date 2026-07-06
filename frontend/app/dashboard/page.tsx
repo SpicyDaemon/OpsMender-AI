@@ -62,6 +62,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useToast } from "@/components/ui/Toast";
+import { useLiveEvents } from "@/context/liveEvents";
 import { sessionPrimaryLabel, titleCaseIdentifier } from "@/lib/displayNames";
 import { formatRelative } from "@/lib/formatDate";
 import { isStaleActiveSession } from "@/lib/sessionFreshness";
@@ -288,6 +289,10 @@ export default function DashboardIndex() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useLiveEvents(["incident", "approval", "session"], () => {
+    void load();
+  });
 
   useEffect(() => {
     const refreshIfVisible = () => {

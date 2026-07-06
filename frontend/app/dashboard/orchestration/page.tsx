@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import type { OrchestrationOverview, OrchestrationSession } from "@/lib/types";
 import { useAuth } from "@/context/auth";
+import { useLiveEvents } from "@/context/liveEvents";
 import { Button } from "@/components/ui/Button";
 import { formatRelative } from "@/lib/formatDate";
 import { isStaleActiveSession } from "@/lib/sessionFreshness";
@@ -109,6 +110,10 @@ export default function OrchestrationPage() {
   useEffect(() => {
     reload().catch(() => {});
   }, [reload]);
+
+  useLiveEvents(["session"], () => {
+    void reload({ background: true });
+  });
 
   useEffect(() => {
     const refreshIfVisible = () => {

@@ -7,6 +7,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
+import { LiveEventsProvider } from "@/context/liveEvents";
 import type { ReactNode } from "react";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -21,24 +22,26 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         >
           Skip to content
         </a>
-        <div className="flex h-screen overflow-hidden bg-bg-base">
-          <Sidebar
-            mobileOpen={mobileSidebarOpen}
-            onMobileClose={() => setMobileSidebarOpen(false)}
-          />
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <TopBar onOpenMobileNav={() => setMobileSidebarOpen(true)} />
-            <main
-              id="main-content"
-              tabIndex={-1}
-              className="flex-1 overflow-y-auto p-4 text-fg-primary sm:p-6 lg:p-8"
-            >
-              <RouteRoleGuard>{children}</RouteRoleGuard>
-            </main>
+        <LiveEventsProvider>
+          <div className="flex h-screen overflow-hidden bg-bg-base">
+            <Sidebar
+              mobileOpen={mobileSidebarOpen}
+              onMobileClose={() => setMobileSidebarOpen(false)}
+            />
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <TopBar onOpenMobileNav={() => setMobileSidebarOpen(true)} />
+              <main
+                id="main-content"
+                tabIndex={-1}
+                className="flex-1 overflow-y-auto p-4 text-fg-primary sm:p-6 lg:p-8"
+              >
+                <RouteRoleGuard>{children}</RouteRoleGuard>
+              </main>
+            </div>
+            <KeyboardShortcuts />
+            <CommandPalette />
           </div>
-          <KeyboardShortcuts />
-          <CommandPalette />
-        </div>
+        </LiveEventsProvider>
       </>
     </AuthGuard>
   );

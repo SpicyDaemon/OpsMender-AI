@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A+ closure sprint — A-1 live updates.** Dashboard, Approvals,
+  Orchestration, Incidents, the notification Inbox bell, and the sidebar
+  Approvals badge now share one live notification WebSocket with
+  category-filtered, debounced subscribers; manual and fire-test incident
+  creation emit `incident.created` in-app events so existing silent refreshers
+  update without loading flashes.
+
 - **UI/UX Polish sprint (design-audit remediation) — Phase C: Reliability
   maintenance polish (P-15).** Maintenance windows now cross-link to Paging
   maintenance windows, explicitly note that they suppress paging too, and

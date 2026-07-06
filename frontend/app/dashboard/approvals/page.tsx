@@ -26,6 +26,7 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { useLiveEvents } from "@/context/liveEvents";
 import { titleCaseIdentifier } from "@/lib/displayNames";
 import { formatDateTime } from "@/lib/formatDate";
 
@@ -118,6 +119,10 @@ export default function ApprovalsPage() {
   }, [statusFilter, toast]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useLiveEvents(["approval"], () => {
+    void load({ background: true });
+  });
 
   useEffect(() => {
     const refreshIfVisible = () => {

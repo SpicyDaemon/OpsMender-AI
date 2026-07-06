@@ -66,6 +66,8 @@ from backend.notifications import (
     CATEGORY_INCIDENT,
     CATEGORY_MENTION,
     emit_notification,
+    emit_to_users,
+    org_user_ids_with_roles,
     parse_mentions,
 )
 from backend.api.schemas import (
@@ -104,6 +106,25 @@ import logging
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
 _log = logging.getLogger(__name__)
+
+
+async def _emit_incident_created_notification(
+    db: AsyncSession, org_id: uuid.UUID, incident
+) -> None:
+    try:
+        user_ids = await org_user_ids_with_roles(db, org_id, ("admin", "operator"))
+        await emit_to_users(
+            db,
+            org_id,
+            user_ids,
+            event_type="incident.created",
+            category=CATEGORY_INCIDENT,
+            title=f"New incident: {incident.title}",
+            link=f"/dashboard/incidents/detail?id={incident.id}",
+            incident_id=incident.id,
+        )
+    except Exception:  # noqa: BLE001
+        _log.exception("incident.created notification failed incident=%s", incident.id)
 
 
 @router.get(
@@ -476,6 +497,8 @@ async def create_incident(
         )
     incident = await _create_incident_record(db, org_id, body)
     await db.commit()
+    await _emit_incident_created_notification(db, org_id, incident)
+    await db.commit()
     await _notify_channels(db, incident.id, org_id, "incident.created")
     auto_status, reason, tier = await _resolve_auto_start_on_create(
         request, db, org_id, incident
@@ -656,6 +679,8 @@ async def fire_test_incident(
             external_source="opsmender-test",
         ),
     )
+    await db.commit()
+    await _emit_incident_created_notification(db, org_id, incident)
     await db.commit()
     await _notify_channels(db, incident.id, org_id, "incident.created")
     auto_status, reason, tier = await _resolve_auto_start_on_create(

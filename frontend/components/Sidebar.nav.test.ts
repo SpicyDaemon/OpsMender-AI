@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyApprovalsBadge,
   buildNavGroups,
   navItemVisibleForRole,
   requiredRolesForPath,
@@ -79,6 +80,18 @@ describe("Sidebar nav model", () => {
     expect(hrefs).not.toContain("/dashboard/config");
     expect(hrefs).not.toContain("/dashboard/people");
     expect(hrefs).not.toContain("/dashboard/paging");
+  });
+
+  it("adds and caps the pending approvals badge", () => {
+    const withBadge = applyApprovalsBadge(buildNavGroups(), 12)
+      .flatMap((g) => g.items)
+      .find((i) => i.href === "/dashboard/approvals");
+    expect(withBadge?.badge).toEqual({ label: "9+", tone: "warn" });
+
+    const withoutBadge = applyApprovalsBadge(buildNavGroups(), 0)
+      .flatMap((g) => g.items)
+      .find((i) => i.href === "/dashboard/approvals");
+    expect(withoutBadge?.badge).toBeUndefined();
   });
 });
 

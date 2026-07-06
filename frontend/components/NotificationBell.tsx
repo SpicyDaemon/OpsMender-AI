@@ -13,7 +13,6 @@ import {
   UserCog,
 } from "lucide-react";
 import {
-  connectNotificationStream,
   getUnreadCount,
   listNotifications,
   markAllNotificationsRead,
@@ -21,6 +20,7 @@ import {
   type Notification,
 } from "@/lib/api";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
+import { useLiveEvents } from "@/context/liveEvents";
 
 const PANEL_LIMIT = 10;
 const POLL_MS = 60_000;
@@ -33,6 +33,8 @@ const CATEGORY_ICON: Record<string, typeof Bell> = {
   reliability: CheckCircle2,
   account: UserCog,
 };
+
+const LIVE_CATEGORIES = Object.keys(CATEGORY_ICON);
 
 function categoryIcon(category: string) {
   return CATEGORY_ICON[category] ?? Bell;
@@ -88,26 +90,13 @@ export function NotificationBell() {
     loadList();
   }, [loadCount, loadList]);
 
-  // Live socket: prepend new notifications and bump the badge.
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    try {
-      ws = connectNotificationStream({
-        onNotification: (n) => {
-          setItems((prev) => {
-            if (prev.some((p) => p.id === n.id)) return prev;
-            return [n, ...prev].slice(0, PANEL_LIMIT);
-          });
-          if (!n.read_at) setUnread((u) => u + 1);
-        },
-      });
-    } catch {
-      // socket unavailable — polling below covers it
-    }
-    return () => {
-      ws?.close();
-    };
-  }, []);
+  useLiveEvents(LIVE_CATEGORIES, (n) => {
+    setItems((prev) => {
+      if (prev.some((p) => p.id === n.id)) return prev;
+      return [n, ...prev].slice(0, PANEL_LIMIT);
+    });
+    if (!n.read_at) setUnread((u) => u + 1);
+  });
 
   // Poll the unread count every 60s as a fallback when the socket drops.
   useEffect(() => {

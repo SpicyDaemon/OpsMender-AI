@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
+import { usePendingApprovalsCount } from "@/context/liveEvents";
 import { useTheme } from "@/context/theme";
 import { getConfig } from "@/lib/api";
 
@@ -140,6 +141,28 @@ export function buildNavGroups(): NavGroup[] {
       ],
     },
   ];
+}
+
+export function applyApprovalsBadge(
+  groups: NavGroup[],
+  pendingCount: number,
+): NavGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    items: group.items.map((item) => {
+      if (item.href !== "/dashboard/approvals") return item;
+      if (pendingCount <= 0) {
+        return { ...item, badge: undefined };
+      }
+      return {
+        ...item,
+        badge: {
+          label: pendingCount > 9 ? "9+" : String(pendingCount),
+          tone: "warn" as const,
+        },
+      };
+    }),
+  }));
 }
 
 const COLLAPSE_KEY = "opsmender:sidebar-collapsed";
@@ -463,9 +486,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
 
   const width = collapsed ? "w-16" : "w-60";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
+  const canSeeApprovals = user?.role === "admin" || user?.role === "operator";
+  const pendingApprovalsCount = usePendingApprovalsCount(canSeeApprovals);
 
   // Filter items by role and drop any group that ends up empty.
-  const navGroups = buildNavGroups();
+  const navGroups = applyApprovalsBadge(
+    buildNavGroups(),
+    pendingApprovalsCount,
+  );
   const visibleGroups: NavGroup[] = navGroups.map((group) => ({
     ...group,
     items: group.items.filter((item) =>

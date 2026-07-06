@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useAuth } from "@/context/auth";
+import { useLiveEvents } from "@/context/liveEvents";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import { responderDisplay } from "@/lib/responder";
 import type {
@@ -511,6 +512,10 @@ export default function IncidentsPage() {
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
+
+  useLiveEvents(["incident", "session"], () => {
+    void loadIncidents({ silent: true });
+  });
 
   // Live-ish refresh: silently re-fetch on an interval while the tab is
   // visible, and immediately on focus / regaining visibility, so AI-session

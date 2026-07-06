@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A+ closure sprint — A-9 motion micro-polish.** Toasts now ease in with a
+  short fade/rise and fade out before removal, shared modals open with a
+  conservative backdrop fade plus panel fade/scale, and `globals.css` now has
+  a global `prefers-reduced-motion: reduce` kill-switch for existing and new
+  animations/transitions.
+
 - **A+ closure sprint — A-6 command-palette incident search.** Cmd/Ctrl+K now
   debounces incident search through `listIncidents({ q, limit: 5 })`, renders
   an Incidents section with severity badges and relative created times, drops

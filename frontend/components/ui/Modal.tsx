@@ -23,23 +23,25 @@ export function Modal({
   headerExtra,
 }: ModalProps) {
   useEffect(() => {
+    if (!open) return;
+
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, open]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-6">
       <div
-        className="absolute inset-0 bg-black/70"
+        className="ops-modal-backdrop absolute inset-0 bg-black/70"
         onClick={onClose}
       />
       <div
-        className={`relative z-10 my-auto flex max-h-[calc(100vh-3rem)] w-full ${maxWidth} mx-4 flex-col rounded-lg bg-bg-elevated border border-border-strong shadow-2xl`}
+        className={`ops-modal-panel relative z-10 my-auto flex max-h-[calc(100vh-3rem)] w-full ${maxWidth} mx-4 flex-col rounded-lg bg-bg-elevated border border-border-strong shadow-2xl`}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-5 py-3.5">
           <h2 className="text-sm font-semibold text-fg-primary">{title}</h2>

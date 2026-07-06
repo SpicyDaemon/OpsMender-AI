@@ -197,3 +197,68 @@ select.opsmender-select {
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
+
+.ops-toast {
+  animation: ops-toast-enter 180ms ease-out both;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 150ms ease-in,
+    transform 150ms ease-in;
+}
+
+.ops-toast--closing {
+  opacity: 0;
+  transform: translateY(0);
+}
+
+.ops-modal-backdrop {
+  animation: ops-modal-backdrop-enter 180ms ease-out both;
+}
+
+.ops-modal-panel {
+  animation: ops-modal-panel-enter 180ms ease-out both;
+  transform-origin: center;
+}
+
+@keyframes ops-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ops-modal-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ops-modal-panel-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -31,6 +31,8 @@ describe("Modal", () => {
     const panel = body.parentElement!;
     expect(panel.className).toMatch(/max-h-\[/);
     expect(panel.className).toContain("flex-col");
+    expect(panel.className).toContain("ops-modal-panel");
+    expect(document.querySelector(".ops-modal-backdrop")).toBeTruthy();
   });
 
   it("does not render when closed", () => {

@@ -5,7 +5,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -18,6 +20,7 @@ interface Toast {
   message: string;
   variant: ToastVariant;
   action?: ToastAction;
+  closing?: boolean;
 }
 
 interface ToastAction {
@@ -62,20 +65,47 @@ const STYLES: Record<ToastVariant, { bg: string; border: string; icon: typeof Ch
   },
 };
 
+const AUTO_DISMISS_MS = 4000;
+const TOAST_EXIT_MS = 180;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timers = useRef(new Set<number>());
 
-  const dismiss = useCallback((id: number) => {
+  const schedule = useCallback((callback: () => void, delay: number) => {
+    const timer = window.setTimeout(() => {
+      timers.current.delete(timer);
+      callback();
+    }, delay);
+    timers.current.add(timer);
+  }, []);
+
+  useEffect(
+    () => () => {
+      timers.current.forEach((timer) => window.clearTimeout(timer));
+      timers.current.clear();
+    },
+    [],
+  );
+
+  const remove = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const dismiss = useCallback((id: number) => {
+    setToasts((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, closing: true } : t)),
+    );
+    schedule(() => remove(id), TOAST_EXIT_MS);
+  }, [remove, schedule]);
 
   const toast = useCallback(
     (message: string, variant: ToastVariant = "info", action?: ToastAction) => {
       const id = Date.now() + Math.random();
       setToasts((prev) => [...prev, { id, message, variant, action }]);
-      setTimeout(() => dismiss(id), 4000);
+      schedule(() => dismiss(id), AUTO_DISMISS_MS);
     },
-    [dismiss],
+    [dismiss, schedule],
   );
 
   const success = useCallback(
@@ -116,7 +146,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={t.id}
-              className={`pointer-events-auto flex min-w-[280px] max-w-sm items-start gap-2.5 rounded-md border ${s.border} ${s.bg} bg-bg-elevated/95 backdrop-blur px-3.5 py-2.5 shadow-lg`}
+              className={`ops-toast ${
+                t.closing ? "ops-toast--closing" : ""
+              } pointer-events-auto flex min-w-[280px] max-w-sm items-start gap-2.5 rounded-md border ${s.border} ${s.bg} bg-bg-elevated/95 backdrop-blur px-3.5 py-2.5 shadow-lg`}
               role="status"
             >
               <Icon size={16} className={`${s.iconColor} mt-0.5 shrink-0`} />
@@ -134,6 +166,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               </div>
               <button
                 onClick={() => dismiss(t.id)}
+                aria-label="Dismiss notification"
                 className="shrink-0 rounded p-0.5 text-fg-muted hover:text-fg-primary"
               >
                 <X size={14} />

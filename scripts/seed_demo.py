@@ -53,7 +53,6 @@ from backend.db.models import (
     Skill,
     Team,
     User,
-    WebhookTrigger,
 )
 from backend.db.repos import OrganizationRepo, UserRepo
 
@@ -276,7 +275,7 @@ async def main():
             db.add(IncidentMemory(
                 org_id=oid, service_id=sid, title=title, summary_md=summary,
                 tags=tags, helpful_count=h, unhelpful_count=u,
-                created_by_user_id=users["admin"].id, is_hidden=False,
+                created_by_user_id=users["admin"].id,
             ))
 
         # ---- Integrations ----
@@ -293,15 +292,8 @@ async def main():
             allowed_capabilities=["paging"], status="configured", is_enabled=True,
         ))
 
-        db.add(WebhookTrigger(
-            org_id=oid, name="Pipe to Sentry", url="https://sentry.io/api/hooks/opsmender",
-            format="generic", event_types=["session_failed", "session_timeout"], is_active=True,
-            last_triggered_at=now - timedelta(hours=3),
-        ))
-        db.add(WebhookTrigger(
-            org_id=oid, name="Datadog event stream", url="https://api.datadoghq.com/api/v1/events",
-            format="datadog", event_types=["session_created", "session_completed"], is_active=True,
-        ))
+        # (Legacy WebhookTrigger seeding removed — the model no longer exists;
+        # outbound hooks are handled by Notification Channels / integrations.)
 
         for name, provider, sid in [
             ("Alertmanager prod", "alertmanager", services["api-gateway"].id),

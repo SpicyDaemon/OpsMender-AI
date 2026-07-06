@@ -47,9 +47,13 @@ import {
   Workflow,
   Wrench,
 } from "lucide-react";
+import { listIncidents } from "@/lib/api";
+import type { IncidentResponse, Severity } from "@/lib/types";
+import { Badge } from "@/components/ui/Badge";
+import { formatRelative } from "@/lib/formatDate";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
-type CommandKind = "navigate" | "action";
+type CommandKind = "navigate" | "incident" | "action";
 
 interface CommandItem {
   id: string;
@@ -57,6 +61,8 @@ interface CommandItem {
   label: string;
   hint?: string;
   icon: typeof Search;
+  severity?: Severity | null;
+  createdAt?: string;
   /** Navigation target. Mutually exclusive with `run`. */
   href?: string;
   /** Programmatic action. Mutually exclusive with `href`. */
@@ -151,9 +157,42 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  const [incidentResults, setIncidentResults] = useState<IncidentResponse[]>([]);
+  const [incidentSearching, setIncidentSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const incidentRequestId = useRef(0);
   const items = useMemo(buildItems, []);
   const filtered = useMemo(() => filterItems(items, query), [items, query]);
+
+  useEffect(() => {
+    const q = query.trim();
+    const requestId = incidentRequestId.current + 1;
+    incidentRequestId.current = requestId;
+    if (!open || q.length < 2) {
+      setIncidentResults([]);
+      setIncidentSearching(false);
+      return;
+    }
+
+    setIncidentSearching(true);
+    const timer = window.setTimeout(() => {
+      listIncidents({ q, limit: 5 })
+        .then((res) => {
+          if (incidentRequestId.current !== requestId) return;
+          setIncidentResults(res.items);
+        })
+        .catch(() => {
+          if (incidentRequestId.current !== requestId) return;
+          setIncidentResults([]);
+        })
+        .finally(() => {
+          if (incidentRequestId.current !== requestId) return;
+          setIncidentSearching(false);
+        });
+    }, 200);
+
+    return () => window.clearTimeout(timer);
+  }, [open, query]);
 
   // Cmd+K / Ctrl+K toggle. Esc closes. The global listener is added
   // even when the palette is closed so the open shortcut works
@@ -189,10 +228,37 @@ export function CommandPalette() {
     });
   }, [open]);
 
-  // Clamp highlight when the filtered set shrinks.
+  const incidentItems = useMemo<CommandItem[]>(
+    () =>
+      incidentResults.map((incident) => ({
+        id: `incident:${incident.id}`,
+        kind: "incident" as const,
+        label: incident.title,
+        hint: formatRelative(incident.created_at),
+        icon: AlertOctagon,
+        href: `/dashboard/incidents/detail?id=${incident.id}`,
+        severity: incident.severity,
+        createdAt: incident.created_at,
+        keywords: `${incident.title} ${incident.description ?? ""}`,
+      })),
+    [incidentResults],
+  );
+
+  const groups = useMemo(() => {
+    const navigate = filtered.filter((i) => i.kind === "navigate");
+    const action = filtered.filter((i) => i.kind === "action");
+    return { navigate, incident: incidentItems, action };
+  }, [filtered, incidentItems]);
+
+  const orderedItems = useMemo(
+    () => [...groups.navigate, ...groups.incident, ...groups.action],
+    [groups],
+  );
+
+  // Clamp highlight when the rendered selectable set shrinks.
   useEffect(() => {
-    if (highlight >= filtered.length) setHighlight(0);
-  }, [filtered.length, highlight]);
+    if (highlight >= orderedItems.length) setHighlight(0);
+  }, [orderedItems.length, highlight]);
 
   const execute = useCallback(
     (item: CommandItem) => {
@@ -211,26 +277,16 @@ export function CommandPalette() {
   const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setHighlight((h) => Math.min(h + 1, Math.max(0, filtered.length - 1)));
+      setHighlight((h) => Math.min(h + 1, Math.max(0, orderedItems.length - 1)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const item = filtered[highlight];
+      const item = orderedItems[highlight];
       if (item) execute(item);
     }
   };
-
-  // Group filtered items by kind so the rendered list keeps a stable
-  // visual hierarchy (Navigate first, Actions second). Highlight
-  // index is over the flat filtered array so it matches the order
-  // we render in.
-  const groups = useMemo(() => {
-    const navigate = filtered.filter((i) => i.kind === "navigate");
-    const action = filtered.filter((i) => i.kind === "action");
-    return { navigate, action };
-  }, [filtered]);
 
   if (!open) return null;
 
@@ -275,7 +331,7 @@ export function CommandPalette() {
           className="max-h-[60vh] overflow-y-auto px-2 py-2"
           role="listbox"
         >
-          {filtered.length === 0 ? (
+          {orderedItems.length === 0 && !incidentSearching ? (
             <p className="px-3 py-6 text-center text-sm text-fg-muted">
               No matches. Try fewer keywords.
             </p>
@@ -284,6 +340,27 @@ export function CommandPalette() {
               {groups.navigate.length > 0 && (
                 <Group title="Navigate">
                   {groups.navigate.map((it) => {
+                    flatIdx += 1;
+                    return (
+                      <Row
+                        key={it.id}
+                        item={it}
+                        active={flatIdx === highlight}
+                        onClick={() => execute(it)}
+                        onHover={() => setHighlight(flatIdx)}
+                      />
+                    );
+                  })}
+                </Group>
+              )}
+              {(groups.incident.length > 0 || incidentSearching) && (
+                <Group title="Incidents">
+                  {incidentSearching && groups.incident.length === 0 && (
+                    <li className="px-3 py-2 text-sm text-fg-muted">
+                      Searching…
+                    </li>
+                  )}
+                  {groups.incident.map((it) => {
                     flatIdx += 1;
                     return (
                       <Row
@@ -385,7 +462,13 @@ function Row({
             : "text-fg-secondary hover:bg-bg-hover"
         }`}
       >
-        <Icon size={14} className="shrink-0 text-fg-muted" />
+        {item.kind === "incident" && item.severity ? (
+          <Badge variant={item.severity} className="shrink-0">
+            {item.severity}
+          </Badge>
+        ) : (
+          <Icon size={14} className="shrink-0 text-fg-muted" />
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-fg-primary">{item.label}</p>
           {item.hint && (

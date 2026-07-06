@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A+ closure sprint — A-6 command-palette incident search.** Cmd/Ctrl+K now
+  debounces incident search through `listIncidents({ q, limit: 5 })`, renders
+  an Incidents section with severity badges and relative created times, drops
+  stale responses, fails silently, and lets keyboard selection traverse static
+  nav/actions plus incident hits as one list.
+
 - **A+ closure sprint — A-5 memory severity tags.** Incident memory severity
   tags now canonicalize to `severity-<level>` across recall derivation, LLM
   writeback, manual memory create/update, and postmortem memory extraction;

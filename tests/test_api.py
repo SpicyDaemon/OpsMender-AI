@@ -3928,6 +3928,23 @@ class TestIncidentMemoryAPI:
         )
         assert resp.status_code == 400
 
+    async def test_create_canonicalizes_severity_tags(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        service_id = await self._seed_service(app)
+        resp = await client.post(
+            "/memories",
+            headers=auth_headers,
+            json={
+                "title": "Checkout outage",
+                "summary_md": "Payments upstream saturated.",
+                "tags": [" High ", "severity-high", "payments"],
+                "service_id": str(service_id),
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.json()["tags"] == ["severity-high", "payments"]
+
     async def test_list_filters_by_service(
         self, client: AsyncClient, auth_headers, app
     ):
@@ -4212,7 +4229,7 @@ class TestIncidentMemoryAPI:
                 service_id=service_id,
                 title="surfaced lesson",
                 summary_md="be sure to check x",
-                tags=["high"],
+                tags=["severity-high"],
             )
             await IncidentMemoryRecallLogRepo.record(
                 db,

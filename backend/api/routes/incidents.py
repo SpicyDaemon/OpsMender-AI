@@ -85,6 +85,7 @@ from backend.paging.service import compute_priority_for_payload
 from backend.paging import escalation as _esc_kickoff
 from backend.skills.parser import loads as load_skill_def_text
 from backend.memory.candidates import candidate_title, extract_memory_candidates
+from backend.memory.tags import canonicalize_memory_tag
 from backend.api.session_runner import (
     cancel_session_workflows,
     stop_incident_sessions,
@@ -1088,7 +1089,7 @@ async def create_postmortem_memory_candidates(
 
     tags: list[str] = []
     if isinstance(incident.severity, str) and incident.severity:
-        tags.append(incident.severity.lower())
+        tags.append(canonicalize_memory_tag(incident.severity))
 
     items: list[PostmortemMemoryCandidate] = []
     created = 0

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A+ closure sprint — A-5 memory severity tags.** Incident memory severity
+  tags now canonicalize to `severity-<level>` across recall derivation, LLM
+  writeback, manual memory create/update, and postmortem memory extraction;
+  an Alembic data migration normalizes existing `incident_memories.tags` rows
+  while preserving order and deduping duplicates.
+
 - **A+ closure sprint — A-4 Activity grouping.** Activity now defaults to
   collapsible session groups with short session IDs, View session links, time
   spans, entry counts, blocked-count chips, grouped Search/Type/Tier/Status

@@ -128,6 +128,18 @@ class TestMemoryDraftFromJson:
         # Lower-cased + deduped + non-string filtered.
         assert draft.tags == ["k8s", "outage"]
 
+    def test_canonicalises_severity_tags(self):
+        raw = json.dumps(
+            {
+                "title": "t",
+                "tags": [" high ", "severity-high", "critical", "payments"],
+                "summary_md": "s",
+            }
+        )
+        draft = MemoryDraft.from_json(raw)
+        assert draft is not None
+        assert draft.tags == ["severity-high", "severity-critical", "payments"]
+
     def test_caps_tag_count(self):
         tags = [f"tag{i}" for i in range(10)]
         raw = json.dumps({"title": "t", "tags": tags, "summary_md": "s"})
@@ -233,7 +245,7 @@ class TestRememberForSession:
             memory = await IncidentMemoryRepo.get_by_id(db, new_id, ORG_A)
             assert memory is not None
             assert memory.service_id == service.id
-            assert memory.tags == ["payments", "high"]
+            assert memory.tags == ["payments", "severity-high"]
             assert "Restart" in memory.summary_md
 
     async def test_skipped_when_should_not_remember(self, factory):

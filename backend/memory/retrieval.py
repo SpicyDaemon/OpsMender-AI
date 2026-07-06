@@ -28,6 +28,7 @@ from backend.db.repos import (
     IncidentMemoryRecallLogRepo,
     IncidentMemoryRepo,
 )
+from backend.memory.tags import canonicalize_memory_tag
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ def derive_tags(incident: dict[str, Any] | None) -> list[str]:
     tags: list[str] = []
     severity = incident.get("severity")
     if isinstance(severity, str) and severity:
-        tags.append(severity.lower())
+        tags.append(canonicalize_memory_tag(severity))
     return tags
 
 

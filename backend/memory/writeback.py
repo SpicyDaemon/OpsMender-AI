@@ -43,6 +43,7 @@ from typing import Any
 from backend.agent.llm import LLM
 from backend.db.models import IncidentMemory
 from backend.db.repos import IncidentMemoryRepo
+from backend.memory.tags import normalize_memory_tags
 
 logger = logging.getLogger(__name__)
 
@@ -172,16 +173,11 @@ class MemoryDraft:
         if len(summary) > MEMORY_SUMMARY_MAX:
             summary = summary[:MEMORY_SUMMARY_MAX].rstrip()
         raw_tags = data.get("tags") or []
-        tags: list[str] = []
-        if isinstance(raw_tags, list):
-            for tag in raw_tags:
-                if not isinstance(tag, str):
-                    continue
-                normalised = tag.strip().lower()
-                if normalised and normalised not in tags:
-                    tags.append(normalised)
-                if len(tags) >= 5:
-                    break
+        tags = (
+            normalize_memory_tags(raw_tags, limit=5)
+            if isinstance(raw_tags, list)
+            else []
+        )
         return cls(title=title, tags=tags, summary_md=summary)
 
 

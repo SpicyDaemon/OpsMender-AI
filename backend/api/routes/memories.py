@@ -44,6 +44,7 @@ from backend.db.repos import (
     SessionRepo,
     TeamRepo,
 )
+from backend.memory.tags import normalize_memory_tags
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 sessions_memory_router = APIRouter(prefix="/sessions", tags=["memories"])
@@ -268,7 +269,7 @@ async def create_memory(
         service_id=body.service_id,
         title=body.title.strip(),
         summary_md=body.summary_md,
-        tags=[t.strip().lower() for t in body.tags if t and t.strip()],
+        tags=normalize_memory_tags(body.tags),
         created_by_user_id=user.id,
     )
     await db.commit()
@@ -304,7 +305,7 @@ async def update_memory(
 
     tags: list[str] | None = None
     if body.tags is not None:
-        tags = [t.strip().lower() for t in body.tags if t and t.strip()]
+        tags = normalize_memory_tags(body.tags)
 
     updated = await IncidentMemoryRepo.update(
         db,

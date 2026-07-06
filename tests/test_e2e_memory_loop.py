@@ -333,8 +333,8 @@ class TestEndToEndMemoryLoop:
         Steps 2-3 (retrieval + recall node)."""
         service_id = await _seed_service(factory)
 
-        # Operator-authored memory — created directly through the repo (the
-        # API route is a thin wrapper over IncidentMemoryRepo.create).
+        # Operator-authored memory seeded in the canonical tag shape the API
+        # route would store.
         async with factory() as db:
             seeded = await IncidentMemoryRepo.create(
                 db,
@@ -342,7 +342,7 @@ class TestEndToEndMemoryLoop:
                 service_id=service_id,
                 title="Operator-authored hint about checkout",
                 summary_md="When checkout 500s appear, always check the payment proxy logs first.",
-                tags=["high", "payments"],
+                tags=["severity-high", "payments"],
             )
             await db.commit()
             seeded_id = seeded.id

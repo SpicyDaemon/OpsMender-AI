@@ -126,7 +126,7 @@ class TestDeriveHelpers:
         )
 
     def test_derive_tags_lifts_severity(self):
-        assert derive_tags({"severity": "Critical"}) == ["critical"]
+        assert derive_tags({"severity": "Critical"}) == ["severity-critical"]
         assert derive_tags({"severity": None}) == []
         assert derive_tags({}) == []
 
@@ -173,7 +173,7 @@ class TestRecallForSession:
                 service_id=service.id,
                 title="checkout 500s",
                 summary_md="check the upstream payment service",
-                tags=["high"],
+                tags=["severity-high"],
             )
             await db.commit()
 
@@ -261,7 +261,7 @@ class TestRecallNode:
                 service_id=service.id,
                 title="ticket about checkout",
                 summary_md="payments-service occasionally drops connections",
-                tags=["high"],
+                tags=["severity-high"],
             )
             await db.commit()
 

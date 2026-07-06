@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A+ closure sprint — A-4 Activity grouping.** Activity now defaults to
+  collapsible session groups with short session IDs, View session links, time
+  spans, entry counts, blocked-count chips, grouped Search/Type/Tier/Status
+  filters, and a toggle that restores the previous flat DataTable with its
+  date range, column picker, expansion, and CSV behavior intact.
+
 - **A+ closure sprint — A-3 mobile approvals.** Pending approvals now use
   thumb-sized, full-width Approve, Reject, and Redirect actions below `sm` on
   the session-detail card and Approvals page; action JSON collapses behind an

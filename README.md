@@ -27,6 +27,18 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 
 **Simple by default, enterprise-ready underneath:** start as a single-workspace tool with email + admin invites; OIDC SSO, SAML, custom domains, and branding are available for that one workspace when you need them.
 
+## Screenshots
+
+| Incident command center | Live AI session |
+| --- | --- |
+| ![Incidents list with severity, status, owner, and AI session columns](site/public/screenshots/incidents-list.png) | ![Live AI session detail with workflow state, approvals, and tool activity](site/public/screenshots/live-session-detail.png) |
+| Prioritize, assign, combine, and start AI help from the incidents list. | Watch the agent workflow, operator controls, memory, chat, and tool activity in one place. |
+
+| Approval inbox | Settings |
+| --- | --- |
+| ![Pending approvals inbox with request context and approve or reject actions](site/public/screenshots/approvals-pending.png) | ![Settings page with session profiles, models, notifications, and workspace controls](site/public/screenshots/settings.png) |
+| Review Tier 1 actions with context before anything runs. | Configure workspace policy, session profiles, notifications, models, and guardrails. |
+
 ## Features
 
 - **Three-tier AI autonomy** — Tier 0 Autonomous (sandbox + time limits + auto-rollback), Tier 1 Approval-Required, Tier 2 Advisory-Only (default).

@@ -374,16 +374,17 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
     """
     if fmt in ("yaml", "yml"):
         data = yaml.safe_load(raw) or {}
+        if not isinstance(data, dict):
+            raise ValueError("Skill definition YAML must be a mapping")
         raw_workflow = data.get("workflow")
     else:
         front_matter = _extract_yaml_front_matter(raw)
         data = yaml.safe_load(front_matter) or {}
+        if not isinstance(data, dict):
+            raise ValueError("Skill definition YAML must be a mapping")
         raw_workflow = _extract_workflow_section(raw)
         if raw_workflow is None:
             raw_workflow = data.get("workflow")
-
-    if not isinstance(data, dict):
-        raise ValueError("Skill definition YAML must be a mapping")
 
     operations: list[OperationClassification] = []
     for entry in data.get("operations", []):

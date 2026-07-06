@@ -1,56 +1,74 @@
-# Screenshot sanitization requirements
+# Screenshot capture requirements
 
-All images in this directory are displayed publicly on the product showcase site.
-Before replacing any placeholder with a real screenshot, verify the following:
+Images in this directory may be displayed publicly in the root README and the
+product showcase site. Before replacing or committing any screenshot, verify the
+checklist below.
+
+## Current README launch set
+
+`scripts/take_screenshots.mjs` captures these four PNGs:
+
+- `incidents-list.png` — incident command center
+- `live-session-detail.png` — live AI session detail
+- `approvals-pending.png` — Tier 1 approval inbox with pending work
+- `settings.png` — workspace settings and guardrails
+
+The showcase site may also reference older gallery filenames:
+
+- `incidents-admin.png`
+- `incidents-operator.png`
+- `incident-detail.png`
+- `ai-session.png`
+- `mcp-skills.png`
+- `people-rbac.png`
+
+## Capture command
+
+1. Start a cleaned, synthetic demo instance on `http://localhost:8000`.
+2. Ensure the local environment has either `OPSMENDER_EMAIL` /
+   `OPSMENDER_PASSWORD` or `OPSMENDER_BOOTSTRAP_ADMIN_EMAIL` /
+   `OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD` available. The script also reads those
+   bootstrap values from the repository `.env` file.
+3. Run:
+
+```bash
+node scripts/take_screenshots.mjs
+```
+
+Optional overrides:
+
+```bash
+OPSMENDER_BASE_URL=http://localhost:8000 \
+OPSMENDER_EMAIL=admin@example.com \
+OPSMENDER_PASSWORD='<password>' \
+node scripts/take_screenshots.mjs
+```
+
+The default output directory is `site/public/screenshots/`.
 
 ## Must not appear in any screenshot
 
 - Personal or work email addresses
 - Real customer, user, or organization names
 - API keys, tokens, secrets, passwords, or auth headers
-- Private or internal domain names (e.g. `*.corp.internal`, `*.lan`)
-- Local machine paths (e.g. `C:\Users\`, `/home/username/`)
+- Private or internal domain names
+- Local machine paths
 - Competitor product names or logos
-- Personally identifiable information (PII)
+- Personally identifiable information
 - Internal project codenames or unreleased feature names
 
 ## Use realistic but generic placeholder data
 
-- Incident titles: generic service/infrastructure descriptions only
-- Usernames: single first names (alice, bob, carol) or role labels (admin, on-call)
-- Hostnames: generic (e.g. `api-gateway.prod.internal`, `k8s-prod-cluster`)
-- Timestamps: synthetic — do not expose real incident timestamps
-
-## Format
-
-- 1200×750 px recommended (matches viewBox of SVG placeholders)
-- PNG or SVG accepted; avoid JPEG for UI screenshots (compression artifacts on text)
-- File names must match the paths referenced in `src/pages/index.astro`:
-  - `incidents-admin.png`
-  - `incidents-operator.png`
-  - `incident-detail.png`
-  - `ai-session.png`
-  - `mcp-skills.png`
-  - `people-rbac.png`
-
-## How these were captured
-
-The current images are **real captures of the dashboard**, not mockups. They are
-produced from the seeded demo database (synthetic "Acme Corp" data — `@acme.com`
-addresses, redacted tokens) so nothing real is exposed. To regenerate:
-
-1. Seed a throwaway SQLite DB:
-   `OPSMENDER_DATABASE_URL="sqlite+aiosqlite:///./opsmender_demo.db" uv run python scripts/seed_demo.py`
-2. Start the backend against that DB on a free port (serves `frontend/out`).
-3. Log in as `admin` / `admin123` (Admin view) and `priya` / `priya123` (Operator view),
-   inject the token + `opsmender:theme=dark` into `localStorage`, and screenshot each route
-   with Playwright at a 2× device scale for crisp, high-resolution output.
+- Incident titles: generic service or infrastructure descriptions only
+- Usernames: single first names or role labels
+- Hostnames: generic infrastructure names
+- Timestamps: synthetic demo data only
 
 ## Review checklist before committing
 
-- [ ] No PII visible anywhere in the image (demo data uses `@acme.com` only)
+- [ ] No PII visible anywhere
 - [ ] No secrets or tokens visible
 - [ ] No competitor names or logos
 - [ ] No internal domains or local paths
-- [ ] Data is plausible but clearly synthetic (Acme Corp demo seed)
-- [ ] Captured at 2× device scale (≈3200×2000 px) for retina sharpness
+- [ ] Data is plausible but clearly synthetic
+- [ ] The Approvals screenshot shows pending work, not the empty state

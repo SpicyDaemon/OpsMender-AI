@@ -68,6 +68,12 @@ class TestLoad:
         assert sd.version == "1"
         assert sd.environment == "default"
 
+    def test_yaml_root_must_be_mapping(self):
+        with pytest.raises(ValueError, match="must be a mapping"):
+            loads("---\n- not\n- a mapping\n---\n")
+        with pytest.raises(ValueError, match="must be a mapping"):
+            loads("- not\n- a mapping\n", fmt="yaml")
+
     def test_load_reference_template(self):
         """Ensure the shipped examples/SKILL.md parses correctly."""
         sd = load("examples/SKILL.md")

@@ -1,224 +1,224 @@
-// Playwright screenshot capture for the OpsMender dashboard.
+// Curated README screenshot capture for OpsMender.
+//
 // Run: node scripts/take_screenshots.mjs
 //
-// Assumes the dev server is running on http://localhost:8000 with the
-// seeded demo DB. Captures every operator-facing route + a handful of
-// key modals into ./screenshots/.
+// Env:
+//   OPSMENDER_BASE_URL  default http://localhost:8000
+//   OPSMENDER_EMAIL     login override
+//   OPSMENDER_PASSWORD  login override
+//
+// If the login overrides are absent, the script reads
+// OPSMENDER_BOOTSTRAP_ADMIN_EMAIL / OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD from
+// the process environment or the local .env file. It writes the four launch
+// screenshots used by README.md into site/public/screenshots/.
 
-import { chromium } from "playwright";
-import fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import fs from "node:fs";
 import path from "node:path";
 
+const require = createRequire(new URL("../frontend/node_modules/", import.meta.url));
+const { chromium } = require("playwright");
+
+function readDotEnv() {
+  const envPath = path.resolve(".env");
+  if (!fs.existsSync(envPath)) return {};
+  return Object.fromEntries(
+    fs
+      .readFileSync(envPath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#") && line.includes("="))
+      .map((line) => {
+        const i = line.indexOf("=");
+        return [line.slice(0, i), line.slice(i + 1).replace(/^['"]|['"]$/g, "")];
+      }),
+  );
+}
+
+const DOTENV = readDotEnv();
 const BASE = process.env.OPSMENDER_BASE_URL || "http://localhost:8000";
-const OUT = path.resolve("screenshots");
-const ADMIN = { username: "admin", password: "admin123" };
-const VIEWPORT = { width: 1440, height: 900 };
-
-await fs.mkdir(OUT, { recursive: true });
-
-const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({ viewport: VIEWPORT });
-const page = await ctx.newPage();
-
-// Quiet down image 404s etc. in the console.
-page.on("pageerror", (e) => console.error("pageerror:", e.message));
-
-async function shot(name) {
-  const f = path.join(OUT, `${name}.png`);
-  await page.screenshot({ path: f, fullPage: true });
-  console.log("✓", path.relative(process.cwd(), f));
-}
-
-async function goto(url, opts = {}) {
-  await page.goto(`${BASE}${url}`, { waitUntil: "networkidle", timeout: 20000 });
-  // Tiny settle for any post-mount fetches that fire after networkidle.
-  await page.waitForTimeout(opts.wait ?? 600);
-}
-
-// ---------- Public routes ----------
-
-await goto("/login");
-await shot("00_login");
-
-await goto("/register");
-await shot("01_register");
-
-// ---------- Authenticate via API + token injection ----------
-
-const tokenResp = await page.request.post(`${BASE}/auth/login`, {
-  data: ADMIN,
-});
-if (!tokenResp.ok()) {
-  throw new Error(`Login failed: ${tokenResp.status()} ${await tokenResp.text()}`);
-}
-const { access_token } = await tokenResp.json();
-
-const me = await (
-  await page.request.get(`${BASE}/auth/me`, {
-    headers: { Authorization: `Bearer ${access_token}` },
-  })
-).json();
-const orgId = me.primary_org_id;
-
-await page.addInitScript(
-  ({ t, o }) => {
-    localStorage.setItem("opsmender_token", t);
-    localStorage.setItem("opsmender_org_id", o);
-  },
-  { t: access_token, o: orgId },
+const EMAIL =
+  process.env.OPSMENDER_EMAIL ||
+  process.env.OPSMENDER_BOOTSTRAP_ADMIN_EMAIL ||
+  DOTENV.OPSMENDER_BOOTSTRAP_ADMIN_EMAIL;
+const PASSWORD =
+  process.env.OPSMENDER_PASSWORD ||
+  process.env.OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD ||
+  DOTENV.OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD;
+const OUT = path.resolve(
+  process.env.OPSMENDER_SCREENSHOT_DIR || "site/public/screenshots",
 );
 
-// Reload to pick up the seeded auth.
-await goto("/dashboard/incidents");
+const VIEWPORT = { width: 1440, height: 900 };
+const RUNNING_SESSION_STATUSES = new Set(["queued", "active", "awaiting_approval"]);
+const SCREENSHOTS = [
+  {
+    file: "incidents-list.png",
+    route: "/dashboard/incidents",
+    label: "Incidents list",
+  },
+  {
+    file: "live-session-detail.png",
+    route: ({ sessionId }) => `/dashboard/sessions/detail?id=${sessionId}`,
+    label: "Live session detail",
+  },
+  {
+    file: "approvals-pending.png",
+    route: "/dashboard/approvals",
+    label: "Pending approvals",
+  },
+  {
+    file: "settings.png",
+    route: "/dashboard/config",
+    label: "Settings",
+  },
+];
 
-// ---------- Incident Management ----------
-
-await shot("02_incidents_list");
-
-// Open create-incident modal
-await page.getByRole("button", { name: /new incident/i }).click().catch(() => {});
-await page.waitForTimeout(500);
-await shot("03_incidents_new_modal");
-await page.keyboard.press("Escape");
-await page.waitForTimeout(300);
-
-// Open fire-test-incident modal
-await page.getByRole("button", { name: /fire test incident/i }).click().catch(() => {});
-await page.waitForTimeout(500);
-await shot("04_incidents_fire_test_modal");
-await page.keyboard.press("Escape");
-await page.waitForTimeout(300);
-
-// Click first incident row → detail
-const firstIncidentLink = page.locator(
-  'a[href^="/dashboard/incidents/detail?id="]',
-).first();
-const incidentHref = await firstIncidentLink.getAttribute("href").catch(() => null);
-if (incidentHref) {
-  await goto(incidentHref);
-  await shot("05_incident_detail");
+if (!EMAIL || !PASSWORD) {
+  throw new Error(
+    "Set OPSMENDER_EMAIL/OPSMENDER_PASSWORD or OPSMENDER_BOOTSTRAP_ADMIN_* in the environment or .env.",
+  );
 }
 
-await goto("/dashboard/approvals");
-await shot("06_approvals");
+fs.mkdirSync(OUT, { recursive: true });
 
-// Try to grab an active-session detail page from the API
-const sessionsResp = await page.request.get(`${BASE}/sessions?limit=5`, {
-  headers: {
-    Authorization: `Bearer ${access_token}`,
-    "X-Org-ID": orgId,
-  },
+const browser = await chromium.launch({ headless: true });
+const ctx = await browser.newContext({
+  viewport: VIEWPORT,
+  colorScheme: "dark",
+  deviceScaleFactor: 1,
 });
-if (sessionsResp.ok()) {
-  const body = await sessionsResp.json();
-  const first = body.items?.[0];
-  if (first) {
-    await goto(`/dashboard/sessions/detail?id=${first.id}`);
-    await shot("07_session_detail");
+const page = await ctx.newPage();
+
+page.on("pageerror", (e) => console.error("pageerror:", e.message));
+
+async function settle(ms = 900) {
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(ms);
+}
+
+async function requestJson(method, url, token, data) {
+  const resp = await page.request.fetch(`${BASE}${url}`, {
+    method,
+    data,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok()) {
+    throw new Error(`${method} ${url} failed: ${resp.status()} ${await resp.text()}`);
   }
+  const text = await resp.text();
+  return text ? JSON.parse(text) : null;
 }
 
-// ---------- Paging & On-call ----------
-
-const pagingRoutes = [
-  ["teams", "10_paging_teams"],
-  ["services", "11_paging_services"],
-  ["rosters", "12_paging_rosters"],
-  ["priority-rules", "13_paging_priority_rules"],
-  ["escalation-chains", "14_paging_escalation_chains"],
-  ["maintenance-windows", "15_paging_maintenance_windows"],
-  ["my-notifications", "16_paging_my_notifications"],
-];
-for (const [slug, name] of pagingRoutes) {
-  await goto(`/dashboard/paging/${slug}`);
-  await shot(name);
+async function listPendingApprovals(token) {
+  const res = await requestJson("GET", "/approvals?status=pending&limit=20", token);
+  return res?.items || [];
 }
 
-// ---------- AI Agent ----------
-
-const aiAgent = [
-  ["skills", "20_ai_skills"],
-  ["memories", "21_ai_memories"],
-  ["mcp-servers", "22_ai_mcp_servers"],
-  ["models", "23_ai_models"],
-  ["workflows", "24_ai_workflows"],
-  ["agent-teams", "25_ai_agent_teams"],
-];
-for (const [slug, name] of aiAgent) {
-  await goto(`/dashboard/${slug}`);
-  await shot(name);
+async function listSessions(token) {
+  const res = await requestJson("GET", "/sessions?limit=20", token);
+  return res?.items || [];
 }
 
-// ---------- Integrations ----------
-
-for (const [slug, name] of [
-  ["bot-connectors", "30_integ_bot_connectors"],
-  ["webhooks", "31_integ_webhooks"],
-  ["ingest-tokens", "32_integ_ingest_tokens"],
-]) {
-  await goto(`/dashboard/${slug}`);
-  await shot(name);
+function pickSession(sessions, pendingApprovals) {
+  const approvalSessionId = pendingApprovals[0]?.session_id;
+  return (
+    sessions.find((session) => session.id === approvalSessionId) ||
+    sessions.find((session) => RUNNING_SESSION_STATUSES.has(session.status)) ||
+    sessions[0] ||
+    null
+  );
 }
 
-// ---------- Observe ----------
+async function ensureUsefulDemoState(token) {
+  let pendingApprovals = await listPendingApprovals(token);
+  let sessions = await listSessions(token);
 
-for (const [slug, name] of [
-  ["scans", "40_observe_scans"],
-  ["reliability", "41_observe_reliability"],
-  ["activity", "42_observe_activity"],
-]) {
-  await goto(`/dashboard/${slug}`);
-  await shot(name);
+  if (pendingApprovals.length === 0 || sessions.length === 0) {
+    console.log("No pending approval/session found; creating a synthetic walkthrough record.");
+    const fired = await requestJson("POST", "/incidents/fire-test", token, {});
+    const incidentId = fired?.incident?.id;
+    if (incidentId) {
+      await requestJson("POST", `/incidents/${incidentId}/ack`, token, {
+        via: "api",
+      }).catch((err) => {
+        console.warn(String(err));
+      });
+      await requestJson("POST", "/sessions", token, {
+        incident_id: incidentId,
+        tier: 1,
+        initial_briefing:
+          "Prepare a safe remediation plan for the synthetic launch screenshot incident.",
+        force: true,
+      }).catch((err) => {
+        console.warn(String(err));
+      });
+      await page.waitForTimeout(3000);
+    }
+    pendingApprovals = await listPendingApprovals(token);
+    sessions = await listSessions(token);
+  }
+
+  const session = pickSession(sessions, pendingApprovals);
+  if (!session) {
+    throw new Error("No session was available for the live session screenshot.");
+  }
+  if (pendingApprovals.length === 0) {
+    throw new Error(
+      "No pending approval was found after the fallback walkthrough. Re-run the cleaned demo seed before capturing README screenshots.",
+    );
+  }
+
+  return {
+    sessionId: session.id,
+    pendingApprovalCount: pendingApprovals.length,
+  };
 }
 
-// ---------- Admin ----------
-
-// People — Users tab
-await goto("/dashboard/people");
-await shot("50_admin_people_users");
-
-// People — Invites tab
-const invitesTab = page.getByRole("button", { name: /^invites/i });
-await invitesTab.click().catch(() => {});
-await page.waitForTimeout(500);
-await shot("51_admin_people_invites");
-
-// New-invite modal
-const newInviteBtn = page.getByRole("button", { name: /new invite/i });
-await newInviteBtn.click().catch(() => {});
-await page.waitForTimeout(500);
-await shot("52_admin_people_new_invite_modal");
-await page.keyboard.press("Escape");
-await page.waitForTimeout(300);
-
-// People detail — fetch the first non-admin user
-const usersResp = await page.request.get(`${BASE}/auth/users?limit=10`, {
-  headers: {
-    Authorization: `Bearer ${access_token}`,
-    "X-Org-ID": orgId,
-  },
-});
-if (usersResp.ok()) {
-  const ul = await usersResp.json();
-  const target = ul.items.find((u) => u.username !== "admin") ?? ul.items[0];
-  await goto(`/dashboard/people/detail?id=${target.id}`);
-  await shot("53_admin_people_detail");
+async function login() {
+  const tokenResp = await page.request.post(`${BASE}/auth/login`, {
+    data: { username: EMAIL, password: PASSWORD },
+  });
+  if (!tokenResp.ok()) {
+    throw new Error(`Login failed: ${tokenResp.status()} ${await tokenResp.text()}`);
+  }
+  const { access_token: token } = await tokenResp.json();
+  await page.addInitScript((accessToken) => {
+    localStorage.setItem("opsmender_token", accessToken);
+    localStorage.setItem("opsmender:theme", "dark");
+  }, token);
+  return token;
 }
 
-// Organizations
-await goto("/dashboard/organizations");
-await shot("54_admin_organizations");
+async function capture(file, route) {
+  const target = `${BASE}${route}`;
+  await page.goto(target, { waitUntil: "domcontentloaded", timeout: 30000 });
+  await settle();
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    document.getElementById("main-content")?.scrollTo(0, 0);
+  });
+  await page.waitForTimeout(150);
+  const out = path.join(OUT, file);
+  await page.screenshot({ path: out });
+  console.log(`✓ ${path.relative(process.cwd(), out)}`);
+}
 
-// Config
-await goto("/dashboard/config");
-await shot("55_admin_config");
+try {
+  const token = await login();
+  const state = await ensureUsefulDemoState(token);
 
-// ---------- Public invite-accept (use the seeded pending invite) ----------
-// We seeded a pending invite with token_hash = sha256("invite-pending");
-// the raw token isn't recoverable so we just show the invalid-token state
-// for documentation purposes.
-await goto("/invite?token=demo-invalid-token");
-await shot("60_public_invite_invalid");
+  for (const shot of SCREENSHOTS) {
+    const route =
+      typeof shot.route === "function" ? shot.route(state) : shot.route;
+    console.log(`${shot.label}: ${route}`);
+    await capture(shot.file, route);
+  }
 
-await browser.close();
-console.log("\nDone. Screenshots saved to ./screenshots/");
+  console.log(
+    `\nDone. Screenshots saved to ${path.relative(process.cwd(), OUT)}. Pending approvals: ${state.pendingApprovalCount}.`,
+  );
+} finally {
+  await browser.close();
+}

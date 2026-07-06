@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A+ closure sprint — A-8 README screenshot set.** The screenshot capture
+  helper now uses the design-audit credential pattern with environment
+  overrides and `.env` bootstrap fallback, captures the four launch README
+  surfaces into `site/public/screenshots/`, refuses to capture an empty
+  approval inbox, and the README now embeds the current screenshots with
+  product captions. Skill parsing now fails closed on non-mapping YAML roots so
+  malformed skill records cannot 500 session-tier resolution.
+
 - **A+ closure sprint — A-9 motion micro-polish.** Toasts now ease in with a
   short fade/rise and fade out before removal, shared modals open with a
   conservative backdrop fade plus panel fade/scale, and `globals.css` now has

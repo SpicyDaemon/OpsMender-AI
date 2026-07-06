@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A+ closure sprint — A-2 dashboard onboarding.** The first-run setup
+  checklist now lives only on the Dashboard, has a slim progress bar and
+  explicit "N of 5 steps" status, refreshes on focus/live events, silently
+  hides when unavailable or complete, and no longer duplicates itself on the
+  Incidents page.
+
 - **A+ closure sprint — A-1 live updates.** Dashboard, Approvals,
   Orchestration, Incidents, the notification Inbox bell, and the sidebar
   Approvals badge now share one live notification WebSocket with

@@ -26,7 +26,6 @@ import {
   listTeams,
   updateIncident,
 } from "@/lib/api";
-import { SetupChecklist } from "@/components/SetupChecklist";
 import { useAuth } from "@/context/auth";
 import { useLiveEvents } from "@/context/liveEvents";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
@@ -794,7 +793,6 @@ export default function IncidentsPage() {
 
   return (
     <div>
-      <SetupChecklist />
       <div className="mb-6">
         <PageHeader
           title="Incidents"

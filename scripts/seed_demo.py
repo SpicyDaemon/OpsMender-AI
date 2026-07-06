@@ -86,7 +86,7 @@ async def main():
         # ---- Users ----
         users_seed = [
             ("admin", "admin@acme.com", "admin123", "admin"),
-            ("priya", "priya@acme.com", "priya123", "operator"),
+            ("john", "john@acme.com", "john123", "operator"),
             ("dmitri", "dmitri@acme.com", "dmitri123", "operator"),
             ("sam", "sam@acme.com", "sam123", "viewer"),
         ]
@@ -144,9 +144,9 @@ async def main():
         await db.flush()
 
         for ridx, (tslug, member_usernames) in enumerate([
-            ("platform", ["priya", "dmitri"]),
-            ("payments", ["dmitri", "priya"]),
-            ("sre", ["priya", "dmitri", "admin"]),
+            ("platform", ["john", "dmitri"]),
+            ("payments", ["dmitri", "john"]),
+            ("sre", ["john", "dmitri", "admin"]),
         ]):
             for pos, uname in enumerate(member_usernames):
                 db.add(RosterMember(

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A+ closure sprint — A-3 mobile approvals.** Pending approvals now use
+  thumb-sized, full-width Approve, Reject, and Redirect actions below `sm` on
+  the session-detail card and Approvals page; action JSON collapses behind an
+  accessible disclosure on mobile while reason and expiry stay visible, and
+  the Approvals page renders stacked mobile cards instead of the desktop
+  table.
+
 - **A+ closure sprint — A-2 dashboard onboarding.** The first-run setup
   checklist now lives only on the Dashboard, has a slim progress bar and
   explicit "N of 5 steps" status, refreshes on focus/live events, silently

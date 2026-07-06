@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Brain,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
   Clock,
   ClipboardCopy,
@@ -426,6 +427,7 @@ function SessionPageContent() {
   const [messages, setMessages] = useState<SessionMessageResponse[]>([]);
   const [connected, setConnected] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequestResponse[]>([]);
+  const [approvalDetailsOpen, setApprovalDetailsOpen] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
@@ -957,18 +959,12 @@ function SessionPageContent() {
               className="flex flex-col gap-3 rounded-lg bg-bg-panel border border-status-medium-border/60 p-4 sm:flex-row sm:items-start sm:gap-4"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-fg-secondary uppercase tracking-wide mb-1.5">
-                  Action context
-                </p>
-                <pre className="text-xs text-fg-primary bg-bg-elevated rounded-lg p-3 overflow-x-auto font-mono">
-                  {JSON.stringify(a.action, null, 2)}
-                </pre>
                 {a.justification && (
-                  <p className="text-xs text-fg-secondary mt-2">
+                  <p className="text-xs text-fg-secondary">
                     <span className="font-medium text-fg-muted">Reason:</span> {a.justification}
                   </p>
                 )}
-                <p className="text-xs text-fg-muted mt-1.5 tabular-nums font-mono">
+                <p className="mt-1.5 text-xs text-fg-muted tabular-nums font-mono">
                   Expires {formatTime(a.expires_at)}
                 </p>
                 <div className="mt-2.5">
@@ -986,13 +982,44 @@ function SessionPageContent() {
                     className="mt-1 w-full resize-none rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-xs shadow-sm placeholder:text-fg-muted focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                   />
                 </div>
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-left text-xs font-medium text-fg-secondary sm:hidden"
+                    aria-expanded={approvalDetailsOpen[a.id] === true}
+                    aria-controls={`approval-action-context-${a.id}`}
+                    onClick={() =>
+                      setApprovalDetailsOpen((prev) => ({
+                        ...prev,
+                        [a.id]: !prev[a.id],
+                      }))
+                    }
+                  >
+                    {approvalDetailsOpen[a.id] ? "Hide action details" : "Show action details"}
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform ${
+                        approvalDetailsOpen[a.id] ? "rotate-180" : ""
+                      }`}
+                      aria-hidden
+                    />
+                  </button>
+                  <pre
+                    id={`approval-action-context-${a.id}`}
+                    className={`mt-2 text-xs text-fg-primary bg-bg-elevated rounded-lg p-3 overflow-x-auto font-mono ${
+                      approvalDetailsOpen[a.id] ? "block" : "hidden"
+                    } sm:block`}
+                  >
+                    {JSON.stringify(a.action, null, 2)}
+                  </pre>
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-col sm:shrink-0">
+              <div className="flex flex-col gap-2 sm:shrink-0">
                 <Button
                   size="sm"
                   variant="success"
                   onClick={() => handleApprove(a.id)}
-                  className="justify-center sm:min-w-[100px]"
+                  className="h-11 w-full justify-center sm:h-auto sm:min-w-[100px] sm:w-auto"
                 >
                   <CheckCircle2 size={14} />
                   Approve
@@ -1001,7 +1028,7 @@ function SessionPageContent() {
                   size="sm"
                   variant="ghost"
                   onClick={() => handleReject(a.id)}
-                  className="justify-center text-status-critical hover:bg-status-critical-bg hover:text-status-critical sm:min-w-[100px]"
+                  className="h-11 w-full justify-center text-status-critical hover:bg-status-critical-bg hover:text-status-critical sm:h-auto sm:min-w-[100px] sm:w-auto"
                 >
                   <XCircle size={14} />
                   Reject
@@ -1011,7 +1038,7 @@ function SessionPageContent() {
                   variant="secondary"
                   onClick={() => handleRedirect(a.id)}
                   disabled={!(redirectDrafts[a.id] ?? "").trim()}
-                  className="justify-center sm:min-w-[100px]"
+                  className="h-11 w-full justify-center sm:h-auto sm:min-w-[100px] sm:w-auto"
                 >
                   <CornerUpRight size={14} />
                   Redirect

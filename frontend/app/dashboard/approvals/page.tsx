@@ -5,7 +5,9 @@ import Link from "next/link";
 import {
   CheckCircle2,
   CheckSquare,
+  ChevronDown,
   Clock,
+  CornerUpRight,
   RefreshCw,
   Shield,
   Sparkles,
@@ -16,6 +18,7 @@ import {
   extendApprovalRequest,
   listApprovals,
   rejectRequest,
+  redirectRequest,
 } from "@/lib/api";
 import type { ApprovalListResponse, ApprovalRequestResponse, ApprovalStatus } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -89,6 +92,45 @@ function approvalEmptyStateCopy(statusFilter: ApprovalStatus | "") {
   };
 }
 
+function ActionContextDisclosure({
+  id,
+  action,
+  open,
+  onToggle,
+}: {
+  id: string;
+  action: Record<string, unknown>;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-left text-xs font-medium text-fg-secondary sm:hidden"
+        aria-expanded={open}
+        aria-controls={`approval-action-context-${id}`}
+        onClick={onToggle}
+      >
+        {open ? "Hide action details" : "Show action details"}
+        <ChevronDown
+          size={14}
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        />
+      </button>
+      <pre
+        id={`approval-action-context-${id}`}
+        className={`mt-2 text-xs bg-bg-elevated rounded-lg border border-border-subtle p-4 overflow-x-auto font-mono leading-relaxed ${
+          open ? "block" : "hidden"
+        } sm:block`}
+      >
+        {JSON.stringify(action, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
 export default function ApprovalsPage() {
   const [data, setData] = useState<ApprovalListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,6 +138,8 @@ export default function ApprovalsPage() {
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | "">("pending");
   const [selected, setSelected] = useState<ApprovalRequestResponse | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionDetailsOpen, setActionDetailsOpen] = useState<Record<string, boolean>>({});
+  const [redirectDrafts, setRedirectDrafts] = useState<Record<string, string>>({});
   const toast = useToast();
 
   const load = useCallback(async ({ background = false } = {}) => {
@@ -161,6 +205,27 @@ export default function ApprovalsPage() {
       void load({ background: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Rejection failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleRedirect(id: string) {
+    const guidance = (redirectDrafts[id] ?? "").trim();
+    if (!guidance) return;
+    setActionLoading(true);
+    try {
+      await redirectRequest(id, guidance);
+      toast.info("Approval redirected");
+      setSelected(null);
+      setRedirectDrafts((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      void load({ background: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Redirect failed");
     } finally {
       setActionLoading(false);
     }
@@ -263,7 +328,136 @@ export default function ApprovalsPage() {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
+        <div className="space-y-3">
+          <div className="space-y-3 sm:hidden">
+            {data?.items.map((a) => {
+              const isPending = a.status === "pending";
+              const detailId = `card-${a.id}`;
+              const redirectGuidance = redirectDrafts[a.id] ?? "";
+              return (
+                <article
+                  key={a.id}
+                  className={`rounded-xl border p-4 shadow-sm ${
+                    isPending
+                      ? "border-status-medium-border bg-status-medium-bg/20"
+                      : "border-border-subtle bg-bg-panel"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelected(a)}
+                      className="min-w-0 text-left"
+                    >
+                      <span className="block text-sm font-semibold text-fg-primary">
+                        {approvalActionLabel(a.action)}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-fg-muted">
+                        {approvalActionDetail(a.action)}
+                      </span>
+                    </button>
+                    <Badge variant={a.status}>{titleCaseIdentifier(a.status)}</Badge>
+                  </div>
+
+                  {a.justification && (
+                    <p className="mt-3 text-xs text-fg-secondary">
+                      <span className="font-medium text-fg-muted">Reason:</span>{" "}
+                      {a.justification}
+                    </p>
+                  )}
+
+                  <div className="mt-3 grid gap-1.5 text-xs text-fg-muted">
+                    <Link
+                      href={`/dashboard/sessions/detail?id=${a.session_id}`}
+                      className="font-medium text-accent-text hover:underline"
+                    >
+                      Open session{" "}
+                      <span className="font-mono text-fg-muted">
+                        {a.session_id.slice(0, 8)}
+                      </span>
+                    </Link>
+                    <p className="tabular-nums">Requested {fmtDate(a.requested_at)}</p>
+                    <p className="tabular-nums">
+                      {isPending ? `Expires in ${timeUntil(a.expires_at)}` : "Expired"}
+                    </p>
+                  </div>
+
+                  <ActionContextDisclosure
+                    id={detailId}
+                    action={a.action}
+                    open={actionDetailsOpen[detailId] === true}
+                    onToggle={() =>
+                      setActionDetailsOpen((prev) => ({
+                        ...prev,
+                        [detailId]: !prev[detailId],
+                      }))
+                    }
+                  />
+
+                  {isPending && (
+                    <>
+                      <div className="mt-3">
+                        <label
+                          htmlFor={`redirect-guidance-${a.id}`}
+                          className="text-[11px] font-medium text-fg-muted"
+                        >
+                          Redirect guidance
+                        </label>
+                        <textarea
+                          id={`redirect-guidance-${a.id}`}
+                          value={redirectGuidance}
+                          onChange={(e) =>
+                            setRedirectDrafts((prev) => ({
+                              ...prev,
+                              [a.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. gather logs first, then retry the action"
+                          rows={2}
+                          className="mt-1 w-full resize-none rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-xs shadow-sm placeholder:text-fg-muted focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          variant="success"
+                          onClick={() => handleApprove(a.id)}
+                          loading={actionLoading}
+                          className="h-11 w-full"
+                        >
+                          <CheckCircle2 size={14} />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleReject(a.id)}
+                          loading={actionLoading}
+                          className="h-11 w-full text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
+                        >
+                          <XCircle size={14} />
+                          Reject
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleRedirect(a.id)}
+                          loading={actionLoading}
+                          disabled={!redirectGuidance.trim()}
+                          className="h-11 w-full"
+                        >
+                          <CornerUpRight size={14} />
+                          Redirect
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
@@ -372,6 +566,7 @@ export default function ApprovalsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -389,9 +584,17 @@ export default function ApprovalsPage() {
               <p className="text-xs font-medium text-fg-secondary uppercase tracking-wide mb-2">
                 Action context
               </p>
-              <pre className="text-xs bg-bg-elevated rounded-lg border border-border-subtle p-4 overflow-x-auto font-mono leading-relaxed">
-                {JSON.stringify(selected.action, null, 2)}
-              </pre>
+              <ActionContextDisclosure
+                id={`modal-${selected.id}`}
+                action={selected.action}
+                open={actionDetailsOpen[`modal-${selected.id}`] === true}
+                onToggle={() =>
+                  setActionDetailsOpen((prev) => ({
+                    ...prev,
+                    [`modal-${selected.id}`]: !prev[`modal-${selected.id}`],
+                  }))
+                }
+              />
             </div>
 
             {selected.justification && (
@@ -431,32 +634,33 @@ export default function ApprovalsPage() {
             </div>
 
             {selected.status === "pending" && (
-              <div className="flex justify-end gap-3 pt-2 border-t border-border-subtle">
+              <div className="flex flex-col gap-2 pt-2 border-t border-border-subtle sm:flex-row sm:justify-end sm:gap-3">
                 <Button
-                  variant="secondary"
-                  onClick={() => handleExtend(selected.id)}
+                  variant="success"
+                  onClick={() => handleApprove(selected.id)}
                   loading={actionLoading}
+                  className="h-11 w-full sm:h-auto sm:w-auto sm:min-w-[110px]"
                 >
-                  <Clock size={16} />
-                  Extend session
+                  <CheckCircle2 size={16} />
+                  Approve
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={() => handleReject(selected.id)}
                   loading={actionLoading}
-                  className="min-w-[110px] text-status-critical hover:bg-status-critical-bg hover:text-status-critical"
+                  className="h-11 w-full text-status-critical hover:bg-status-critical-bg hover:text-status-critical sm:h-auto sm:w-auto sm:min-w-[110px]"
                 >
                   <XCircle size={16} />
                   Reject
                 </Button>
                 <Button
-                  variant="success"
-                  onClick={() => handleApprove(selected.id)}
+                  variant="secondary"
+                  onClick={() => handleExtend(selected.id)}
                   loading={actionLoading}
-                  className="min-w-[110px]"
+                  className="h-11 w-full sm:h-auto sm:w-auto"
                 >
-                  <CheckCircle2 size={16} />
-                  Approve
+                  <Clock size={16} />
+                  Extend session
                 </Button>
               </div>
             )}

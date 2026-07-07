@@ -160,8 +160,7 @@ Interactions (admin):
 - **Click a person (chip)** to replace who's on call for that level. The
   "Replace who's on call" dialog shows the chain, level, roster, and the
   current person; pick who **covers** instead and, optionally, a **Through**
-  date to cover a whole span in one action (the "a teammate is out this week, John
-  covers" flow). This writes a roster override for the chosen day(s). Levels
+  date to cover a whole span in one action (the "cover a teammate who is out for the week" flow). This writes a roster override for the chosen day(s). Levels
   that point directly at a user (not a roster) are shown but not reassignable
   here — edit the escalation chain instead.
 - **Click a day background** (not a chip) to open the day detail: every

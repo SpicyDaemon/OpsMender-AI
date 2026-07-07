@@ -128,4 +128,4 @@ See also:
 
 - [Notification Preferences](notification-preferences.md) — channels, per-priority routing, quiet hours.
 - [Operator Guide](operator-guide.md) — full incident triage flow.
-- `docs/PROMPT_CONTEXT.md` (D-021 — Paging Model) — the underlying data model and algorithms.
+- `backend/paging/on_call.py` (Paging Model, D-021) — the underlying data model and algorithms.

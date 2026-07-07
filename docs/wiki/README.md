@@ -4,7 +4,7 @@ Welcome to the OpsMender AI (OpsMender) Wiki! This documentation is designed to 
 
 The dashboard now deep-links back into these guides from its empty states, so the pages below are also the contextual "what do I do next?" surface inside the product.
 
-If you are a developer looking for internal architecture documentation, API details, or codebase references, please see [`PROMPT_CONTEXT.md`](../PROMPT_CONTEXT.md) in the main repository.
+If you are a developer looking for architecture details or codebase references, please see the inline module documentation in the source tree (e.g. `backend/agent/`, `backend/paging/`, `backend/tiers/`).
 
 ## Table of Contents
 

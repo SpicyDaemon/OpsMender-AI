@@ -10,7 +10,7 @@ docker compose build
 docker compose run --rm opsmender-dev
 ```
 
-On startup the container will automatically print your session context (PROMPT_CONTEXT + CURRENT_STATE + TASKS) and drop you into a bash shell.
+On startup the container drops you into a bash shell with the Python + Node toolchain ready.
 
 ---
 

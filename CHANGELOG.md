@@ -314,14 +314,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connector's `send_message` called `json.dumps(...)` but `json` was only
   imported locally inside the inbound-parse method, so every outbound
   Feishu/Lark send raised `NameError: name 'json' is not defined`. The import
-  is now module-scoped. (Found by the 2026-07-03 security/quality audit —
-  full report in `docs/SECURITY_AUDIT_2026-07-03.md`.)
+  is now module-scoped. (Found by the 2026-07-03 security/quality audit.)
 
 ### Security
 
 - **Full SAST / dependency / complexity audit** (bandit, ruff `F,B,S`, radon,
-  pip-audit) against the production Docker image — report in
-  `docs/SECURITY_AUDIT_2026-07-03.md`. Remediations:
+  pip-audit) against the production Docker image. Remediations:
   - **XXE hardening (CWE-611).** Inbound WeCom/Weixin webhook XML (three
     attacker-reachable parse sites in `bot_webhooks.py`, `wecom.py`,
     `weixin.py`) now parses via `defusedxml` instead of stdlib
@@ -422,20 +420,8 @@ clean.
   were removed; the "v1.x" / "v2" labels in the docs and history are roadmap
   **codenames**, not prior public versions. This `1.0.0` is the first published
   version (`pyproject.toml` + `frontend/package.json`).
-- **Docs condensed + made honest.** `docs/CURRENT_STATE.md` (1811→~110 lines) and
-  `docs/TASKS.md` (2786→~95 lines) were rewritten to current/active content only;
-  the session-by-session history remains in `docs/LOGS.md` and git. PROMPT_CONTEXT
-  gained a pre-public status banner and now says "built & merged" instead of
-  "Shipped/Released" for internal milestones.
-- **docs/ slimmed to five planning docs + the wiki.** `docs/` now holds only
-  `CURRENT_STATE.md`, `GUIDE_FOR_HUMAN.md` (renamed from `Guide_for_Human.md`),
-  `LOGS.md`, `PROMPT_CONTEXT.md`, `TASKS.md`, and the `wiki/` user manual.
-  `ROADMAP.md` (version scope + decision records) and `REFERENCE.md`
-  (architecture, data model, locked decisions D-001–D-035, paging spec) were
-  folded into `PROMPT_CONTEXT.md`; `E2E_TESTING_PLAN.md` was summarized into
-  `TASKS.md`. The verbose originals remain in git history. All cross-references
-  (README, CONTRIBUTING, wiki, `.github/` templates, and ~10 backend code
-  comments) were repointed accordingly.
+- **User manual consolidated under `docs/wiki/`.** The published documentation
+  is the getting-started + per-feature operator/admin guides in the wiki.
 
 ### Added
 

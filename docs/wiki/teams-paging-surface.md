@@ -148,4 +148,4 @@ See also:
 
 - [Slack as your paging surface](slack-paging-surface.md) — the equivalent guide for Slack.
 - [Notification Preferences](notification-preferences.md) — channels, per-priority routing, quiet hours.
-- `docs/PROMPT_CONTEXT.md` (D-021 — Paging Model) — the underlying data model and algorithms.
+- `backend/paging/on_call.py` (Paging Model, D-021) — the underlying data model and algorithms.

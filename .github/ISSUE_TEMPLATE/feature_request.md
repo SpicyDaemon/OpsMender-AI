@@ -24,7 +24,7 @@ assignees: []
 
 ## Scope check
 
-Before filing, please confirm this isn't already covered by a locked decision in [docs/PROMPT_CONTEXT.md](../../docs/PROMPT_CONTEXT.md). A few common ones:
+Before filing, please confirm this isn't already ruled out by one of OpsMender's deliberate invariants. A few common ones:
 
 - [ ] I am not asking for the agent to bypass the tier gate.
 - [ ] I am not asking for a provider-specific native integration for infrastructure access (use MCP).

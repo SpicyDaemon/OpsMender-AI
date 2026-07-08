@@ -52,6 +52,10 @@ import { Modal } from "@/components/ui/Modal";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { IncidentSessionSidecar } from "@/components/sessions/IncidentSessionSidecar";
+import {
+  flappingIncidentBadgeLabel,
+  groupedAlertBadgeLabel,
+} from "@/lib/displayNames";
 import { formatDateTime, formatRelative } from "@/lib/formatDate";
 
 function fmtDate(iso: string) {
@@ -112,6 +116,19 @@ function sessionStatusSummary(sessions: SessionResponse[]) {
   return { label: "No sessions yet", variant: "default" as const };
 }
 
+function NoiseBadges({ incident }: { incident: IncidentResponse }) {
+  return (
+    <>
+      {incident.correlated_count > 0 ? (
+        <Badge variant="info">{groupedAlertBadgeLabel(incident.correlated_count)}</Badge>
+      ) : null}
+      {incident.flapping ? (
+        <Badge variant="high">{flappingIncidentBadgeLabel()}</Badge>
+      ) : null}
+    </>
+  );
+}
+
 export default function IncidentDetailPage() {
   return (
     <Suspense fallback={<DetailSkeleton />}>
@@ -141,6 +158,7 @@ function ViewerIncidentView({ incident }: { incident: IncidentResponse }) {
           <div className="flex items-center gap-2">
             <Badge>{incident.status}</Badge>
             {incident.severity && <Badge variant="default">{incident.severity}</Badge>}
+            <NoiseBadges incident={incident} />
           </div>
         </div>
         {incident.description && (
@@ -428,6 +446,7 @@ function IncidentDetailContent() {
                       <Radar size={12} />
                       {source?.label}
                     </span>
+                    <NoiseBadges incident={incident} />
                   </div>
                   <h1 className="mt-3 text-xl font-semibold tracking-tight text-fg-primary sm:mt-4 sm:text-3xl">
                     {incident.title}

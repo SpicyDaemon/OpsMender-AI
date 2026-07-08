@@ -442,6 +442,7 @@ async def create_service(
             slug=body.slug,
             description=body.description,
             priority=body.priority,
+            alert_grouping=body.alert_grouping,
             intake_token=intake_token,
             preferred_mcp_server_ids=preferred_mcp_server_ids,
             preferred_model_config_ids=preferred_model_config_ids,
@@ -522,6 +523,7 @@ async def update_service(
         description=body.description,
         description_provided="description" in body.model_fields_set,
         priority=body.priority,
+        alert_grouping=body.alert_grouping,
         preferred_mcp_server_ids=preferred_mcp_server_ids,
         preferred_mcp_server_ids_provided=(
             "preferred_mcp_server_ids" in body.model_fields_set

@@ -56,6 +56,12 @@ const TIER_DISPLAY: Record<number, { label: string; className: string }> = {
   },
 };
 
+const ALERT_GROUPING_LABELS: Record<string, string> = {
+  inherit: "Inherit (workspace default)",
+  on: "On",
+  off: "Off",
+};
+
 export function titleCaseIdentifier(value: string | null | undefined): string {
   if (!value) return "Unknown";
   return value
@@ -84,6 +90,18 @@ export function autonomyTierDisplay(tier: number): { label: string; className: s
       className: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
     }
   );
+}
+
+export function alertGroupingLabel(value: string | null | undefined): string {
+  return ALERT_GROUPING_LABELS[value ?? "inherit"] ?? titleCaseIdentifier(value);
+}
+
+export function groupedAlertBadgeLabel(count: number): string {
+  return `×${count} grouped`;
+}
+
+export function flappingIncidentBadgeLabel(): string {
+  return "Flapping";
 }
 
 export function sessionPrimaryLabel(

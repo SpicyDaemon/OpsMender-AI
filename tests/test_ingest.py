@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -23,7 +24,16 @@ from backend.api.app import create_app
 from backend.api.deps import get_db, set_session_factory
 from backend.config_loader import set_env_path
 from backend.db.models import Base
-from backend.db.repos import IncidentRepo, IngestLogRepo, IngestTokenRepo, SessionRepo
+from backend.db.repos import (
+    IncidentCommentRepo,
+    IncidentPageRepo,
+    IncidentRepo,
+    IngestLogRepo,
+    IngestTokenRepo,
+    SessionRepo,
+    UserRepo,
+)
+from backend.ingest import noise
 from backend.ingest.service import generate_token, hash_token
 
 # ---------------------------------------------------------------------------
@@ -157,6 +167,100 @@ async def _create_token(app, provider: str = "generic", name: str = "test-token"
         await db.commit()
         await db.refresh(tok)
     return raw, tok
+
+
+async def _create_paged_service(
+    client: AsyncClient,
+    app,
+    admin_headers: dict[str, str],
+    *,
+    name: str,
+    priority: str = "P1",
+    alert_grouping: str = "on",
+) -> dict:
+    suffix = uuid.uuid4().hex[:6]
+    team = await client.post(
+        "/teams",
+        json={"name": f"{name} Team", "slug": f"{name.lower()}-{suffix}"},
+        headers=admin_headers,
+    )
+    assert team.status_code == 201, team.text
+    team_id = team.json()["id"]
+
+    chain = await client.post(
+        "/escalation-chains",
+        json={"team_id": team_id, "name": f"{name} Chain"},
+        headers=admin_headers,
+    )
+    assert chain.status_code == 201, chain.text
+    chain_id = chain.json()["id"]
+
+    async with app.state.session_factory() as db:
+        responder = await UserRepo.create(
+            db,
+            username=f"{name.lower()}-responder-{suffix}",
+            email=f"{name.lower()}-{suffix}@test.com",
+            password_hash="x",
+            role="operator",
+            primary_org_id=TEST_ORG_ID,
+        )
+        await db.commit()
+
+    step = await client.post(
+        f"/escalation-chains/{chain_id}/steps",
+        json={
+            "step_index": 0,
+            "target_type": "user",
+            "target_id": str(responder.id),
+            "timeout_seconds": 300,
+        },
+        headers=admin_headers,
+    )
+    assert step.status_code == 201, step.text
+
+    service = await client.post(
+        "/services",
+        json={
+            "team_id": team_id,
+            "name": name,
+            "slug": f"{name.lower()}-svc-{suffix}",
+            "priority": priority,
+            "alert_grouping": alert_grouping,
+        },
+        headers=admin_headers,
+    )
+    assert service.status_code == 201, service.text
+
+    link = await client.post(
+        f"/services/{service.json()['id']}/escalation-chains",
+        json={"chain_id": chain_id},
+        headers=admin_headers,
+    )
+    assert link.status_code == 201, link.text
+    return service.json()
+
+
+async def _service_incidents_and_pages(app, service_id: str):
+    service_uuid = uuid.UUID(service_id)
+    async with app.state.session_factory() as db:
+        incidents = list(
+            await IncidentRepo.list_all(
+                db,
+                TEST_ORG_ID,
+                service_id=service_uuid,
+                limit=100,
+            )
+        )
+        page_count = 0
+        for incident in incidents:
+            page_count += len(
+                await IncidentPageRepo.list_for_incident(
+                    db,
+                    TEST_ORG_ID,
+                    incident.id,
+                )
+            )
+    return incidents, page_count
 
 
 # ===========================================================================
@@ -733,6 +837,331 @@ class TestIngestGeneric:
                 break
             await asyncio.sleep(0.01)
         assert len(sessions) == 1
+
+
+class TestAlertNoiseIntelligence:
+    async def test_grouping_default_off_keeps_pipeline_behavior(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        service = await _create_paged_service(
+            client,
+            app,
+            admin_headers,
+            name="NoiseDefaultOff",
+            alert_grouping="inherit",
+        )
+
+        first = await client.post(
+            service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-1",
+                "description": "first fire",
+                "severity": "critical",
+                "id": f"off-a-{uuid.uuid4()}",
+            },
+        )
+        second = await client.post(
+            service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-2",
+                "description": "second fire",
+                "severity": "critical",
+                "id": f"off-b-{uuid.uuid4()}",
+            },
+        )
+
+        assert first.json()["dedup_action"] == "created"
+        assert second.json()["dedup_action"] == "created"
+        incidents, pages = await _service_incidents_and_pages(app, service["id"])
+        assert len(incidents) == 2
+        assert pages == 4
+
+    async def test_workspace_default_enables_inherited_grouping(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        config = await client.put(
+            "/config",
+            json={"alert_grouping_default": True},
+            headers=admin_headers,
+        )
+        assert config.status_code == 200, config.text
+        assert config.json()["alert_grouping_default"] is True
+        service = await _create_paged_service(
+            client,
+            app,
+            admin_headers,
+            name="NoiseDefaultOn",
+            alert_grouping="inherit",
+        )
+
+        first = await client.post(
+            service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-1",
+                "description": "first fire",
+                "severity": "critical",
+                "id": f"default-on-a-{uuid.uuid4()}",
+            },
+        )
+        second = await client.post(
+            service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-2",
+                "description": "second fire",
+                "severity": "critical",
+                "id": f"default-on-b-{uuid.uuid4()}",
+            },
+        )
+
+        assert first.json()["dedup_action"] == "created"
+        assert second.json()["dedup_action"] == "updated"
+        incidents, pages = await _service_incidents_and_pages(app, service["id"])
+        assert len(incidents) == 1
+        assert pages == 2
+
+    async def test_grouping_on_updates_existing_incident_and_keeps_one_page(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        await client.put("/config", json={"tier": 0}, headers=admin_headers)
+        service = await _create_paged_service(
+            client,
+            app,
+            admin_headers,
+            name="NoiseGrouping",
+            alert_grouping="on",
+        )
+
+        first = await client.post(
+            service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-1",
+                "description": "checkout is failing",
+                "severity": "critical",
+                "id": f"group-a-{uuid.uuid4()}",
+            },
+        )
+        second = await client.post(
+            service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-2",
+                "description": "same checkout failure",
+                "severity": "critical",
+                "id": f"group-b-{uuid.uuid4()}",
+            },
+        )
+
+        assert first.json()["dedup_action"] == "created"
+        assert second.json()["dedup_action"] == "updated"
+        assert second.json()["incident_id"] == first.json()["incident_id"]
+        incident_id = uuid.UUID(first.json()["incident_id"])
+
+        sessions = []
+        for _ in range(50):
+            async with app.state.session_factory() as db:
+                sessions = list(
+                    await SessionRepo.list_by_incident(db, TEST_ORG_ID, incident_id)
+                )
+            if sessions:
+                break
+            await asyncio.sleep(0.01)
+
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            comments = await IncidentCommentRepo.list_for_incident(
+                db,
+                TEST_ORG_ID,
+                incident_id,
+            )
+            token = await IngestTokenRepo.get_active_for_service(
+                db,
+                TEST_ORG_ID,
+                uuid.UUID(service["id"]),
+            )
+            logs = await IngestLogRepo.list_recent(db, TEST_ORG_ID, token_id=token.id)
+
+        assert incident.correlated_count == 1
+        assert any(c.body == "Grouped alert: Checkout 503 on pod-2" for c in comments)
+        incidents, pages = await _service_incidents_and_pages(app, service["id"])
+        assert len(incidents) == 1
+        assert pages == 2
+        assert len(sessions) <= 1
+        assert [log.dedup_action for log in logs[:2]] == ["updated", "created"]
+
+    async def test_similar_titles_on_different_services_never_group(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        first_service = await _create_paged_service(
+            client,
+            app,
+            admin_headers,
+            name="NoiseSvcA",
+            alert_grouping="on",
+        )
+        second_service = await _create_paged_service(
+            client,
+            app,
+            admin_headers,
+            name="NoiseSvcB",
+            alert_grouping="on",
+        )
+
+        first = await client.post(
+            first_service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-1",
+                "description": "first service",
+                "severity": "critical",
+                "id": f"svc-a-{uuid.uuid4()}",
+            },
+        )
+        second = await client.post(
+            second_service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-2",
+                "description": "second service",
+                "severity": "critical",
+                "id": f"svc-b-{uuid.uuid4()}",
+            },
+        )
+
+        assert first.json()["dedup_action"] == "created"
+        assert second.json()["dedup_action"] == "created"
+        first_incidents, _ = await _service_incidents_and_pages(app, first_service["id"])
+        second_incidents, _ = await _service_incidents_and_pages(app, second_service["id"])
+        assert len(first_incidents) == 1
+        assert len(second_incidents) == 1
+        assert first.json()["incident_id"] != second.json()["incident_id"]
+
+    async def test_grouping_window_lapse_creates_new_incident(
+        self, client: AsyncClient, app, admin_headers, monkeypatch
+    ):
+        service = await _create_paged_service(
+            client,
+            app,
+            admin_headers,
+            name="NoiseWindow",
+            alert_grouping="on",
+        )
+
+        first = await client.post(
+            service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-1",
+                "description": "first fire",
+                "severity": "critical",
+                "id": f"window-a-{uuid.uuid4()}",
+            },
+        )
+        future = datetime.now(timezone.utc) + timedelta(
+            minutes=noise.GROUPING_WINDOW_MIN + 1
+        )
+        monkeypatch.setattr(noise, "_utcnow", lambda: future)
+        second = await client.post(
+            service["intake_url"],
+            json={
+                "title": "Checkout 503 on pod-2",
+                "description": "late fire",
+                "severity": "critical",
+                "id": f"window-b-{uuid.uuid4()}",
+            },
+        )
+
+        assert first.json()["dedup_action"] == "created"
+        assert second.json()["dedup_action"] == "created"
+        incidents, pages = await _service_incidents_and_pages(app, service["id"])
+        assert len(incidents) == 2
+        assert pages == 4
+
+    async def test_flapping_suppresses_refires_except_p0_and_lapses(
+        self, client: AsyncClient, app, admin_headers, monkeypatch
+    ):
+        service = await _create_paged_service(
+            client,
+            app,
+            admin_headers,
+            name="NoiseFlapping",
+            priority="P1",
+            alert_grouping="on",
+        )
+        notifications = []
+
+        async def fake_emit_notification(*args, **kwargs):
+            notifications.append(kwargs)
+            return None
+
+        monkeypatch.setattr(noise, "emit_notification", fake_emit_notification)
+
+        async def post_state(status: str):
+            payload = {
+                "title": "Cache 503 on pod-1",
+                "description": "cache endpoint is unstable",
+                "severity": "critical",
+                "id": "flap-constant",
+            }
+            if status == "resolved":
+                payload["status"] = "resolved"
+            return await client.post(service["intake_url"], json=payload)
+
+        for _ in range(3):
+            opened = await post_state("firing")
+            assert opened.status_code == 200, opened.text
+            assert opened.json()["dedup_action"] == "created"
+            closed = await post_state("resolved")
+            assert closed.status_code == 200, closed.text
+            assert closed.json()["dedup_action"] == "updated"
+
+        incidents, pages = await _service_incidents_and_pages(app, service["id"])
+        assert len(incidents) == 3
+        assert pages == 6
+        latest = incidents[0]
+        assert latest.flapping is True
+        assert len(notifications) == 1
+        assert "is flapping" in notifications[0]["title"]
+
+        suppressed = await post_state("firing")
+        assert suppressed.status_code == 200, suppressed.text
+        assert suppressed.json()["dedup_action"] == "updated"
+        suppressed_incidents, suppressed_pages = await _service_incidents_and_pages(
+            app,
+            service["id"],
+        )
+        assert len(suppressed_incidents) == 3
+        assert suppressed_pages == 6
+
+        p0_update = await client.put(
+            f"/services/{service['id']}",
+            json={"priority": "P0"},
+            headers=admin_headers,
+        )
+        assert p0_update.status_code == 200, p0_update.text
+        p0_refire = await post_state("firing")
+        assert p0_refire.status_code == 200, p0_refire.text
+        assert p0_refire.json()["dedup_action"] == "created"
+        p0_incidents, p0_pages = await _service_incidents_and_pages(app, service["id"])
+        assert len(p0_incidents) == 4
+        assert p0_pages == 8
+
+        p0_clear = await post_state("resolved")
+        assert p0_clear.json()["dedup_action"] == "updated"
+        back_to_p1 = await client.put(
+            f"/services/{service['id']}",
+            json={"priority": "P1"},
+            headers=admin_headers,
+        )
+        assert back_to_p1.status_code == 200, back_to_p1.text
+        future = datetime.now(timezone.utc) + timedelta(
+            minutes=noise.FLAP_SUPPRESS_MIN + 1
+        )
+        monkeypatch.setattr(noise, "_utcnow", lambda: future)
+        after_lapse = await post_state("firing")
+        assert after_lapse.status_code == 200, after_lapse.text
+        assert after_lapse.json()["dedup_action"] == "created"
+        lapsed_incidents, lapsed_pages = await _service_incidents_and_pages(
+            app,
+            service["id"],
+        )
+        assert len(lapsed_incidents) == 5
+        assert lapsed_pages == 10
 
 
 # ===========================================================================

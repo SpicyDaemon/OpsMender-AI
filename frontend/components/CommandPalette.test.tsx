@@ -31,6 +31,8 @@ function incident(overrides: Partial<IncidentResponse>): IncidentResponse {
     service_id: null,
     external_id: null,
     external_source: null,
+    correlated_count: 0,
+    flapping: false,
     created_at: now,
     updated_at: now,
     ...overrides,

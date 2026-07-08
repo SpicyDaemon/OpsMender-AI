@@ -94,6 +94,29 @@ Manual incidents created from the Incidents page must be linked to an active
 service so ownership, routing, escalation, MCP, and model preferences are
 unambiguous.
 
+### Alert Grouping & Flapping
+
+Alert grouping is an optional noise-control setting on each Service:
+
+- `Inherit` uses the workspace default from Settings.
+- `On` groups similar inbound alerts into the active Incident for that Service.
+- `Off` keeps every distinct inbound alert on the normal creation path.
+
+When grouping is on, OpsMender compares alert titles within a short automatic
+window. Similar alerts on the same Service update the existing Incident, add a
+system timeline comment, increment the grouped count, and do not page or
+auto-start a Session again. Similar alerts on different Services never group.
+
+Flapping detection uses the same Service setting. Repeated fire/clear
+transitions for the same alert fingerprint mark the Incident as flapping and
+suppress re-pages for a short automatic period. The thresholds are intentionally
+built in for v1; there are no tuning fields to maintain.
+
+P0 is the safety valve: flapping suppression never blocks a P0 re-fire. If a
+Service is P0, the re-fire creates and pages normally even while the fingerprint
+is in its suppression period. After the suppression period lapses, non-P0
+re-fires return to the normal grouping/create path.
+
 ---
 
 ## 4. Rosters

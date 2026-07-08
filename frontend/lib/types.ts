@@ -77,6 +77,7 @@ export interface UserListResponse {
 
 export type Severity = "critical" | "high" | "medium" | "low";
 export type IncidentStatus = "open" | "in_progress" | "resolved" | "merged";
+export type AlertGroupingMode = "inherit" | "on" | "off";
 
 export interface IncidentResponse {
   id: string;
@@ -91,6 +92,8 @@ export interface IncidentResponse {
   team_name?: string | null;
   external_id: string | null;
   external_source: string | null;
+  correlated_count: number;
+  flapping: boolean;
   merged_into_incident_id?: string | null;
   created_at: string;
   updated_at: string;
@@ -652,11 +655,13 @@ export interface ConfigResponse {
   // intake URL. Null/undefined when unset; the browser then falls back to
   // window.location.origin.
   public_base_url?: string | null;
+  alert_grouping_default?: boolean;
 }
 
 export interface ConfigUpdate {
   tier?: number;
   logging_level?: string;
+  alert_grouping_default?: boolean;
 }
 
 export interface SetupChecklistResponse {
@@ -1887,6 +1892,7 @@ export interface ServiceResponse {
   slug: string;
   description: string | null;
   priority: Priority;
+  alert_grouping: AlertGroupingMode;
   preferred_mcp_server_ids: string[];
   preferred_model_config_ids: string[];
   allowed_integration_connector_ids: string[];
@@ -1909,6 +1915,7 @@ export interface ServiceCreate {
   slug: string;
   description?: string;
   priority?: Priority;
+  alert_grouping?: AlertGroupingMode;
   preferred_mcp_server_ids?: string[];
   preferred_model_config_ids?: string[];
   allowed_integration_connector_ids?: string[];
@@ -1923,6 +1930,7 @@ export interface ServiceUpdate {
   name?: string;
   description?: string;
   priority?: Priority;
+  alert_grouping?: AlertGroupingMode;
   preferred_mcp_server_ids?: string[];
   preferred_model_config_ids?: string[];
   allowed_integration_connector_ids?: string[];

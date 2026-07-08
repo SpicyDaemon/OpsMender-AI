@@ -30,6 +30,7 @@ from backend.db.repos import (
     IngestTokenRepo,
     MCPServerRepo,
     ModelConfigRepo,
+    OrganizationRepo,
     OrgSAMLConfigRepo,
     OrgSSOConfigRepo,
     RuntimeConfigRepo,
@@ -52,6 +53,7 @@ def _config_to_response(
     *,
     tier: int,
     logging_level: str,
+    alert_grouping_default: bool = False,
     sso_configured: bool = False,
     saml_configured: bool = False,
 ) -> ConfigResponse:
@@ -76,6 +78,7 @@ def _config_to_response(
         sso_configured=sso_configured,
         saml_configured=saml_configured,
         public_base_url=cfg.people.public_base_url or None,
+        alert_grouping_default=alert_grouping_default,
     )
 
 
@@ -124,10 +127,12 @@ async def get_config(
     # off. Existing providers keep working regardless of the flag.
     sso_row = await OrgSSOConfigRepo.get_for_org(db, org_id)
     saml_row = await OrgSAMLConfigRepo.get_for_org(db, org_id)
+    org = await OrganizationRepo.get_by_id(db, org_id)
     return _config_to_response(
         cfg,
         tier=tier,
         logging_level=logging_level,
+        alert_grouping_default=bool(org and org.alert_grouping_default),
         sso_configured=sso_row is not None,
         saml_configured=saml_row is not None,
     )
@@ -206,6 +211,12 @@ async def update_config(
         # save here takes effect immediately without a restart (single-workspace
         # assumption — see backend/logging_config.py).
         configure_logging(body.logging_level)
+    if body.alert_grouping_default is not None:
+        await OrganizationRepo.update(
+            db,
+            org_id,
+            alert_grouping_default=body.alert_grouping_default,
+        )
     await db.commit()
 
     try:
@@ -224,10 +235,12 @@ async def update_config(
     # off. Existing providers keep working regardless of the flag.
     sso_row = await OrgSSOConfigRepo.get_for_org(db, org_id)
     saml_row = await OrgSAMLConfigRepo.get_for_org(db, org_id)
+    org = await OrganizationRepo.get_by_id(db, org_id)
     return _config_to_response(
         cfg,
         tier=tier,
         logging_level=logging_level,
+        alert_grouping_default=bool(org and org.alert_grouping_default),
         sso_configured=sso_row is not None,
         saml_configured=saml_row is not None,
     )

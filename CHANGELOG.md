@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sessions from Tier 2 advisory blocking, and team-scoped maintenance windows
   mark status-page components as maintenance.
 
+- **Noise and analytics sprint — Phase 1 alert-noise intelligence.** Services
+  now support inherited/on/off alert grouping, grouped Incident badges,
+  flapping detection with P0 safety behavior, and workspace default controls.
+
 - **A+ closure sprint — final audit proof.** Added
   `scripts/live_update_proof.mjs`, a Playwright two-context acceptance script
   that proves the dashboard's live incident refresh updates within the

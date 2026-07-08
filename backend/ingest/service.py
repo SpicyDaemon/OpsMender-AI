@@ -30,6 +30,13 @@ from backend.ingest.autostart import (
     load_auto_start_policy,
 )
 from backend.ingest.llm_extractor import apply_shape_cache, parse_with_paths
+from backend.ingest.noise import (
+    alert_grouping_enabled,
+    attach_created_incident,
+    evaluate_noise_before_create,
+    is_flapping_suppression_active,
+    record_existing_transition,
+)
 from backend.ingest.registry import get_adapter
 from backend.llm.selection import choose_model_for_incident_service
 
@@ -171,6 +178,7 @@ async def ingest_incident(
     # before a visible incident is created. The raw payload is still logged
     # for operator-owned audit/replay.
     service_id = token.service_id
+    service = None
     if service_id is not None:
         now = datetime.now(timezone.utc)
         service = await ServiceRepo.get_by_id(db, org_id, service_id)
@@ -203,6 +211,8 @@ async def ingest_incident(
     dedup_action = "created"
     resolved_existing = False
     incident: Incident | None = None
+    grouping_enabled = await alert_grouping_enabled(db, org_id, service)
+    service_is_p0 = service is not None and service.priority == "P0"
 
     if parsed.external_id and parsed.external_source:
         existing = await IncidentRepo.get_by_external_fingerprint(
@@ -217,9 +227,69 @@ async def ingest_incident(
                 await IncidentRepo.update_status(db, org_id, existing.id, "resolved")
                 dedup_action = "updated"
                 resolved_existing = True
+                if grouping_enabled:
+                    await record_existing_transition(
+                        db,
+                        org_id,
+                        service=service,
+                        parsed=parsed,
+                        incident=existing,
+                        kind="cleared",
+                    )
             else:
-                dedup_action = "skipped"
-            incident = existing
+                p0_flapping_refire = (
+                    grouping_enabled
+                    and service_is_p0
+                    and parsed.status != "resolved"
+                    and await is_flapping_suppression_active(
+                        db,
+                        org_id,
+                        service,
+                        parsed,
+                    )
+                )
+                if (
+                    grouping_enabled
+                    and parsed.status != "resolved"
+                    and (existing.status == "resolved" or p0_flapping_refire)
+                ):
+                    incident = None
+                else:
+                    dedup_action = "skipped"
+                    incident = existing
+                    if grouping_enabled and parsed.status != "resolved":
+                        suppressed = await record_existing_transition(
+                            db,
+                            org_id,
+                            service=service,
+                            parsed=parsed,
+                            incident=existing,
+                            kind="fired",
+                            is_p0_refire=service_is_p0,
+                        )
+                        if suppressed:
+                            dedup_action = "updated"
+            if incident is None and parsed.status == "resolved":
+                incident = existing
+
+    if incident is None:
+        p0_flapping_refire = (
+            grouping_enabled
+            and service_is_p0
+            and parsed.status != "resolved"
+            and await is_flapping_suppression_active(db, org_id, service, parsed)
+        )
+        if not p0_flapping_refire:
+            noise_decision = await evaluate_noise_before_create(
+                db,
+                org_id,
+                service=service,
+                parsed=parsed,
+                is_p0_refire=p0_flapping_refire,
+            )
+            if noise_decision.incident is not None:
+                incident = noise_decision.incident
+                dedup_action = noise_decision.dedup_action or "updated"
 
     if incident is None:
         # Create a new incident. If the token is service-scoped, pre-fill
@@ -276,6 +346,13 @@ async def ingest_incident(
                     incident=incident,
                     base_url=_os.environ.get("OPSMENDER_PUBLIC_URL"),
                 )
+        await attach_created_incident(
+            db,
+            org_id,
+            service=service,
+            parsed=parsed,
+            incident=incident,
+        )
         dedup_action = "created"
 
     # ── Audit log entry ────────────────────────────────────────────────

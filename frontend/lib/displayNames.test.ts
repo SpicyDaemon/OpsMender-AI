@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  alertGroupingLabel,
   auditEntryTypeLabel,
+  flappingIncidentBadgeLabel,
+  groupedAlertBadgeLabel,
   providerName,
   sessionPrimaryLabel,
   titleCaseIdentifier,
@@ -26,6 +29,14 @@ describe("display name helpers", () => {
     expect(titleCaseIdentifier("awaiting_approval")).toBe("Awaiting Approval");
     expect(titleCaseIdentifier("timed-out")).toBe("Timed Out");
     expect(titleCaseIdentifier(null)).toBe("Unknown");
+  });
+
+  it("labels alert-noise controls and badges", () => {
+    expect(alertGroupingLabel("inherit")).toBe("Inherit (workspace default)");
+    expect(alertGroupingLabel("on")).toBe("On");
+    expect(alertGroupingLabel("off")).toBe("Off");
+    expect(groupedAlertBadgeLabel(3)).toBe("×3 grouped");
+    expect(flappingIncidentBadgeLabel()).toBe("Flapping");
   });
 
   it("never uses a session id as the primary session label", () => {

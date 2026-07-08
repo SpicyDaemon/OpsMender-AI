@@ -4615,6 +4615,7 @@ class OrganizationRepo:
         branding: dict | None = None,
         mfa_required: bool | None = None,
         notification_dedup_window_minutes: int | None = None,
+        alert_grouping_default: bool | None = None,
         slack_incident_channels_enabled: bool | None = None,
         status_page_enabled: bool | None = None,
         status_page_visibility: str | None = None,
@@ -4634,6 +4635,8 @@ class OrganizationRepo:
             values["notification_dedup_window_minutes"] = (
                 notification_dedup_window_minutes
             )
+        if alert_grouping_default is not None:
+            values["alert_grouping_default"] = alert_grouping_default
         if slack_incident_channels_enabled is not None:
             values["slack_incident_channels_enabled"] = (
                 slack_incident_channels_enabled
@@ -5872,6 +5875,7 @@ class ServiceRepo:
         slug: str,
         description: str | None = None,
         priority: str = "P2",
+        alert_grouping: str = "inherit",
         intake_token: str | None = None,
         preferred_mcp_server_ids: list[str] | None = None,
         preferred_model_config_ids: list[str] | None = None,
@@ -5888,6 +5892,7 @@ class ServiceRepo:
             slug=slug,
             description=description,
             priority=priority,
+            alert_grouping=alert_grouping,
             intake_token=intake_token,
             preferred_mcp_server_ids=preferred_mcp_server_ids or [],
             preferred_model_config_ids=preferred_model_config_ids or [],
@@ -5957,6 +5962,7 @@ class ServiceRepo:
         description: str | None = None,
         description_provided: bool = False,
         priority: str | None = None,
+        alert_grouping: str | None = None,
         intake_token: str | None = None,
         preferred_mcp_server_ids: list[str] | None = None,
         preferred_mcp_server_ids_provided: bool = False,
@@ -5981,6 +5987,8 @@ class ServiceRepo:
             values["description"] = description
         if priority is not None:
             values["priority"] = priority
+        if alert_grouping is not None:
+            values["alert_grouping"] = alert_grouping
         if intake_token is not None:
             values["intake_token"] = intake_token
         if preferred_mcp_server_ids_provided:

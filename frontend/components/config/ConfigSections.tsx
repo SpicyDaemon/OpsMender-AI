@@ -128,6 +128,7 @@ import {
 import { IconSelect } from "@/components/ui/IconSelect";
 import { Modal } from "@/components/ui/Modal";
 import { StatusDot } from "@/components/ui/StatusDot";
+import { Toggle } from "@/components/ui/Toggle";
 import { modelProviderIcon, notificationPlatformIcon } from "@/lib/brand-icons";
 import { providerName, workflowNodeLabel } from "@/lib/displayNames";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
@@ -271,6 +272,9 @@ export function TierSection({
 }) {
   const [tier, setTier] = useState(String(config.tier));
   const [logLevel, setLogLevel] = useState(config.logging_level);
+  const [alertGroupingDefault, setAlertGroupingDefault] = useState(
+    Boolean(config.alert_grouping_default),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -278,6 +282,7 @@ export function TierSection({
   useEffect(() => {
     setTier(String(config.tier));
     setLogLevel(config.logging_level);
+    setAlertGroupingDefault(Boolean(config.alert_grouping_default));
   }, [config]);
 
   async function handleSave() {
@@ -285,7 +290,11 @@ export function TierSection({
     setError("");
     setSuccess(false);
     try {
-      await updateConfig({ tier: Number(tier), logging_level: logLevel });
+      await updateConfig({
+        tier: Number(tier),
+        logging_level: logLevel,
+        alert_grouping_default: alertGroupingDefault,
+      });
       setSuccess(true);
       // Notify the sidebar (and any other listener) so the tier badge updates
       // immediately instead of only on the next navigation.
@@ -361,6 +370,23 @@ export function TierSection({
         <p className="rounded-md bg-bg-elevated px-3 py-2 font-mono text-sm text-fg-secondary">
           {config.audit_output}
         </p>
+      </div>
+
+      <div className="flex items-start justify-between gap-4 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-3">
+        <div>
+          <Label htmlFor="cfg-alert-grouping">Alert grouping default</Label>
+          <p className="mt-1 text-xs text-fg-muted">
+            New Services inherit this workspace default unless their Service
+            setting overrides it.
+          </p>
+        </div>
+        <Toggle
+          id="cfg-alert-grouping"
+          checked={alertGroupingDefault}
+          onChange={setAlertGroupingDefault}
+          disabled={!canEdit}
+          aria-label="Alert grouping default"
+        />
       </div>
 
       {!canEdit && (

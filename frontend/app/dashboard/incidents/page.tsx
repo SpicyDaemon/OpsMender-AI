@@ -54,6 +54,10 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import {
+  flappingIncidentBadgeLabel,
+  groupedAlertBadgeLabel,
+} from "@/lib/displayNames";
 import { formatDateTime, formatRelative } from "@/lib/formatDate";
 
 function fmtDate(iso: string) {
@@ -184,6 +188,19 @@ function AiSessionBadge({ incident }: { incident: IncidentResponse }) {
   );
 }
 
+function NoiseBadges({ incident }: { incident: IncidentResponse }) {
+  return (
+    <>
+      {incident.correlated_count > 0 ? (
+        <Badge variant="info">{groupedAlertBadgeLabel(incident.correlated_count)}</Badge>
+      ) : null}
+      {incident.flapping ? (
+        <Badge variant="high">{flappingIncidentBadgeLabel()}</Badge>
+      ) : null}
+    </>
+  );
+}
+
 function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
   return [
     {
@@ -200,6 +217,7 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
               {inc.title}
             </Link>
             <AiSessionBadge incident={inc} />
+            <NoiseBadges incident={inc} />
           </div>
           <p className="mt-0.5 max-w-md truncate text-xs text-fg-muted">
             {inc.description}
@@ -340,6 +358,7 @@ function IncidentPhoneCard({
         ) : null}
         {teamName ? <Badge>{teamName}</Badge> : null}
         <AiSessionBadge incident={incident} />
+        <NoiseBadges incident={incident} />
       </div>
       <div className="grid gap-3 text-sm sm:grid-cols-2">
         <div>

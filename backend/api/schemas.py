@@ -366,6 +366,8 @@ class IncidentResponse(BaseModel):
     team_name: Optional[str] = None
     external_id: Optional[str] = None
     external_source: Optional[str] = None
+    correlated_count: int = 0
+    flapping: bool = False
     # Combine incidents (v1.2): set on a secondary that was folded into a
     # primary (status then == "merged").
     merged_into_incident_id: Optional[uuid.UUID] = None
@@ -938,6 +940,7 @@ class ConfigResponse(BaseModel):
     # ``OPSMENDER_PUBLIC_BASE_URL``; null when unset, in which case the
     # browser falls back to ``window.location.origin``.
     public_base_url: Optional[str] = None
+    alert_grouping_default: bool = False
 
 
 class SetupChecklistResponse(BaseModel):
@@ -968,6 +971,7 @@ class ConfigUpdate(BaseModel):
             "DEBUG keeps everything; CRITICAL only keeps fatal events."
         ),
     )
+    alert_grouping_default: Optional[bool] = None
 
 
 class ModelConfigResponse(BaseModel):
@@ -2426,6 +2430,7 @@ class ServiceCreate(BaseModel):
     slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
     description: Optional[str] = None
     priority: str = Field(default="P2", pattern="^(P0|P1|P2|P3)$")
+    alert_grouping: str = Field(default="inherit", pattern="^(inherit|on|off)$")
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
     preferred_model_config_ids: list[uuid.UUID] = Field(
         default_factory=list, max_length=3
@@ -2446,6 +2451,7 @@ class ServiceUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
     priority: Optional[str] = Field(None, pattern="^(P0|P1|P2|P3)$")
+    alert_grouping: Optional[str] = Field(None, pattern="^(inherit|on|off)$")
     preferred_mcp_server_ids: Optional[list[uuid.UUID]] = None
     preferred_model_config_ids: Optional[list[uuid.UUID]] = Field(
         default=None, max_length=3
@@ -2464,6 +2470,7 @@ class ServiceResponse(BaseModel):
     slug: str
     description: Optional[str]
     priority: str
+    alert_grouping: str = "inherit"
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
     preferred_model_config_ids: list[uuid.UUID] = Field(default_factory=list)
     allowed_integration_connector_ids: list[uuid.UUID] = Field(default_factory=list)

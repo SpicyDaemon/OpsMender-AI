@@ -117,6 +117,7 @@ import type {
   QuietHoursConfig,
   RosterResponse,
   RoutingStage,
+  AlertGroupingMode,
   ServiceResponse,
   TeamResponse,
   UserNotificationPrefResponse,
@@ -140,6 +141,7 @@ import {
 } from "@/lib/rosterEligibility";
 import { fullIntakeUrl } from "@/lib/intake";
 import { formatDate, formatDateTime, formatWeekdayDate } from "@/lib/formatDate";
+import { alertGroupingLabel } from "@/lib/displayNames";
 
 export type Tab =
   | "teams"
@@ -761,6 +763,7 @@ function ServicesPanel({
     team_id: "",
     description: "",
     priority: "P2" as Priority,
+    alert_grouping: "inherit" as AlertGroupingMode,
     preferred_mcp_server_ids: [] as string[],
     preferred_model_config_ids: [] as string[],
     allowed_integration_connector_ids: [] as string[],
@@ -943,6 +946,7 @@ function ServicesPanel({
         name: form.name,
         description: form.description || undefined,
         priority: form.priority,
+        alert_grouping: form.alert_grouping,
         preferred_mcp_server_ids: form.preferred_mcp_server_ids,
         preferred_model_config_ids: form.preferred_model_config_ids,
         allowed_integration_connector_ids:
@@ -995,6 +999,7 @@ function ServicesPanel({
       team_id: service.team_id,
       description: service.description ?? "",
       priority: service.priority,
+      alert_grouping: service.alert_grouping ?? "inherit",
       preferred_mcp_server_ids: service.preferred_mcp_server_ids ?? [],
       preferred_model_config_ids: service.preferred_model_config_ids ?? [],
       allowed_integration_connector_ids:
@@ -1134,6 +1139,17 @@ function ServicesPanel({
       cell: (r) => (
         <Badge variant={PRIORITY_VARIANT[r.service.priority] as never}>
           {r.service.priority}
+        </Badge>
+      ),
+      sortable: true,
+    },
+    {
+      id: "alert_grouping",
+      label: "Alert grouping",
+      accessor: (r) => alertGroupingLabel(r.service.alert_grouping),
+      cell: (r) => (
+        <Badge variant={r.service.alert_grouping === "on" ? "info" : "default"}>
+          {alertGroupingLabel(r.service.alert_grouping)}
         </Badge>
       ),
       sortable: true,
@@ -1406,6 +1422,26 @@ function ServicesPanel({
             <p className="mt-1 text-xs text-fg-muted">
               Incidents created through this service use this priority. AI does
               not override it in v1.
+            </p>
+          </div>
+          <div>
+            <Label>Alert grouping</Label>
+            <Select
+              value={form.alert_grouping}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  alert_grouping: e.target.value as AlertGroupingMode,
+                })
+              }
+            >
+              <option value="inherit">{alertGroupingLabel("inherit")}</option>
+              <option value="on">{alertGroupingLabel("on")}</option>
+              <option value="off">{alertGroupingLabel("off")}</option>
+            </Select>
+            <p className="mt-1 text-xs text-fg-muted">
+              Groups similar alerts into the active Incident and suppresses
+              flapping re-pages unless this Service is P0.
             </p>
           </div>
           <div>

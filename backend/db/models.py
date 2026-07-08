@@ -77,6 +77,9 @@ class Organization(Base):
     notification_dedup_window_minutes: Mapped[int] = mapped_column(
         Integer, default=10, nullable=False
     )
+    alert_grouping_default: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     slack_incident_channels_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
@@ -462,6 +465,12 @@ class Incident(Base):
     # External ingestion fingerprint — dedup by (external_source, external_id)
     external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    correlated_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    flapping: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     # Combine incidents (v1.2): when this incident was merged into another, it
     # gets status="merged" and points at the surviving (primary) incident. Never
     # deleted — the audit trail and external ids survive.
@@ -1222,6 +1231,51 @@ class IngestLog(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class AlertFingerprintState(Base):
+    """Per-service alert-noise state used by grouping and flapping detection."""
+
+    __tablename__ = "alert_fingerprint_states"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    service_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("services.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    fingerprint: Mapped[str] = mapped_column(String(300), nullable=False)
+    occurrences: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    transitions: Mapped[list[dict]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    flapping_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("incidents.id", ondelete="SET NULL"), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "service_id",
+            "fingerprint",
+            name="uq_alert_fingerprint_state_service",
+        ),
     )
 
 
@@ -2138,6 +2192,9 @@ class Service(Base):
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     priority: Mapped[str] = mapped_column(String(8), default="P2", nullable=False)
+    alert_grouping: Mapped[str] = mapped_column(
+        String(10), default="inherit", nullable=False
+    )
     intake_token: Mapped[str | None] = mapped_column(String(160), unique=True, nullable=True)
     preferred_mcp_server_ids: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False

@@ -20,6 +20,10 @@ vi.mock("@/components/config/ConfigSections", () => ({
   TierSection: () => <section>Tier settings</section>,
 }));
 
+vi.mock("@/components/config/ApiTokensSection", () => ({
+  ApiTokensSection: () => <section>API token settings</section>,
+}));
+
 vi.mock("@/components/EmailSettingsSection", () => ({
   EmailSettingsSection: () => <section>Email settings</section>,
 }));
@@ -58,5 +62,6 @@ describe("Settings page", () => {
     }
 
     expect(screen.queryByRole("heading", { name: "Advanced" })).toBeNull();
+    expect(screen.getByText("API token settings")).toBeTruthy();
   });
 });

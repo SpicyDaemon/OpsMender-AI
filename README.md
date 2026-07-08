@@ -83,6 +83,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   container scanning, CodeQL, Dependabot, and digest-only image-signing
   guidance are included for self-hosted security review.
 - **RBAC + workspace auth** — Admin / Operator / Viewer, local accounts, optional OIDC/SAML, custom domains, and workspace-scoped data boundaries.
+- **Named API tokens** — revocable, role-scoped bearer tokens for REST API automation without a human session.
 - **Local-account MFA** — encrypted TOTP enrollment, one-time recovery codes,
   and optional organization-wide enforcement.
 - **Dashboard** — Next.js console with a `Cmd/Ctrl-K` command palette.

@@ -425,6 +425,43 @@ class PasswordResetToken(Base):
     )
 
 
+class ApiToken(Base):
+    """Named, revocable bearer token for REST API access."""
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    token_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    creator: Mapped[User] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_api_tokens_org_name"),
+        Index("ix_api_tokens_token_hash", "token_hash"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Incidents
 # ---------------------------------------------------------------------------

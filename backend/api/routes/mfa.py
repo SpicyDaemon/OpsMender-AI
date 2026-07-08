@@ -12,7 +12,7 @@ from backend.api.auth import (
     create_access_token,
     decode_access_token,
     get_current_org,
-    get_current_user,
+    reject_api_tokens,
     require_role,
 )
 from backend.api.deps import get_db
@@ -72,7 +72,7 @@ async def _verify_factor(
 
 @router.get("/auth/mfa/status", response_model=MFAStatusResponse)
 async def mfa_status(
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     org_id: uuid.UUID = Depends(get_current_org),
     db: AsyncSession = Depends(get_db),
 ):
@@ -87,7 +87,7 @@ async def mfa_status(
 
 @router.post("/auth/mfa/setup", response_model=MFASetupResponse)
 async def setup_mfa(
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     _org_id: uuid.UUID = Depends(get_current_org),
     db: AsyncSession = Depends(get_db),
 ):
@@ -121,7 +121,7 @@ async def setup_mfa(
 @router.post("/auth/mfa/confirm", response_model=MFAConfirmResponse)
 async def confirm_mfa(
     body: MFAConfirmRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     _org_id: uuid.UUID = Depends(get_current_org),
     db: AsyncSession = Depends(get_db),
 ):
@@ -195,7 +195,7 @@ async def verify_mfa(
 @router.delete("/auth/mfa", status_code=status.HTTP_204_NO_CONTENT)
 async def disable_mfa(
     body: MFADisableRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     _org_id: uuid.UUID = Depends(get_current_org),
     db: AsyncSession = Depends(get_db),
 ):

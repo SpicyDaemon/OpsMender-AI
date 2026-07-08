@@ -11,6 +11,7 @@ import {
   RetentionSection,
   TierSection,
 } from "@/components/config/ConfigSections";
+import { ApiTokensSection } from "@/components/config/ApiTokensSection";
 import { EmailSettingsSection } from "@/components/EmailSettingsSection";
 import { OrganizationSettingsSection } from "@/components/OrganizationSettingsSection";
 import { StatusPageSettingsSection } from "@/components/StatusPageSettingsSection";
@@ -102,6 +103,8 @@ export default function ConfigPage() {
       )}
 
       {user?.primary_org_id && <EmailSettingsSection orgId={user.primary_org_id} />}
+
+      {canEdit && <ApiTokensSection />}
 
       {canEdit && <StatusPageSettingsSection canEdit={canEdit} />}
 

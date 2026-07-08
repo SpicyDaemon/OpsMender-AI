@@ -99,6 +99,9 @@ export const api = {
 // ---------------------------------------------------------------------------
 
 import type {
+  ApiTokenCreateRequest,
+  ApiTokenCreateResponse,
+  ApiTokenListResponse,
   LoginResponse,
   TokenResponse,
   UserListResponse,
@@ -220,6 +223,20 @@ export async function listUsers(params?: {
   if (params?.offset !== undefined) qs.set("offset", String(params.offset));
   const q = qs.toString();
   return api.get<UserListResponse>(`/auth/users${q ? `?${q}` : ""}`);
+}
+
+export async function listApiTokens(): Promise<ApiTokenListResponse> {
+  return api.get<ApiTokenListResponse>("/api/v1/api-tokens");
+}
+
+export async function createApiToken(
+  body: ApiTokenCreateRequest,
+): Promise<ApiTokenCreateResponse> {
+  return api.post<ApiTokenCreateResponse>("/api/v1/api-tokens", body);
+}
+
+export async function revokeApiToken(id: string): Promise<void> {
+  return api.del<void>(`/api/v1/api-tokens/${id}`);
 }
 
 // ---------------------------------------------------------------------------

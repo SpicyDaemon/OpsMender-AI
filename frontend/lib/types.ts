@@ -71,6 +71,33 @@ export interface UserListResponse {
   total: number;
 }
 
+export type ApiTokenRole = "admin" | "operator" | "viewer";
+
+export interface ApiTokenResponse {
+  id: string;
+  name: string;
+  token_prefix: string;
+  role: ApiTokenRole;
+  created_by: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface ApiTokenListResponse {
+  items: ApiTokenResponse[];
+  total: number;
+}
+
+export interface ApiTokenCreateRequest {
+  name: string;
+  role: ApiTokenRole;
+}
+
+export interface ApiTokenCreateResponse extends ApiTokenResponse {
+  token: string;
+}
+
 // ---------------------------------------------------------------------------
 // Incidents
 // ---------------------------------------------------------------------------

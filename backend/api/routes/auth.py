@@ -32,6 +32,7 @@ from backend.api.auth import (
     create_mfa_token,
     get_current_user,
     hash_password,
+    reject_api_tokens,
     require_role,
     verify_password,
 )
@@ -350,7 +351,7 @@ async def login(
     summary="Get current user profile",
 )
 async def me(
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     db: AsyncSession = Depends(get_db),
 ):
     mfa = await UserMFARepo.get(db, user.id)
@@ -380,7 +381,7 @@ async def me(
 )
 async def update_me(
     body: MeUpdateRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     db: AsyncSession = Depends(get_db),
 ):
     """Self-service profile edit — username, email, first/last name, avatar
@@ -432,7 +433,7 @@ async def update_me(
 )
 async def upload_my_avatar(
     file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     db: AsyncSession = Depends(get_db),
 ):
     """Accept a .png/.jpg/.jpeg/.gif/.bmp/.ico/.tiff (<=5 MB), normalize it to a
@@ -458,7 +459,7 @@ async def upload_my_avatar(
     summary="Remove the current user's profile picture",
 )
 async def delete_my_avatar(
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     db: AsyncSession = Depends(get_db),
 ):
     updated = await UserRepo.set_avatar(db, user.id, None)
@@ -474,7 +475,7 @@ async def delete_my_avatar(
 )
 async def change_my_password(
     body: MePasswordChangeRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
     db: AsyncSession = Depends(get_db),
 ):
     """Self-service password change — the current password must verify."""

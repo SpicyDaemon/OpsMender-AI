@@ -39,6 +39,7 @@ export function EmptyState({
       {learnMoreHref && (
         <Link
           href={learnMoreHref}
+          prefetch={learnMoreHref.startsWith("/docs/") ? false : undefined}
           className="mt-3 inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-primary"
           {...(learnMoreHref.startsWith("http")
             ? { target: "_blank", rel: "noreferrer" }

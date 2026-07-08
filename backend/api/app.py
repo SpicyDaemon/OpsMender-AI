@@ -380,6 +380,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.saml import router as saml_router
     from backend.api.routes.audits import router as audits_router
     from backend.api.routes.analytics import router as analytics_router
+    from backend.api.routes.api_tokens import router as api_tokens_router
     from backend.api.routes.paging import router as paging_router
     from backend.api.routes.slack_paging import router as slack_paging_router
     from backend.api.routes.teams_paging import router as teams_paging_router
@@ -423,6 +424,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         saml_router,
         audits_router,
         analytics_router,
+        api_tokens_router,
         paging_router,
         memories_router,
         sessions_memory_router,

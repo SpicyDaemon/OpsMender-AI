@@ -62,6 +62,12 @@ const ALERT_GROUPING_LABELS: Record<string, string> = {
   off: "Off",
 };
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  operator: "Operator",
+  viewer: "Viewer",
+};
+
 export function titleCaseIdentifier(value: string | null | undefined): string {
   if (!value) return "Unknown";
   return value
@@ -94,6 +100,10 @@ export function autonomyTierDisplay(tier: number): { label: string; className: s
 
 export function alertGroupingLabel(value: string | null | undefined): string {
   return ALERT_GROUPING_LABELS[value ?? "inherit"] ?? titleCaseIdentifier(value);
+}
+
+export function roleLabel(value: string | null | undefined): string {
+  return ROLE_LABELS[value ?? ""] ?? titleCaseIdentifier(value);
 }
 
 export function groupedAlertBadgeLabel(count: number): string {

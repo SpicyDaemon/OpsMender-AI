@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.auth import (
     get_current_org,
     get_current_user,
+    reject_api_tokens,
     require_role,
 )
 from backend.api.deps import get_db
@@ -1928,7 +1929,7 @@ async def unlink_service_escalation_chain(
 async def get_my_notification_preferences(
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ):
     pref = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
     if pref is None:
@@ -1955,7 +1956,7 @@ async def update_my_notification_preferences(
     body: UserNotificationPrefUpdate,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ):
     pref = await UserNotificationPrefRepo.upsert(
         db,
@@ -1978,7 +1979,7 @@ async def update_my_notification_preferences(
 async def test_my_notification_preferences(
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ):
     """Attempt a one-off test delivery to every channel the operator has
     routed (across any priority), using their saved destinations and the

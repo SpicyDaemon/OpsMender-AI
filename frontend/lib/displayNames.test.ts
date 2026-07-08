@@ -5,6 +5,7 @@ import {
   flappingIncidentBadgeLabel,
   groupedAlertBadgeLabel,
   providerName,
+  roleLabel,
   sessionPrimaryLabel,
   titleCaseIdentifier,
   workflowNodeLabel,
@@ -37,6 +38,13 @@ describe("display name helpers", () => {
     expect(alertGroupingLabel("off")).toBe("Off");
     expect(groupedAlertBadgeLabel(3)).toBe("×3 grouped");
     expect(flappingIncidentBadgeLabel()).toBe("Flapping");
+  });
+
+  it("labels roles consistently", () => {
+    expect(roleLabel("admin")).toBe("Admin");
+    expect(roleLabel("operator")).toBe("Operator");
+    expect(roleLabel("viewer")).toBe("Viewer");
+    expect(roleLabel("custom_role")).toBe("Custom Role");
   });
 
   it("never uses a session id as the primary session label", () => {

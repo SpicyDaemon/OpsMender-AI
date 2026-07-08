@@ -16,6 +16,7 @@ If you are a developer looking for architecture details or codebase references, 
 * **Authentication** — start here, then branch:
   * [Auth Guide](auth-guide.md) — **default model**: single workspace, email + password, admin-issued invites, three roles. What 95% of self-hosted installs use.
   * [People Guide](people-guide.md) — day-to-day People-page operations: invites, password resets, auth-method badges, deactivation vs soft delete, bootstrap admins, SMTP.
+  * [API Tokens](api-tokens.md) — named, revocable, role-scoped bearer tokens for REST API automation.
   * [Advanced Auth Guide](advanced-auth-guide.md) — optional surfaces: OIDC, SAML 2.0, custom-domain login behavior, and the `OPSMENDER_ADVANCED_AUTH_ENABLED` setup flag.
 * [Integrations Guide](integrations-guide.md) — Encrypted external-system connectors, tier-governed actions, alert intake, and notification channels.
 * [Skills Guide](skills-guide.md) — Managing MCP servers, enforcement tiers, and capability examples.

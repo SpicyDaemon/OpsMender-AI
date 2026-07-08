@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
     AgentTeamProfile,
+    ApiToken,
     ApprovalRequest,
     AuditEntry,
     AuditFinding,
@@ -357,6 +358,66 @@ class UserRepo:
         await db.execute(stmt)
         await db.flush()
         return await db.get(User, user_id)
+
+
+class ApiTokenRepo:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        name: str,
+        token_prefix: str,
+        token_hash: str,
+        role: str,
+        created_by: uuid.UUID,
+    ) -> ApiToken:
+        token = ApiToken(
+            org_id=org_id,
+            name=name,
+            token_prefix=token_prefix,
+            token_hash=token_hash,
+            role=role,
+            created_by=created_by,
+        )
+        db.add(token)
+        await db.flush()
+        return token
+
+    @staticmethod
+    async def list_by_org(db: AsyncSession, org_id: uuid.UUID) -> Sequence[ApiToken]:
+        stmt = (
+            select(ApiToken)
+            .where(ApiToken.org_id == org_id)
+            .order_by(ApiToken.created_at.desc())
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, token_id: uuid.UUID
+    ) -> ApiToken | None:
+        stmt = select(ApiToken).where(
+            ApiToken.org_id == org_id,
+            ApiToken.id == token_id,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def get_active_by_hash(
+        db: AsyncSession, token_hash: str
+    ) -> ApiToken | None:
+        stmt = select(ApiToken).where(
+            ApiToken.token_hash == token_hash,
+            ApiToken.revoked_at.is_(None),
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def revoke(db: AsyncSession, token: ApiToken) -> ApiToken:
+        token.revoked_at = datetime.now(timezone.utc)
+        await db.flush()
+        return token
 
 
 class UserMFARepo:

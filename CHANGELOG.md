@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and Response analytics APIs with CSV export plus a dashboard Analytics page
   for alert volume, noise reduction, MTTA, and MTTR trends.
 
+- **Noise and analytics sprint — Phase 3 API tokens.** Added named,
+  revocable, role-scoped REST API bearer tokens with Settings management,
+  one-time secret display, audit attribution, and self-service denylist
+  protections.
+
 - **A+ closure sprint — final audit proof.** Added
   `scripts/live_update_proof.mjs`, a Playwright two-context acceptance script
   that proves the dashboard's live incident refresh updates within the

@@ -24,10 +24,11 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.auth.api_tokens import API_TOKEN_PREFIX, hash_api_token
 from backend.config_loader import AppConfig
 from backend.api.deps import get_db
 from backend.db.models import User
-from backend.db.repos import UserRepo
+from backend.db.repos import ApiTokenRepo, UserRepo
 
 def _auth_config():
     return AppConfig.load().auth
@@ -130,6 +131,22 @@ async def get_current_user(
         detail="Invalid or expired token",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if token.startswith(API_TOKEN_PREFIX):
+        token_row = await ApiTokenRepo.get_active_by_hash(db, hash_api_token(token))
+        if token_row is None:
+            raise credentials_exc
+        user = await UserRepo.get_by_id(db, token_row.created_by)
+        if user is None or not user.is_active or user.deleted_at is not None:
+            raise credentials_exc
+        now = datetime.now(timezone.utc)
+        last_used = token_row.last_used_at
+        if last_used is None or now - _aware(last_used) >= timedelta(minutes=1):
+            token_row.last_used_at = now
+            await db.flush()
+        setattr(user, "api_token_name", token_row.name)
+        setattr(user, "effective_role", token_row.role)
+        return user
+
     try:
         payload = decode_access_token(token)
         if payload.get("token_type") not in (None, "access"):
@@ -144,6 +161,8 @@ async def get_current_user(
     user = await UserRepo.get_by_id(db, user_id)
     if user is None or not user.is_active:
         raise credentials_exc
+    setattr(user, "api_token_name", None)
+    setattr(user, "effective_role", user.role)
     return user
 
 
@@ -182,11 +201,33 @@ def require_role(*allowed_roles: str):
     """
 
     async def _checker(user: User = Depends(get_current_user)) -> User:
-        if user.role not in allowed_roles:
+        effective_role = getattr(user, "effective_role", user.role)
+        if effective_role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Role '{user.role}' not in allowed roles: {allowed_roles}",
+                detail=f"Role '{effective_role}' not in allowed roles: {allowed_roles}",
             )
         return user
 
     return _checker
+
+
+def actor_label(user: User) -> str:
+    token_name = getattr(user, "api_token_name", None)
+    if token_name:
+        return f"api-token:{token_name}"
+    return str(user.id)
+
+
+async def reject_api_tokens(user: User = Depends(get_current_user)) -> User:
+    if getattr(user, "api_token_name", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API tokens are not accepted for this endpoint",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+def _aware(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value

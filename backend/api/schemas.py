@@ -163,6 +163,33 @@ class UserListResponse(BaseModel):
     total: int
 
 
+class ApiTokenCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    role: str = Field(..., pattern="^(admin|operator|viewer)$")
+
+
+class ApiTokenResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    token_prefix: str
+    role: str
+    created_by: uuid.UUID
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ApiTokenListResponse(BaseModel):
+    items: list[ApiTokenResponse]
+    total: int
+
+
+class ApiTokenCreateResponse(ApiTokenResponse):
+    token: str
+
+
 class UserCreateRequest(BaseModel):
     """Admin creates a local user directly (no invite link required).
 

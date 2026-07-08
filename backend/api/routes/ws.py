@@ -27,6 +27,7 @@ from jose import JWTError
 
 from backend.api.auth import decode_access_token
 from backend.api.schemas import WSMessage
+from backend.auth.api_tokens import API_TOKEN_PREFIX
 
 router = APIRouter(tags=["websocket"])
 
@@ -106,6 +107,9 @@ async def session_stream(
     token: str = Query(...),
 ):
     # Authenticate via query-param JWT
+    if token.startswith(API_TOKEN_PREFIX):
+        await websocket.close(code=4401)
+        return
     try:
         payload = decode_access_token(token)
         if payload.get("token_type") not in (None, "access"):
@@ -152,6 +156,9 @@ async def notifications_stream(
     the token's ``sub``), so a client can only ever receive its own
     notifications. Emits ``notification`` messages and ``ping`` keep-alives.
     """
+    if token.startswith(API_TOKEN_PREFIX):
+        await websocket.close(code=4401)
+        return
     try:
         payload = decode_access_token(token)
         if payload.get("token_type") not in (None, "access"):

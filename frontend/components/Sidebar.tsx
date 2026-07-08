@@ -20,7 +20,6 @@ import {
   Gauge,
   FileText,
   FileBarChart,
-  LogOut,
   Network,
   Plug,
   Settings,
@@ -252,12 +251,9 @@ type SidebarContentProps = {
 function SidebarContent({
   collapsed,
   pathname,
-  roleClass,
   tier,
   visibleGroups,
   flatVisibleItems,
-  user,
-  logout,
   onToggleCollapse,
   onNavigate,
   showCollapseToggle = true,
@@ -381,37 +377,6 @@ function SidebarContent({
           )}
         </button>
       )}
-
-      <div className="border-t border-border-subtle px-3 py-3">
-        {user && (
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-bg-panel text-xs font-semibold text-fg-secondary uppercase">
-              {(user.username ?? user.email).slice(0, 2)}
-            </div>
-            {!collapsed && (
-              <>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-fg-primary">
-                    {user.username ?? user.email}
-                  </p>
-                  <span
-                    className={`mt-0.5 inline-block rounded-pill border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide ${roleClass}`}
-                  >
-                    {user.role}
-                  </span>
-                </div>
-                <button
-                  onClick={logout}
-                  title="Sign out"
-                  className="rounded-md p-1.5 text-fg-muted hover:bg-bg-hover hover:text-fg-primary transition-colors"
-                >
-                  <LogOut size={15} />
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
     </>
   );
 }

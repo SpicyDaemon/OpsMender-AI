@@ -60,8 +60,6 @@ export function TopBar({
   }, []);
 
   const orgName = tenant?.org_name ?? null;
-  const orgRole = user?.role ?? null;
-  const orgRoleClass = orgRole ? ROLE_STYLES[orgRole] ?? ROLE_STYLES.viewer : "";
   const roleClass = user ? ROLE_STYLES[user.role] ?? ROLE_STYLES.viewer : "";
 
   return (
@@ -80,25 +78,14 @@ export function TopBar({
       <div className="flex min-w-0 items-center gap-1.5">
         {user && orgName && (
           <div
-            title={
-              orgRole
-                ? `Organization: ${orgName} — your role: ${orgRole}`
-                : `Organization: ${orgName}`
-            }
-            aria-label={`Organization: ${orgName}${orgRole ? `, role ${orgRole}` : ""}`}
+            title={`Organization: ${orgName}`}
+            aria-label={`Organization: ${orgName}`}
             className="hidden h-9 items-center gap-2 rounded-md border border-border-subtle bg-bg-input px-2.5 text-sm text-fg-secondary sm:flex"
           >
             <Building2 size={14} className="shrink-0 text-fg-muted" />
             <span className="max-w-[140px] truncate font-medium text-fg-primary lg:max-w-[180px]">
               {orgName}
             </span>
-            {orgRole && (
-              <span
-                className={`rounded-pill border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide ${orgRoleClass}`}
-              >
-                {orgRole}
-              </span>
-            )}
           </div>
         )}
         <button
@@ -125,8 +112,13 @@ export function TopBar({
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"
             >
               <Avatar user={user} size={28} />
-              <span className="hidden md:inline font-medium text-fg-primary">
-                {userDisplayName(user)}
+              <span className="hidden md:flex flex-col items-start leading-tight">
+                <span className="font-medium text-fg-primary">
+                  {userDisplayName(user)}
+                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                  {user.role}
+                </span>
               </span>
               <ChevronDown size={14} className="text-fg-muted" />
             </button>

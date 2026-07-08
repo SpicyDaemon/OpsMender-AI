@@ -46,7 +46,6 @@ from backend.chat import respond_to_user_message
 from backend.config_loader import Config
 from backend.db.models import User
 from backend.db.repos import (
-    AgentTeamProfileRepo,
     ApprovalRequestRepo,
     AuditEntryRepo,
     IncidentAssignmentRepo,
@@ -97,7 +96,6 @@ def _to_session_response(
         id=session.id,
         incident_id=session.incident_id,
         workflow_profile_id=getattr(session, "workflow_profile_id", None),
-        agent_team_profile_id=getattr(session, "agent_team_profile_id", None),
         model_config_id=getattr(session, "model_config_id", None),
         tier=session.tier,
         model_provider=session.model_provider,
@@ -157,27 +155,6 @@ async def create_session(
         default_profile = await WorkflowProfileRepo.get_default(db, org_id)
         workflow_profile_id = None if default_profile is None else default_profile.id
 
-    agent_team_profile_id = body.agent_team_profile_id
-    if agent_team_profile_id is not None:
-        profile = await AgentTeamProfileRepo.get_by_id(
-            db, org_id, agent_team_profile_id
-        )
-        if profile is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Agent team profile not found",
-            )
-        if not profile.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Agent team profile is inactive",
-            )
-    else:
-        default_agent_team = await AgentTeamProfileRepo.get_default(db, org_id)
-        agent_team_profile_id = (
-            None if default_agent_team is None else default_agent_team.id
-        )
-
     resolved_tier = await resolve_session_tier_for_incident(
         db,
         org_id,
@@ -209,7 +186,6 @@ async def create_session(
             incident=incident,
             tier=resolved_tier,
             workflow_profile_id=workflow_profile_id,
-            agent_team_profile_id=agent_team_profile_id,
             requested_provider=body.model_provider,
             requested_model_id=body.model_id,
             force=body.force,
@@ -226,7 +202,6 @@ async def create_session(
     if admission.takeover:
         session.tier = resolved_tier
         session.workflow_profile_id = workflow_profile_id
-        session.agent_team_profile_id = agent_team_profile_id
         if session.status in _RUNNING_STATUSES:
             cancel_session_workflow(request.app, session_id=session.id)
             await _expire_pending_approvals(db, org_id, session.id)

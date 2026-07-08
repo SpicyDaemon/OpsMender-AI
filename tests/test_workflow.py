@@ -31,7 +31,6 @@ from backend.agent.nodes import (
     _build_summarize,
     _build_tier_gate,
     _build_verify,
-    validate_agent_roles,
     diagnose,
     execute,
     observe,
@@ -77,18 +76,6 @@ def _base_state(**overrides) -> IncidentState:
     }
     state.update(overrides)
     return state
-
-
-class SequenceLLM:
-    def __init__(self, responses: list[str]):
-        self._responses = list(responses)
-        self.calls: list[str] = []
-
-    def invoke(self, prompt: str) -> str:
-        self.calls.append(prompt)
-        if not self._responses:
-            raise AssertionError("SequenceLLM exhausted")
-        return self._responses.pop(0)
 
 
 # ---------------------------------------------------------------------------
@@ -160,20 +147,6 @@ class TestGraphStructure:
     def test_validate_workflow_node_order_rejects_execute_without_gate(self):
         with pytest.raises(ValueError):
             validate_workflow_node_order(["plan", "execute", "summarize"])
-
-    def test_graph_compiles_with_agent_roles(self):
-        graph = build_graph(
-            tier=2,
-            skill_def=_skill_def(),
-            llm=StubLLM(),
-            agent_roles=["incident_commander", "skeptic"],
-        )
-        assert graph is not None
-
-    def test_validate_agent_roles_rejects_duplicates(self):
-        with pytest.raises(ValueError):
-            validate_agent_roles(["incident_commander", "incident_commander"])
-
 
 # ---------------------------------------------------------------------------
 # Stub node tests (no LLM — backward compatibility)
@@ -265,25 +238,6 @@ class TestObserveWithLLM:
         node(_base_state())
         assert "SRE" in llm.calls[0] or "Site Reliability" in llm.calls[0]
 
-    def test_supports_multi_agent_synthesis(self):
-        llm = SequenceLLM(
-            ["investigator output", "skeptic output", "final observation synthesis"]
-        )
-        node = _build_observe(
-            llm,
-            agent_roles=["investigator", "skeptic"],
-        )
-        result = node(_base_state())
-        assert result["observations"] == "final observation synthesis"
-        assert len(llm.calls) == 3
-        assert "Investigator" in llm.calls[0]
-        assert "Skeptic" in llm.calls[1]
-        assert (
-            "consolidating outputs from a multi-agent incident response team"
-            in llm.calls[2]
-        )
-
-
 class TestDiagnoseWithLLM:
     def test_sends_observations_in_prompt(self):
         llm = StubLLM(response="root cause: OOM")
@@ -320,20 +274,6 @@ class TestPlanWithLLM:
         node = _build_plan(llm, tier=2, skill_def=_skill_def())
         result = node(_base_state(diagnosis="test"))
         assert result["plan"] == []
-
-    def test_multi_agent_plan_uses_synthesized_json(self):
-        actions = [
-            {"tool_name": "get_pods", "tool_parameters": {}, "justification": "check"}
-        ]
-        llm = SequenceLLM(["[]", "[]", json.dumps(actions)])
-        node = _build_plan(
-            llm,
-            tier=2,
-            skill_def=_skill_def(),
-            agent_roles=["incident_commander", "remediator"],
-        )
-        result = node(_base_state(diagnosis="OOM"))
-        assert result["plan"] == actions
 
     def test_prompt_includes_available_tools(self):
         llm = StubLLM(response="[]")

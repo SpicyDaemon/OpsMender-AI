@@ -22,7 +22,6 @@ from backend.api.deps import get_db, set_session_factory
 from backend.config_loader import set_env_path
 from backend.db.models import Base
 from backend.db.repos import (
-    AgentTeamProfileRepo,
     ApprovalRequestRepo,
     AuditEntryRepo,
     BotConnectorRepo,
@@ -3203,6 +3202,21 @@ class TestSessions:
         assert data["tier"] == 2
         assert data["status"] == "active"
 
+    async def test_create_session_ignores_retired_profile_field(
+        self, client: AsyncClient, auth_headers
+    ):
+        retired_field = "_".join(("agent", "team", "profile", "id"))
+        resp = await client.post(
+            "/sessions",
+            json={
+                "tier": 2,
+                retired_field: str(uuid.uuid4()),
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert retired_field not in resp.json()
+
     async def test_create_session_with_incident(
         self, client: AsyncClient, auth_headers
     ):
@@ -4942,93 +4956,7 @@ class TestWorkflowProfiles:
         assert resp.json()["workflow_profile_id"] == str(profile_id)
 
 
-class TestAgentTeamProfiles:
-    async def test_create_list_update_delete_agent_team_profile(
-        self, client: AsyncClient, auth_headers
-    ):
-        create_resp = await client.post(
-            "/agent-team-profiles",
-            json={
-                "name": "triage-council",
-                "description": "Multi-angle triage",
-                "roles": ["incident_commander", "investigator", "skeptic"],
-                "is_active": True,
-                "is_default": True,
-            },
-            headers=auth_headers,
-        )
-        assert create_resp.status_code == 201
-        profile_id = create_resp.json()["id"]
-        assert create_resp.json()["is_default"] is True
-
-        list_resp = await client.get("/agent-team-profiles", headers=auth_headers)
-        assert list_resp.status_code == 200
-        assert list_resp.json()["total"] >= 1
-
-        update_resp = await client.put(
-            f"/agent-team-profiles/{profile_id}",
-            json={
-                "name": "triage-council",
-                "description": "Multi-angle triage plus remediation",
-                "roles": [
-                    "incident_commander",
-                    "investigator",
-                    "skeptic",
-                    "remediator",
-                ],
-                "is_active": True,
-                "is_default": False,
-            },
-            headers=auth_headers,
-        )
-        assert update_resp.status_code == 200
-        assert update_resp.json()["roles"] == [
-            "incident_commander",
-            "investigator",
-            "skeptic",
-            "remediator",
-        ]
-
-        delete_resp = await client.delete(
-            f"/agent-team-profiles/{profile_id}",
-            headers=auth_headers,
-        )
-        assert delete_resp.status_code == 204
-
-    async def test_create_agent_team_profile_validates_roles(
-        self, client: AsyncClient, auth_headers
-    ):
-        resp = await client.post(
-            "/agent-team-profiles",
-            json={
-                "name": "bad-team",
-                "roles": ["incident_commander", "incident_commander"],
-                "is_active": True,
-            },
-            headers=auth_headers,
-        )
-        assert resp.status_code == 400
-        assert "duplicate" in resp.json()["detail"].lower()
-
-    async def test_create_session_uses_default_agent_team_profile(
-        self, client: AsyncClient, app, auth_headers
-    ):
-        async with app.state.session_factory() as db:
-            profile = await AgentTeamProfileRepo.create(
-                db,
-                TEST_ORG_ID,
-                name="default-triage-team",
-                description="default team",
-                roles=["incident_commander", "investigator", "skeptic"],
-                is_default=True,
-            )
-            await db.commit()
-            profile_id = profile.id
-
-        resp = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
-        assert resp.status_code == 201
-        assert resp.json()["agent_team_profile_id"] == str(profile_id)
-
+class TestConfigAPI:
     async def test_get_config_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):

@@ -46,7 +46,6 @@ const apiMocks = vi.hoisted(() => ({
   }),
   getIncidentPaging: vi.fn().mockResolvedValue(null),
   getIncidentTimeline: vi.fn().mockResolvedValue({ items: [] }),
-  listAgentTeamProfiles: vi.fn().mockResolvedValue({ items: [] }),
   listIncidentSessions: vi.fn().mockResolvedValue({ items: [] }),
   listProviders: vi.fn().mockResolvedValue({ items: [] }),
   listUsers: vi.fn().mockResolvedValue({ items: [], total: 0 }),

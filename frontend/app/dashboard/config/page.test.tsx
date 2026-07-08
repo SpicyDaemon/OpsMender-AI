@@ -51,7 +51,6 @@ describe("Settings page", () => {
     const expectedLinks = [
       ["Models", "/dashboard/models"],
       ["MCP servers", "/dashboard/mcp-servers"],
-      ["Agent Teams", "/dashboard/agent-teams"],
       ["Session Profiles", "/dashboard/workflows"],
       ["Notification Channels", "/dashboard/paging/notification-channels"],
     ] as const;

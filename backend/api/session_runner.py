@@ -34,7 +34,6 @@ from backend.audit.logger import AuditEntryType
 from backend.config_loader import AppConfig, MCPServerConfig
 from backend.db.models import Session as SessionModel
 from backend.db.repos import (
-    AgentTeamProfileRepo,
     ApprovalRequestRepo,
     AuditEntryRepo,
     IncidentRepo,
@@ -779,14 +778,6 @@ async def _run_session_workflow_inner(
                 graph_kwargs["workflow_enabled"] = bool(
                     workflow_profile.workflow_enabled
                 )
-        if getattr(session, "agent_team_profile_id", None) is not None:
-            async with factory() as db:
-                agent_team_profile = await AgentTeamProfileRepo.get_by_id(
-                    db, org_id, session.agent_team_profile_id
-                )
-            if agent_team_profile is not None:
-                graph_kwargs["agent_roles"] = list(agent_team_profile.roles or [])
-
         server_name = None if selected_server is None else selected_server.name
         if effective_tier == 0:
             graph_kwargs["tier0_time_config"] = Tier0TimeConfig(

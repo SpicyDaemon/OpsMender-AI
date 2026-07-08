@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, Bot, ChevronRight, Cpu, Network, Workflow } from "lucide-react";
+import { Bell, ChevronRight, Cpu, Network, Workflow } from "lucide-react";
 import { getConfig } from "@/lib/api";
 import type { ConfigResponse } from "@/lib/types";
 import { useAuth } from "@/context/auth";
@@ -41,7 +41,7 @@ export default function ConfigPage() {
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
           {
             href: "/dashboard/models",
@@ -54,12 +54,6 @@ export default function ConfigPage() {
             icon: Network,
             title: "MCP servers",
             description: "Tool server connections and runtime health.",
-          },
-          {
-            href: "/dashboard/agent-teams",
-            icon: Bot,
-            title: "Agent Teams",
-            description: "Role profiles for multi-agent response.",
           },
           {
             href: "/dashboard/workflows",

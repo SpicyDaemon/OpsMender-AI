@@ -51,7 +51,7 @@ class TestPatchSqliteDevSchema:
             columns = _column_names(conn, "sessions")
 
         assert "workflow_profile_id" in columns
-        assert "agent_team_profile_id" in columns
+        assert "model_config_id" in columns
 
     def test_adds_missing_mcp_status_columns(self, tmp_path):
         db_path = tmp_path / "dev.db"

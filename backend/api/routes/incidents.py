@@ -220,7 +220,6 @@ def _to_session_response(session) -> SessionResponse:
         id=session.id,
         incident_id=session.incident_id,
         workflow_profile_id=getattr(session, "workflow_profile_id", None),
-        agent_team_profile_id=getattr(session, "agent_team_profile_id", None),
         model_config_id=getattr(session, "model_config_id", None),
         tier=session.tier,
         model_provider=session.model_provider,

@@ -559,9 +559,6 @@ class Session(Base):
     workflow_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("workflow_profiles.id", ondelete="SET NULL"), nullable=True
     )
-    agent_team_profile_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("agent_team_profiles.id", ondelete="SET NULL"), nullable=True
-    )
     model_config_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
         ForeignKey("model_configs.id", ondelete="SET NULL"),
@@ -612,7 +609,6 @@ class Session(Base):
 
     incident: Mapped[Incident | None] = relationship(back_populates="sessions")
     workflow_profile: Mapped["WorkflowProfile | None"] = relationship()
-    agent_team_profile: Mapped["AgentTeamProfile | None"] = relationship()
     model_config: Mapped["ModelConfig | None"] = relationship(
         foreign_keys=[model_config_id]
     )
@@ -1158,36 +1154,6 @@ class WorkflowProfile(Base):
 
     __table_args__ = (
         UniqueConstraint("org_id", "name", name="uq_workflow_profile_name"),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Agent team profiles (multi-agent support — Phase 3)
-# ---------------------------------------------------------------------------
-
-
-class AgentTeamProfile(Base):
-    __tablename__ = "agent_team_profiles"
-
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(150), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    roles: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
-    )
-
-    __table_args__ = (
-        UniqueConstraint("org_id", "name", name="uq_agent_team_profile_name"),
     )
 
 

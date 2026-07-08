@@ -133,7 +133,6 @@ async def admit_session(
     incident: Incident | None,
     tier: int,
     workflow_profile_id: uuid.UUID | None = None,
-    agent_team_profile_id: uuid.UUID | None = None,
     requested_provider: str | None = None,
     requested_model_id: str | None = None,
     force: bool = False,
@@ -287,7 +286,6 @@ async def admit_session(
             tier=tier,
             incident_id=incident.id,
             workflow_profile_id=workflow_profile_id,
-            agent_team_profile_id=agent_team_profile_id,
             requested_model_config_id=requested_config_id,
             status="queued",
             queued_at=now,
@@ -310,7 +308,6 @@ async def admit_session(
         tier=tier,
         incident_id=None if incident is None else incident.id,
         workflow_profile_id=workflow_profile_id,
-        agent_team_profile_id=agent_team_profile_id,
         model_config_id=None if model is None else model.id,
         requested_model_config_id=requested_config_id,
         model_provider=(

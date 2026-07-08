@@ -996,9 +996,6 @@ export async function deleteBotUserLink(
 // ---------------------------------------------------------------------------
 
 import type {
-  AgentTeamProfileListResponse,
-  AgentTeamProfileResponse,
-  AgentTeamProfileUpsert,
   SessionProfileTemplateListResponse,
   WorkflowProfileListResponse,
   WorkflowProfileResponse,
@@ -1030,31 +1027,6 @@ export async function updateWorkflowProfile(
 
 export async function deleteWorkflowProfile(id: string): Promise<void> {
   return api.del<void>(`/workflow-profiles/${id}`);
-}
-
-// ---------------------------------------------------------------------------
-// Agent Team Profiles
-// ---------------------------------------------------------------------------
-
-export async function listAgentTeamProfiles(): Promise<AgentTeamProfileListResponse> {
-  return api.get<AgentTeamProfileListResponse>("/agent-team-profiles");
-}
-
-export async function createAgentTeamProfile(
-  body: AgentTeamProfileUpsert,
-): Promise<AgentTeamProfileResponse> {
-  return api.post<AgentTeamProfileResponse>("/agent-team-profiles", body);
-}
-
-export async function updateAgentTeamProfile(
-  id: string,
-  body: AgentTeamProfileUpsert,
-): Promise<AgentTeamProfileResponse> {
-  return api.put<AgentTeamProfileResponse>(`/agent-team-profiles/${id}`, body);
-}
-
-export async function deleteAgentTeamProfile(id: string): Promise<void> {
-  return api.del<void>(`/agent-team-profiles/${id}`);
 }
 
 // ---------------------------------------------------------------------------

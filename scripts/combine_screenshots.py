@@ -181,7 +181,7 @@ COMPOSITES: list[dict] = [
     {
         "out": "composite_05_ai_agent.png",
         "title": "AI Agent",
-        "subtitle": "Skills, memories, MCP servers, models, workflows, agent teams.",
+        "subtitle": "Skills, memories, MCP servers, models, and workflows.",
         "cols": 2,
         "panels": [
             ("20_ai_skills.png", "Skills — /dashboard/skills"),
@@ -189,7 +189,6 @@ COMPOSITES: list[dict] = [
             ("22_ai_mcp_servers.png", "MCP Servers — /dashboard/mcp-servers"),
             ("23_ai_models.png", "Models — /dashboard/models"),
             ("24_ai_workflows.png", "Workflows — /dashboard/workflows"),
-            ("25_ai_agent_teams.png", "Agent Teams — /dashboard/agent-teams"),
         ],
     },
     {

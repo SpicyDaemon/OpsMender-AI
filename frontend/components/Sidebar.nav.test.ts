@@ -1,5 +1,5 @@
 /**
- * Sidebar nav role gating (Part 6) + Agent Teams removal (Part 10).
+ * Sidebar nav role gating.
  * Tests the pure nav model + role filter, not the rendered component.
  */
 
@@ -20,11 +20,6 @@ function visibleHrefs(role: string): string[] {
 }
 
 describe("Sidebar nav model", () => {
-  it("no longer includes Agent Teams (deferred from v1)", () => {
-    const all = buildNavGroups().flatMap((g) => g.items.map((i) => i.href));
-    expect(all).not.toContain("/dashboard/agent-teams");
-  });
-
   it("no longer includes multi-org management", () => {
     const all = buildNavGroups().flatMap((g) => g.items.map((i) => i.href));
     expect(all).not.toContain("/dashboard/organizations");

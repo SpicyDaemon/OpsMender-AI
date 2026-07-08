@@ -279,7 +279,6 @@ export interface SessionResponse {
   id: string;
   incident_id: string | null;
   workflow_profile_id: string | null;
-  agent_team_profile_id: string | null;
   model_config_id: string | null;
   tier: number;
   model_provider: string | null;
@@ -339,7 +338,6 @@ export interface OrchestrationOverview {
 export interface SessionCreate {
   incident_id?: string;
   workflow_profile_id?: string;
-  agent_team_profile_id?: string;
   tier?: number;
   model_provider?: string;
   model_id?: string;
@@ -1128,12 +1126,6 @@ export type WorkflowNode =
   | "verify"
   | "summarize";
 
-export type AgentRole =
-  | "incident_commander"
-  | "investigator"
-  | "skeptic"
-  | "remediator";
-
 export interface WorkflowProfileResponse {
   id: string;
   name: string;
@@ -1166,30 +1158,6 @@ export interface WorkflowProfileUpsert {
   name: string;
   description?: string | null;
   node_order: WorkflowNode[];
-  is_active?: boolean;
-  is_default?: boolean;
-}
-
-export interface AgentTeamProfileResponse {
-  id: string;
-  name: string;
-  description: string | null;
-  roles: AgentRole[];
-  is_active: boolean;
-  is_default: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AgentTeamProfileListResponse {
-  items: AgentTeamProfileResponse[];
-  total: number;
-}
-
-export interface AgentTeamProfileUpsert {
-  name: string;
-  description?: string | null;
-  roles: AgentRole[];
   is_active?: boolean;
   is_default?: boolean;
 }

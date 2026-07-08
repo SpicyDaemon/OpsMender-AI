@@ -2170,11 +2170,14 @@ export async function deleteMemory(id: string): Promise<void> {
 }
 
 import type {
+  AnalyticsRangeParams,
+  NoiseAnalyticsResponse,
   OrgEmailSettingsResponse,
   OrgEmailSettingsUpsert,
   ReportScheduleListResponse,
   ReportScheduleResponse,
   ReportScheduleUpsert,
+  ResponseAnalyticsResponse,
 } from "./types";
 
 export async function getOrgEmailSettings(
@@ -2235,6 +2238,52 @@ export async function downloadIncidentReport(
   if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${BASE_URL}/reports/incidents?${params}`, { headers });
   if (!response.ok) throw new Error(`Report export failed: HTTP ${response.status}`);
+  return response.blob();
+}
+
+function analyticsQuery(params?: AnalyticsRangeParams & { format?: "json" | "csv" }) {
+  const qs = new URLSearchParams();
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  if (params?.service_id) qs.set("service_id", params.service_id);
+  if (params?.format) qs.set("format", params.format);
+  const query = qs.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function getNoiseAnalytics(
+  params?: AnalyticsRangeParams,
+): Promise<NoiseAnalyticsResponse> {
+  return api.get<NoiseAnalyticsResponse>(
+    `/api/v1/analytics/noise${analyticsQuery(params)}`,
+  );
+}
+
+export async function getResponseAnalytics(
+  params?: AnalyticsRangeParams,
+): Promise<ResponseAnalyticsResponse> {
+  return api.get<ResponseAnalyticsResponse>(
+    `/api/v1/analytics/response${analyticsQuery(params)}`,
+  );
+}
+
+export async function downloadAnalyticsCsv(
+  kind: "noise" | "response",
+  params?: AnalyticsRangeParams,
+): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(
+    `${BASE_URL}/api/v1/analytics/${kind}${analyticsQuery({
+      ...params,
+      format: "csv",
+    })}`,
+    { headers },
+  );
+  if (!response.ok) {
+    throw new Error(`Analytics export failed: HTTP ${response.status}`);
+  }
   return response.blob();
 }
 

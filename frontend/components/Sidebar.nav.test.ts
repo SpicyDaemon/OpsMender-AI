@@ -36,6 +36,7 @@ describe("Sidebar nav model", () => {
     expect(hrefs).toContain("/dashboard/people");
     expect(hrefs).toContain("/dashboard/models");
     expect(hrefs).toContain("/dashboard/paging");
+    expect(hrefs).toContain("/dashboard/analytics");
     expect(hrefs).not.toContain("/dashboard/paging/services");
     expect(hrefs).toContain("/dashboard/integrations");
   });
@@ -68,6 +69,7 @@ describe("Sidebar nav model", () => {
     // Keeps incident-response surfaces.
     expect(hrefs).toContain("/dashboard/incidents");
     expect(hrefs).toContain("/dashboard/approvals");
+    expect(hrefs).toContain("/dashboard/analytics");
   });
 
   it("viewer is limited to read-only surfaces", () => {
@@ -80,6 +82,7 @@ describe("Sidebar nav model", () => {
     expect(hrefs).not.toContain("/dashboard/config");
     expect(hrefs).not.toContain("/dashboard/people");
     expect(hrefs).not.toContain("/dashboard/paging");
+    expect(hrefs).not.toContain("/dashboard/analytics");
   });
 
   it("adds and caps the pending approvals badge", () => {
@@ -127,5 +130,6 @@ describe("requiredRolesForPath (route guard)", () => {
   it("scopes operator-and-admin routes", () => {
     expect(requiredRolesForPath("/dashboard/approvals")).toEqual(["admin", "operator"]);
     expect(requiredRolesForPath("/dashboard/reliability")).toEqual(["admin", "operator"]);
+    expect(requiredRolesForPath("/dashboard/analytics")).toEqual(["admin", "operator"]);
   });
 });

@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now support inherited/on/off alert grouping, grouped Incident badges,
   flapping detection with P0 safety behavior, and workspace default controls.
 
+- **Noise and analytics sprint — Phase 2 analytics.** Added read-only Noise
+  and Response analytics APIs with CSV export plus a dashboard Analytics page
+  for alert volume, noise reduction, MTTA, and MTTR trends.
+
 - **A+ closure sprint — final audit proof.** Added
   `scripts/live_update_proof.mjs`, a Playwright two-context acceptance script
   that proves the dashboard's live incident refresh updates within the

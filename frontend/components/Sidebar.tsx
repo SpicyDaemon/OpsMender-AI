@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
   Bell,
   CalendarClock,
   LayoutDashboard,
@@ -128,6 +129,7 @@ export function buildNavGroups(): NavGroup[] {
       label: "Observe",
       items: [
         { href: "/dashboard/reliability", label: "Reliability", icon: Activity, roles: ["admin", "operator"] },
+        { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, roles: ["admin", "operator"] },
         { href: "/dashboard/reports", label: "Reports", icon: FileBarChart, roles: ["admin", "operator"] },
         { href: "/dashboard/activity", label: "Activity", icon: BookOpen, roles: ["admin", "operator"] },
       ],

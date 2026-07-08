@@ -2365,6 +2365,83 @@ export interface SessionMemoriesUsedResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+
+export interface AnalyticsRangeParams {
+  from?: string;
+  to?: string;
+  service_id?: string;
+}
+
+export interface NoiseDedupBreakdown {
+  created: number;
+  updated: number;
+  skipped: number;
+}
+
+export interface TopNoisyService {
+  service_id: string | null;
+  service_name: string;
+  inbound_alerts: number;
+  incidents_created: number;
+  alerts_per_created_incident: number;
+}
+
+export interface AlertsByHourPoint {
+  hour: number;
+  alerts: number;
+}
+
+export interface NoiseAnalyticsResponse {
+  from_at: string;
+  to_at: string;
+  service_id: string | null;
+  definitions: Record<string, string>;
+  inbound_alerts: number;
+  incidents_created: number;
+  dedup_breakdown: NoiseDedupBreakdown;
+  noise_reduction_ratio: number;
+  grouped_alert_savings: number;
+  flapping_incident_count: number;
+  top_noisy_services: TopNoisyService[];
+  alerts_by_hour_utc: AlertsByHourPoint[];
+  hour_display_caveat: string;
+}
+
+export interface ResponseMetricSummary {
+  incident_count: number;
+  acknowledged_count: number;
+  resolved_count: number;
+  mtta_seconds: number | null;
+  mttr_seconds: number | null;
+}
+
+export interface ResponseServiceSummary extends ResponseMetricSummary {
+  service_id: string | null;
+  service_name: string;
+}
+
+export interface ResponsePrioritySummary extends ResponseMetricSummary {
+  priority: string;
+}
+
+export interface ResponseWeeklyTrendPoint extends ResponseMetricSummary {
+  week_start: string;
+}
+
+export interface ResponseAnalyticsResponse {
+  from_at: string;
+  to_at: string;
+  service_id: string | null;
+  definitions: Record<string, string>;
+  overall: ResponseMetricSummary;
+  per_service: ResponseServiceSummary[];
+  per_priority: ResponsePrioritySummary[];
+  weekly_trend: ResponseWeeklyTrendPoint[];
+}
+
+// ---------------------------------------------------------------------------
 // Data retention (Sprint 53)
 // ---------------------------------------------------------------------------
 

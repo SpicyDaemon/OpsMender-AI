@@ -48,6 +48,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   source control, tickets, docs, observability, and infrastructure.
 - **Org-owned skills** — one `SKILL.md` classifies every operation as safe / caution / destructive.
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
+- **Alert-noise intelligence** — optional per-service grouping folds similar alerts into the open incident instead of paging again; automatic flapping detection suppresses repeat pages during fire/clear storms (**P0 always pages**).
 - **Workspace Status Page** — a single `/status` page with selected service components, derived health, incident updates, email subscribers, and private/public visibility.
 - **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
 - **Shared incident tracking** — update-in-place Slack, Discord, and Google
@@ -55,6 +56,9 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   events.
 - **Incident reporting** — on-demand CSV/PDF metrics plus scheduled
   weekly/monthly/quarterly email reports from organization SMTP.
+- **Operational analytics** — read-only **Noise** (alert volume, reduction ratio,
+  noisiest services) and **Response** (MTTA/MTTR trends by service and priority)
+  dashboards, each with CSV export.
 - **Native work-system integrations** — GitHub, GitLab, Bitbucket, Azure
   DevOps, Gitea, Jira, Confluence, ServiceNow, Linear, Notion, Google Docs, and
   Statuspage provide typed

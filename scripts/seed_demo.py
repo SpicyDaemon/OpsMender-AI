@@ -84,8 +84,14 @@ async def main():
         oid = org.id
 
         # ---- Users ----
+        # The admin matches the .env bootstrap credentials so the same login
+        # works whether the instance was bootstrapped (empty DB) or demo-seeded,
+        # and so the design-audit harness / agents (which read
+        # OPSMENDER_BOOTSTRAP_ADMIN_*) can sign in against the seeded demo world.
+        _admin_email = os.getenv("OPSMENDER_BOOTSTRAP_ADMIN_EMAIL") or "admin@example.com"
+        _admin_pw = os.getenv("OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD") or "AcmeDemo2026!"
         users_seed = [
-            ("admin", "admin@acme.com", "admin123", "admin"),
+            ("admin", _admin_email, _admin_pw, "admin"),
             ("john", "john@acme.com", "john123", "operator"),
             ("dmitri", "dmitri@acme.com", "dmitri123", "operator"),
             ("sam", "sam@acme.com", "sam123", "viewer"),

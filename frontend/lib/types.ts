@@ -376,7 +376,7 @@ export interface SessionRollbackResponse {
 
 export interface AuditEntryResponse {
   id: string;
-  session_id: string;
+  session_id: string | null;
   timestamp: string;
   tier: number;
   entry_type: string;
@@ -391,6 +391,115 @@ export interface AuditEntryResponse {
 export interface AuditListResponse {
   items: AuditEntryResponse[];
   total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Status Page
+// ---------------------------------------------------------------------------
+
+export type StatusPageVisibility = "public" | "private";
+export type StatusPageComponentStatus =
+  | "operational"
+  | "maintenance"
+  | "degraded"
+  | "partial_outage"
+  | "major_outage";
+export type StatusPageUpdateState =
+  | "investigating"
+  | "identified"
+  | "monitoring"
+  | "resolved";
+
+export interface StatusPageSettingsResponse {
+  enabled: boolean;
+  visibility: StatusPageVisibility;
+  title: string | null;
+  description: string | null;
+}
+
+export interface StatusPageSettingsUpdate {
+  enabled?: boolean;
+  visibility?: StatusPageVisibility;
+  title?: string | null;
+  description?: string | null;
+}
+
+export interface StatusPageComponentResponse {
+  id: string;
+  service_id: string;
+  service_name: string;
+  display_name: string | null;
+  sort_order: number;
+}
+
+export interface StatusPageComponentListResponse {
+  items: StatusPageComponentResponse[];
+  total: number;
+}
+
+export interface StatusPageSubscriberResponse {
+  id: string;
+  email: string;
+  confirmed_at: string | null;
+  created_at: string;
+}
+
+export interface StatusPageSubscriberListResponse {
+  items: StatusPageSubscriberResponse[];
+  total: number;
+}
+
+export interface StatusPageUpdateCreate {
+  state: StatusPageUpdateState;
+  body: string;
+}
+
+export interface StatusPageUpdateResponse {
+  id: string;
+  incident_id: string;
+  state: StatusPageUpdateState;
+  body: string;
+  author_user_id: string | null;
+  published_at: string;
+}
+
+export interface StatusPageUpdateListResponse {
+  items: StatusPageUpdateResponse[];
+  total: number;
+}
+
+export interface StatusPageUptimeDay {
+  date: string;
+  pct: number;
+}
+
+export interface PublicStatusComponent {
+  service_id: string;
+  display_name: string;
+  status: StatusPageComponentStatus;
+  uptime_90d: StatusPageUptimeDay[] | null;
+}
+
+export interface PublicStatusIncidentUpdate {
+  state: StatusPageUpdateState;
+  body: string;
+  published_at: string;
+}
+
+export interface PublicStatusIncident {
+  id: string;
+  title: string;
+  priority: string | null;
+  updates: PublicStatusIncidentUpdate[];
+}
+
+export interface PublicStatusResponse {
+  title: string;
+  description: string | null;
+  overall_status: StatusPageComponentStatus;
+  components: PublicStatusComponent[];
+  active_incidents: PublicStatusIncident[];
+  recently_resolved: PublicStatusIncident[];
 }
 
 // ---------------------------------------------------------------------------

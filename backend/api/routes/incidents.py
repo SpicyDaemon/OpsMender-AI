@@ -59,6 +59,7 @@ from backend.db.repos import (
     SessionRepo,
     ServiceRepo,
     SkillRepo,
+    StatusPageUpdateRepo,
     TeamRepo,
     UserRepo,
 )
@@ -1550,6 +1551,36 @@ async def get_incident_timeline(
                 actor_user_id=comment.author_user_id,
                 actor_label=author_label,
                 metadata={"source": comment.source},
+            )
+        )
+
+    status_updates = await StatusPageUpdateRepo.list_for_incident(
+        db, org_id, incident_id
+    )
+    for status_update in status_updates:
+        author_label = None
+        if status_update.author_user_id is not None:
+            author_label = user_lookup.get(status_update.author_user_id)
+            if author_label is None:
+                person = await UserRepo.get_by_id(db, status_update.author_user_id)
+                author_label = person.username if person is not None else None
+        items.append(
+            IncidentTimelineItemResponse(
+                id=f"status-page:{status_update.id}",
+                happened_at=_aware(status_update.published_at)
+                or status_update.published_at,
+                lane="notification",
+                event_type="status_page_update",
+                title=(
+                    "Status page update"
+                    if author_label is None
+                    else f"{author_label} published a status page update"
+                ),
+                body=status_update.body,
+                actor_user_id=status_update.author_user_id,
+                actor_label=author_label,
+                status=status_update.state,
+                metadata={"state": status_update.state},
             )
         )
 

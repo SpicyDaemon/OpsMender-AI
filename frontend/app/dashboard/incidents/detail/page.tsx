@@ -18,11 +18,14 @@ import {
 } from "lucide-react";
 import {
   createSession,
+  createIncidentStatusUpdate,
   getIncident,
   getIncidentPaging,
   getIncidentTimeline,
+  getStatusPageSettings,
   listAgentTeamProfiles,
   listIncidentSessions,
+  listStatusPageComponents,
   listProviders,
   listUsers,
   listWorkflowProfiles,
@@ -35,6 +38,8 @@ import type {
   ProviderModelsResponse,
   SessionCreate,
   SessionResponse,
+  StatusPageComponentResponse,
+  StatusPageUpdateState,
   UserResponse,
   WorkflowProfileResponse,
 } from "@/lib/types";
@@ -190,6 +195,9 @@ function IncidentDetailContent() {
   const [timelineError, setTimelineError] = useState("");
   const [loading, setLoading] = useState(true);
   const [showSession, setShowSession] = useState(false);
+  const [showStatusUpdate, setShowStatusUpdate] = useState(false);
+  const [statusPageEnabled, setStatusPageEnabled] = useState(false);
+  const [statusPageComponents, setStatusPageComponents] = useState<StatusPageComponentResponse[]>([]);
   const [activeSessionId, setActiveSessionId] = useState("");
   const toast = useToast();
   const { user } = useAuth();
@@ -216,10 +224,14 @@ function IncidentDetailContent() {
       Promise.all([
         getIncidentPaging(id).catch(() => null),
         listUsers().catch(() => ({ items: [], total: 0 })),
+        getStatusPageSettings().catch(() => null),
+        listStatusPageComponents().catch(() => ({ items: [], total: 0 })),
       ])
-        .then(([p, userList]) => {
+        .then(([p, userList, statusSettings, componentList]) => {
           setPagingPanel(p);
           setUsers(userList.items);
+          setStatusPageEnabled(Boolean(statusSettings?.enabled));
+          setStatusPageComponents(componentList.items);
         })
         .catch(() => setPagingPanel(null));
     } catch (err) {
@@ -295,6 +307,13 @@ function IncidentDetailContent() {
   if (isViewer) return <ViewerIncidentView incident={incident} />;
 
   const acknowledgedByDetail = acknowledgedByName(incident);
+  const canPublishStatusUpdate = Boolean(
+    statusPageEnabled &&
+      incident.service_id &&
+      statusPageComponents.some(
+        (component) => component.service_id === incident.service_id,
+      ),
+  );
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -307,6 +326,8 @@ function IncidentDetailContent() {
         onStartSession={() => setShowSession(true)}
         onChanged={reload}
         ownerLabel={ownerLabel}
+        canPublishStatusUpdate={canPublishStatusUpdate}
+        onPublishStatusUpdate={() => setShowStatusUpdate(true)}
       />
 
       {incident.merged_into_incident_id && (
@@ -518,6 +539,16 @@ function IncidentDetailContent() {
           router.prefetch(`/dashboard/sessions/detail?id=${session.id}`);
         }}
       />
+      <StatusUpdateModal
+        open={showStatusUpdate}
+        onClose={() => setShowStatusUpdate(false)}
+        incidentId={incident.id}
+        onPublished={async () => {
+          setShowStatusUpdate(false);
+          toast.success("Status page update published.");
+          await reloadActivity();
+        }}
+      />
     </div>
   );
 }
@@ -563,6 +594,85 @@ function DetailRow({
 // ---------------------------------------------------------------------------
 // Start session modal
 // ---------------------------------------------------------------------------
+
+function StatusUpdateModal({
+  open,
+  onClose,
+  incidentId,
+  onPublished,
+}: {
+  open: boolean;
+  onClose: () => void;
+  incidentId: string;
+  onPublished: () => Promise<void> | void;
+}) {
+  const [state, setState] = useState<StatusPageUpdateState>("investigating");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function publish() {
+    if (!body.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await createIncidentStatusUpdate(incidentId, {
+        state,
+        body: body.trim(),
+      });
+      setBody("");
+      setState("investigating");
+      await onPublished();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Status update was not published.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Publish status update" maxWidth="max-w-xl">
+      <div className="space-y-4">
+        <p className="rounded-md border border-border-subtle bg-bg-panel px-3 py-2 text-sm text-fg-secondary">
+          This message appears on the status page and sends email to confirmed subscribers.
+        </p>
+        <div>
+          <Label htmlFor="status-update-state">State</Label>
+          <Select
+            id="status-update-state"
+            value={state}
+            disabled={busy}
+            onChange={(event) => setState(event.target.value as StatusPageUpdateState)}
+          >
+            <option value="investigating">Investigating</option>
+            <option value="identified">Identified</option>
+            <option value="monitoring">Monitoring</option>
+            <option value="resolved">Resolved</option>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="status-update-body">Body</Label>
+          <Textarea
+            id="status-update-body"
+            rows={6}
+            value={body}
+            disabled={busy}
+            onChange={(event) => setBody(event.target.value)}
+          />
+        </div>
+        <FormError message={error} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={publish} loading={busy} disabled={!body.trim()}>
+            Publish
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 function StartSessionModal({
   open,

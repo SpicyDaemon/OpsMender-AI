@@ -28,6 +28,10 @@ vi.mock("@/components/OrganizationSettingsSection", () => ({
   OrganizationSettingsSection: () => <section>Organization settings</section>,
 }));
 
+vi.mock("@/components/StatusPageSettingsSection", () => ({
+  StatusPageSettingsSection: () => <section>Status page settings</section>,
+}));
+
 import ConfigPage from "@/app/dashboard/config/page";
 
 beforeEach(() => {

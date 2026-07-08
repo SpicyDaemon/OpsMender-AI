@@ -29,6 +29,7 @@ import {
   Hand,
   HandMetal,
   Loader2,
+  Megaphone,
   Play,
   ScrollText,
   Trash2,
@@ -61,6 +62,8 @@ interface Props {
   onChanged: () => Promise<void> | void;
   /** Resolved owner display label for "assigned to someone else" states. */
   ownerLabel?: string | null;
+  canPublishStatusUpdate?: boolean;
+  onPublishStatusUpdate?: () => void;
   /** Optional: collapses extra status pills on narrow viewports. */
   className?: string;
 }
@@ -71,6 +74,8 @@ export function IncidentCommandStrip({
   onStartSession,
   onChanged,
   ownerLabel,
+  canPublishStatusUpdate = false,
+  onPublishStatusUpdate,
   className,
 }: Props) {
   const toast = useToast();
@@ -295,6 +300,19 @@ export function IncidentCommandStrip({
                 <CheckCircle2 size={14} />
               )}
               Resolve
+            </Button>
+          )}
+
+          {canPublishStatusUpdate && onPublishStatusUpdate && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!!busy}
+              onClick={onPublishStatusUpdate}
+              data-testid="action-publish-status-update"
+            >
+              <Megaphone size={14} />
+              Status update
             </Button>
           )}
 

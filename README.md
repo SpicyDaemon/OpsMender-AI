@@ -48,6 +48,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
   source control, tickets, docs, observability, and infrastructure.
 - **Org-owned skills** — one `SKILL.md` classifies every operation as safe / caution / destructive.
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
+- **Workspace Status Page** — a single `/status` page with selected service components, derived health, incident updates, email subscribers, and private/public visibility.
 - **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
 - **Shared incident tracking** — update-in-place Slack, Discord, and Google
   Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle

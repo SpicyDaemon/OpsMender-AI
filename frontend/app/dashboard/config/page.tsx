@@ -13,6 +13,7 @@ import {
 } from "@/components/config/ConfigSections";
 import { EmailSettingsSection } from "@/components/EmailSettingsSection";
 import { OrganizationSettingsSection } from "@/components/OrganizationSettingsSection";
+import { StatusPageSettingsSection } from "@/components/StatusPageSettingsSection";
 
 export default function ConfigPage() {
   const { user } = useAuth();
@@ -101,6 +102,8 @@ export default function ConfigPage() {
       )}
 
       {user?.primary_org_id && <EmailSettingsSection orgId={user.primary_org_id} />}
+
+      {canEdit && <StatusPageSettingsSection canEdit={canEdit} />}
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-primary">

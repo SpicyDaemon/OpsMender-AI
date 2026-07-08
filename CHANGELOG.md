@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mark status-page components as maintenance.
 
 - **Noise and analytics sprint — Phase 1 alert-noise intelligence.** Services
-  now support inherited/on/off alert grouping, grouped Incident badges,
+  now support inherited/on/off similar alert grouping, grouped Incident badges,
   flapping detection with P0 safety behavior, and workspace default controls.
 
 - **Noise and analytics sprint — Phase 2 analytics.** Added read-only Noise

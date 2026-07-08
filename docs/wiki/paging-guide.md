@@ -94,9 +94,9 @@ Manual incidents created from the Incidents page must be linked to an active
 service so ownership, routing, escalation, MCP, and model preferences are
 unambiguous.
 
-### Alert Grouping & Flapping
+### Similar Alert Grouping & Flapping
 
-Alert grouping is an optional noise-control setting on each Service:
+Similar alert grouping is an optional noise-control setting on each Service:
 
 - `Inherit` uses the workspace default from Settings.
 - `On` groups similar inbound alerts into the active Incident for that Service.

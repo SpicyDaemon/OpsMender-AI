@@ -1145,7 +1145,7 @@ function ServicesPanel({
     },
     {
       id: "alert_grouping",
-      label: "Alert grouping",
+      label: "Similar alert grouping",
       accessor: (r) => alertGroupingLabel(r.service.alert_grouping),
       cell: (r) => (
         <Badge variant={r.service.alert_grouping === "on" ? "info" : "default"}>
@@ -1425,7 +1425,7 @@ function ServicesPanel({
             </p>
           </div>
           <div>
-            <Label>Alert grouping</Label>
+            <Label>Similar alert grouping</Label>
             <Select
               value={form.alert_grouping}
               onChange={(e) =>

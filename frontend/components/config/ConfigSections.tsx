@@ -374,7 +374,7 @@ export function TierSection({
 
       <div className="flex items-start justify-between gap-4 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-3">
         <div>
-          <Label htmlFor="cfg-alert-grouping">Alert grouping default</Label>
+          <Label htmlFor="cfg-alert-grouping">Similar alert grouping default</Label>
           <p className="mt-1 text-xs text-fg-muted">
             New Services inherit this workspace default unless their Service
             setting overrides it.
@@ -385,7 +385,7 @@ export function TierSection({
           checked={alertGroupingDefault}
           onChange={setAlertGroupingDefault}
           disabled={!canEdit}
-          aria-label="Alert grouping default"
+          aria-label="Similar alert grouping default"
         />
       </div>
 

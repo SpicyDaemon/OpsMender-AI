@@ -117,10 +117,10 @@ export function buildNavGroups(): NavGroup[] {
       id: "ai-agent",
       label: "AI Agent",
       items: [
+        { href: "/dashboard/models", label: "Models", icon: Cpu, roles: ["admin"] },
+        { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network, roles: ["admin"] },
         { href: "/dashboard/skills", label: "MCP Skills", icon: FileText, roles: ["admin"] },
         { href: "/dashboard/memories", label: "Memories", icon: Brain, roles: ["admin"] },
-        { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network, roles: ["admin"] },
-        { href: "/dashboard/models", label: "Models", icon: Cpu, roles: ["admin"] },
         { href: "/dashboard/orchestration", label: "Orchestration", icon: Gauge, roles: ["admin", "operator"] },
       ],
     },

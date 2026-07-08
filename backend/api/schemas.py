@@ -884,6 +884,9 @@ class ApprovalRedirectRequest(BaseModel):
 class ApprovalListResponse(BaseModel):
     items: list[ApprovalRequestResponse]
     total: int
+    # {status: count} across all requests for the org (unfiltered), for the
+    # status filter's per-status counts. Empty when scoped to one session.
+    status_counts: dict[str, int] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

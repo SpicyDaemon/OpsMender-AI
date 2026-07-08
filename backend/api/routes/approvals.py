@@ -186,6 +186,9 @@ async def list_approvals(
         offset=offset,
     )
     tiers = await _session_tiers(db, org_id, {item.session_id for item in items})
+    status_counts = await ApprovalRequestRepo.count_by_status(
+        db, org_id, session_id=session_id
+    )
     return ApprovalListResponse(
         items=[
             _approval_response(
@@ -195,6 +198,7 @@ async def list_approvals(
             for item in items
         ],
         total=len(items),
+        status_counts=status_counts,
     )
 
 

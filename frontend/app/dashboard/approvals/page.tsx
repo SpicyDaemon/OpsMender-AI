@@ -24,7 +24,7 @@ import type { ApprovalListResponse, ApprovalRequestResponse, ApprovalStatus } fr
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { FilterChips } from "@/components/ui/FilterChips";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
@@ -295,9 +295,14 @@ export default function ApprovalsPage() {
 
       {/* Filter bar */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <FilterChips
+        <SegmentedControl
           ariaLabel="Filter by approval status"
-          options={STATUS_OPTIONS}
+          options={STATUS_OPTIONS.map((o) => ({
+            ...o,
+            count: o.value
+              ? (data?.status_counts?.[o.value] ?? 0)
+              : undefined,
+          }))}
           value={statusFilter}
           onChange={(v) => setStatusFilter(v)}
         />

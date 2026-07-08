@@ -562,6 +562,7 @@ export interface ApprovalRequestResponse {
 export interface ApprovalListResponse {
   items: ApprovalRequestResponse[];
   total: number;
+  status_counts: Partial<Record<ApprovalStatus, number>>;
 }
 
 // ---------------------------------------------------------------------------

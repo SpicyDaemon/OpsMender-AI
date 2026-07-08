@@ -1774,6 +1774,26 @@ class ApprovalRequestRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def count_by_status(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        session_id: uuid.UUID | None = None,
+    ) -> dict[str, int]:
+        """Return ``{status: count}`` across all approval requests for the org
+        (optionally one session), independent of any status filter — powers the
+        segmented status filter's per-status counts."""
+        stmt = (
+            select(ApprovalRequest.status, func.count())
+            .where(ApprovalRequest.org_id == org_id)
+            .group_by(ApprovalRequest.status)
+        )
+        if session_id is not None:
+            stmt = stmt.where(ApprovalRequest.session_id == session_id)
+        result = await db.execute(stmt)
+        return {status: int(count) for status, count in result.all()}
+
+    @staticmethod
     async def resolve(
         db: AsyncSession,
         org_id: uuid.UUID,

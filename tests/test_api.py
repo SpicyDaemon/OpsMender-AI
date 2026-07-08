@@ -7737,6 +7737,27 @@ class TestApprovals:
         assert data["items"][0]["status"] == "pending"
         assert data["items"][0]["id"] == str(request.id)
 
+    async def test_list_approvals_status_counts(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        _, request = await _create_approval_request(app)
+
+        # Unfiltered: one pending request.
+        resp = await client.get("/approvals", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["status_counts"] == {"pending": 1}
+
+        # Counts are independent of the status filter — filtering to a status
+        # with no items still reports the full pending tally.
+        resp = await client.get("/approvals?status=rejected", headers=auth_headers)
+        assert resp.json()["items"] == []
+        assert resp.json()["status_counts"] == {"pending": 1}
+
+        # Resolving a request moves the tally to the new status.
+        await client.post(f"/approvals/{request.id}/approve", headers=auth_headers)
+        resp = await client.get("/approvals", headers=auth_headers)
+        assert resp.json()["status_counts"] == {"approved": 1}
+
     async def test_approve_request(self, client: AsyncClient, app, auth_headers):
         _, request = await _create_approval_request(app)
 

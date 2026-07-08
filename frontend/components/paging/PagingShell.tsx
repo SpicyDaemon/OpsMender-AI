@@ -305,7 +305,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
 
       <nav
         aria-label="Paging sections"
-        className="flex flex-wrap gap-2"
+        className="flex gap-1 overflow-x-auto border-b border-border-subtle"
       >
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -316,10 +316,10 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
               type="button"
               onClick={() => navigateDashboard(`/dashboard/paging/${TAB_SLUGS[t.id]}`)}
               aria-current={isActive ? "page" : undefined}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
+              className={`-mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
                 isActive
-                  ? "bg-accent text-accent-contrast shadow-sm"
-                  : "border border-border-default bg-bg-surface text-fg-secondary hover:border-border-strong hover:text-fg-primary"
+                  ? "border-accent text-fg-primary"
+                  : "border-transparent text-fg-secondary hover:border-border-strong hover:text-fg-primary"
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -329,7 +329,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
         })}
       </nav>
 
-      <div className="border-b border-border-subtle pb-3">
+      <div>
         <h2 className="text-lg font-semibold text-fg-primary">
           {activeTab.label}
         </h2>

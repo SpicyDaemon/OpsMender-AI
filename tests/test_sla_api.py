@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -15,6 +14,9 @@ from backend.api.app import create_app
 from backend.api.auth import create_access_token, hash_password
 from backend.config_loader import AppConfig
 from backend.db.models import Base, User
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture
@@ -526,7 +528,7 @@ class TestUptimeAPI:
         # Insert some uptime samples directly
         from backend.db.repos import UptimeSampleRepo
 
-        now = datetime.now(timezone.utc)
+        datetime.now(timezone.utc)
         for i in range(10):
             await UptimeSampleRepo.create(
                 db,

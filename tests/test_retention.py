@@ -12,19 +12,16 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.db.models import (
     AuditEntry,
     Base,
-    BotActionAudit,
     Incident,
     IncidentMemory,
     IncidentMemoryRecallLog,

@@ -297,6 +297,7 @@ async def _build_public_status(
             continue
         derived_status = component_status(
             service_id=component.service_id,
+            service_team_id=service.team_id,
             incidents=incidents,
             published_states=published_states,
             active_windows=active_windows,

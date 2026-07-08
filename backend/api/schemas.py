@@ -831,6 +831,7 @@ class PublicStatusResponse(BaseModel):
 class ApprovalRequestResponse(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
+    session_tier: Optional[int] = None
     action: dict[str, Any]
     justification: Optional[str]
     status: str

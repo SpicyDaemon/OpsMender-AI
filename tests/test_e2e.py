@@ -16,7 +16,6 @@ import asyncio
 import json
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -33,6 +32,9 @@ from backend.db.models import Base
 from backend.db.repos import SessionRepo
 from backend.skills.parser import loads as load_skill_def
 from backend.tiers.enforcement import check as tier_check
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 SKILL_MD = """---
 version: "1"

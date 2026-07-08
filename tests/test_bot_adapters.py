@@ -7,8 +7,6 @@ import hmac
 import hashlib
 import json
 import time
-import uuid
-from typing import Any
 
 import pytest
 from fastapi import HTTPException

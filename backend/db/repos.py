@@ -1814,7 +1814,7 @@ class ModelConfigRepo:
             .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.org_id == org_id)
             .where(ModelConfig.org_id == org_id)
-            .where(ModelConfig.is_default == True)
+            .where(ModelConfig.is_default)
         )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -2046,7 +2046,7 @@ class MCPServerRepo:
             .order_by(MCPServer.name)
         )
         if active_only:
-            stmt = stmt.where(MCPServer.is_active == True)
+            stmt = stmt.where(MCPServer.is_active)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -2809,7 +2809,7 @@ class WorkflowProfileRepo:
             .where(WorkflowProfile.org_id == org_id)
             .where(WorkflowProfile.org_id == org_id)
             .where(WorkflowProfile.org_id == org_id)
-            .where(WorkflowProfile.is_default == True)
+            .where(WorkflowProfile.is_default)
         )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -2826,7 +2826,7 @@ class WorkflowProfileRepo:
             .order_by(WorkflowProfile.is_default.desc(), WorkflowProfile.name)
         )
         if active_only:
-            stmt = stmt.where(WorkflowProfile.is_active == True)
+            stmt = stmt.where(WorkflowProfile.is_active)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -2957,7 +2957,7 @@ class AgentTeamProfileRepo:
             .where(AgentTeamProfile.org_id == org_id)
             .where(AgentTeamProfile.org_id == org_id)
             .where(AgentTeamProfile.org_id == org_id)
-            .where(AgentTeamProfile.is_default == True)
+            .where(AgentTeamProfile.is_default)
         )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -2974,7 +2974,7 @@ class AgentTeamProfileRepo:
             .order_by(AgentTeamProfile.is_default.desc(), AgentTeamProfile.name)
         )
         if active_only:
-            stmt = stmt.where(AgentTeamProfile.is_active == True)
+            stmt = stmt.where(AgentTeamProfile.is_active)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -3108,7 +3108,7 @@ class IngestTokenRepo:
             select(IngestToken)
             .where(IngestToken.org_id == org_id)
             .where(IngestToken.service_id == service_id)
-            .where(IngestToken.is_active == True)
+            .where(IngestToken.is_active)
             .order_by(IngestToken.created_at.desc())
         )
         result = await db.execute(stmt)
@@ -3126,7 +3126,7 @@ class IngestTokenRepo:
             .order_by(IngestToken.created_at.desc())
         )
         if active_only:
-            stmt = stmt.where(IngestToken.is_active == True)
+            stmt = stmt.where(IngestToken.is_active)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -3136,7 +3136,7 @@ class IngestTokenRepo:
     ) -> Sequence[IngestToken]:
         stmt = select(IngestToken).order_by(IngestToken.created_at.desc())
         if active_only:
-            stmt = stmt.where(IngestToken.is_active == True)
+            stmt = stmt.where(IngestToken.is_active)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -3277,7 +3277,7 @@ class SLATargetRepo:
             .order_by(SLATarget.created_at)
         )
         if active_only:
-            stmt = stmt.where(SLATarget.is_active == True)
+            stmt = stmt.where(SLATarget.is_active)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -3545,7 +3545,7 @@ class SLORepo:
             .order_by(SLO.created_at)
         )
         if active_only:
-            stmt = stmt.where(SLO.is_active == True)
+            stmt = stmt.where(SLO.is_active)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -3566,7 +3566,7 @@ class SLORepo:
             .order_by(SLO.created_at)
         )
         if active_only:
-            stmt = stmt.where(SLO.is_active == True)
+            stmt = stmt.where(SLO.is_active)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -4049,7 +4049,7 @@ class BotConnectorRepo:
             .order_by(BotConnector.name)
         )
         if enabled_only:
-            stmt = stmt.where(BotConnector.is_enabled == True)
+            stmt = stmt.where(BotConnector.is_enabled)
         if platform is not None:
             stmt = stmt.where(BotConnector.platform == platform)
         result = await db.execute(stmt)
@@ -4328,7 +4328,7 @@ class IncidentNotificationReceiptRepo:
         )
         if updateable_only:
             stmt = stmt.where(
-                IncidentNotificationReceipt.can_update == True,
+                IncidentNotificationReceipt.can_update,
                 IncidentNotificationReceipt.external_message_id.is_not(None),
             )
         result = await db.execute(stmt)
@@ -6566,7 +6566,7 @@ class PriorityRuleRepo:
     ) -> Sequence[PriorityRule]:
         stmt = select(PriorityRule).where(PriorityRule.org_id == org_id)
         if active_only:
-            stmt = stmt.where(PriorityRule.is_active == True)
+            stmt = stmt.where(PriorityRule.is_active)
         stmt = stmt.order_by(PriorityRule.rule_index)
         return (await db.execute(stmt)).scalars().all()
 

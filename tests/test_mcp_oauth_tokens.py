@@ -11,7 +11,6 @@ methods is the only legal read path).
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -20,7 +19,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.db.models import (
     Base,
-    MCPServerOAuthToken,
     Organization,
 )
 from backend.db.repos import (

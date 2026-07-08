@@ -369,6 +369,43 @@ async def test_maintenance_and_uptime_bars(client, app, admin_headers):
 
 
 @pytest.mark.asyncio
+async def test_team_scoped_maintenance_marks_component_maintenance(
+    client,
+    app,
+    admin_headers,
+):
+    service, _incident = await _seed_service_and_incident(app, priority="P2")
+    await client.patch(
+        "/api/v1/status-page/settings",
+        headers=admin_headers,
+        json={"enabled": True, "visibility": "public"},
+    )
+    await client.put(
+        "/api/v1/status-page/components",
+        headers=admin_headers,
+        json={"components": [{"service_id": str(service.id)}]},
+    )
+    now = datetime.now(timezone.utc)
+    async with app.state.session_factory() as db:
+        await MaintenanceWindowRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="Team maintenance",
+            starts_at=now - timedelta(minutes=5),
+            ends_at=now + timedelta(minutes=55),
+            scope_type="team",
+            scope_id=service.team_id,
+            approved=True,
+        )
+        await db.commit()
+
+    payload = (await client.get("/api/v1/status")).json()
+    component = payload["components"][0]
+    assert component["status"] == "maintenance"
+    assert payload["overall_status"] == "maintenance"
+
+
+@pytest.mark.asyncio
 async def test_subscribe_confirm_and_unsubscribe(client, app, admin_headers):
     await client.patch(
         "/api/v1/status-page/settings",

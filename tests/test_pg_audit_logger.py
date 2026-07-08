@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
-
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from backend.audit.logger import AuditEntryType
 from backend.audit.pg_logger import PgAuditLogger
-from backend.db.models import Base, Session as SessionModel
+from backend.db.models import Base
 from backend.db.repos import SessionRepo
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture

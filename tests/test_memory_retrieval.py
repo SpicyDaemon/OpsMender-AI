@@ -12,12 +12,10 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.agent.graph import (
     DEFAULT_WORKFLOW_NODE_ORDER,
@@ -38,7 +36,6 @@ from backend.db.repos import (
     IncidentMemoryRepo,
 )
 from backend.memory.retrieval import (
-    MemoryRetrievalResult,
     derive_query,
     derive_tags,
     format_memories_as_markdown,

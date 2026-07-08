@@ -6,13 +6,15 @@ from contextlib import asynccontextmanager
 import pytest
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.config_loader import MCPServerConfig
 from backend.db.models import Base
 from backend.db.repos import MCPServerRepo
 from backend.mcp.pool import MCPPoolError, MCPServerPool
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture

@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from backend.db.models import Base, Session as SessionModel
+from backend.db.models import Base
 from backend.db.repos import (
     AgentTeamProfileRepo,
     ApprovalRequestRepo,
@@ -30,6 +29,9 @@ from backend.db.repos import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture

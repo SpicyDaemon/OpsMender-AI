@@ -155,7 +155,7 @@ async def sso_callback(
                 detail="Email domain not allowed for this organization.",
             )
 
-    name = claims.get(sso.name_claim) or claims.get("name") or email.split("@")[0]
+    claims.get(sso.name_claim) or claims.get("name") or email.split("@")[0]
 
     # JIT-provision: find existing user by email, otherwise create one.
     auth_source = f"oidc:{org.slug}"

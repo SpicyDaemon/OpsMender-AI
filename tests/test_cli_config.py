@@ -8,7 +8,6 @@ import json
 import pytest
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cli.opsmender import main, _parse_args
@@ -19,6 +18,9 @@ from backend.db.repos import ModelConfigRepo
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 MINIMAL_CFG = "OPSMENDER_TIER=2\nOPSMENDER_LOG_LEVEL=INFO\nOPSMENDER_AUDIT_LOG=./logs/audit.jsonl\n"
 

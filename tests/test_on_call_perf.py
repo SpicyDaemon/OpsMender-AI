@@ -18,14 +18,13 @@ import time
 import uuid
 from datetime import date, datetime, timezone
 
-import pytest
 
 from backend.paging.on_call import OnCallContext, OnCallMember, on_call_at
 
 
 def _build_context(seed: int, member_count: int = 50) -> OnCallContext:
     # Use deterministic UUIDs so test output is reproducible.
-    rng = uuid.UUID(int=seed << 16)
+    uuid.UUID(int=seed << 16)
     members = tuple(
         OnCallMember(
             user_id=uuid.UUID(int=(seed << 16) | i),

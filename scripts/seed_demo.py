@@ -331,12 +331,14 @@ async def main():
             db.add(inc)
             await db.flush()
 
-            # Create a session for in-progress + critical incidents
+            # Create a session for in-progress + high-priority demo incidents.
             if status_ in ("in_progress", "open") and sev in ("critical", "high"):
+                approval_demo = sev == "critical"
+                session_tier = 1 if approval_demo else 2
                 sess = SessionModel(
-                    org_id=oid, incident_id=inc.id, tier=2,
+                    org_id=oid, incident_id=inc.id, tier=session_tier,
                     model_provider="anthropic", model_id="claude-sonnet-4-6",
-                    status="active" if status_ == "in_progress" else "awaiting_approval",
+                    status="awaiting_approval" if approval_demo else "active",
                     started_at=now - timedelta(minutes=offset - 2),
                 )
                 db.add(sess)
@@ -349,14 +351,27 @@ async def main():
                     ("kubectl_logs", {"pod": "checkout-api-7d8f9-x2pq", "tail": 200}, True),
                     ("kubectl_delete_pod", {"pod": "checkout-api-7d8f9-x2pq"}, False),
                 ]):
+                    routed_to_approval = approval_demo and not perm
                     db.add(AuditEntry(
                         org_id=oid, session_id=sess.id,
                         timestamp=now - timedelta(minutes=offset - 2, seconds=-ai * 12),
-                        tier=2, entry_type="tool_call",
+                        tier=session_tier, entry_type="tool_call",
                         tool_name=tname, tool_parameters=tparams,
-                        result={"ok": True, "lines": 42} if perm else None,
-                        permitted=perm,
-                        block_reason=None if perm else "Operation 'delete pod' classified destructive — Tier 2 cannot execute.",
+                        result=(
+                            {"ok": True, "lines": 42}
+                            if perm
+                            else {
+                                "ok": False,
+                                "requires_approval": True,
+                                "message": "Routed to operator approval (Tier 1)",
+                            }
+                            if routed_to_approval
+                            else None
+                        ),
+                        permitted=perm or routed_to_approval,
+                        block_reason=None
+                        if perm or routed_to_approval
+                        else "Operation 'delete pod' classified destructive - Tier 2 cannot execute.",
                         duration_ms=124 + ai * 8,
                     ))
 

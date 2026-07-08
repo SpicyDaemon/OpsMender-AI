@@ -22,7 +22,9 @@ You can manage runtime configurations via the **Config** tab in the dashboard.
 These settings apply globally to the OpsMender instance.
 
 Key configurations include:
-- **Default Tier:** The default safety tier for new sessions (e.g., Tier 2).
+- **Default Tier:** The workspace default shown in the sidebar. Each session
+  still resolves its own tier from service, skill, and request precedence, so a
+  Tier 1 approval can appear while the workspace default remains Tier 2.
 - **Auto-Start Policies:** Conditions under which OpsMender will automatically start an AI session upon incident ingestion.
 - **SLA Poller Defaults:** The non-AI Reliability checker that repeatedly probes HTTP/TCP targets. HTTP targets can treat exact codes, status classes (`2xx`), ranges (`200-299`), or expected error codes such as `404` as healthy.
 

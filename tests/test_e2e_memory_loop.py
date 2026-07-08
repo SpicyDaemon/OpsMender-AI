@@ -25,7 +25,6 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.agent.graph import build_graph
-from backend.agent.llm import LLM
 from backend.db.models import (
     Base,
     Incident,

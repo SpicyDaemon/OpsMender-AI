@@ -276,7 +276,7 @@ class TestDispatchPipeline:
     async def test_routes_to_user_preferred_channels(self, session_factory):
         user = await _make_user(session_factory, username="alice")
         inc = await _make_incident(session_factory, priority="P0")
-        page = await _record_page(
+        await _record_page(
             session_factory, incident_id=inc.id, user_id=user.id
         )
 
@@ -339,7 +339,7 @@ class TestDispatchPipeline:
 
         user = await _make_user(session_factory, username="carol")
         inc = await _make_incident(session_factory, priority="P0")
-        page = await _record_page(
+        await _record_page(
             session_factory, incident_id=inc.id, user_id=user.id
         )
         async with session_factory() as db:
@@ -391,7 +391,7 @@ class TestDispatchPipeline:
         inc = await _make_incident(
             session_factory, priority="P1", response_mode="page"
         )
-        page = await _record_page(
+        await _record_page(
             session_factory, incident_id=inc.id, user_id=user.id
         )
         now = datetime.now(timezone.utc)
@@ -439,7 +439,7 @@ class TestDispatchPipeline:
         inc = await _make_incident(
             session_factory, priority="P0", response_mode="escalate_immediate"
         )
-        page = await _record_page(
+        await _record_page(
             session_factory, incident_id=inc.id, user_id=user.id
         )
         now = datetime.now(timezone.utc)
@@ -486,7 +486,7 @@ class TestDispatchPipeline:
     async def test_dedup_skips_second_delivery_in_window(self, session_factory):
         user = await _make_user(session_factory, username="dave")
         inc = await _make_incident(session_factory, priority="P1")
-        page = await _record_page(
+        await _record_page(
             session_factory, incident_id=inc.id, user_id=user.id
         )
         async with session_factory() as db:
@@ -543,7 +543,7 @@ class TestDispatchPipeline:
         # Set org dedup window to 1 minute; backdate the first send to 2 minutes ago.
         user = await _make_user(session_factory, username="erin")
         inc = await _make_incident(session_factory, priority="P1")
-        page = await _record_page(
+        await _record_page(
             session_factory, incident_id=inc.id, user_id=user.id
         )
         async with session_factory() as db:
@@ -591,7 +591,7 @@ class TestDispatchPipeline:
     async def test_quiet_hours_blocks_below_threshold(self, session_factory):
         user = await _make_user(session_factory, username="frank")
         inc = await _make_incident(session_factory, priority="P3")
-        page = await _record_page(
+        await _record_page(
             session_factory, incident_id=inc.id, user_id=user.id
         )
         at = datetime(2026, 5, 15, 23, 30, tzinfo=timezone.utc)
@@ -637,7 +637,7 @@ class TestDispatchPipeline:
     async def test_unconfigured_channel_records_skipped(self, session_factory):
         user = await _make_user(session_factory, username="gina")
         inc = await _make_incident(session_factory, priority="P1")
-        page = await _record_page(
+        await _record_page(
             session_factory, incident_id=inc.id, user_id=user.id
         )
         async with session_factory() as db:

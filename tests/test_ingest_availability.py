@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from datetime import datetime, timezone
 
 import pytest
@@ -13,9 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from backend.config_loader import AppConfig
-from backend.db.models import Base, SLATarget, UptimeSample
+from backend.db.models import Base, UptimeSample
 from backend.db.repos import SLATargetRepo, UptimeSampleRepo
-from backend.ingest.adapters.base import AvailabilitySignal, ParsedIncident
 from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
 from backend.ingest.adapters.universal import (
     UniversalAdapter,
@@ -27,6 +25,9 @@ from backend.ingest.adapters.universal import (
 # ======================================================================
 # Unit tests — helper functions
 # ======================================================================
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 class TestInterpretUp:

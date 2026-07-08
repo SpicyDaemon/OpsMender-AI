@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.skills.parser import OperationClassification, SkillDefinition, load, loads
+from backend.skills.parser import OperationClassification, load, loads
 
 
 @pytest.fixture()

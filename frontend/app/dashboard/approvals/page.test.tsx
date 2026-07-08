@@ -49,6 +49,7 @@ describe("Approvals page", () => {
     const approval = {
       id: "approval-1",
       session_id: "session-12345678",
+      session_tier: 1,
       action: { tool: "restart_pod", namespace: "prod" },
       justification: "Pod is wedged after rollout.",
       status: "pending",
@@ -63,6 +64,9 @@ describe("Approvals page", () => {
     apiMocks.listApprovals.mockResolvedValue({ items: [approval], total: 1 });
 
     render(<ApprovalsPage />);
+
+    expect(await screen.findAllByText("T1")).toHaveLength(2);
+    expect(screen.getAllByText("Approval").length).toBeGreaterThan(0);
 
     const disclosure = await screen.findByRole("button", {
       name: /show action details/i,

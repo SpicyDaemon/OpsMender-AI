@@ -63,9 +63,6 @@ from backend.db.repos import (
     TeamRepo,
     UserRepo,
 )
-
-_log = logging.getLogger(__name__)
-from backend.services.incident_timeline import record_lifecycle_comment
 from backend.paging.dispatch import ChannelFactory, dispatch_page
 from backend.paging.on_call import (
     OnCallContext,
@@ -73,6 +70,9 @@ from backend.paging.on_call import (
     OnCallOverride,
     on_call_at,
 )
+from backend.services.incident_timeline import record_lifecycle_comment
+
+_log = logging.getLogger(__name__)
 
 
 SOFT_TAKEOVER_WINDOW_SECONDS = 5 * 60

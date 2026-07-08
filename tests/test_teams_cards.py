@@ -6,7 +6,6 @@ import json
 import uuid
 
 import httpx
-import pytest
 
 from backend.auth import graph_oauth
 from backend.db.models import Incident
@@ -17,7 +16,6 @@ from backend.paging.teams_cards import (
     ACTION_RESOLVE,
     ACTION_START_AI_SESSION,
     ACTION_TAKE,
-    ACTION_VIEW,
     ADAPTIVE_CARD_CONTENT_TYPE,
     ADAPTIVE_CARD_VERSION,
     build_graph_chat_message,

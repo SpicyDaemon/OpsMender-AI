@@ -5,7 +5,6 @@ from __future__ import annotations
 from urllib.parse import parse_qs
 
 import httpx
-import pytest
 
 from backend.bots.capabilities import supports_voice_call
 from backend.paging.channel_factory import build_channel_factory

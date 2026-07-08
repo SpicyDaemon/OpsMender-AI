@@ -475,7 +475,10 @@ def _field_spec_to_schema(spec: FieldSpec) -> BotConnectorFieldSchema:
         helper=spec.helper,
         doc_url=spec.doc_url,
         placeholder=spec.placeholder,
-        options=[BotConnectorFieldOption(value=v, label=l) for v, l in spec.options],
+        options=[
+            BotConnectorFieldOption(value=value, label=label)
+            for value, label in spec.options
+        ],
     )
 
 

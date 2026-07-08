@@ -37,6 +37,25 @@ const WORKFLOW_NODE_LABELS: Record<string, string> = {
   summarize: "Summarize",
 };
 
+const TIER_DISPLAY: Record<number, { label: string; className: string }> = {
+  0: {
+    label: "Autonomous",
+    className: "bg-status-critical-bg text-status-critical border-status-critical-border",
+  },
+  1: {
+    label: "Approval",
+    className: "bg-status-high-bg text-status-high border-status-high-border",
+  },
+  2: {
+    label: "Advisory",
+    className: "bg-status-low-bg text-status-low border-status-low-border",
+  },
+  3: {
+    label: "Advisory",
+    className: "bg-status-low-bg text-status-low border-status-low-border",
+  },
+};
+
 export function titleCaseIdentifier(value: string | null | undefined): string {
   if (!value) return "Unknown";
   return value
@@ -56,6 +75,15 @@ export function providerName(value: string): string {
 
 export function workflowNodeLabel(value: string): string {
   return WORKFLOW_NODE_LABELS[value] ?? titleCaseIdentifier(value);
+}
+
+export function autonomyTierDisplay(tier: number): { label: string; className: string } {
+  return (
+    TIER_DISPLAY[tier] ?? {
+      label: `Tier ${tier}`,
+      className: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
+    }
+  );
 }
 
 export function sessionPrimaryLabel(

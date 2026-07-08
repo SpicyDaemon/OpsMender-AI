@@ -20,7 +20,6 @@ Run all including live:
 from __future__ import annotations
 
 import json
-import pathlib
 import shutil
 import subprocess
 from unittest.mock import AsyncMock
@@ -31,7 +30,7 @@ from backend.agent.graph import build_graph
 from backend.agent.llm import StubLLM
 from backend.audit.logger import AuditLogger
 from backend.mcp.client import connect
-from backend.config_loader import Config, MCPServerConfig
+from backend.config_loader import MCPServerConfig
 from backend.skills.parser import load as load_skill_def
 
 
@@ -291,7 +290,8 @@ class TestSimulatedEndToEnd:
             f"OPSMENDER_TIER=2\nOPSMENDER_LOG_LEVEL=INFO\nOPSMENDER_AUDIT_LOG={audit_file}\n"
         )
 
-        import subprocess, sys
+        import subprocess
+        import sys
 
         result = subprocess.run(
             [

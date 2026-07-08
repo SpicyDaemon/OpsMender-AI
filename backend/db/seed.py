@@ -69,7 +69,7 @@ async def seed(database_url: str) -> None:
         print("  Created users: admin, operator, viewer (all assigned to Main Org)")
 
         # -- Model configs ---------------------------------------------------
-        anthropic_cfg = await ModelConfigRepo.create(
+        await ModelConfigRepo.create(
             db,
             org_id,
             name="claude-sonnet",
@@ -78,7 +78,7 @@ async def seed(database_url: str) -> None:
             api_key_env_var="ANTHROPIC_API_KEY",
             is_default=True,
         )
-        openai_cfg = await ModelConfigRepo.create(
+        await ModelConfigRepo.create(
             db,
             org_id,
             name="gpt-4o",
@@ -86,7 +86,7 @@ async def seed(database_url: str) -> None:
             model_id="gpt-4o",
             api_key_env_var="OPENAI_API_KEY",
         )
-        ollama_cfg = await ModelConfigRepo.create(
+        await ModelConfigRepo.create(
             db,
             org_id,
             name="llama3-local",
@@ -125,7 +125,7 @@ async def seed(database_url: str) -> None:
         print("  Created session for incident 1 (tier 2)")
 
         # -- Audit entries ---------------------------------------------------
-        now = datetime.now(timezone.utc)
+        datetime.now(timezone.utc)
         await AuditEntryRepo.create(
             db,
             org_id,

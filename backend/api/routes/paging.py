@@ -25,12 +25,23 @@ from backend.api.auth import (
 )
 from backend.api.deps import get_db
 from backend.api.schemas import (
+    ChainWhereUsedItem,
+    ChainWhereUsedResponse,
     OnCallRangeItem,
     OnCallRangeResponse,
     OnCallResolveResponse,
     EscalationCalendarDay,
     EscalationCalendarLevel,
     EscalationCalendarResponse,
+    EscalationChainCreate,
+    EscalationChainListResponse,
+    EscalationChainResponse,
+    EscalationChainUpdate,
+    EscalationStepCreate,
+    EscalationStepListResponse,
+    EscalationStepReorderRequest,
+    EscalationStepResponse,
+    EscalationStepUpdate,
     TeamCalendarChain,
     TeamCalendarMaintenance,
     TeamOnCallCalendarDay,
@@ -53,6 +64,9 @@ from backend.api.schemas import (
     RosterResponse,
     RosterUpdate,
     ServiceCreate,
+    ServiceEscalationChainCreate,
+    ServiceEscalationChainListResponse,
+    ServiceEscalationChainResponse,
     ServiceListResponse,
     ServiceResponse,
     ServiceUpdate,
@@ -66,13 +80,17 @@ from backend.api.schemas import (
 )
 from backend.db.models import User
 from backend.db.repos import (
+    EscalationChainRepo,
+    EscalationStepRepo,
     IngestTokenRepo,
     IntegrationConnectorRepo,
     MCPServerRepo,
+    MaintenanceWindowRepo,
     ModelConfigRepo,
     PriorityRuleRepo,
     RosterOverrideRepo,
     RosterRepo,
+    ServiceEscalationChainRepo,
     ServiceRepo,
     TeamRepo,
     UserNotificationPrefRepo,
@@ -1162,30 +1180,6 @@ async def delete_priority_rule(
 # Escalation chains (Sprint 34)
 # ---------------------------------------------------------------------------
 
-from backend.api.schemas import (
-    ChainWhereUsedItem,
-    ChainWhereUsedResponse,
-    EscalationChainCreate,
-    EscalationChainListResponse,
-    EscalationChainResponse,
-    EscalationChainUpdate,
-    EscalationStepCreate,
-    EscalationStepListResponse,
-    EscalationStepReorderRequest,
-    EscalationStepResponse,
-    EscalationStepUpdate,
-    ServiceEscalationChainCreate,
-    ServiceEscalationChainListResponse,
-    ServiceEscalationChainResponse,
-)
-from backend.db.repos import (
-    EscalationChainRepo,
-    EscalationStepRepo,
-    MaintenanceWindowRepo,
-    ServiceEscalationChainRepo,
-)
-
-
 _CALENDAR_RANGE_DAYS = {
     "today": 1,
     "7d": 7,
@@ -1854,7 +1848,10 @@ async def list_service_escalation_chains(
         db, org_id, service_id
     )
     return ServiceEscalationChainListResponse(
-        items=[ServiceEscalationChainResponse.model_validate(l) for l in links],
+        items=[
+            ServiceEscalationChainResponse.model_validate(link)
+            for link in links
+        ],
         total=len(links),
     )
 

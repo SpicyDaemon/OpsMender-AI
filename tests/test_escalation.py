@@ -6,7 +6,7 @@ import asyncio
 import json
 import uuid
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -25,7 +25,6 @@ from backend.db.repos import (
     IncidentPageRepo,
     IncidentRepo,
     PriorityRuleRepo,
-    RosterRepo,
     ServiceEscalationChainRepo,
     ServiceRepo,
     TeamRepo,

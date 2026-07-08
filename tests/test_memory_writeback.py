@@ -15,10 +15,8 @@ from backend.agent.graph import (
 from backend.agent.nodes import _build_remember, remember as remember_stub
 from backend.db.models import (
     Base,
-    Incident,
     Organization,
     Service,
-    Session as SessionModel,
     Team,
 )
 from backend.db.repos import IncidentMemoryRepo

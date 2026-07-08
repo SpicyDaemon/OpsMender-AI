@@ -38,7 +38,6 @@ from backend.mcp.oauth import (
     MCPIssuerMismatchError,
     MCPOAuthError,
     MCPPKCENotSupportedError,
-    ProtectedResourceMetadata,
     build_authorize_url,
     canonical_resource_uri,
     discover_protected_resource_metadata,

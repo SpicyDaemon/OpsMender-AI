@@ -11,7 +11,6 @@ import backend.integrations  # noqa: F401 - register bundled adapters
 from backend.db.models import (
     Base,
     Incident,
-    IntegrationConnector,
     Organization,
     Service,
     Team,

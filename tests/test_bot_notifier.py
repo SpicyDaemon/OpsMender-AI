@@ -5,11 +5,9 @@ from __future__ import annotations
 import pytest
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import backend.bots.notifier as notifier_mod
 from backend.bots import notifier
 from backend.db.models import Base, BotActionAudit
 from backend.db.repos import (
@@ -18,6 +16,9 @@ from backend.db.repos import (
     IncidentRepo,
     SessionRepo,
 )
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture

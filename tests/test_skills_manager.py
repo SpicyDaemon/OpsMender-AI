@@ -10,11 +10,8 @@ Covers:
 
 from __future__ import annotations
 
-import io
 import json
 import uuid
-
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -28,6 +25,9 @@ from backend.db.repos import MCPServerRepo, SkillRepo
 from backend.skills.importer import auto_import
 from backend.skills.parser import loads as parse_skill_content
 from backend.tiers.enforcement import load_skill_for_mcp_server
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 SAMPLE_SKILL = """---

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -30,7 +29,6 @@ from backend.paging.teams_cards import (
     ACTION_ACK,
     ACTION_START_AI_SESSION,
     ACTION_RESOLVE,
-    ACTION_TAKE,
     ACTION_VIEW,
 )
 

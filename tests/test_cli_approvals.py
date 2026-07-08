@@ -8,12 +8,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.db.models import Base
 from backend.db.repos import ApprovalRequestRepo, SessionRepo
 from cli.opsmender import _parse_args, main
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 async def _seed_db(db_url: str):

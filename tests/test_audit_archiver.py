@@ -11,7 +11,7 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.api.routes.retention import _to_config_items

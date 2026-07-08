@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from backend.config_loader import AppConfig
 from backend.db.models import Base, MaintenanceWindow
-from backend.db.repos import MaintenanceWindowRepo, SLATargetRepo
+from backend.db.repos import SLATargetRepo
 from backend.sla.poller import SLAPoller, expected_status_matches
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")

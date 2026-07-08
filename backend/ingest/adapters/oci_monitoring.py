@@ -70,7 +70,7 @@ class OCIMonitoringAdapter(IngestAdapter):
         status_raw = data.get("status", "FIRING")
         severity_raw = data.get("severity", "WARNING")
         body = data.get("body", "")
-        timestamp = data.get("timestamp", "")
+        data.get("timestamp", "")
 
         # Extract resource info from alarmMetaData
         meta_list = data.get("alarmMetaData", [])

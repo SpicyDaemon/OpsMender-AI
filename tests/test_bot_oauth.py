@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -31,7 +31,6 @@ from backend.auth.bot_oauth import (
     SUPPORTED_PLATFORMS,
     build_authorize_url,
     exchange_code,
-    is_platform_enabled,
     sign_state,
     verify_state,
 )

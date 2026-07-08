@@ -90,7 +90,7 @@ class TestAuditShowAll:
         audit_path = tmp_path / "audit.jsonl"
         _seed_log(audit_path)
         cfg = _write_config(tmp_path, audit_path)
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(SystemExit):
             main(["--config", str(cfg), "audit"])
         out = capsys.readouterr().out
         assert "get_pods" in out
@@ -100,7 +100,7 @@ class TestAuditShowAll:
         audit_path = tmp_path / "audit.jsonl"
         _seed_log(audit_path)
         cfg = _write_config(tmp_path, audit_path)
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(SystemExit):
             main(["--config", str(cfg), "audit"])
         out = capsys.readouterr().out
         assert "destructive" in out
@@ -109,7 +109,7 @@ class TestAuditShowAll:
         audit_path = tmp_path / "audit.jsonl"
         _seed_log(audit_path)
         cfg = _write_config(tmp_path, audit_path)
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(SystemExit):
             main(["--config", str(cfg), "audit"])
         out = capsys.readouterr().out
         assert "FAIL" in out  # blocked entries show FAIL marker
@@ -167,7 +167,7 @@ class TestAuditJsonOutput:
             main(["--config", str(cfg), "audit", "--json"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        lines = [l for l in out.strip().split("\n") if l]
+        lines = [line for line in out.strip().split("\n") if line]
         assert len(lines) == 10
         # Each line should be valid JSON
         for line in lines:
@@ -183,5 +183,5 @@ class TestAuditJsonOutput:
             main(["--config", str(cfg), "audit", "--json", "--last", "2"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        lines = [l for l in out.strip().split("\n") if l]
+        lines = [line for line in out.strip().split("\n") if line]
         assert len(lines) == 2

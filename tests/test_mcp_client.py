@@ -3,7 +3,6 @@
 import asyncio
 import os
 import stat
-import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -103,7 +102,7 @@ class TestCheckCommand:
 
 # Helper for async context manager test
 async def _use_connect(server):
-    async with connect(server) as session:
+    async with connect(server):
         pass
 
 
@@ -220,5 +219,5 @@ async def _use_stdio(server):
     """Helper to exercise _connect_stdio."""
     from backend.mcp.client import _connect_stdio
 
-    async with _connect_stdio(server) as session:
+    async with _connect_stdio(server):
         pass

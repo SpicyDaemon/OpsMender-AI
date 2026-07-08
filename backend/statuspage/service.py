@@ -54,23 +54,30 @@ def overall_status(component_statuses: Iterable[str]) -> str:
 def maintenance_covers_service(
     window: MaintenanceWindow,
     service_id: uuid.UUID,
+    service_team_id: uuid.UUID | None = None,
 ) -> bool:
     if window.scope_type == "global":
         return True
-    if window.scope_type != "service":
-        return False
-    return service_id in window.scope_ids
+    if window.scope_type == "service":
+        return service_id in window.scope_ids
+    if window.scope_type == "team":
+        return service_team_id is not None and service_team_id in window.scope_ids
+    return False
 
 
 def component_status(
     *,
     service_id: uuid.UUID,
+    service_team_id: uuid.UUID | None = None,
     incidents: Sequence[Incident],
     published_states: dict[uuid.UUID, PublishedIncidentState],
     active_windows: Sequence[MaintenanceWindow],
 ) -> str:
     status = "operational"
-    if any(maintenance_covers_service(window, service_id) for window in active_windows):
+    if any(
+        maintenance_covers_service(window, service_id, service_team_id)
+        for window in active_windows
+    ):
         status = _worst(status, "maintenance")
 
     for incident in incidents:

@@ -14,7 +14,7 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from backend.db.models import Base, MCPServer
+from backend.db.models import Base
 from backend.db.repos import MCPServerRepo, SkillRepo
 from backend.skills.parser import SkillDefinition, OperationClassification
 from backend.skills.template import build_skill_template

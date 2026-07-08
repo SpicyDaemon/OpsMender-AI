@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Noise and analytics sprint — Phase 0 tier clarity.** Approval rows now show
+  the requesting session tier, the demo seed separates Tier 1 approval-gated
+  sessions from Tier 2 advisory blocking, and team-scoped maintenance windows
+  mark status-page components as maintenance.
+
 - **A+ closure sprint — final audit proof.** Added
   `scripts/live_update_proof.mjs`, a Playwright two-context acceptance script
   that proves the dashboard's live incident refresh updates within the

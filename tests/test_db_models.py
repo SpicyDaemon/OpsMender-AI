@@ -10,11 +10,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-import uuid
-from sqlalchemy import JSON, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 from backend.db.models import (
     ApprovalRequest,
@@ -31,6 +27,9 @@ from backend.db.models import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture

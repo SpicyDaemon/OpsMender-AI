@@ -19,17 +19,22 @@ from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     DEFAULT_POSTMORTEM_TEMPLATE,
+    IncidentAckRequest,
     IncidentCommentCreate,
     IncidentCommentListResponse,
     IncidentCommentResponse,
+    IncidentChainPanelResponse,
+    IncidentChainStateResponse,
     IncidentCreate,
     IncidentCreateResponse,
     FireTestIncidentRequest,
     FireTestIncidentResponse,
     IncidentListResponse,
+    IncidentPageResponse,
     IncidentPostmortemResponse,
     IncidentPostmortemUpdate,
     IncidentResponse,
+    IncidentTakeRequest,
     PostmortemMemoryCandidate,
     PostmortemDraftResponse,
     PostmortemMemoryCandidatesResponse,
@@ -83,7 +88,7 @@ from backend.api.schemas import (
     SuppressedByMaintenanceWindow,
 )
 from backend.paging.service import compute_priority_for_payload
-from backend.paging import escalation as _esc_kickoff
+from backend.paging import escalation as _esc
 from backend.skills.parser import loads as load_skill_def_text
 from backend.memory.candidates import candidate_title, extract_memory_candidates
 from backend.memory.tags import canonicalize_memory_tag
@@ -449,7 +454,7 @@ async def _create_incident_record(
     )
     # Kick off the escalation chain when the response mode pages humans.
     if priority_result.response_mode in ("page", "escalate_immediate"):
-        link = await _esc_kickoff.select_chain_for_incident(
+        link = await _esc.select_chain_for_incident(
             db,
             org_id,
             service_id=incident.service_id,
@@ -458,7 +463,7 @@ async def _create_incident_record(
         if link is not None:
             from backend.paging.channel_factory import build_channel_factory
 
-            await _esc_kickoff.start_chain(
+            await _esc.start_chain(
                 db,
                 org_id,
                 incident_id=incident.id,
@@ -902,7 +907,7 @@ async def update_incident(
     if service_changed:
         await IncidentAssignmentRepo.release(db, org_id, incident_id)
         if updated.response_mode in ("page", "escalate_immediate"):
-            link = await _esc_kickoff.select_chain_for_incident(
+            link = await _esc.select_chain_for_incident(
                 db,
                 org_id,
                 service_id=updated.service_id,
@@ -911,7 +916,7 @@ async def update_incident(
             if link is not None:
                 from backend.paging.channel_factory import build_channel_factory
 
-                await _esc_kickoff.restart_chain_for_handoff(
+                await _esc.restart_chain_for_handoff(
                     db,
                     org_id,
                     incident_id=updated.id,
@@ -2149,16 +2154,6 @@ async def list_merged_incidents(
 # ---------------------------------------------------------------------------
 # Escalation chain actions (Sprint 34)
 # ---------------------------------------------------------------------------
-
-from backend.api.schemas import (
-    IncidentAckRequest,
-    IncidentChainPanelResponse,
-    IncidentChainStateResponse,
-    IncidentPageResponse,
-    IncidentTakeRequest,
-)
-from backend.paging import escalation as _esc
-
 
 @router.get(
     "/{incident_id}/chain",

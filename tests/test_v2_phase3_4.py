@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.db.models import (
     Base,
     Incident,
-    IncidentComment,
     ModelConfig,
     Organization,
     Service,

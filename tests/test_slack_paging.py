@@ -21,7 +21,6 @@ from backend.db.models import Base, Incident, Organization
 from backend.db.repos import (
     BotConnectorRepo,
     BotUserLinkRepo,
-    IncidentChainStateRepo,
     IncidentPageRepo,
     IncidentRepo,
     UserRepo,
@@ -31,7 +30,6 @@ from backend.paging.slack_cards import (
     ACTION_ESCALATE,
     ACTION_RESOLVE,
     ACTION_START_AI_SESSION,
-    ACTION_TAKE,
     ACTION_VIEW,
     build_page_card_blocks,
     build_page_card_text,
@@ -352,7 +350,7 @@ class TestSlackInteractionsEndpoint:
             assert reloaded.callback_status == "verified"
 
     async def test_unlinked_user_gets_friendly_ephemeral(self, client, app):
-        connector = await _seed_slack_connector(app)
+        await _seed_slack_connector(app)
         incident = await _seed_incident(app)
         # No BotUserLink for this Slack user id.
 
@@ -400,7 +398,7 @@ class TestSlackInteractionsEndpoint:
             assert reloaded.status != "resolved"
 
     async def test_view_action_is_noop_ack(self, client, app):
-        connector = await _seed_slack_connector(app)
+        await _seed_slack_connector(app)
         incident = await _seed_incident(app)
         payload = _block_actions_payload(
             action_id=ACTION_VIEW, incident_id=incident.id, user_id="U_X"

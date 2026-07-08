@@ -328,7 +328,6 @@ def _whatsapp_signature(secret: str, body: bytes) -> str:
 
 class TestWhatsAppAdapter:
     def test_registered(self):
-        from backend.bots.connectors import WhatsAppAdapter
         import backend.bots  # noqa: F401
 
         adapter = get_adapter("whatsapp")

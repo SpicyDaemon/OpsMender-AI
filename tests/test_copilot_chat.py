@@ -13,12 +13,8 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
-
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
-from contextlib import asynccontextmanager
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -41,6 +37,9 @@ from backend.llm.factory import create_llm
 # ---------------------------------------------------------------------------
 # Fixtures (mirrors tests/test_api.py setup)
 # ---------------------------------------------------------------------------
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture

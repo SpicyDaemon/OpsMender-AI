@@ -17,7 +17,7 @@ from backend.auditor.example_analyzers import (
     IstioctlAnalyzeAnalyzer,
     KubeScoreAnalyzer,
 )
-from backend.auditor.base import AnalyzerContext, FindingDraft
+from backend.auditor.base import FindingDraft
 from backend.auditor.registry import (
     _reset_for_tests,
     get_analyzer,

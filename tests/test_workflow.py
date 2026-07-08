@@ -14,10 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import pathlib
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -52,6 +50,9 @@ from backend.skills.parser import OperationClassification, SkillDefinition
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 def _skill_def() -> SkillDefinition:
@@ -843,7 +844,6 @@ class TestFullGraphWithLLM:
                 },
             ]
         )
-        call_count = 0
 
         class PlanningLLM:
             def __init__(self):

@@ -309,6 +309,7 @@ function IncidentDetailContent() {
   const acknowledgedByDetail = acknowledgedByName(incident);
   const canPublishStatusUpdate = Boolean(
     statusPageEnabled &&
+      !isViewer &&
       incident.service_id &&
       statusPageComponents.some(
         (component) => component.service_id === incident.service_id,

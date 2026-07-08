@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
@@ -17,7 +18,7 @@ from backend.api.schemas import (
     WSMessage,
 )
 from backend.api.routes.ws import publish
-from backend.db.models import User
+from backend.db.models import ApprovalRequest, Session as SessionModel, User
 from backend.db.repos import ApprovalRequestRepo, SessionRepo
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -58,6 +59,31 @@ def _to_ws_message(request) -> WSMessage:
                 else None
             ),
         },
+    )
+
+
+async def _session_tiers(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    session_ids: set[uuid.UUID],
+) -> dict[uuid.UUID, int]:
+    if not session_ids:
+        return {}
+    result = await db.execute(
+        select(SessionModel.id, SessionModel.tier)
+        .where(SessionModel.org_id == org_id)
+        .where(SessionModel.id.in_(session_ids))
+    )
+    return {row.id: row.tier for row in result}
+
+
+def _approval_response(
+    request: ApprovalRequest,
+    *,
+    session_tier: int | None,
+) -> ApprovalRequestResponse:
+    return ApprovalRequestResponse.model_validate(request).model_copy(
+        update={"session_tier": session_tier}
     )
 
 
@@ -134,7 +160,11 @@ async def _resolve_request(
         )
 
     await publish(resolved.session_id, _to_ws_message(resolved))
-    return resolved
+    tiers = await _session_tiers(db, org_id, {resolved.session_id})
+    return _approval_response(
+        resolved,
+        session_tier=tiers.get(resolved.session_id),
+    )
 
 
 @router.get("", response_model=ApprovalListResponse, summary="List approval requests")
@@ -155,7 +185,17 @@ async def list_approvals(
         limit=limit,
         offset=offset,
     )
-    return ApprovalListResponse(items=list(items), total=len(items))
+    tiers = await _session_tiers(db, org_id, {item.session_id for item in items})
+    return ApprovalListResponse(
+        items=[
+            _approval_response(
+                item,
+                session_tier=tiers.get(item.session_id),
+            )
+            for item in items
+        ],
+        total=len(items),
+    )
 
 
 @router.post(
@@ -274,4 +314,8 @@ async def extend_request(
     if updated is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
     await publish(updated.session_id, _to_ws_message(updated))
-    return updated
+    tiers = await _session_tiers(db, org_id, {updated.session_id})
+    return _approval_response(
+        updated,
+        session_tier=tiers.get(updated.session_id),
+    )

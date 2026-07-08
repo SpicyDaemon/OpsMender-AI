@@ -115,7 +115,6 @@ def _request_data(request: Request, post: dict[str, Any] | None = None) -> _Requ
         except ValueError:
             port = 443 if https else 80
     else:
-        host = fwd_host
         port = 443 if https else 80
     return _RequestData(
         https=https,
@@ -225,7 +224,7 @@ async def saml_acs(slug: str, request: Request, db: AsyncSession = Depends(get_d
                 detail="Email domain not allowed for this organization.",
             )
 
-    name = (
+    (
         first_attribute(
             attributes,
             saml_row.name_attribute,

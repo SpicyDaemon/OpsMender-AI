@@ -516,6 +516,7 @@ export type ApprovalStatus =
 export interface ApprovalRequestResponse {
   id: string;
   session_id: string;
+  session_tier: number | null;
   action: Record<string, unknown>;
   justification: string | null;
   status: ApprovalStatus;

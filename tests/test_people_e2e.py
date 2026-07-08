@@ -26,7 +26,6 @@ Scenario:
 
 from __future__ import annotations
 
-import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -34,7 +33,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.api.app import create_app
 from backend.api.deps import set_session_factory
-from backend.db.models import Base, Organization
+from backend.db.models import Base
 from backend.db.repos import UserRepo
 
 

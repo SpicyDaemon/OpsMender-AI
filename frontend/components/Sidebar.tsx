@@ -30,6 +30,7 @@ import { useAuth } from "@/context/auth";
 import { usePendingApprovalsCount } from "@/context/liveEvents";
 import { useTheme } from "@/context/theme";
 import { getConfig } from "@/lib/api";
+import { autonomyTierDisplay } from "@/lib/displayNames";
 
 type NavItem = {
   href: string;
@@ -174,15 +175,6 @@ const ROLE_STYLES: Record<string, string> = {
   viewer: "bg-status-neutral-bg text-status-neutral border-status-neutral-border",
 };
 
-const TIER_STYLES: Record<number, { label: string; cls: string }> = {
-  0: { label: "Autonomous", cls: "bg-status-critical-bg text-status-critical border-status-critical-border" },
-  1: { label: "Approval", cls: "bg-status-high-bg text-status-high border-status-high-border" },
-  2: { label: "Advisory", cls: "bg-status-low-bg text-status-low border-status-low-border" },
-  // Tier 3 is removed; a legacy stored 3 is normalized to 2 before it reaches
-  // here. Kept as a defensive alias so a stale value never renders blank.
-  3: { label: "Advisory", cls: "bg-status-low-bg text-status-low border-status-low-border" },
-};
-
 type NavLinkArgs = {
   href: string;
   label: string;
@@ -270,7 +262,7 @@ function SidebarContent({
   mobile = false,
   onMobileClose,
 }: SidebarContentProps) {
-  const tierInfo = tier !== null ? TIER_STYLES[tier] : null;
+  const tierInfo = tier !== null ? autonomyTierDisplay(tier) : null;
   const { resolvedTheme } = useTheme();
   const iconSrc =
     resolvedTheme === "light"
@@ -318,7 +310,7 @@ function SidebarContent({
           {collapsed ? (
             <div
               title={`Tier ${tier} · ${tierInfo.label}`}
-              className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md border font-mono text-[11px] font-semibold ${tierInfo.cls}`}
+              className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md border font-mono text-[11px] font-semibold ${tierInfo.className}`}
             >
               T{tier}
             </div>
@@ -328,7 +320,7 @@ function SidebarContent({
                 Tier
               </span>
               <span
-                className={`inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tierInfo.cls}`}
+                className={`inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tierInfo.className}`}
               >
                 <span className="font-mono">T{tier}</span>
                 <span>{tierInfo.label}</span>

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -30,6 +29,9 @@ from backend.mcp.pool import MCPServerPool
 # ---------------------------------------------------------------------------
 # Fixtures (mirrors test_api.py minimal setup)
 # ---------------------------------------------------------------------------
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture

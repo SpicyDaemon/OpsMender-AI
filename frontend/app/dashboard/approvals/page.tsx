@@ -30,7 +30,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { useLiveEvents } from "@/context/liveEvents";
-import { titleCaseIdentifier } from "@/lib/displayNames";
+import { autonomyTierDisplay, titleCaseIdentifier } from "@/lib/displayNames";
 import { formatDateTime } from "@/lib/formatDate";
 
 function fmtDate(iso: string) {
@@ -90,6 +90,18 @@ function approvalEmptyStateCopy(statusFilter: ApprovalStatus | "") {
     description: "No approvals match this status. Try another filter or switch back to Pending for work waiting on you.",
     showTestAction: false,
   };
+}
+
+function ApprovalTierBadge({ tier }: { tier: number | null }) {
+  if (tier === null) return null;
+  const tierInfo = autonomyTierDisplay(tier);
+  return (
+    <Badge className={`border ${tierInfo.className}`}>
+      <span className="font-mono">T{tier}</span>
+      <span aria-hidden="true"> · </span>
+      {tierInfo.label}
+    </Badge>
+  );
 }
 
 function ActionContextDisclosure({
@@ -358,6 +370,9 @@ export default function ApprovalsPage() {
                     </button>
                     <Badge variant={a.status}>{titleCaseIdentifier(a.status)}</Badge>
                   </div>
+                  <div className="mt-2">
+                    <ApprovalTierBadge tier={a.session_tier} />
+                  </div>
 
                   {a.justification && (
                     <p className="mt-3 text-xs text-fg-secondary">
@@ -463,6 +478,7 @@ export default function ApprovalsPage() {
               <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
                 <th className="px-4 py-3">Action</th>
                 <th className="px-4 py-3">Session</th>
+                <th className="px-4 py-3">Tier</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Requested</th>
                 <th className="px-4 py-3">Time left</th>
@@ -509,6 +525,9 @@ export default function ApprovalsPage() {
                           {a.session_id.slice(0, 8)}
                         </span>
                       </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      <ApprovalTierBadge tier={a.session_tier} />
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={a.status}>{titleCaseIdentifier(a.status)}</Badge>
@@ -617,6 +636,10 @@ export default function ApprovalsPage() {
               <div>
                 <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Status</p>
                 <Badge variant={selected.status}>{titleCaseIdentifier(selected.status)}</Badge>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Tier</p>
+                <ApprovalTierBadge tier={selected.session_tier} />
               </div>
               <div>
                 <p className="text-xs font-medium text-fg-muted uppercase tracking-wide mb-1">Requested</p>

@@ -9,14 +9,13 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import json
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_session_factory
@@ -55,6 +54,9 @@ from backend.mcp.oauth import (
     TokenResponse,
     sign_state,
 )
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 SKILL_MD = """---
 version: "1"
@@ -1093,7 +1095,7 @@ class TestDomainIsolation:
         assert data["org_id"] == str(TEST_ORG_ID)
 
     async def test_set_primary_domain(self, client: AsyncClient, auth_headers):
-        r1 = await client.post(
+        await client.post(
             f"/organizations/{TEST_ORG_ID}/domains",
             json={"domain": "first.example.com"},
             headers=auth_headers,
@@ -7721,6 +7723,7 @@ class TestApprovals:
         data = resp.json()
         assert data["total"] == 1
         assert data["items"][0]["id"] == str(request.id)
+        assert data["items"][0]["session_tier"] == 1
 
     async def test_list_approvals_filtered_by_status(
         self, client: AsyncClient, app, auth_headers

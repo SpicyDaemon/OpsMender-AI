@@ -7,7 +7,6 @@ import json
 import uuid
 
 import httpx
-import pytest
 
 from backend.db.models import IntegrationConnector
 from backend.integrations.support import AsanaAdapter, FreshserviceAdapter, ZendeskAdapter

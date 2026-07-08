@@ -53,8 +53,8 @@ class GCPMonitoringAdapter(IngestAdapter):
         condition_name = incident.get("condition_name", "")
         summary = incident.get("summary", "No summary")
         url = incident.get("url", "")
-        started_at = incident.get("started_at", "")
-        ended_at = incident.get("ended_at")
+        incident.get("started_at", "")
+        incident.get("ended_at")
 
         # Build display title and description
         title = f"[GCP Monitoring] {policy_name}"

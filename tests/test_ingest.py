@@ -15,8 +15,6 @@ import asyncio
 import json
 import uuid
 
-TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -31,6 +29,9 @@ from backend.ingest.service import generate_token, hash_token
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 
 @pytest.fixture
@@ -1437,7 +1438,6 @@ class TestUniversalIngestIntegration:
     ):
         """A second payload with the same shape should not call the LLM."""
         from backend.ingest import llm_extractor
-        from backend.ingest import service as svc
 
         call_count = {"llm": 0}
 

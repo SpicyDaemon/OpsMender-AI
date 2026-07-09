@@ -36,8 +36,8 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 
 | Approval inbox | Settings |
 | --- | --- |
-| ![Pending approvals inbox with request context and approve or reject actions](site/public/screenshots/approvals-pending.png) | ![Settings page with session profiles, models, notifications, and workspace controls](site/public/screenshots/settings.png) |
-| Review Tier 1 actions with context before anything runs. | Configure workspace policy, session profiles, notifications, models, and guardrails. |
+| ![Pending approvals inbox with request context and approve or reject actions](site/public/screenshots/approvals-pending.png) | ![Settings page with session workflow, models, notifications, and workspace controls](site/public/screenshots/settings.png) |
+| Review Tier 1 actions with context before anything runs. | Configure workspace policy, session workflow, notifications, models, and guardrails. |
 
 ## Features
 

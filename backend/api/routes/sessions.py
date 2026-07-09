@@ -55,7 +55,6 @@ from backend.db.repos import (
     SessionMessageRepo,
     SessionRepo,
     SkillRepo,
-    WorkflowProfileRepo,
 )
 from backend.mcp.client import list_tools as mcp_list_tools
 from backend.mcp.pool import MCPServerPool
@@ -70,6 +69,7 @@ from backend.services.session_orchestration import (
     dispatch_session_ready,
     schedule_queue_drain,
 )
+from backend.workflow.settings import get_or_create_workflow_settings
 from backend.workflow.rollback import (
     reconstruct_tool_calls,
     replay_compensating_inverses,
@@ -138,22 +138,8 @@ async def create_session(
                 detail="Incident not found",
             )
 
-    workflow_profile_id = body.workflow_profile_id
-    if workflow_profile_id is not None:
-        profile = await WorkflowProfileRepo.get_by_id(db, org_id, workflow_profile_id)
-        if profile is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Workflow profile not found",
-            )
-        if not profile.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Workflow profile is inactive",
-            )
-    else:
-        default_profile = await WorkflowProfileRepo.get_default(db, org_id)
-        workflow_profile_id = None if default_profile is None else default_profile.id
+    default_profile = await get_or_create_workflow_settings(db, org_id)
+    workflow_profile_id = default_profile.id
 
     resolved_tier = await resolve_session_tier_for_incident(
         db,

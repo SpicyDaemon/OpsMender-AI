@@ -4825,135 +4825,83 @@ class TestReportsAndEmail:
 
 
 class TestWorkflowProfiles:
-    async def test_create_list_update_delete_workflow_profile(
+    async def test_get_workflow_settings_creates_default(
         self, client: AsyncClient, auth_headers
     ):
-        create_resp = await client.post(
-            "/workflow-profiles",
-            json={
-                "name": "fast-track",
-                "description": "Skip observe",
-                "node_order": [
-                    "diagnose",
-                    "plan",
-                    "tier_gate",
-                    "execute",
-                    "verify",
-                    "summarize",
-                ],
-                "is_active": True,
-                "is_default": True,
-            },
-            headers=auth_headers,
-        )
-        assert create_resp.status_code == 201
-        profile_id = create_resp.json()["id"]
-        assert create_resp.json()["is_default"] is True
-
-        list_resp = await client.get("/workflow-profiles", headers=auth_headers)
-        assert list_resp.status_code == 200
-        assert list_resp.json()["total"] >= 1
-
-        update_resp = await client.put(
-            f"/workflow-profiles/{profile_id}",
-            json={
-                "name": "fast-track",
-                "description": "Skip observe and verify",
-                "node_order": ["diagnose", "plan", "tier_gate", "execute", "summarize"],
-                "is_active": True,
-                "is_default": False,
-            },
-            headers=auth_headers,
-        )
-        assert update_resp.status_code == 200
-        assert update_resp.json()["node_order"] == [
+        resp = await client.get("/api/v1/workflow-settings", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["workflow_enabled"] is True
+        assert body["node_order"] == [
+            "recall",
+            "observe",
             "diagnose",
             "plan",
             "tier_gate",
             "execute",
+            "verify",
             "summarize",
+            "remember",
         ]
 
-        delete_resp = await client.delete(
-            f"/workflow-profiles/{profile_id}",
-            headers=auth_headers,
-        )
-        assert delete_resp.status_code == 204
-
-    async def test_list_session_profile_templates(
+    async def test_update_workflow_settings_validates_and_audits(
         self, client: AsyncClient, auth_headers
     ):
-        resp = await client.get("/workflow-profiles/templates", headers=auth_headers)
-        assert resp.status_code == 200
-        body = resp.json()
-        keys = {t["key"] for t in body["items"]}
-        assert keys == {
-            "standard_assisted_response",
-            "read_only_investigation",
-            "fast_triage",
-            "postmortem_builder",
-            "high_risk_change_review",
+        body = {
+            "workflow_enabled": False,
+            "node_order": ["diagnose", "plan", "tier_gate", "execute", "summarize"],
         }
-        # Every template has a usable name, description, and node order.
-        for t in body["items"]:
-            assert t["name"]
-            assert t["description"]
-            assert len(t["node_order"]) >= 2
-
-    async def test_template_node_order_creates_a_valid_profile(
-        self, client: AsyncClient, auth_headers
-    ):
-        templates = (
-            await client.get("/workflow-profiles/templates", headers=auth_headers)
-        ).json()["items"]
-        tmpl = next(t for t in templates if t["key"] == "read_only_investigation")
-        # A template's node order must save cleanly as a real profile.
-        resp = await client.post(
-            "/workflow-profiles",
-            json={
-                "name": "From template",
-                "description": tmpl["description"],
-                "node_order": tmpl["node_order"],
-                "is_active": True,
-            },
+        resp = await client.put(
+            "/api/v1/workflow-settings",
+            json=body,
             headers=auth_headers,
         )
-        assert resp.status_code == 201, resp.text
-        assert resp.json()["node_order"] == tmpl["node_order"]
+        assert resp.status_code == 200
+        assert resp.json() == body
 
-    async def test_create_workflow_profile_validates_node_order(
-        self, client: AsyncClient, auth_headers
-    ):
-        resp = await client.post(
-            "/workflow-profiles",
+        bad = await client.put(
+            "/api/v1/workflow-settings",
             json={
-                "name": "bad-workflow",
+                "workflow_enabled": True,
                 "node_order": ["plan", "execute", "tier_gate"],
-                "is_active": True,
             },
             headers=auth_headers,
         )
-        assert resp.status_code == 400
-        assert "tier_gate" in resp.json()["detail"]
+        assert bad.status_code == 400
+        assert "tier_gate" in bad.json()["detail"]
 
-    async def test_create_session_uses_default_workflow_profile(
+        audit = await client.get(
+            "/audit?tool_name=workflow_settings",
+            headers=auth_headers,
+        )
+        assert audit.status_code == 200
+        assert audit.json()["items"][0]["entry_type"] == "workflow_settings_update"
+
+    async def test_create_session_uses_workspace_workflow_setting(
         self, client: AsyncClient, app, auth_headers
     ):
-        async with app.state.session_factory() as db:
-            profile = await WorkflowProfileRepo.create(
-                db,
-                TEST_ORG_ID,
-                name="default-fast-track",
-                description="default workflow",
-                node_order=["diagnose", "plan", "tier_gate", "execute", "summarize"],
-                is_default=True,
-            )
-            await db.commit()
-            profile_id = profile.id
+        order = ["diagnose", "plan", "tier_gate", "execute", "summarize"]
+        update = await client.put(
+            "/api/v1/workflow-settings",
+            json={"workflow_enabled": True, "node_order": order},
+            headers=auth_headers,
+        )
+        assert update.status_code == 200
 
-        resp = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
+        retired_field = "_".join(("workflow", "profile", "id"))
+        resp = await client.post(
+            "/sessions",
+            json={"tier": 2, retired_field: str(uuid.uuid4())},
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
-        assert resp.json()["workflow_profile_id"] == str(profile_id)
+        profile_id = uuid.UUID(resp.json()["workflow_profile_id"])
+
+        async with app.state.session_factory() as db:
+            profile = await WorkflowProfileRepo.get_by_id(db, TEST_ORG_ID, profile_id)
+            assert profile is not None
+            assert profile.is_default is True
+            assert profile.node_order == order
 
 
 class TestConfigAPI:

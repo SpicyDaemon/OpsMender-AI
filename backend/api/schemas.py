@@ -569,7 +569,6 @@ class PostmortemMemoryCandidatesResponse(BaseModel):
 
 class SessionCreate(BaseModel):
     incident_id: Optional[uuid.UUID] = None
-    workflow_profile_id: Optional[uuid.UUID] = None
     # AI Autonomy Tier: 0 Autonomous · 1 Approval Required · 2 Advisory Only.
     # When omitted, the resolver applies service → skill → org → Tier 2.
     tier: Optional[int] = Field(default=None, ge=0, le=2)
@@ -1497,51 +1496,18 @@ class IncidentIntegrationLinkListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Workflow profiles (custom workflow builder — Phase 3)
+# Workspace session workflow settings
 # ---------------------------------------------------------------------------
 
 
-class WorkflowProfileUpsert(BaseModel):
-    name: str = Field(..., min_length=1, max_length=150)
-    description: Optional[str] = None
-    node_order: list[str] = Field(..., min_length=1)
-    workflow_enabled: bool = True
-    is_active: bool = True
-    is_default: bool = False
-
-
-class WorkflowProfileResponse(BaseModel):
-    id: uuid.UUID
-    name: str
-    description: Optional[str]
-    node_order: list[str]
+class WorkflowSettingsResponse(BaseModel):
     workflow_enabled: bool
-    is_active: bool
-    is_default: bool
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class WorkflowProfileListResponse(BaseModel):
-    items: list[WorkflowProfileResponse]
-    total: int
-
-
-class SessionProfileTemplate(BaseModel):
-    """A built-in Session Profile preset (a starting point, not yet saved)."""
-
-    key: str
-    name: str
-    description: str
     node_order: list[str]
-    workflow_enabled: bool = True
 
 
-class SessionProfileTemplateListResponse(BaseModel):
-    items: list[SessionProfileTemplate]
-    total: int
+class WorkflowSettingsUpdate(BaseModel):
+    workflow_enabled: bool
+    node_order: list[str] = Field(..., min_length=1)
 
 
 # ---------------------------------------------------------------------------

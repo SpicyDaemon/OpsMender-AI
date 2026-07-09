@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the API, database model, Settings, session start flow, and AI workflow
   runner; sessions now use the single-agent path by design.
 
+- **Simplification sprint — Phase 2 Session workflow.** Removed the Session
+  Profiles page and per-session profile picker; admins now manage one
+  workspace-wide Session workflow from Settings, and every new AI session stamps
+  that default workflow configuration.
+
 ### Fixed
 
 - **A+ closure sprint — A-8 README screenshot set.** The screenshot capture
@@ -99,11 +104,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   populate the Targets column with "All Targets" or scoped target badges.
 
 - **UI/UX Polish sprint (design-audit remediation) — Phase C:
-  Settings/Profile (P-20).** Settings now uses a four-card pointer row for
-  Models, MCP Servers, Session Profiles, and Notification
-  Channels; the duplicate Advanced Session Profiles pointer is gone,
-  Organization save is bottom-right in its card, and the profile page is titled
-  "My profile."
+  Settings/Profile (P-20).** Settings now uses a compact pointer row for
+  Models, MCP Servers, and Notification Channels; Organization save is
+  bottom-right in its card, and the profile page is titled "My profile."
 
 - **UI/UX Polish sprint (design-audit remediation) — Phase D:
   Inbox/preferences (P-18).** Inbox rows now coalesce duplicate notifications

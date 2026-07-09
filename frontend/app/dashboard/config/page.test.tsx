@@ -18,6 +18,7 @@ vi.mock("@/components/config/ConfigSections", () => ({
   ConfigPageSkeleton: () => <div>Loading settings</div>,
   RetentionSection: () => <section>Retention settings</section>,
   TierSection: () => <section>Tier settings</section>,
+  WorkflowSettingsSection: () => <section>Session workflow</section>,
 }));
 
 vi.mock("@/components/config/ApiTokensSection", () => ({
@@ -51,7 +52,6 @@ describe("Settings page", () => {
     const expectedLinks = [
       ["Models", "/dashboard/models"],
       ["MCP servers", "/dashboard/mcp-servers"],
-      ["Session Profiles", "/dashboard/workflows"],
       ["Notification Channels", "/dashboard/paging/notification-channels"],
     ] as const;
 
@@ -61,6 +61,7 @@ describe("Settings page", () => {
     }
 
     expect(screen.queryByRole("heading", { name: "Advanced" })).toBeNull();
+    expect(screen.getByText("Session workflow")).toBeTruthy();
     expect(screen.getByText("API token settings")).toBeTruthy();
   });
 });

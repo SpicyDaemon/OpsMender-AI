@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, ChevronRight, Cpu, Network, Workflow } from "lucide-react";
+import { Bell, ChevronRight, Cpu, Network } from "lucide-react";
 import { getConfig } from "@/lib/api";
 import type { ConfigResponse } from "@/lib/types";
 import { useAuth } from "@/context/auth";
@@ -10,6 +10,7 @@ import {
   ConfigPageSkeleton,
   RetentionSection,
   TierSection,
+  WorkflowSettingsSection,
 } from "@/components/config/ConfigSections";
 import { ApiTokensSection } from "@/components/config/ApiTokensSection";
 import { EmailSettingsSection } from "@/components/EmailSettingsSection";
@@ -41,7 +42,7 @@ export default function ConfigPage() {
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {[
           {
             href: "/dashboard/models",
@@ -54,12 +55,6 @@ export default function ConfigPage() {
             icon: Network,
             title: "MCP servers",
             description: "Tool server connections and runtime health.",
-          },
-          {
-            href: "/dashboard/workflows",
-            icon: Workflow,
-            title: "Session Profiles",
-            description: "How AI incident sessions run.",
           },
           {
             href: "/dashboard/paging/notification-channels",
@@ -91,6 +86,8 @@ export default function ConfigPage() {
         </h2>
         <TierSection config={config} onSaved={reload} canEdit={canEdit} />
       </section>
+
+      {canEdit && <WorkflowSettingsSection canEdit={canEdit} />}
 
       {user?.primary_org_id && (
         <OrganizationSettingsSection orgId={user.primary_org_id} />

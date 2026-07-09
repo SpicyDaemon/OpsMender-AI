@@ -188,7 +188,6 @@ COMPOSITES: list[dict] = [
             ("21_ai_memories.png", "Memories — /dashboard/memories"),
             ("22_ai_mcp_servers.png", "MCP Servers — /dashboard/mcp-servers"),
             ("23_ai_models.png", "Models — /dashboard/models"),
-            ("24_ai_workflows.png", "Workflows — /dashboard/workflows"),
         ],
     },
     {

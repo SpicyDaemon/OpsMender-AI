@@ -44,7 +44,6 @@ import {
   Sparkles,
   UserCog,
   Users,
-  Workflow,
   Wrench,
 } from "lucide-react";
 import { listIncidents } from "@/lib/api";
@@ -85,7 +84,6 @@ const NAVIGATE_ITEMS: Omit<CommandItem, "kind">[] = [
   { id: "n-memories", label: "AI Agent — Memories", icon: Brain, href: "/dashboard/memories" },
   { id: "n-mcp", label: "AI Agent — MCP Servers", icon: Network, href: "/dashboard/mcp-servers" },
   { id: "n-models", label: "AI Agent — Models", icon: Cpu, href: "/dashboard/models" },
-  { id: "n-workflows", label: "Advanced — Session Profiles", icon: Workflow, href: "/dashboard/workflows" },
   { id: "n-reliability", label: "Observe — Reliability", icon: Activity, href: "/dashboard/reliability", keywords: "sla mttr uptime" },
   { id: "n-activity", label: "Observe — Activity", icon: Activity, href: "/dashboard/activity", keywords: "audit log" },
   { id: "n-people", label: "Admin — People", icon: UserCog, href: "/dashboard/people", keywords: "users invites" },

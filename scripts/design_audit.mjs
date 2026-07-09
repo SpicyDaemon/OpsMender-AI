@@ -243,7 +243,6 @@ const pages = [
   ["06-orchestration", "/dashboard/orchestration"],
   ["07-approvals", "/dashboard/approvals"],
   ["08-activity", "/dashboard/activity"],
-  ["09-workflows", "/dashboard/workflows"],
   ["11-models", "/dashboard/models"],
   ["12-mcp-servers", "/dashboard/mcp-servers"],
   ["13-skills", "/dashboard/skills"],

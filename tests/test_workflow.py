@@ -53,6 +53,17 @@ from backend.skills.parser import OperationClassification, SkillDefinition
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
+async def _wait_for_pending_approval(factory, session_id: uuid.UUID):
+    for _ in range(100):
+        async with factory() as db:
+            pending = await ApprovalRequestRepo.list_pending(
+                db, TEST_ORG_ID, session_id=session_id
+            )
+            if pending:
+                return pending
+        await asyncio.sleep(0.02)
+    return []
+
 
 def _skill_def() -> SkillDefinition:
     """Return a minimal skill definition for testing."""
@@ -531,12 +542,9 @@ class TestTierGate:
         )
 
         task = asyncio.create_task(gate(state))
-        await asyncio.sleep(0.05)
+        pending = await _wait_for_pending_approval(factory, session.id)
 
         async with factory() as db:
-            pending = await ApprovalRequestRepo.list_pending(
-                db, TEST_ORG_ID, session_id=session.id
-            )
             assert len(pending) == 1
             await ApprovalRequestRepo.resolve(
                 db, TEST_ORG_ID, pending[0].id, status="approved"
@@ -573,11 +581,8 @@ class TestTierGate:
         )
 
         task = asyncio.create_task(gate(state))
-        await asyncio.sleep(0.05)
+        pending = await _wait_for_pending_approval(factory, session.id)
         async with factory() as db:
-            pending = await ApprovalRequestRepo.list_pending(
-                db, TEST_ORG_ID, session_id=session.id
-            )
             # The approval record captures the exact proposed parameters.
             assert pending[0].action["tool_parameters"] == original_params
             await ApprovalRequestRepo.resolve(
@@ -611,11 +616,8 @@ class TestTierGate:
         )
 
         task = asyncio.create_task(gate(state))
-        await asyncio.sleep(0.05)
+        pending = await _wait_for_pending_approval(factory, session.id)
         async with factory() as db:
-            pending = await ApprovalRequestRepo.list_pending(
-                db, TEST_ORG_ID, session_id=session.id
-            )
             assert len(pending) == 1  # generic tool went to approval, not auto-run
             await ApprovalRequestRepo.resolve(
                 db, TEST_ORG_ID, pending[0].id, status="rejected"
@@ -649,12 +651,9 @@ class TestTierGate:
         )
 
         task = asyncio.create_task(gate(state))
-        await asyncio.sleep(0.05)
+        pending = await _wait_for_pending_approval(factory, session.id)
 
         async with factory() as db:
-            pending = await ApprovalRequestRepo.list_pending(
-                db, TEST_ORG_ID, session_id=session.id
-            )
             await ApprovalRequestRepo.resolve(
                 db, TEST_ORG_ID, pending[0].id, status="rejected"
             )

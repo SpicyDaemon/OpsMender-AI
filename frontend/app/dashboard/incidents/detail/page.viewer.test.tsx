@@ -49,7 +49,6 @@ const apiMocks = vi.hoisted(() => ({
   listIncidentSessions: vi.fn().mockResolvedValue({ items: [] }),
   listProviders: vi.fn().mockResolvedValue({ items: [] }),
   listUsers: vi.fn().mockResolvedValue({ items: [], total: 0 }),
-  listWorkflowProfiles: vi.fn().mockResolvedValue({ items: [] }),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 

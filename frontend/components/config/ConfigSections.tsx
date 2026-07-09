@@ -6,6 +6,8 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Bell,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardCopy,
   ExternalLink,
   Eye,
@@ -26,16 +28,15 @@ import {
   createBotConnector,
   createIngestToken,
   getRetentionStatus,
+  getWorkflowSettings,
   runRetentionNow,
   updateRetention,
   createMCPServer,
   createModelConfig,
-  createWorkflowProfile,
   deleteBotConnector,
   deleteIngestToken,
   deleteMCPServer,
   deleteModelConfig,
-  deleteWorkflowProfile,
   getConfig,
   getModelBootstrapStatus,
   listBotConnectors,
@@ -46,9 +47,7 @@ import {
   listMCPServers,
   listModelConfigs,
   listProvidersWithParams,
-  listSessionProfileTemplates,
   listTeams,
-  listWorkflowProfiles,
   revokeIngestToken,
   setDefaultModelConfig,
   testModelConfig,
@@ -61,7 +60,7 @@ import {
   updateConfig,
   updateMCPServer,
   updateModelConfigById,
-  updateWorkflowProfile,
+  updateWorkflowSettings,
   listBotUserLinks,
   createBotUserLink,
   deleteBotUserLink,
@@ -100,10 +99,8 @@ import type {
   RetentionCategoryStorage,
   RetentionRunReportResponse,
   RetentionStatusResponse,
-  SessionProfileTemplate,
+  WorkflowSettingsResponse,
   WorkflowNode,
-  WorkflowProfileResponse,
-  WorkflowProfileUpsert,
   TeamResponse,
   UserResponse,
   UserListResponse,
@@ -4961,10 +4958,11 @@ export function IngestTokenSection({
 }
 
 // ---------------------------------------------------------------------------
-// Workflow Profiles (custom workflow builder — Phase 3)
+// Workspace session workflow settings
 // ---------------------------------------------------------------------------
 
 const WORKFLOW_NODE_OPTIONS: Array<{ value: WorkflowNode; label: string }> = [
+  { value: "recall", label: workflowNodeLabel("recall") },
   { value: "observe", label: workflowNodeLabel("observe") },
   { value: "diagnose", label: workflowNodeLabel("diagnose") },
   { value: "plan", label: workflowNodeLabel("plan") },
@@ -4972,65 +4970,63 @@ const WORKFLOW_NODE_OPTIONS: Array<{ value: WorkflowNode; label: string }> = [
   { value: "execute", label: workflowNodeLabel("execute") },
   { value: "verify", label: workflowNodeLabel("verify") },
   { value: "summarize", label: workflowNodeLabel("summarize") },
+  { value: "remember", label: workflowNodeLabel("remember") },
 ];
 
-type WorkflowProfileFormState = {
-  name: string;
-  description: string;
+const DEFAULT_WORKFLOW_NODE_ORDER: WorkflowNode[] = [
+  "recall",
+  "observe",
+  "diagnose",
+  "plan",
+  "tier_gate",
+  "execute",
+  "verify",
+  "summarize",
+  "remember",
+];
+
+type WorkflowSettingsFormState = {
+  workflow_enabled: boolean;
   node_order: WorkflowNode[];
-  is_active: boolean;
-  is_default: boolean;
 };
 
-function createWorkflowProfileFormState(
-  current: WorkflowProfileResponse | null,
-): WorkflowProfileFormState {
+function workflowSettingsFormState(
+  settings: WorkflowSettingsResponse | null,
+): WorkflowSettingsFormState {
   return {
-    name: current?.name ?? "",
-    description: current?.description ?? "",
-    node_order: current?.node_order ?? [
-      "observe",
-      "diagnose",
-      "plan",
-      "tier_gate",
-      "execute",
-      "verify",
-      "summarize",
-    ],
-    is_active: current?.is_active ?? true,
-    is_default: current?.is_default ?? false,
+    workflow_enabled: settings?.workflow_enabled ?? true,
+    node_order:
+      settings?.node_order && settings.node_order.length > 0
+        ? settings.node_order
+        : DEFAULT_WORKFLOW_NODE_ORDER,
   };
 }
 
-function WorkflowProfileModal({
-  open,
-  onClose,
-  onSubmit,
-  saving,
-  error,
-  initialProfile,
-  initialForm,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (form: WorkflowProfileFormState) => Promise<void>;
-  saving: boolean;
-  error: string;
-  initialProfile: WorkflowProfileResponse | null;
-  // Seed for "New from template": when present (and not editing), prefills the
-  // form from a built-in Session Profile template.
-  initialForm?: WorkflowProfileFormState | null;
-}) {
-  const [form, setForm] = useState<WorkflowProfileFormState>(
-    () => initialForm ?? createWorkflowProfileFormState(initialProfile),
+export function WorkflowSettingsSection({ canEdit }: { canEdit: boolean }) {
+  const [form, setForm] = useState<WorkflowSettingsFormState>(() =>
+    workflowSettingsFormState(null),
   );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  function setField<K extends keyof WorkflowProfileFormState>(
-    key: K,
-    value: WorkflowProfileFormState[K],
-  ) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const next = await getWorkflowSettings();
+      setForm(workflowSettingsFormState(next));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Session workflow failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function moveNode(index: number, direction: -1 | 1) {
     setForm((current) => {
@@ -5045,393 +5041,116 @@ function WorkflowProfileModal({
     });
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await onSubmit(form);
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={initialProfile ? "Edit Session Profile" : "New Session Profile"}
-      maxWidth="max-w-2xl"
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="workflow-name">Profile Name</Label>
-            <Input
-              id="workflow-name"
-              value={form.name}
-              onChange={(e) => setField("name", e.target.value)}
-              placeholder="Read-only Investigation"
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="workflow-desc">Description</Label>
-            <Input
-              id="workflow-desc"
-              value={form.description}
-              onChange={(e) => setField("description", e.target.value)}
-              placeholder="Investigate and diagnose only — no changes"
-            />
-          </div>
-        </div>
-
-        <div>
-          <Label>Phase order</Label>
-          <p className="mt-1 text-xs text-fg-muted">
-            Advanced: reorder the phases the agent runs during a session. Safety
-            rules are enforced automatically — Execute always runs immediately
-            after the Tier gate.
-          </p>
-          <div className="mt-3 space-y-2">
-            {form.node_order.map((node, index) => {
-              const option = WORKFLOW_NODE_OPTIONS.find(
-                (item) => item.value === node,
-              );
-              return (
-                <div
-                  key={`${node}-${index}`}
-                  className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2"
-                >
-                  <div className="flex items-center gap-3">
-                    <Badge>{index + 1}</Badge>
-                    <span className="text-sm font-medium text-fg-primary">
-                      {option?.label ?? node}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => moveNode(index, -1)}
-                      disabled={index === 0}
-                    >
-                      Up
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => moveNode(index, 1)}
-                      disabled={index === form.node_order.length - 1}
-                    >
-                      Down
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-primary">
-            <input
-              type="checkbox"
-              checked={form.is_active}
-              onChange={(e) => setField("is_active", e.target.checked)}
-              className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
-            />
-            Active (available when starting sessions)
-          </label>
-          <label className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-primary">
-            <input
-              type="checkbox"
-              checked={form.is_default}
-              onChange={(e) => setField("is_default", e.target.checked)}
-              className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
-            />
-            Default workflow profile
-          </label>
-        </div>
-
-        {error && <FormError message={error} />}
-
-        <div className="flex justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            loading={saving}
-            disabled={!form.name.trim() || form.node_order.length === 0}
-          >
-            <Save size={13} />{" "}
-            {initialProfile ? "Save Changes" : "Create Profile"}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-export function WorkflowProfileSection({
-  profiles,
-  onReload,
-  canEdit,
-}: {
-  profiles: WorkflowProfileResponse[];
-  onReload: () => Promise<void>;
-  canEdit: boolean;
-}) {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<WorkflowProfileResponse | null>(null);
-  const [prefill, setPrefill] = useState<WorkflowProfileFormState | null>(null);
-  const [templates, setTemplates] = useState<SessionProfileTemplate[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-
-  useEffect(() => {
-    if (!canEdit) return;
-    listSessionProfileTemplates()
-      .then((r) => setTemplates(r.items))
-      .catch(() => setTemplates([]));
-  }, [canEdit]);
-
-  function openCreateModal() {
-    setEditing(null);
-    setPrefill(null);
-    setError("");
-    setModalOpen(true);
-  }
-
-  function openFromTemplate(key: string) {
-    const t = templates.find((tmpl) => tmpl.key === key);
-    if (!t) return;
-    setEditing(null);
-    setPrefill({
-      name: t.name,
-      description: t.description,
-      node_order: t.node_order,
-      is_active: true,
-      is_default: false,
-    });
-    setError("");
-    setModalOpen(true);
-  }
-
-  function openEditModal(profile: WorkflowProfileResponse) {
-    setEditing(profile);
-    setPrefill(null);
-    setError("");
-    setModalOpen(true);
-  }
-
-  function closeModal() {
-    if (saving) return;
-    setModalOpen(false);
-    setEditing(null);
-    setPrefill(null);
-    setError("");
-  }
-
-  async function handleSubmit(form: WorkflowProfileFormState) {
+  async function handleSave() {
     setSaving(true);
     setError("");
     setNotice("");
     try {
-      const payload: WorkflowProfileUpsert = {
-        name: form.name.trim(),
-        description: form.description.trim() || undefined,
-        node_order: form.node_order,
-        is_active: form.is_active,
-        is_default: form.is_default,
-      };
-      if (editing) {
-        await updateWorkflowProfile(editing.id, payload);
-        setNotice("Session profile updated.");
-      } else {
-        await createWorkflowProfile(payload);
-        setNotice("Session profile created.");
-      }
-      setModalOpen(false);
-      setEditing(null);
-      setPrefill(null);
-      await onReload();
+      const next = await updateWorkflowSettings(form);
+      setForm(workflowSettingsFormState(next));
+      setNotice("Session workflow saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : "Session workflow could not be saved");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(profile: WorkflowProfileResponse) {
-    const confirmed = window.confirm(
-      `Delete session profile "${profile.name}"?`,
-    );
-    if (!confirmed) return;
-
-    setError("");
-    setNotice("");
-    try {
-      await deleteWorkflowProfile(profile.id);
-      setNotice("Session profile deleted.");
-      await onReload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
-    }
-  }
-
-  const workflowColumns = useMemo<DataTableColumn<WorkflowProfileResponse>[]>(
-    () => [
-      {
-        id: "name",
-        label: "Profile",
-        accessor: (profile) => `${profile.name} ${profile.description ?? ""}`,
-        sortable: true,
-        searchable: true,
-        cell: (profile) => (
-          <div className="min-w-[12rem]">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-fg-primary">
-                {profile.name}
-              </span>
-              {profile.is_default && <Badge>Default</Badge>}
-            </div>
-            {profile.description && (
-              <p className="mt-1 text-xs text-fg-secondary">
-                {profile.description}
-              </p>
-            )}
-          </div>
-        ),
-      },
-      {
-        id: "phases",
-        label: "Phases",
-        accessor: (profile) => profile.node_order.map(workflowNodeLabel).join(" "),
-        searchable: true,
-        cell: (profile) => (
-          <div className="flex flex-wrap gap-1.5">
-            {profile.node_order.map((node) => (
-              <span
-                key={node}
-                className="inline-flex items-center rounded-pill border border-status-neutral-border bg-status-neutral-bg px-2 py-0.5 text-[11px] font-medium text-fg-secondary"
-              >
-                {workflowNodeLabel(node)}
-              </span>
-            ))}
-          </div>
-        ),
-      },
-      {
-        id: "status",
-        label: "Status",
-        accessor: (profile) => (profile.is_active ? "active" : "inactive"),
-        sortable: true,
-        filterChips: {
-          options: [
-            { value: "active", label: "Active" },
-            { value: "inactive", label: "Inactive" },
-          ],
-          valueOf: (profile) => (profile.is_active ? "active" : "inactive"),
-        },
-        cell: (profile) => (
-          <Badge variant={profile.is_active ? "resolved" : "closed"}>
-            {profile.is_active ? "Active" : "Inactive"}
-          </Badge>
-        ),
-      },
-    ],
-    [],
-  );
-
   return (
-    <Section>
-      {!canEdit && (
-        <p className="text-sm text-fg-secondary">
-          Admin role required to manage session profiles.
-        </p>
-      )}
+    <Section
+      title="Session workflow"
+      description="Applies to every AI session in this workspace."
+    >
+      {loading ? (
+        <div className="h-44 animate-pulse rounded-lg border border-border-subtle bg-bg-panel" />
+      ) : (
+        <div className="space-y-4">
+          {!canEdit && (
+            <p className="text-sm text-fg-secondary">
+              Admin role required to edit the session workflow.
+            </p>
+          )}
 
-      {error && <FormError message={error} />}
-      {notice && <p className="text-sm text-status-low">{notice}</p>}
+          {error && <FormError message={error} />}
+          {notice && <p className="text-sm text-status-low">{notice}</p>}
 
-      <DataTable
-        rows={profiles}
-        columns={workflowColumns}
-        rowKey={(profile) => profile.id}
-        storageKey="opsmender:workflow-profiles-table"
-        filterBar
-        searchPlaceholder="Search session profiles by name, description, or phase…"
-        toolbarRight={
-          <>
-            <span className="text-sm text-fg-secondary">
-              {profiles.length} saved profile{profiles.length === 1 ? "" : "s"}
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-fg-primary">
+            <span>
+              <span className="font-medium">Workflow enabled</span>
+              <span className="mt-0.5 block text-xs text-fg-muted">
+                When disabled, sessions use the built-in linear flow.
+              </span>
             </span>
-            {canEdit && templates.length > 0 && (
-              <Select
-                aria-label="New from template"
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) openFromTemplate(e.target.value);
-                }}
-                className="w-auto"
-              >
-                <option value="">New from template…</option>
-                {templates.map((t) => (
-                  <option key={t.key} value={t.key}>
-                    {t.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-            <Button
-              onClick={openCreateModal}
+            <input
+              type="checkbox"
+              checked={form.workflow_enabled}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  workflow_enabled: event.target.checked,
+                }))
+              }
               disabled={!canEdit}
-              className="whitespace-nowrap"
-            >
-              <Plus size={14} /> New profile
-            </Button>
-          </>
-        }
-        empty={
-          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-            No custom session profiles yet. Sessions will use OpsMender&apos;s
-            built-in default flow.
-          </div>
-        }
-        rowActions={(profile) => (
-          <div className="flex min-w-[5.5rem] flex-nowrap justify-end gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => openEditModal(profile)}
-              disabled={!canEdit}
-            >
-              <Pencil size={13} /> Edit
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={DESTRUCTIVE_GHOST_CLASS}
-              onClick={() => handleDelete(profile)}
-              disabled={!canEdit}
-              aria-label={`Delete session profile ${profile.name}`}
-              title={`Delete session profile ${profile.name}`}
-            >
-              <Trash2 size={13} />
-            </Button>
-          </div>
-        )}
-      />
+              className="h-4 w-4 rounded border-border-strong text-accent-text focus:ring-accent"
+              aria-label="Workflow enabled"
+            />
+          </label>
 
-      {modalOpen && (
-        <WorkflowProfileModal
-          open={modalOpen}
-          onClose={closeModal}
-          onSubmit={handleSubmit}
-          saving={saving}
-          error={error}
-          initialProfile={editing}
-          initialForm={prefill}
-        />
+          <div>
+            <Label>Phase order</Label>
+            <p className="mt-1 text-xs text-fg-muted">
+              Safety rules are enforced automatically; Execute must stay directly after the Tier gate.
+            </p>
+            <div className="mt-3 space-y-2">
+              {form.node_order.map((node, index) => {
+                const option = WORKFLOW_NODE_OPTIONS.find((item) => item.value === node);
+                return (
+                  <div
+                    key={`${node}-${index}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Badge>{index + 1}</Badge>
+                      <span className="truncate text-sm font-medium text-fg-primary">
+                        {option?.label ?? workflowNodeLabel(node)}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => moveNode(index, -1)}
+                        disabled={!canEdit || index === 0}
+                        aria-label={`Move ${workflowNodeLabel(node)} earlier`}
+                        title={`Move ${workflowNodeLabel(node)} earlier`}
+                      >
+                        <ChevronUp size={14} aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => moveNode(index, 1)}
+                        disabled={!canEdit || index === form.node_order.length - 1}
+                        aria-label={`Move ${workflowNodeLabel(node)} later`}
+                        title={`Move ${workflowNodeLabel(node)} later`}
+                      >
+                        <ChevronDown size={14} aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={handleSave} loading={saving} disabled={!canEdit}>
+              <Save size={13} aria-hidden="true" /> Save
+            </Button>
+          </div>
+        </div>
       )}
     </Section>
   );

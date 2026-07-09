@@ -337,7 +337,6 @@ export interface OrchestrationOverview {
 
 export interface SessionCreate {
   incident_id?: string;
-  workflow_profile_id?: string;
   tier?: number;
   model_provider?: string;
   model_id?: string;
@@ -1118,48 +1117,24 @@ export interface BotConnectorPlatformListResponse {
 // ---------------------------------------------------------------------------
 
 export type WorkflowNode =
+  | "recall"
   | "observe"
   | "diagnose"
   | "plan"
   | "tier_gate"
   | "execute"
   | "verify"
-  | "summarize";
+  | "summarize"
+  | "remember";
 
-export interface WorkflowProfileResponse {
-  id: string;
-  name: string;
-  description: string | null;
-  node_order: WorkflowNode[];
-  is_active: boolean;
-  is_default: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface WorkflowProfileListResponse {
-  items: WorkflowProfileResponse[];
-  total: number;
-}
-
-export interface SessionProfileTemplate {
-  key: string;
-  name: string;
-  description: string;
+export interface WorkflowSettingsResponse {
+  workflow_enabled: boolean;
   node_order: WorkflowNode[];
 }
 
-export interface SessionProfileTemplateListResponse {
-  items: SessionProfileTemplate[];
-  total: number;
-}
-
-export interface WorkflowProfileUpsert {
-  name: string;
-  description?: string | null;
+export interface WorkflowSettingsUpdate {
+  workflow_enabled: boolean;
   node_order: WorkflowNode[];
-  is_active?: boolean;
-  is_default?: boolean;
 }
 
 // ---------------------------------------------------------------------------

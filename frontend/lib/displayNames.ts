@@ -28,6 +28,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 const WORKFLOW_NODE_LABELS: Record<string, string> = {
+  recall: "Recall",
   observe: "Observe",
   diagnose: "Diagnose",
   plan: "Plan",
@@ -35,6 +36,7 @@ const WORKFLOW_NODE_LABELS: Record<string, string> = {
   execute: "Execute",
   verify: "Verify",
   summarize: "Summarize",
+  remember: "Remember",
 };
 
 const TIER_DISPLAY: Record<number, { label: string; className: string }> = {

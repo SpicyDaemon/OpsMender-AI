@@ -397,25 +397,25 @@ async def _resolve_mcp_context(
     pool: MCPServerPool,
     config: AppConfig,
     *,
-    preferred_mcp_server_ids: list[uuid.UUID] | None = None,
+    mcp_server_ids: list[uuid.UUID] | None = None,
 ) -> tuple[MCPServerConfig | None, SkillDefinition, list[str]]:
     servers = await pool.list_servers(active_only=True)
     server_by_name = {server.name: server for server in servers}
-    preferred_names: list[str] = []
+    allowed_names: list[str] = []
 
     async with factory() as db:
-        if preferred_mcp_server_ids:
+        if mcp_server_ids:
             from backend.db.repos import MCPServerRepo
 
-            for server_id in preferred_mcp_server_ids:
+            for server_id in mcp_server_ids:
                 server_row = await MCPServerRepo.get_by_id(db, org_id, server_id)
                 if server_row is not None and server_row.name in server_by_name:
-                    preferred_names.append(server_row.name)
+                    allowed_names.append(server_row.name)
 
     selected_server = (
-        server_by_name[preferred_names[0]]
-        if preferred_names
-        else (servers[0] if servers else None)
+        server_by_name[allowed_names[0]]
+        if allowed_names
+        else None
     )
 
     async with factory() as db:
@@ -428,12 +428,12 @@ async def _resolve_mcp_context(
         skill_row = await SkillRepo.get_for_mcp_server(db, org_id, server_id)
 
     if skill_row is not None:
-        return selected_server, load_skill_def_text(skill_row.content_md), preferred_names
+        return selected_server, load_skill_def_text(skill_row.content_md), allowed_names
 
     skill_path = pathlib.Path(config.app.skill_definition_path)
     if skill_path.is_file():
-        return selected_server, load_skill_def(skill_path), preferred_names
-    return selected_server, load_skill_def("examples/SKILL.md"), preferred_names
+        return selected_server, load_skill_def(skill_path), allowed_names
+    return selected_server, load_skill_def("examples/SKILL.md"), allowed_names
 
 
 def _build_incident_description(
@@ -468,7 +468,7 @@ def _incident_payload(incident) -> dict[str, Any]:  # type: ignore[no-untyped-de
     }
 
 
-async def _preferred_mcp_ids_for_incident(
+async def _allowed_mcp_ids_for_incident(
     factory,
     org_id: uuid.UUID,
     incident,
@@ -477,7 +477,7 @@ async def _preferred_mcp_ids_for_incident(
         return []
     async with factory() as db:
         service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
-        raw_ids = getattr(service, "preferred_mcp_server_ids", None) if service else None
+        raw_ids = getattr(service, "mcp_server_ids", None) if service else None
     ids: list[uuid.UUID] = []
     for raw in raw_ids or []:
         try:
@@ -519,7 +519,7 @@ async def _service_context_for_incident(
     factory,
     org_id: uuid.UUID,
     incident,
-    preferred_mcp_names: list[str],
+    allowed_mcp_names: list[str],
 ) -> str:
     """Build the agent's ``## Service context`` block for the incident's service."""
     if incident is None or getattr(incident, "service_id", None) is None:
@@ -532,7 +532,7 @@ async def _service_context_for_incident(
         name=service.name,
         priority=getattr(service, "priority", None),
         description=getattr(service, "description", None),
-        preferred_mcp_names=preferred_mcp_names,
+        allowed_mcp_names=allowed_mcp_names,
     )
 
 
@@ -662,17 +662,17 @@ async def _run_session_workflow_inner(
         if pending_messages:
             await _mark_messages_consumed(factory, org_id, session_id, "workflow_start")
 
-        preferred_mcp_server_ids = await _preferred_mcp_ids_for_incident(
+        mcp_server_ids = await _allowed_mcp_ids_for_incident(
             factory,
             org_id,
             incident,
         )
-        selected_server, skill_def, preferred_mcp_server_names = await _resolve_mcp_context(
+        selected_server, skill_def, allowed_mcp_server_names = await _resolve_mcp_context(
             factory,
             org_id,
             pool,
             config,
-            preferred_mcp_server_ids=preferred_mcp_server_ids,
+            mcp_server_ids=mcp_server_ids,
         )
         allowed_integration_ids = await _allowed_integration_ids_for_incident(
             factory, org_id, incident
@@ -710,9 +710,9 @@ async def _run_session_workflow_inner(
 
         incident_description = _build_incident_description(incident, pending_messages)
         # v1.2 Phase 5 — ground the agent in the incident's service (name,
-        # priority, description, preferred MCP servers) from the first observe.
+        # priority, description, allowed MCP servers) from the first observe.
         service_context = await _service_context_for_incident(
-            factory, org_id, incident, preferred_mcp_server_names
+            factory, org_id, incident, allowed_mcp_server_names
         )
         if service_context:
             incident_description = f"{incident_description}\n\n{service_context}".strip()
@@ -724,7 +724,7 @@ async def _run_session_workflow_inner(
             "tier": effective_tier,
             "incident_description": incident_description,
             "incident": _incident_payload(incident),
-            "preferred_mcp_servers": preferred_mcp_server_names,
+            "preferred_mcp_servers": allowed_mcp_server_names,
             "message_history": [
                 {
                     "id": str(msg.id),

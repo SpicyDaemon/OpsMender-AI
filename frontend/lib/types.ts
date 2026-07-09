@@ -1865,7 +1865,7 @@ export interface ServiceResponse {
   description: string | null;
   priority: Priority;
   alert_grouping: AlertGroupingMode;
-  preferred_mcp_server_ids: string[];
+  mcp_server_ids: string[];
   model_config_ids: string[];
   allowed_integration_connector_ids: string[];
   integration_action_overrides: Record<string, Record<string, boolean>>;
@@ -1888,7 +1888,7 @@ export interface ServiceCreate {
   description?: string;
   priority?: Priority;
   alert_grouping?: AlertGroupingMode;
-  preferred_mcp_server_ids?: string[];
+  mcp_server_ids?: string[];
   model_config_ids?: string[];
   allowed_integration_connector_ids?: string[];
   integration_action_overrides?: Record<string, Record<string, boolean>>;
@@ -1903,7 +1903,7 @@ export interface ServiceUpdate {
   description?: string;
   priority?: Priority;
   alert_grouping?: AlertGroupingMode;
-  preferred_mcp_server_ids?: string[];
+  mcp_server_ids?: string[];
   model_config_ids?: string[];
   allowed_integration_connector_ids?: string[];
   integration_action_overrides?: Record<string, Record<string, boolean>>;

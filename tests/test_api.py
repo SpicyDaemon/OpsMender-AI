@@ -3493,13 +3493,16 @@ class TestSessions:
         assert incident.status_code == 201, incident.text
         await _ack_incident(client, incident.json()["id"], auth_headers)
 
-        session = await client.post(
-            "/sessions",
-            json={"incident_id": incident.json()["id"], "tier": 2},
-            headers=auth_headers,
-        )
-        assert session.status_code == 201, session.text
-        session_id = session.json()["id"]
+        async with app.state.session_factory() as db:
+            session = await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=2,
+                incident_id=uuid.UUID(incident.json()["id"]),
+                model_config_id=listed_model.id,
+            )
+            await db.commit()
+        session_id = str(session.id)
 
         detail = await client.get(f"/sessions/{session_id}", headers=auth_headers)
         assert detail.status_code == 200, detail.text
@@ -3543,14 +3546,17 @@ class TestSessions:
         assert empty_incident.status_code == 201, empty_incident.text
         await _ack_incident(client, empty_incident.json()["id"], auth_headers)
 
-        empty_session = await client.post(
-            "/sessions",
-            json={"incident_id": empty_incident.json()["id"], "tier": 2},
-            headers=auth_headers,
-        )
-        assert empty_session.status_code == 201, empty_session.text
+        async with app.state.session_factory() as db:
+            empty_session = await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=2,
+                incident_id=uuid.UUID(empty_incident.json()["id"]),
+                model_config_id=default_model.id,
+            )
+            await db.commit()
         empty_detail = await client.get(
-            f"/sessions/{empty_session.json()['id']}",
+            f"/sessions/{empty_session.id}",
             headers=auth_headers,
         )
         assert empty_detail.status_code == 200, empty_detail.text

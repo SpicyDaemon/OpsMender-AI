@@ -2199,7 +2199,9 @@ class Service(Base):
         String(10), default="inherit", nullable=False
     )
     intake_token: Mapped[str | None] = mapped_column(String(160), unique=True, nullable=True)
-    preferred_mcp_server_ids: Mapped[list[str]] = mapped_column(
+    # Strict allowlist of MCP server ids this service's sessions may use. Empty
+    # means no MCP tools are available for sessions attached to the service.
+    mcp_server_ids: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
     )
     model_config_ids: Mapped[list[str]] = mapped_column(

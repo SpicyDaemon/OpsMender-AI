@@ -18,7 +18,7 @@ export interface MultiSelectOption {
  *
  * When `ordered` is set, the selected array preserves selection order and
  * each chip gains move up / move down controls — used for ordered preference
- * lists (preferred MCP servers) and ordered rotations (roster members).
+ * lists (allowed MCP servers) and ordered rotations (roster members).
  */
 export function MultiSelect({
   options,

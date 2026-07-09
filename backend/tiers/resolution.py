@@ -33,10 +33,10 @@ def resolve_session_tier(
     return 2
 
 
-def _preferred_server_id(service: Service | None) -> uuid.UUID | None:
+def _service_mcp_server_id(service: Service | None) -> uuid.UUID | None:
     if service is None:
         return None
-    for raw in service.preferred_mcp_server_ids or []:
+    for raw in service.mcp_server_ids or []:
         try:
             return raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw))
         except (TypeError, ValueError, YAMLError):
@@ -57,7 +57,7 @@ async def resolve_session_tier_for_incident(
     if incident is not None and incident.service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
 
-    server_id = _preferred_server_id(service)
+    server_id = _service_mcp_server_id(service)
     if server_id is None:
         servers = await MCPServerRepo.list_all(db, org_id, active_only=True)
         server_id = servers[0].id if servers else None

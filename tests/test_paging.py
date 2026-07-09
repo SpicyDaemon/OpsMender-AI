@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_mcp_pool, set_session_factory
 from backend.api.session_runner import (
-    _preferred_mcp_ids_for_incident,
+    _allowed_mcp_ids_for_incident,
     _resolve_mcp_context,
 )
 from backend.config_loader import MCPServerConfig, set_env_path
@@ -726,7 +726,7 @@ class TestPagingAPI:
         )
         assert resp.status_code == 400
 
-    async def test_service_saves_priority_and_preferred_mcp_context(
+    async def test_service_saves_priority_and_mcp_allowlist_context(
         self, client: AsyncClient, app, auth_headers
     ):
         async with app.state.session_factory() as db:
@@ -747,14 +747,14 @@ class TestPagingAPI:
             first_model = await ModelConfigRepo.create(
                 db,
                 TEST_ORG_ID,
-                name=f"preferred-primary-{uuid.uuid4().hex[:6]}",
+                name=f"model-primary-{uuid.uuid4().hex[:6]}",
                 provider="ollama",
                 model_id="llama-primary",
             )
             second_model = await ModelConfigRepo.create(
                 db,
                 TEST_ORG_ID,
-                name=f"preferred-secondary-{uuid.uuid4().hex[:6]}",
+                name=f"model-secondary-{uuid.uuid4().hex[:6]}",
                 provider="ollama",
                 model_id="llama-secondary",
             )
@@ -772,7 +772,7 @@ class TestPagingAPI:
                 "name": "AWS Prod Critical",
                 "slug": f"aws-prod-critical-{uuid.uuid4().hex[:6]}",
                 "priority": "P0",
-                "preferred_mcp_server_ids": [str(second.id), str(first.id)],
+                "mcp_server_ids": [str(second.id), str(first.id)],
                 "model_config_ids": [
                     str(second_model.id),
                     str(first_model.id),
@@ -784,7 +784,7 @@ class TestPagingAPI:
         assert service.status_code == 201, service.text
         data = service.json()
         assert data["priority"] == "P0"
-        assert data["preferred_mcp_server_ids"] == [str(second.id), str(first.id)]
+        assert data["mcp_server_ids"] == [str(second.id), str(first.id)]
         assert data["model_config_ids"] == [
             str(second_model.id),
             str(first_model.id),
@@ -847,12 +847,12 @@ class TestPagingAPI:
             )
             await db.commit()
 
-        preferred_ids = await _preferred_mcp_ids_for_incident(
+        allowed_ids = await _allowed_mcp_ids_for_incident(
             app.state.session_factory,
             TEST_ORG_ID,
             incident,
         )
-        assert preferred_ids == [second.id, first.id]
+        assert allowed_ids == [second.id, first.id]
 
         class _Pool:
             async def list_servers(self, active_only=True):
@@ -869,16 +869,53 @@ class TestPagingAPI:
                     ),
                 ]
 
-        selected, _skill, preferred_names = await _resolve_mcp_context(
+        selected, _skill, allowed_names = await _resolve_mcp_context(
             app.state.session_factory,
             TEST_ORG_ID,
             _Pool(),
             app.state.config,
-            preferred_mcp_server_ids=preferred_ids,
+            mcp_server_ids=allowed_ids,
         )
-        assert preferred_names == ["gitlab-prod", "aws-prod"]
+        assert allowed_names == ["gitlab-prod", "aws-prod"]
         assert selected is not None
         assert selected.name == "gitlab-prod"
+
+        selected_a, _skill, allowed_a = await _resolve_mcp_context(
+            app.state.session_factory,
+            TEST_ORG_ID,
+            _Pool(),
+            app.state.config,
+            mcp_server_ids=[first.id],
+        )
+        assert selected_a is not None
+        assert selected_a.name == "aws-prod"
+        assert allowed_a == ["aws-prod"]
+        assert "gitlab-prod" not in allowed_a
+
+        selected_empty, _skill, allowed_empty = await _resolve_mcp_context(
+            app.state.session_factory,
+            TEST_ORG_ID,
+            _Pool(),
+            app.state.config,
+            mcp_server_ids=[],
+        )
+        assert selected_empty is None
+        assert allowed_empty == []
+
+        no_service_ids = await _allowed_mcp_ids_for_incident(
+            app.state.session_factory,
+            TEST_ORG_ID,
+            None,
+        )
+        selected_no_service, _skill, allowed_no_service = await _resolve_mcp_context(
+            app.state.session_factory,
+            TEST_ORG_ID,
+            _Pool(),
+            app.state.config,
+            mcp_server_ids=no_service_ids,
+        )
+        assert selected_no_service is None
+        assert allowed_no_service == []
 
     async def test_service_models_validate_order_and_limits(
         self, client: AsyncClient, app, auth_headers

@@ -61,16 +61,17 @@ describe("v1 paging IA", () => {
 
   it("keeps the Services form focused on v1 alert intake", () => {
     expect(pagingShellSource).toContain("Priority");
-    expect(pagingShellSource).toContain("Preferred MCP servers");
+    expect(pagingShellSource).toContain("MCP servers");
     expect(pagingShellSource).toContain("Models");
     expect(pagingShellSource).toContain("maxSelections={3}");
     expect(pagingShellSource).toContain(
       "Sessions for this service can use these models.",
     );
+    expect(pagingShellSource).toContain("Strict allowlist");
+    expect(pagingShellSource).toContain("no MCP access");
     expect(pagingShellSource).not.toContain("Incident auto-start policy");
     expect(pagingShellSource).toContain("service webhook");
     expect(pagingShellSource).not.toContain(["Source", "account"].join(" "));
-    expect(pagingShellSource).not.toContain(["Allowed", "MCP", "servers"].join(" "));
   });
 
   it("uses schedule language for rosters and drop language for maintenance", () => {

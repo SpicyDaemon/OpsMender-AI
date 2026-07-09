@@ -187,7 +187,7 @@ export const TABS: {
   {
     id: "services",
     label: "Services",
-    description: "Alert sources with fixed priority, intake URL, and preferred MCP servers.",
+    description: "Alert sources with fixed priority, intake URL, and allowed MCP servers.",
     icon: Server,
   },
   {
@@ -764,7 +764,7 @@ function ServicesPanel({
     description: "",
     priority: "P2" as Priority,
     alert_grouping: "inherit" as AlertGroupingMode,
-    preferred_mcp_server_ids: [] as string[],
+    mcp_server_ids: [] as string[],
     model_config_ids: [] as string[],
     allowed_integration_connector_ids: [] as string[],
     integration_action_overrides: {} as Record<
@@ -947,7 +947,7 @@ function ServicesPanel({
         description: form.description || undefined,
         priority: form.priority,
         alert_grouping: form.alert_grouping,
-        preferred_mcp_server_ids: form.preferred_mcp_server_ids,
+        mcp_server_ids: form.mcp_server_ids,
         model_config_ids: form.model_config_ids,
         allowed_integration_connector_ids:
           form.allowed_integration_connector_ids,
@@ -1000,7 +1000,7 @@ function ServicesPanel({
       description: service.description ?? "",
       priority: service.priority,
       alert_grouping: service.alert_grouping ?? "inherit",
-      preferred_mcp_server_ids: service.preferred_mcp_server_ids ?? [],
+      mcp_server_ids: service.mcp_server_ids ?? [],
       model_config_ids: service.model_config_ids ?? [],
       allowed_integration_connector_ids:
         service.allowed_integration_connector_ids ?? [],
@@ -1467,21 +1467,20 @@ function ServicesPanel({
             </p>
           </div>
           <div>
-            <Label>Preferred MCP servers</Label>
+            <Label>MCP servers</Label>
             <MultiSelect
-              ariaLabel="Preferred MCP servers"
+              ariaLabel="MCP servers"
               ordered
               options={mcpServers.map((s) => ({ value: s.id, label: s.name }))}
-              selected={form.preferred_mcp_server_ids}
+              selected={form.mcp_server_ids}
               onChange={(next) =>
-                setForm({ ...form, preferred_mcp_server_ids: next })
+                setForm({ ...form, mcp_server_ids: next })
               }
               emptyLabel="No MCP servers configured yet."
             />
             <p className="mt-1 text-xs text-fg-muted">
-              Ordered preference list. OpsMender tries these first to reduce
-              tool noise; operators can still ask for another configured MCP
-              server manually.
+              Strict allowlist — sessions for this service can only use these
+              MCP servers. Leave empty to give this service&apos;s sessions no MCP access.
             </p>
           </div>
           <div>

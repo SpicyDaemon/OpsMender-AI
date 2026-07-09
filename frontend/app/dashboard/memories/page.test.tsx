@@ -60,7 +60,7 @@ beforeEach(() => {
         slug: "checkout",
         description: null,
         priority: "P2",
-        preferred_mcp_server_ids: [],
+        mcp_server_ids: [],
         model_config_ids: [],
         ai_default_tier: null,
         intake_url: null,

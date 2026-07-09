@@ -18,7 +18,6 @@ import asyncio
 import hashlib
 import os
 import sys
-import uuid
 from datetime import date, datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -42,7 +41,6 @@ from backend.db.models import (
     MaintenanceWindow,
     MCPServer,
     ModelConfig,
-    Organization,
     OrgInvite,
     PriorityRule,
     Roster,
@@ -118,7 +116,8 @@ async def main():
             ("SRE", "sre", "Site reliability + on-call rotations."),
         ]:
             t = Team(org_id=oid, name=name, slug=slug, description=desc, created_by=users["admin"].id)
-            db.add(t); teams[slug] = t
+            db.add(t)
+            teams[slug] = t
         await db.flush()
 
         services = {}
@@ -130,7 +129,8 @@ async def main():
             ("sre", "ingest-pipeline", "ingest-pipeline", "Inbound alert ingestion + dedup."),
         ]:
             s = Service(org_id=oid, team_id=teams[tslug].id, name=name, slug=slug, description=desc, is_active=True)
-            db.add(s); services[slug] = s
+            db.add(s)
+            services[slug] = s
         await db.flush()
 
         # ---- Rosters + members ----
@@ -146,7 +146,8 @@ async def main():
                 handoff_time="09:00", time_zone=tz,
                 anchor_date=(date.today() - timedelta(days=14)),
             )
-            db.add(r); rosters[tslug] = r
+            db.add(r)
+            rosters[tslug] = r
         await db.flush()
 
         for ridx, (tslug, member_usernames) in enumerate([
@@ -169,7 +170,8 @@ async def main():
             c = EscalationChain(
                 org_id=oid, team_id=teams[tslug].id, name=name, description=desc, is_active=True,
             )
-            db.add(c); chains[tslug] = c
+            db.add(c)
+            chains[tslug] = c
         await db.flush()
 
         for cslug, steps in {
@@ -250,8 +252,20 @@ async def main():
                 command=cmd, args=args, url=url_, is_active=active,
                 last_successful_call_at=now - timedelta(minutes=2) if active else None,
             )
-            db.add(m); mcp_servers[name] = m
+            db.add(m)
+            mcp_servers[name] = m
         await db.flush()
+
+        services["api-gateway"].mcp_server_ids = [str(mcp_servers["kubernetes-prod"].id)]
+        services["auth-service"].mcp_server_ids = [str(mcp_servers["kubernetes-prod"].id)]
+        services["checkout-api"].mcp_server_ids = [
+            str(mcp_servers["kubernetes-prod"].id),
+            str(mcp_servers["github-readonly"].id),
+        ]
+        services["payments-db"].mcp_server_ids = [str(mcp_servers["postgres-prod"].id)]
+        services["ingest-pipeline"].mcp_server_ids = [
+            str(mcp_servers["kubernetes-prod"].id)
+        ]
 
         for name, mcp_name, desc, body in [
             ("Kubernetes safe ops", "kubernetes-prod", "Read pods, describe deployments, view events.",

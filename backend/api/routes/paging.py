@@ -113,7 +113,7 @@ def _new_service_intake_token() -> str:
     return f"svc_{secrets.token_urlsafe(32)}"
 
 
-async def _validate_preferred_mcp_servers(
+async def _validate_mcp_servers(
     db: AsyncSession,
     org_id: uuid.UUID,
     ids: list[uuid.UUID],
@@ -128,7 +128,7 @@ async def _validate_preferred_mcp_servers(
         if server is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Preferred MCP server not found",
+                detail="MCP server not found",
             )
         ordered.append(str(server_id))
     return ordered
@@ -424,8 +424,8 @@ async def create_service(
 ):
     if await TeamRepo.get_by_id(db, org_id, body.team_id) is None:
         raise HTTPException(status_code=400, detail="Owning team not found")
-    preferred_mcp_server_ids = await _validate_preferred_mcp_servers(
-        db, org_id, body.preferred_mcp_server_ids
+    mcp_server_ids = await _validate_mcp_servers(
+        db, org_id, body.mcp_server_ids
     )
     model_config_ids = await _validate_service_models(
         db, org_id, body.model_config_ids
@@ -445,7 +445,7 @@ async def create_service(
             priority=body.priority,
             alert_grouping=body.alert_grouping,
             intake_token=intake_token,
-            preferred_mcp_server_ids=preferred_mcp_server_ids,
+            mcp_server_ids=mcp_server_ids,
             model_config_ids=model_config_ids,
             allowed_integration_connector_ids=allowed_integration_connector_ids,
             integration_action_overrides=body.integration_action_overrides,
@@ -488,10 +488,10 @@ async def update_service(
         db, org_id, body.team_id
     ) is None:
         raise HTTPException(status_code=400, detail="Owning team not found")
-    preferred_mcp_server_ids = None
-    if body.preferred_mcp_server_ids is not None:
-        preferred_mcp_server_ids = await _validate_preferred_mcp_servers(
-            db, org_id, body.preferred_mcp_server_ids
+    mcp_server_ids = None
+    if body.mcp_server_ids is not None:
+        mcp_server_ids = await _validate_mcp_servers(
+            db, org_id, body.mcp_server_ids
         )
     model_config_ids = None
     if body.model_config_ids is not None:
@@ -525,9 +525,9 @@ async def update_service(
         description_provided="description" in body.model_fields_set,
         priority=body.priority,
         alert_grouping=body.alert_grouping,
-        preferred_mcp_server_ids=preferred_mcp_server_ids,
-        preferred_mcp_server_ids_provided=(
-            "preferred_mcp_server_ids" in body.model_fields_set
+        mcp_server_ids=mcp_server_ids,
+        mcp_server_ids_provided=(
+            "mcp_server_ids" in body.model_fields_set
         ),
         model_config_ids=model_config_ids,
         model_config_ids_provided=(

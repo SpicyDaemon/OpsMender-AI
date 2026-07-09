@@ -2399,7 +2399,8 @@ class ServiceCreate(BaseModel):
     description: Optional[str] = None
     priority: str = Field(default="P2", pattern="^(P0|P1|P2|P3)$")
     alert_grouping: str = Field(default="inherit", pattern="^(inherit|on|off)$")
-    preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
+    # Strict allowlist; empty means no MCP servers for this service's sessions.
+    mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
     model_config_ids: list[uuid.UUID] = Field(
         default_factory=list, max_length=3
     )
@@ -2420,7 +2421,7 @@ class ServiceUpdate(BaseModel):
     description: Optional[str] = None
     priority: Optional[str] = Field(None, pattern="^(P0|P1|P2|P3)$")
     alert_grouping: Optional[str] = Field(None, pattern="^(inherit|on|off)$")
-    preferred_mcp_server_ids: Optional[list[uuid.UUID]] = None
+    mcp_server_ids: Optional[list[uuid.UUID]] = None
     model_config_ids: Optional[list[uuid.UUID]] = Field(
         default=None, max_length=3
     )
@@ -2439,7 +2440,7 @@ class ServiceResponse(BaseModel):
     description: Optional[str]
     priority: str
     alert_grouping: str = "inherit"
-    preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
+    mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
     model_config_ids: list[uuid.UUID] = Field(default_factory=list)
     allowed_integration_connector_ids: list[uuid.UUID] = Field(default_factory=list)
     integration_action_overrides: dict[str, dict[str, Any]] = Field(

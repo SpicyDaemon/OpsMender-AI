@@ -16,22 +16,22 @@ def test_full_block():
         name="checkout-api",
         priority="P1",
         description="Handles checkout and payments",
-        preferred_mcp_names=["k8s-prod", "datadog"],
+        allowed_mcp_names=["k8s-prod", "datadog"],
     )
     assert out.startswith("## Service context")
     assert "- Service: checkout-api" in out
     assert "- Priority: P1" in out
     assert "- Description: Handles checkout and payments" in out
-    assert "- Preferred MCP servers: k8s-prod, datadog" in out
+    assert "- Allowed MCP servers: k8s-prod, datadog" in out
 
 
 def test_omits_empty_optional_fields():
-    out = format_service_context(name="svc", description="  ", preferred_mcp_names=[])
+    out = format_service_context(name="svc", description="  ", allowed_mcp_names=[])
     assert out == "## Service context\n- Service: svc"
 
 
 def test_filters_blank_mcp_names():
     out = format_service_context(
-        name="svc", preferred_mcp_names=["", "  ", "real-mcp"]
+        name="svc", allowed_mcp_names=["", "  ", "real-mcp"]
     )
-    assert "- Preferred MCP servers: real-mcp" in out
+    assert "- Allowed MCP servers: real-mcp" in out

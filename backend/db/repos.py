@@ -5809,7 +5809,7 @@ class ServiceRepo:
         priority: str = "P2",
         alert_grouping: str = "inherit",
         intake_token: str | None = None,
-        preferred_mcp_server_ids: list[str] | None = None,
+        mcp_server_ids: list[str] | None = None,
         model_config_ids: list[str] | None = None,
         allowed_integration_connector_ids: list[str] | None = None,
         integration_action_overrides: dict | None = None,
@@ -5826,7 +5826,7 @@ class ServiceRepo:
             priority=priority,
             alert_grouping=alert_grouping,
             intake_token=intake_token,
-            preferred_mcp_server_ids=preferred_mcp_server_ids or [],
+            mcp_server_ids=mcp_server_ids or [],
             model_config_ids=model_config_ids or [],
             allowed_integration_connector_ids=allowed_integration_connector_ids or [],
             integration_action_overrides=integration_action_overrides or {},
@@ -5896,8 +5896,8 @@ class ServiceRepo:
         priority: str | None = None,
         alert_grouping: str | None = None,
         intake_token: str | None = None,
-        preferred_mcp_server_ids: list[str] | None = None,
-        preferred_mcp_server_ids_provided: bool = False,
+        mcp_server_ids: list[str] | None = None,
+        mcp_server_ids_provided: bool = False,
         model_config_ids: list[str] | None = None,
         model_config_ids_provided: bool = False,
         allowed_integration_connector_ids: list[str] | None = None,
@@ -5923,8 +5923,8 @@ class ServiceRepo:
             values["alert_grouping"] = alert_grouping
         if intake_token is not None:
             values["intake_token"] = intake_token
-        if preferred_mcp_server_ids_provided:
-            values["preferred_mcp_server_ids"] = preferred_mcp_server_ids or []
+        if mcp_server_ids_provided:
+            values["mcp_server_ids"] = mcp_server_ids or []
         if model_config_ids_provided:
             values["model_config_ids"] = model_config_ids or []
         if allowed_integration_connector_ids_provided:

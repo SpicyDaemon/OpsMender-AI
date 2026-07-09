@@ -26,7 +26,9 @@ Every paged incident walks the same simple loop:
 5. The team's escalation chain pages the roster or user levels for that service.
 6. An operator acknowledges, works the incident, and resolves it with or without AI assistance.
 
-The AI does not assign or override priority in v1. It may use the service's ordered Preferred MCP servers to reduce tool-selection noise, but preferred MCPs are recommendations, not a hard allowlist.
+The AI does not assign or override priority in v1. A service's MCP servers are
+a strict allowlist: sessions for that service can only use those servers, and
+an empty list means the service's sessions have no MCP access.
 
 ---
 
@@ -39,7 +41,7 @@ Organization
        └── Services
             ├── Generated intake URL
             ├── Fixed priority
-            ├── Preferred MCP servers
+            ├── MCP servers
             ├── Rosters
             └── Maintenance Windows
 
@@ -80,10 +82,11 @@ Each service has:
 - Fixed priority: `P0`, `P1`, `P2`, or `P3`.
 - Enabled state.
 - Generated intake URL.
-- Ordered Preferred MCP servers.
+- MCP servers strict allowlist.
 - Up to three ranked Models.
 
-Preferred MCP servers tell the AI which configured MCP servers to try first for incidents from that service. Operators can still manually ask the AI to use another configured MCP server during a session.
+MCP servers define the only configured MCP servers sessions for that service may
+use. Leave the list empty to give the service's sessions no MCP tools.
 
 Models define the service-specific models an operator may switch to during an
 AI session. The workspace default model is always available, and a service with
@@ -232,7 +235,7 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 
 1. Create a team at `/dashboard/paging/teams`.
 2. Create the team's escalation chain at `/dashboard/paging/escalation-chains`.
-3. Create a service at `/dashboard/paging/services`; choose priority, Preferred MCP servers, and up to three Models.
+3. Create a service at `/dashboard/paging/services`; choose priority, MCP servers, and up to three Models.
 4. Copy the service intake URL and configure your monitor to POST alerts to it.
 5. Create one or more roster schedules at `/dashboard/paging/rosters`.
 6. Add maintenance windows for planned work at `/dashboard/paging/maintenance-windows`.

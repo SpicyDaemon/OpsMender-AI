@@ -81,7 +81,7 @@ Diagnosis:
 Available tools (from skill definition):
 {available_tools}
 
-Preferred MCP servers for this incident:
+Allowed MCP servers for this incident:
 {preferred_mcp_servers}
 
 Operator guidance (the operator redirected your previous plan — follow this):

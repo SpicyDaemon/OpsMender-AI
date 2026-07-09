@@ -59,7 +59,7 @@ const { overview } = vi.hoisted(() => {
       model_name: null,
       queued_at: new Date().toISOString(),
       queue_expires_at: new Date(Date.now() + 600000).toISOString(),
-      queue_reason: "All preferred models at capacity",
+      queue_reason: "All models at capacity",
       queue_rank: null,
       force_started: false,
       started_at: new Date().toISOString(),
@@ -104,7 +104,7 @@ describe("Session Orchestration page", () => {
 
     // Queue + running rows.
     expect(screen.getByTestId("queued-session-row")).toBeTruthy();
-    expect(screen.getByText("All preferred models at capacity")).toBeTruthy();
+    expect(screen.getByText("All models at capacity")).toBeTruthy();
     expect(screen.getByTestId("active-session-row")).toBeTruthy();
     expect(screen.getByText("AWS Critical outage")).toBeTruthy();
   });

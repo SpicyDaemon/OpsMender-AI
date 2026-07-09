@@ -30,6 +30,7 @@ import {
   connectSessionStream,
   getIncident,
   getSession,
+  listModelConfigs,
   listApprovals,
   listMCPServers,
   listSessionMessages,
@@ -39,11 +40,13 @@ import {
   rejectRequest,
   sendSessionMessage,
   stopSession,
+  switchSessionModel,
 } from "@/lib/api";
 import type {
   ApprovalRequestResponse,
   IncidentResponse,
   MCPServerResponse,
+  ModelConfigResponse,
   SessionRollbackResponse,
   SessionMessageResponse,
   SessionResponse,
@@ -440,6 +443,9 @@ function SessionPageContent() {
   // Sprint 58 Step 3: loaded once for ToolCallCard's best-effort
   // tool-name → MCP-server-name lookup. A miss just renders "—".
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
+  const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
+  const [modelSwitching, setModelSwitching] = useState(false);
+  const [modelSwitchError, setModelSwitchError] = useState("");
 
   const counterRef = useRef(0);
   const eventsBottomRef = useRef<HTMLDivElement>(null);
@@ -447,6 +453,20 @@ function SessionPageContent() {
   const wsRef = useRef<WebSocket | null>(null);
 
   const idGen = useCallback(() => ++counterRef.current, []);
+
+  const allowedModelOptions = useMemo(() => {
+    const allowedIds = session?.allowed_model_config_ids ?? [];
+    const byId = new Map(modelConfigs.map((model) => [model.id, model]));
+    return allowedIds
+      .map((modelId) => byId.get(modelId))
+      .filter((model): model is ModelConfigResponse => Boolean(model?.is_active));
+  }, [modelConfigs, session?.allowed_model_config_ids]);
+
+  const selectedModelValue =
+    session?.model_config_id &&
+    allowedModelOptions.some((model) => model.id === session.model_config_id)
+      ? session.model_config_id
+      : (allowedModelOptions[0]?.id ?? "");
 
   const refreshApprovals = useCallback(async () => {
     if (!id) return;
@@ -474,6 +494,13 @@ function SessionPageContent() {
       })
       .catch(() => {
         if (!cancelled) setMcpServers([]);
+      });
+    listModelConfigs()
+      .then((res) => {
+        if (!cancelled) setModelConfigs(res.items);
+      })
+      .catch(() => {
+        if (!cancelled) setModelConfigs([]);
       });
     return () => {
       cancelled = true;
@@ -690,6 +717,24 @@ function SessionPageContent() {
     }
   }
 
+  async function handleModelSwitch(modelConfigId: string) {
+    if (!id || !session || !modelConfigId || modelConfigId === session.model_config_id) {
+      return;
+    }
+    setModelSwitching(true);
+    setModelSwitchError("");
+    try {
+      const updated = await switchSessionModel(id, modelConfigId);
+      setSession(updated);
+    } catch (err) {
+      setModelSwitchError(
+        err instanceof Error ? err.message : "Failed to switch model",
+      );
+    } finally {
+      setModelSwitching(false);
+    }
+  }
+
   async function handleSend() {
     const content = draft.trim();
     // Guard: no empty sends, no double-sends, and never post to an ended
@@ -815,10 +860,32 @@ function SessionPageContent() {
                     {tier0Timer.label}
                   </Badge>
                 )}
-                {session.model_provider && (
-                  <span className="text-xs text-fg-muted font-mono">
-                    {session.model_provider}/{session.model_id ?? "default"}
-                  </span>
+                {allowedModelOptions.length > 0 ? (
+                  <div className="w-56 max-w-full">
+                    <Label htmlFor="session-model-picker" className="sr-only">
+                      Model
+                    </Label>
+                    <Select
+                      id="session-model-picker"
+                      value={selectedModelValue}
+                      disabled={modelSwitching || isTerminalStatus(session.status)}
+                      onChange={(event) => handleModelSwitch(event.target.value)}
+                      className="h-8 py-1 text-xs font-mono"
+                    >
+                      {allowedModelOptions.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name}
+                          {model.is_default ? " · default" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : (
+                  session.model_provider && (
+                    <span className="text-xs text-fg-muted font-mono">
+                      {session.model_provider}/{session.model_id ?? "default"}
+                    </span>
+                  )
                 )}
               </div>
               <p className="mt-1.5 text-xs text-fg-muted font-mono tabular-nums">
@@ -833,6 +900,11 @@ function SessionPageContent() {
                   </span>
                 ) : null}
               </p>
+              {modelSwitchError && (
+                <p className="mt-1 text-xs text-status-critical">
+                  {modelSwitchError}
+                </p>
+              )}
             </div>
             {isTerminalStatus(session.status) ? (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full shrink-0 bg-bg-elevated text-fg-secondary">

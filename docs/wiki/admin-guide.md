@@ -83,8 +83,8 @@ extension warning, and scheduler sweep intervals are configured with
 `OPSMENDER_APPROVAL_EXTENSION_WARNING_SECONDS`, and
 `OPSMENDER_SESSION_QUEUE_SWEEP_SECONDS`.
 6. Set **Concurrent Sessions** if the provider/model needs a per-workspace
-   incident-response limit. `0` means unlimited. When a preferred model is full,
-   OpsMender tries the Service's next preferred model, then the workspace
+   incident-response limit. `0` means unlimited. When a model is full,
+   OpsMender tries the Service's next model, then the workspace
    default, then another active model. This cap does not apply to ingest/triage
    classification.
 7. Save. Model discovery is cached for 60 seconds for local/proxy endpoints and 1 hour for cloud catalogs so the page stays snappy.

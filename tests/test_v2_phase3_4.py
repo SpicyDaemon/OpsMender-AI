@@ -59,7 +59,7 @@ async def _seed(db):
         name="svc",
         slug="svc",
         priority="P1",
-        preferred_model_config_ids=[str(model.id)],
+        model_config_ids=[str(model.id)],
     )
     db.add(service)
     await db.flush()
@@ -98,7 +98,7 @@ async def test_list_live_with_incident_splits_and_counts(factory):
                 tier=2,
                 status="queued",
                 queued_at=_now(),
-                queue_reason="All preferred models at capacity",
+                queue_reason="All models at capacity",
             )
         )
         # a terminal session that must NOT appear

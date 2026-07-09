@@ -35,6 +35,7 @@ from backend.api.schemas import (
     SessionMessageCreate,
     SessionMessageListResponse,
     SessionMessageResponse,
+    SessionModelSwitchRequest,
     SessionOverrideRequest,
     SessionResponse,
     SessionRollbackRequest,
@@ -52,6 +53,7 @@ from backend.db.repos import (
     IncidentRepo,
     MCPServerRepo,
     ModelConfigRepo,
+    ServiceRepo,
     SessionMessageRepo,
     SessionRepo,
     SkillRepo,
@@ -90,13 +92,17 @@ def _tier0_max_session_seconds() -> int:
 
 
 def _to_session_response(
-    session, *, capacity_warning: str | None = None
+    session,
+    *,
+    capacity_warning: str | None = None,
+    allowed_model_config_ids: list[uuid.UUID] | None = None,
 ) -> SessionResponse:
     return SessionResponse(
         id=session.id,
         incident_id=session.incident_id,
         workflow_profile_id=getattr(session, "workflow_profile_id", None),
         model_config_id=getattr(session, "model_config_id", None),
+        allowed_model_config_ids=allowed_model_config_ids or [],
         tier=session.tier,
         model_provider=session.model_provider,
         model_id=session.model_id,
@@ -113,6 +119,44 @@ def _to_session_response(
         if int(session.tier) == 0
         else None,
     )
+
+
+async def _allowed_model_config_ids_for_session(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    session,
+) -> list[uuid.UUID]:
+    models = list(await ModelConfigRepo.list_all(db, org_id))
+    active_ids = {model.id for model in models if model.is_active}
+    allowed: list[uuid.UUID] = []
+
+    def add(raw_id) -> None:
+        try:
+            config_id = uuid.UUID(str(raw_id))
+        except (TypeError, ValueError):
+            return
+        if config_id in active_ids and config_id not in allowed:
+            allowed.append(config_id)
+
+    incident = (
+        await IncidentRepo.get_by_id(db, org_id, session.incident_id)
+        if session.incident_id is not None
+        else None
+    )
+    service = (
+        await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        if incident is not None and incident.service_id is not None
+        else None
+    )
+    if service is not None:
+        for raw_id in service.model_config_ids or []:
+            add(raw_id)
+
+    default_model = await ModelConfigRepo.get_default(db, org_id)
+    if default_model is not None and default_model.is_active:
+        add(default_model.id)
+
+    return allowed
 
 
 @router.post(
@@ -496,7 +540,60 @@ async def get_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
         )
-    return _to_session_response(session)
+    allowed_model_config_ids = await _allowed_model_config_ids_for_session(
+        db, org_id, session
+    )
+    return _to_session_response(
+        session,
+        allowed_model_config_ids=allowed_model_config_ids,
+    )
+
+
+@router.post(
+    "/{session_id}/model",
+    response_model=SessionResponse,
+    summary="Switch the model for a session",
+)
+async def switch_session_model(
+    session_id: uuid.UUID,
+    body: SessionModelSwitchRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+    allowed_model_config_ids = await _allowed_model_config_ids_for_session(
+        db, org_id, session
+    )
+    if body.model_config_id not in allowed_model_config_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Model is not available for this session",
+        )
+
+    model = await ModelConfigRepo.get_by_id(db, org_id, body.model_config_id)
+    if model is None or not model.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Model is not available for this session",
+        )
+
+    session.model_config_id = model.id
+    session.model_provider = model.provider
+    session.model_id = model.model_id
+    await db.commit()
+
+    refreshed = await SessionRepo.get_by_id(db, org_id, session_id)
+    return _to_session_response(
+        refreshed if refreshed is not None else session,
+        allowed_model_config_ids=allowed_model_config_ids,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -3334,7 +3334,7 @@ class TestSessions:
                 name="Force Queue Service",
                 slug=f"force-queue-service-{uuid.uuid4().hex[:6]}",
                 priority="P0",
-                preferred_model_config_ids=[str(model.id)],
+                model_config_ids=[str(model.id)],
             )
             incident = await IncidentRepo.create(
                 db,
@@ -3404,7 +3404,7 @@ class TestSessions:
                 team_id=team.id,
                 name="Model Session Service",
                 slug=f"model-session-service-{uuid.uuid4().hex[:6]}",
-                preferred_model_config_ids=[str(model.id)],
+                model_config_ids=[str(model.id)],
             )
             await db.commit()
 
@@ -3429,6 +3429,134 @@ class TestSessions:
         assert session.status_code == 201, session.text
         assert session.json()["model_provider"] == "ollama"
         assert session.json()["model_id"] == "incident-default-model"
+
+    async def test_session_model_switch_is_limited_to_service_models_and_default(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            default_model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"default-switch-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id=f"default-switch-{uuid.uuid4().hex[:6]}",
+            )
+            listed_model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"listed-switch-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id=f"listed-switch-{uuid.uuid4().hex[:6]}",
+            )
+            unlisted_model = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"unlisted-switch-{uuid.uuid4().hex[:6]}",
+                provider="ollama",
+                model_id=f"unlisted-switch-{uuid.uuid4().hex[:6]}",
+            )
+            await ModelConfigRepo.set_default(db, TEST_ORG_ID, default_model.id)
+            team = await TeamRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Model Switch Team",
+                slug=f"model-switch-team-{uuid.uuid4().hex[:6]}",
+                created_by=uuid.uuid4(),
+            )
+            service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Model Switch Service",
+                slug=f"model-switch-service-{uuid.uuid4().hex[:6]}",
+                model_config_ids=[str(listed_model.id)],
+            )
+            empty_service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Default Only Service",
+                slug=f"default-only-service-{uuid.uuid4().hex[:6]}",
+                model_config_ids=[],
+            )
+            await db.commit()
+
+        incident = await client.post(
+            "/incidents",
+            json={
+                "title": "Curated model switch",
+                "description": "Only service models and default are allowed",
+                "service_id": str(service.id),
+            },
+            headers=auth_headers,
+        )
+        assert incident.status_code == 201, incident.text
+        await _ack_incident(client, incident.json()["id"], auth_headers)
+
+        session = await client.post(
+            "/sessions",
+            json={"incident_id": incident.json()["id"], "tier": 2},
+            headers=auth_headers,
+        )
+        assert session.status_code == 201, session.text
+        session_id = session.json()["id"]
+
+        detail = await client.get(f"/sessions/{session_id}", headers=auth_headers)
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["allowed_model_config_ids"] == [
+            str(listed_model.id),
+            str(default_model.id),
+        ]
+
+        rejected = await client.post(
+            f"/sessions/{session_id}/model",
+            json={"model_config_id": str(unlisted_model.id)},
+            headers=auth_headers,
+        )
+        assert rejected.status_code == 422
+
+        listed = await client.post(
+            f"/sessions/{session_id}/model",
+            json={"model_config_id": str(listed_model.id)},
+            headers=auth_headers,
+        )
+        assert listed.status_code == 200, listed.text
+        assert listed.json()["model_config_id"] == str(listed_model.id)
+
+        default = await client.post(
+            f"/sessions/{session_id}/model",
+            json={"model_config_id": str(default_model.id)},
+            headers=auth_headers,
+        )
+        assert default.status_code == 200, default.text
+        assert default.json()["model_config_id"] == str(default_model.id)
+
+        empty_incident = await client.post(
+            "/incidents",
+            json={
+                "title": "Default-only model switch",
+                "description": "Empty service model list",
+                "service_id": str(empty_service.id),
+            },
+            headers=auth_headers,
+        )
+        assert empty_incident.status_code == 201, empty_incident.text
+        await _ack_incident(client, empty_incident.json()["id"], auth_headers)
+
+        empty_session = await client.post(
+            "/sessions",
+            json={"incident_id": empty_incident.json()["id"], "tier": 2},
+            headers=auth_headers,
+        )
+        assert empty_session.status_code == 201, empty_session.text
+        empty_detail = await client.get(
+            f"/sessions/{empty_session.json()['id']}",
+            headers=auth_headers,
+        )
+        assert empty_detail.status_code == 200, empty_detail.text
+        assert empty_detail.json()["allowed_model_config_ids"] == [
+            str(default_model.id)
+        ]
 
     async def test_create_session_invalid_incident(
         self, client: AsyncClient, auth_headers

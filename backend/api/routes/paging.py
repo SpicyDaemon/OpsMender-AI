@@ -163,7 +163,7 @@ async def _validate_allowed_integrations(
     return ordered
 
 
-async def _validate_preferred_models(
+async def _validate_service_models(
     db: AsyncSession,
     org_id: uuid.UUID,
     ids: list[uuid.UUID],
@@ -173,12 +173,12 @@ async def _validate_preferred_models(
     if len(ids) > 3:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A service can have at most 3 preferred models",
+            detail="A service can have at most 3 models",
         )
     if len(set(ids)) != len(ids):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Preferred models cannot contain duplicates",
+            detail="Models cannot contain duplicates",
         )
     ordered: list[str] = []
     for config_id in ids:
@@ -186,12 +186,12 @@ async def _validate_preferred_models(
         if model is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Preferred model not found",
+                detail="Model not found",
             )
         if not model.is_active and config_id not in (existing_ids or set()):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Preferred model must be enabled",
+                detail="Model must be enabled",
             )
         ordered.append(str(config_id))
     return ordered
@@ -427,8 +427,8 @@ async def create_service(
     preferred_mcp_server_ids = await _validate_preferred_mcp_servers(
         db, org_id, body.preferred_mcp_server_ids
     )
-    preferred_model_config_ids = await _validate_preferred_models(
-        db, org_id, body.preferred_model_config_ids
+    model_config_ids = await _validate_service_models(
+        db, org_id, body.model_config_ids
     )
     allowed_integration_connector_ids = await _validate_allowed_integrations(
         db, org_id, body.allowed_integration_connector_ids
@@ -446,7 +446,7 @@ async def create_service(
             alert_grouping=body.alert_grouping,
             intake_token=intake_token,
             preferred_mcp_server_ids=preferred_mcp_server_ids,
-            preferred_model_config_ids=preferred_model_config_ids,
+            model_config_ids=model_config_ids,
             allowed_integration_connector_ids=allowed_integration_connector_ids,
             integration_action_overrides=body.integration_action_overrides,
             ai_default_tier=body.ai_default_tier,
@@ -493,21 +493,21 @@ async def update_service(
         preferred_mcp_server_ids = await _validate_preferred_mcp_servers(
             db, org_id, body.preferred_mcp_server_ids
         )
-    preferred_model_config_ids = None
-    if body.preferred_model_config_ids is not None:
+    model_config_ids = None
+    if body.model_config_ids is not None:
         current_service = await ServiceRepo.get_by_id(db, org_id, service_id)
         if current_service is None:
             raise HTTPException(status_code=404, detail="Service not found")
         existing_model_ids: set[uuid.UUID] = set()
-        for raw_id in current_service.preferred_model_config_ids or []:
+        for raw_id in current_service.model_config_ids or []:
             try:
                 existing_model_ids.add(uuid.UUID(str(raw_id)))
             except (TypeError, ValueError):
                 continue
-        preferred_model_config_ids = await _validate_preferred_models(
+        model_config_ids = await _validate_service_models(
             db,
             org_id,
-            body.preferred_model_config_ids,
+            body.model_config_ids,
             existing_ids=existing_model_ids,
         )
     allowed_integration_connector_ids = None
@@ -529,9 +529,9 @@ async def update_service(
         preferred_mcp_server_ids_provided=(
             "preferred_mcp_server_ids" in body.model_fields_set
         ),
-        preferred_model_config_ids=preferred_model_config_ids,
-        preferred_model_config_ids_provided=(
-            "preferred_model_config_ids" in body.model_fields_set
+        model_config_ids=model_config_ids,
+        model_config_ids_provided=(
+            "model_config_ids" in body.model_fields_set
         ),
         allowed_integration_connector_ids=allowed_integration_connector_ids,
         allowed_integration_connector_ids_provided=(

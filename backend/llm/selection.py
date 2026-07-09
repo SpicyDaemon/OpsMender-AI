@@ -90,7 +90,7 @@ async def choose_model_for_incident_service(
         else None
     )
     if service is not None:
-        for raw_id in service.preferred_model_config_ids or []:
+        for raw_id in service.model_config_ids or []:
             add_candidate(raw_id)
 
     default_model = await ModelConfigRepo.get_default(db, org_id)

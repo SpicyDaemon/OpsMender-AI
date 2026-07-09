@@ -65,7 +65,7 @@ async def _seed_model_service(db, *, cap: int = 1):
         name=f"Queue service {uuid.uuid4().hex[:6]}",
         slug=f"queue-service-{uuid.uuid4().hex[:8]}",
         priority="P2",
-        preferred_model_config_ids=[str(model.id)],
+        model_config_ids=[str(model.id)],
     )
     db.add(service)
     await db.flush()

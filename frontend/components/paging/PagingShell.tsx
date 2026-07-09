@@ -765,7 +765,7 @@ function ServicesPanel({
     priority: "P2" as Priority,
     alert_grouping: "inherit" as AlertGroupingMode,
     preferred_mcp_server_ids: [] as string[],
-    preferred_model_config_ids: [] as string[],
+    model_config_ids: [] as string[],
     allowed_integration_connector_ids: [] as string[],
     integration_action_overrides: {} as Record<
       string,
@@ -948,7 +948,7 @@ function ServicesPanel({
         priority: form.priority,
         alert_grouping: form.alert_grouping,
         preferred_mcp_server_ids: form.preferred_mcp_server_ids,
-        preferred_model_config_ids: form.preferred_model_config_ids,
+        model_config_ids: form.model_config_ids,
         allowed_integration_connector_ids:
           form.allowed_integration_connector_ids,
         integration_action_overrides: form.integration_action_overrides,
@@ -1001,7 +1001,7 @@ function ServicesPanel({
       priority: service.priority,
       alert_grouping: service.alert_grouping ?? "inherit",
       preferred_mcp_server_ids: service.preferred_mcp_server_ids ?? [],
-      preferred_model_config_ids: service.preferred_model_config_ids ?? [],
+      model_config_ids: service.model_config_ids ?? [],
       allowed_integration_connector_ids:
         service.allowed_integration_connector_ids ?? [],
       integration_action_overrides:
@@ -1622,9 +1622,9 @@ function ServicesPanel({
             )}
           </div>
           <div>
-            <Label>Preferred Models</Label>
+            <Label>Models</Label>
             <MultiSelect
-              ariaLabel="Preferred Models"
+              ariaLabel="Models"
               ordered
               maxSelections={3}
               options={modelConfigs.map((model) => ({
@@ -1635,21 +1635,15 @@ function ServicesPanel({
                   : "Unavailable / disabled",
                 disabled: !model.is_active,
               }))}
-              selected={form.preferred_model_config_ids}
+              selected={form.model_config_ids}
               onChange={(next) =>
-                setForm({ ...form, preferred_model_config_ids: next })
+                setForm({ ...form, model_config_ids: next })
               }
               emptyLabel="No enabled models configured yet."
             />
             <p className="mt-1 text-xs text-fg-muted">
-              OpsMender tries these models in order for incidents on this
-              service. If none are available, it falls back to any enabled
-              model.
-            </p>
-            <p className="mt-1 text-xs text-fg-muted">
-              The model that ingests an incident becomes the default model for
-              that incident&apos;s AI session when possible. Operators can
-              still switch models during the session.
+              Sessions for this service can use these models. The workspace
+              default model is always available.
             </p>
           </div>
           <div>

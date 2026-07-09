@@ -515,6 +515,15 @@ export async function overrideSession(
   return api.post<SessionResponse>(`/sessions/${id}/override`, body);
 }
 
+export async function switchSessionModel(
+  id: string,
+  modelConfigId: string,
+): Promise<SessionResponse> {
+  return api.post<SessionResponse>(`/sessions/${id}/model`, {
+    model_config_id: modelConfigId,
+  });
+}
+
 export async function listSessions(params?: {
   status?: string;
   limit?: number;

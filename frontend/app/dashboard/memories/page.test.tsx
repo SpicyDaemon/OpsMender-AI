@@ -61,7 +61,7 @@ beforeEach(() => {
         description: null,
         priority: "P2",
         preferred_mcp_server_ids: [],
-        preferred_model_config_ids: [],
+        model_config_ids: [],
         ai_default_tier: null,
         intake_url: null,
         external_refs: null,

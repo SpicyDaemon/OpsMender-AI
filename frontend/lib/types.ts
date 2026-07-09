@@ -280,6 +280,7 @@ export interface SessionResponse {
   incident_id: string | null;
   workflow_profile_id: string | null;
   model_config_id: string | null;
+  allowed_model_config_ids: string[];
   tier: number;
   model_provider: string | null;
   model_id: string | null;
@@ -1865,7 +1866,7 @@ export interface ServiceResponse {
   priority: Priority;
   alert_grouping: AlertGroupingMode;
   preferred_mcp_server_ids: string[];
-  preferred_model_config_ids: string[];
+  model_config_ids: string[];
   allowed_integration_connector_ids: string[];
   integration_action_overrides: Record<string, Record<string, boolean>>;
   ai_default_tier?: number | null;
@@ -1888,7 +1889,7 @@ export interface ServiceCreate {
   priority?: Priority;
   alert_grouping?: AlertGroupingMode;
   preferred_mcp_server_ids?: string[];
-  preferred_model_config_ids?: string[];
+  model_config_ids?: string[];
   allowed_integration_connector_ids?: string[];
   integration_action_overrides?: Record<string, Record<string, boolean>>;
   ai_default_tier?: number | null;
@@ -1903,7 +1904,7 @@ export interface ServiceUpdate {
   priority?: Priority;
   alert_grouping?: AlertGroupingMode;
   preferred_mcp_server_ids?: string[];
-  preferred_model_config_ids?: string[];
+  model_config_ids?: string[];
   allowed_integration_connector_ids?: string[];
   integration_action_overrides?: Record<string, Record<string, boolean>>;
   ai_default_tier?: number | null;

@@ -586,11 +586,16 @@ class SessionOverrideRequest(BaseModel):
     tier: int = Field(..., ge=1, le=2)
 
 
+class SessionModelSwitchRequest(BaseModel):
+    model_config_id: uuid.UUID
+
+
 class SessionResponse(BaseModel):
     id: uuid.UUID
     incident_id: Optional[uuid.UUID]
     workflow_profile_id: Optional[uuid.UUID]
     model_config_id: Optional[uuid.UUID]
+    allowed_model_config_ids: list[uuid.UUID] = Field(default_factory=list)
     tier: int
     model_provider: Optional[str]
     model_id: Optional[str]
@@ -2395,7 +2400,7 @@ class ServiceCreate(BaseModel):
     priority: str = Field(default="P2", pattern="^(P0|P1|P2|P3)$")
     alert_grouping: str = Field(default="inherit", pattern="^(inherit|on|off)$")
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
-    preferred_model_config_ids: list[uuid.UUID] = Field(
+    model_config_ids: list[uuid.UUID] = Field(
         default_factory=list, max_length=3
     )
     # Strict allowlist — empty means no integrations for this service.
@@ -2416,7 +2421,7 @@ class ServiceUpdate(BaseModel):
     priority: Optional[str] = Field(None, pattern="^(P0|P1|P2|P3)$")
     alert_grouping: Optional[str] = Field(None, pattern="^(inherit|on|off)$")
     preferred_mcp_server_ids: Optional[list[uuid.UUID]] = None
-    preferred_model_config_ids: Optional[list[uuid.UUID]] = Field(
+    model_config_ids: Optional[list[uuid.UUID]] = Field(
         default=None, max_length=3
     )
     allowed_integration_connector_ids: Optional[list[uuid.UUID]] = None
@@ -2435,7 +2440,7 @@ class ServiceResponse(BaseModel):
     priority: str
     alert_grouping: str = "inherit"
     preferred_mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
-    preferred_model_config_ids: list[uuid.UUID] = Field(default_factory=list)
+    model_config_ids: list[uuid.UUID] = Field(default_factory=list)
     allowed_integration_connector_ids: list[uuid.UUID] = Field(default_factory=list)
     integration_action_overrides: dict[str, dict[str, Any]] = Field(
         default_factory=dict

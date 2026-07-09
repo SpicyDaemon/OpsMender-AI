@@ -81,14 +81,14 @@ Each service has:
 - Enabled state.
 - Generated intake URL.
 - Ordered Preferred MCP servers.
-- Up to three ranked Preferred Models.
+- Up to three ranked Models.
 
 Preferred MCP servers tell the AI which configured MCP servers to try first for incidents from that service. Operators can still manually ask the AI to use another configured MCP server during a session.
 
-Preferred Models are tried in order. Disabled or unavailable models are skipped,
-then OpsMender falls back to another enabled model. The model selected when the
-incident is created becomes the default for its AI session when possible;
-operators can still switch models during the session.
+Models define the service-specific models an operator may switch to during an
+AI session. The workspace default model is always available, and a service with
+no Models configured exposes only that default in the session picker. Automatic
+incident/session model selection still uses the existing fallback chain.
 
 Manual incidents created from the Incidents page must be linked to an active
 service so ownership, routing, escalation, MCP, and model preferences are
@@ -232,7 +232,7 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 
 1. Create a team at `/dashboard/paging/teams`.
 2. Create the team's escalation chain at `/dashboard/paging/escalation-chains`.
-3. Create a service at `/dashboard/paging/services`; choose priority, Preferred MCP servers, and up to three Preferred Models.
+3. Create a service at `/dashboard/paging/services`; choose priority, Preferred MCP servers, and up to three Models.
 4. Copy the service intake URL and configure your monitor to POST alerts to it.
 5. Create one or more roster schedules at `/dashboard/paging/rosters`.
 6. Add maintenance windows for planned work at `/dashboard/paging/maintenance-windows`.

@@ -773,7 +773,7 @@ class TestPagingAPI:
                 "slug": f"aws-prod-critical-{uuid.uuid4().hex[:6]}",
                 "priority": "P0",
                 "preferred_mcp_server_ids": [str(second.id), str(first.id)],
-                "preferred_model_config_ids": [
+                "model_config_ids": [
                     str(second_model.id),
                     str(first_model.id),
                 ],
@@ -785,7 +785,7 @@ class TestPagingAPI:
         data = service.json()
         assert data["priority"] == "P0"
         assert data["preferred_mcp_server_ids"] == [str(second.id), str(first.id)]
-        assert data["preferred_model_config_ids"] == [
+        assert data["model_config_ids"] == [
             str(second_model.id),
             str(first_model.id),
         ]
@@ -880,7 +880,7 @@ class TestPagingAPI:
         assert selected is not None
         assert selected.name == "gitlab-prod"
 
-    async def test_service_preferred_models_validate_order_and_limits(
+    async def test_service_models_validate_order_and_limits(
         self, client: AsyncClient, app, auth_headers
     ):
         async with app.state.session_factory() as db:
@@ -908,23 +908,23 @@ class TestPagingAPI:
                 "team_id": team.json()["id"],
                 "name": "Ranked Models",
                 "slug": f"ranked-models-{uuid.uuid4().hex[:6]}",
-                "preferred_model_config_ids": ordered_ids,
+                "model_config_ids": ordered_ids,
             },
             headers=auth_headers,
         )
         assert service.status_code == 201, service.text
-        assert service.json()["preferred_model_config_ids"] == ordered_ids
+        assert service.json()["model_config_ids"] == ordered_ids
 
         duplicate = await client.put(
             f"/services/{service.json()['id']}",
-            json={"preferred_model_config_ids": [ordered_ids[0], ordered_ids[0]]},
+            json={"model_config_ids": [ordered_ids[0], ordered_ids[0]]},
             headers=auth_headers,
         )
         assert duplicate.status_code == 400
 
         too_many = await client.put(
             f"/services/{service.json()['id']}",
-            json={"preferred_model_config_ids": [str(model.id) for model in models]},
+            json={"model_config_ids": [str(model.id) for model in models]},
             headers=auth_headers,
         )
         assert too_many.status_code == 422
@@ -951,14 +951,14 @@ class TestPagingAPI:
 
         cross_org = await client.put(
             f"/services/{service.json()['id']}",
-            json={"preferred_model_config_ids": [str(other_model.id)]},
+            json={"model_config_ids": [str(other_model.id)]},
             headers=auth_headers,
         )
         assert cross_org.status_code == 400
 
         disabled = await client.put(
             f"/services/{service.json()['id']}",
-            json={"preferred_model_config_ids": [str(models[3].id)]},
+            json={"model_config_ids": [str(models[3].id)]},
             headers=auth_headers,
         )
         assert disabled.status_code == 400
@@ -1003,7 +1003,7 @@ class TestPagingAPI:
                 team_id=team.id,
                 name="Selection Service",
                 slug=f"selection-service-{uuid.uuid4().hex[:6]}",
-                preferred_model_config_ids=[
+                model_config_ids=[
                     str(disabled.id),
                     str(enabled.id),
                 ],
@@ -1077,7 +1077,7 @@ class TestPagingAPI:
                 team_id=team.id,
                 name="Capacity Service",
                 slug=f"capacity-service-{uuid.uuid4().hex[:6]}",
-                preferred_model_config_ids=[str(primary.id), str(secondary.id)],
+                model_config_ids=[str(primary.id), str(secondary.id)],
             )
 
             selected = await choose_model_for_incident_service(
@@ -1164,7 +1164,7 @@ class TestPagingAPI:
                     team_id=team.id,
                     name=f"Unlimited Service {index}",
                     slug=f"unlimited-service-{index}-{uuid.uuid4().hex[:6]}",
-                    preferred_model_config_ids=[str(model.id)],
+                    model_config_ids=[str(model.id)],
                 )
                 for _ in range(3):
                     await SessionRepo.create(

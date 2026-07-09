@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two-second budget with one notification WebSocket and no skeleton flash.
   Sprint-end re-grade remains GATE PASS 0/0/0.
 
+### Changed
+
+- **Simplification sprint — Phase 3 Models.** Services now expose their
+  service-specific model list as Models, backed by `services.model_config_ids`,
+  and the session model picker is restricted to active service Models plus the
+  workspace default model.
+
 ### Removed
 
 - **Simplification sprint — Phase 1 Agent Teams.** Removed Agent Teams from
@@ -1203,7 +1210,7 @@ clean.
 
 ### Changed
 
-- **Manual incident service and preferred model cleanup.** Manual incidents now
+- **Manual incident service and model cleanup.** Manual incidents now
   require an active same-organization Service. Services support up to three
   ranked enabled model configs; OpsMender tries them in order, falls back to
   another enabled model, and carries the incident's selected model into later

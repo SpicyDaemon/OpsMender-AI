@@ -2202,7 +2202,7 @@ class Service(Base):
     preferred_mcp_server_ids: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
     )
-    preferred_model_config_ids: Mapped[list[str]] = mapped_column(
+    model_config_ids: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
     )
     # Strict allowlist of integration connector ids this service may use. Empty

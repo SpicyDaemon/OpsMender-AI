@@ -108,6 +108,9 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain("Add stage");
     expect(pagingShellSource).toContain("stages.length >= 3");
     expect(pagingShellSource).toContain("Stage {idx + 1}");
+    expect(pagingShellSource).toContain("SMS (Unavailable)");
+    expect(pagingShellSource).toContain("Voice Call (Unavailable)");
+    expect(pagingShellSource).toContain("Settings → Voice &amp; SMS calling");
   });
 
   it("uses checkbox/chip multi-selects instead of native multi-select", () => {

@@ -65,6 +65,7 @@ import {
   deleteTeam,
   getConfig,
   getEscalationChainCalendar,
+  getChannelAvailability,
   getMyNotificationPreferences,
   linkServiceEscalationChain,
   listBotConnectors,
@@ -4362,6 +4363,10 @@ export function NotificationPreferencesPanel({
   // Ordered escalation stages per priority.
   const [routing, setRouting] = useState<Record<string, RoutingStage[]>>({});
   const [botConnectors, setBotConnectors] = useState<BotConnectorResponse[]>([]);
+  const [channelAvailability, setChannelAvailability] = useState({
+    sms: false,
+    voice: false,
+  });
   const [quietEnabled, setQuietEnabled] = useState(false);
   const [quiet, setQuiet] = useState<{
     weekday_start: string;
@@ -4378,14 +4383,25 @@ export function NotificationPreferencesPanel({
     () => [
       ...botConnectors
         .filter((c) => c.is_enabled)
-        .map((c) => ({ value: c.id, label: c.name })),
-      // Voice Call is an env-configured personal-routing medium (v2 Phase 6):
-      // selectable here; it delivers only when Twilio voice is configured on the
-      // server (otherwise the page records as skipped, like any unconfigured
-      // channel).
-      { value: "voice", label: "Voice Call" },
+        .map((c) => ({ value: c.id, label: c.name, disabled: false })),
+      {
+        value: "sms",
+        label: channelAvailability.sms ? "SMS" : "SMS (Unavailable)",
+        disabled: !channelAvailability.sms,
+      },
+      {
+        value: "voice",
+        label: channelAvailability.voice
+          ? "Voice Call"
+          : "Voice Call (Unavailable)",
+        disabled: !channelAvailability.voice,
+      },
     ],
-    [botConnectors],
+    [botConnectors, channelAvailability],
+  );
+  const availableChannelOptions = useMemo(
+    () => channelOptions.filter((option) => !option.disabled),
+    [channelOptions],
   );
 
   const channelLabel = useCallback(
@@ -4409,12 +4425,13 @@ export function NotificationPreferencesPanel({
   useEffect(() => {
     (async () => {
       try {
-        const [data, connectors] = await Promise.all([
+        const [data, connectors, availability] = await Promise.all([
           getMyNotificationPreferences(),
           listBotConnectors().catch(() => ({
             items: [] as BotConnectorResponse[],
             total: 0,
           })),
+          getChannelAvailability().catch(() => ({ sms: false, voice: false })),
         ]);
         setPref(data);
         setChannels(data.channels ?? {});
@@ -4424,6 +4441,7 @@ export function NotificationPreferencesPanel({
         }
         setRouting(normalized);
         setBotConnectors(connectors.items);
+        setChannelAvailability(availability);
         const qh = data.quiet_hours;
         const start = qh?.weekday_start ?? qh?.weekday?.start;
         const end = qh?.weekday_end ?? qh?.weekday?.end;
@@ -4459,7 +4477,7 @@ export function NotificationPreferencesPanel({
   const addStage = (priority: Priority) => {
     updateStages(priority, (stages) => {
       if (stages.length >= 3) return stages;
-      const channel_id = channelOptions[0]?.value ?? "";
+      const channel_id = availableChannelOptions[0]?.value ?? "";
       return [...stages, { channel_id, delay_seconds: 300 }];
     });
   };
@@ -4566,7 +4584,7 @@ export function NotificationPreferencesPanel({
     );
   }
 
-  const noChannels = botConnectors.length === 0;
+  const noChannels = availableChannelOptions.length === 0;
 
   return (
     <section className="space-y-6">
@@ -4668,11 +4686,23 @@ export function NotificationPreferencesPanel({
                             <option value="">No channels configured</option>
                           )}
                           {channelOptions.map((o) => (
-                            <option key={o.value} value={o.value}>
+                            <option
+                              key={o.value}
+                              value={o.value}
+                              disabled={o.disabled}
+                            >
                               {o.label}
                             </option>
                           ))}
                         </Select>
+                        {(stage.channel_id === "sms" &&
+                          !channelAvailability.sms) ||
+                        (stage.channel_id === "voice" &&
+                          !channelAvailability.voice) ? (
+                          <span className="w-full text-xs text-fg-muted">
+                            Configure in Settings → Voice &amp; SMS calling.
+                          </span>
+                        ) : null}
                         {idx < stages.length - 1 && (
                           <label className="inline-flex items-center gap-1 text-xs text-fg-muted">
                             Wait
@@ -4763,7 +4793,9 @@ export function NotificationPreferencesPanel({
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={stages.length >= 3 || channelOptions.length === 0}
+                disabled={
+                  stages.length >= 3 || availableChannelOptions.length === 0
+                }
                 onClick={() => addStage(p)}
               >
                 <PlusCircle className="h-4 w-4" /> Add stage

@@ -224,7 +224,7 @@ Sections:
 - Routing by Priority: map `P0`/`P1`/`P2`/`P3` to configured channels.
 - Sessions / Chat: session behavior for chat-capable adapters only.
 
-Supported channels depend on configured adapters, such as Slack, Microsoft Teams, Discord, Telegram, Email, SMS, WhatsApp, Signal, and custom adapters.
+Supported channels depend on configured adapters, such as Slack, Microsoft Teams, Discord, Telegram, Email, SMS, WhatsApp, Signal, and custom adapters. Voice Call and SMS delivery use **Settings -> Voice & SMS calling**. The matching `OPSMENDER_TWILIO_*` environment variables still bootstrap fresh instances, but saved Settings values override them. Voice calls read the incident summary and accept keypad actions: `1` acknowledge, `2` escalate, and `*` repeat.
 
 Stakeholder communication lives under Reports. Admins and operators can export
 incident CSV/PDF reports, while admins can schedule recurring email delivery.

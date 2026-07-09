@@ -1,13 +1,13 @@
-"""Env-driven channel factory builder (Sprint 35 wiring).
+"""Environment-backed channel factory builder (Sprint 35 wiring).
 
 Reads optional notification credentials from the process env and returns a
 ``ChannelFactory`` that the dispatcher can use to fan pages out. Channels with
 unconfigured credentials simply return ``None`` from the factory — the
 dispatcher records a ``skipped`` row with reason ``channel_unconfigured``.
 
-The factory is intentionally global (one set of Slack/Teams/Email/SMS
-credentials per OpsMender deployment) rather than per-org for v1. Per-tenant
-secrets are tracked as a follow-up.
+The factory remains the env bootstrap for legacy delivery keys. Voice/SMS can
+also be resolved from per-org Settings at dispatch time; env values remain the
+fallback when no complete saved settings exist.
 
 Env vars consumed:
 

@@ -1460,7 +1460,12 @@ export type MaintenanceWindowScopeType =
   | "roster"
   | "team";
 
-export type NotificationChannelKey = "slack_dm" | "teams_dm" | "email" | "sms";
+export type NotificationChannelKey =
+  | "slack_dm"
+  | "teams_dm"
+  | "email"
+  | "sms"
+  | "voice";
 
 /**
  * One ordered notification escalation stage for a priority. `channel_id` is a
@@ -1504,6 +1509,29 @@ export interface UserNotificationPrefResponse {
 export interface NotificationSettingsResponse {
   org_id: string;
   notification_dedup_window_minutes: number;
+}
+
+export interface VoiceSettingsResponse {
+  configured: boolean;
+  enabled: boolean;
+  account_sid: string;
+  auth_token_set: boolean;
+  sms_from_number: string;
+  voice_from_number: string | null;
+  source: "database" | "environment" | null;
+}
+
+export interface VoiceSettingsUpdate {
+  enabled?: boolean;
+  account_sid?: string | null;
+  auth_token?: string | null;
+  sms_from_number?: string | null;
+  voice_from_number?: string | null;
+}
+
+export interface ChannelAvailabilityResponse {
+  sms: boolean;
+  voice: boolean;
 }
 
 export interface MaintenanceWindowResponse {

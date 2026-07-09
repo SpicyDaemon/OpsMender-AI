@@ -50,7 +50,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
 - **Alert-noise intelligence** — optional per-service grouping folds similar alerts into the open incident instead of paging again; automatic flapping detection suppresses repeat pages during fire/clear storms (**P0 always pages**).
 - **Workspace Status Page** — a single `/status` page with selected service components, derived health, incident updates, email subscribers, and private/public visibility.
-- **On-call paging** — Slack / Teams / Email / SMS with Acknowledge / Resolve / Escalate actions and per-incident channels.
+- **On-call paging** — Slack / Teams / Email / SMS / Voice Call with Acknowledge / Resolve / Escalate actions and per-incident channels.
 - **Shared incident tracking** — update-in-place Slack, Discord, and Google
   Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
   events.
@@ -258,6 +258,9 @@ All configuration is via environment variables; [`.env.example`](.env.example) d
 | `OPSMENDER_BOOTSTRAP_ADMIN_EMAIL` / `…_PASSWORD` | ✅ | `admin`/`admin123` (dev) | First admin account. |
 | `OPSMENDER_PUBLIC_BASE_URL` | ➕ | — | Base URL for invite / reset links. |
 | `OPSMENDER_TIER` | ➕ | `2` | Default AI autonomy tier (`0`/`1`/`2`). |
+| `OPSMENDER_TWILIO_ACCOUNT_SID` / `…_AUTH_TOKEN` / `…_FROM_NUMBER` | ➕ | — | Optional Voice/SMS bootstrap; Settings -> Voice & SMS calling overrides env values. |
+| `OPSMENDER_TWILIO_VOICE_FROM_NUMBER` | ➕ | SMS number | Optional dedicated Voice Call number. |
+| `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` | ➕ | — | Optional provider status callback URL for Voice Call delivery. |
 | `AUDIT_RETENTION_DAYS` | ➕ | `90` | Hot audit-entry retention before pruning or archival. |
 | `AUDIT_ARCHIVE_ENABLED` | ➕ | `false` | Archive expired audit entries to S3-compatible storage before deletion. |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / … | ➕ | — | Only for the model providers you enable. |
@@ -280,9 +283,10 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 3. **Skills** (`/dashboard/skills`) — import/create a `SKILL.md` (start from `examples/`).
 4. **Services / Teams / Rosters / Escalation** (`/dashboard/paging/*`) — define routing and on-call.
 5. **On Call Schedule** (`/dashboard/on-call-schedule`) — see who's on call per level, replace coverage, and view shifts in any time zone.
-6. **Notification channels** (`/dashboard/paging/notifications`) — Slack / Teams / Email / SMS.
-7. **People** (`/dashboard/people`) — invite operators (Admin / Operator / Viewer).
-8. **Tier** (`/dashboard/config`) — default is `2` (advisory); raise to `1`/`0` when ready.
+6. **Notification channels** (`/dashboard/paging/notifications`) — Slack / Teams / Email / SMS / Voice Call.
+7. **Voice & SMS calling** (`/dashboard/config`) — optional phone/SMS delivery settings; env variables can bootstrap, saved Settings values win.
+8. **People** (`/dashboard/people`) — invite operators (Admin / Operator / Viewer).
+9. **Tier** (`/dashboard/config`) — default is `2` (advisory); raise to `1`/`0` when ready.
 
 </details>
 

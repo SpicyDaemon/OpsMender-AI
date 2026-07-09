@@ -942,6 +942,28 @@ class OrgEmailSettings(Base):
     )
 
 
+class OrgVoiceSettings(Base):
+    __tablename__ = "org_voice_settings"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    account_sid: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    auth_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sms_from_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    voice_from_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
 class ReportSchedule(Base):
     __tablename__ = "report_schedules"
 

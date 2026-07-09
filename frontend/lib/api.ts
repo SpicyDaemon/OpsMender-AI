@@ -1928,10 +1928,13 @@ export async function takeIncident(
 }
 
 import type {
+  ChannelAvailabilityResponse,
   NotificationChannelKey,
   NotificationSettingsResponse,
   QuietHoursConfig,
   UserNotificationPrefResponse,
+  VoiceSettingsResponse,
+  VoiceSettingsUpdate,
 } from "./types";
 
 export async function getMyNotificationPreferences(): Promise<UserNotificationPrefResponse> {
@@ -1979,6 +1982,22 @@ export async function updateOrgNotificationSettings(
   return api.put<NotificationSettingsResponse>(
     `/organizations/${orgId}/notification-settings`,
     { notification_dedup_window_minutes },
+  );
+}
+
+export async function getVoiceSettings(): Promise<VoiceSettingsResponse> {
+  return api.get<VoiceSettingsResponse>("/api/v1/voice-settings");
+}
+
+export async function updateVoiceSettings(
+  body: VoiceSettingsUpdate,
+): Promise<VoiceSettingsResponse> {
+  return api.put<VoiceSettingsResponse>("/api/v1/voice-settings", body);
+}
+
+export async function getChannelAvailability(): Promise<ChannelAvailabilityResponse> {
+  return api.get<ChannelAvailabilityResponse>(
+    "/api/v1/paging/channel-availability",
   );
 }
 

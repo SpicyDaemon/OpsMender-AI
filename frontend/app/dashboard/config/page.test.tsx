@@ -29,6 +29,10 @@ vi.mock("@/components/EmailSettingsSection", () => ({
   EmailSettingsSection: () => <section>Email settings</section>,
 }));
 
+vi.mock("@/components/VoiceSettingsSection", () => ({
+  VoiceSettingsSection: () => <section>Voice settings</section>,
+}));
+
 vi.mock("@/components/OrganizationSettingsSection", () => ({
   OrganizationSettingsSection: () => <section>Organization settings</section>,
 }));
@@ -62,6 +66,7 @@ describe("Settings page", () => {
 
     expect(screen.queryByRole("heading", { name: "Advanced" })).toBeNull();
     expect(screen.getByText("Session workflow")).toBeTruthy();
+    expect(screen.getByText("Voice settings")).toBeTruthy();
     expect(screen.getByText("API token settings")).toBeTruthy();
   });
 });

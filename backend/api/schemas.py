@@ -1006,6 +1006,29 @@ class ConfigUpdate(BaseModel):
     alert_grouping_default: Optional[bool] = None
 
 
+class VoiceSettingsResponse(BaseModel):
+    configured: bool = False
+    enabled: bool = True
+    account_sid: str = ""
+    auth_token_set: bool = False
+    sms_from_number: str = ""
+    voice_from_number: Optional[str] = None
+    source: Optional[str] = None
+
+
+class VoiceSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    account_sid: Optional[str] = None
+    auth_token: Optional[str] = None
+    sms_from_number: Optional[str] = None
+    voice_from_number: Optional[str] = None
+
+
+class ChannelAvailabilityResponse(BaseModel):
+    sms: bool = False
+    voice: bool = False
+
+
 class ModelConfigResponse(BaseModel):
     id: uuid.UUID
     name: str

@@ -54,7 +54,7 @@ Per stage you pick a **channel** and (for non-final stages) a **wait** before th
 
 **Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered.
 
-**Channels are driven entirely by your configured Notification Channels.** Any enabled channel — Telegram, Slack, Discord, Microsoft Teams, Telegram, SMS, Email, WhatsApp, Signal, Mattermost, Matrix, and more — is selectable by its friendly name (e.g. "SMS Primary", "Slack NOC"). There is no hardcoded delivery list: add a channel in the **Notification Channels** tab and it becomes routable immediately. If no channels are configured, My Routing shows an empty state with a link to that tab.
+**Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel — Telegram, Slack, Discord, Microsoft Teams, Telegram, Email, WhatsApp, Signal, Mattermost, Matrix, and more — is selectable by its friendly name (e.g. "Slack NOC"). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
 
 If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
 

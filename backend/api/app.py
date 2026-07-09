@@ -393,6 +393,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.notifications import router as notifications_router
     from backend.api.routes.ticket_sync import router as ticket_sync_router
     from backend.api.routes.voice import router as voice_router
+    from backend.api.routes.voice_settings import router as voice_settings_router
     from backend.api.routes.status_page import router as status_page_router
 
     api_routers = [
@@ -428,6 +429,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         invites_admin_router,
         invites_public_router,
         notifications_router,
+        voice_settings_router,
         status_page_router,
     ]
     dispatcher_routers = [

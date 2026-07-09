@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Simplification sprint — Phase 5 Voice & SMS calling.** Added admin
+  Settings for workspace Voice/SMS calling, with encrypted auth-token storage,
+  DB-over-env resolution, availability for My Routing, and disabled
+  Voice/SMS routing options when calling is not configured.
+
 - **Noise and analytics sprint — Phase 0 tier clarity.** Approval rows now show
   the requesting session tier, the demo seed separates Tier 1 approval-gated
   sessions from Tier 2 advisory blocking, and team-scoped maintenance windows

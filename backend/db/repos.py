@@ -66,6 +66,7 @@ from backend.db.models import (
     ModelConfig,
     NativeActionInvocation,
     OrgEmailSettings,
+    OrgVoiceSettings,
     RuntimeConfig,
     Session,
     SessionMessage,
@@ -4645,6 +4646,52 @@ class OrgEmailSettingsRepo:
     @staticmethod
     async def delete(db: AsyncSession, org_id: uuid.UUID) -> bool:
         row = await OrgEmailSettingsRepo.get_for_org(db, org_id)
+        if row is None:
+            return False
+        await db.delete(row)
+        await db.flush()
+        return True
+
+
+class OrgVoiceSettingsRepo:
+    @staticmethod
+    async def get_for_org(
+        db: AsyncSession, org_id: uuid.UUID
+    ) -> OrgVoiceSettings | None:
+        return (
+            await db.execute(
+                select(OrgVoiceSettings).where(OrgVoiceSettings.org_id == org_id)
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def upsert(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        account_sid: str | None,
+        auth_token_encrypted: str | None,
+        sms_from_number: str | None,
+        voice_from_number: str | None,
+        enabled: bool,
+    ) -> OrgVoiceSettings:
+        row = await OrgVoiceSettingsRepo.get_for_org(db, org_id)
+        if row is None:
+            row = OrgVoiceSettings(org_id=org_id)
+            db.add(row)
+        row.account_sid = account_sid or None
+        if auth_token_encrypted is not None:
+            row.auth_token_encrypted = auth_token_encrypted or None
+        row.sms_from_number = sms_from_number or None
+        row.voice_from_number = voice_from_number or None
+        row.enabled = enabled
+        row.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def delete(db: AsyncSession, org_id: uuid.UUID) -> bool:
+        row = await OrgVoiceSettingsRepo.get_for_org(db, org_id)
         if row is None:
             return False
         await db.delete(row)

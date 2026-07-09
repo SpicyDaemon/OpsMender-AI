@@ -14,6 +14,7 @@ import {
 } from "@/components/config/ConfigSections";
 import { ApiTokensSection } from "@/components/config/ApiTokensSection";
 import { EmailSettingsSection } from "@/components/EmailSettingsSection";
+import { VoiceSettingsSection } from "@/components/VoiceSettingsSection";
 import { OrganizationSettingsSection } from "@/components/OrganizationSettingsSection";
 import { StatusPageSettingsSection } from "@/components/StatusPageSettingsSection";
 
@@ -38,7 +39,7 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-xl font-bold text-fg-primary sm:text-2xl">Settings</h1>
         <p className="mt-1 text-sm text-fg-secondary">
-          Runtime defaults, workspace identity, authentication, SMTP, and retention for this OpsMender instance.
+          Runtime defaults, workspace identity, authentication, SMTP, calling, and retention for this OpsMender instance.
         </p>
       </div>
 
@@ -94,6 +95,8 @@ export default function ConfigPage() {
       )}
 
       {user?.primary_org_id && <EmailSettingsSection orgId={user.primary_org_id} />}
+
+      {canEdit && <VoiceSettingsSection />}
 
       {canEdit && <ApiTokensSection />}
 

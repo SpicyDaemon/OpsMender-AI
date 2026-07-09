@@ -102,6 +102,29 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+async def _resolve_channel(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    key: str,
+    channel_factory: ChannelFactory,
+) -> Channel | None:
+    if key in {"sms", "voice"}:
+        from backend.paging.voice_settings import (
+            build_sms_channel,
+            build_voice_channel,
+            resolve_voice_settings,
+        )
+
+        settings = await resolve_voice_settings(db, org_id)
+        if settings is not None:
+            return (
+                build_sms_channel(settings)
+                if key == "sms"
+                else build_voice_channel(settings)
+            )
+    return channel_factory(key)
+
+
 # ---------------------------------------------------------------------------
 # Maintenance window
 # ---------------------------------------------------------------------------
@@ -360,7 +383,7 @@ async def dispatch_page(
         if not recipient:
             attempt = DeliveryAttempt(key, "skipped", "no_recipient")
         else:
-            channel = channel_factory(key)
+            channel = await _resolve_channel(db, org_id, key, channel_factory)
             if channel is None:
                 attempt = DeliveryAttempt(key, "skipped", "channel_unconfigured")
             else:

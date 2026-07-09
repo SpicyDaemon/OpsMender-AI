@@ -97,10 +97,30 @@ def build_notification_sender(
             addresses = dict(prefs.channels) if (prefs and prefs.channels) else {}
             if not addresses.get("email") and getattr(user, "email", None):
                 addresses.setdefault("email", user.email)
+            user_phone = getattr(user, "phone", None)
+            if user_phone:
+                addresses.setdefault("sms", user_phone)
+                addresses.setdefault("voice", user_phone)
             recipient = addresses.get(channel_id)
             if not recipient:
                 return ("skipped", "no_recipient")
-            channel = cf(channel_id)
+            channel = None
+            if channel_id in {"sms", "voice"}:
+                from backend.paging.voice_settings import (
+                    build_sms_channel,
+                    build_voice_channel,
+                    resolve_voice_settings,
+                )
+
+                settings = await resolve_voice_settings(db, org_id)
+                if settings is not None:
+                    channel = (
+                        build_sms_channel(settings)
+                        if channel_id == "sms"
+                        else build_voice_channel(settings)
+                    )
+            if channel is None:
+                channel = cf(channel_id)
             if channel is None:
                 return ("skipped", "channel_unconfigured")
             try:

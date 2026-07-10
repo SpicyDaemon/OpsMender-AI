@@ -90,7 +90,7 @@ def _patch_sqlite_dev_schema(sync_conn, metadata) -> None:
 async def bootstrap():
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from backend.config_loader import AppConfig
-    from backend.db.models import Base, User
+    from backend.db.models import Base
     from backend.db.engine import resolve_database_url
     from backend.db.repos import OrganizationRepo, UserRepo
 

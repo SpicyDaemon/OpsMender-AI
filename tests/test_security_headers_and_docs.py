@@ -28,7 +28,8 @@ def make_app(tmp_path, monkeypatch):
         set_env_path(tmp_env)
         monkeypatch.setenv("OPSMENDER_JWT_SECRET", "a-strong-test-secret-value")
         monkeypatch.setenv(
-            "OPSMENDER_DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path / 't.db'}"
+            "OPSMENDER_DATABASE_URL",
+            "postgresql+asyncpg://opsmender:test@db:5432/opsmender",
         )
         monkeypatch.setenv("OPSMENDER_MCP_SERVERS_JSON", json.dumps([]))
         monkeypatch.delenv("OPSMENDER_ENABLE_API_DOCS", raising=False)

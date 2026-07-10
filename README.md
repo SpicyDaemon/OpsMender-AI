@@ -227,7 +227,11 @@ Platform-neutral probes are available on the application port:
   reachable PostgreSQL database at the current Alembic revision.
 - `GET /health` remains a backward-compatible alias of `/health/live`.
 
-Production mode **refuses to start** with a default/weak JWT secret. Put a TLS-terminating proxy (nginx, Caddy, Cloudflare) in front of port 8000.
+Production mode **refuses to start** with a placeholder JWT secret, a missing or
+non-PostgreSQL database URL, a known weak bootstrap password, or an invalid
+autonomy tier. It warns without blocking when CORS is wildcarded, the public
+base URL is unset, or interactive API docs are enabled. Put a TLS-terminating
+proxy (nginx, Caddy, Cloudflare) in front of port 8000.
 
 ### Standalone binary
 

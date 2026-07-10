@@ -284,9 +284,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     # attack surface, so they are disabled by default in production. Operators
     # can opt back in with OPSMENDER_ENABLE_API_DOCS=true; development keeps
     # them on.
-    docs_enabled = config.deployment.environment == "development" or (
-        os.environ.get("OPSMENDER_ENABLE_API_DOCS", "").strip().lower()
-        in {"1", "true", "yes", "on"}
+    docs_enabled = (
+        config.deployment.environment == "development" or config.app.api_docs_enabled
     )
     app = FastAPI(
         title=config.app.name,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import os
 import pathlib
 from collections.abc import Mapping
@@ -27,6 +28,10 @@ _DEFAULT_JWT_SECRETS: frozenset[str] = frozenset(
         "dev-secret-change-in-production",  # AuthConfig dataclass default
     }
 )
+_WEAK_BOOTSTRAP_PASSWORDS: frozenset[str] = frozenset(
+    {"admin", "admin123", "password", "changeme", "opsmender", "opsmender123"}
+)
+_LOGGER = logging.getLogger(__name__)
 
 
 class InsecureProductionConfigError(RuntimeError):
@@ -92,7 +97,7 @@ def is_development_environment() -> bool:
 
 
 def check_production_safety(config: "AppConfig") -> None:
-    """Refuse to start the API in production with an unset JWT secret.
+    """Reject unsafe production settings and warn about risky omissions.
 
     Activated when the resolved security environment is production.
     ``OPSMENDER_DEPLOYMENT_MODE=development`` remains a legacy alias;
@@ -108,6 +113,44 @@ def check_production_safety(config: "AppConfig") -> None:
             f"({secret!r}). Set a strong value before starting the API in "
             "production — e.g. `openssl rand -hex 32` — or set "
             "OPSMENDER_ENVIRONMENT=development for local dev."
+        )
+
+    database_url = (config.db.url or "").strip()
+    if not database_url.startswith("postgresql+asyncpg://"):
+        raise InsecureProductionConfigError(
+            "Production requires PostgreSQL. Set OPSMENDER_DATABASE_URL to a "
+            "postgresql+asyncpg URL."
+        )
+
+    if config.people.bootstrap_configured:
+        password = (config.people.bootstrap_admin_password or "").strip().lower()
+        if password in _WEAK_BOOTSTRAP_PASSWORDS:
+            raise InsecureProductionConfigError(
+                "OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD is a known weak default. "
+                "Set a strong, unique bootstrap password before starting the API "
+                "in production."
+            )
+
+    if config.app.tier not in {0, 1, 2}:
+        raise InsecureProductionConfigError(
+            "OPSMENDER_TIER must be 0, 1, or 2 in production. "
+            f"Received {config.app.tier!r}."
+        )
+
+    if any(origin.strip() == "*" for origin in config.cors.origins):
+        _LOGGER.warning(
+            "Production CORS allows every origin. Set OPSMENDER_CORS_ORIGINS "
+            "to the dashboard origin."
+        )
+    if not (config.people.public_base_url or "").strip():
+        _LOGGER.warning(
+            "OPSMENDER_PUBLIC_BASE_URL is unset; invite, SSO, and callback links "
+            "may use an incorrect host."
+        )
+    if config.app.api_docs_enabled:
+        _LOGGER.warning(
+            "Interactive API docs are enabled in production. Unset "
+            "OPSMENDER_ENABLE_API_DOCS unless the instance is network-restricted."
         )
 
 
@@ -301,6 +344,7 @@ class AppSettings:
     skill_definition_path: str = "./examples/SKILL.md"
     audit_output: str = "./logs/audit.jsonl"
     frontend_static_dir: str = "./frontend/out"
+    api_docs_enabled: bool = False
 
 
 @dataclasses.dataclass
@@ -519,6 +563,7 @@ class AppConfig:
                 "./frontend/out",
             )
             or "./frontend/out",
+            api_docs_enabled=_env_bool(env, "OPSMENDER_ENABLE_API_DOCS", False),
         )
         audit = AuditConfig(
             output=app.audit_output,

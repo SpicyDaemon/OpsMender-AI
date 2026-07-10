@@ -4,9 +4,14 @@ name: CodeQL
 # Security on PRIVATE repositories (a paid feature; free only on public repos).
 # This repo is private without GHAS, so automatic push/schedule runs always fail
 # at the upload step ("Code scanning is not enabled for this repository").
-# The triggers are therefore manual-only. To re-enable automatic analysis: make
-# the repo public, or enable GHAS code scanning (Settings → Code security →
-# Code scanning → Advanced), then restore the `push`/`schedule` triggers below.
+# The triggers are therefore manual-only. When the repo is made public (or GHAS
+# code scanning is enabled: Settings → Code security → Code scanning → Advanced),
+# restore automatic analysis by replacing the `on:` block below with:
+#   on:
+#     push:            { branches: [main] }
+#     pull_request:    { branches: [main] }
+#     schedule:        [{ cron: '30 5 * * 1' }]
+#     workflow_dispatch:
 on:
   workflow_dispatch:
 

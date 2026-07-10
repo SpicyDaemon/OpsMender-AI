@@ -46,7 +46,7 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **MCP-first + native integrations** — operator-provided MCP servers remain the
   general execution path; encrypted connectors add capability-scoped tools for
   source control, tickets, docs, observability, and infrastructure.
-- **Org-owned skills** — one `SKILL.md` classifies every operation as safe / caution / destructive.
+- **Org-owned skills** — one `SKILL.md` gives every discovered MCP tool an explicit per-tier (T0/T1/T2) policy; the safe / caution / destructive class sets the default and drives the Tier 0 reversibility floor.
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
 - **Similar alert grouping** — optional per-service grouping folds similar alerts into the open incident instead of paging again; automatic flapping detection suppresses repeat pages during fire/clear storms (**P0 always pages**).
 - **On-call paging** — Slack / Teams / Email / SMS / Voice Call with Acknowledge / Resolve / Escalate actions and per-incident channels; the voice IVR keypad does 1 acknowledge / 2 escalate / 3 resolve.

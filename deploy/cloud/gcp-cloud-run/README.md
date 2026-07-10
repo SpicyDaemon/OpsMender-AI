@@ -14,7 +14,7 @@ The checked-in `service.yaml` creates or updates one Cloud Run service:
 | `run.googleapis.com/cloudsql-instances` annotation | Attaches the Cloud SQL connector so `/cloudsql/PROJECT:REGION:INSTANCE` is available in the container. |
 | `serviceAccountName` | Runs the container as a dedicated service account, not the default Compute Engine service account. |
 | Secret Manager `secretKeyRef` env vars | Supplies `OPSMENDER_DATABASE_URL`, `OPSMENDER_JWT_SECRET`, and one or more provider keys at revision startup. |
-| Startup, liveness, readiness probes | Health-check `/health` on container port 8000. |
+| Startup, liveness, readiness probes | Process checks use `/health/live`; traffic readiness uses `/health/ready` on container port 8000. |
 | Scaling annotations | Keeps one warm instance by default and caps autoscaling at three instances. |
 
 **Not created by this recipe:** the Google Cloud project, enabled APIs, service account, IAM bindings, Secret Manager secrets, Cloud SQL instance, custom domains. Those are operator-provided prerequisites.
@@ -123,9 +123,10 @@ gcloud run services describe opsmender \
 # Tail application logs while the first request runs migrations.
 gcloud run services logs tail opsmender --region "$REGION"
 
-# Hit the health endpoint.
-curl -sS "$URL/health"
-# -> {"status":"ok"}
+# Confirm the process and database-backed application are ready.
+curl -sS "$URL/health/live"
+curl -sS "$URL/health/ready"
+# -> {"status":"ready","database":"ok","migrations":"current"}
 
 # Register the first admin.
 curl -sS -X POST "$URL/auth/register" \

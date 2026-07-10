@@ -124,7 +124,7 @@ resource "oci_container_instances_container_instance" "this" {
     health_checks {
       health_check_type   = "HTTP"
       port                = var.container_port
-      path                = "/health"
+      path                = "/health/ready"
       interval_in_seconds = 30
       timeout_in_seconds  = 5
       failure_threshold   = 3

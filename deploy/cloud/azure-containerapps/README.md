@@ -80,11 +80,12 @@ az containerapp replica list -g opsmender-prod -n opsmender -o table
 # Tail the live log stream.
 az containerapp logs show -g opsmender-prod -n opsmender --follow
 
-# Hit /health from the public FQDN.
+# Confirm the process and database-backed application are ready.
 FQDN=$(az containerapp show -g opsmender-prod -n opsmender \
   --query 'properties.configuration.ingress.fqdn' -o tsv)
-curl -sS "https://$FQDN/health"
-# → {"status":"ok"}
+curl -sS "https://$FQDN/health/live"
+curl -sS "https://$FQDN/health/ready"
+# -> {"status":"ready","database":"ok","migrations":"current"}
 
 # Register the first admin (auto-admin per the existing /auth/register logic).
 curl -sS -X POST "https://$FQDN/auth/register" \

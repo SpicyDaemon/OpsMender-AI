@@ -1,7 +1,7 @@
 ## Application Load Balancer + target group + listeners.
 ##
 ## ALB → target group → Fargate tasks on `container_port`. Health check
-## hits `/health` (matches the Dockerfile HEALTHCHECK).
+## hits `/health/ready` so traffic reaches only database-ready tasks.
 
 resource "aws_lb" "this" {
   name               = "${var.name}-alb"
@@ -20,7 +20,7 @@ resource "aws_lb_target_group" "this" {
   vpc_id      = var.vpc_id
 
   health_check {
-    path                = "/health"
+    path                = "/health/ready"
     healthy_threshold   = 2
     unhealthy_threshold = 3
     interval            = 30

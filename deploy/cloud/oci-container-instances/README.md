@@ -8,7 +8,7 @@ Per locked decision **D-023**, the OpsMender framework ships zero platform-speci
 
 | Resource | Purpose |
 |---|---|
-| `oci_container_instances_container_instance` | The OpsMender workload. One container per instance with a flexible shape (default `CI.Standard.E4.Flex`, 1 OCPU / 8 GB), `/health` HTTP health check, restart policy `ALWAYS`. |
+| `oci_container_instances_container_instance` | The OpsMender workload. One container per instance with a flexible shape (default `CI.Standard.E4.Flex`, 1 OCPU / 8 GB), `/health/ready` HTTP readiness check, restart policy `ALWAYS`. |
 | `oci_core_network_security_group` | NSG attached to the instance's VNIC. Ingress on the container port from operator-supplied CIDRs; egress anywhere. |
 | `oci_logging_log_group` | OCI Logging log group with operator-controlled retention. Container stdout/stderr flows here when you also configure a service log on the log group (covered as a follow-on `oci logging log create` recipe in the verification section). |
 
@@ -62,8 +62,8 @@ done
 
 # 5. Hit the dashboard.
 URL=$(terraform output -raw dashboard_url)
-curl -sS "$URL/health"
-# → {"status":"ok"}
+curl -sS "$URL/health/ready"
+# -> {"status":"ready","database":"ok","migrations":"current"}
 
 open "$URL"
 # Click Register; the first user becomes admin.
@@ -79,9 +79,9 @@ oci container-instances container-instance get \
   --query 'data.{state:"lifecycle-state",containers:containers}' \
   --output table
 
-# Hit /health from the public IP (or via your NLB if you provisioned one).
+# Confirm readiness from the public IP (or via your NLB if you provisioned one).
 URL=$(terraform output -raw dashboard_url)
-curl -sS "$URL/health"
+curl -sS "$URL/health/ready"
 
 # Wire container stdout to the OCI Logging log group this recipe created.
 # (One-time, post-apply — could be folded into the recipe but kept out
@@ -154,7 +154,7 @@ Terraform removes the Container Instance, the NSG, and the log group. It does **
         │   │  Container Instance               │                      │
         │   │  CI.Standard.E4.Flex (1 OCPU/8 G) │                      │
         │   │  Image: ghcr.io/.../opsmender-ai  │                      │
-        │   │  HTTP health-check /health        │                      │
+        │   │  readiness /health/ready          │                      │
         │   └────┬─────────────┬────────────────┘                      │
         │        │             │                                       │
         │        ▼             ▼                                       │

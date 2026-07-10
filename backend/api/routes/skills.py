@@ -43,6 +43,7 @@ from backend.db.models import Skill, User
 from backend.db.repos import MCPServerRepo, ModelConfigRepo, SkillRepo
 from backend.mcp.client import connect, list_tools
 from backend.skills.ai_assist import build_prompt, parse_ai_response
+from backend.skills.convert import SkillConversion, convert_legacy_skill_content
 from backend.skills.parser import loads as parse_skill
 from backend.skills.suggest import suggest_classification
 from backend.skills.template import (
@@ -100,7 +101,9 @@ def _extract_focus_areas(content_md: str) -> list[str]:
         return []
 
 
-def _to_response(skill: Skill) -> SkillResponse:
+def _to_response(
+    skill: Skill, *, conversion_notice: str | None = None
+) -> SkillResponse:
     return SkillResponse(
         id=skill.id,
         name=skill.name,
@@ -109,14 +112,17 @@ def _to_response(skill: Skill) -> SkillResponse:
         assignment=getattr(skill, "assignment", "global") or "global",
         content_md=skill.content_md,
         focus_areas=_extract_focus_areas(skill.content_md),
+        conversion_notice=conversion_notice,
         created_at=skill.created_at,
         updated_at=skill.updated_at,
     )
 
 
-async def _validate_content(content_md: str) -> None:
+async def _validate_content(content_md: str) -> SkillConversion:
     try:
-        parse_skill(content_md)
+        conversion = convert_legacy_skill_content(content_md)
+        parse_skill(conversion.content)
+        return conversion
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -381,21 +387,21 @@ async def create_skill(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    await _validate_content(body.content_md)
+    conversion = await _validate_content(body.content_md)
     await _validate_mcp_server(db, org_id, body.mcp_server_id)
     try:
         skill = await SkillRepo.create(
             db,
             org_id,
             name=body.name,
-            content_md=body.content_md,
+            content_md=conversion.content,
             description=body.description,
             mcp_server_id=body.mcp_server_id,
             assignment=body.assignment,
         )
         await db.commit()
         await db.refresh(skill)
-        return _to_response(skill)
+        return _to_response(skill, conversion_notice=conversion.notice)
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
@@ -423,7 +429,7 @@ async def update_skill(
             detail="Skill not found",
         )
 
-    await _validate_content(body.content_md)
+    conversion = await _validate_content(body.content_md)
     await _validate_mcp_server(db, org_id, body.mcp_server_id)
     try:
         updated = await SkillRepo.update(
@@ -431,7 +437,7 @@ async def update_skill(
             org_id,
             skill_id,
             name=body.name,
-            content_md=body.content_md,
+            content_md=conversion.content,
             description=body.description,
             mcp_server_id=body.mcp_server_id,
             assignment=body.assignment,
@@ -443,7 +449,7 @@ async def update_skill(
                 detail="Skill not found",
             )
         await db.refresh(updated)
-        return _to_response(updated)
+        return _to_response(updated, conversion_notice=conversion.notice)
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
@@ -546,7 +552,7 @@ async def import_skill(
             detail="Uploaded skill file is empty",
         )
 
-    await _validate_content(content_md)
+    conversion = await _validate_content(content_md)
     await _validate_mcp_server(db, org_id, mcp_server_id)
 
     if not name:
@@ -559,14 +565,14 @@ async def import_skill(
             db,
             org_id,
             name=name,
-            content_md=content_md,
+            content_md=conversion.content,
             description=description or f"Imported from {file.filename or 'upload'}",
             mcp_server_id=mcp_server_id,
             assignment=assignment,
         )
         await db.commit()
         await db.refresh(skill)
-        return _to_response(skill)
+        return _to_response(skill, conversion_notice=conversion.notice)
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(

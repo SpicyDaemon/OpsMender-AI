@@ -14,6 +14,7 @@ from typing import Iterable
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.db.repos import SkillRepo, OrganizationRepo
+from backend.skills.convert import convert_legacy_skill_content
 from backend.skills.parser import SkillDefinition, loads
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class ImportResult:
     imported: list[str]
     skipped: list[str]
     failed: list[tuple[str, str]]  # (path, reason)
+    upgraded: list[str]
 
 
 def _resolve_skill_name(path: pathlib.Path, root: pathlib.Path) -> str:
@@ -49,7 +51,7 @@ async def auto_import(
     For multi-tenant OpsMender, we import these into the first organization found (Main).
     """
     root = pathlib.Path(skills_dir)
-    result = ImportResult(imported=[], skipped=[], failed=[])
+    result = ImportResult(imported=[], skipped=[], failed=[], upgraded=[])
 
     files = list(_candidate_files(root))
     if not files:
@@ -73,8 +75,8 @@ async def auto_import(
 
             try:
                 raw = path.read_text(encoding="utf-8")
-                # Parse to validate format — content is persisted as-is.
-                _ = loads(raw)
+                conversion = convert_legacy_skill_content(raw)
+                _ = loads(conversion.content)
             except Exception as exc:  # noqa: BLE001 — surface to caller
                 logger.warning("skills.auto_import: skip %s (%s)", path, exc)
                 result.failed.append((str(path), str(exc)))
@@ -84,11 +86,18 @@ async def auto_import(
                 db,
                 org_id,
                 name=name,
-                content_md=raw,
+                content_md=conversion.content,
                 description=f"Auto-imported from {path}",
                 mcp_server_id=None,
             )
             result.imported.append(name)
+            if conversion.changed:
+                result.upgraded.append(name)
+                logger.warning(
+                    "skills.auto_import: %s was upgraded to explicit tier policies; "
+                    "review the generated defaults",
+                    path,
+                )
 
         await db.commit()
 

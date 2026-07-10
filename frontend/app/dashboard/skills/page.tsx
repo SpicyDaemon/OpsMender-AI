@@ -83,7 +83,7 @@ operations:
 
 Unknown tools fail closed. deny: true always blocks. Generic tools require
 allow_generic: true. Explicit tiers are enforced by the backend; operations
-without tiers retain legacy behavior.
+without complete tier policies are denied.
 `;
 
 function fmtDate(iso: string) {
@@ -131,6 +131,7 @@ function SkillModal({
   initialContent,
   onClose,
   onSaved,
+  onNotice,
 }: {
   open: boolean;
   skill: SkillResponse | null;
@@ -139,6 +140,7 @@ function SkillModal({
   initialContent?: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
+  onNotice: (message: string) => void;
 }) {
   const [form, setForm] = useState<FormState>(toFormState(skill, initialContent));
   const [saving, setSaving] = useState(false);
@@ -174,11 +176,10 @@ function SkillModal({
         mcp_server_id,
         assignment,
       };
-      if (skill) {
-        await updateSkill(skill.id, payload);
-      } else {
-        await createSkill(payload);
-      }
+      const saved = skill
+        ? await updateSkill(skill.id, payload)
+        : await createSkill(payload);
+      if (saved?.conversion_notice) onNotice(saved.conversion_notice);
       await onSaved();
       onClose();
     } catch (err) {
@@ -938,11 +939,13 @@ function ImportModal({
   servers,
   onClose,
   onSaved,
+  onNotice,
 }: {
   open: boolean;
   servers: MCPServerResponse[];
   onClose: () => void;
   onSaved: () => Promise<void>;
+  onNotice: (message: string) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
@@ -971,11 +974,12 @@ function ImportModal({
     setSaving(true);
     setError("");
     try {
-      await importSkill({
+      const imported = await importSkill({
         file,
         name: name.trim() || undefined,
         mcp_server_id: mcpServerId || undefined,
       });
+      if (imported?.conversion_notice) onNotice(imported.conversion_notice);
       await onSaved();
       onClose();
     } catch (err) {
@@ -1355,6 +1359,7 @@ export default function SkillsPage() {
         initialContent={templateContent}
         onClose={() => setShowEdit(false)}
         onSaved={load}
+        onNotice={toast.info}
       />
       <CloneModal
         open={showClone}
@@ -1368,6 +1373,7 @@ export default function SkillsPage() {
         servers={servers}
         onClose={() => setShowImport(false)}
         onSaved={load}
+        onNotice={toast.info}
       />
       <GenerateModal
         open={showGenerate}

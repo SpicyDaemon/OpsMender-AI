@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.skills.parser import OperationClassification, SkillDefinition
+from backend.skills.parser import SkillDefinition
+from tests.skill_policy_helpers import explicit_operation
 from backend.tiers.sandbox import (
     Tier0Sandbox,
     Tier0SandboxViolation,
@@ -26,21 +27,21 @@ def mixed_skill():
         version="1",
         environment="test",
         operations=[
-            OperationClassification(tool="get_pods", classification="safe"),
-            OperationClassification(
+            explicit_operation("get_pods", "safe"),
+            explicit_operation(
                 tool="cordon_node",
                 classification="caution",
                 reversible=True,
                 compensating_inverse="uncordon_node",
             ),
-            OperationClassification(
+            explicit_operation(
                 tool="uncordon_node",
                 classification="caution",
                 reversible=True,
                 compensating_inverse="cordon_node",
             ),
-            OperationClassification(tool="rollout_restart", classification="caution"),
-            OperationClassification(tool="delete_pod", classification="destructive"),
+            explicit_operation("rollout_restart", "caution"),
+            explicit_operation("delete_pod", "destructive"),
         ],
     )
 
@@ -71,8 +72,8 @@ class TestFromSkill:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(tool="describe_*", classification="safe"),
-                OperationClassification(tool="get_pods", classification="safe"),
+                explicit_operation("describe_*", "safe"),
+                explicit_operation("get_pods", "safe"),
             ],
         )
         sandbox = Tier0Sandbox.from_skill(sd)
@@ -83,12 +84,12 @@ class TestFromSkill:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(
+                explicit_operation(
                     tool="rollout_restart",
                     classification="caution",
                     reversible=True,
                 ),
-                OperationClassification(tool="get_pods", classification="safe"),
+                explicit_operation("get_pods", "safe"),
             ],
         )
         sandbox = Tier0Sandbox.from_skill(
@@ -142,7 +143,7 @@ class TestCallToolGate:
             mixed_skill, available_tools=[_tool("get_pods")]
         )
         mixed_skill.operations.append(
-            OperationClassification(
+            explicit_operation(
                 tool="delete_pod", classification="destructive", reversible=True
             )
         )

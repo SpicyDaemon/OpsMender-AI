@@ -16,8 +16,8 @@ class EnforcementResult:
     """Result of a tier enforcement check.
 
     ``requires_approval`` is True when the action is permitted *only* after
-    human approval (Tier 1 destructive, or a generic-execution tool at Tier 1).
-    The tier gate routes these through the approval service before execution.
+    human approval under the explicit operation policy or generic-execution
+    guardrail. The tier gate routes these through the approval service.
     """
 
     permitted: bool
@@ -42,48 +42,11 @@ class EnforcementResult:
 
 
 # AI Autonomy Tiers (3-tier model):
-#   Tier 0 — Autonomous       (may execute remediation, incl. destructive,
-#                              within skill policy / deny lists / sandbox floor)
-#   Tier 1 — Approval Required (safe/caution auto; destructive routed to the
-#                              approval gate; unknown denied)
-#   Tier 2 — Advisory Only     (DEFAULT — no write/remediation actions execute;
-#                              read-only observation still happens in the
-#                              observe node, which runs before this gate)
+#   Tier 0 — Autonomous        (explicit policy + deny lists + sandbox floor)
+#   Tier 1 — Approval Required (execution mode comes from explicit policy)
+#   Tier 2 — Advisory Only     (DEFAULT — no remediation actions execute)
 #
 # Legacy Tier 3 (advise-only) is remapped to Tier 2 (see ``check`` + migration).
-_ADVISORY_REASON = (
-    "Tier 2 is advisory only — no remediation actions execute "
-    "(read-only analysis and recommendations only)"
-)
-
-# Rows: classification → {tier: (permitted, reason)}
-_MATRIX: dict[str, dict[int, tuple[bool, str]]] = {
-    "safe": {
-        0: (True, "safe operation — permitted at Tier 0 (autonomous)"),
-        1: (True, "safe operation — permitted at Tier 1 (approval required)"),
-        2: (False, _ADVISORY_REASON),
-    },
-    "caution": {
-        0: (True, "caution operation — permitted at Tier 0 (autonomous)"),
-        1: (True, "caution operation — permitted at Tier 1 (approval required)"),
-        2: (False, _ADVISORY_REASON),
-    },
-    "destructive": {
-        0: (
-            True,
-            "destructive operation — permitted at Tier 0 (autonomous, sandbox floor)",
-        ),
-        1: (True, "destructive operation — permitted at Tier 1 (requires approval)"),
-        2: (False, _ADVISORY_REASON),
-    },
-    "unknown": {
-        0: (False, "unknown operation — denied (not in skill definition)"),
-        1: (False, "unknown operation — denied (not in skill definition)"),
-        2: (False, _ADVISORY_REASON),
-    },
-}
-
-
 def normalize_tier(tier: int) -> int:
     """Map any tier value to a valid 3-tier value.
 
@@ -109,8 +72,7 @@ def check(
     reasoning. Legacy Tier 3 is normalized to Tier 2 (advisory).
 
     Enforcement order: deny-list (always wins) → generic-execution guardrail →
-    explicit operation tier policy (when present) → legacy tier/classification
-    matrix → Tier 0 reversible floor.
+    explicit operation tier policy → Tier 0 reversible floor.
     """
     tier = normalize_tier(tier)
     classification = skill_def.classify(tool_name)
@@ -156,48 +118,37 @@ def check(
             reversible=reversible,
         )
 
-    # 3. Explicit per-operation tier behavior is authoritative when the
-    #    operation declares ``tiers``. Missing tier entries fail closed.
-    if skill_def.has_explicit_tiers(tool_name):
-        policy = skill_def.tier_policy(tool_name, tier)
-        if policy is None:
-            return EnforcementResult(
-                permitted=False,
-                classification=classification,
-                tier=tier,
-                reason=f"operation has no explicit T{tier} policy — denied",
-                reversible=reversible,
-            )
-        if not policy.enabled or policy.mode in {"blocked", "advisory"}:
-            label = (
-                "advisory — no execution" if policy.mode == "advisory" else "blocked"
-            )
-            return EnforcementResult(
-                permitted=False,
-                classification=classification,
-                tier=tier,
-                reason=f"explicit T{tier} skill policy: {label}",
-                reversible=reversible,
-            )
-        permitted = True
-        requires_approval = policy.mode == "approval"
-        reason = (
-            f"explicit T{tier} skill policy permits autonomous execution"
-            if not requires_approval
-            else f"explicit T{tier} skill policy requires operator approval"
+    # 3. Every executable operation must declare its behavior for every tier.
+    #    Programmatic or persisted definitions that bypass parser validation
+    #    still fail closed here.
+    policy = skill_def.tier_policy(tool_name, tier)
+    if policy is None:
+        return EnforcementResult(
+            permitted=False,
+            classification=classification,
+            tier=tier,
+            reason=f"operation has no explicit T{tier} policy — denied",
+            reversible=reversible,
         )
-    else:
-        # 4. Legacy skills continue to use the classification matrix.
-        permitted, reason = _MATRIX[classification][tier]
-        # Tier 1 is interactive: for classification-only (legacy) skills EVERY
-        # permitted write — safe, caution, and destructive alike — routes
-        # through the operator approval gate. Skills that declare explicit
-        # per-operation tier policies keep their declared mode (handled in the
-        # explicit-tiers branch above, where ``policy.mode == "approval"``).
-        requires_approval = tier == 1 and permitted
+    if not policy.enabled or policy.mode in {"blocked", "advisory"}:
+        label = "advisory — no execution" if policy.mode == "advisory" else "blocked"
+        return EnforcementResult(
+            permitted=False,
+            classification=classification,
+            tier=tier,
+            reason=f"explicit T{tier} skill policy: {label}",
+            reversible=reversible,
+        )
+    permitted = True
+    requires_approval = policy.mode == "approval"
+    reason = (
+        f"explicit T{tier} skill policy permits autonomous execution"
+        if not requires_approval
+        else f"explicit T{tier} skill policy requires operator approval"
+    )
 
-    # 5. Tier 0 reversible floor. Explicit T0 policy may opt out with
-    #    ``require_reversible: false``; legacy operations retain the old floor.
+    # 4. Tier 0 reversible floor. Explicit T0 policy may opt out with
+    #    ``require_reversible: false``.
     if tier == 0 and permitted:
         violation = skill_def.tier0_violation_reason(tool_name)
         if violation is not None:

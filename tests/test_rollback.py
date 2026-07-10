@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.skills.parser import OperationClassification, SkillDefinition
+from backend.skills.parser import SkillDefinition
+from tests.skill_policy_helpers import explicit_operation
 from backend.workflow.rollback import (
     RollbackReport,
     RollbackStep,
@@ -21,20 +22,20 @@ def skill_def():
         version="1",
         environment="test",
         operations=[
-            OperationClassification(tool="get_pods", classification="safe"),
-            OperationClassification(
+            explicit_operation("get_pods", "safe"),
+            explicit_operation(
                 tool="cordon_node",
                 classification="caution",
                 reversible=True,
                 compensating_inverse="uncordon_node",
             ),
-            OperationClassification(
+            explicit_operation(
                 tool="uncordon_node",
                 classification="caution",
                 reversible=True,
                 compensating_inverse="cordon_node",
             ),
-            OperationClassification(
+            explicit_operation(
                 tool="rollout_restart",
                 classification="caution",
                 reversible=True,

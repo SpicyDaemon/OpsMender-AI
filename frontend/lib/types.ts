@@ -1043,6 +1043,7 @@ export interface SkillResponse {
   assignment: SkillAssignment;
   content_md: string;
   focus_areas: string[];
+  conversion_notice?: string | null;
   created_at: string;
   updated_at: string;
 }

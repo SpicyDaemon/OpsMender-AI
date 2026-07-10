@@ -30,13 +30,14 @@ from backend.audit.pg_logger import PgAuditLogger
 from backend.config_loader import set_env_path
 from backend.db.models import Base
 from backend.db.repos import SessionRepo
+from backend.skills.convert import convert_legacy_skill_content
 from backend.skills.parser import loads as load_skill_def
 from backend.tiers.enforcement import check as tier_check
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-SKILL_MD = """---
+SKILL_MD = convert_legacy_skill_content("""---
 version: "1"
 environment: kubernetes-test
 operations:
@@ -50,7 +51,7 @@ operations:
 ---
 
 # Kubernetes test skill
-"""
+""").content
 
 
 def _mock_mcp_result(text: str = "pod deleted"):

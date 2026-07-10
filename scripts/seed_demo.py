@@ -53,6 +53,7 @@ from backend.db.models import (
     User,
 )
 from backend.db.repos import OrganizationRepo, UserRepo
+from backend.skills.template import build_skill_from_tools
 
 
 def hp(p: str) -> str:
@@ -392,19 +393,59 @@ async def main():
                 "Kubernetes safe ops",
                 "kubernetes-prod",
                 "Read pods, describe deployments, view events.",
-                "# Kubernetes Skill\n\n## safe\n- get pods\n- describe deployment\n- get events\n\n## caution\n- restart deployment\n- scale\n\n## destructive\n- delete pod\n- delete deployment\n",
+                build_skill_from_tools(
+                    name="Kubernetes safe ops",
+                    environment="production",
+                    operations=[
+                        {"tool": "get_pods", "classification": "safe"},
+                        {"tool": "describe_deployment", "classification": "safe"},
+                        {"tool": "get_events", "classification": "safe"},
+                        {"tool": "restart_deployment", "classification": "caution"},
+                        {"tool": "scale_deployment", "classification": "caution"},
+                        {"tool": "delete_pod", "classification": "destructive"},
+                        {
+                            "tool": "delete_deployment",
+                            "classification": "destructive",
+                        },
+                    ],
+                ),
             ),
             (
                 "Postgres read-only",
                 "postgres-prod",
                 "SELECT-only queries against payments-db.",
-                "# Postgres Skill\n\n## safe\n- SELECT queries\n- EXPLAIN ANALYZE\n\n## destructive\n- INSERT, UPDATE, DELETE\n- DROP, TRUNCATE\n",
+                build_skill_from_tools(
+                    name="Postgres read-only",
+                    environment="production",
+                    operations=[
+                        {"tool": "select_query", "classification": "safe"},
+                        {"tool": "explain_query", "classification": "safe"},
+                        {
+                            "tool": "write_query",
+                            "classification": "destructive",
+                            "deny": True,
+                        },
+                        {
+                            "tool": "schema_change",
+                            "classification": "destructive",
+                            "deny": True,
+                        },
+                    ],
+                ),
             ),
             (
                 "GitHub PR ops",
                 "github-readonly",
                 "Read PRs, comments, file diffs.",
-                "# GitHub Skill\n\n## safe\n- list PRs\n- read comments\n- view diffs\n",
+                build_skill_from_tools(
+                    name="GitHub PR ops",
+                    environment="production",
+                    operations=[
+                        {"tool": "list_pull_requests", "classification": "safe"},
+                        {"tool": "get_pull_request", "classification": "safe"},
+                        {"tool": "get_file_diff", "classification": "safe"},
+                    ],
+                ),
             ),
         ]:
             db.add(

@@ -22,6 +22,7 @@ from backend.api.deps import get_db, set_session_factory
 from backend.config_loader import set_env_path
 from backend.db.models import Base
 from backend.db.repos import MCPServerRepo, SkillRepo
+from backend.skills.convert import CONVERSION_NOTICE, convert_legacy_skill_content
 from backend.skills.importer import auto_import
 from backend.skills.parser import loads as parse_skill_content
 from backend.tiers.enforcement import load_skill_for_mcp_server
@@ -29,7 +30,7 @@ from backend.tiers.enforcement import load_skill_for_mcp_server
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-SAMPLE_SKILL = """---
+LEGACY_SAMPLE_SKILL = """---
 version: "1"
 environment: sample
 operations:
@@ -43,6 +44,7 @@ operations:
 
 # Sample skill
 """
+SAMPLE_SKILL = convert_legacy_skill_content(LEGACY_SAMPLE_SKILL).content
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +168,10 @@ class TestParserLoads:
 
     def test_yaml_mode(self):
         yaml_text = "version: '1'\nenvironment: raw\noperations:\n  - tool: get_pods\n    classification: safe\n"
-        skill = parse_skill_content(yaml_text, fmt="yaml")
+        skill = parse_skill_content(
+            convert_legacy_skill_content(yaml_text, fmt="yaml").content,
+            fmt="yaml",
+        )
         assert skill.environment == "raw"
         assert skill.classify("get_pods") == "safe"
 
@@ -300,12 +305,13 @@ class TestSkillRepo:
 class TestAutoImport:
     async def test_imports_new_files(self, db_factory, tmp_path):
         (tmp_path / "production").mkdir()
-        (tmp_path / "production" / "SKILL.md").write_text(SAMPLE_SKILL)
+        (tmp_path / "production" / "SKILL.md").write_text(LEGACY_SAMPLE_SKILL)
         (tmp_path / "sandbox.md").write_text(SAMPLE_SKILL)
 
         result = await auto_import(db_factory, skills_dir=tmp_path)
 
         assert set(result.imported) == {"production", "sandbox"}
+        assert result.upgraded == ["production"]
         assert result.skipped == []
         assert result.failed == []
 
@@ -366,7 +372,7 @@ class TestSkillsAPI:
             "/skills",
             json={
                 "name": "prod",
-                "content_md": SAMPLE_SKILL,
+                "content_md": LEGACY_SAMPLE_SKILL,
                 "description": "Production",
             },
             headers=auth_headers,
@@ -374,6 +380,8 @@ class TestSkillsAPI:
         assert resp.status_code == 201, resp.text
         assert resp.json()["name"] == "prod"
         assert resp.json()["description"] == "Production"
+        assert resp.json()["content_md"] == SAMPLE_SKILL
+        assert resp.json()["conversion_notice"] == CONVERSION_NOTICE
 
         resp = await client.get("/skills", headers=auth_headers)
         assert resp.status_code == 200
@@ -459,7 +467,7 @@ class TestSkillsAPI:
             f"/skills/{skill_id}",
             json={
                 "name": "v2",
-                "content_md": SAMPLE_SKILL,
+                "content_md": LEGACY_SAMPLE_SKILL,
                 "description": "Renamed",
             },
             headers=auth_headers,
@@ -467,6 +475,8 @@ class TestSkillsAPI:
         assert resp.status_code == 200
         assert resp.json()["name"] == "v2"
         assert resp.json()["description"] == "Renamed"
+        assert resp.json()["content_md"] == SAMPLE_SKILL
+        assert resp.json()["conversion_notice"] == CONVERSION_NOTICE
 
     async def test_delete_skill(self, client: AsyncClient, app, auth_headers):
         async with app.state.session_factory() as db:
@@ -513,7 +523,7 @@ class TestSkillsAPI:
         assert body["content_md"] == SAMPLE_SKILL
 
     async def test_import_skill_upload(self, client: AsyncClient, auth_headers):
-        files = {"file": ("production.md", SAMPLE_SKILL, "text/markdown")}
+        files = {"file": ("production.md", LEGACY_SAMPLE_SKILL, "text/markdown")}
         resp = await client.post(
             "/skills/import",
             files=files,
@@ -523,6 +533,7 @@ class TestSkillsAPI:
         body = resp.json()
         assert body["name"] == "production"
         assert body["content_md"] == SAMPLE_SKILL
+        assert body["conversion_notice"] == CONVERSION_NOTICE
 
     async def test_import_empty_file_rejected(self, client: AsyncClient, auth_headers):
         files = {"file": ("empty.md", "", "text/markdown")}

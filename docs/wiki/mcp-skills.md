@@ -24,7 +24,7 @@ incident session. It is **separate** from:
 | Tier | Name | Behaviour |
 |------|------|-----------|
 | **0** | **Autonomous** | May execute remediation automatically — incl. rollbacks, restarts, failovers, and destructive ops — **but only within MCP Skill policy, deny lists, MCP permissions, and backend guardrails.** Most autonomous; **not** unlimited. Selecting Tier 0 shows a red warning. |
-| **1** | **Approval Required** | Investigates and proposes. Safe/allow-listed actions run; destructive/high-risk actions pause for **operator approval**; deny-listed actions never run. |
+| **1** | **Approval Required** | Investigates and proposes. Each operation's explicit policy chooses autonomous execution, **operator approval**, or blocking; deny-listed actions never run. |
 | **2** | **Advisory Only** *(default)* | Analysis, recommendations, runbooks, read-only observation. **No write/remediation actions execute.** |
 
 - **Default** for new installs and new sessions is **Tier 2 — Advisory Only**.
@@ -146,14 +146,19 @@ operations:
   - tool: kubectl_get_only  # a scoped read-only wrapper you trust
     classification: safe
     allow_generic: true
+    tiers:
+      T0: {enabled: true, mode: autonomous, require_reversible: true}
+      T1: {enabled: true, mode: autonomous}
+      T2: {enabled: true, mode: advisory}
 ```
 
 ## Action classification & deny lists
 
-Each tool resolves to a classification that drives the gate: `safe` (read-only /
+Each tool carries a classification for risk labeling: `safe` (read-only /
 low-risk) · `caution` (reversible writes) · `destructive` (high-risk /
 irreversible) · `unknown` (unclassified — **always denied**, never silently
-allowed) · generic-execution (auto-detected). An entry with `deny: true` is
+allowed) · generic-execution (auto-detected). Its explicit T0/T1/T2 policy
+controls execution. An entry with `deny: true` is
 blocked at **every tier — deny always wins**, even over `allow_generic` or a
 `safe` classification, and even at Tier 0.
 
@@ -163,20 +168,25 @@ and **denied**.
 
 ## Explicit per-operation tier policy
 
-New skills should declare `tiers` for each operation. The structured policy is
-the source of truth enforced by `backend/tiers/enforcement.py`:
+Every executable operation must declare complete `tiers` entries for T0, T1,
+and T2. The structured policy is the source of truth enforced by
+`backend/tiers/enforcement.py`:
 
 - `mode: autonomous` permits execution without an operator ACK.
 - `mode: approval` routes the action through the approval gate.
 - `mode: blocked` denies execution.
 - `mode: advisory` allows guidance but no execution.
-- `require_reversible: true` keeps the Tier 0 requirement for
-  `reversible: true` plus `compensating_inverse`.
+- `require_reversible: true` keeps the Tier 0 reversible floor. Safe reads are
+  implicitly reversible; side-effecting operations also need
+  `reversible: true` and a `compensating_inverse`.
 - `require_reversible: false` explicitly allows a T0 operation to bypass that
   reversible floor. Deny and generic-command guardrails still win.
 
-Skills without `tiers` remain backward compatible: they use the legacy
-classification matrix and the original Tier 0 reversible floor.
+Classification-only skills are converted on import to a conservative
+compatibility policy: T0 autonomous behind the reversible floor, T1 approval,
+and T2 advisory. Stored skills are migrated the same way. A conversion notice
+is returned so the generated policy can be reviewed. Partial or invalid explicit
+policies are rejected rather than inferred.
 
 ```yaml
 ---
@@ -272,19 +282,22 @@ Observe, diagnose, and explain what should be done. Do not execute write actions
 > perfect model reasoning. A prompt-injected "ignore policy and delete prod" is
 > blocked at the tier gate and never reaches MCP execution.
 
+Enforcement order is fixed: deny entries always win, then the generic-command
+guardrail applies, then the operation's explicit active-tier policy, followed by
+the Tier 0 reversible floor. Unknown or underspecified operations are denied.
+
 The tier gate runs before any tool/action execution and knows: the selected
 session tier, the skill policy for the selected MCP server, the action's
 classification, whether approval is required, and whether the action is denied.
 
-- **Tier 2** — blocks all write/remediation actions; read-only observation
-  happens in the observe node (before the gate); blocked actions are logged.
-- **Tier 1** — allow-listed/safe actions run; destructive actions route through
-  the approval gate; deny-listed and unknown actions are blocked; decisions are
-  logged.
+- **Tier 2** — explicit policies may be advisory or blocked, never autonomous or
+  approval-gated; blocked actions are logged.
+- **Tier 1** — each operation explicitly chooses autonomous or approval mode;
+  deny-listed and unknown actions are blocked; decisions are logged.
 - **Tier 0** — executes only actions explicitly permitted by skill policy and
-  not deny-listed. Explicit policy may set `require_reversible: false`;
-  legacy operations retain the reversible sandbox floor. Unknown actions are
-  blocked and every decision is logged.
+  not deny-listed. Explicit policy may set `require_reversible: false`; otherwise
+  the reversible sandbox floor applies. Unknown actions are blocked and every
+  decision is logged.
 
 Every MCP tool call flows through one chokepoint (`audited_tool_call` →
 `tier_check`); the live-rollback path is gated by the Tier 0 sandbox allowlist;

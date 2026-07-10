@@ -1,6 +1,19 @@
 ---
 version: "1"
 environment: app-incident-response
+tier_policies:
+  read: &read_tiers
+    T0: {enabled: true, mode: autonomous}
+    T1: {enabled: true, mode: autonomous}
+    T2: {enabled: true, mode: advisory}
+  reversible_write: &reversible_write_tiers
+    T0: {enabled: true, mode: autonomous, require_reversible: true}
+    T1: {enabled: true, mode: approval}
+    T2: {enabled: false, mode: blocked}
+  approval_only: &approval_only_tiers
+    T0: {enabled: false, mode: blocked}
+    T1: {enabled: true, mode: approval}
+    T2: {enabled: false, mode: blocked}
 operations:
   # ─────────────────────────────────────────────────────────────
   # Safe (read-only) — diagnosis surface
@@ -9,48 +22,65 @@ operations:
   # GitHub / source-control MCP — repo + code lookups
   - tool: get_repository
     classification: safe
+    tiers: *read_tiers
   - tool: get_file_contents
     classification: safe
     notes: "Read source files for root-cause analysis"
+    tiers: *read_tiers
   - tool: list_commits
     classification: safe
+    tiers: *read_tiers
   - tool: get_commit
     classification: safe
+    tiers: *read_tiers
   - tool: list_pull_requests
     classification: safe
+    tiers: *read_tiers
   - tool: get_pull_request
     classification: safe
+    tiers: *read_tiers
   - tool: list_issues
     classification: safe
+    tiers: *read_tiers
   - tool: get_issue
     classification: safe
+    tiers: *read_tiers
   - tool: search_code
     classification: safe
     notes: "Grep across the repo to locate the offending symbol"
+    tiers: *read_tiers
 
   # Jira MCP — ticket lookups
   - tool: jira_search
     classification: safe
+    tiers: *read_tiers
   - tool: jira_get_issue
     classification: safe
+    tiers: *read_tiers
   - tool: jira_list_projects
     classification: safe
+    tiers: *read_tiers
   - tool: jira_get_transitions
     classification: safe
+    tiers: *read_tiers
 
   # Observability MCP — app telemetry for diagnosis
   - tool: query_logs
     classification: safe
     notes: "Loki / CloudWatch Logs / Datadog Logs query"
+    tiers: *read_tiers
   - tool: query_metrics
     classification: safe
     notes: "Prometheus / Datadog metrics query"
+    tiers: *read_tiers
   - tool: get_trace
     classification: safe
     notes: "Distributed trace lookup (Tempo / Jaeger / Datadog APM)"
+    tiers: *read_tiers
   - tool: list_error_events
     classification: safe
     notes: "Sentry / Rollbar error aggregation"
+    tiers: *read_tiers
 
   # ─────────────────────────────────────────────────────────────
   # Caution (non-destructive writes) — proposes fixes for humans
@@ -64,60 +94,74 @@ operations:
     reversible: true
     compensating_inverse: delete_branch
     notes: "Cuts a fix branch off the default branch — reversible by deleting the branch"
+    tiers: *reversible_write_tiers
   - tool: create_or_update_file
     classification: caution
     notes: "Writes the proposed patch onto the fix branch — only ever the fix branch, never main/master"
+    tiers: *approval_only_tiers
   - tool: push_files
     classification: caution
     notes: "Batch variant of create_or_update_file — same constraint: fix branch only"
+    tiers: *approval_only_tiers
   - tool: create_pull_request
     classification: caution
     notes: "Opens a PR with the diagnosis in the description and a link back to the OpsMender incident"
+    tiers: *approval_only_tiers
   - tool: create_merge_request
     classification: caution
     notes: "GitLab equivalent of create_pull_request"
+    tiers: *approval_only_tiers
   - tool: add_pr_comment
     classification: caution
+    tiers: *approval_only_tiers
   - tool: request_reviewers
     classification: caution
+    tiers: *approval_only_tiers
 
   - tool: jira_create_issue
     classification: caution
     notes: "Files a bug ticket with the diagnosis, linked logs/traces, and the PR URL once opened"
+    tiers: *approval_only_tiers
   - tool: jira_add_comment
     classification: caution
+    tiers: *approval_only_tiers
   - tool: jira_update_issue
     classification: caution
     notes: "Updates fields like priority, assignee, labels, fix-version"
+    tiers: *approval_only_tiers
   - tool: jira_transition_issue
     classification: caution
     notes: "Moves the ticket through workflow states (To Do → In Progress → In Review)"
+    tiers: *approval_only_tiers
   - tool: jira_link_issue
     classification: caution
     notes: "Links the new ticket to the originating incident / parent epic"
+    tiers: *approval_only_tiers
 
   # ─────────────────────────────────────────────────────────────
-  # Destructive — require explicit human approval at every tier
+  # Destructive and prohibited operations
   # ─────────────────────────────────────────────────────────────
   # The agent must NEVER merge its own PR, push to a protected
   # branch, or delete tickets. These exist so the classification is
-  # explicit; the tier gate keeps them gated on approval.
+  # explicit; unconditional deny entries cannot execute at any tier.
 
   - tool: merge_pull_request
-    classification: destructive
+    deny: true
     notes: "Agent must not merge its own PR — humans approve and merge"
   - tool: merge_merge_request
-    classification: destructive
+    deny: true
     notes: "GitLab equivalent — humans only"
   - tool: delete_file
     classification: destructive
+    tiers: *approval_only_tiers
   - tool: delete_branch
     classification: destructive
     notes: "Allowed only as a rollback of an agent-created fix branch"
+    tiers: *approval_only_tiers
   - tool: force_push
-    classification: destructive
+    deny: true
   - tool: jira_delete_issue
-    classification: destructive
+    deny: true
 ---
 
 # Application Incident Response — Skill Definition
@@ -150,15 +194,14 @@ logs/metrics/traces/errors provider) and the agent can:
 
 ## Hard rules baked into the classifications
 
-- **The agent never merges its own PR.** `merge_pull_request` /
-  `merge_merge_request` are `destructive` and gated on explicit human
-  approval (Tier 1) or blocked entirely (Tier 2). A human reviews and
-  merges.
+- **The agent never merges its own PR.** `merge_pull_request` and
+  `merge_merge_request` are unconditional deny entries. A human reviews and
+  merges outside OpsMender.
 - **No writes to protected branches.** `create_or_update_file` and
   `push_files` are only ever issued against an agent-created fix
   branch. Branch protection on `main` / `master` should be configured
   on the SCM side as a belt-and-suspenders enforcement.
-- **No ticket deletion.** `jira_delete_issue` is `destructive`. Tickets
+- **No ticket deletion.** `jira_delete_issue` is an unconditional deny. Tickets
   the agent files stay in history; close them through a transition.
 
 ## How the tiers shape behavior
@@ -168,14 +211,14 @@ removed and any legacy stored `3` is remapped to Tier 2).
 
 | Tier | Diagnosis (safe) | File Jira ticket (caution) | Open PR/MR with fix (caution) | Merge PR/MR (destructive) |
 |------|------------------|----------------------------|-------------------------------|---------------------------|
-| **0 — Autonomous** (sandbox only) | autonomous | autonomous | autonomous | still blocked — destructive |
-| **1 — Approval Required** | autonomous | after approval | after approval | after approval |
-| **2 — Advisory Only** *(default)* | autonomous (read-only) | recommendation only | recommendation only | recommendation only |
+| **0 — Autonomous** (sandbox only) | autonomous | blocked | blocked | denied |
+| **1 — Approval Required** | autonomous | after approval | after approval | denied |
+| **2 — Advisory Only** *(default)* | advisory | recommendation only | recommendation only | denied |
 
 At the default **Tier 2 (Advisory Only)** the agent diagnoses and *recommends* a
 ticket + PR but does not write — a human performs the writes. Move to **Tier 1**
-to let the agent file the ticket and open the draft PR after operator approval,
-while a human still owns the merge.
+to let the agent file the ticket and open the draft PR after operator approval;
+merge operations remain denied at every tier.
 
 ## Customizing
 

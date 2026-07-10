@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-10
+
 ### Added
+
+- **Release verification gate.** Added reusable pull-request and release-tag
+  verification for backend lint/tests, empty-Postgres migrations, frontend
+  lint/typecheck/tests/build, and a container health smoke test. Backend tests
+  now deselect live integration cases and enforce a 180-second per-test timeout.
+
+- **Platform-neutral health probes.** Added dependency-free `/health/live` and
+  role-aware `/health/ready` endpoints with database and migration checks, while
+  retaining `/health` as the backward-compatible liveness alias.
 
 - **Simplification sprint — Phase 5 Voice & SMS calling.** Added admin
   Settings for workspace Voice/SMS calling, with encrypted auth-token storage,
@@ -40,12 +51,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Production configuration validation.** Production startup now rejects
+  placeholder secrets, non-PostgreSQL database URLs, weak configured bootstrap
+  passwords, and invalid autonomy tiers, with warnings for wildcard CORS,
+  missing public URLs, and enabled API documentation.
+
 - **Simplification sprint — Phase 3 Models.** Services now expose their
   service-specific model list as Models, backed by `services.model_config_ids`,
   and the session model picker is restricted to active service Models plus the
   workspace default model.
 
 ### Breaking
+
+- **Explicit Skill tier policies.** Every executable Skill operation must now
+  declare complete T0/T1/T2 behavior; underspecified runtime policies fail
+  closed and deny entries remain unconditional. Existing stored and imported
+  classification-only operations are deterministically upgraded to the prior
+  conservative behavior and surfaced for operator review.
 
 - **Simplification sprint — Phase 4 MCP servers.** Service MCP server lists are
   now strict allowlists, backed by `services.mcp_server_ids`; empty service

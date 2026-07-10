@@ -1037,6 +1037,7 @@ class SkillResponse(BaseModel):
     assignment: str = "global"
     content_md: str
     focus_areas: list[str] = Field(default_factory=list)
+    conversion_notice: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

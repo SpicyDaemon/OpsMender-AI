@@ -54,18 +54,19 @@ from backend.mcp.oauth import (
     TokenResponse,
     sign_state,
 )
+from backend.skills.convert import convert_legacy_skill_content
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-SKILL_MD = """---
+SKILL_MD = convert_legacy_skill_content("""---
 version: "1"
 environment: api-test
 operations:
   - tool: kubectl_get_pods
     classification: safe
 ---
-"""
+""").content
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -37,7 +37,8 @@ from backend.db.repos import (
     IncidentMemoryRecallLogRepo,
     IncidentMemoryRepo,
 )
-from backend.skills.parser import OperationClassification, SkillDefinition
+from backend.skills.parser import SkillDefinition
+from tests.skill_policy_helpers import explicit_operation
 
 
 ORG = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
@@ -62,7 +63,7 @@ def _skill() -> SkillDefinition:
         version="1",
         environment="test",
         operations=[
-            OperationClassification(tool="get_pods", classification="safe"),
+            explicit_operation("get_pods", "safe"),
         ],
     )
 

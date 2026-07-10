@@ -24,6 +24,7 @@ from backend.db.repos import (
     SkillRepo,
 )
 from backend.mcp.pool import MCPServerPool
+from backend.skills.convert import convert_legacy_skill_content
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +127,7 @@ async def viewer_headers(client: AsyncClient, admin_headers) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-_SKILL_MD = (
+_SKILL_MD = convert_legacy_skill_content(
     "---\n"
     "version: '1'\n"
     "environment: test\n"
@@ -142,7 +143,7 @@ _SKILL_MD = (
     "  - tool: rollout_restart\n"
     "    classification: caution\n"
     "---\n"
-)
+).content
 
 
 async def _seed_session_with_cordon(app) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:

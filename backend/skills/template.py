@@ -183,7 +183,7 @@ lists, MCP permissions, and backend guardrails.** Most autonomous, not unlimited
 > **Tier 0 safety floor.** `require_reversible: true` requires
 > `reversible: true` and a `compensating_inverse` for non-safe actions. A skill
 > may explicitly set `require_reversible: false` for an operation whose T0 mode
-> is autonomous. Legacy operations without `tiers` retain the original floor.
+> is autonomous.
 
 ### Safe actions (read-only / low-risk)
 
@@ -341,10 +341,9 @@ Action classification (drives the tier gate): `safe` (read-only / low-risk) ·
 arbitrary-command tools — conservatively guarded). `deny: true` blocks an entry
 at every tier.
 
-Each operation may declare `tiers.T0` / `T1` / `T2` with `enabled` and `mode`
+Each executable operation declares `tiers.T0` / `T1` / `T2` with `enabled` and `mode`
 (`autonomous`, `approval`, `blocked`, or `advisory`). These structured values
-are enforced by `backend/tiers/enforcement.py`. Operations without `tiers`
-remain backward compatible and use the legacy classification matrix.
+are enforced by `backend/tiers/enforcement.py`; underspecified operations are denied.
 
 ## Metadata
 

@@ -1934,6 +1934,7 @@ import type {
   QuietHoursConfig,
   UserNotificationPrefResponse,
   VoiceSettingsResponse,
+  VoiceSettingsTestResponse,
   VoiceSettingsUpdate,
 } from "./types";
 
@@ -1993,6 +1994,10 @@ export async function updateVoiceSettings(
   body: VoiceSettingsUpdate,
 ): Promise<VoiceSettingsResponse> {
   return api.put<VoiceSettingsResponse>("/api/v1/voice-settings", body);
+}
+
+export async function testVoiceSettings(): Promise<VoiceSettingsTestResponse> {
+  return api.post<VoiceSettingsTestResponse>("/api/v1/voice-settings/test", {});
 }
 
 export async function getChannelAvailability(): Promise<ChannelAvailabilityResponse> {

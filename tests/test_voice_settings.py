@@ -283,3 +283,49 @@ async def test_dispatch_builds_sms_and_voice_from_database_settings(
     voice_form = captured[1][1]
     assert sms_form["From"] == "+15551111111"
     assert voice_form["From"] == "+15552222222"
+
+
+async def test_verify_twilio_credentials_valid():
+    from backend.paging.voice_settings import (
+        ResolvedVoiceSettings,
+        verify_twilio_credentials,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "Accounts/AC123.json" in str(request.url)
+        assert request.headers.get("authorization")  # basic auth attached
+        return httpx.Response(200, json={"friendly_name": "My Twilio"})
+
+    settings = ResolvedVoiceSettings(
+        account_sid="AC123",
+        auth_token="tok",
+        sms_from_number="+15551234567",
+        voice_from_number="+15551234567",
+    )
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ok, message = await verify_twilio_credentials(settings, client=client)
+    await client.aclose()
+    assert ok is True
+    assert "My Twilio" in message
+
+
+async def test_verify_twilio_credentials_rejected():
+    from backend.paging.voice_settings import (
+        ResolvedVoiceSettings,
+        verify_twilio_credentials,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"message": "auth failed"})
+
+    settings = ResolvedVoiceSettings(
+        account_sid="AC123",
+        auth_token="bad",
+        sms_from_number="+15551234567",
+        voice_from_number="+15551234567",
+    )
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ok, message = await verify_twilio_credentials(settings, client=client)
+    await client.aclose()
+    assert ok is False
+    assert "rejected" in message.lower()

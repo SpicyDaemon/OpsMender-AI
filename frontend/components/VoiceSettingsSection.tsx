@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getVoiceSettings, updateVoiceSettings } from "@/lib/api";
+import {
+  getVoiceSettings,
+  testVoiceSettings,
+  updateVoiceSettings,
+} from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
@@ -32,6 +36,7 @@ export function VoiceSettingsSection() {
   const [source, setSource] = useState<VoiceSettingsResponse["source"]>(null);
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   function applySettings(settings: VoiceSettingsResponse) {
     setForm({
@@ -67,11 +72,24 @@ export function VoiceSettingsSection() {
         voice_from_number: form.voice_from_number || null,
       });
       applySettings(saved);
-      setNotice("Voice & SMS calling saved.");
+      setNotice("Calling and SMS settings saved.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Save failed.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function runTest() {
+    setTesting(true);
+    setNotice("");
+    try {
+      const res = await testVoiceSettings();
+      setNotice(res.message);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Test failed.");
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -80,7 +98,7 @@ export function VoiceSettingsSection() {
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-base font-semibold text-fg-primary">
-            Voice &amp; SMS calling
+            Calling and SMS Settings
           </h2>
           {configured ? (
             <span className="inline-flex items-center gap-1 rounded-pill border border-status-low-border bg-status-low-bg px-2 py-0.5 text-[11px] font-medium text-status-low">
@@ -93,9 +111,14 @@ export function VoiceSettingsSection() {
           )}
         </div>
         <p className="mt-1 text-sm text-fg-secondary">
-          Controls SMS delivery and automated voice-call routing for this
-          workspace. Matching OPSMENDER_TWILIO_* environment variables still
-          seed fresh instances.
+          Configured via{" "}
+          <span className="font-medium text-fg-primary">Twilio</span> — controls
+          SMS delivery and automated voice-call routing for this workspace.
+          Default settings are gathered from the{" "}
+          <code className="rounded bg-bg-elevated px-1 py-0.5 text-xs">
+            OPSMENDER_TWILIO_*
+          </code>{" "}
+          environment variables; anything saved here overrides them.
         </p>
       </div>
 
@@ -165,6 +188,19 @@ export function VoiceSettingsSection() {
           disabled={!form.account_sid || !form.sms_from_number}
         >
           Save calling settings
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={runTest}
+          loading={testing}
+          disabled={!configured}
+          title={
+            configured
+              ? "Validate the active Twilio credentials against the Twilio API"
+              : "Configure and save Twilio credentials first"
+          }
+        >
+          Test Twilio API
         </Button>
         {notice && <p className="text-sm text-fg-secondary">{notice}</p>}
       </div>

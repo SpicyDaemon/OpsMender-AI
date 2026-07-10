@@ -12,12 +12,16 @@ from backend.api.deps import get_db
 from backend.api.schemas import (
     ChannelAvailabilityResponse,
     VoiceSettingsResponse,
+    VoiceSettingsTestResponse,
     VoiceSettingsUpdate,
 )
 from backend.auth.secrets import encrypt_secret
 from backend.db.models import User
 from backend.db.repos import AuditEntryRepo, OrgVoiceSettingsRepo
-from backend.paging.voice_settings import resolve_voice_settings
+from backend.paging.voice_settings import (
+    resolve_voice_settings,
+    verify_twilio_credentials,
+)
 
 router = APIRouter(tags=["voice-settings"])
 
@@ -122,6 +126,30 @@ async def put_voice_settings(
     )
     await db.commit()
     return await _response(db, org_id)
+
+
+@router.post(
+    "/api/v1/voice-settings/test",
+    response_model=VoiceSettingsTestResponse,
+)
+async def test_voice_settings(
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    """Validate the active Twilio credentials (saved settings, else env) against
+    the Twilio API. Save changes first — this tests what's in effect."""
+    settings = await resolve_voice_settings(db, org_id)
+    if settings is None:
+        return VoiceSettingsTestResponse(
+            ok=False,
+            message=(
+                "No Twilio credentials are configured — set them above (or via "
+                "the OPSMENDER_TWILIO_* environment variables) and save first."
+            ),
+        )
+    ok, message = await verify_twilio_credentials(settings)
+    return VoiceSettingsTestResponse(ok=ok, message=message)
 
 
 @router.get(

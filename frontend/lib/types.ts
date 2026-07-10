@@ -1534,6 +1534,11 @@ export interface ChannelAvailabilityResponse {
   voice: boolean;
 }
 
+export interface VoiceSettingsTestResponse {
+  ok: boolean;
+  message: string;
+}
+
 export interface MaintenanceWindowResponse {
   id: string;
   name: string;

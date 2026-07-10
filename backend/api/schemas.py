@@ -1029,6 +1029,11 @@ class ChannelAvailabilityResponse(BaseModel):
     voice: bool = False
 
 
+class VoiceSettingsTestResponse(BaseModel):
+    ok: bool
+    message: str
+
+
 class ModelConfigResponse(BaseModel):
     id: uuid.UUID
     name: str

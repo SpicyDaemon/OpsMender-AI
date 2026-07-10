@@ -7,6 +7,7 @@ import { VoiceSettingsSection } from "@/components/VoiceSettingsSection";
 const apiMocks = vi.hoisted(() => ({
   getVoiceSettings: vi.fn(),
   updateVoiceSettings: vi.fn(),
+  testVoiceSettings: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => apiMocks);
@@ -59,6 +60,6 @@ describe("VoiceSettingsSection", () => {
         voice_from_number: "+15552222222",
       }),
     );
-    expect(screen.getByText("Voice & SMS calling saved.")).toBeTruthy();
+    expect(screen.getByText("Calling and SMS settings saved.")).toBeTruthy();
   });
 });

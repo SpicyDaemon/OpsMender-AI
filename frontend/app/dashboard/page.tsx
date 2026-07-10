@@ -62,6 +62,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SetupChecklist } from "@/components/SetupChecklist";
 import { useToast } from "@/components/ui/Toast";
+import { useAuth } from "@/context/auth";
 import { useLiveEvents } from "@/context/liveEvents";
 import { sessionPrimaryLabel, titleCaseIdentifier } from "@/lib/displayNames";
 import { formatRelative } from "@/lib/formatDate";
@@ -199,6 +200,9 @@ function medianAckTime(
 
 export default function DashboardIndex() {
   const toast = useToast();
+  const { user } = useAuth();
+  const role = user?.role;
+  const canReadSessionWidgets = role === "admin" || role === "operator";
   const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequestResponse[]>([]);
   const [activeSessions, setActiveSessions] = useState<SessionResponse[]>([]);
@@ -216,6 +220,7 @@ export default function DashboardIndex() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
+    if (!role) return;
     setRefreshing(true);
     try {
       const [
@@ -232,14 +237,40 @@ export default function DashboardIndex() {
         blockedRes,
       ] = await Promise.all([
         listIncidents({ limit: 200 }),
-        listApprovals({ status: "pending", limit: 50 }),
-        listSessions({ status: "active", limit: 25 }),
-        listSessions({ status: "awaiting_approval", limit: 25 }),
-        listSessions({ status: "failed", limit: 10 }),
-        listSessions({ status: "timed_out", limit: 10 }),
+        canReadSessionWidgets
+          ? listApprovals({ status: "pending", limit: 50 }).catch(() => ({
+              items: [],
+              total: 0,
+            }))
+          : Promise.resolve({ items: [], total: 0 }),
+        canReadSessionWidgets
+          ? listSessions({ status: "active", limit: 25 }).catch(() => ({
+              items: [] as SessionResponse[],
+              total: 0,
+            }))
+          : Promise.resolve({ items: [] as SessionResponse[], total: 0 }),
+        canReadSessionWidgets
+          ? listSessions({ status: "awaiting_approval", limit: 25 }).catch(
+              () => ({ items: [] as SessionResponse[], total: 0 }),
+            )
+          : Promise.resolve({ items: [] as SessionResponse[], total: 0 }),
+        canReadSessionWidgets
+          ? listSessions({ status: "failed", limit: 10 }).catch(() => ({
+              items: [] as SessionResponse[],
+              total: 0,
+            }))
+          : Promise.resolve({ items: [] as SessionResponse[], total: 0 }),
+        canReadSessionWidgets
+          ? listSessions({ status: "timed_out", limit: 10 }).catch(() => ({
+              items: [] as SessionResponse[],
+              total: 0,
+            }))
+          : Promise.resolve({ items: [] as SessionResponse[], total: 0 }),
         listTeams().catch(() => ({ items: [], total: 0 })),
         listRosters().catch(() => ({ items: [], total: 0 })),
-        listUsers().catch(() => ({ items: [], total: 0 })),
+        canReadSessionWidgets
+          ? listUsers().catch(() => ({ items: [], total: 0 }))
+          : Promise.resolve({ items: [], total: 0 }),
         listServices().catch(() => ({ items: [], total: 0 })),
         listAudit({ permitted: false, limit: 25 }).catch(() => ({
           items: [],
@@ -284,10 +315,10 @@ export default function DashboardIndex() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [toast]);
+  }, [canReadSessionWidgets, role, toast]);
 
   useEffect(() => {
-    load();
+    void Promise.resolve().then(load);
   }, [load]);
 
   useLiveEvents(["incident", "approval", "session"], () => {
@@ -513,12 +544,14 @@ export default function DashboardIndex() {
         }
       />
 
-      <SetupChecklist />
+      {role === "admin" ? <SetupChecklist /> : null}
 
       {/* Attention Queue — four cards at the top of the page */}
       <section
         aria-label="Attention queue"
-        className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        className={`mt-4 grid gap-4 ${
+          canReadSessionWidgets ? "sm:grid-cols-2 xl:grid-cols-4" : "grid-cols-1"
+        }`}
       >
         <AttentionCard
           tone="critical"
@@ -541,71 +574,75 @@ export default function DashboardIndex() {
           ))}
         </AttentionCard>
 
-        <AttentionCard
-          tone="high"
-          icon={Clock}
-          label="Awaiting approval"
-          count={approvals.length}
-          loading={loading}
-          loadingHint="Checking approval inbox…"
-          emptyMessage="No pending approvals."
-          href="/dashboard/approvals"
-        >
-          {approvals.slice(0, 4).map((appr) => (
-            <RowLink
-              key={appr.id}
-              href={`/dashboard/sessions/detail?id=${appr.session_id}`}
-              title={extractToolName(appr) ?? "Pending approval"}
-              meta={`requested ${formatRelative(appr.requested_at)}`}
-              accent="high"
-            />
-          ))}
-        </AttentionCard>
+        {canReadSessionWidgets ? (
+          <>
+            <AttentionCard
+              tone="high"
+              icon={Clock}
+              label="Awaiting approval"
+              count={approvals.length}
+              loading={loading}
+              loadingHint="Checking approval inbox…"
+              emptyMessage="No pending approvals."
+              href="/dashboard/approvals"
+            >
+              {approvals.slice(0, 4).map((appr) => (
+                <RowLink
+                  key={appr.id}
+                  href={`/dashboard/sessions/detail?id=${appr.session_id}`}
+                  title={extractToolName(appr) ?? "Pending approval"}
+                  meta={`requested ${formatRelative(appr.requested_at)}`}
+                  accent="high"
+                />
+              ))}
+            </AttentionCard>
 
-        <AttentionCard
-          tone="medium"
-          icon={Bot}
-          label="Active AI sessions"
-          count={activeSessions.length}
-          loading={loading}
-          loadingHint="Polling agent sessions…"
-          emptyMessage="No active sessions."
-          href="/dashboard/incidents"
-        >
-          {activeSessions.slice(0, 4).map((s) => {
-            const stale = isStaleActiveSession(s);
-            return (
-              <RowLink
-                key={s.id}
-                href={`/dashboard/sessions/detail?id=${s.id}`}
-                title={sessionPrimaryLabel(s, incidentById)}
-                meta={`${stale ? "Stale · " : ""}${titleCaseIdentifier(s.status)} · started ${formatRelative(s.started_at)} · Tier ${s.tier}`}
-                accent={stale ? "high" : "medium"}
-              />
-            );
-          })}
-        </AttentionCard>
+            <AttentionCard
+              tone="medium"
+              icon={Bot}
+              label="Active AI sessions"
+              count={activeSessions.length}
+              loading={loading}
+              loadingHint="Polling agent sessions…"
+              emptyMessage="No active sessions."
+              href="/dashboard/incidents"
+            >
+              {activeSessions.slice(0, 4).map((s) => {
+                const stale = isStaleActiveSession(s);
+                return (
+                  <RowLink
+                    key={s.id}
+                    href={`/dashboard/sessions/detail?id=${s.id}`}
+                    title={sessionPrimaryLabel(s, incidentById)}
+                    meta={`${stale ? "Stale · " : ""}${titleCaseIdentifier(s.status)} · started ${formatRelative(s.started_at)} · Tier ${s.tier}`}
+                    accent={stale ? "high" : "medium"}
+                  />
+                );
+              })}
+            </AttentionCard>
 
-        <AttentionCard
-          tone="critical"
-          icon={XCircle}
-          label="Recent failures"
-          count={failedSessions.length}
-          loading={loading}
-          loadingHint="Looking for failed sessions…"
-          emptyMessage="No recent failed or timed-out sessions."
-          href="/dashboard/activity"
-        >
-          {failedSessions.slice(0, 4).map((s) => (
-            <RowLink
-              key={s.id}
-              href={`/dashboard/sessions/detail?id=${s.id}`}
-              title={sessionPrimaryLabel(s, incidentById)}
-              meta={`${titleCaseIdentifier(s.status)} · ${formatRelative(s.ended_at ?? s.started_at)}`}
-              accent="critical"
-            />
-          ))}
-        </AttentionCard>
+            <AttentionCard
+              tone="critical"
+              icon={XCircle}
+              label="Recent failures"
+              count={failedSessions.length}
+              loading={loading}
+              loadingHint="Looking for failed sessions…"
+              emptyMessage="No recent failed or timed-out sessions."
+              href="/dashboard/activity"
+            >
+              {failedSessions.slice(0, 4).map((s) => (
+                <RowLink
+                  key={s.id}
+                  href={`/dashboard/sessions/detail?id=${s.id}`}
+                  title={sessionPrimaryLabel(s, incidentById)}
+                  meta={`${titleCaseIdentifier(s.status)} · ${formatRelative(s.ended_at ?? s.started_at)}`}
+                  accent="critical"
+                />
+              ))}
+            </AttentionCard>
+          </>
+        ) : null}
       </section>
 
       {/* Secondary band — quick links + light counters */}

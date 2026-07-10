@@ -403,16 +403,16 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   }, []);
 
   const loadConfig = useCallback(() => {
-    if (!user) return;
+    if (user?.role !== "admin" && user?.role !== "operator") return;
     getConfig()
       .then((c) => {
         setTier(c.tier);
       })
       .catch(() => {});
-  }, [user]);
+  }, [user?.role]);
 
   useEffect(() => {
-    loadConfig();
+    void Promise.resolve().then(loadConfig);
   }, [loadConfig, pathname]);
 
   // Refresh the tier badge the moment runtime config is saved (e.g. on the

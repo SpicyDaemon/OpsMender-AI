@@ -132,6 +132,36 @@ async def test_admin_reads_are_gated(client):
     assert (await client.get("/config", headers=h["operator"])).status_code == 200
     assert (await client.get("/config", headers=h["viewer"])).status_code == 403
 
+    # Session internals remain operator-only even though the dashboard now
+    # skips this optional widget for viewers.
+    assert (await client.get("/sessions", headers=h["viewer"])).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_workspace_identity_is_member_readable_but_scoped(client):
+    h = await _headers(client)
+    me = (await client.get("/auth/me", headers=h["viewer"])).json()
+    org_id = me["primary_org_id"]
+
+    for role in ("admin", "operator", "viewer"):
+        response = await client.get(f"/organizations/{org_id}", headers=h[role])
+        assert response.status_code == 200, role
+        assert response.json()["id"] == org_id
+
+    other_org = uuid.uuid4()
+    for role in ("admin", "operator", "viewer"):
+        assert (
+            await client.get(f"/organizations/{other_org}", headers=h[role])
+        ).status_code == 404
+
+    assert (
+        await client.put(
+            f"/organizations/{org_id}",
+            headers=h["viewer"],
+            json={"name": "Nope"},
+        )
+    ).status_code == 403
+
 
 @pytest.mark.asyncio
 async def test_all_roles_can_manage_own_profile(client):

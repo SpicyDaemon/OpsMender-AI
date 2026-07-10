@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import require_role
+from backend.api.auth import get_current_org, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     NotificationSettingsResponse,
@@ -93,16 +93,19 @@ async def resolve_tenant(
     )
 
 
-# All routes in this module require the global 'admin' role.
-# (This is separate from the per-organization role).
+# Organization mutations and private settings require the global admin role.
 admin_dependency = Depends(require_role("admin"))
 
 
-@router.get(
-    "/{org_id}", response_model=OrganizationResponse, dependencies=[admin_dependency]
-)
-async def get_organization(org_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    """Get organization details."""
+@router.get("/{org_id}", response_model=OrganizationResponse)
+async def get_organization(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_org_id: uuid.UUID = Depends(get_current_org),
+):
+    """Return the authenticated member's workspace identity and branding."""
+    if org_id != current_org_id:
+        raise HTTPException(status_code=404, detail="Organization not found")
     org = await OrganizationRepo.get_by_id(db, org_id)
     if org is None:
         raise HTTPException(status_code=404, detail="Organization not found")

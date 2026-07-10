@@ -39,10 +39,10 @@ import {
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { useAuth } from "@/context/auth";
 import {
   getIncidentChain,
   listApprovals,
-  listIncidentSessions,
   listServices,
   listTeams,
   listUsers,
@@ -68,6 +68,9 @@ export function IncidentContextRail({
   pagingPanel,
   sessions,
 }: Props) {
+  const { user } = useAuth();
+  const canReadUserDirectory =
+    user?.role === "admin" || user?.role === "operator";
   const [services, setServices] = useState<ServiceResponse[]>([]);
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [users, setUsers] = useState<UserResponse[]>([]);
@@ -80,7 +83,9 @@ export function IncidentContextRail({
     Promise.all([
       listServices().catch(() => ({ items: [], total: 0 })),
       listTeams().catch(() => ({ items: [], total: 0 })),
-      listUsers().catch(() => ({ items: [], total: 0 })),
+      canReadUserDirectory
+        ? listUsers().catch(() => ({ items: [], total: 0 }))
+        : Promise.resolve({ items: [], total: 0 }),
       getIncidentChain(incident.id).catch(
         () => null as IncidentChainPanelResponse | null,
       ),
@@ -94,7 +99,7 @@ export function IncidentContextRail({
     return () => {
       cancelled = true;
     };
-  }, [incident.id]);
+  }, [canReadUserDirectory, incident.id]);
 
   // -- Approval count across all incident sessions -------------------------
   useEffect(() => {

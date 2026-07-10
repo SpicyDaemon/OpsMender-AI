@@ -39,6 +39,13 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 | ![Pending approvals inbox with request context and approve or reject actions](site/public/screenshots/approvals-pending.png) | ![Settings page with session workflow, models, notifications, and workspace controls](site/public/screenshots/settings.png) |
 | Review Tier 1 actions with context before anything runs. | Configure workspace policy, session workflow, notifications, models, and guardrails. |
 
+**AI autonomy tiers** — the tier gate is enforced in code. Set the default per workspace and override it per session.
+
+| Tier 0 · Autonomous | Tier 1 · Approval Required | Tier 2 · Advisory (default) |
+| --- | --- | --- |
+| ![Workspace settings with the AI autonomy tier set to Tier 0 Autonomous and the destructive-action warning](site/public/screenshots/tier-0.png) | ![Workspace settings with the AI autonomy tier set to Tier 1 Approval Required](site/public/screenshots/tier-1.png) | ![Workspace settings with the AI autonomy tier set to Tier 2 Advisory Only](site/public/screenshots/tier-2.png) |
+| Executes remediation autonomously within skill policy, with a reversibility floor and rollback. | Reads run automatically; every write pauses for operator approval. | Read-only analysis and recommendations — nothing executes. |
+
 ## Features
 
 - **Three-tier AI autonomy** — Tier 0 Autonomous (sandbox + time limits + auto-rollback), Tier 1 Approval-Required, Tier 2 Advisory-Only (default).

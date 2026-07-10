@@ -71,6 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Integration and notification-channel brand icons.** Restored the ServiceNow
+  mark in the integration catalog; added recognizable Microsoft Teams,
+  Lark/Feishu, DingTalk, and WeCom marks to the notification-platform picker;
+  and replaced the monochrome Slack glyph with its official four-color mark.
+
 - **A+ closure sprint — A-8 README screenshot set.** The screenshot capture
   helper now uses the design-audit credential pattern with environment
   overrides and `.env` bootstrap fallback, captures the four launch README

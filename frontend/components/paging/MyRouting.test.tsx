@@ -3,12 +3,14 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 
 // Mock the API surface used by the My Routing panel.
 const getMyNotificationPreferences = vi.fn();
+const getChannelAvailability = vi.fn();
 const listBotConnectors = vi.fn();
 const updateMyNotificationPreferences = vi.fn();
 const testMyNotificationPreferences = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   getMyNotificationPreferences: () => getMyNotificationPreferences(),
+  getChannelAvailability: () => getChannelAvailability(),
   listBotConnectors: () => listBotConnectors(),
   updateMyNotificationPreferences: (body: unknown) =>
     updateMyNotificationPreferences(body),
@@ -58,6 +60,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUser.phone = "+14155550100";
   getMyNotificationPreferences.mockResolvedValue(basePref);
+  getChannelAvailability.mockResolvedValue({ sms: false, voice: false });
   listBotConnectors.mockResolvedValue({ items: CONNECTORS, total: CONNECTORS.length });
   updateMyNotificationPreferences.mockResolvedValue(basePref);
   testMyNotificationPreferences.mockResolvedValue({ results: [], tested: 0 });

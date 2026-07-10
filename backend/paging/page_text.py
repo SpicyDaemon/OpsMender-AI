@@ -78,13 +78,14 @@ def format_voice_menu_twiml(summary: str, action_url: str) -> str:
     """TwiML that speaks the page then gathers one keypad digit.
 
     1 = acknowledge (take ownership), 2 = escalate to the next responder,
-    * = repeat. No input falls through and hangs up — the escalation chain's
-    timer re-pages as usual.
+    3 = resolve (e.g. a false alarm), * = repeat. No input falls through and
+    hangs up — the escalation chain's timer re-pages as usual.
     """
     say = (
         f"This is OpsMender. {summary} "
         "Press 1 to acknowledge and take ownership. "
         "Press 2 to escalate to the next responder. "
+        "Press 3 to resolve this incident, for example if it is a false alarm. "
         "Press star to repeat this message."
     )
     return (

@@ -8674,3 +8674,21 @@ class TestVoiceAck:
         assert "<gather" in text
         assert "press 1 to acknowledge" in text
         assert "press 2 to escalate" in text
+        assert "press 3 to resolve" in text
+
+    async def test_press_3_resolves(self, client, app, auth_headers):
+        from backend.api.routes.voice import encode_voice_ack_token
+
+        user_id = await self._user_id(app)
+        incident_id = await self._new_incident(app)
+        token = encode_voice_ack_token(
+            org_id=TEST_ORG_ID, incident_id=incident_id, user_id=user_id
+        )
+        resp = await client.post(
+            f"/paging/voice/ack/{token}", data={"Digits": "3"}
+        )
+        assert resp.status_code == 200
+        assert "resolved" in resp.text.lower()
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            assert incident.status == "resolved"

@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Form, Response
+from fastapi import APIRouter, Depends, Form, Request, Response
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,10 +84,12 @@ def _twiml(say: str) -> Response:
 @router.post("/ack/{token}")
 async def voice_ack(
     token: str,
+    request: Request,
     Digits: str = Form(default=""),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Twilio ``<Gather>`` callback: 1 = acknowledge, 2 = escalate, * = repeat."""
+    """Twilio ``<Gather>`` callback: 1 = acknowledge, 2 = escalate, 3 = resolve,
+    * = repeat."""
     try:
         payload = _decode_voice_ack_token(token)
     except JWTError:
@@ -136,5 +138,35 @@ async def voice_ack(
                 "There are no further responders to escalate to. Goodbye."
             )
         return _twiml("Escalating to the next responder. Goodbye.")
+
+    if digit == "3":
+        if incident.status == "resolved":
+            return _twiml("This incident was already resolved. Goodbye.")
+        from backend.api.session_runner import stop_incident_sessions
+        from backend.services.incident_timeline import record_lifecycle_comment
+
+        incident.status = "resolved"
+        await db.flush()
+        # Stop any AI sessions still working a now-resolved incident.
+        await stop_incident_sessions(
+            request.app,
+            db,
+            org_id,
+            incident_id,
+            reason="Incident resolved from a phone page",
+        )
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body="Resolved the incident from a phone page.",
+            author_user_id=user_id,
+        )
+        await db.commit()
+        # Notify chat channels after commit (best-effort), mirroring the UI path.
+        from backend.api.routes.incidents import _notify_channels
+
+        await _notify_channels(db, incident_id, org_id, "incident.resolved")
+        return _twiml("Incident resolved. Goodbye.")
 
     return _twiml("No acknowledgement was recorded. Goodbye.")

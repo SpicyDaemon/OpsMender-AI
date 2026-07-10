@@ -240,9 +240,10 @@ async def provision_incident_tickets(
                 override = overrides.get(str(connector_id)) or overrides.get(
                     str(raw_id)
                 )
-                if isinstance(override, dict) and override.get(
-                    "ticket_lifecycle"
-                ) is False:
+                if (
+                    isinstance(override, dict)
+                    and override.get("ticket_lifecycle") is False
+                ):
                     continue
                 connector = await IntegrationConnectorRepo.get_by_id(
                     db, org_id, connector_id
@@ -260,9 +261,7 @@ async def provision_incident_tickets(
                 action, params = _create_params(connector.kind, incident)
                 try:
                     auth = IntegrationConnectorRepo.decrypt_auth(connector)
-                    result = await adapter.safe_invoke(
-                        action, connector, auth, params
-                    )
+                    result = await adapter.safe_invoke(action, connector, auth, params)
                 except Exception:
                     logger.exception(
                         "ticket provisioning failed connector=%s incident=%s",
@@ -309,9 +308,7 @@ async def provision_incident_tickets(
                     created += 1
             await db.commit()
     except Exception:
-        logger.exception(
-            "ticket provisioning task failed incident=%s", incident_id
-        )
+        logger.exception("ticket provisioning task failed incident=%s", incident_id)
         return created
 
     if created:
@@ -338,9 +335,7 @@ def schedule_incident_ticket_provisioning(
     if factory is None:
         return
     task = asyncio.create_task(
-        provision_incident_tickets(
-            factory, org_id=org_id, incident_id=incident_id
-        ),
+        provision_incident_tickets(factory, org_id=org_id, incident_id=incident_id),
         name=f"ticket-provision:{incident_id}",
     )
     registry = getattr(app.state, "background_tasks", None)

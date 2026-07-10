@@ -53,8 +53,7 @@ def matching_totp_counter(
 
 def generate_recovery_codes(count: int = 8) -> list[str]:
     return [
-        f"{secrets.token_hex(2)}-{secrets.token_hex(2)}".upper()
-        for _ in range(count)
+        f"{secrets.token_hex(2)}-{secrets.token_hex(2)}".upper() for _ in range(count)
     ]
 
 

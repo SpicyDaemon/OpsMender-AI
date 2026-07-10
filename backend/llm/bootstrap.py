@@ -108,7 +108,9 @@ async def bootstrap_model_config(
             model_id=model_id,
             base_url=base_url,
             api_key_env_var=api_key_env_var,
-            api_version=cfg.azure_openai_api_version if provider == "azure_openai" else None,
+            api_version=cfg.azure_openai_api_version
+            if provider == "azure_openai"
+            else None,
             is_default=True,
         )
         await db.commit()

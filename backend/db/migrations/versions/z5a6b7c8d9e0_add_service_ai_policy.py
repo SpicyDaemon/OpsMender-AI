@@ -16,9 +16,7 @@ depends_on = None
 
 def upgrade() -> None:
     with op.batch_alter_table("services") as batch_op:
-        batch_op.add_column(
-            sa.Column("ai_default_tier", sa.Integer(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("ai_default_tier", sa.Integer(), nullable=True))
         batch_op.add_column(
             sa.Column("ai_auto_start_enabled", sa.Boolean(), nullable=True)
         )

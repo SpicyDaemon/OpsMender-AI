@@ -14,7 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import AlertFingerprintState, Incident, Service
 from backend.db.repos import IncidentCommentRepo, OrganizationRepo
 from backend.ingest.adapters.base import ParsedIncident
-from backend.notifications import CATEGORY_INCIDENT, emit_notification, org_user_ids_with_roles
+from backend.notifications import (
+    CATEGORY_INCIDENT,
+    emit_notification,
+    org_user_ids_with_roles,
+)
 
 GROUPING_SIMILARITY = 0.82
 GROUPING_WINDOW_MIN = 15
@@ -316,7 +320,9 @@ async def evaluate_noise_before_create(
     fingerprint = fingerprint_for(parsed)
     state = await _get_or_create_state(db, org_id, service.id, fingerprint, now)
     if _suppression_active(state, now) and not is_p0_refire:
-        incident = await db.get(Incident, state.incident_id) if state.incident_id else None
+        incident = (
+            await db.get(Incident, state.incident_id) if state.incident_id else None
+        )
         _record_transition(state, kind="fired", now=now)
         state.incident_id = incident.id if incident is not None else state.incident_id
         if incident is not None:

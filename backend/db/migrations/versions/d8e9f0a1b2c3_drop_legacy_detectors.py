@@ -104,6 +104,4 @@ def downgrade() -> None:
         sa.Column("error", sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_detector_history_rule_id", "detector_history", ["rule_id"]
-    )
+    op.create_index("ix_detector_history_rule_id", "detector_history", ["rule_id"])

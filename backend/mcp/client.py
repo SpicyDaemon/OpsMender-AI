@@ -114,7 +114,9 @@ async def resolve_oauth_access_token(
             "no issuer recorded. Re-authorize via the Config page."
         )
 
-    client_id, client_secret = await MCPServerOAuthTokenRepo.read_client_credentials(row)
+    client_id, client_secret = await MCPServerOAuthTokenRepo.read_client_credentials(
+        row
+    )
     if not client_id:
         raise MCPAuthorizationRequiredError(
             f"Cannot refresh token for MCP server {mcp_server_id}: "

@@ -156,9 +156,7 @@ async def test_list_invites_returns_all_states(env):
         json={"email": "c@b.com", "role": "operator"},
         headers=headers,
     )
-    resp = await client.get(
-        f"/organizations/{org_id}/invites", headers=headers
-    )
+    resp = await client.get(f"/organizations/{org_id}/invites", headers=headers)
     assert resp.status_code == 200
     items = resp.json()["items"]
     assert len(items) == 2
@@ -223,9 +221,7 @@ async def test_resend_invite_reissues_pending_invite(env):
     assert body["url"].startswith("http://test/invite?token=")
     assert body["url"] != old_url
 
-    listing = await client.get(
-        f"/organizations/{org_id}/invites", headers=headers
-    )
+    listing = await client.get(f"/organizations/{org_id}/invites", headers=headers)
     items = listing.json()["items"]
     states = {item["id"]: item["status"] for item in items}
     assert states[invite_id] == "revoked"
@@ -322,9 +318,7 @@ async def test_accept_invite_creates_user_and_returns_jwt(env):
     assert login.status_code == 200
 
     # Invite is marked accepted; status is "accepted" in the list
-    listing = await client.get(
-        f"/organizations/{org_id}/invites", headers=headers
-    )
+    listing = await client.get(f"/organizations/{org_id}/invites", headers=headers)
     statuses = [i["status"] for i in listing.json()["items"]]
     assert "accepted" in statuses
 

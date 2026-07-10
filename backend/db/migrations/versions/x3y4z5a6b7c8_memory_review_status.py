@@ -56,9 +56,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_incident_memories_org_review", table_name="incident_memories"
-    )
+    op.drop_index("ix_incident_memories_org_review", table_name="incident_memories")
     op.drop_constraint(
         "fk_incident_memories_reviewed_by_user",
         "incident_memories",

@@ -56,7 +56,9 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/skills", tags=["skills"])
 
 
-async def _ai_complete(request: Request, db: AsyncSession, org_id: uuid.UUID, prompt: str) -> str:
+async def _ai_complete(
+    request: Request, db: AsyncSession, org_id: uuid.UUID, prompt: str
+) -> str:
     """Run a single completion against the org's default model.
 
     Raises ``HTTPException(503)`` when no model is configured or the provider
@@ -354,15 +356,16 @@ async def download_skill(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Skill not found",
         )
-    safe_name = "".join(
-        c if c.isalnum() or c in ("-", "_") else "-" for c in skill.name
-    ).strip("-") or "skill"
+    safe_name = (
+        "".join(c if c.isalnum() or c in ("-", "_") else "-" for c in skill.name).strip(
+            "-"
+        )
+        or "skill"
+    )
     return Response(
         content=skill.content_md,
         media_type="text/markdown",
-        headers={
-            "Content-Disposition": f'attachment; filename="{safe_name}.md"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.md"'},
     )
 
 

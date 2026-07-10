@@ -34,16 +34,21 @@ def test_compliant_but_low_budget_is_warning():
 
 
 def test_breaching_low_burn_is_warning():
-    v = _eval(compliant=False, actual_pct=99.85, burn_rate=1.5,
-              error_budget_remaining_pct=15.0)
+    v = _eval(
+        compliant=False,
+        actual_pct=99.85,
+        burn_rate=1.5,
+        error_budget_remaining_pct=15.0,
+    )
     assert v is not None
     assert v.severity == "warning"
     assert "breaching" in v.headline
 
 
 def test_breaching_fast_burn_is_critical():
-    v = _eval(compliant=False, actual_pct=98.0, burn_rate=20.0,
-              error_budget_remaining_pct=0.0)
+    v = _eval(
+        compliant=False, actual_pct=98.0, burn_rate=20.0, error_budget_remaining_pct=0.0
+    )
     assert v is not None
     assert v.severity == "critical"
 
@@ -55,8 +60,11 @@ def test_unlinked_target_recommends_linking_service():
 
 def test_linked_target_routes_to_service_and_team():
     v = _eval(
-        compliant=False, actual_pct=99.0, burn_rate=10.0,
-        service_name="Checkout", team_name="Payments",
+        compliant=False,
+        actual_pct=99.0,
+        burn_rate=10.0,
+        service_name="Checkout",
+        team_name="Payments",
     )
     assert any("Checkout" in a and "Payments" in a for a in v.actions)
 

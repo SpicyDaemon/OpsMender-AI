@@ -45,7 +45,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_mw_approved_by_users", "maintenance_windows", type_="foreignkey")
+    op.drop_constraint(
+        "fk_mw_approved_by_users", "maintenance_windows", type_="foreignkey"
+    )
     op.drop_column("maintenance_windows", "approved_at")
     op.drop_column("maintenance_windows", "approved_by")
     op.drop_column("maintenance_windows", "approved")

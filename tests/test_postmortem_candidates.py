@@ -50,11 +50,7 @@ def test_dedups_case_insensitively_preserving_order():
 
 
 def test_heading_is_case_insensitive_and_stops_at_next_heading():
-    md = (
-        "# Postmortem\n## Memory Candidates\n"
-        "- Keep this\n"
-        "## Other\n- Not this\n"
-    )
+    md = "# Postmortem\n## Memory Candidates\n- Keep this\n## Other\n- Not this\n"
     assert extract_memory_candidates(md) == ["Keep this"]
 
 

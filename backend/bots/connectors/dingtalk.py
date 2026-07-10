@@ -97,7 +97,7 @@ class DingTalkAdapter:
 
         # Check for replay attacks (5 minute window)
         if abs(time.time() * 1000 - int(timestamp)) > 60 * 5 * 1000:
-             raise HTTPException(
+            raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="DingTalk request timestamp is too old",
             )
@@ -106,7 +106,7 @@ class DingTalkAdapter:
         hmac_code = hmac.new(
             app_secret.encode("utf-8"),
             string_to_sign.encode("utf-8"),
-            digestmod=hashlib.sha256
+            digestmod=hashlib.sha256,
         ).digest()
         my_sign = base64.b64encode(hmac_code).decode("utf-8")
 
@@ -143,12 +143,7 @@ class DingTalkAdapter:
         text: str,
     ) -> dict[str, Any] | None:
         # DingTalk supports returning a JSON response to the outgoing webhook
-        return {
-            "msgtype": "text",
-            "text": {
-                "content": text
-            }
-        }
+        return {"msgtype": "text", "text": {"content": text}}
 
     async def _get_access_token(self, app_key: str, app_secret: str) -> str | None:
         async with httpx.AsyncClient() as client:
@@ -174,17 +169,14 @@ class DingTalkAdapter:
         # DingTalk can use Webhooks for outbound or the API.
         # For simplicity and to support "Push", we use the Robot Webhook if provided in config,
         # or fall back to the Robot message API.
-        
+
         config = connector.config or {}
         webhook_url = config.get("webhook_url")
         if webhook_url:
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     webhook_url,
-                    json={
-                        "msgtype": "text",
-                        "text": {"content": text}
-                    },
+                    json={"msgtype": "text", "text": {"content": text}},
                     timeout=10.0,
                 )
                 if resp.status_code == 200:
@@ -196,7 +188,10 @@ class DingTalkAdapter:
         app_key = credentials.get("app_key")
         app_secret = credentials.get("app_secret")
         if not app_key or not app_secret:
-            return False, "DingTalk credentials (app_key, app_secret) or webhook_url not configured"
+            return (
+                False,
+                "DingTalk credentials (app_key, app_secret) or webhook_url not configured",
+            )
 
         token = await self._get_access_token(str(app_key), str(app_secret))
         if not token:
@@ -208,10 +203,7 @@ class DingTalkAdapter:
             resp = await client.post(
                 "https://oapi.dingtalk.com/robot/send",
                 params={"access_token": token},
-                json={
-                    "msgtype": "text",
-                    "text": {"content": text}
-                },
+                json={"msgtype": "text", "text": {"content": text}},
                 timeout=10.0,
             )
             if resp.status_code == 200:

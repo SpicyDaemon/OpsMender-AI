@@ -22,9 +22,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "users", sa.Column("avatar_image", sa.LargeBinary(), nullable=True)
-    )
+    op.add_column("users", sa.Column("avatar_image", sa.LargeBinary(), nullable=True))
     op.add_column(
         "users",
         sa.Column(

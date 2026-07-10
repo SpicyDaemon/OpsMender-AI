@@ -91,17 +91,11 @@ def downgrade() -> None:
         sa.Column("author_user_id", sa.Uuid(), nullable=True),
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["incident_id"], ["incidents.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["author_user_id"], ["users.id"], ondelete="SET NULL"
-        ),
+        sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["author_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_status_page_updates_org_id", "status_page_updates", ["org_id"]
-    )
+    op.create_index("ix_status_page_updates_org_id", "status_page_updates", ["org_id"])
     op.create_index(
         "ix_status_page_updates_incident_id",
         "status_page_updates",
@@ -124,9 +118,7 @@ def downgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "org_id", "email", name="uq_status_page_subscriber_email"
-        ),
+        sa.UniqueConstraint("org_id", "email", name="uq_status_page_subscriber_email"),
     )
     op.create_index(
         "ix_status_page_subscribers_org_id", "status_page_subscribers", ["org_id"]

@@ -70,9 +70,14 @@ class UptimeDownsampler:
     async def start(self) -> None:
         if self._task is not None:
             return
-        self._task = asyncio.create_task(self._loop(), name="opsmender-uptime-downsampler")
-        logger.info("Uptime downsampler started (interval=%ds, retention=%dd)",
-                     self._run_interval_seconds, self._retention_days)
+        self._task = asyncio.create_task(
+            self._loop(), name="opsmender-uptime-downsampler"
+        )
+        logger.info(
+            "Uptime downsampler started (interval=%ds, retention=%dd)",
+            self._run_interval_seconds,
+            self._retention_days,
+        )
 
     async def stop(self) -> None:
         if self._task is None:
@@ -109,7 +114,9 @@ class UptimeDownsampler:
 
         logger.info(
             "Downsampler pass: 5m_buckets=%d, 1h_buckets=%d, pruned_raw=%d",
-            b5, b1h, pruned,
+            b5,
+            b1h,
+            pruned,
         )
         return {"buckets_5m": b5, "buckets_1h": b1h, "pruned_raw": pruned}
 
@@ -165,7 +172,9 @@ class UptimeDownsampler:
                 up_pct = sum(1 for s in non_suppressed if s.up) / total
 
             latencies = [s.latency_ms for s in group if s.latency_ms is not None]
-            avg_latency = round(sum(latencies) / len(latencies), 2) if latencies else None
+            avg_latency = (
+                round(sum(latencies) / len(latencies), 2) if latencies else None
+            )
 
             row = UptimeSample5m(
                 org_id=group[0].org_id,
@@ -245,10 +254,14 @@ class UptimeDownsampler:
                     2,
                 )
                 min_latency = min(
-                    b.min_latency_ms for b in lat_buckets if b.min_latency_ms is not None
+                    b.min_latency_ms
+                    for b in lat_buckets
+                    if b.min_latency_ms is not None
                 )
                 max_latency = max(
-                    b.max_latency_ms for b in lat_buckets if b.max_latency_ms is not None
+                    b.max_latency_ms
+                    for b in lat_buckets
+                    if b.max_latency_ms is not None
                 )
             else:
                 avg_latency = min_latency = max_latency = None

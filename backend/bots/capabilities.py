@@ -191,9 +191,7 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
     # Delivery-only platforms — plain message + authenticated incident link.
     "whatsapp": _cap("whatsapp", "WhatsApp", direct_message=True),
     "signal": _cap("signal", "Signal", direct_message=True, shared_channel=True),
-    "twilio": _cap(
-        "twilio", "Twilio (SMS)", direct_message=True, voice_call=True
-    ),
+    "twilio": _cap("twilio", "Twilio (SMS)", direct_message=True, voice_call=True),
     "email": _cap("email", "Mailgun Email", direct_message=True, shared_channel=True),
     "smtp": _cap("smtp", "SMTP Email", direct_message=True, shared_channel=True),
     "weixin": _cap("weixin", "WeChat (Official Account)"),

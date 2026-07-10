@@ -156,6 +156,7 @@ async def _service_validated(
             status.HTTP_400_BAD_REQUEST, f"Service {service_id} not found"
         )
 
+
 # ======================================================================
 # SLA Targets
 # ======================================================================
@@ -193,9 +194,7 @@ async def list_sla_targets(
             slo_counts[slo.target_id] = slo_counts.get(slo.target_id, 0) + 1
 
     enriched = [
-        await _enrich_target(
-            db, org_id, t, now=now, slo_count=slo_counts.get(t.id, 0)
-        )
+        await _enrich_target(db, org_id, t, now=now, slo_count=slo_counts.get(t.id, 0))
         for t in items
     ]
     return SLATargetListResponse(items=enriched, total=len(enriched))
@@ -483,9 +482,7 @@ async def get_target_uptime(
         until = end or now
         since = start
         if since >= until:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "start must be before end"
-            )
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "start must be before end")
         buckets = 48
     else:
         until = now
@@ -496,9 +493,7 @@ async def get_target_uptime(
         db, org_id, target_id, since=since, until=until
     )
     stats = metrics.uptime_stats(samples)
-    series = metrics.history_series(
-        samples, since=since, until=until, buckets=buckets
-    )
+    series = metrics.history_series(samples, since=since, until=until, buckets=buckets)
     # Newest outage first for the table.
     episodes = list(reversed(metrics.downtime_episodes(samples)))
 
@@ -860,9 +855,7 @@ async def get_slo_recommendations(
         computed = _compute_slo_status(slo, stats)
 
         latest = await UptimeSampleRepo.latest_sample(db, org_id, slo.target_id)
-        target_status = (
-            "unknown" if latest is None else ("up" if latest.up else "down")
-        )
+        target_status = "unknown" if latest is None else ("up" if latest.up else "down")
         service_name, team_id, team_name = await _resolve_service_meta(
             db, org_id, target.service_id
         )
@@ -1070,7 +1063,9 @@ async def approve_maintenance_window(
     if mw is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
     if mw.approved:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Maintenance window is already approved")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Maintenance window is already approved"
+        )
     now = datetime.now(timezone.utc)
     mw.approved = True
     mw.approved_by = user.id
@@ -1095,7 +1090,9 @@ async def reject_maintenance_window(
     if mw is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
     if mw.approved:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Cannot reject an already-approved window")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Cannot reject an already-approved window"
+        )
     deleted = await MaintenanceWindowRepo.delete(db, org_id, mw_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")

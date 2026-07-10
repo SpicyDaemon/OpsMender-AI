@@ -46,6 +46,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("dark");
 
   useEffect(() => {
+    let cancelled = false;
     let nextMode: ThemeMode = "system";
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -55,10 +56,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore localStorage failures and fall back to system.
     }
-    setModeState(nextMode);
     const nextResolved = resolveTheme(nextMode);
-    setResolvedTheme(nextResolved);
     applyTheme(nextResolved);
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setModeState(nextMode);
+        setResolvedTheme(nextResolved);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

@@ -78,7 +78,8 @@ def build_page_card_blocks(
     heading = "Status update" if status_update else "OpsMender page"
     header_lines = [
         f"*{emoji} {priority} — {heading}: {title}*",
-        f"Status: `{status_label}`" + (f"  •  Severity: `{severity}`" if severity else ""),
+        f"Status: `{status_label}`"
+        + (f"  •  Severity: `{severity}`" if severity else ""),
     ]
     if incident.description:
         snippet = incident.description.strip().splitlines()[0][:200]
@@ -176,7 +177,7 @@ def parse_incident_id_from_action(payload: dict[str, Any]) -> uuid.UUID | None:
         block_id = actions[0].get("block_id") or ""
         prefix = "opsmender:incident:"
         if block_id.startswith(prefix):
-            raw = block_id[len(prefix):].split(":", 1)[0]
+            raw = block_id[len(prefix) :].split(":", 1)[0]
     if not raw:
         return None
     try:

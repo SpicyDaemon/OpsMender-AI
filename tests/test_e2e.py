@@ -79,6 +79,7 @@ async def app(tmp_path):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         session.add(org)
         await session.commit()

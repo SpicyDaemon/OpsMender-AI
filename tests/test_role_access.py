@@ -29,7 +29,9 @@ async def client(tmp_path, monkeypatch):
     monkeypatch.setenv("OPSMENDER_DATABASE_URL", url)
     monkeypatch.setenv("OPSMENDER_JWT_SECRET", "test-secret-32-chars-long-enough-ok")
     app = create_app()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
         yield c
     await engine.dispose()
 
@@ -38,7 +40,11 @@ async def _headers(client: AsyncClient) -> dict[str, dict[str, str]]:
     """Create admin (first user) + operator + viewer; return auth headers each."""
     await client.post(
         "/auth/register",
-        json={"username": "admin", "email": "admin@test.com", "password": "securepass123"},
+        json={
+            "username": "admin",
+            "email": "admin@test.com",
+            "password": "securepass123",
+        },
     )
     admin = (
         await client.post(
@@ -74,21 +80,42 @@ async def test_admin_only_mutations_reject_operator_and_viewer(client):
     h = await _headers(client)
 
     # PUT /config — admin only.
-    assert (await client.put("/config", headers=h["admin"], json={"tier": 2})).status_code == 200
-    assert (await client.put("/config", headers=h["operator"], json={"tier": 2})).status_code == 403
-    assert (await client.put("/config", headers=h["viewer"], json={"tier": 2})).status_code == 403
+    assert (
+        await client.put("/config", headers=h["admin"], json={"tier": 2})
+    ).status_code == 200
+    assert (
+        await client.put("/config", headers=h["operator"], json={"tier": 2})
+    ).status_code == 403
+    assert (
+        await client.put("/config", headers=h["viewer"], json={"tier": 2})
+    ).status_code == 403
 
     # POST /sla-targets — admin only.
     body = {"name": "t1", "kind": "http", "config": {"url": "https://x.test"}}
-    assert (await client.post("/sla-targets", headers=h["admin"], json=body)).status_code == 201
+    assert (
+        await client.post("/sla-targets", headers=h["admin"], json=body)
+    ).status_code == 201
     body["name"] = "t2"
-    assert (await client.post("/sla-targets", headers=h["operator"], json=body)).status_code == 403
-    assert (await client.post("/sla-targets", headers=h["viewer"], json=body)).status_code == 403
+    assert (
+        await client.post("/sla-targets", headers=h["operator"], json=body)
+    ).status_code == 403
+    assert (
+        await client.post("/sla-targets", headers=h["viewer"], json=body)
+    ).status_code == 403
 
     # POST /auth/users (create user) — admin only.
-    nu = {"username": "x", "email": "x@test.com", "role": "viewer", "password": "temp-pass-123"}
-    assert (await client.post("/auth/users", headers=h["operator"], json=nu)).status_code == 403
-    assert (await client.post("/auth/users", headers=h["viewer"], json=nu)).status_code == 403
+    nu = {
+        "username": "x",
+        "email": "x@test.com",
+        "role": "viewer",
+        "password": "temp-pass-123",
+    }
+    assert (
+        await client.post("/auth/users", headers=h["operator"], json=nu)
+    ).status_code == 403
+    assert (
+        await client.post("/auth/users", headers=h["viewer"], json=nu)
+    ).status_code == 403
 
 
 @pytest.mark.asyncio
@@ -150,15 +177,23 @@ async def test_incident_create_and_actions_rbac(client):
     admin_create = await client.post("/incidents", headers=h["admin"], json=body)
     assert admin_create.status_code == 201, admin_create.text
     incident_id = admin_create.json()["id"]
-    assert (await client.post("/incidents", headers=h["operator"], json=body)).status_code == 403
-    assert (await client.post("/incidents", headers=h["viewer"], json=body)).status_code == 403
+    assert (
+        await client.post("/incidents", headers=h["operator"], json=body)
+    ).status_code == 403
+    assert (
+        await client.post("/incidents", headers=h["viewer"], json=body)
+    ).status_code == 403
 
     # Everyone can view the list + detail.
     assert (await client.get("/incidents", headers=h["viewer"])).status_code == 200
-    assert (await client.get(f"/incidents/{incident_id}", headers=h["viewer"])).status_code == 200
+    assert (
+        await client.get(f"/incidents/{incident_id}", headers=h["viewer"])
+    ).status_code == 200
 
     # Viewer cannot acknowledge; operator/admin can reach the action.
-    assert (await client.post(f"/incidents/{incident_id}/ack", headers=h["viewer"])).status_code == 403
+    assert (
+        await client.post(f"/incidents/{incident_id}/ack", headers=h["viewer"])
+    ).status_code == 403
     assert (
         await client.post(f"/incidents/{incident_id}/ack", headers=h["operator"])
     ).status_code != 403
@@ -167,11 +202,15 @@ async def test_incident_create_and_actions_rbac(client):
     # only operator-initiated escalation handoff) and resolve are both blocked.
     # Escalation itself is time-driven by the engine, never a viewer action.
     assert (
-        await client.post(f"/incidents/{incident_id}/take", headers=h["viewer"], json={})
+        await client.post(
+            f"/incidents/{incident_id}/take", headers=h["viewer"], json={}
+        )
     ).status_code == 403
     assert (
         await client.patch(
-            f"/incidents/{incident_id}", headers=h["viewer"], json={"status": "resolved"}
+            f"/incidents/{incident_id}",
+            headers=h["viewer"],
+            json={"status": "resolved"},
         )
     ).status_code == 403
 

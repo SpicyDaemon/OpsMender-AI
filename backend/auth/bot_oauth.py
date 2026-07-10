@@ -70,9 +70,7 @@ def _auth_config() -> AppConfig:
     return AppConfig.load()
 
 
-def _platform_creds(
-    cfg: BotOAuthConfig, platform: str
-) -> tuple[str, str]:
+def _platform_creds(cfg: BotOAuthConfig, platform: str) -> tuple[str, str]:
     """Return ``(client_id, client_secret)`` or raise ``ValueError``."""
     if platform == "slack":
         if not cfg.slack_client_id or not cfg.slack_client_secret:

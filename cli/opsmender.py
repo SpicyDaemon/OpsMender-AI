@@ -496,8 +496,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "reload",
         help="Apply mcp.json deltas back into the DB (dry-run by default)",
     )
-    mcp_reload.add_argument("--path", default=None, help="Input path (same default as export)")
-    mcp_reload.add_argument("--org-id", default=None, help="Org UUID (same default as export)")
+    mcp_reload.add_argument(
+        "--path", default=None, help="Input path (same default as export)"
+    )
+    mcp_reload.add_argument(
+        "--org-id", default=None, help="Org UUID (same default as export)"
+    )
     mcp_reload.add_argument(
         "--apply",
         action="store_true",
@@ -712,7 +716,9 @@ def _format_provider_models(item: dict[str, object]) -> str:
     if len(models) > 8:
         model_text = f"{model_text}, ..."
     status = "available" if item.get("available") else "unavailable"
-    detail = model_text if item.get("available") else item.get("error") or "unknown error"
+    detail = (
+        model_text if item.get("available") else item.get("error") or "unknown error"
+    )
     return f"{item['provider']:<13s} {status:<11s} {detail}"
 
 
@@ -742,10 +748,7 @@ def _format_model_config(config) -> str:
 
 
 def _warnings_to_dict(warnings) -> list[dict[str, str]]:
-    return [
-        {"code": warning.code, "message": warning.message}
-        for warning in warnings
-    ]
+    return [{"code": warning.code, "message": warning.message} for warning in warnings]
 
 
 def _print_model_validation_warnings(warnings) -> None:
@@ -828,7 +831,9 @@ def _bootstrap_model_args(
 
 
 async def _resolve_cli_org(db) -> uuid.UUID:
-    result = await db.execute(select(Organization).order_by(Organization.created_at).limit(1))
+    result = await db.execute(
+        select(Organization).order_by(Organization.created_at).limit(1)
+    )
     org = result.scalar_one_or_none()
     if org:
         return org.id
@@ -897,7 +902,11 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
                     session_id=session_id,
                 )
                 if args.json_output:
-                    print(json.dumps([_approval_to_dict(item) for item in items], indent=2))
+                    print(
+                        json.dumps(
+                            [_approval_to_dict(item) for item in items], indent=2
+                        )
+                    )
                 elif not items:
                     print("No approval requests found.")
                 else:
@@ -907,16 +916,16 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
 
             request_id = uuid.UUID(args.request_id)
             resolved_by = uuid.UUID(args.user_id) if args.user_id else None
-            decision = (
-                "approved" if args.approvals_command == "approve" else "rejected"
-            )
+            decision = "approved" if args.approvals_command == "approve" else "rejected"
             org_id = await _resolve_cli_org(db)
             request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
             if request is None:
                 print(f"Approval request not found: {request_id}", file=sys.stderr)
                 return 1
             if datetime.now(timezone.utc) >= _as_utc(request.expires_at):
-                await ApprovalRequestRepo.resolve(db, org_id, request_id, status="expired")
+                await ApprovalRequestRepo.resolve(
+                    db, org_id, request_id, status="expired"
+                )
                 await SessionRepo.set_status(
                     db,
                     org_id,
@@ -963,7 +972,9 @@ async def _run_approvals(cfg: Config, args: argparse.Namespace) -> int:
                     ended_at=datetime.now(timezone.utc),
                 )
             else:
-                await SessionRepo.set_status(db, org_id, request.session_id, status="active")
+                await SessionRepo.set_status(
+                    db, org_id, request.session_id, status="active"
+                )
             await db.commit()
             await db.refresh(request)
 
@@ -1254,7 +1265,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 server = servers[0] if servers else None
 
             if server is not None:
-                print(f"Connecting to MCP server: {server.name} ({server.transport})...")
+                print(
+                    f"Connecting to MCP server: {server.name} ({server.transport})..."
+                )
                 try:
                     mcp_session = await mcp_ctx.enter_async_context(connect(server))
                     print(f"Connected to {server.name}.\n")
@@ -1262,9 +1275,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                         tier0_sandbox = await build_sandbox_for_session(
                             mcp_session, skill_def
                         )
-                        tier0_plan_tool_names = sorted(
-                            tier0_sandbox.allowed_tool_names
-                        )
+                        tier0_plan_tool_names = sorted(tier0_sandbox.allowed_tool_names)
                         print(
                             "Tier 0 sandbox allowlist: "
                             f"{len(tier0_plan_tool_names)} tool(s) visible to the workflow."
@@ -1313,7 +1324,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             tool_caller=tier0_sandbox.call_tool if tier0_sandbox is not None else None,
         )
 
-        print("Running workflow: observe -> diagnose -> plan -> tier_gate -> execute -> verify -> summarize\n")
+        print(
+            "Running workflow: observe -> diagnose -> plan -> tier_gate -> execute -> verify -> summarize\n"
+        )
 
         initial_state = {
             "session_id": session_id,
@@ -1510,8 +1523,7 @@ def _run_serve(args: argparse.Namespace) -> int:
                 return 1
         else:
             print(
-                f"Warning: alembic.ini not found at {alembic_ini}; "
-                "skipping migrations",
+                f"Warning: alembic.ini not found at {alembic_ini}; skipping migrations",
                 file=sys.stderr,
             )
 
@@ -1754,9 +1766,7 @@ def _run_saml_gen_sp_keys(args: argparse.Namespace) -> int:
         return 1
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name(
-        [x509.NameAttribute(NameOID.COMMON_NAME, args.cn)]
-    )
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, args.cn)])
     now = datetime.now(timezone.utc)
     cert = (
         x509.CertificateBuilder()
@@ -1790,6 +1800,7 @@ def main(argv: list[str] | None = None) -> None:
     # When running as a PyInstaller bundle, point env vars at the extracted
     # resources (frontend/out, examples/SKILL.md). Must run BEFORE Config.load.
     from backend.resource import bootstrap_bundled_env
+
     bootstrap_bundled_env()
 
     args = _parse_args(argv)

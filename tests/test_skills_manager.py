@@ -29,7 +29,6 @@ from backend.tiers.enforcement import load_skill_for_mcp_server
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
 SAMPLE_SKILL = """---
 version: "1"
 environment: sample
@@ -59,6 +58,7 @@ async def db_factory():
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         session.add(org)
         await session.commit()
@@ -634,7 +634,11 @@ class TestMCPSkillStudio:
         tmpl = (await client.get("/skills/template", headers=auth_headers)).json()
         created = await client.post(
             "/skills",
-            json={"name": "global-skill", "content_md": tmpl["content_md"], "assignment": "global"},
+            json={
+                "name": "global-skill",
+                "content_md": tmpl["content_md"],
+                "assignment": "global",
+            },
             headers=auth_headers,
         )
         assert created.status_code == 201
@@ -676,7 +680,12 @@ class TestClassificationSuggest:
             assert s.generic is False and s.deny is False
 
     def test_destructive_verbs(self):
-        for name in ("delete_pod", "destroy_cluster", "drop_table", "terminate_instance"):
+        for name in (
+            "delete_pod",
+            "destroy_cluster",
+            "drop_table",
+            "terminate_instance",
+        ):
             assert suggest_classification(name).classification == "destructive", name
 
     def test_caution_verbs(self):
@@ -707,7 +716,11 @@ class TestSkillGenerator:
             description="generated",
             operations=[
                 {"tool": "get_pods", "classification": "safe"},
-                {"tool": "restart_service", "classification": "caution", "notes": "roll"},
+                {
+                    "tool": "restart_service",
+                    "classification": "caution",
+                    "notes": "roll",
+                },
                 {"tool": "delete_pod", "classification": "destructive"},
                 {"tool": "shell", "deny": True, "notes": "arbitrary"},
             ],
@@ -740,7 +753,11 @@ class TestSkillGenerator:
         md = build_skill_from_tools(
             name="x",
             operations=[
-                {"tool": "scoped_exec", "classification": "caution", "allow_generic": True},
+                {
+                    "tool": "scoped_exec",
+                    "classification": "caution",
+                    "allow_generic": True,
+                },
             ],
         )
         parsed = parse_skill_content(md)
@@ -886,9 +903,23 @@ class TestAiAssistParser:
             "environment": "prod",
             "tools": [
                 {"name": "get_pods", "classification": "safe", "rationale": "read"},
-                {"name": "delete_pod", "classification": "destructive", "rationale": "irreversible"},
-                {"name": "kubectl", "classification": "safe", "deny": False, "rationale": "model wants safe"},
-                {"name": "restart_service", "classification": "caution", "reversible": True, "rationale": "roll"},
+                {
+                    "name": "delete_pod",
+                    "classification": "destructive",
+                    "rationale": "irreversible",
+                },
+                {
+                    "name": "kubectl",
+                    "classification": "safe",
+                    "deny": False,
+                    "rationale": "model wants safe",
+                },
+                {
+                    "name": "restart_service",
+                    "classification": "caution",
+                    "reversible": True,
+                    "rationale": "roll",
+                },
             ],
             "tier0_instructions": "t0",
             "tier1_instructions": "t1",
@@ -950,13 +981,14 @@ class TestAiAssistParser:
         text = "Sure! Here it is:\n" + self._resp() + "\nHope that helps."
         r = parse_ai_response(text, tools=self.TOOLS)
         assert {t.name for t in r.tools} == {
-            "get_pods", "delete_pod", "kubectl", "restart_service"
+            "get_pods",
+            "delete_pod",
+            "kubectl",
+            "restart_service",
         }
 
     def test_build_prompt_lists_tools_and_intent(self):
-        p = build_prompt(
-            intent="be careful", environment="prod", tools=self.TOOLS
-        )
+        p = build_prompt(intent="be careful", environment="prod", tools=self.TOOLS)
         assert "be careful" in p
         assert "get_pods" in p and "kubectl" in p
         assert "JSON" in p
@@ -971,8 +1003,16 @@ class TestAiSuggestRoute:
                 {
                     "environment": "production",
                     "tools": [
-                        {"name": "get_pods", "classification": "safe", "rationale": "read"},
-                        {"name": "shell", "classification": "safe", "rationale": "tries to allow"},
+                        {
+                            "name": "get_pods",
+                            "classification": "safe",
+                            "rationale": "read",
+                        },
+                        {
+                            "name": "shell",
+                            "classification": "safe",
+                            "rationale": "tries to allow",
+                        },
                     ],
                     "tier0_instructions": "auto",
                     "tier1_instructions": "approve",
@@ -980,9 +1020,7 @@ class TestAiSuggestRoute:
                 }
             )
 
-        monkeypatch.setattr(
-            "backend.api.routes.skills._ai_complete", fake_complete
-        )
+        monkeypatch.setattr("backend.api.routes.skills._ai_complete", fake_complete)
 
         resp = await client.post(
             "/skills/ai-suggest",
@@ -1011,9 +1049,7 @@ class TestAiSuggestRoute:
         )
         assert resp.status_code == 400
 
-    async def test_ai_suggest_no_model_returns_503(
-        self, client, auth_headers
-    ):
+    async def test_ai_suggest_no_model_returns_503(self, client, auth_headers):
         # No default model configured in the test org → 503 (degrade to manual).
         resp = await client.post(
             "/skills/ai-suggest",
@@ -1058,7 +1094,10 @@ class TestSkillStudioTier0Metadata:
         assert "compensating_inverse: restart_deployment_previous_state" in md
         parsed = parse_skill_content(md)
         assert parsed.is_reversible("restart_deployment") is True
-        assert parsed.inverse_for("restart_deployment") == "restart_deployment_previous_state"
+        assert (
+            parsed.inverse_for("restart_deployment")
+            == "restart_deployment_previous_state"
+        )
 
     def test_tier0_tool_with_full_metadata_clears_floor(self):
         md = self._skill(
@@ -1088,9 +1127,7 @@ class TestSkillStudioTier0Metadata:
         assert _check_tool("scale_up", 1, parsed).permitted is True
 
     def test_tier0_tool_not_reversible_is_blocked(self):
-        md = self._skill(
-            [{"tool": "delete_pod", "classification": "destructive"}]
-        )
+        md = self._skill([{"tool": "delete_pod", "classification": "destructive"}])
         parsed = parse_skill_content(md)
         assert _check_tool("delete_pod", 0, parsed).permitted is False
 

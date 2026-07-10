@@ -32,13 +32,9 @@ def upgrade() -> None:
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "org_id", "name", name="uq_integration_connector_name"
-        ),
+        sa.UniqueConstraint("org_id", "name", name="uq_integration_connector_name"),
     )
     op.create_index(
         "ix_integration_connectors_org_kind_enabled",

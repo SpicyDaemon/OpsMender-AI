@@ -51,9 +51,7 @@ class GraphToken:
     token_type: str = "Bearer"
 
     def is_expired(self, *, now: float | None = None) -> bool:
-        return (now or time.time()) >= (
-            self.expires_at - EXPIRY_SAFETY_MARGIN_SECONDS
-        )
+        return (now or time.time()) >= (self.expires_at - EXPIRY_SAFETY_MARGIN_SECONDS)
 
 
 class GraphOAuthError(RuntimeError):
@@ -111,9 +109,7 @@ async def acquire_app_only_token(
                         "client_secret": client_secret,
                         "scope": scope,
                     },
-                    headers={
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
         except httpx.HTTPError as exc:
             raise GraphOAuthError(f"network: {exc}") from exc
@@ -134,9 +130,7 @@ async def acquire_app_only_token(
         access_token = data.get("access_token")
         expires_in = data.get("expires_in")
         if not access_token or not isinstance(expires_in, int):
-            raise GraphOAuthError(
-                f"token endpoint returned unexpected payload: {data}"
-            )
+            raise GraphOAuthError(f"token endpoint returned unexpected payload: {data}")
 
         token = GraphToken(
             access_token=access_token,
@@ -179,9 +173,7 @@ async def verify_graph_credentials(
         async with factory() as client:
             resp = await client.get(
                 "https://graph.microsoft.com/v1.0/organization",
-                headers={
-                    "Authorization": f"{token.token_type} {token.access_token}"
-                },
+                headers={"Authorization": f"{token.token_type} {token.access_token}"},
             )
     except httpx.HTTPError as exc:
         return False, f"network: {exc}"

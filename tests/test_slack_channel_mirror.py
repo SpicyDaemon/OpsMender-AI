@@ -22,9 +22,7 @@ TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
 
 @pytest.fixture
 async def db_session(tmp_path):
-    engine = create_async_engine(
-        f"sqlite+aiosqlite:///{tmp_path}/m.db", echo=False
-    )
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/m.db", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -172,9 +170,7 @@ class TestMirrorIncidentToSlackChannel:
         assert "db on fire" in post_body["text"]
         assert post_body["blocks"]  # Block Kit payload included.
 
-        reloaded = await IncidentRepo.get_by_id(
-            db_session, TEST_ORG_ID, incident.id
-        )
+        reloaded = await IncidentRepo.get_by_id(db_session, TEST_ORG_ID, incident.id)
         assert reloaded.slack_channel_id == "C123"
         assert reloaded.slack_channel_name.startswith("inc-")
 
@@ -224,9 +220,7 @@ class TestMirrorIncidentToSlackChannel:
         await db_session.commit()
 
         def fail_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, json={"ok": False, "error": "name_taken"}
-            )
+            return httpx.Response(200, json={"ok": False, "error": "name_taken"})
 
         transport = httpx.MockTransport(fail_handler)
 

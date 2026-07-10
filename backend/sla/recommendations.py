@@ -57,7 +57,9 @@ def evaluate_slo_recommendation(
     if not breaching and not at_risk:
         return None
 
-    if breaching and (error_budget_remaining_pct <= 0.0 or burn_rate >= _CRITICAL_BURN_RATE):
+    if breaching and (
+        error_budget_remaining_pct <= 0.0 or burn_rate >= _CRITICAL_BURN_RATE
+    ):
         severity = "critical"
     else:
         severity = "warning"

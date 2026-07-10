@@ -79,7 +79,7 @@ async def authenticate_token(
 ) -> IngestToken | None:
     """Validate an ingest token.  Returns the token row if valid, else None."""
     tokens = await IngestTokenRepo.list_all_global(db, active_only=True)
-    
+
     for tok in tokens:
         if verify_token(raw_token, tok.token_hash):
             # Touch last_used_at

@@ -23,9 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "ingest_tokens", sa.Column("service_id", sa.Uuid(), nullable=True)
-    )
+    op.add_column("ingest_tokens", sa.Column("service_id", sa.Uuid(), nullable=True))
     op.create_foreign_key(
         "fk_ingest_tokens_service_id",
         "ingest_tokens",

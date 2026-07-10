@@ -27,57 +27,65 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!user?.primary_org_id) {
-      clearBranding();
-      setBranding(null);
-      return;
+    let cancelled = false;
+    const organizationId = user?.primary_org_id;
+    if (!organizationId) {
+      clearBrandingDocument();
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setBranding(null);
+          setLoading(false);
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
     }
 
-    setLoading(true);
-    getOrganization(user.primary_org_id)
+    queueMicrotask(() => {
+      if (!cancelled) setLoading(true);
+    });
+    getOrganization(organizationId)
       .then((org) => {
+        if (cancelled) return;
         setBranding(org.branding || null);
         if (org.branding) {
-          applyBranding(org.branding);
+          applyBrandingDocument(org.branding);
         } else {
-          clearBranding();
+          clearBrandingDocument();
         }
       })
       .catch((err) => {
+        if (cancelled) return;
         console.warn("Organization branding unavailable:", err);
-        clearBranding();
+        clearBrandingDocument();
+        setBranding(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [user?.primary_org_id]);
-
-  const applyBranding = (config: BrandingConfig) => {
-    if (config.company_name) {
-      // Note: This only works for the current tab title,
-      // Next.js Metadata might override it on page transitions.
-      // But it's a good fallback for the initial load.
-      document.title = `${config.company_name} | OpsMender`;
-    } else {
-      document.title = DEFAULT_DOCUMENT_TITLE;
-    }
-
-    if (config.favicon_url) {
-      setFavicon(config.favicon_url);
-    } else {
-      setFavicon(DEFAULT_FAVICON_HREF);
-    }
-  };
-
-  const clearBranding = () => {
-    document.title = DEFAULT_DOCUMENT_TITLE;
-    setFavicon(DEFAULT_FAVICON_HREF);
-    setBranding(null);
-  };
 
   return (
     <BrandingContext.Provider value={{ branding, loading }}>
       {children}
     </BrandingContext.Provider>
   );
+}
+
+function applyBrandingDocument(config: BrandingConfig) {
+  document.title = config.company_name
+    ? `${config.company_name} | OpsMender`
+    : DEFAULT_DOCUMENT_TITLE;
+  setFavicon(config.favicon_url || DEFAULT_FAVICON_HREF);
+}
+
+function clearBrandingDocument() {
+  document.title = DEFAULT_DOCUMENT_TITLE;
+  setFavicon(DEFAULT_FAVICON_HREF);
 }
 
 export function useBranding() {

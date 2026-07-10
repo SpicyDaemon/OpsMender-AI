@@ -34,8 +34,12 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.Column("interval_seconds", sa.Integer, nullable=False, server_default="300"),
-        sa.Column("severity_default", sa.String(20), nullable=False, server_default="medium"),
-        sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.text("true")),
+        sa.Column(
+            "severity_default", sa.String(20), nullable=False, server_default="medium"
+        ),
+        sa.Column(
+            "is_active", sa.Boolean, nullable=False, server_default=sa.text("true")
+        ),
         sa.Column("last_ran_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_fingerprint", sa.String(500), nullable=True),
         sa.Column(
@@ -68,7 +72,12 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
         sa.Column("duration_ms", sa.Integer, nullable=True),
-        sa.Column("issue_detected", sa.Boolean, nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "issue_detected",
+            sa.Boolean,
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
         sa.Column(
             "incident_id",
             postgresql.UUID(as_uuid=True),
@@ -79,9 +88,7 @@ def upgrade() -> None:
         sa.Column("error", sa.Text, nullable=True),
     )
 
-    op.create_index(
-        "ix_detector_history_rule_id", "detector_history", ["rule_id"]
-    )
+    op.create_index("ix_detector_history_rule_id", "detector_history", ["rule_id"])
 
 
 def downgrade() -> None:

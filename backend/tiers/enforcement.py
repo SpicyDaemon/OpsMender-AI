@@ -21,7 +21,9 @@ class EnforcementResult:
     """
 
     permitted: bool
-    classification: str  # "safe" | "caution" | "destructive" | "unknown" | "generic_execution"
+    classification: (
+        str  # "safe" | "caution" | "destructive" | "unknown" | "generic_execution"
+    )
     tier: int
     reason: str
     reversible: bool = False
@@ -67,7 +69,10 @@ _MATRIX: dict[str, dict[int, tuple[bool, str]]] = {
         2: (False, _ADVISORY_REASON),
     },
     "destructive": {
-        0: (True, "destructive operation — permitted at Tier 0 (autonomous, sandbox floor)"),
+        0: (
+            True,
+            "destructive operation — permitted at Tier 0 (autonomous, sandbox floor)",
+        ),
         1: (True, "destructive operation — permitted at Tier 1 (requires approval)"),
         2: (False, _ADVISORY_REASON),
     },
@@ -115,7 +120,9 @@ def check(
     if skill_def.is_denied(tool_name):
         return EnforcementResult(
             permitted=False,
-            classification=classification if classification != "unknown" else "destructive",
+            classification=classification
+            if classification != "unknown"
+            else "destructive",
             tier=tier,
             reason="deny-list policy match — blocked at every tier",
             reversible=reversible,
@@ -162,7 +169,9 @@ def check(
                 reversible=reversible,
             )
         if not policy.enabled or policy.mode in {"blocked", "advisory"}:
-            label = "advisory — no execution" if policy.mode == "advisory" else "blocked"
+            label = (
+                "advisory — no execution" if policy.mode == "advisory" else "blocked"
+            )
             return EnforcementResult(
                 permitted=False,
                 classification=classification,

@@ -222,9 +222,7 @@ async def test_people_full_lifecycle(env):
     assert deleted.json()["username"] == "teammate"
 
     # ----- (12) GET /auth/users/{id} returns the deleted state ----------
-    fetched = await client.get(
-        f"/auth/users/{teammate_id}", headers=admin_headers
-    )
+    fetched = await client.get(f"/auth/users/{teammate_id}", headers=admin_headers)
     assert fetched.status_code == 200
     body = fetched.json()
     assert body["deleted_at"] is not None

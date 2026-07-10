@@ -66,8 +66,7 @@ class RetentionScheduler:
     async def start(self) -> None:
         if not self._enabled:
             logger.info(
-                "Retention scheduler is disabled "
-                "(OPSMENDER_RETENTION_ENABLED=false)."
+                "Retention scheduler is disabled (OPSMENDER_RETENTION_ENABLED=false)."
             )
             return
         if self._task is not None:
@@ -101,9 +100,7 @@ class RetentionScheduler:
         """One full pass across every org. Returns the total deleted count."""
         total_deleted = 0
         async with self._session_factory() as db:
-            org_ids = (
-                await db.execute(select(Organization.id))
-            ).scalars().all()
+            org_ids = (await db.execute(select(Organization.id))).scalars().all()
             for org_id in org_ids:
                 report = await prune_org(db, org_id, skip_categories={"audit_entries"})
                 total_deleted += report.total_deleted

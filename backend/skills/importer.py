@@ -61,7 +61,7 @@ async def auto_import(
         if not organizations:
             logger.error("skills.auto_import: no organizations found, cannot import")
             return result
-        
+
         org_id = organizations[0].id
 
         for path in files:

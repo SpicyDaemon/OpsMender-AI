@@ -268,9 +268,7 @@ class TestBlockedToolCall:
         assert blocked.permitted is False
         assert blocked.block_reason is not None
         reason = blocked.block_reason.lower()
-        assert (
-            "destructive" in reason or "deny" in reason or "advisory" in reason
-        )
+        assert "destructive" in reason or "deny" in reason or "advisory" in reason
 
     @pytest.mark.asyncio
     async def test_unknown_tool_is_blocked(

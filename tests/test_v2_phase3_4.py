@@ -131,9 +131,7 @@ async def test_record_lifecycle_comment_creates_and_skips(factory):
         )
         # no-op when there is no incident
         assert (
-            await record_lifecycle_comment(
-                db, ORG_ID, incident_id=None, body="ignored"
-            )
+            await record_lifecycle_comment(db, ORG_ID, incident_id=None, body="ignored")
             is None
         )
         await db.commit()

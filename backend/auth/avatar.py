@@ -54,9 +54,7 @@ def process_avatar(raw: bytes, filename: str | None = None) -> bytes:
 
     ext = _extension(filename)
     if filename and ext not in ALLOWED_EXTENSIONS:
-        raise ValueError(
-            f"Unsupported file type '.{ext}'. Allowed: {_ALLOWED_HINT}."
-        )
+        raise ValueError(f"Unsupported file type '.{ext}'. Allowed: {_ALLOWED_HINT}.")
 
     try:
         with Image.open(BytesIO(raw)) as opened:

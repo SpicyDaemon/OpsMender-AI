@@ -38,8 +38,12 @@ class ParsedIncident:
     external_source: str | None = None  # e.g. "cloudwatch", "azure_monitor"
     status: str = "open"  # open | resolved
     needs_llm: bool = False  # True when heuristics were too weak to trust
-    extracted_paths: dict[str, str] | None = None  # resolved JSON paths per field (for shape cache)
-    availability: AvailabilitySignal | None = None  # uptime signal if the payload is health-check related
+    extracted_paths: dict[str, str] | None = (
+        None  # resolved JSON paths per field (for shape cache)
+    )
+    availability: AvailabilitySignal | None = (
+        None  # uptime signal if the payload is health-check related
+    )
 
 
 class IngestAdapter(ABC):

@@ -72,9 +72,7 @@ def _org_filter_direct(model: type[Any], org_id: uuid.UUID) -> ColumnElement[boo
     return model.org_id == org_id
 
 
-def _org_filter_recall_log(
-    _model: type[Any], org_id: uuid.UUID
-) -> ColumnElement[bool]:
+def _org_filter_recall_log(_model: type[Any], org_id: uuid.UUID) -> ColumnElement[bool]:
     """`IncidentMemoryRecallLog` doesn't carry ``org_id`` directly; scope it
     via a sub-select against ``incident_memories``."""
     return IncidentMemoryRecallLog.memory_id.in_(
@@ -187,9 +185,7 @@ async def prune_org(
                 )
             )
             continue
-        ttl_days = await RetentionConfigRepo.effective_ttl_days(
-            db, org_id, category
-        )
+        ttl_days = await RetentionConfigRepo.effective_ttl_days(db, org_id, category)
         if ttl_days is None:
             report.results.append(
                 PrunerResult(
@@ -269,11 +265,7 @@ async def estimate_storage_for_org(
 
     out: dict[str, dict[str, Any]] = {}
     for name, model, _ts_col, org_filter in _CATEGORY_TABLES:
-        stmt = (
-            select(func.count())
-            .select_from(model)
-            .where(org_filter(model, org_id))
-        )
+        stmt = select(func.count()).select_from(model).where(org_filter(model, org_id))
         count = int((await db.execute(stmt)).scalar() or 0)
         out[name] = {
             "row_count": count,

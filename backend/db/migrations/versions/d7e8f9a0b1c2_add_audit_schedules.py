@@ -35,13 +35,9 @@ def upgrade() -> None:
         ),
         sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("description", sa.String(length=1000), nullable=True),
-        sa.Column(
-            "analyzers", sa.JSON(), nullable=False, server_default="[]"
-        ),
+        sa.Column("analyzers", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column("mcp_server_name", sa.String(length=200), nullable=True),
-        sa.Column(
-            "focus_areas", sa.JSON(), nullable=False, server_default="[]"
-        ),
+        sa.Column("focus_areas", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column("interval_minutes", sa.Integer(), nullable=False),
         sa.Column(
             "is_active",
@@ -49,9 +45,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.true(),
         ),
-        sa.Column(
-            "last_run_at", sa.DateTime(timezone=True), nullable=True
-        ),
+        sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "next_run_at",
             sa.DateTime(timezone=True),
@@ -82,7 +76,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_audit_schedules_due", table_name="audit_schedules"
-    )
+    op.drop_index("ix_audit_schedules_due", table_name="audit_schedules")
     op.drop_table("audit_schedules")

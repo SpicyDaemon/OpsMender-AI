@@ -129,7 +129,14 @@ def _env_provider_defaults() -> dict[str, dict[str, str | None]]:
 # repeat loads. The cache key carries every discovery param so distinct
 # queries don't collide.
 _DISCOVERY_CACHE: dict[
-    tuple[str | None, str | None, str | None, str | None, str | None, tuple[tuple[str, str], ...]],
+    tuple[
+        str | None,
+        str | None,
+        str | None,
+        str | None,
+        str | None,
+        tuple[tuple[str, str], ...],
+    ],
     tuple[float, list[dict[str, object]]],
 ] = {}
 _DISCOVERY_CACHE_DEFAULT_TTL_SECONDS = 60.0
@@ -285,7 +292,9 @@ class ProviderRegistry:
         # win; this is purely a fallback for None.
         env_defaults = _env_provider_defaults()
 
-        providers = [provider] if provider else [spec.provider for spec in self.list_specs()]
+        providers = (
+            [provider] if provider else [spec.provider for spec in self.list_specs()]
+        )
         results: list[dict[str, object]] = []
         for provider_name in providers:
             spec = self.get_spec(provider_name)
@@ -293,25 +302,29 @@ class ProviderRegistry:
             selected_api_key = api_key_env_var or spec.default_api_key_env_var
             per_provider_env = env_defaults.get(provider_name, {})
             selected_base_url = base_url or per_provider_env.get("base_url")
-            selected_api_key = selected_api_key or per_provider_env.get("api_key_env_var")
+            selected_api_key = selected_api_key or per_provider_env.get(
+                "api_key_env_var"
+            )
             selected_api_version = api_version or per_provider_env.get("api_version")
 
             placeholder_reason = _detect_placeholder_creds(
                 provider_name, selected_api_key, selected_base_url
             )
             if placeholder_reason is not None:
-                results.append({
-                    "provider": provider_name,
-                    "label": spec.label,
-                    "default_model_id": spec.default_model_id,
-                    "default_api_key_env_var": spec.default_api_key_env_var,
-                    "requires_api_key": spec.requires_api_key,
-                    "requires_base_url": spec.requires_base_url,
-                    "requires_api_version": spec.requires_api_version,
-                    "available": False,
-                    "models": [],
-                    "error": placeholder_reason,
-                })
+                results.append(
+                    {
+                        "provider": provider_name,
+                        "label": spec.label,
+                        "default_model_id": spec.default_model_id,
+                        "default_api_key_env_var": spec.default_api_key_env_var,
+                        "requires_api_key": spec.requires_api_key,
+                        "requires_base_url": spec.requires_base_url,
+                        "requires_api_version": spec.requires_api_version,
+                        "available": False,
+                        "models": [],
+                        "error": placeholder_reason,
+                    }
+                )
                 continue
 
             try:
@@ -324,31 +337,35 @@ class ProviderRegistry:
                     provider_meta=provider_meta,
                 )
                 models = client.list_models()
-                results.append({
-                    "provider": provider_name,
-                    "label": spec.label,
-                    "default_model_id": spec.default_model_id,
-                    "default_api_key_env_var": spec.default_api_key_env_var,
-                    "requires_api_key": spec.requires_api_key,
-                    "requires_base_url": spec.requires_base_url,
-                    "requires_api_version": spec.requires_api_version,
-                    "available": True,
-                    "models": models,
-                    "error": None,
-                })
+                results.append(
+                    {
+                        "provider": provider_name,
+                        "label": spec.label,
+                        "default_model_id": spec.default_model_id,
+                        "default_api_key_env_var": spec.default_api_key_env_var,
+                        "requires_api_key": spec.requires_api_key,
+                        "requires_base_url": spec.requires_base_url,
+                        "requires_api_version": spec.requires_api_version,
+                        "available": True,
+                        "models": models,
+                        "error": None,
+                    }
+                )
             except Exception as exc:
-                results.append({
-                    "provider": provider_name,
-                    "label": spec.label,
-                    "default_model_id": spec.default_model_id,
-                    "default_api_key_env_var": spec.default_api_key_env_var,
-                    "requires_api_key": spec.requires_api_key,
-                    "requires_base_url": spec.requires_base_url,
-                    "requires_api_version": spec.requires_api_version,
-                    "available": False,
-                    "models": [],
-                    "error": str(exc),
-                })
+                results.append(
+                    {
+                        "provider": provider_name,
+                        "label": spec.label,
+                        "default_model_id": spec.default_model_id,
+                        "default_api_key_env_var": spec.default_api_key_env_var,
+                        "requires_api_key": spec.requires_api_key,
+                        "requires_base_url": spec.requires_base_url,
+                        "requires_api_version": spec.requires_api_version,
+                        "available": False,
+                        "models": [],
+                        "error": str(exc),
+                    }
+                )
         if use_cache:
             _DISCOVERY_CACHE[cache_key] = (time.monotonic(), results)
         return results
@@ -415,7 +432,11 @@ class ProviderRegistry:
                 discovery_error=discovery_error,
             )
 
-        if provider in {"openai", "ollama", "openai_compatible"} and discovered_models and model_id not in discovered_models:
+        if (
+            provider in {"openai", "ollama", "openai_compatible"}
+            and discovered_models
+            and model_id not in discovered_models
+        ):
             message = (
                 f"Model '{model_id}' is not currently reported by provider '{provider}'. "
                 f"Discovered models: {', '.join(discovered_models)}"

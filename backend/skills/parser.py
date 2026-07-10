@@ -203,9 +203,7 @@ class SkillDefinition:
         op = self._match(tool_name)
         return op.compensating_inverse if op is not None else None
 
-    def tier_policy(
-        self, tool_name: str, tier: int
-    ) -> Optional[OperationTierPolicy]:
+    def tier_policy(self, tool_name: str, tier: int) -> Optional[OperationTierPolicy]:
         """Return explicit policy for a declared operation/tier, if present."""
         op = self._match(tool_name)
         return op.policy_for_tier(tier) if op is not None else None
@@ -238,10 +236,7 @@ class SkillDefinition:
         if not op.effective_reversible:
             return "not marked reversible in skill definition"
         if op.requires_compensating_inverse and not op.compensating_inverse:
-            return (
-                "side-effecting Tier 0 operations must declare "
-                "compensating_inverse"
-            )
+            return "side-effecting Tier 0 operations must declare compensating_inverse"
         return None
 
     def is_tier0_safe(self, tool_name: str) -> bool:
@@ -301,7 +296,7 @@ def _extract_workflow_section(text: str) -> object | None:
     match = re.search(r"(?im)^##[ \t]+Workflow[ \t]*$", text)
     if match is None:
         return None
-    remainder = text[match.end():]
+    remainder = text[match.end() :]
     next_heading = re.search(r"(?m)^##[ \t]+", remainder)
     section = remainder[: next_heading.start()] if next_heading else remainder
     section = section.strip()

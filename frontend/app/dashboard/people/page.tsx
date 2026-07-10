@@ -516,12 +516,13 @@ function NewPersonModal({
 }) {
   const [tab, setTab] = useState<"create" | "invite">("create");
 
-  useEffect(() => {
-    if (open) setTab("create");
-  }, [open]);
+  function handleClose() {
+    setTab("create");
+    onClose();
+  }
 
   return (
-    <Modal open={open} onClose={onClose} title="New user">
+    <Modal open={open} onClose={handleClose} title="New user">
       <div className="mb-4 flex gap-2">
         {(
           [
@@ -545,9 +546,9 @@ function NewPersonModal({
         ))}
       </div>
       {tab === "create" ? (
-        <CreateUserForm onClose={onClose} onCreated={onUserCreated} />
+        <CreateUserForm onClose={handleClose} onCreated={onUserCreated} />
       ) : (
-        <InviteUserForm onClose={onClose} orgId={orgId} onCreated={onInviteCreated} />
+        <InviteUserForm onClose={handleClose} orgId={orgId} onCreated={onInviteCreated} />
       )}
     </Modal>
   );

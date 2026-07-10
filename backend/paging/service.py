@@ -60,7 +60,8 @@ async def compute_priority_for_payload(
     payload: dict[str, Any],
     *,
     service_id: uuid.UUID | None = None,
-    llm_callback: Callable[[dict, str], Awaitable[tuple[str | None, str | None]]] | None = None,
+    llm_callback: Callable[[dict, str], Awaitable[tuple[str | None, str | None]]]
+    | None = None,
 ) -> PriorityAssignment:
     """Return priority + response_mode for a payload.
 
@@ -97,7 +98,8 @@ async def compute_priority_with_legacy_rules(
     org_id: uuid.UUID,
     payload: dict[str, Any],
     *,
-    llm_callback: Callable[[dict, str], Awaitable[tuple[str | None, str | None]]] | None = None,
+    llm_callback: Callable[[dict, str], Awaitable[tuple[str | None, str | None]]]
+    | None = None,
 ) -> PriorityAssignment:
     """Legacy helper kept for internal tests/tools that still exercise rules."""
     with db.no_autoflush:
@@ -116,7 +118,8 @@ async def apply_priority_to_incident(
     incident: Incident,
     *,
     payload: dict[str, Any] | None = None,
-    llm_callback: Callable[[dict, str], Awaitable[tuple[str | None, str | None]]] | None = None,
+    llm_callback: Callable[[dict, str], Awaitable[tuple[str | None, str | None]]]
+    | None = None,
 ) -> PriorityAssignment:
     """Compute + persist priority/response_mode on a freshly-created incident.
 

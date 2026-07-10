@@ -37,7 +37,9 @@ export default function ModelsPage() {
   }, []);
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
+    void Promise.resolve()
+      .then(reload)
+      .finally(() => setLoading(false));
   }, [reload]);
 
   if (loading || !bootstrap) return <ConfigPageSkeleton />;

@@ -176,9 +176,7 @@ class TeamsAdapter:
                 response = await client.post(
                     f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages",
                     headers={
-                        "Authorization": (
-                            f"{token.token_type} {token.access_token}"
-                        ),
+                        "Authorization": (f"{token.token_type} {token.access_token}"),
                         "Content-Type": "application/json; charset=utf-8",
                     },
                     json=payload,

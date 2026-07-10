@@ -47,9 +47,7 @@ def _default_http_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=10.0)
 
 
-def channel_name_for_incident(
-    incident: Incident, *, prefix: str = "inc-"
-) -> str:
+def channel_name_for_incident(incident: Incident, *, prefix: str = "inc-") -> str:
     """Build a Slack-safe channel name from the incident.
 
     Slack channel names are lowercase, ≤80 chars, and limited to letters,
@@ -87,9 +85,7 @@ async def mirror_incident_to_slack_channel(
 
     token = bot_token or os.environ.get("OPSMENDER_SLACK_BOT_TOKEN")
     if not token:
-        logger.warning(
-            "slack channel mirror skipped: OPSMENDER_SLACK_BOT_TOKEN unset"
-        )
+        logger.warning("slack channel mirror skipped: OPSMENDER_SLACK_BOT_TOKEN unset")
         return None
 
     factory = http_client_factory or _default_http_client
@@ -110,9 +106,7 @@ async def mirror_incident_to_slack_channel(
         return None
 
     if create_resp.status_code != 200:
-        logger.warning(
-            "slack channel mirror http %s", create_resp.status_code
-        )
+        logger.warning("slack channel mirror http %s", create_resp.status_code)
         return None
     try:
         create_data = create_resp.json()
@@ -154,14 +148,10 @@ async def mirror_incident_to_slack_channel(
                 json={
                     "channel": channel_id,
                     "text": build_page_card_text(incident),
-                    "blocks": build_page_card_blocks(
-                        incident, base_url=base_url
-                    ),
+                    "blocks": build_page_card_blocks(incident, base_url=base_url),
                 },
             )
     except httpx.HTTPError as exc:
-        logger.warning(
-            "slack channel mirror initial post failed: %s", exc
-        )
+        logger.warning("slack channel mirror initial post failed: %s", exc)
 
     return channel_id

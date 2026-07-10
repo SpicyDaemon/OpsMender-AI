@@ -455,8 +455,7 @@ class JiraAdapter(IntegrationAdapter):
                 for item in transitions.data.get("transitions", [])
                 if str(item.get("id", "")).casefold() == target
                 or str(item.get("name", "")).casefold() == target
-                or str((item.get("to") or {}).get("name", "")).casefold()
-                == target
+                or str((item.get("to") or {}).get("name", "")).casefold() == target
             ),
             None,
         )

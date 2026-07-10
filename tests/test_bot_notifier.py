@@ -1,4 +1,4 @@
-﻿"""Tests for outbound Telegram delivery (session events + co-pilot relay)."""
+"""Tests for outbound Telegram delivery (session events + co-pilot relay)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from backend.db.repos import (
 )
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
-
 
 
 @pytest.fixture
@@ -129,9 +128,7 @@ class TestSessionChatEventFanOut:
             session_id=session_id,
         )
         assert sent
-        assert all(
-            "Summary: Restarted the connection pool" in s["text"] for s in sent
-        )
+        assert all("Summary: Restarted the connection pool" in s["text"] for s in sent)
 
     async def test_non_completed_post_omits_summary(self, factory, monkeypatch):
         sent = []

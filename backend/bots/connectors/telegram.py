@@ -80,9 +80,7 @@ class TelegramAdapter:
         provided = headers.get("x-telegram-bot-api-secret-token") or headers.get(
             "X-Telegram-Bot-Api-Secret-Token"
         )
-        if not provided or not secrets.compare_digest(
-            str(expected_secret), provided
-        ):
+        if not provided or not secrets.compare_digest(str(expected_secret), provided):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid Telegram webhook secret",

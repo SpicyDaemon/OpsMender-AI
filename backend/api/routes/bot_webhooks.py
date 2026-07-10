@@ -186,13 +186,15 @@ async def slack_webhook(
         connector = await db.get(BotConnector, connector_id)
         if connector is None:
             raise HTTPException(status_code=404, detail="Connector not found")
-        
+
         # Verify even for challenges to ensure security
         adapter = get_adapter("slack")
         if adapter:
             raw_body = await request.body()
-            adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
-            
+            adapter.verify_webhook(
+                connector, headers=request.headers, raw_body=raw_body
+            )
+
         return {"challenge": payload.get("challenge")}
 
     return await _process_webhook(
@@ -219,12 +221,14 @@ async def discord_webhook(
         connector = await db.get(BotConnector, connector_id)
         if connector is None:
             raise HTTPException(status_code=404, detail="Connector not found")
-        
+
         adapter = get_adapter("discord")
         if adapter:
             raw_body = await request.body()
-            adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
-            
+            adapter.verify_webhook(
+                connector, headers=request.headers, raw_body=raw_body
+            )
+
         return {"type": 1}
 
     return await _process_webhook(
@@ -289,12 +293,14 @@ async def feishu_webhook(
         connector = await db.get(BotConnector, connector_id)
         if connector is None:
             raise HTTPException(status_code=404, detail="Connector not found")
-        
+
         adapter = get_adapter("feishu")
         if adapter:
             raw_body = await request.body()
-            adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
-            
+            adapter.verify_webhook(
+                connector, headers=request.headers, raw_body=raw_body
+            )
+
         return {"challenge": payload.get("challenge")}
 
     return await _process_webhook(
@@ -334,12 +340,13 @@ async def wecom_handshake(
     connector = await db.get(BotConnector, connector_id)
     if connector is None:
         raise HTTPException(status_code=404, detail="Connector not found")
-    
+
     adapter = get_adapter("wecom")
     if not adapter:
         raise HTTPException(status_code=400, detail="Adapter not found")
-    
+
     from backend.bots.connectors.wecom import WeComAdapter
+
     if isinstance(adapter, WeComAdapter):
         return adapter.handle_handshake(connector, request.query_params)
     return ""
@@ -354,22 +361,24 @@ async def wecom_webhook(
     connector = await db.get(BotConnector, connector_id)
     if connector is None:
         raise HTTPException(status_code=404, detail="Connector not found")
-    
+
     adapter = get_adapter("wecom")
     from backend.bots.connectors.wecom import WeComAdapter
+
     if not isinstance(adapter, WeComAdapter):
         raise HTTPException(status_code=400, detail="Invalid adapter")
 
     raw_body = await request.body()
     # WeCom sends XML with an 'Encrypt' field
     import defusedxml.ElementTree as ET
+
     root = ET.fromstring(raw_body)
     encrypt = root.findtext("Encrypt")
-    
+
     credentials = connector.credentials or {}
     aes_key = credentials.get("encoding_aes_key")
     decrypted_xml = adapter._decrypt(str(aes_key), str(encrypt))
-    
+
     # Process the decrypted XML
     return await _process_webhook(
         connector_id=connector_id,
@@ -389,9 +398,10 @@ async def weixin_handshake(
     connector = await db.get(BotConnector, connector_id)
     if connector is None:
         raise HTTPException(status_code=404, detail="Connector not found")
-    
+
     adapter = get_adapter("weixin")
     from backend.bots.connectors.weixin import WeixinAdapter
+
     if isinstance(adapter, WeixinAdapter):
         return adapter.handle_handshake(connector, request.query_params)
     return ""

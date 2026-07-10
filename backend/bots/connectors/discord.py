@@ -224,8 +224,7 @@ class DiscordAdapter:
             return DeliveryReceipt(
                 ok=False,
                 error=(
-                    f"Discord API error: HTTP {response.status_code} - "
-                    f"{response.text}"
+                    f"Discord API error: HTTP {response.status_code} - {response.text}"
                 ),
             )
         data = response.json()
@@ -274,8 +273,7 @@ class DiscordAdapter:
             return UpdateResult(
                 ok=False,
                 error=(
-                    f"Discord API error: HTTP {response.status_code} - "
-                    f"{response.text}"
+                    f"Discord API error: HTTP {response.status_code} - {response.text}"
                 ),
                 fallback_to_followup=response.status_code in {403, 404},
             )

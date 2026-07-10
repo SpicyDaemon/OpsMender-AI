@@ -59,9 +59,7 @@ def upgrade() -> None:
         if normalised == row.tags:
             continue
         bind.execute(
-            memories.update()
-            .where(memories.c.id == row.id)
-            .values(tags=normalised)
+            memories.update().where(memories.c.id == row.id).values(tags=normalised)
         )
 
 

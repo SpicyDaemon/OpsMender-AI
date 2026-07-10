@@ -43,9 +43,7 @@ async def app(tmp_path):
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
-        session.add(
-            Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
-        )
+        session.add(Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org"))
         await session.commit()
     set_session_factory(factory)
 
@@ -208,7 +206,7 @@ class TestAnalyzerParsing:
         assert findings[0].suggested_fix == "Increase memory limit"
 
     def test_generic_llm_strips_code_fences(self):
-        raw = "```json\n[{\"severity\":\"low\",\"message\":\"hi\"}]\n```"
+        raw = '```json\n[{"severity":"low","message":"hi"}]\n```'
         findings = EnvironmentScanAnalyzer().parse(raw)
         assert len(findings) == 1
         assert findings[0].message == "hi"
@@ -248,9 +246,7 @@ class TestRegistry:
 class TestRepos:
     async def test_audit_run_create_and_list(self, app):
         async with app.state.session_factory() as db:
-            run = await AuditRunRepo.create(
-                db, TEST_ORG_ID, analyzers=["kube-score"]
-            )
+            run = await AuditRunRepo.create(db, TEST_ORG_ID, analyzers=["kube-score"])
             await db.commit()
             assert run.status == "queued"
             assert run.finding_count == 0
@@ -261,9 +257,7 @@ class TestRepos:
 
     async def test_audit_finding_filtering(self, app):
         async with app.state.session_factory() as db:
-            run = await AuditRunRepo.create(
-                db, TEST_ORG_ID, analyzers=["kube-score"]
-            )
+            run = await AuditRunRepo.create(db, TEST_ORG_ID, analyzers=["kube-score"])
             await AuditFindingRepo.create(
                 db,
                 TEST_ORG_ID,
@@ -326,9 +320,7 @@ class TestRunner:
         register_analyzer(fake)
 
         async with app.state.session_factory() as db:
-            run = await AuditRunRepo.create(
-                db, TEST_ORG_ID, analyzers=["fake"]
-            )
+            run = await AuditRunRepo.create(db, TEST_ORG_ID, analyzers=["fake"])
             await db.commit()
             run_id = run.id
 
@@ -347,9 +339,7 @@ class TestRunner:
             refreshed = await AuditRunRepo.get_by_id(db, TEST_ORG_ID, run_id)
             assert refreshed.status == "completed"
             assert refreshed.finding_count == 1
-            findings = await AuditFindingRepo.list_by_run(
-                db, TEST_ORG_ID, run_id
-            )
+            findings = await AuditFindingRepo.list_by_run(db, TEST_ORG_ID, run_id)
             assert len(findings) == 1
             assert findings[0].severity == "high"
 
@@ -365,9 +355,7 @@ class TestRunner:
         register_analyzer(fake)
 
         async with app.state.session_factory() as db:
-            run = await AuditRunRepo.create(
-                db, TEST_ORG_ID, analyzers=["boomer"]
-            )
+            run = await AuditRunRepo.create(db, TEST_ORG_ID, analyzers=["boomer"])
             await db.commit()
             run_id = run.id
 
@@ -382,9 +370,7 @@ class TestRunner:
             await db.commit()
 
         async with app.state.session_factory() as db:
-            findings = await AuditFindingRepo.list_by_run(
-                db, TEST_ORG_ID, run_id
-            )
+            findings = await AuditFindingRepo.list_by_run(db, TEST_ORG_ID, run_id)
             assert len(findings) == 1
             assert findings[0].severity == "info"
             assert "network down" in findings[0].message
@@ -404,9 +390,7 @@ class TestRunner:
 
 
 class TestAuditAPI:
-    async def test_list_analyzers_endpoint(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_list_analyzers_endpoint(self, client: AsyncClient, auth_headers):
         resp = await client.get("/audits/analyzers", headers=auth_headers)
         assert resp.status_code == 200
         keys = {item["key"] for item in resp.json()["items"]}
@@ -442,9 +426,7 @@ class TestAuditAPI:
     ):
         # Seed a run + finding directly via repo
         async with app.state.session_factory() as db:
-            run = await AuditRunRepo.create(
-                db, TEST_ORG_ID, analyzers=["kube-score"]
-            )
+            run = await AuditRunRepo.create(db, TEST_ORG_ID, analyzers=["kube-score"])
             await AuditFindingRepo.create(
                 db,
                 TEST_ORG_ID,
@@ -456,22 +438,16 @@ class TestAuditAPI:
             await db.commit()
             run_id = str(run.id)
 
-        resp = await client.get(
-            f"/audits/runs/{run_id}", headers=auth_headers
-        )
+        resp = await client.get(f"/audits/runs/{run_id}", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.json()
         assert body["run"]["id"] == run_id
         assert len(body["findings"]) == 1
         assert body["findings"][0]["message"] == "seed-finding"
 
-    async def test_dismiss_finding(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_dismiss_finding(self, client: AsyncClient, app, auth_headers):
         async with app.state.session_factory() as db:
-            run = await AuditRunRepo.create(
-                db, TEST_ORG_ID, analyzers=["kube-score"]
-            )
+            run = await AuditRunRepo.create(db, TEST_ORG_ID, analyzers=["kube-score"])
             finding = await AuditFindingRepo.create(
                 db,
                 TEST_ORG_ID,
@@ -496,9 +472,7 @@ class TestAuditAPI:
         self, client: AsyncClient, app, auth_headers
     ):
         async with app.state.session_factory() as db:
-            run = await AuditRunRepo.create(
-                db, TEST_ORG_ID, analyzers=["kube-score"]
-            )
+            run = await AuditRunRepo.create(db, TEST_ORG_ID, analyzers=["kube-score"])
             finding = await AuditFindingRepo.create(
                 db,
                 TEST_ORG_ID,
@@ -535,9 +509,7 @@ class TestAuditAPI:
         self, client: AsyncClient, app, auth_headers
     ):
         async with app.state.session_factory() as db:
-            run = await AuditRunRepo.create(
-                db, TEST_ORG_ID, analyzers=["kube-score"]
-            )
+            run = await AuditRunRepo.create(db, TEST_ORG_ID, analyzers=["kube-score"])
             for sev in ("high", "low"):
                 await AuditFindingRepo.create(
                     db,
@@ -549,9 +521,7 @@ class TestAuditAPI:
                 )
             await db.commit()
 
-        resp = await client.get(
-            "/audits/findings?severity=high", headers=auth_headers
-        )
+        resp = await client.get("/audits/findings?severity=high", headers=auth_headers)
         assert resp.status_code == 200
         items = resp.json()["items"]
         assert all(item["severity"] == "high" for item in items)
@@ -564,9 +534,7 @@ class TestAuditAPI:
 
 
 class TestAuditScheduleAPI:
-    async def test_create_list_get_update_delete_cycle(
-        self, client, auth_headers
-    ):
+    async def test_create_list_get_update_delete_cycle(self, client, auth_headers):
         # Create
         resp = await client.post(
             "/audits/schedules",
@@ -619,9 +587,7 @@ class TestAuditScheduleAPI:
         )
         assert resp.status_code == 404
 
-    async def test_create_rejects_unknown_analyzer(
-        self, client, auth_headers
-    ):
+    async def test_create_rejects_unknown_analyzer(self, client, auth_headers):
         resp = await client.post(
             "/audits/schedules",
             headers=auth_headers,
@@ -634,9 +600,7 @@ class TestAuditScheduleAPI:
         assert resp.status_code == 400
         assert "does-not-exist" in resp.json()["detail"]
 
-    async def test_create_rejects_interval_below_15(
-        self, client, auth_headers
-    ):
+    async def test_create_rejects_interval_below_15(self, client, auth_headers):
         resp = await client.post(
             "/audits/schedules",
             headers=auth_headers,
@@ -681,14 +645,10 @@ class TestAuditSchedulerTick:
 
         # Schedule advanced + a run row was created.
         async with factory() as db:
-            reloaded = await AuditScheduleRepo.get_by_id(
-                db, TEST_ORG_ID, schedule_id
-            )
+            reloaded = await AuditScheduleRepo.get_by_id(db, TEST_ORG_ID, schedule_id)
             assert reloaded.last_run_at is not None
             # SQLite drops tzinfo; compare on tz-stripped wall-clock.
-            assert reloaded.next_run_at.replace(tzinfo=None) > now.replace(
-                tzinfo=None
-            )
+            assert reloaded.next_run_at.replace(tzinfo=None) > now.replace(tzinfo=None)
             runs = await AuditRunRepo.list_all(db, TEST_ORG_ID, limit=10, offset=0)
             assert len(runs) >= 1
             assert runs[0].analyzers == ["environment-scan"]

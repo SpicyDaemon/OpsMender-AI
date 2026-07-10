@@ -40,9 +40,7 @@ class _ToolCaller(Protocol):
     or a lambda; tests can inject an ``AsyncMock``.
     """
 
-    async def __call__(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> Any: ...
+    async def __call__(self, tool_name: str, arguments: dict[str, Any]) -> Any: ...
 
 
 @dataclasses.dataclass
@@ -52,7 +50,9 @@ class RollbackStep:
     original_tool: str
     inverse_tool: str | None
     parameters: dict[str, Any]
-    status: str  # "succeeded" | "failed" | "skipped_no_inverse" | "skipped_not_permitted"
+    status: (
+        str  # "succeeded" | "failed" | "skipped_no_inverse" | "skipped_not_permitted"
+    )
     error: str | None = None
 
 
@@ -64,11 +64,7 @@ class RollbackReport:
 
     @property
     def attempted(self) -> int:
-        return sum(
-            1
-            for s in self.steps
-            if s.status in ("succeeded", "failed")
-        )
+        return sum(1 for s in self.steps if s.status in ("succeeded", "failed"))
 
     @property
     def succeeded(self) -> int:
@@ -198,7 +194,9 @@ async def replay_compensating_inverses(
             await _log_skip(audit_logger, session_id, tier, original_tool, params)
             continue
 
-        await _log_attempt_start(audit_logger, session_id, tier, inverse, original_tool, params)
+        await _log_attempt_start(
+            audit_logger, session_id, tier, inverse, original_tool, params
+        )
         try:
             await caller(inverse, params)
         except Exception as exc:
@@ -211,7 +209,9 @@ async def replay_compensating_inverses(
                     error=str(exc),
                 )
             )
-            await _log_attempt_blocked(audit_logger, session_id, tier, inverse, original_tool, str(exc))
+            await _log_attempt_blocked(
+                audit_logger, session_id, tier, inverse, original_tool, str(exc)
+            )
             continue
 
         steps.append(

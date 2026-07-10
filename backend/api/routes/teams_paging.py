@@ -58,13 +58,17 @@ async def _find_teams_connector_for_activity(
         return None
     recipient_app_id = recipient_id.split(":", 1)[-1]
     rows = (
-        await db.execute(
-            select(BotConnector).where(
-                BotConnector.platform == "teams",
-                BotConnector.is_enabled.is_(True),
+        (
+            await db.execute(
+                select(BotConnector).where(
+                    BotConnector.platform == "teams",
+                    BotConnector.is_enabled.is_(True),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for connector in rows:
         candidate = _bot_app_id(connector)
         if not candidate or candidate != recipient_app_id:
@@ -125,13 +129,9 @@ async def teams_activity(
     if not teams_user_id:
         return _reply("Teams didn't tell us who clicked.")
 
-    conversation_id = str(
-        (payload.get("conversation") or {}).get("id") or ""
-    ) or None
+    conversation_id = str((payload.get("conversation") or {}).get("id") or "") or None
     message_id = str(payload.get("replyToId") or payload.get("id") or "") or None
-    idempotency_key = str(
-        payload.get("id") or hashlib.sha256(raw_body).hexdigest()
-    )
+    idempotency_key = str(payload.get("id") or hashlib.sha256(raw_body).hexdigest())
     try:
         result = await execute_normalized_callback(
             db,

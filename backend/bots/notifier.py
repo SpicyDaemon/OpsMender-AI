@@ -43,6 +43,7 @@ async def _resolve_org_name(db: AsyncSession, org_id: uuid.UUID) -> str | None:
     org = await OrganizationRepo.get_by_id(db, org_id)
     return org.name if org is not None else None
 
+
 log = logging.getLogger(__name__)
 
 

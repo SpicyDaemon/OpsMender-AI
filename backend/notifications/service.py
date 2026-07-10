@@ -128,14 +128,10 @@ async def _push(user_id: uuid.UUID, notification: InAppNotification) -> None:
                 "body": notification.body,
                 "link": notification.link,
                 "incident_id": (
-                    str(notification.incident_id)
-                    if notification.incident_id
-                    else None
+                    str(notification.incident_id) if notification.incident_id else None
                 ),
                 "session_id": (
-                    str(notification.session_id)
-                    if notification.session_id
-                    else None
+                    str(notification.session_id) if notification.session_id else None
                 ),
                 "read_at": None,
                 "created_at": notification.created_at.isoformat(),

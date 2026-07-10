@@ -98,9 +98,7 @@ class TestFrontendMount:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
 
-    async def test_org_scoped_dashboard_route_is_not_mounted(
-        self, client: AsyncClient
-    ):
+    async def test_org_scoped_dashboard_route_is_not_mounted(self, client: AsyncClient):
         resp = await client.get("/org/test-org/dashboard/incidents/detail")
         assert resp.status_code == 404
         assert "text/html" in resp.headers["content-type"]

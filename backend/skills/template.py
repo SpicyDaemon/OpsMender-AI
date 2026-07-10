@@ -94,11 +94,14 @@ def build_skill_from_tools(
     human-readable guidance. No LLM is involved — the output is a pure function
     of the operator's structured input, so it is reproducible and testable.
     """
-    norm = [_normalize_operation(op) for op in operations if str(op.get("tool", "")).strip()]
+    norm = [
+        _normalize_operation(op) for op in operations if str(op.get("tool", "")).strip()
+    ]
 
     front: dict[str, Any] = {
         "version": "1",
-        "environment": (environment or "your-environment").strip() or "your-environment",
+        "environment": (environment or "your-environment").strip()
+        or "your-environment",
         "default_tier": "T2",
         "operations": norm,
         "focus_areas": [],
@@ -108,8 +111,12 @@ def build_skill_from_tools(
     # Categorize for the prose tables.
     denied = [o for o in norm if o.get("deny")]
     safe = [o for o in norm if not o.get("deny") and o["classification"] == "safe"]
-    caution = [o for o in norm if not o.get("deny") and o["classification"] == "caution"]
-    destructive = [o for o in norm if not o.get("deny") and o["classification"] == "destructive"]
+    caution = [
+        o for o in norm if not o.get("deny") and o["classification"] == "caution"
+    ]
+    destructive = [
+        o for o in norm if not o.get("deny") and o["classification"] == "destructive"
+    ]
 
     def _rows(ops: list[dict[str, Any]]) -> str:
         if not ops:
@@ -124,22 +131,25 @@ def build_skill_from_tools(
             if o.get("compensating_inverse"):
                 flags.append(f"rollback→`{o['compensating_inverse']}`")
             note = o.get("notes", "") or ""
-            extra = (", ".join(flags))
+            extra = ", ".join(flags)
             out += f"| `{o['tool']}` | {note} | {extra} |\n"
         return out
 
-    desc_line = description.strip() or "Generated in the MCP Skill Studio from discovered MCP tools."
+    desc_line = (
+        description.strip()
+        or "Generated in the MCP Skill Studio from discovered MCP tools."
+    )
     t0 = tier0_instructions.strip() or "_Freeform guidance for autonomous remediation._"
-    t1 = tier1_instructions.strip() or "_Freeform guidance for approval-gated response._"
+    t1 = (
+        tier1_instructions.strip() or "_Freeform guidance for approval-gated response._"
+    )
     t2 = tier2_instructions.strip() or "_Freeform advisory guidance._"
 
     # Build the deny-list rows outside the return f-string: nesting an f-string
     # (with its `\n`) inside an outer f-string expression is a SyntaxError on
     # Python 3.11. As a standalone statement the `\n` is plain literal text.
     deny_rows = (
-        "".join(
-            f"| `{o['tool']}` | {o.get('notes', '') or ''} |\n" for o in denied
-        )
+        "".join(f"| `{o['tool']}` | {o.get('notes', '') or ''} |\n" for o in denied)
         or "| _(none)_ | |\n"
     )
 
@@ -239,7 +249,10 @@ def build_skill_template(
     example operations) so the policy parses and enforces out of the box; the
     operator replaces the examples with their real MCP tool identifiers.
     """
-    desc_line = description.strip() or "Describe what this skill governs and the environment it applies to."
+    desc_line = (
+        description.strip()
+        or "Describe what this skill governs and the environment it applies to."
+    )
     return f"""---
 version: "1"
 environment: {environment}

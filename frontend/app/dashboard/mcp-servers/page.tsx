@@ -34,7 +34,9 @@ export default function MCPServersPage() {
   }, []);
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
+    void Promise.resolve()
+      .then(reload)
+      .finally(() => setLoading(false));
   }, [reload]);
 
   useEffect(() => {

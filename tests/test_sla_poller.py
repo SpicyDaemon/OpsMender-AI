@@ -171,18 +171,24 @@ class TestSLAPoller:
         assert defaults.poll_interval_default == 300
 
     @pytest.mark.asyncio
-    async def test_scheduler_selects_active_http_targets_only(
-        self, db: AsyncSession
-    ):
+    async def test_scheduler_selects_active_http_targets_only(self, db: AsyncSession):
         """The poller's per-tick target query returns active targets only —
         inactive (monitoring-paused) targets are not probed."""
         await SLATargetRepo.create(
-            db, TEST_ORG_ID, name="active-web", kind="http",
-            config={"url": "http://test.com"}, is_active=True,
+            db,
+            TEST_ORG_ID,
+            name="active-web",
+            kind="http",
+            config={"url": "http://test.com"},
+            is_active=True,
         )
         await SLATargetRepo.create(
-            db, TEST_ORG_ID, name="paused-web", kind="http",
-            config={"url": "http://down.com"}, is_active=False,
+            db,
+            TEST_ORG_ID,
+            name="paused-web",
+            kind="http",
+            config={"url": "http://down.com"},
+            is_active=False,
         )
         await db.commit()
 
@@ -197,13 +203,18 @@ class TestSLAPoller:
         """A failing automatic check records a down (up=False) sample — the same
         path the scheduler runs per target each tick."""
         target = await SLATargetRepo.create(
-            db, TEST_ORG_ID, name="failing", kind="http",
+            db,
+            TEST_ORG_ID,
+            name="failing",
+            kind="http",
             config={"url": "http://test.com"},
         )
         await db.commit()
 
         poller = SLAPoller(factory, config)
-        with patch.object(poller, "_probe_target", new_callable=AsyncMock) as mock_probe:
+        with patch.object(
+            poller, "_probe_target", new_callable=AsyncMock
+        ) as mock_probe:
             mock_probe.return_value = (False, 88)
             await poller._probe_and_record(TEST_ORG_ID, target)
 

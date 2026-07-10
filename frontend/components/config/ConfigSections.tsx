@@ -3165,7 +3165,9 @@ function BotConnectorModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setTeamsError("");
+    queueMicrotask(() => {
+      if (!cancelled) setTeamsError("");
+    });
     listTeams()
       .then((res) => {
         if (!cancelled) setTeams(res.items);

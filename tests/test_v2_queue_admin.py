@@ -38,7 +38,11 @@ async def _queued(db, *, priority: str, title: str) -> Session:
     db.add(svc)
     await db.flush()
     inc = Incident(
-        org_id=ORG_ID, title=title, description="x", priority=priority, service_id=svc.id
+        org_id=ORG_ID,
+        title=title,
+        description="x",
+        priority=priority,
+        service_id=svc.id,
     )
     db.add(inc)
     await db.flush()

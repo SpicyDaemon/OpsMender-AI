@@ -34,7 +34,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.ingest.adapters.base import AvailabilitySignal, IngestAdapter, ParsedIncident
+from backend.ingest.adapters.base import (
+    AvailabilitySignal,
+    IngestAdapter,
+    ParsedIncident,
+)
 
 _SEVERITY_MAP = {
     "CRITICAL": "critical",
@@ -62,9 +66,7 @@ class OCIMonitoringAdapter(IngestAdapter):
 
         alarm_name = data.get("alarmName")
         if not alarm_name:
-            raise ValueError(
-                "Missing 'alarmName' in OCI Monitoring alarm payload"
-            )
+            raise ValueError("Missing 'alarmName' in OCI Monitoring alarm payload")
 
         alarm_id = data.get("alarmId", "")
         status_raw = data.get("status", "FIRING")

@@ -74,6 +74,8 @@ def _eviction_max() -> int:
         return int(raw)
     except ValueError:
         return DEFAULT_EVICTION_MAX
+
+
 """Per-service memory count above which auto-compaction runs after a write."""
 
 MAX_COMPACTION_OPS = 5
@@ -267,13 +269,11 @@ async def remember_for_session(
         severity=incident.get("severity") or "(unknown)",
         observations=(state.get("observations") or "").strip()[:2000]
         or "(no observations)",
-        diagnosis=(state.get("diagnosis") or "").strip()[:2000]
-        or "(no diagnosis)",
+        diagnosis=(state.get("diagnosis") or "").strip()[:2000] or "(no diagnosis)",
         actions=_render_actions(state),
         tool_call_count=len(state.get("tool_calls") or []),
         blocked_count=len(state.get("blocked_actions") or []),
-        summary=(state.get("summary") or "").strip()[:2000]
-        or "(no summary)",
+        summary=(state.get("summary") or "").strip()[:2000] or "(no summary)",
     )
 
     try:
@@ -309,9 +309,7 @@ async def remember_for_session(
 
     # Auto-compaction is best-effort; failures must never propagate.
     try:
-        await maybe_compact(
-            factory, llm=llm, org_id=org_id, service_id=service_id
-        )
+        await maybe_compact(factory, llm=llm, org_id=org_id, service_id=service_id)
     except Exception:
         logger.exception("memory auto-compaction failed; continuing")
 
@@ -353,9 +351,7 @@ async def maybe_compact(
         return {"exact_deleted": 0, "llm_deleted": 0, "total_after": 0}
 
     async with factory() as db:
-        count = await IncidentMemoryRepo.count_for_service(
-            db, org_id, service_id
-        )
+        count = await IncidentMemoryRepo.count_for_service(db, org_id, service_id)
         if count <= threshold:
             return {
                 "exact_deleted": 0,
@@ -387,9 +383,7 @@ async def maybe_compact(
                 by_title[key] = memory
             else:
                 older = memory
-            await IncidentMemoryRepo.delete(
-                db, memory_id=older.id, org_id=org_id
-            )
+            await IncidentMemoryRepo.delete(db, memory_id=older.id, org_id=org_id)
             exact_deleted += 1
         await db.commit()
 
@@ -455,7 +449,7 @@ async def maybe_evict(
         ]
         report["protected"] = len(memories) - len(evictable)
         # Least-recently-used first; never-used sort by age.
-        evictable.sort(key=lambda m: (m.last_used_at or m.created_at))
+        evictable.sort(key=lambda m: m.last_used_at or m.created_at)
         to_evict = count - max_total
         evicted = 0
         for memory in evictable[:to_evict]:
@@ -488,9 +482,7 @@ async def _llm_compact(
         f"summary: {(m.summary_md or '').strip()[:400]}"
         for m in memories
     )
-    prompt = COMPACTION_PROMPT.format(
-        max_ops=MAX_COMPACTION_OPS, candidates=candidates
-    )
+    prompt = COMPACTION_PROMPT.format(max_ops=MAX_COMPACTION_OPS, candidates=candidates)
     try:
         raw = llm.invoke(prompt)
     except Exception:
@@ -522,8 +514,6 @@ async def _llm_compact(
             target_uuid = uuid.UUID(target)
         except ValueError:
             continue
-        await IncidentMemoryRepo.delete(
-            db, memory_id=target_uuid, org_id=org_id
-        )
+        await IncidentMemoryRepo.delete(db, memory_id=target_uuid, org_id=org_id)
         deleted += 1
     return deleted

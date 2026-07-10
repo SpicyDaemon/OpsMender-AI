@@ -1,0 +1,193 @@
+name: Verify
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit or tag to verify
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Run backend tests
+        run: uv run pytest -m "not integration" --timeout=180 --timeout-method=thread
+
+  migrations:
+    name: Migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opsmender
+          POSTGRES_PASSWORD: opsmender-ci
+          POSTGRES_DB: opsmender
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opsmender -d opsmender"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      OPSMENDER_DATABASE_URL: postgresql+asyncpg://opsmender:opsmender-ci@localhost:5432/opsmender
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Assert one migration head
+        shell: bash
+        run: |
+          heads="$(uv run alembic heads)"
+          printf '%s\n' "$heads"
+          count="$(printf '%s\n' "$heads" | grep -c '(head)')"
+          test "$count" -eq 1
+
+      - name: Upgrade an empty database
+        run: uv run alembic upgrade head
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+  container-smoke:
+    name: Container smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Build image
+        run: docker build --file docker/Dockerfile --tag opsmender:ci .
+
+      - name: Boot and smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker network create opsmender-ci
+          cleanup() {
+            docker rm -f opsmender-ci-app opsmender-ci-db >/dev/null 2>&1 || true
+            docker network rm opsmender-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --detach --name opsmender-ci-db --network opsmender-ci \
+            --env POSTGRES_USER=opsmender \
+            --env POSTGRES_PASSWORD=opsmender-ci \
+            --env POSTGRES_DB=opsmender \
+            postgres:16-alpine
+          for attempt in {1..30}; do
+            if docker exec opsmender-ci-db pg_isready -U opsmender -d opsmender; then
+              break
+            fi
+            test "$attempt" -lt 30
+            sleep 2
+          done
+
+          docker run --detach --name opsmender-ci-app --network opsmender-ci \
+            --publish 8000:8000 \
+            --env OPSMENDER_DEPLOYMENT_MODE=monolith \
+            --env OPSMENDER_ENVIRONMENT=production \
+            --env OPSMENDER_DATABASE_URL=postgresql+asyncpg://opsmender:opsmender-ci@opsmender-ci-db:5432/opsmender \
+            --env OPSMENDER_JWT_SECRET=ci-only-release-verification-secret-000000000000000000000000 \
+            --env OPSMENDER_BOOTSTRAP_ADMIN_EMAIL=smoke@example.com \
+            --env OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD=SmokeVerification2026 \
+            opsmender:ci
+
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8000/health/ready >/dev/null; then
+              break
+            fi
+            if ! docker ps --filter name=opsmender-ci-app --filter status=running --quiet | grep -q .; then
+              docker logs opsmender-ci-app
+              exit 1
+            fi
+            test "$attempt" -lt 60 || { docker logs opsmender-ci-app; exit 1; }
+            sleep 3
+          done
+
+          curl --fail --silent http://127.0.0.1:8000/health/live
+          curl --fail --silent http://127.0.0.1:8000/health/ready
+          token="$(curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data '{"username":"smoke@example.com","password":"SmokeVerification2026"}' \
+            http://127.0.0.1:8000/auth/login \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+          curl --fail --silent \
+            --header "Authorization: Bearer $token" \
+            http://127.0.0.1:8000/incidents

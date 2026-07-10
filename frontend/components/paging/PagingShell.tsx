@@ -281,7 +281,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
   }, [toast]);
 
   useEffect(() => {
-    refresh();
+    void Promise.resolve().then(refresh);
   }, [refresh]);
 
   const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
@@ -797,12 +797,6 @@ function ServicesPanel({
     new Map(),
   );
   const deferredServiceSearch = useDeferredValue(serviceSearch);
-
-  useEffect(() => {
-    if (teams.length > 0 && !form.team_id) {
-      setForm((f) => ({ ...f, team_id: teams[0].id }));
-    }
-  }, [teams, form.team_id]);
 
   // Resolve the public base URL once so intake URLs render absolute.
   useEffect(() => {
@@ -1757,12 +1751,6 @@ function RostersPanel({
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
-    if (teams.length > 0 && !form.team_id) {
-      setForm((f) => ({ ...f, team_id: teams[0].id }));
-    }
-  }, [teams, form.team_id]);
-
-  useEffect(() => {
     let cancelled = false;
     listUsers()
       .then((res) => {
@@ -2383,12 +2371,6 @@ function ChainsPanel({
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const deferredSearch = useDeferredValue(search);
-
-  useEffect(() => {
-    if (teams.length > 0 && !form.team_id) {
-      setForm((f) => ({ ...f, team_id: teams[0].id }));
-    }
-  }, [teams, form.team_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3066,7 +3048,9 @@ function StepsEditor({
   // level (link/unlink ops aren't done in this editor, but staying defensive).
   useEffect(() => {
     let cancelled = false;
-    setWhereLoading(true);
+    queueMicrotask(() => {
+      if (!cancelled) setWhereLoading(true);
+    });
     listChainServices(chainId)
       .then((res) => {
         if (!cancelled) setWhereUsed(res.items);

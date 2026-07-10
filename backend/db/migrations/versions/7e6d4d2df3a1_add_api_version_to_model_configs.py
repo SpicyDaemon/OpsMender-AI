@@ -18,7 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("model_configs", sa.Column("api_version", sa.String(length=50), nullable=True))
+    op.add_column(
+        "model_configs", sa.Column("api_version", sa.String(length=50), nullable=True)
+    )
 
 
 def downgrade() -> None:

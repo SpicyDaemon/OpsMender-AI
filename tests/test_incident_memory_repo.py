@@ -86,9 +86,7 @@ class TestCreateAndGet:
         assert m.unhelpful_count == 0
 
     async def test_get_respects_org_boundary(self, db: AsyncSession):
-        m = await IncidentMemoryRepo.create(
-            db, org_id=ORG_A, title="t", summary_md="s"
-        )
+        m = await IncidentMemoryRepo.create(db, org_id=ORG_A, title="t", summary_md="s")
         await db.flush()
 
         same_org = await IncidentMemoryRepo.get_by_id(db, m.id, ORG_A)
@@ -117,9 +115,7 @@ class TestList:
         )
         await db.flush()
 
-        listed = await IncidentMemoryRepo.list_for_org(
-            db, ORG_A, service_id=svc.id
-        )
+        listed = await IncidentMemoryRepo.list_for_org(db, ORG_A, service_id=svc.id)
 
         assert {m.id for m in listed} == {m1.id, m3.id}
         assert all(m.id != m2.id for m in listed)
@@ -144,9 +140,7 @@ class TestList:
 
 
 class TestFindRelevant:
-    async def test_service_match_scores_higher_than_global(
-        self, db: AsyncSession
-    ):
+    async def test_service_match_scores_higher_than_global(self, db: AsyncSession):
         svc = await _make_service(db, ORG_A, "checkout")
         on_service = await IncidentMemoryRepo.create(
             db,
@@ -270,9 +264,7 @@ class TestFindRelevant:
 
 class TestFeedback:
     async def test_thumbs_up_increments(self, db: AsyncSession):
-        m = await IncidentMemoryRepo.create(
-            db, org_id=ORG_A, title="t", summary_md="x"
-        )
+        m = await IncidentMemoryRepo.create(db, org_id=ORG_A, title="t", summary_md="x")
         await db.flush()
 
         await IncidentMemoryRepo.record_feedback(
@@ -289,9 +281,7 @@ class TestFeedback:
         assert refreshed.unhelpful_count == 1
 
     async def test_feedback_respects_org_boundary(self, db: AsyncSession):
-        m = await IncidentMemoryRepo.create(
-            db, org_id=ORG_A, title="t", summary_md="x"
-        )
+        m = await IncidentMemoryRepo.create(db, org_id=ORG_A, title="t", summary_md="x")
         await db.flush()
 
         result = await IncidentMemoryRepo.record_feedback(
@@ -323,26 +313,18 @@ class TestUpdateAndDelete:
         assert refreshed.tags == ["x"]
 
     async def test_delete_removes_row(self, db: AsyncSession):
-        m = await IncidentMemoryRepo.create(
-            db, org_id=ORG_A, title="t", summary_md="x"
-        )
+        m = await IncidentMemoryRepo.create(db, org_id=ORG_A, title="t", summary_md="x")
         await db.flush()
 
-        ok = await IncidentMemoryRepo.delete(
-            db, memory_id=m.id, org_id=ORG_A
-        )
+        ok = await IncidentMemoryRepo.delete(db, memory_id=m.id, org_id=ORG_A)
         await db.flush()
         assert ok is True
         assert await IncidentMemoryRepo.get_by_id(db, m.id, ORG_A) is None
 
     async def test_delete_respects_org_boundary(self, db: AsyncSession):
-        m = await IncidentMemoryRepo.create(
-            db, org_id=ORG_A, title="t", summary_md="x"
-        )
+        m = await IncidentMemoryRepo.create(db, org_id=ORG_A, title="t", summary_md="x")
         await db.flush()
-        ok = await IncidentMemoryRepo.delete(
-            db, memory_id=m.id, org_id=ORG_B
-        )
+        ok = await IncidentMemoryRepo.delete(db, memory_id=m.id, org_id=ORG_B)
         assert ok is False
         assert await IncidentMemoryRepo.get_by_id(db, m.id, ORG_A) is not None
 
@@ -387,9 +369,7 @@ class TestRecallLog:
         db.add(session)
         await db.flush()
 
-        m = await IncidentMemoryRepo.create(
-            db, org_id=ORG_A, title="t", summary_md="x"
-        )
+        m = await IncidentMemoryRepo.create(db, org_id=ORG_A, title="t", summary_md="x")
         await db.flush()
 
         await IncidentMemoryRecallLogRepo.record(
@@ -400,9 +380,7 @@ class TestRecallLog:
         )
         await db.flush()
 
-        rows = await IncidentMemoryRecallLogRepo.list_for_session(
-            db, session.id
-        )
+        rows = await IncidentMemoryRecallLogRepo.list_for_session(db, session.id)
         assert len(rows) == 2
         scores = sorted(float(r.score) for r in rows)
         assert scores == [1.0, 2.5]

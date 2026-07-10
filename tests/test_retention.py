@@ -128,9 +128,7 @@ async def _seed_ingest_token(factory, org_id) -> uuid.UUID:
         return token.id
 
 
-async def _seed_memory_recall(
-    factory, org_id, session_id, *, age_days: int
-) -> None:
+async def _seed_memory_recall(factory, org_id, session_id, *, age_days: int) -> None:
     async with factory() as db:
         mem = IncidentMemory(
             id=uuid.uuid4(),
@@ -217,9 +215,7 @@ class TestPrunerCore:
         async with factory() as db:
             report = await prune_org(db, ORG_A)
 
-        audit_result = next(
-            r for r in report.results if r.category == "audit_entries"
-        )
+        audit_result = next(r for r in report.results if r.category == "audit_entries")
         assert audit_result.deleted_count == 1
         # The fresh row survives.
         async with factory() as db:

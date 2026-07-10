@@ -42,17 +42,13 @@ class Tier0TimeConfig:
             raise ValueError("max_node_seconds must be positive")
         if self.max_node_seconds > self.max_session_seconds:
             # Not strictly illegal, but almost certainly a config bug.
-            raise ValueError(
-                "max_node_seconds cannot exceed max_session_seconds"
-            )
+            raise ValueError("max_node_seconds cannot exceed max_session_seconds")
 
 
 def _timeout_state(node_name: str, seconds: int) -> dict[str, Any]:
     return {
         "status": "timed_out",
-        "error": (
-            f"Node '{node_name}' exceeded Tier 0 time limit of {seconds}s"
-        ),
+        "error": (f"Node '{node_name}' exceeded Tier 0 time limit of {seconds}s"),
     }
 
 
@@ -104,13 +100,9 @@ async def ainvoke_with_session_timeout(
     overlaid.  The graph coroutine is cancelled via ``wait_for``.
     """
     try:
-        return await asyncio.wait_for(
-            graph.ainvoke(initial_state), timeout=seconds
-        )
+        return await asyncio.wait_for(graph.ainvoke(initial_state), timeout=seconds)
     except asyncio.TimeoutError:
         result = dict(initial_state)
         result["status"] = "timed_out"
-        result["error"] = (
-            f"Session exceeded Tier 0 wall-clock limit of {seconds}s"
-        )
+        result["error"] = f"Session exceeded Tier 0 wall-clock limit of {seconds}s"
         return result

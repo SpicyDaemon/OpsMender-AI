@@ -128,16 +128,26 @@ def downgrade() -> None:
     with op.batch_alter_table("audit_entries") as batch_op:
         batch_op.alter_column("session_id", existing_type=sa.Uuid(), nullable=False)
 
-    op.drop_index("ix_status_page_subscribers_org_id", table_name="status_page_subscribers")
+    op.drop_index(
+        "ix_status_page_subscribers_org_id", table_name="status_page_subscribers"
+    )
     op.drop_table("status_page_subscribers")
 
-    op.drop_index("ix_status_page_updates_org_published", table_name="status_page_updates")
-    op.drop_index("ix_status_page_updates_incident_id", table_name="status_page_updates")
+    op.drop_index(
+        "ix_status_page_updates_org_published", table_name="status_page_updates"
+    )
+    op.drop_index(
+        "ix_status_page_updates_incident_id", table_name="status_page_updates"
+    )
     op.drop_index("ix_status_page_updates_org_id", table_name="status_page_updates")
     op.drop_table("status_page_updates")
 
-    op.drop_index("ix_status_page_components_service_id", table_name="status_page_components")
-    op.drop_index("ix_status_page_components_org_id", table_name="status_page_components")
+    op.drop_index(
+        "ix_status_page_components_service_id", table_name="status_page_components"
+    )
+    op.drop_index(
+        "ix_status_page_components_org_id", table_name="status_page_components"
+    )
     op.drop_table("status_page_components")
 
     with op.batch_alter_table("organizations") as batch_op:

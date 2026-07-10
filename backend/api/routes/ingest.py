@@ -194,7 +194,9 @@ async def service_intake_webhook(
     # Persist the incident before background AI provisioning reads it. Intake
     # does not wait for session creation or workflow/model execution.
     await db.commit()
-    await _stop_sessions_on_resolve(request.app, db, org_id=service.org_id, result=result)
+    await _stop_sessions_on_resolve(
+        request.app, db, org_id=service.org_id, result=result
+    )
     await _dispatch_created(request.app, org_id=service.org_id, result=result)
     return IngestResponse(
         success=result.success,

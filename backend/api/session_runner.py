@@ -49,7 +49,11 @@ from backend.llm.factory import create_llm
 from backend.mcp.pool import MCPServerPool
 from backend.mcp.client import call_tool as mcp_call_tool
 from backend.mcp.client import list_tools as mcp_list_tools
-from backend.skills.parser import SkillDefinition, load as load_skill_def, loads as load_skill_def_text
+from backend.skills.parser import (
+    SkillDefinition,
+    load as load_skill_def,
+    loads as load_skill_def_text,
+)
 from backend.tiers.enforcement import check as tier_check, normalize_tier
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.bots.notifier import schedule_session_chat_event
@@ -58,7 +62,10 @@ from backend.integrations.tools import (
     IntegrationToolRuntime,
     merge_integration_skill,
 )
-from backend.workflow.rollback import reconstruct_tool_calls, replay_compensating_inverses
+from backend.workflow.rollback import (
+    reconstruct_tool_calls,
+    replay_compensating_inverses,
+)
 
 log = logging.getLogger(__name__)
 
@@ -306,7 +313,9 @@ class LiveAuditLogger:
 
     async def read_by_session(self, session_id: str):
         async with self._factory() as db:
-            return await AuditEntryRepo.list_by_session(db, self._org_id, uuid.UUID(session_id))
+            return await AuditEntryRepo.list_by_session(
+                db, self._org_id, uuid.UUID(session_id)
+            )
 
 
 async def _await_maybe(value: Any) -> Any:
@@ -376,14 +385,18 @@ async def _resolve_incident_and_messages(factory, session):  # type: ignore[no-u
     async with factory() as db:
         incident = None
         if session.incident_id is not None:
-            incident = await IncidentRepo.get_by_id(db, session.org_id, session.incident_id)
+            incident = await IncidentRepo.get_by_id(
+                db, session.org_id, session.incident_id
+            )
         pending_messages = list(
             await SessionMessageRepo.list_pending_user(db, session.org_id, session.id)
         )
         return incident, pending_messages
 
 
-async def _mark_messages_consumed(factory, org_id: uuid.UUID, session_id: uuid.UUID, node_context: str) -> None:
+async def _mark_messages_consumed(
+    factory, org_id: uuid.UUID, session_id: uuid.UUID, node_context: str
+) -> None:
     async with factory() as db:
         await SessionMessageRepo.mark_consumed(
             db, org_id, session_id, node_context=node_context
@@ -412,18 +425,16 @@ async def _resolve_mcp_context(
                 if server_row is not None and server_row.name in server_by_name:
                     allowed_names.append(server_row.name)
 
-    selected_server = (
-        server_by_name[allowed_names[0]]
-        if allowed_names
-        else None
-    )
+    selected_server = server_by_name[allowed_names[0]] if allowed_names else None
 
     async with factory() as db:
         server_id = None
         if selected_server is not None:
             from backend.db.repos import MCPServerRepo
 
-            server_row = await MCPServerRepo.get_by_name(db, org_id, selected_server.name)
+            server_row = await MCPServerRepo.get_by_name(
+                db, org_id, selected_server.name
+            )
             server_id = None if server_row is None else server_row.id
         skill_row = await SkillRepo.get_for_mcp_server(db, org_id, server_id)
 
@@ -654,11 +665,13 @@ async def _run_session_workflow_inner(
         session = await _session_snapshot(factory, session_id)
         if session is None:
             raise RuntimeError(f"Session not found: {session_id}")
-        
+
         org_id = session.org_id
 
         llm = await _resolve_llm(factory, session)
-        incident, pending_messages = await _resolve_incident_and_messages(factory, session)
+        incident, pending_messages = await _resolve_incident_and_messages(
+            factory, session
+        )
         if pending_messages:
             await _mark_messages_consumed(factory, org_id, session_id, "workflow_start")
 
@@ -667,7 +680,11 @@ async def _run_session_workflow_inner(
             org_id,
             incident,
         )
-        selected_server, skill_def, allowed_mcp_server_names = await _resolve_mcp_context(
+        (
+            selected_server,
+            skill_def,
+            allowed_mcp_server_names,
+        ) = await _resolve_mcp_context(
             factory,
             org_id,
             pool,
@@ -680,9 +697,7 @@ async def _run_session_workflow_inner(
         integration_runtime = await IntegrationToolRuntime.create(
             factory, org_id, allowed_connector_ids=allowed_integration_ids
         )
-        skill_def = merge_integration_skill(
-            skill_def, integration_runtime.descriptors
-        )
+        skill_def = merge_integration_skill(skill_def, integration_runtime.descriptors)
         audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
 
         def notify_session_status(sid: uuid.UUID, status: str) -> None:
@@ -715,7 +730,9 @@ async def _run_session_workflow_inner(
             factory, org_id, incident, allowed_mcp_server_names
         )
         if service_context:
-            incident_description = f"{incident_description}\n\n{service_context}".strip()
+            incident_description = (
+                f"{incident_description}\n\n{service_context}".strip()
+            )
         # Normalize the stored tier to the 3-tier model (legacy Tier 3 -> 2)
         # so the gate, sandbox, and logs all use the effective autonomy tier.
         effective_tier = normalize_tier(int(session.tier))
@@ -756,8 +773,8 @@ async def _run_session_workflow_inner(
             "skill_def": skill_def,
             "llm": llm,
             "approval_service": approval_service,
-            "node_event_publisher": lambda node_name, status, _payload=None: _publish_node_event(
-                session_id, node_name, status
+            "node_event_publisher": lambda node_name, status, _payload=None: (
+                _publish_node_event(session_id, node_name, status)
             ),
             # Sprint 45 — feed memory into the graph so the recall node can
             # query org + service scope. service_id may be None for unbound
@@ -796,8 +813,7 @@ async def _run_session_workflow_inner(
                     if tool.description
                 }
                 integration_tool_names = [
-                    descriptor.name
-                    for descriptor in integration_runtime.descriptors
+                    descriptor.name for descriptor in integration_runtime.descriptors
                 ]
                 mcp_caller = mcp_call_tool
                 if effective_tier == 0:
@@ -846,8 +862,7 @@ async def _run_session_workflow_inner(
                     result = await graph.ainvoke(initial_state)
         else:
             integration_tool_names = [
-                descriptor.name
-                for descriptor in integration_runtime.descriptors
+                descriptor.name for descriptor in integration_runtime.descriptors
             ]
             if effective_tier == 0:
                 integration_tool_names = [
@@ -856,9 +871,7 @@ async def _run_session_workflow_inner(
                     if tier_check(name, 0, skill_def).permitted
                 ]
             if integration_tool_names:
-                graph_kwargs["plan_tool_names"] = sorted(
-                    integration_tool_names
-                )
+                graph_kwargs["plan_tool_names"] = sorted(integration_tool_names)
                 graph_kwargs["plan_tool_descriptions"] = (
                     integration_runtime.descriptions
                 )
@@ -936,7 +949,7 @@ async def _run_session_workflow_inner(
             org_id = session.org_id if session else None
         except Exception:
             org_id = None
-            
+
         if org_id:
             await _set_session_terminal_state(
                 app,
@@ -1059,9 +1072,7 @@ async def stop_incident_sessions(
                 db, org_id, session_id=session.id
             )
             for req in pending:
-                await ApprovalRequestRepo.resolve(
-                    db, org_id, req.id, status="expired"
-                )
+                await ApprovalRequestRepo.resolve(db, org_id, req.id, status="expired")
             await SessionRepo.set_status(
                 db,
                 org_id,
@@ -1088,11 +1099,7 @@ async def stop_incident_sessions(
                 WSMessage(
                     type="session_end",
                     data={
-                        "status": (
-                            "cancelled"
-                            if was_queued
-                            else "stopped"
-                        ),
+                        "status": ("cancelled" if was_queued else "stopped"),
                         "summary": reason,
                     },
                 ),

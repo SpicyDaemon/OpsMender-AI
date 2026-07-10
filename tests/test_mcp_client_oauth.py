@@ -42,6 +42,7 @@ SERVER_URL = "https://mcp.example.com/mcp"
 def _fernet_key(monkeypatch):
     monkeypatch.setenv("OPSMENDER_SECRET_KEY", "sprint-42-step5-key")
     from backend.auth import secrets as _s
+
     if hasattr(_s, "_fernet_cache"):
         _s._fernet_cache = None
 
@@ -125,7 +126,9 @@ class TestFreshToken:
             expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         )
 
-        result = await resolve_oauth_access_token(db, TEST_ORG_ID, server_id, SERVER_URL)
+        result = await resolve_oauth_access_token(
+            db, TEST_ORG_ID, server_id, SERVER_URL
+        )
         assert result == "at-good"
 
     async def test_returns_current_token_when_expires_at_is_null(self, db):
@@ -133,7 +136,9 @@ class TestFreshToken:
         server_id = await _make_server(db)
         await _upsert_token(db, server_id, access_token="at-eternal", expires_at=None)
 
-        result = await resolve_oauth_access_token(db, TEST_ORG_ID, server_id, SERVER_URL)
+        result = await resolve_oauth_access_token(
+            db, TEST_ORG_ID, server_id, SERVER_URL
+        )
         assert result == "at-eternal"
 
 
@@ -209,7 +214,9 @@ class TestExpiringTokenMissingData:
         row.client_id = None
         await db.commit()
 
-        with pytest.raises(MCPAuthorizationRequiredError, match="no client credentials"):
+        with pytest.raises(
+            MCPAuthorizationRequiredError, match="no client credentials"
+        ):
             await resolve_oauth_access_token(db, TEST_ORG_ID, server_id, SERVER_URL)
 
 
@@ -254,10 +261,20 @@ class TestRefreshPath:
         mock_token.scope = ["openid"]
 
         with (
-            patch.object(_oauth_mod, "fetch_authz_server_metadata", new=AsyncMock(return_value=_MOCK_METADATA)),
-            patch.object(_oauth_mod, "refresh_access_token", new=AsyncMock(return_value=mock_token)),
+            patch.object(
+                _oauth_mod,
+                "fetch_authz_server_metadata",
+                new=AsyncMock(return_value=_MOCK_METADATA),
+            ),
+            patch.object(
+                _oauth_mod,
+                "refresh_access_token",
+                new=AsyncMock(return_value=mock_token),
+            ),
         ):
-            result = await resolve_oauth_access_token(db, TEST_ORG_ID, server_id, SERVER_URL)
+            result = await resolve_oauth_access_token(
+                db, TEST_ORG_ID, server_id, SERVER_URL
+            )
 
         assert result == "at-new"
 
@@ -280,8 +297,16 @@ class TestRefreshPath:
         mock_token.scope = None
 
         with (
-            patch.object(_oauth_mod, "fetch_authz_server_metadata", new=AsyncMock(return_value=_MOCK_METADATA)),
-            patch.object(_oauth_mod, "refresh_access_token", new=AsyncMock(return_value=mock_token)),
+            patch.object(
+                _oauth_mod,
+                "fetch_authz_server_metadata",
+                new=AsyncMock(return_value=_MOCK_METADATA),
+            ),
+            patch.object(
+                _oauth_mod,
+                "refresh_access_token",
+                new=AsyncMock(return_value=mock_token),
+            ),
         ):
             await resolve_oauth_access_token(db, TEST_ORG_ID, server_id, SERVER_URL)
 
@@ -304,11 +329,17 @@ class TestRefreshPath:
         from backend.mcp import oauth as _oauth_mod
 
         with (
-            patch.object(_oauth_mod, "fetch_authz_server_metadata", new=AsyncMock(return_value=_MOCK_METADATA)),
+            patch.object(
+                _oauth_mod,
+                "fetch_authz_server_metadata",
+                new=AsyncMock(return_value=_MOCK_METADATA),
+            ),
             patch.object(
                 _oauth_mod,
                 "refresh_access_token",
-                new=AsyncMock(side_effect=MCPAuthorizationRequiredError("invalid_grant")),
+                new=AsyncMock(
+                    side_effect=MCPAuthorizationRequiredError("invalid_grant")
+                ),
             ),
         ):
             with pytest.raises(MCPAuthorizationRequiredError):
@@ -339,7 +370,10 @@ class TestClientCredentialStorage:
         )
         await db.commit()
 
-        client_id, client_secret = await MCPServerOAuthTokenRepo.read_client_credentials(row)
+        (
+            client_id,
+            client_secret,
+        ) = await MCPServerOAuthTokenRepo.read_client_credentials(row)
         assert client_id == "dcr-client-id"
         assert client_secret == "dcr-secret"
         # client_secret must be stored encrypted
@@ -359,7 +393,10 @@ class TestClientCredentialStorage:
         )
         await db.commit()
 
-        client_id, client_secret = await MCPServerOAuthTokenRepo.read_client_credentials(row)
+        (
+            client_id,
+            client_secret,
+        ) = await MCPServerOAuthTokenRepo.read_client_credentials(row)
         assert client_id == "pub-client"
         assert client_secret is None
 
@@ -373,14 +410,21 @@ class TestMapByServerId:
     async def test_returns_dict_keyed_by_server_id(self, db):
         s1 = await _make_server(db)
         s2_obj = await MCPServerRepo.create(
-            db, TEST_ORG_ID, name="oauth-mcp-2", transport="http",
-            url="https://mcp2.example.com/mcp"
+            db,
+            TEST_ORG_ID,
+            name="oauth-mcp-2",
+            transport="http",
+            url="https://mcp2.example.com/mcp",
         )
         await db.commit()
 
         await MCPServerOAuthTokenRepo.upsert(
-            db, TEST_ORG_ID, mcp_server_id=s1,
-            access_token="at-1", refresh_token=None, expires_at=None,
+            db,
+            TEST_ORG_ID,
+            mcp_server_id=s1,
+            access_token="at-1",
+            refresh_token=None,
+            expires_at=None,
         )
         await db.commit()
 

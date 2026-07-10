@@ -5,6 +5,7 @@ Revises: 4e96f612bade
 Create Date: 2026-05-06 00:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -23,7 +24,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("org_id", sa.Uuid(), nullable=False),
         sa.Column("domain", sa.String(length=255), nullable=False),
-        sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "is_primary", sa.Boolean(), nullable=False, server_default=sa.false()
+        ),
         sa.Column("verified", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),

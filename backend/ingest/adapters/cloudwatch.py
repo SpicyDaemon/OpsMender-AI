@@ -14,7 +14,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from backend.ingest.adapters.base import AvailabilitySignal, IngestAdapter, ParsedIncident
+from backend.ingest.adapters.base import (
+    AvailabilitySignal,
+    IngestAdapter,
+    ParsedIncident,
+)
 
 _SEVERITY_MAP = {
     "ALARM": "high",
@@ -32,21 +36,21 @@ class CloudWatchAdapter(IngestAdapter):
 
         if msg_type == "SubscriptionConfirmation":
             subscribe_url = payload.get("SubscribeURL", "")
-            raise ValueError(
-                f"SNS_SUBSCRIPTION_CONFIRMATION:{subscribe_url}"
-            )
+            raise ValueError(f"SNS_SUBSCRIPTION_CONFIRMATION:{subscribe_url}")
 
         if msg_type != "Notification":
-            raise ValueError(
-                f"Unsupported SNS message type: {msg_type}"
-            )
+            raise ValueError(f"Unsupported SNS message type: {msg_type}")
 
         # The CloudWatch alarm detail is JSON-encoded inside "Message"
         message_raw = payload.get("Message", "{}")
         try:
-            message = json.loads(message_raw) if isinstance(message_raw, str) else message_raw
+            message = (
+                json.loads(message_raw) if isinstance(message_raw, str) else message_raw
+            )
         except (json.JSONDecodeError, TypeError) as exc:
-            raise ValueError(f"Invalid CloudWatch alarm JSON in Message: {exc}") from exc
+            raise ValueError(
+                f"Invalid CloudWatch alarm JSON in Message: {exc}"
+            ) from exc
 
         alarm_name = message.get("AlarmName", "Unknown Alarm")
         new_state = message.get("NewStateValue", "ALARM")

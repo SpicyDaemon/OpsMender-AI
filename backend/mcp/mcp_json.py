@@ -189,7 +189,9 @@ def read_from_disk(path: Path) -> dict[str, dict[str, Any]]:
         raise ValueError(f"mcp.json at {path} must be a JSON object")
     servers = raw.get("mcpServers", {})
     if not isinstance(servers, dict):
-        raise ValueError(f"mcp.json 'mcpServers' must be an object, got {type(servers).__name__}")
+        raise ValueError(
+            f"mcp.json 'mcpServers' must be an object, got {type(servers).__name__}"
+        )
     out: dict[str, dict[str, Any]] = {}
     for name, entry in servers.items():
         if not isinstance(entry, dict):
@@ -204,7 +206,9 @@ def write_to_disk(path: Path, servers: Iterable[MCPServer]) -> None:
         "mcpServers": {srv.name: server_to_entry(srv) for srv in servers}
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +246,9 @@ class MCPJSONSyncer:
         self._factory = factory
         self._path = path or default_path()
         self._enabled = sync_enabled() if enabled is None else enabled
-        self._pinned_org_id = pinned_org_id if pinned_org_id is not None else sync_org_id()
+        self._pinned_org_id = (
+            pinned_org_id if pinned_org_id is not None else sync_org_id()
+        )
 
     @property
     def enabled(self) -> bool:

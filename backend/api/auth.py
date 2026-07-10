@@ -30,8 +30,10 @@ from backend.api.deps import get_db
 from backend.db.models import User
 from backend.db.repos import ApiTokenRepo, UserRepo
 
+
 def _auth_config():
     return AppConfig.load().auth
+
 
 # ---------------------------------------------------------------------------
 # Password hashing (bcrypt directly — passlib broken on Python 3.12+)
@@ -52,6 +54,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 # JWT tokens
 # ---------------------------------------------------------------------------
 
+
 def create_access_token(
     user_id: uuid.UUID,
     role: str,
@@ -61,9 +64,7 @@ def create_access_token(
     """Create a signed JWT containing ``sub`` (user_id) and ``role``."""
     settings = _auth_config()
     now = datetime.now(timezone.utc)
-    expire = now + (
-        expires_delta or timedelta(minutes=settings.jwt_expire_minutes)
-    )
+    expire = now + (expires_delta or timedelta(minutes=settings.jwt_expire_minutes))
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "role": role,
@@ -120,6 +121,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 # ---------------------------------------------------------------------------
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
+
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -180,7 +182,7 @@ async def get_current_org(
     if user.primary_org_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User does not have an active organization context."
+            detail="User does not have an active organization context.",
         )
     return user.primary_org_id
 

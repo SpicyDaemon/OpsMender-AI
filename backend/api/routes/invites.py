@@ -136,9 +136,7 @@ async def _send_invite_email(
     role: str,
     url: str,
 ) -> tuple[bool, str | None]:
-    settings = await resolve_email_settings(
-        db, org_id, config=request.app.state.config
-    )
+    settings = await resolve_email_settings(db, org_id, config=request.app.state.config)
     if settings is None:
         return False, None
     attempt = await build_email_channel(settings).send(
@@ -431,9 +429,7 @@ async def accept_invite(
     await UserRepo.add_to_organization(
         db, user_id=user.id, org_id=invite.org_id, role=invite.role
     )
-    await OrgInviteRepo.mark_accepted(
-        db, invite.id, accepted_by_user_id=user.id
-    )
+    await OrgInviteRepo.mark_accepted(db, invite.id, accepted_by_user_id=user.id)
     await db.commit()
 
     token_value = create_access_token(user.id, user.role)

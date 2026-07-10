@@ -118,11 +118,16 @@ def on_call_at(ctx: OnCallContext, t: datetime) -> uuid.UUID | None:
     local = t.astimezone(tz)
     coverage_start = _parse_handoff(ctx.coverage_start_time or ctx.handoff_time)
     coverage_end = _parse_handoff(ctx.coverage_end_time or ctx.coverage_start_time)
-    if not _within_coverage(local.timetz().replace(tzinfo=None), coverage_start, coverage_end):
+    if not _within_coverage(
+        local.timetz().replace(tzinfo=None), coverage_start, coverage_end
+    ):
         return None
 
     rotation_date = local.date()
-    if coverage_start > coverage_end and local.timetz().replace(tzinfo=None) < coverage_end:
+    if (
+        coverage_start > coverage_end
+        and local.timetz().replace(tzinfo=None) < coverage_end
+    ):
         rotation_date = rotation_date - timedelta(days=1)
 
     shift_length = _shift_length_days(ctx)

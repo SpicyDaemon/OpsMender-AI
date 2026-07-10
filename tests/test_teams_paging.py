@@ -87,9 +87,7 @@ def _sign_jwt(
         "exp": now + expires_in,
         "appid": audience,
     }
-    return jose_jwt.encode(
-        claims, pem, algorithm="RS256", headers={"kid": kid}
-    )
+    return jose_jwt.encode(claims, pem, algorithm="RS256", headers={"kid": kid})
 
 
 @pytest.fixture
@@ -110,9 +108,7 @@ def jwks_transport_factory(signing_key):
                     },
                 )
             if path.endswith("/keys"):
-                return httpx.Response(
-                    200, json={"keys": [_public_jwk(signing_key)]}
-                )
+                return httpx.Response(200, json={"keys": [_public_jwk(signing_key)]})
             return httpx.Response(404)
 
         return httpx.MockTransport(handler)
@@ -133,9 +129,7 @@ async def app(tmp_path, jwks_transport_factory, monkeypatch):
     def patched_client():
         return httpx.AsyncClient(transport=transport)
 
-    monkeypatch.setattr(
-        bot_framework, "_default_http_client", patched_client
-    )
+    monkeypatch.setattr(bot_framework, "_default_http_client", patched_client)
 
     db_path = tmp_path / "teams-paging.db"
     database_url = f"sqlite+aiosqlite:///{db_path}"
@@ -144,9 +138,7 @@ async def app(tmp_path, jwks_transport_factory, monkeypatch):
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
-        session.add(
-            Organization(id=TEST_ORG_ID, name="Teams Org", slug="teams-org")
-        )
+        session.add(Organization(id=TEST_ORG_ID, name="Teams Org", slug="teams-org"))
         await session.commit()
     set_session_factory(factory)
 
@@ -272,9 +264,7 @@ async def _seed_incident(app, *, title="boom") -> Incident:
         return incident
 
 
-def _activity_payload(
-    *, action: str, incident_id, aad_oid: str = "aad-user-1"
-):
+def _activity_payload(*, action: str, incident_id, aad_oid: str = "aad-user-1"):
     return {
         "id": "activity-1",
         "type": "invoke",
@@ -310,9 +300,7 @@ class TestTeamsActivityEndpoint:
         )
         assert resp.status_code == 403
 
-    async def test_ack_button_routes_through_engine(
-        self, client, app, signing_key
-    ):
+    async def test_ack_button_routes_through_engine(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(app, connector_id=connector.id)
         incident = await _seed_incident(app, title="ack-me")
@@ -329,14 +317,10 @@ class TestTeamsActivityEndpoint:
         assert "ack-me" in text
         assert "acknowledged" in text or "recorded" in text
         async with app.state.session_factory() as db:
-            reloaded = await BotConnectorRepo.get_by_id(
-                db, TEST_ORG_ID, connector.id
-            )
+            reloaded = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
             assert reloaded.callback_status == "verified"
 
-    async def test_unlinked_user_gets_friendly_reply(
-        self, client, app, signing_key
-    ):
+    async def test_unlinked_user_gets_friendly_reply(self, client, app, signing_key):
         await _seed_teams_connector(app)
         incident = await _seed_incident(app)
         token = _sign_jwt(signing_key)
@@ -353,16 +337,12 @@ class TestTeamsActivityEndpoint:
         assert resp.status_code == 200
         assert "isn't linked" in resp.json()["text"]
 
-    async def test_resolve_marks_incident_resolved(
-        self, client, app, signing_key
-    ):
+    async def test_resolve_marks_incident_resolved(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(app, connector_id=connector.id)
         incident = await _seed_incident(app, title="bye")
         token = _sign_jwt(signing_key)
-        body = _activity_payload(
-            action=ACTION_RESOLVE, incident_id=incident.id
-        )
+        body = _activity_payload(action=ACTION_RESOLVE, incident_id=incident.id)
         resp = await client.post(
             "/bot/teams/activity",
             json=body,
@@ -370,14 +350,10 @@ class TestTeamsActivityEndpoint:
         )
         assert resp.status_code == 200
         async with app.state.session_factory() as db:
-            reloaded = await IncidentRepo.get_by_id(
-                db, TEST_ORG_ID, incident.id
-            )
+            reloaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
             assert reloaded.status == "resolved"
 
-    async def test_viewer_cannot_mutate(
-        self, client, app, signing_key
-    ):
+    async def test_viewer_cannot_mutate(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(
             app,
@@ -399,14 +375,10 @@ class TestTeamsActivityEndpoint:
         assert resp.status_code == 200
         assert "role cannot perform" in resp.json()["text"]
         async with app.state.session_factory() as db:
-            reloaded = await IncidentRepo.get_by_id(
-                db, TEST_ORG_ID, incident.id
-            )
+            reloaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
             assert reloaded.status != "resolved"
 
-    async def test_duplicate_activity_is_deduplicated(
-        self, client, app, signing_key
-    ):
+    async def test_duplicate_activity_is_deduplicated(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(app, connector_id=connector.id)
         incident = await _seed_incident(app)
@@ -428,16 +400,12 @@ class TestTeamsActivityEndpoint:
             assert invocation is not None
             assert invocation.status == "applied"
 
-    async def test_view_action_short_circuits(
-        self, client, app, signing_key
-    ):
+    async def test_view_action_short_circuits(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(app, connector_id=connector.id)
         incident = await _seed_incident(app)
         token = _sign_jwt(signing_key)
-        body = _activity_payload(
-            action=ACTION_VIEW, incident_id=incident.id
-        )
+        body = _activity_payload(action=ACTION_VIEW, incident_id=incident.id)
         resp = await client.post(
             "/bot/teams/activity",
             json=body,

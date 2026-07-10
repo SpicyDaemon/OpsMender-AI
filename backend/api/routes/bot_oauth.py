@@ -104,9 +104,7 @@ async def start_oauth(
     if connector.platform != platform:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Connector platform is '{connector.platform}', not '{platform}'."
-            ),
+            detail=(f"Connector platform is '{connector.platform}', not '{platform}'."),
         )
 
     state = sign_state(

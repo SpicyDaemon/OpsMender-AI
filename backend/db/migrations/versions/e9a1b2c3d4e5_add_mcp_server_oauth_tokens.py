@@ -73,13 +73,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.Column(
-            "last_refreshed_at", sa.DateTime(timezone=True), nullable=True
-        ),
+        sa.Column("last_refreshed_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "mcp_server_id", name="uq_mcp_server_oauth_tokens_server"
-        ),
+        sa.UniqueConstraint("mcp_server_id", name="uq_mcp_server_oauth_tokens_server"),
     )
 
     op.create_index(

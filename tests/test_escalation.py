@@ -170,9 +170,7 @@ class TestStateMachine:
     async def test_start_chain_fires_step_zero(self, app):
         team_id = await _make_team(app)
         user_id = await _make_user(app, username="alice")
-        chain_id, _ = await _make_user_in_chain(
-            app, team_id=team_id, user_id=user_id
-        )
+        chain_id, _ = await _make_user_in_chain(app, team_id=team_id, user_id=user_id)
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.create(
                 db,
@@ -250,9 +248,7 @@ class TestStateMachine:
 
             # After timeout — step 1 fires.
             after = now + timedelta(seconds=45)
-            result = await _esc.tick(
-                db, TEST_ORG_ID, incident_id=incident.id, at=after
-            )
+            result = await _esc.tick(db, TEST_ORG_ID, incident_id=incident.id, at=after)
             await db.commit()
             assert result is not None
             assert result.step_index == 1
@@ -389,9 +385,7 @@ class TestStateMachine:
                 incident_id=incident.id,
                 chain_id=chain_id,
             )
-            await _esc.handle_ack(
-                db, TEST_ORG_ID, incident_id=incident.id, user_id=u1
-            )
+            await _esc.handle_ack(db, TEST_ORG_ID, incident_id=incident.id, user_id=u1)
             await db.commit()
 
             await _esc.handle_force_takeover(
@@ -424,9 +418,7 @@ class TestStateMachine:
                 incident_id=incident.id,
                 chain_id=chain_id,
             )
-            await _esc.handle_ack(
-                db, TEST_ORG_ID, incident_id=incident.id, user_id=u1
-            )
+            await _esc.handle_ack(db, TEST_ORG_ID, incident_id=incident.id, user_id=u1)
             await db.commit()
 
             outcome = await _esc.handle_takeover_request(
@@ -461,9 +453,7 @@ class TestStateMachine:
             await db.commit()
             # Jump 20 minutes ahead — past the 15-min hard deadline.
             later = now + timedelta(minutes=20)
-            await _esc.tick(
-                db, TEST_ORG_ID, incident_id=incident.id, at=later
-            )
+            await _esc.tick(db, TEST_ORG_ID, incident_id=incident.id, at=later)
             await db.commit()
             state = await IncidentChainStateRepo.get_for_incident(
                 db, TEST_ORG_ID, incident.id
@@ -591,9 +581,7 @@ class TestEscalationAPI:
         )
         assert dup.status_code == 409
 
-    async def test_service_chain_link(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_service_chain_link(self, client: AsyncClient, app, auth_headers):
         team_id = await _make_team(app, name="link-team")
         async with app.state.session_factory() as db:
             svc = await ServiceRepo.create(
@@ -661,9 +649,7 @@ class TestEscalationAPI:
         )
         assert ok.status_code == 201
 
-    async def test_step_inline_patch(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_step_inline_patch(self, client: AsyncClient, app, auth_headers):
         """Sprint 49 — PATCH a step's timeout (and channels) without
         re-creating it."""
         team_id = await _make_team(app, name="patch-team")
@@ -702,9 +688,7 @@ class TestEscalationAPI:
         )
         assert ghost.status_code == 404
 
-    async def test_chain_reorder_steps(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_chain_reorder_steps(self, client: AsyncClient, app, auth_headers):
         """Sprint 49 — drag-reorder support via POST reorder-steps."""
         team_id = await _make_team(app, name="reorder-team")
         u1 = await _make_user(app, username="r-u1")
@@ -777,9 +761,7 @@ class TestEscalationAPI:
         )
         assert bad.status_code == 400
 
-    async def test_chain_where_used(
-        self, client: AsyncClient, app, auth_headers
-    ):
+    async def test_chain_where_used(self, client: AsyncClient, app, auth_headers):
         """Sprint 49 — GET /escalation-chains/{id}/services."""
         team_id = await _make_team(app, name="whereused-team")
         async with app.state.session_factory() as db:
@@ -915,9 +897,7 @@ class TestEscalationAPI:
             app, team_id=team_id, user_id=admin_id, chain_name="ack-api"
         )
         async with app.state.session_factory() as db:
-            inc = await IncidentRepo.create(
-                db, TEST_ORG_ID, title="t", description="d"
-            )
+            inc = await IncidentRepo.create(db, TEST_ORG_ID, title="t", description="d")
             await _esc.start_chain(
                 db,
                 TEST_ORG_ID,
@@ -942,9 +922,7 @@ class TestEscalationAPI:
         """MTTA: the first ack stamps ``acknowledged_at``; a later ack must
         not overwrite it."""
         async with app.state.session_factory() as db:
-            inc = await IncidentRepo.create(
-                db, TEST_ORG_ID, title="t", description="d"
-            )
+            inc = await IncidentRepo.create(db, TEST_ORG_ID, title="t", description="d")
             await db.commit()
             incident_id = inc.id
             assert inc.acknowledged_at is None
@@ -962,9 +940,7 @@ class TestEscalationAPI:
             assert first_ack is not None
 
         # The incident detail/list surface exposes the stamp.
-        detail = await client.get(
-            f"/incidents/{incident_id}", headers=auth_headers
-        )
+        detail = await client.get(f"/incidents/{incident_id}", headers=auth_headers)
         assert detail.status_code == 200
         assert detail.json()["acknowledged_at"] is not None
 
@@ -983,9 +959,7 @@ class TestEscalationAPI:
         self, client: AsyncClient, app, auth_headers
     ):
         async with app.state.session_factory() as db:
-            inc = await IncidentRepo.create(
-                db, TEST_ORG_ID, title="t", description="d"
-            )
+            inc = await IncidentRepo.create(db, TEST_ORG_ID, title="t", description="d")
             await db.commit()
             incident_id = inc.id
 
@@ -1030,9 +1004,7 @@ class TestScheduler:
                 target_id=u2,
                 timeout_seconds=30,
             )
-            inc = await IncidentRepo.create(
-                db, TEST_ORG_ID, title="t", description="d"
-            )
+            inc = await IncidentRepo.create(db, TEST_ORG_ID, title="t", description="d")
             anchor = datetime(2026, 5, 15, 9, 0, tzinfo=timezone.utc)
             await _esc.start_chain(
                 db,
@@ -1043,19 +1015,13 @@ class TestScheduler:
             )
             await db.commit()
 
-            advanced = await _esc.tick_all_due(
-                db, at=anchor + timedelta(seconds=10)
-            )
+            advanced = await _esc.tick_all_due(db, at=anchor + timedelta(seconds=10))
             assert advanced == 0
 
-            advanced = await _esc.tick_all_due(
-                db, at=anchor + timedelta(seconds=45)
-            )
+            advanced = await _esc.tick_all_due(db, at=anchor + timedelta(seconds=45))
             await db.commit()
             assert advanced == 1
-            pages = await IncidentPageRepo.list_for_incident(
-                db, TEST_ORG_ID, inc.id
-            )
+            pages = await IncidentPageRepo.list_for_incident(db, TEST_ORG_ID, inc.id)
             assert {p.user_id for p in pages} == {u1, u2}
 
 
@@ -1078,9 +1044,7 @@ class TestEngineDispatchWiring:
 
         team_id = await _make_team(app)
         user_id = await _make_user(app, username="dispatch-target")
-        chain_id, _ = await _make_user_in_chain(
-            app, team_id=team_id, user_id=user_id
-        )
+        chain_id, _ = await _make_user_in_chain(app, team_id=team_id, user_id=user_id)
 
         async with app.state.session_factory() as db:
             await UserNotificationPrefRepo.upsert(
@@ -1148,9 +1112,7 @@ class TestEngineDispatchWiring:
 
         team_id = await _make_team(app)
         user_id = await _make_user(app, username="no-dispatch")
-        chain_id, _ = await _make_user_in_chain(
-            app, team_id=team_id, user_id=user_id
-        )
+        chain_id, _ = await _make_user_in_chain(app, team_id=team_id, user_id=user_id)
 
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.create(
@@ -1183,9 +1145,7 @@ class TestChannelFactoryBuilder:
         from backend.paging.channel_factory import build_channel_factory
         from backend.paging.channels import SlackDMChannel
 
-        factory = build_channel_factory(
-            env={"OPSMENDER_SLACK_BOT_TOKEN": "xoxb-prod"}
-        )
+        factory = build_channel_factory(env={"OPSMENDER_SLACK_BOT_TOKEN": "xoxb-prod"})
         ch = factory("slack_dm")
         assert isinstance(ch, SlackDMChannel)
 
@@ -1193,9 +1153,7 @@ class TestChannelFactoryBuilder:
         from backend.paging.channel_factory import build_channel_factory
         from backend.paging.channels import SMSChannel
 
-        partial = build_channel_factory(
-            env={"OPSMENDER_TWILIO_ACCOUNT_SID": "AC"}
-        )
+        partial = build_channel_factory(env={"OPSMENDER_TWILIO_ACCOUNT_SID": "AC"})
         assert partial("sms") is None
 
         full = build_channel_factory(
@@ -1263,12 +1221,19 @@ class TestEscalationNotification:
                     timeout_seconds=30,
                 )
             incident = await IncidentRepo.create(
-                db, TEST_ORG_ID, title="Escalating incident", description="d",
+                db,
+                TEST_ORG_ID,
+                title="Escalating incident",
+                description="d",
                 severity="critical",
             )
             start = datetime(2026, 5, 15, 12, 0, tzinfo=timezone.utc)
             await _esc.start_chain(
-                db, TEST_ORG_ID, incident_id=incident.id, chain_id=chain.id, at=start,
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                chain_id=chain.id,
+                at=start,
             )
             await db.commit()
         return incident.id, start

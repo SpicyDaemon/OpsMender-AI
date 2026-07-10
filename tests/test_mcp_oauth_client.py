@@ -164,9 +164,7 @@ class TestStateJWT:
     def test_expired_token_is_rejected(self, monkeypatch):
         # Force the JWT to have already expired by patching time.time().
         real_time = time.time
-        monkeypatch.setattr(
-            "backend.mcp.oauth.time.time", lambda: real_time() - 99999
-        )
+        monkeypatch.setattr("backend.mcp.oauth.time.time", lambda: real_time() - 99999)
         token = sign_state(
             server_id="s",
             issuer="https://i",
@@ -198,7 +196,7 @@ class TestWWWAuthenticate:
         )
 
     def test_returns_none_when_resource_metadata_absent(self):
-        assert parse_www_authenticate("Bearer realm=\"foo\"") is None
+        assert parse_www_authenticate('Bearer realm="foo"') is None
         assert parse_www_authenticate(None) is None
         assert parse_www_authenticate("") is None
 
@@ -258,8 +256,7 @@ class TestPRMDiscovery:
 
         # Spec §2.3: path-suffixed URL is tried before the root.
         assert seen_urls[0] == (
-            "https://mcp.example.com/.well-known/"
-            "oauth-protected-resource/public/mcp"
+            "https://mcp.example.com/.well-known/oauth-protected-resource/public/mcp"
         )
         assert result.resource == "https://mcp.example.com/public/mcp"
 
@@ -462,9 +459,7 @@ class TestAuthorizeURL:
 
         assert params["response_type"] == "code"
         assert params["client_id"] == "client-abc"
-        assert params["redirect_uri"] == (
-            "https://opsmender.example.com/mcp/callback"
-        )
+        assert params["redirect_uri"] == ("https://opsmender.example.com/mcp/callback")
         assert params["state"] == "state-token-jwt"
         assert params["code_challenge"] == "challenge-value"
         assert params["code_challenge_method"] == "S256"
@@ -493,9 +488,7 @@ class TestAuthorizeURL:
 class TestIssuerValidation:
     def test_match_passes(self):
         # No exception expected.
-        verify_redirect_issuer(
-            "https://auth.example.com", "https://auth.example.com"
-        )
+        verify_redirect_issuer("https://auth.example.com", "https://auth.example.com")
 
     def test_mismatch_raises(self):
         with pytest.raises(MCPIssuerMismatchError, match="mismatch"):
@@ -539,9 +532,7 @@ class TestCodeExchange:
             code_verifier="verifier-xyz",
             redirect_uri="https://opsmender.example.com/cb",
             resource="https://mcp.example.com/mcp",
-            client_registration=ClientRegistration(
-                client_id="c", client_secret="s"
-            ),
+            client_registration=ClientRegistration(client_id="c", client_secret="s"),
             http_client_factory=_client_factory_with(handler),
         )
 
@@ -554,9 +545,7 @@ class TestCodeExchange:
         captured: dict[str, str] = {}
 
         def handler(req: httpx.Request) -> httpx.Response:
-            form = dict(
-                p.split("=", 1) for p in req.content.decode().split("&")
-            )
+            form = dict(p.split("=", 1) for p in req.content.decode().split("&"))
             captured.update(form)
             return httpx.Response(
                 200, json={"access_token": "at", "token_type": "Bearer"}
@@ -620,9 +609,7 @@ class TestRefresh:
             _authz_metadata(),
             refresh_token="rt-old",
             resource="https://r",
-            client_registration=ClientRegistration(
-                client_id="c", client_secret="s"
-            ),
+            client_registration=ClientRegistration(client_id="c", client_secret="s"),
             http_client_factory=_client_factory_with(handler),
         )
         assert result.access_token == "at-2"
@@ -646,9 +633,7 @@ class TestRefresh:
             _authz_metadata(),
             refresh_token="rt-old",
             resource="https://r",
-            client_registration=ClientRegistration(
-                client_id="c", client_secret=None
-            ),
+            client_registration=ClientRegistration(client_id="c", client_secret=None),
             http_client_factory=_client_factory_with(handler),
         )
         assert result.access_token == "at-2"
@@ -664,9 +649,7 @@ class TestRefresh:
                 },
             )
 
-        with pytest.raises(
-            MCPAuthorizationRequiredError, match="re-authorize"
-        ):
+        with pytest.raises(MCPAuthorizationRequiredError, match="re-authorize"):
             await refresh_access_token(
                 _authz_metadata(),
                 refresh_token="rt-bad",
@@ -681,9 +664,7 @@ class TestRefresh:
         captured: dict[str, str] = {}
 
         def handler(req: httpx.Request) -> httpx.Response:
-            form = dict(
-                p.split("=", 1) for p in req.content.decode().split("&")
-            )
+            form = dict(p.split("=", 1) for p in req.content.decode().split("&"))
             captured.update(form)
             return httpx.Response(
                 200, json={"access_token": "at", "token_type": "Bearer"}
@@ -693,9 +674,7 @@ class TestRefresh:
             _authz_metadata(),
             refresh_token="rt",
             resource="https://mcp.example.com/mcp",
-            client_registration=ClientRegistration(
-                client_id="c", client_secret=None
-            ),
+            client_registration=ClientRegistration(client_id="c", client_secret=None),
             http_client_factory=_client_factory_with(handler),
         )
         assert "resource" in captured

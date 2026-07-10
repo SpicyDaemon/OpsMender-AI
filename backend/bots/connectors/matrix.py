@@ -87,8 +87,8 @@ class MatrixAdapter:
         # or a custom header X-Matrix-Token
         provided = headers.get("authorization") or headers.get("Authorization")
         if provided and provided.startswith("Bearer "):
-            provided = provided[len("Bearer "):]
-        
+            provided = provided[len("Bearer ") :]
+
         if not provided:
             provided = headers.get("x-matrix-token") or headers.get("X-Matrix-Token")
 
@@ -113,7 +113,7 @@ class MatrixAdapter:
 
         if event.get("type") != "m.room.message":
             return None
-        
+
         content = event.get("content") or {}
         if content.get("msgtype") != "m.text":
             return None
@@ -150,12 +150,16 @@ class MatrixAdapter:
         access_token = credentials.get("access_token")
         homeserver_url = credentials.get("homeserver_url")
         if not access_token or not homeserver_url:
-            return False, "Matrix credentials (access_token, homeserver_url) not configured"
+            return (
+                False,
+                "Matrix credentials (access_token, homeserver_url) not configured",
+            )
 
         # Matrix uses a transaction ID in the URL for idempotency
         import uuid
+
         txn_id = str(uuid.uuid4())
-        
+
         async with httpx.AsyncClient() as client:
             resp = await client.put(
                 f"{homeserver_url.rstrip('/')}/_matrix/client/v3/rooms/{chat_id}/send/m.room.message/{txn_id}",
@@ -167,11 +171,13 @@ class MatrixAdapter:
                     "msgtype": "m.text",
                     "body": text,
                     "format": "org.matrix.custom.html",
-                    "formatted_body": text.replace("\n", "<br>"), # Simple markdown-to-html fallback
+                    "formatted_body": text.replace(
+                        "\n", "<br>"
+                    ),  # Simple markdown-to-html fallback
                 },
                 timeout=10.0,
             )
             if resp.status_code not in (200, 201):
                 return False, f"Matrix API error: HTTP {resp.status_code} - {resp.text}"
-            
+
             return True, None

@@ -58,11 +58,14 @@ def should_auto_start_session(
     policy: IngestAutoStartPolicy,
 ) -> bool:
     """Return True when an ingested incident should auto-create a session."""
-    return auto_start_skip_reason(
-        incident,
-        dedup_action=dedup_action,
-        policy=policy,
-    ) is None
+    return (
+        auto_start_skip_reason(
+            incident,
+            dedup_action=dedup_action,
+            policy=policy,
+        )
+        is None
+    )
 
 
 def auto_start_skip_reason(

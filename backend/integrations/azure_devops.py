@@ -141,7 +141,7 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/{quote(project)}/_apis/git/repositories/" f"{quote(repository)}/items",
+            f"/{quote(project)}/_apis/git/repositories/{quote(repository)}/items",
             params={
                 "api-version": "7.1",
                 "path": required(path, "path"),

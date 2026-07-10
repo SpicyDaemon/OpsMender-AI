@@ -5,6 +5,7 @@ Revises: b2d9f5e6c312
 Create Date: 2026-04-17 03:15:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -13,8 +14,8 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c3e7a8f9b423'
-down_revision: Union[str, Sequence[str], None] = 'b2d9f5e6c312'
+revision: str = "c3e7a8f9b423"
+down_revision: Union[str, Sequence[str], None] = "b2d9f5e6c312"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -82,12 +83,8 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
     )
-    op.create_index(
-        "ix_ingest_log_token_id", "ingest_log", ["ingest_token_id"]
-    )
-    op.create_index(
-        "ix_ingest_log_created_at", "ingest_log", ["created_at"]
-    )
+    op.create_index("ix_ingest_log_token_id", "ingest_log", ["ingest_token_id"])
+    op.create_index("ix_ingest_log_created_at", "ingest_log", ["created_at"])
 
 
 def downgrade() -> None:

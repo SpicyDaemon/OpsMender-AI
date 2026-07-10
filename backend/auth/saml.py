@@ -118,9 +118,7 @@ async def fetch_idp_metadata(org: SAMLOrgConfig) -> dict[str, Any]:
         except httpx.HTTPError as exc:
             raise SAMLError(f"Failed to fetch IdP metadata: {exc}") from exc
         if resp.status_code != 200:
-            raise SAMLError(
-                f"IdP metadata URL returned {resp.status_code}"
-            )
+            raise SAMLError(f"IdP metadata URL returned {resp.status_code}")
         try:
             parsed = OneLogin_Saml2_IdPMetadataParser.parse(resp.text)
         except Exception as exc:
@@ -141,15 +139,12 @@ async def fetch_idp_metadata(org: SAMLOrgConfig) -> dict[str, Any]:
             raise SAMLError("IdP metadata XML did not contain an EntityDescriptor")
         return idp
 
-    raise SAMLError(
-        "SAML config has neither idp_metadata_url nor idp_metadata_xml"
-    )
+    raise SAMLError("SAML config has neither idp_metadata_url nor idp_metadata_xml")
 
 
 def _sp_section(sp_keypair: SPKeypair, org_slug: str, base_url: str) -> dict[str, Any]:
     entity_id = (
-        sp_keypair.entity_id_override
-        or f"{base_url}/auth/saml/{org_slug}/metadata"
+        sp_keypair.entity_id_override or f"{base_url}/auth/saml/{org_slug}/metadata"
     )
     return {
         "entityId": entity_id,

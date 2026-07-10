@@ -75,7 +75,9 @@ async def build_noise_report(
     to_at = _utc(to_at)
 
     inbound_stmt = _with_service_filter(
-        select(func.count(IngestLog.id)).select_from(IngestLog).where(
+        select(func.count(IngestLog.id))
+        .select_from(IngestLog)
+        .where(
             IngestLog.org_id == org_id,
             IngestLog.created_at >= from_at,
             IngestLog.created_at < to_at,

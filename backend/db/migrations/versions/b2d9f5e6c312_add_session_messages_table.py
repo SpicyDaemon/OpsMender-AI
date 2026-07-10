@@ -37,9 +37,7 @@ def upgrade() -> None:
             server_default=sa.text("false"),
         ),
         sa.Column("node_context", sa.String(length=50), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["session_id"], ["sessions.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(

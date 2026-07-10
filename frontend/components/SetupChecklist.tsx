@@ -73,11 +73,13 @@ export function SetupChecklist() {
   useEffect(() => {
     mountedRef.current = true;
     if (typeof window !== "undefined") {
-      setDismissed(
-        window.localStorage.getItem("opsmender:setup-checklist-dismissed") === "1",
-      );
+      const storedDismissed =
+        window.localStorage.getItem("opsmender:setup-checklist-dismissed") === "1";
+      queueMicrotask(() => {
+        if (mountedRef.current) setDismissed(storedDismissed);
+      });
     }
-    void refresh();
+    void Promise.resolve().then(refresh);
     return () => {
       mountedRef.current = false;
     };

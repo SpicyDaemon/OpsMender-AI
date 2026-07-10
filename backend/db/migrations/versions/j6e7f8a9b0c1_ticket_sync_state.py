@@ -29,17 +29,13 @@ def upgrade() -> None:
         sa.Column("last_synced_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("sync_direction", sa.String(length=20), nullable=False),
         sa.Column("status_map", sa.JSON(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["incident_id"], ["incidents.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["integration_connector_id"],
             ["integration_connectors.id"],
             ondelete="CASCADE",
         ),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "integration_connector_id",

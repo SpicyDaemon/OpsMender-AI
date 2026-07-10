@@ -123,8 +123,10 @@ async def plan_migrations(db: AsyncSession) -> list[MigrationPlan]:
         return []
 
     rules = (
-        await db.execute(select(rules_table).order_by(rules_table.c.name))
-    ).mappings().all()
+        (await db.execute(select(rules_table).order_by(rules_table.c.name)))
+        .mappings()
+        .all()
+    )
     if not rules:
         return []
 

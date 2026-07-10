@@ -204,9 +204,7 @@ class TestEndToEndMemoryLoop:
             service_id=service_id,
         )
         result_1 = await graph.ainvoke(
-            _initial_state(
-                session_id=session_id_1, incident_title="500s on checkout"
-            )
+            _initial_state(session_id=session_id_1, incident_title="500s on checkout")
         )
         # Recall had nothing to surface (memory store was empty).
         assert result_1.get("memory_context", "") == ""
@@ -272,9 +270,7 @@ class TestEndToEndMemoryLoop:
             assert len(all_memories) == 1
             assert all_memories[0].id == memorized_id_1
             # Recall log row recorded for session 2.
-            logs = await IncidentMemoryRecallLogRepo.list_for_session(
-                db, session_id_2
-            )
+            logs = await IncidentMemoryRecallLogRepo.list_for_session(db, session_id_2)
             assert len(logs) == 1
             assert logs[0].memory_id == memorized_id_1
 
@@ -309,17 +305,13 @@ class TestEndToEndMemoryLoop:
             service_id=service_id,
         )
         result = await graph.ainvoke(
-            _initial_state(
-                session_id=session_id, incident_title="something exploded"
-            )
+            _initial_state(session_id=session_id, incident_title="something exploded")
         )
         # No memorized_id in state.
         assert "memorized_id" not in result
         # And no memory row was written.
         async with factory() as db:
-            rows = await IncidentMemoryRepo.list_for_org(
-                db, ORG, service_id=service_id
-            )
+            rows = await IncidentMemoryRepo.list_for_org(db, ORG, service_id=service_id)
             assert rows == []
         # The remember LLM call was skipped by should_remember, so the
         # remember response in the queue was never consumed.
@@ -389,7 +381,5 @@ class TestEndToEndMemoryLoop:
         assert memorized_id != seeded_id
 
         async with factory() as db:
-            rows = await IncidentMemoryRepo.list_for_org(
-                db, ORG, service_id=service_id
-            )
+            rows = await IncidentMemoryRepo.list_for_org(db, ORG, service_id=service_id)
             assert {r.id for r in rows} == {seeded_id, memorized_id}

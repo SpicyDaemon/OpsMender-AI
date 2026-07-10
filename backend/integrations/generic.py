@@ -62,9 +62,7 @@ class GenericHTTPAdapter(IntegrationAdapter):
         if not connector.base_url:
             return IntegrationResult.failure("Base URL is required")
         path = str(connector.config.get("health_path") or "")
-        url = connector.base_url.rstrip("/") + (
-            f"/{path.lstrip('/')}" if path else ""
-        )
+        url = connector.base_url.rstrip("/") + (f"/{path.lstrip('/')}" if path else "")
         request_auth = None
         if connector.auth_type == "basic":
             request_auth = httpx.BasicAuth(
@@ -78,9 +76,7 @@ class GenericHTTPAdapter(IntegrationAdapter):
                 auth=request_auth,
             )
         if response.status_code >= 400:
-            return IntegrationResult.failure(
-                f"HTTP {response.status_code} from {url}"
-            )
+            return IntegrationResult.failure(f"HTTP {response.status_code} from {url}")
         return IntegrationResult.success(
             detail=f"HTTP {response.status_code}",
             status_code=response.status_code,

@@ -311,8 +311,7 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repos/{quote(owner)}/{quote(repo)}/issues/"
-            f"{int(issue_number)}/comments",
+            f"/repos/{quote(owner)}/{quote(repo)}/issues/{int(issue_number)}/comments",
             json_body={"body": _required(body, "body")},
         )
         if failure:
@@ -377,7 +376,7 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "PUT",
-            f"/repos/{quote(owner)}/{quote(repo)}/pulls/" f"{int(pull_number)}/merge",
+            f"/repos/{quote(owner)}/{quote(repo)}/pulls/{int(pull_number)}/merge",
             json_body=payload,
         )
         if failure:

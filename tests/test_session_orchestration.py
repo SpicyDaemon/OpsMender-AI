@@ -102,9 +102,7 @@ def _app(factory):
     )
 
 
-async def test_priority_then_fifo_drain_and_paging_independence(
-    factory, monkeypatch
-):
+async def test_priority_then_fifo_drain_and_paging_independence(factory, monkeypatch):
     dispatched: list[uuid.UUID] = []
 
     async def capture_dispatch(_app, session_id):

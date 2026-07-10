@@ -29,7 +29,6 @@ from backend.ingest.adapters.universal import (
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
 class TestInterpretUp:
     def test_bool_true(self):
         assert _interpret_up(True) is True
@@ -235,6 +234,7 @@ async def factory():
     fac = async_sessionmaker(engine, expire_on_commit=False)
     async with fac() as session:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         session.add(org)
         await session.commit()

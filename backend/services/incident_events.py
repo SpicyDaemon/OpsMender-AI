@@ -97,9 +97,7 @@ async def dispatch_incident_created(
     # deployment modes and is idempotent, so it's safe regardless of auto-start.
     from backend.services.ticket_sync import schedule_incident_ticket_provisioning
 
-    schedule_incident_ticket_provisioning(
-        app, org_id=org_id, incident_id=incident_id
-    )
+    schedule_incident_ticket_provisioning(app, org_id=org_id, incident_id=incident_id)
 
     if app.state.config.deployment.mode == "monolith":
         if auto_start_tier is not None:

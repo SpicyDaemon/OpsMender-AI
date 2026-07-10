@@ -48,6 +48,7 @@ def _normalize_optional_phone(value: Optional[str]) -> Optional[str]:
         )
     return cleaned
 
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
@@ -2302,9 +2303,7 @@ class ServiceCreate(BaseModel):
     alert_grouping: str = Field(default="inherit", pattern="^(inherit|on|off)$")
     # Strict allowlist; empty means no MCP servers for this service's sessions.
     mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
-    model_config_ids: list[uuid.UUID] = Field(
-        default_factory=list, max_length=3
-    )
+    model_config_ids: list[uuid.UUID] = Field(default_factory=list, max_length=3)
     # Strict allowlist — empty means no integrations for this service.
     allowed_integration_connector_ids: list[uuid.UUID] = Field(default_factory=list)
     # Per-connector action overrides, e.g. {"<id>": {"ticket_lifecycle": false}}.
@@ -2323,9 +2322,7 @@ class ServiceUpdate(BaseModel):
     priority: Optional[str] = Field(None, pattern="^(P0|P1|P2|P3)$")
     alert_grouping: Optional[str] = Field(None, pattern="^(inherit|on|off)$")
     mcp_server_ids: Optional[list[uuid.UUID]] = None
-    model_config_ids: Optional[list[uuid.UUID]] = Field(
-        default=None, max_length=3
-    )
+    model_config_ids: Optional[list[uuid.UUID]] = Field(default=None, max_length=3)
     allowed_integration_connector_ids: Optional[list[uuid.UUID]] = None
     integration_action_overrides: Optional[dict[str, dict[str, Any]]] = None
     ai_default_tier: Optional[int] = Field(default=None, ge=0, le=2)

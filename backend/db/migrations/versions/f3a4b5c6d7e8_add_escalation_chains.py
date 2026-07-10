@@ -32,13 +32,9 @@ def upgrade() -> None:
         sa.Column("team_id", sa.Uuid(), nullable=False),
         sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column(
-            "is_active", sa.Boolean(), nullable=False, server_default=sa.true()
-        ),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["team_id"], ["teams.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -61,16 +57,12 @@ def upgrade() -> None:
             "timeout_seconds", sa.Integer(), nullable=False, server_default="300"
         ),
         sa.Column("notify_channels", sa.JSON(), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["chain_id"], ["escalation_chains.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "chain_id", "step_index", name="uq_escalation_step_index"
-        ),
+        sa.UniqueConstraint("chain_id", "step_index", name="uq_escalation_step_index"),
     )
     op.create_index(
         "ix_escalation_steps_chain_id",
@@ -86,12 +78,8 @@ def upgrade() -> None:
         sa.Column("service_id", sa.Uuid(), nullable=False),
         sa.Column("chain_id", sa.Uuid(), nullable=False),
         sa.Column("applies_when", sa.JSON(), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["service_id"], ["services.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["service_id"], ["services.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["chain_id"], ["escalation_chains.id"], ondelete="CASCADE"
         ),
@@ -125,15 +113,9 @@ def upgrade() -> None:
             server_default="recorded",
         ),
         sa.Column("delivery_error", sa.Text(), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["incident_id"], ["incidents.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["chain_id"], ["escalation_chains.id"], ondelete="SET NULL"
         ),
@@ -180,12 +162,8 @@ def upgrade() -> None:
         ),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["incident_id"], ["incidents.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["chain_id"], ["escalation_chains.id"], ondelete="CASCADE"
         ),
@@ -203,11 +181,7 @@ def downgrade() -> None:
     op.drop_index("ix_incident_pages_incident_id", table_name="incident_pages")
     op.drop_table("incident_pages")
     op.drop_table("service_escalation_chains")
-    op.drop_index(
-        "ix_escalation_steps_chain_id", table_name="escalation_steps"
-    )
+    op.drop_index("ix_escalation_steps_chain_id", table_name="escalation_steps")
     op.drop_table("escalation_steps")
-    op.drop_index(
-        "ix_escalation_chains_team_id", table_name="escalation_chains"
-    )
+    op.drop_index("ix_escalation_chains_team_id", table_name="escalation_chains")
     op.drop_table("escalation_chains")

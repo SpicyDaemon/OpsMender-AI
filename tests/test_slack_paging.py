@@ -50,9 +50,7 @@ async def app(tmp_path):
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
-        session.add(
-            Organization(id=TEST_ORG_ID, name="Slack Org", slug="slack-org")
-        )
+        session.add(Organization(id=TEST_ORG_ID, name="Slack Org", slug="slack-org"))
         await session.commit()
     set_session_factory(factory)
 
@@ -110,11 +108,14 @@ async def client(app):
 def _slack_sign(body: bytes) -> dict[str, str]:
     ts = str(int(time.time()))
     basestring = f"v0:{ts}:{body.decode('utf-8')}"
-    sig = "v0=" + hmac.new(
-        SIGNING_SECRET.encode("utf-8"),
-        basestring.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    sig = (
+        "v0="
+        + hmac.new(
+            SIGNING_SECRET.encode("utf-8"),
+            basestring.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+    )
     return {
         "X-Slack-Request-Timestamp": ts,
         "X-Slack-Signature": sig,
@@ -254,7 +255,9 @@ class TestPageCardBuilder:
         )
         actions = [b for b in blocks if b["type"] == "actions"][0]
         view = [e for e in actions["elements"] if e["action_id"] == ACTION_VIEW][0]
-        assert view["url"].startswith("https://opsmender.example.com/dashboard/incidents/detail")
+        assert view["url"].startswith(
+            "https://opsmender.example.com/dashboard/incidents/detail"
+        )
         assert "from=slack" in view["url"]
 
     def test_parse_incident_id_from_action_uses_value_then_block_id(self):
@@ -294,11 +297,14 @@ class TestSlackInteractionsEndpoint:
             {"payload": json.dumps({"type": "block_actions"})}
         ).encode()
         timestamp = str(int(time.time()) - 601)
-        signature = "v0=" + hmac.new(
-            SIGNING_SECRET.encode(),
-            f"v0:{timestamp}:{body.decode()}".encode(),
-            hashlib.sha256,
-        ).hexdigest()
+        signature = (
+            "v0="
+            + hmac.new(
+                SIGNING_SECRET.encode(),
+                f"v0:{timestamp}:{body.decode()}".encode(),
+                hashlib.sha256,
+            ).hexdigest()
+        )
         resp = await client.post(
             "/bot/slack/interactions",
             content=body,
@@ -342,11 +348,11 @@ class TestSlackInteractionsEndpoint:
             headers=headers,
         )
         assert resp.status_code == 200, resp.text
-        assert "acknowledged" in resp.json()["text"] or "recorded" in resp.json()["text"]
+        assert (
+            "acknowledged" in resp.json()["text"] or "recorded" in resp.json()["text"]
+        )
         async with app.state.session_factory() as db:
-            reloaded = await BotConnectorRepo.get_by_id(
-                db, TEST_ORG_ID, connector.id
-            )
+            reloaded = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
             assert reloaded.callback_status == "verified"
 
     async def test_unlinked_user_gets_friendly_ephemeral(self, client, app):
@@ -357,9 +363,9 @@ class TestSlackInteractionsEndpoint:
         payload = _block_actions_payload(
             action_id=ACTION_ACK, incident_id=incident.id, user_id="U_STRANGER"
         )
-        body_bytes = urllib.parse.urlencode(
-            {"payload": json.dumps(payload)}
-        ).encode("utf-8")
+        body_bytes = urllib.parse.urlencode({"payload": json.dumps(payload)}).encode(
+            "utf-8"
+        )
         headers = _slack_sign(body_bytes)
         resp = await client.post(
             "/bot/slack/interactions",
@@ -403,9 +409,9 @@ class TestSlackInteractionsEndpoint:
         payload = _block_actions_payload(
             action_id=ACTION_VIEW, incident_id=incident.id, user_id="U_X"
         )
-        body_bytes = urllib.parse.urlencode(
-            {"payload": json.dumps(payload)}
-        ).encode("utf-8")
+        body_bytes = urllib.parse.urlencode({"payload": json.dumps(payload)}).encode(
+            "utf-8"
+        )
         resp = await client.post(
             "/bot/slack/interactions",
             content=body_bytes,
@@ -414,9 +420,7 @@ class TestSlackInteractionsEndpoint:
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
 
-    async def test_resolve_button_cancels_chain_and_marks_resolved(
-        self, client, app
-    ):
+    async def test_resolve_button_cancels_chain_and_marks_resolved(self, client, app):
         connector = await _seed_slack_connector(app)
         user, _ = await _seed_user_and_link(
             app, connector_id=connector.id, slack_user_id="U_RES"
@@ -425,9 +429,9 @@ class TestSlackInteractionsEndpoint:
         payload = _block_actions_payload(
             action_id=ACTION_RESOLVE, incident_id=incident.id, user_id="U_RES"
         )
-        body_bytes = urllib.parse.urlencode(
-            {"payload": json.dumps(payload)}
-        ).encode("utf-8")
+        body_bytes = urllib.parse.urlencode({"payload": json.dumps(payload)}).encode(
+            "utf-8"
+        )
         resp = await client.post(
             "/bot/slack/interactions",
             content=body_bytes,
@@ -484,9 +488,7 @@ class TestSlackSlashCommandEndpoint:
     async def test_unlinked_user_friendly(self, client, app):
         await _seed_slack_connector(app)
         incident = await _seed_incident(app)
-        body = _slash_body(
-            command="/ack", text=str(incident.id), user_id="U_NOLINK"
-        )
+        body = _slash_body(command="/ack", text=str(incident.id), user_id="U_NOLINK")
         resp = await client.post(
             "/bot/slack/commands",
             content=body,
@@ -509,9 +511,7 @@ class TestSlackSlashCommandEndpoint:
                 user_id=user.id,
             )
             await db.commit()
-        body = _slash_body(
-            command="/ack", text=str(incident.id), user_id="U_A"
-        )
+        body = _slash_body(command="/ack", text=str(incident.id), user_id="U_A")
         resp = await client.post(
             "/bot/slack/commands",
             content=body,
@@ -569,9 +569,7 @@ class TestSlackSlashCommandEndpoint:
             app, connector_id=connector.id, slack_user_id="U_R"
         )
         incident = await _seed_incident(app, title="bye")
-        body = _slash_body(
-            command="/resolve", text=str(incident.id), user_id="U_R"
-        )
+        body = _slash_body(command="/resolve", text=str(incident.id), user_id="U_R")
         resp = await client.post(
             "/bot/slack/commands",
             content=body,
@@ -613,9 +611,7 @@ class TestSlackSlashCommandEndpoint:
             )
             await db.commit()
             state_id = state.id
-        body = _slash_body(
-            command="/snooze", text=f"{incident.id} 30m", user_id="U_S"
-        )
+        body = _slash_body(command="/snooze", text=f"{incident.id} 30m", user_id="U_S")
         resp = await client.post(
             "/bot/slack/commands",
             content=body,
@@ -629,9 +625,7 @@ class TestSlackSlashCommandEndpoint:
 
             row = (
                 await db.execute(
-                    select(IncidentChainState).where(
-                        IncidentChainState.id == state_id
-                    )
+                    select(IncidentChainState).where(IncidentChainState.id == state_id)
                 )
             ).scalar_one()
             assert row.next_step_due_at is not None
@@ -675,9 +669,7 @@ class TestSlackSlashCommandEndpoint:
             app, connector_id=connector.id, slack_user_id="U_REL"
         )
         incident = await _seed_incident(app, title="unowned")
-        body = _slash_body(
-            command="/release", text=str(incident.id), user_id="U_REL"
-        )
+        body = _slash_body(command="/release", text=str(incident.id), user_id="U_REL")
         resp = await client.post(
             "/bot/slack/commands",
             content=body,

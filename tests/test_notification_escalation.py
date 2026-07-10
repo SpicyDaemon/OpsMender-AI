@@ -164,20 +164,30 @@ class TestEngine:
         )
         async with session_factory() as db:
             await ne.start_escalation(
-                db, TEST_ORG_ID, incident=inc, user=user, stages=stages, sender=sender, at=t0
+                db,
+                TEST_ORG_ID,
+                incident=inc,
+                user=user,
+                stages=stages,
+                sender=sender,
+                at=t0,
             )
             await db.commit()
 
         # Not due yet → no advance.
         async with session_factory() as db:
-            fired = await ne.tick_all_due(db, sender=sender, at=t0 + timedelta(seconds=60))
+            fired = await ne.tick_all_due(
+                db, sender=sender, at=t0 + timedelta(seconds=60)
+            )
             await db.commit()
             assert fired == 0
             assert log == ["teams"]
 
         # After 300s → stage 1.
         async with session_factory() as db:
-            fired = await ne.tick_all_due(db, sender=sender, at=t0 + timedelta(seconds=300))
+            fired = await ne.tick_all_due(
+                db, sender=sender, at=t0 + timedelta(seconds=300)
+            )
             await db.commit()
             assert fired == 1
             assert log == ["teams", "sms"]
@@ -228,19 +238,31 @@ class TestEngine:
         )
         async with session_factory() as db:
             await ne.start_escalation(
-                db, TEST_ORG_ID, incident=inc, user=user, stages=stages, sender=sender, at=t0
+                db,
+                TEST_ORG_ID,
+                incident=inc,
+                user=user,
+                stages=stages,
+                sender=sender,
+                at=t0,
             )
             await db.commit()
         # Acknowledge.
         async with session_factory() as db:
             stopped = await ne.stop_escalation(
-                db, TEST_ORG_ID, incident_id=inc.id, status="acked", at=t0 + timedelta(seconds=10)
+                db,
+                TEST_ORG_ID,
+                incident_id=inc.id,
+                status="acked",
+                at=t0 + timedelta(seconds=10),
             )
             await db.commit()
             assert stopped == 1
         # Tick after delay → nothing fires.
         async with session_factory() as db:
-            fired = await ne.tick_all_due(db, sender=sender, at=t0 + timedelta(seconds=300))
+            fired = await ne.tick_all_due(
+                db, sender=sender, at=t0 + timedelta(seconds=300)
+            )
             await db.commit()
             assert fired == 0
             assert log == ["teams"]
@@ -263,7 +285,13 @@ class TestEngine:
         )
         async with session_factory() as db:
             await ne.start_escalation(
-                db, TEST_ORG_ID, incident=inc, user=user, stages=stages, sender=sender, at=t0
+                db,
+                TEST_ORG_ID,
+                incident=inc,
+                user=user,
+                stages=stages,
+                sender=sender,
+                at=t0,
             )
             await db.commit()
         # Resolving the incident must stop escalation (update_status chokepoint).
@@ -271,7 +299,9 @@ class TestEngine:
             await IncidentRepo.update_status(db, TEST_ORG_ID, inc.id, "resolved")
             await db.commit()
         async with session_factory() as db:
-            fired = await ne.tick_all_due(db, sender=sender, at=t0 + timedelta(seconds=300))
+            fired = await ne.tick_all_due(
+                db, sender=sender, at=t0 + timedelta(seconds=300)
+            )
             await db.commit()
             assert fired == 0
             assert log == ["teams"]
@@ -286,10 +316,28 @@ class TestEngine:
         log: list[str] = []
         sender = _recording_sender(log)
         t0 = datetime(2026, 5, 29, 12, 0, tzinfo=timezone.utc)
-        stages = parse_stages([{"channel_id": "teams", "delay_seconds": 300}, {"channel_id": "sms"}])
+        stages = parse_stages(
+            [{"channel_id": "teams", "delay_seconds": 300}, {"channel_id": "sms"}]
+        )
         async with session_factory() as db:
-            await ne.start_escalation(db, TEST_ORG_ID, incident=inc, user=user, stages=stages, sender=sender, at=t0)
-            await ne.start_escalation(db, TEST_ORG_ID, incident=inc, user=user, stages=stages, sender=sender, at=t0)
+            await ne.start_escalation(
+                db,
+                TEST_ORG_ID,
+                incident=inc,
+                user=user,
+                stages=stages,
+                sender=sender,
+                at=t0,
+            )
+            await ne.start_escalation(
+                db,
+                TEST_ORG_ID,
+                incident=inc,
+                user=user,
+                stages=stages,
+                sender=sender,
+                at=t0,
+            )
             await db.commit()
             assert log == ["teams"]  # second start is a no-op
 
@@ -306,7 +354,13 @@ class TestDefaultSender:
         sender = ne.build_notification_sender(lambda key: None)
         async with session_factory() as db:
             status, detail = await sender(
-                db, TEST_ORG_ID, channel_id="sms", incident=inc, user=user, subject="s", body="b"
+                db,
+                TEST_ORG_ID,
+                channel_id="sms",
+                incident=inc,
+                user=user,
+                subject="s",
+                body="b",
             )
             assert status == "skipped"
 

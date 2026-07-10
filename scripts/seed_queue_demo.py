@@ -82,9 +82,7 @@ async def seed(factory) -> None:
         if org is None:
             print("No organization found — create one through the app first.")
             return
-        service = await _first(
-            db, select(Service).where(Service.org_id == org.id)
-        )
+        service = await _first(db, select(Service).where(Service.org_id == org.id))
         model = await _first(
             db,
             select(ModelConfig).where(
@@ -134,7 +132,9 @@ async def seed(factory) -> None:
             f"{sum(1 for _, s, _ in QUEUE_PLAN if s == 'active')} active) "
             f"for org '{org.name}'."
         )
-        print("Open AI Agent -> Orchestration to test Purge / Cancel / Move / Force-start.")
+        print(
+            "Open AI Agent -> Orchestration to test Purge / Cancel / Move / Force-start."
+        )
 
 
 async def clean(factory) -> None:
@@ -142,21 +142,23 @@ async def clean(factory) -> None:
         incident_ids = list(
             (
                 await db.execute(
-                    select(Incident.id).where(
-                        Incident.title.like(f"{TITLE_PREFIX}%")
-                    )
+                    select(Incident.id).where(Incident.title.like(f"{TITLE_PREFIX}%"))
                 )
             ).scalars()
         )
-        session_ids = list(
-            (
-                await db.execute(
-                    select(SessionModel.id).where(
-                        SessionModel.incident_id.in_(incident_ids)
+        session_ids = (
+            list(
+                (
+                    await db.execute(
+                        select(SessionModel.id).where(
+                            SessionModel.incident_id.in_(incident_ids)
+                        )
                     )
-                )
-            ).scalars()
-        ) if incident_ids else []
+                ).scalars()
+            )
+            if incident_ids
+            else []
+        )
 
         # Bulk-delete child-first via table metadata (dialect-agnostic, and it
         # avoids the ORM relationship cascade — a force-started demo session may
@@ -175,23 +177,23 @@ async def clean(factory) -> None:
                     continue
                 if "incident_id" in table.c:
                     await db.execute(
-                        table.delete().where(
-                            table.c.incident_id.in_(incident_ids)
-                        )
+                        table.delete().where(table.c.incident_id.in_(incident_ids))
                     )
             incidents_table = Incident.__table__
             await db.execute(
-                incidents_table.delete().where(
-                    incidents_table.c.id.in_(incident_ids)
-                )
+                incidents_table.delete().where(incidents_table.c.id.in_(incident_ids))
             )
 
         # Restore any model cap we may have set.
         for model in (
-            await db.execute(
-                select(ModelConfig).where(ModelConfig.max_concurrent_sessions == 1)
+            (
+                await db.execute(
+                    select(ModelConfig).where(ModelConfig.max_concurrent_sessions == 1)
+                )
             )
-        ).scalars().all():
+            .scalars()
+            .all()
+        ):
             model.max_concurrent_sessions = None
         await db.commit()
         print(

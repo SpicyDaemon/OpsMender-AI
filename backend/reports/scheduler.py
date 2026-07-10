@@ -107,9 +107,7 @@ class ReportScheduler:
                         error = "; ".join(failures) or None
                 except Exception as exc:  # noqa: BLE001
                     error = str(exc)
-                    logger.exception(
-                        "Scheduled report %s failed", schedule.id
-                    )
+                    logger.exception("Scheduled report %s failed", schedule.id)
                 schedule.last_run_at = now
                 schedule.last_error = error
                 next_run_at = _utc(schedule.next_run_at)

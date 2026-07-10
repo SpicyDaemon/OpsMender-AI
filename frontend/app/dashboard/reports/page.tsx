@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, Trash2 } from "lucide-react";
 import {
   createReportSchedule,
@@ -41,11 +41,14 @@ export default function ReportsPage() {
     setTo(isoLocal(end));
   }
 
-  async function reload() {
+  const reload = useCallback(async () => {
     if (!admin) return;
     setSchedules((await listReportSchedules()).items);
-  }
-  useEffect(() => { reload().catch(() => {}); }, [admin]);
+  }, [admin]);
+
+  useEffect(() => {
+    void Promise.resolve().then(reload).catch(() => {});
+  }, [reload]);
 
   async function download(kind: "csv" | "pdf") {
     const blob = await downloadIncidentReport(kind, new Date(from).toISOString(), new Date(to).toISOString());

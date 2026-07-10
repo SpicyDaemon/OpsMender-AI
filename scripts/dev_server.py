@@ -61,7 +61,9 @@ def _patch_sqlite_dev_schema(sync_conn, metadata) -> None:
                 continue
 
             default_sql = None
-            if column.default is not None and getattr(column.default, "is_scalar", False):
+            if column.default is not None and getattr(
+                column.default, "is_scalar", False
+            ):
                 default_sql = _sqlite_literal(column.default.arg)
 
             if not column.nullable and default_sql is None:
@@ -99,7 +101,9 @@ async def bootstrap():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         if db_url.startswith("sqlite"):
-            await conn.run_sync(lambda sync_conn: _patch_sqlite_dev_schema(sync_conn, Base.metadata))
+            await conn.run_sync(
+                lambda sync_conn: _patch_sqlite_dev_schema(sync_conn, Base.metadata)
+            )
         print("[dev] Tables created (or already exist).")
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -121,6 +125,7 @@ async def bootstrap():
         existing = await UserRepo.get_by_username(session, "admin")
         if existing is None:
             import bcrypt
+
             hashed = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
             existing = await UserRepo.create(
                 session,

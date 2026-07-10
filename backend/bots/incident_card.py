@@ -39,11 +39,7 @@ EVENT_HEADLINES: dict[str, str] = {
 
 
 def _base_url(base_url: str | None) -> str:
-    candidate = (
-        base_url
-        or os.environ.get("OPSMENDER_PUBLIC_URL")
-        or DEFAULT_PUBLIC_URL
-    )
+    candidate = base_url or os.environ.get("OPSMENDER_PUBLIC_URL") or DEFAULT_PUBLIC_URL
     return candidate.rstrip("/")
 
 

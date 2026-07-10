@@ -61,10 +61,6 @@ export function IconSelect({
   }, [open]);
 
   useEffect(() => {
-    if (open) setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
-  }, [open, selectedIndex]);
-
-  useEffect(() => {
     if (!open || activeIndex < 0) return;
     const node = listRef.current?.children[activeIndex] as HTMLElement | undefined;
     // scrollIntoView is unimplemented in jsdom (tests) — guard it.
@@ -79,12 +75,17 @@ export function IconSelect({
     }
   }
 
+  function openList() {
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    setOpen(true);
+  }
+
   function onKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>) {
     if (disabled) return;
     if (!open) {
       if (["Enter", " ", "ArrowDown", "ArrowUp"].includes(e.key)) {
         e.preventDefault();
-        setOpen(true);
+        openList();
       }
       return;
     }
@@ -136,7 +137,11 @@ export function IconSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={() => {
+          if (disabled) return;
+          if (open) setOpen(false);
+          else openList();
+        }}
         onKeyDown={onKeyDown}
         className={`${TRIGGER} ${disabled ? "cursor-not-allowed bg-bg-hover opacity-60" : "cursor-pointer"}`}
       >

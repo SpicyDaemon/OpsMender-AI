@@ -95,7 +95,11 @@ async def test_redirect_loops_back_to_plan_then_approves(skill_def):
         "session_id": str(uuid.uuid4()),
         "tier": 1,
         "incident_description": "service is down",
-        "incident": {"title": "down", "description": "service is down", "status": "open"},
+        "incident": {
+            "title": "down",
+            "description": "service is down",
+            "status": "open",
+        },
         "operator_guidance": [],
         "redirect_requested": False,
         "redirect_count": 0,

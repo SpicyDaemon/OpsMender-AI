@@ -57,12 +57,8 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index(
-        "ix_org_invites_org_id", "org_invites", ["org_id"], unique=False
-    )
-    op.create_index(
-        "ix_org_invites_email", "org_invites", ["email"], unique=False
-    )
+    op.create_index("ix_org_invites_org_id", "org_invites", ["org_id"], unique=False)
+    op.create_index("ix_org_invites_email", "org_invites", ["email"], unique=False)
 
     op.create_table(
         "password_reset_tokens",
@@ -98,7 +94,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_password_reset_tokens_user_id", table_name="password_reset_tokens")
+    op.drop_index(
+        "ix_password_reset_tokens_user_id", table_name="password_reset_tokens"
+    )
     op.drop_table("password_reset_tokens")
     op.drop_index("ix_org_invites_email", table_name="org_invites")
     op.drop_index("ix_org_invites_org_id", table_name="org_invites")

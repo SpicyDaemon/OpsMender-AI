@@ -5,7 +5,6 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -214,7 +213,9 @@ export function DataTable<T>({
   className = "",
 }: DataTableProps<T>) {
   // Persistence — read on mount only.
-  const persisted = useRef<PersistedState>(_loadPersisted(storageKey));
+  const [persisted] = useState<PersistedState>(() =>
+    _loadPersisted(storageKey),
+  );
 
   const [search, setSearch] = useState("");
   const [sortState, setSortState] = useState<SortState>({
@@ -227,14 +228,14 @@ export function DataTable<T>({
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => {
-    const initial = new Set<string>(persisted.current.hiddenColumnIds ?? []);
+    const initial = new Set<string>(persisted.hiddenColumnIds ?? []);
     for (const col of columns) {
       if (col.hiddenByDefault && !initial.has(col.id)) initial.add(col.id);
     }
     return initial;
   });
   const [pageSize, setPageSize] = useState<number>(
-    persisted.current.pageSize ?? defaultPageSize,
+    persisted.pageSize ?? defaultPageSize,
   );
   const [page, setPage] = useState(0);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
@@ -254,11 +255,6 @@ export function DataTable<T>({
       // localStorage can throw in private modes; ignore.
     }
   }, [storageKey, hiddenIds, pageSize]);
-
-  // Reset to first page whenever filters/search/sort change.
-  useEffect(() => {
-    setPage(0);
-  }, [search, sortState, chipFilters, dateFrom, dateTo, pageSize]);
 
   const visibleColumns = useMemo(
     () => columns.filter((c) => !hiddenIds.has(c.id)),
@@ -349,6 +345,7 @@ export function DataTable<T>({
 
   // ----- Handlers -------------------------------------------------------------
   const cycleSort = (columnId: string) => {
+    setPage(0);
     setSortState((prev) => {
       if (prev.columnId !== columnId) return { columnId, dir: "asc" };
       if (prev.dir === "asc") return { columnId, dir: "desc" };
@@ -358,6 +355,7 @@ export function DataTable<T>({
   };
 
   const toggleChip = (columnId: string, value: string) => {
+    setPage(0);
     setChipFilters((prev) => {
       const next = { ...prev };
       const cur = new Set(next[columnId] ?? []);
@@ -369,6 +367,7 @@ export function DataTable<T>({
   };
 
   const clearAllFilters = () => {
+    setPage(0);
     setSearch("");
     setChipFilters({});
     setDateFrom("");
@@ -376,6 +375,7 @@ export function DataTable<T>({
   };
 
   const setLast7Days = () => {
+    setPage(0);
     const to = new Date();
     const from = new Date();
     from.setDate(from.getDate() - 7);
@@ -384,11 +384,32 @@ export function DataTable<T>({
   };
 
   const setLast30Days = () => {
+    setPage(0);
     const to = new Date();
     const from = new Date();
     from.setDate(from.getDate() - 30);
     setDateFrom(fmtDateTimeLocal(from));
     setDateTo(fmtDateTimeLocal(to));
+  };
+
+  const updateSearch = (value: string) => {
+    setPage(0);
+    setSearch(value);
+  };
+
+  const updateDateFrom = (value: string) => {
+    setPage(0);
+    setDateFrom(value);
+  };
+
+  const updateDateTo = (value: string) => {
+    setPage(0);
+    setDateTo(value);
+  };
+
+  const updatePageSize = (value: number) => {
+    setPage(0);
+    setPageSize(value);
   };
 
   const toggleColumn = (columnId: string) => {
@@ -465,7 +486,7 @@ export function DataTable<T>({
                 <Input
                   aria-label="Search"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => updateSearch(e.target.value)}
                   placeholder={searchPlaceholder}
                   className="h-11 pl-9"
                 />
@@ -544,7 +565,7 @@ export function DataTable<T>({
                   type="datetime-local"
                   aria-label={`${dateRangeColumn.label ?? "Date range"} from`}
                   value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
+                  onChange={(e) => updateDateFrom(e.target.value)}
                   className="max-w-[14rem]"
                 />
                 <span className="text-xs text-fg-muted">→</span>
@@ -552,7 +573,7 @@ export function DataTable<T>({
                   type="datetime-local"
                   aria-label={`${dateRangeColumn.label ?? "Date range"} to`}
                   value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
+                  onChange={(e) => updateDateTo(e.target.value)}
                   className="max-w-[14rem]"
                 />
               </div>
@@ -584,7 +605,7 @@ export function DataTable<T>({
                 <Input
                   id="dt-search"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => updateSearch(e.target.value)}
                   placeholder={searchPlaceholder}
                   className="pl-9"
                 />
@@ -658,7 +679,7 @@ export function DataTable<T>({
                 type="datetime-local"
                 aria-label={`${dateRangeColumn.label ?? "Date range"} from`}
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+                onChange={(e) => updateDateFrom(e.target.value)}
                 className="max-w-[14rem]"
               />
               <span className="text-xs text-fg-muted">→</span>
@@ -666,7 +687,7 @@ export function DataTable<T>({
                 type="datetime-local"
                 aria-label={`${dateRangeColumn.label ?? "Date range"} to`}
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                onChange={(e) => updateDateTo(e.target.value)}
                 className="max-w-[14rem]"
               />
             </div>
@@ -764,7 +785,7 @@ export function DataTable<T>({
             <Select
               aria-label="Rows per page"
               value={String(pageSize)}
-              onChange={(e) => setPageSize(Number(e.target.value))}
+              onChange={(e) => updatePageSize(Number(e.target.value))}
             >
               {pageSizeOptions.map((n) => (
                 <option key={n} value={n}>

@@ -12,7 +12,9 @@ from typing import Any
 from dotenv import dotenv_values
 
 DEFAULT_ENV_FILE = ".env"
-DEFAULT_LOCAL_POSTGRES_URL = "postgresql+asyncpg://opsmender:opsmender@localhost:5432/opsmender"
+DEFAULT_LOCAL_POSTGRES_URL = (
+    "postgresql+asyncpg://opsmender:opsmender@localhost:5432/opsmender"
+)
 DEFAULT_LOCAL_SQLITE_URL = "sqlite+aiosqlite:///./opsmender-local.db"
 
 # Sprint 43 P0 #4 — default JWT secrets that MUST be replaced before a
@@ -108,6 +110,7 @@ def check_production_safety(config: "AppConfig") -> None:
             "OPSMENDER_ENVIRONMENT=development for local dev."
         )
 
+
 _ENV_PATH_OVERRIDE: pathlib.Path | None = None
 
 
@@ -132,7 +135,9 @@ def _normalize_env(file_values: dict[str, str | None]) -> dict[str, str]:
     return merged
 
 
-def _read_env(path: pathlib.Path | str | None = None) -> tuple[pathlib.Path, dict[str, str]]:
+def _read_env(
+    path: pathlib.Path | str | None = None,
+) -> tuple[pathlib.Path, dict[str, str]]:
     env_path, explicit = _resolve_env_path(path)
     if env_path.is_file():
         return env_path, _normalize_env(dotenv_values(env_path))
@@ -184,9 +189,7 @@ def _env_severity(
 ) -> str:
     raw = (_env_str(env, key, default) or default).strip().lower()
     if raw not in {"critical", "high", "medium", "low"}:
-        raise ValueError(
-            f"{key} must be one of critical|high|medium|low, got {raw!r}"
-        )
+        raise ValueError(f"{key} must be one of critical|high|medium|low, got {raw!r}")
     return raw
 
 
@@ -533,9 +536,7 @@ class AppConfig:
             timeout_seconds=_env_int(env, "OPSMENDER_APPROVAL_TIMEOUT_SECONDS", 900)
         )
         sessions = SessionOrchestrationConfig(
-            queue_ttl_seconds=_env_int(
-                env, "OPSMENDER_SESSION_QUEUE_TTL_SECONDS", 900
-            ),
+            queue_ttl_seconds=_env_int(env, "OPSMENDER_SESSION_QUEUE_TTL_SECONDS", 900),
             approval_hold_ttl_seconds=_env_int(
                 env,
                 "OPSMENDER_APPROVAL_HOLD_TTL_SECONDS",
@@ -611,9 +612,13 @@ class AppConfig:
             ),
             bot_oauth=BotOAuthConfig(
                 slack_client_id=_env_str(env, "OPSMENDER_SLACK_OAUTH_CLIENT_ID"),
-                slack_client_secret=_env_str(env, "OPSMENDER_SLACK_OAUTH_CLIENT_SECRET"),
+                slack_client_secret=_env_str(
+                    env, "OPSMENDER_SLACK_OAUTH_CLIENT_SECRET"
+                ),
                 discord_client_id=_env_str(env, "OPSMENDER_DISCORD_OAUTH_CLIENT_ID"),
-                discord_client_secret=_env_str(env, "OPSMENDER_DISCORD_OAUTH_CLIENT_SECRET"),
+                discord_client_secret=_env_str(
+                    env, "OPSMENDER_DISCORD_OAUTH_CLIENT_SECRET"
+                ),
             ),
             cors=CorsConfig(origins=_env_csv(env, "OPSMENDER_CORS_ORIGINS", "*")),
             providers=ProviderConfig(
@@ -621,7 +626,9 @@ class AppConfig:
                 or "ollama",
                 active_model_id=_env_str(env, "OPSMENDER_MODEL_ID", "llama3.2")
                 or "llama3.2",
-                ollama_base_url=_env_str(env, "OLLAMA_BASE_URL", "http://localhost:11434")
+                ollama_base_url=_env_str(
+                    env, "OLLAMA_BASE_URL", "http://localhost:11434"
+                )
                 or "http://localhost:11434",
                 azure_openai_endpoint=_env_str(env, "AZURE_OPENAI_ENDPOINT"),
                 azure_openai_api_version=_env_str(env, "AZURE_OPENAI_API_VERSION"),

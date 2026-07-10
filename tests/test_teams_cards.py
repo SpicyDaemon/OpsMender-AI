@@ -59,9 +59,7 @@ class TestAdaptiveCardBuilder:
             _incident(),
             include_native_actions=True,
         )
-        submits = [
-            a for a in card["actions"] if a["type"] == "Action.Submit"
-        ]
+        submits = [a for a in card["actions"] if a["type"] == "Action.Submit"]
         actions = {a["data"]["action"] for a in submits}
         assert actions == {
             ACTION_ACK,
@@ -73,12 +71,8 @@ class TestAdaptiveCardBuilder:
         assert all(a["type"] != "Action.OpenUrl" for a in card["actions"])
 
     def test_view_button_added_when_base_url_set(self):
-        card = build_page_card_adaptive(
-            _incident(), base_url="https://ops.example.com"
-        )
-        open_urls = [
-            a for a in card["actions"] if a["type"] == "Action.OpenUrl"
-        ]
+        card = build_page_card_adaptive(_incident(), base_url="https://ops.example.com")
+        open_urls = [a for a in card["actions"] if a["type"] == "Action.OpenUrl"]
         assert len(open_urls) == 1
         assert open_urls[0]["url"].endswith("&from=teams")
         assert "/dashboard/incidents/detail" in open_urls[0]["url"]
@@ -134,15 +128,21 @@ class TestWrappers:
 class TestParseIncidentIdFromAction:
     def test_accepts_raw_data_dict(self):
         inc_id = uuid.uuid4()
-        assert parse_incident_id_from_action(
-            {"action": ACTION_ACK, "incident_id": str(inc_id)}
-        ) == inc_id
+        assert (
+            parse_incident_id_from_action(
+                {"action": ACTION_ACK, "incident_id": str(inc_id)}
+            )
+            == inc_id
+        )
 
     def test_accepts_wrapped_value(self):
         inc_id = uuid.uuid4()
-        assert parse_incident_id_from_action(
-            {"value": {"action": ACTION_TAKE, "incident_id": str(inc_id)}}
-        ) == inc_id
+        assert (
+            parse_incident_id_from_action(
+                {"value": {"action": ACTION_TAKE, "incident_id": str(inc_id)}}
+            )
+            == inc_id
+        )
 
     def test_missing_id_returns_none(self):
         assert parse_incident_id_from_action({"action": ACTION_ACK}) is None

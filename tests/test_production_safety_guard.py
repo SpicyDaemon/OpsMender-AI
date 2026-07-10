@@ -30,7 +30,9 @@ class TestProductionSafetyGuard:
 
     def test_env_example_default_refused_in_prod(self, monkeypatch):
         monkeypatch.delenv("OPSMENDER_DEPLOYMENT_MODE", raising=False)
-        with pytest.raises(InsecureProductionConfigError, match="change-me-in-production"):
+        with pytest.raises(
+            InsecureProductionConfigError, match="change-me-in-production"
+        ):
             check_production_safety(_config_with_secret("change-me-in-production"))
 
     def test_code_default_refused_in_prod(self, monkeypatch):

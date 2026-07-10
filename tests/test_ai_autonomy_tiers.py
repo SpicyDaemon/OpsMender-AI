@@ -110,7 +110,10 @@ async def _server(factory, name="srv") -> uuid.UUID:
 async def test_unassigned_skill_not_injected(factory):
     async with factory() as db:
         await SkillRepo.create(
-            db, TEST_ORG_ID, name="draft", content_md=build_skill_template(),
+            db,
+            TEST_ORG_ID,
+            name="draft",
+            content_md=build_skill_template(),
             assignment="unassigned",
         )
         await db.commit()
@@ -124,7 +127,10 @@ async def test_global_fallback_applies_when_no_server_skill(factory):
     srv = await _server(factory)
     async with factory() as db:
         await SkillRepo.create(
-            db, TEST_ORG_ID, name="global", content_md=build_skill_template(),
+            db,
+            TEST_ORG_ID,
+            name="global",
+            content_md=build_skill_template(),
             assignment="global",
         )
         await db.commit()
@@ -138,12 +144,19 @@ async def test_server_specific_overrides_global(factory):
     srv = await _server(factory)
     async with factory() as db:
         await SkillRepo.create(
-            db, TEST_ORG_ID, name="global", content_md=build_skill_template(),
+            db,
+            TEST_ORG_ID,
+            name="global",
+            content_md=build_skill_template(),
             assignment="global",
         )
         await SkillRepo.create(
-            db, TEST_ORG_ID, name="specific", content_md=build_skill_template(),
-            mcp_server_id=srv, assignment="server",
+            db,
+            TEST_ORG_ID,
+            name="specific",
+            content_md=build_skill_template(),
+            mcp_server_id=srv,
+            assignment="server",
         )
         await db.commit()
     async with factory() as db:
@@ -156,8 +169,12 @@ async def test_unassigned_create_clears_server_binding(factory):
     srv = await _server(factory)
     async with factory() as db:
         skill = await SkillRepo.create(
-            db, TEST_ORG_ID, name="draft", content_md=build_skill_template(),
-            mcp_server_id=srv, assignment="unassigned",
+            db,
+            TEST_ORG_ID,
+            name="draft",
+            content_md=build_skill_template(),
+            mcp_server_id=srv,
+            assignment="unassigned",
         )
         await db.commit()
         # Unassigned drafts never carry a server binding.

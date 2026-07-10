@@ -55,7 +55,8 @@ async def audited_tool_call(
     tool_caller: Callable[
         [Any, str, dict[str, Any]],
         Awaitable[Any],
-    ] | None = None,
+    ]
+    | None = None,
 ) -> AuditedToolResult:
     """Execute an MCP tool call with full audit logging.
 

@@ -19,7 +19,7 @@ _ENCRYPTED_PREFIX = "enc:"
 def _plain(value: object) -> str:
     text = str(value or "")
     if text.startswith(_ENCRYPTED_PREFIX):
-        return decrypt_secret(text[len(_ENCRYPTED_PREFIX):])
+        return decrypt_secret(text[len(_ENCRYPTED_PREFIX) :])
     return text
 
 
@@ -145,12 +145,18 @@ class EventBridgeAdapter:
         if response.get("FailedEntryCount") or entry.get("ErrorCode"):
             return DeliveryReceipt(
                 ok=False,
-                error=str(entry.get("ErrorMessage") or entry.get("ErrorCode") or "PutEvents failed"),
+                error=str(
+                    entry.get("ErrorMessage")
+                    or entry.get("ErrorCode")
+                    or "PutEvents failed"
+                ),
             )
         return DeliveryReceipt(
             ok=True,
             external_channel_id=bus,
-            external_message_id=str(entry.get("EventId")) if entry.get("EventId") else None,
+            external_message_id=str(entry.get("EventId"))
+            if entry.get("EventId")
+            else None,
             can_update=False,
         )
 
@@ -195,11 +201,15 @@ class EventBridgeAdapter:
                 "service": service_name or incident.external_source,
                 "team": team_name,
                 "timestamps": {
-                    "created_at": incident.created_at.isoformat() if incident.created_at else None,
+                    "created_at": incident.created_at.isoformat()
+                    if incident.created_at
+                    else None,
                     "acknowledged_at": incident.acknowledged_at.isoformat()
                     if getattr(incident, "acknowledged_at", None)
                     else None,
-                    "updated_at": incident.updated_at.isoformat() if incident.updated_at else None,
+                    "updated_at": incident.updated_at.isoformat()
+                    if incident.updated_at
+                    else None,
                 },
             },
         }

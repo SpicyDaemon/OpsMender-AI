@@ -31,7 +31,6 @@ from backend.db.models import (
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
 @pytest.fixture
 async def db():
     """Yield an async session backed by an in-memory SQLite DB."""
@@ -126,7 +125,12 @@ class TestIncidentModel:
 
 class TestSessionModel:
     async def test_create_session(self, db: AsyncSession):
-        sess = Session(org_id=TEST_ORG_ID, tier=2, model_provider="anthropic", model_id="claude-sonnet")
+        sess = Session(
+            org_id=TEST_ORG_ID,
+            tier=2,
+            model_provider="anthropic",
+            model_id="claude-sonnet",
+        )
         db.add(sess)
         await db.flush()
 

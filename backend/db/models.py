@@ -83,9 +83,7 @@ class Organization(Base):
     slack_incident_channels_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
-    mfa_required: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    mfa_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -364,7 +362,9 @@ class OrgInvite(Base):
         Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), nullable=False)  # admin | operator | viewer
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # admin | operator | viewer
     # Optional names supplied by the admin; prefill the accept page.
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -494,12 +494,8 @@ class Incident(Base):
     # External ingestion fingerprint — dedup by (external_source, external_id)
     external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    correlated_count: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False
-    )
-    flapping: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    correlated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    flapping: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Combine incidents (v1.2): when this incident was merged into another, it
     # gets status="merged" and points at the surviving (primary) incident. Never
     # deleted — the audit trail and external ids survive.
@@ -584,9 +580,7 @@ class Session(Base):
     # drain before unranked ones, lowest rank first — overriding the P0→P3 +
     # FIFO default. NULL = normal priority/FIFO ordering.
     queue_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    force_started: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    force_started: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     force_started_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -680,9 +674,7 @@ class ApprovalRequest(Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    extension_count: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False
-    )
+    extension_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     extension_notified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -715,9 +707,7 @@ class ModelConfig(Base):
     provider_meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096, nullable=False)
     temperature: Mapped[float] = mapped_column(default=0.0, nullable=False)
-    max_concurrent_sessions: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )
+    max_concurrent_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -1010,9 +1000,7 @@ class IntegrationConnector(Base):
     kind: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    auth_type: Mapped[str] = mapped_column(
-        String(30), default="pat", nullable=False
-    )
+    auth_type: Mapped[str] = mapped_column(String(30), default="pat", nullable=False)
     auth_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -1031,9 +1019,7 @@ class IntegrationConnector(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "org_id", "name", name="uq_integration_connector_name"
-        ),
+        UniqueConstraint("org_id", "name", name="uq_integration_connector_name"),
         Index(
             "ix_integration_connectors_org_kind_enabled",
             "org_id",
@@ -1061,9 +1047,7 @@ class TicketSyncState(Base):
         Uuid, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False
     )
     external_ticket_id: Mapped[str] = mapped_column(String(500), nullable=False)
-    external_ticket_url: Mapped[str | None] = mapped_column(
-        String(2000), nullable=True
-    )
+    external_ticket_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     last_synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -1073,9 +1057,7 @@ class TicketSyncState(Base):
     # Last OpsMender lifecycle status pushed onto the ticket (open/acknowledged/
     # in_progress/resolved). Powers the no-backward-move guardrail. NULL until
     # the first outbound sync.
-    last_synced_status: Mapped[str | None] = mapped_column(
-        String(20), nullable=True
-    )
+    last_synced_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     status_map: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     __table_args__ = (
@@ -1114,9 +1096,7 @@ class IncidentIntegrationLink(Base):
     external_id: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str] = mapped_column(String(2000), nullable=False)
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    reference_meta: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False
-    )
+    reference_meta: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -1277,9 +1257,7 @@ class AlertFingerprintState(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
-    transitions: Mapped[list[dict]] = mapped_column(
-        JSON, default=list, nullable=False
-    )
+    transitions: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
     flapping_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -1532,7 +1510,6 @@ class MaintenanceWindow(Base):
             if value not in ids:
                 ids.append(value)
         return ids
-
 
 
 class UserNotificationPref(Base):
@@ -1974,16 +1951,10 @@ class AuditSchedule(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     analyzers: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    mcp_server_name: Mapped[str | None] = mapped_column(
-        String(200), nullable=True
-    )
-    focus_areas: Mapped[list[str]] = mapped_column(
-        JSON, nullable=False, default=list
-    )
+    mcp_server_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    focus_areas: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False
-    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -2103,7 +2074,9 @@ class Service(Base):
     alert_grouping: Mapped[str] = mapped_column(
         String(10), default="inherit", nullable=False
     )
-    intake_token: Mapped[str | None] = mapped_column(String(160), unique=True, nullable=True)
+    intake_token: Mapped[str | None] = mapped_column(
+        String(160), unique=True, nullable=True
+    )
     # Strict allowlist of MCP server ids this service's sessions may use. Empty
     # means no MCP tools are available for sessions attached to the service.
     mcp_server_ids: Mapped[list[str]] = mapped_column(
@@ -2314,9 +2287,7 @@ class IncidentComment(Base):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[str] = mapped_column(
-        String(50), default="user", nullable=False
-    )
+    source: Mapped[str] = mapped_column(String(50), default="user", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -2532,7 +2503,9 @@ class NotificationEscalation(Base):
         UniqueConstraint(
             "incident_id", "user_id", name="uq_notification_escalation_incident_user"
         ),
-        Index("ix_notification_escalations_due", "org_id", "status", "next_stage_due_at"),
+        Index(
+            "ix_notification_escalations_due", "org_id", "status", "next_stage_due_at"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
@@ -2593,9 +2566,7 @@ class IncidentMemory(Base):
     summary_md: Mapped[str] = mapped_column(Text, nullable=False)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    unhelpful_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    unhelpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # v2 Phase 8 — operator-pinned memories are protected from bounded-growth
     # eviction (alongside high-recall memories). Never auto-deleted.
     pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -2641,9 +2612,7 @@ class IncidentMemoryRecallLog(Base):
     score: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
 
     __table_args__ = (
-        Index(
-            "ix_incident_memory_recall_session", "session_id", "surfaced_at"
-        ),
+        Index("ix_incident_memory_recall_session", "session_id", "surfaced_at"),
     )
 
 
@@ -2690,9 +2659,7 @@ class RetentionConfig(Base):
     last_pruned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    last_pruned_count: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )
+    last_pruned_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("org_id", "category", name="uq_retention_org_category"),

@@ -100,7 +100,6 @@ export function IncidentContextRail({
   useEffect(() => {
     let cancelled = false;
     if (sessions.length === 0) {
-      setPendingApprovals(0);
       return;
     }
     Promise.all(
@@ -146,6 +145,8 @@ export function IncidentContextRail({
     [sessions],
   );
   const latestTier = activeSession?.tier ?? sessions[0]?.tier ?? null;
+  const visiblePendingApprovals =
+    sessions.length === 0 ? 0 : pendingApprovals;
 
   const chainState = chain?.state ?? null;
   const escalationStepLabel = chainState
@@ -231,12 +232,12 @@ export function IncidentContextRail({
           </Row>
 
           <Row icon={CalendarClock} label="Pending approvals">
-            {pendingApprovals === null ? (
+            {visiblePendingApprovals === null ? (
               <Muted>…</Muted>
-            ) : pendingApprovals === 0 ? (
+            ) : visiblePendingApprovals === 0 ? (
               <Muted>None</Muted>
             ) : (
-              <Badge variant="high">{pendingApprovals}</Badge>
+              <Badge variant="high">{visiblePendingApprovals}</Badge>
             )}
           </Row>
 

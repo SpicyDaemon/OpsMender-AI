@@ -84,20 +84,23 @@ def draft_postmortem(incident: Any, sessions: Sequence[Any]) -> str:
             f"- {_fmt_ts(getattr(s, 'started_at', None))} — AI session started"
         )
         if getattr(s, "ended_at", None):
-            timeline.append(
-                f"- {_fmt_ts(s.ended_at)} — AI session ended ({s.status})"
-            )
+            timeline.append(f"- {_fmt_ts(s.ended_at)} — AI session ended ({s.status})")
     if getattr(incident, "status", None) == "resolved":
         timeline.append(f"- {_fmt_ts(resolved)} — resolved")
 
-    summary_block = latest_summary or "_Draft from the AI session trail — review and edit._"
-    impact_block = (
-        f"Priority {priority}. Created {_fmt_ts(created)}"
-        + (f", resolved {_fmt_ts(resolved)}." if getattr(incident, "status", None) == "resolved" else ", ongoing.")
+    summary_block = (
+        latest_summary or "_Draft from the AI session trail — review and edit._"
+    )
+    impact_block = f"Priority {priority}. Created {_fmt_ts(created)}" + (
+        f", resolved {_fmt_ts(resolved)}."
+        if getattr(incident, "status", None) == "resolved"
+        else ", ongoing."
     )
     if observations:
         impact_block += f"\n\nObserved signals:\n\n{observations}"
-    root_cause_block = diagnosis or "_No AI diagnosis was recorded — fill in the underlying cause._"
+    root_cause_block = (
+        diagnosis or "_No AI diagnosis was recorded — fill in the underlying cause._"
+    )
     resolution_block = (
         "Proposed/taken actions from the AI session:\n\n"
         + "\n".join(f"- {b}" for b in plan_bullets)

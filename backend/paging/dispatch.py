@@ -270,9 +270,7 @@ async def dispatch_page(
 
     # 1. Maintenance-window suppression
     if response_mode != "escalate_immediate":
-        mw = await evaluate_maintenance_window(
-            db, org_id, incident=incident, at=now
-        )
+        mw = await evaluate_maintenance_window(db, org_id, incident=incident, at=now)
         if mw is not None:
             result.suppressed = True
             result.suppression_reason = "maintenance_window"
@@ -285,11 +283,7 @@ async def dispatch_page(
     # 2. Prefs + channels
     prefs = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
     org = await OrganizationRepo.get_by_id(db, org_id)
-    dedup_window = (
-        org.notification_dedup_window_minutes
-        if org is not None
-        else 10
-    )
+    dedup_window = org.notification_dedup_window_minutes if org is not None else 10
 
     quiet_hours = prefs.quiet_hours if prefs is not None else None
     if quiet_hours_block(quiet_hours, priority=incident.priority, at=now):
@@ -306,9 +300,7 @@ async def dispatch_page(
     from backend.paging.routing import parse_stages, routing_is_staged
 
     priority_routing = (
-        routing.get(incident.priority)
-        if (routing and incident.priority)
-        else None
+        routing.get(incident.priority) if (routing and incident.priority) else None
     )
     if routing_is_staged(priority_routing):
         from backend.paging import notification_escalation as _ne

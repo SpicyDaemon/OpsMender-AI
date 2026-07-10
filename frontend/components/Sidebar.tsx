@@ -391,16 +391,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (stored === "1") {
-      setCollapsed(true);
-    } else if (stored === null && window.matchMedia("(max-width: 768px)").matches) {
-      // First visit on a narrow viewport: default to icon-only so the content
-      // area isn't squeezed. Operator can still expand manually.
-      setCollapsed(true);
-    }
+    const startsCollapsed =
+      stored === "1" ||
+      (stored === null && window.matchMedia("(max-width: 768px)").matches);
     localStorage.removeItem(LEGACY_GROUP_COLLAPSE_KEY);
-    setHydrated(true);
+    const frame = window.requestAnimationFrame(() => {
+      if (startsCollapsed) setCollapsed(true);
+      setHydrated(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const loadConfig = useCallback(() => {

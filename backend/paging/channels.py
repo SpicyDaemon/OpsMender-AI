@@ -74,9 +74,7 @@ class SlackDMChannel:
         except httpx.HTTPError as exc:
             return DeliveryAttempt(self.key, "failed", f"network: {exc}")
         if resp.status_code != 200:
-            return DeliveryAttempt(
-                self.key, "failed", f"http {resp.status_code}"
-            )
+            return DeliveryAttempt(self.key, "failed", f"http {resp.status_code}")
         try:
             data = resp.json()
         except ValueError:
@@ -121,9 +119,7 @@ class TeamsDMChannel:
         except httpx.HTTPError as exc:
             return DeliveryAttempt(self.key, "failed", f"network: {exc}")
         if resp.status_code >= 400:
-            return DeliveryAttempt(
-                self.key, "failed", f"http {resp.status_code}"
-            )
+            return DeliveryAttempt(self.key, "failed", f"http {resp.status_code}")
         return DeliveryAttempt(self.key, "sent")
 
 
@@ -187,21 +183,17 @@ class TeamsGraphDMChannel:
         if blocks:
             attachments = list(blocks)
             attachment_refs = "".join(
-                f'<attachment id="{att.get("id")}"></attachment>'
-                for att in attachments
+                f'<attachment id="{att.get("id")}"></attachment>' for att in attachments
             )
             text_html = (
-                f"<p><strong>{subject}</strong></p>"
-                f"<p>{body}</p>{attachment_refs}"
+                f"<p><strong>{subject}</strong></p><p>{body}</p>{attachment_refs}"
             )
             payload: dict = {
                 "body": {"contentType": "html", "content": text_html},
                 "attachments": attachments,
             }
         else:
-            text_html = (
-                f"<p><strong>{subject}</strong></p><p>{body}</p>"
-            )
+            text_html = f"<p><strong>{subject}</strong></p><p>{body}</p>"
             payload = {
                 "body": {
                     "contentType": "html",
@@ -214,9 +206,7 @@ class TeamsGraphDMChannel:
                 resp = await client.post(
                     f"https://graph.microsoft.com/v1.0/chats/{recipient}/messages",
                     headers={
-                        "Authorization": (
-                            f"{token.token_type} {token.access_token}"
-                        ),
+                        "Authorization": (f"{token.token_type} {token.access_token}"),
                         "Content-Type": "application/json; charset=utf-8",
                     },
                     json=payload,

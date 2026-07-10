@@ -28,11 +28,14 @@ router = APIRouter(prefix="/webhooks/ticket-sync", tags=["ticket-sync"])
 def _jira_signature_valid(secret: str, body: bytes, provided: str | None) -> bool:
     if not provided:
         return False
-    expected = "sha256=" + hmac.new(
-        secret.encode("utf-8"),
-        body,
-        hashlib.sha256,
-    ).hexdigest()
+    expected = (
+        "sha256="
+        + hmac.new(
+            secret.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+    )
     candidate = provided if provided.startswith("sha256=") else f"sha256={provided}"
     return hmac.compare_digest(expected, candidate)
 
@@ -50,7 +53,9 @@ def _jira_fields(payload: dict[str, Any]) -> tuple[str | None, str | None]:
 
 
 def _servicenow_fields(payload: dict[str, Any]) -> tuple[str | None, str | None]:
-    value = payload.get("result") if isinstance(payload.get("result"), dict) else payload
+    value = (
+        payload.get("result") if isinstance(payload.get("result"), dict) else payload
+    )
     current = value.get("current") if isinstance(value.get("current"), dict) else value
     return (
         str(current.get("sys_id") or value.get("sys_id") or "") or None,
@@ -101,9 +106,13 @@ async def receive_ticket_sync(
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
     else:
         expected = str(auth.get("webhook_token") or "")
-        if not expected or not webhook_token or not hmac.compare_digest(
-            expected,
-            webhook_token,
+        if (
+            not expected
+            or not webhook_token
+            or not hmac.compare_digest(
+                expected,
+                webhook_token,
+            )
         ):
             raise HTTPException(status_code=401, detail="Invalid webhook token")
 

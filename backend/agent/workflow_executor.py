@@ -82,9 +82,7 @@ class WorkflowResult:
 def _lookup_path(path: str, context: dict[str, Any]) -> Any:
     parts = [part for part in path.split(".") if part]
     if not parts or parts[0] not in {"incident", "steps"}:
-        raise WorkflowTemplateError(
-            f"Unsupported workflow template '{{{{{path}}}}}'"
-        )
+        raise WorkflowTemplateError(f"Unsupported workflow template '{{{{{path}}}}}'")
     value: Any = context
     for part in parts:
         if isinstance(value, dict) and part in value:
@@ -359,7 +357,9 @@ class WorkflowExecutor:
             return
         pending = logger(
             session_id,
-            outcome.effective_tier if outcome.effective_tier is not None else self._tier,
+            outcome.effective_tier
+            if outcome.effective_tier is not None
+            else self._tier,
             entry_type,
             outcome.tool,
             tool_parameters={
@@ -367,7 +367,8 @@ class WorkflowExecutor:
                 "description": outcome.description,
                 "inputs": outcome.inputs,
             },
-            result=outcome.output or ({"error": outcome.error} if outcome.error else None),
+            result=outcome.output
+            or ({"error": outcome.error} if outcome.error else None),
             permitted=outcome.status != "blocked",
             block_reason=outcome.block_reason,
             classification=outcome.classification,

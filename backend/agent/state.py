@@ -25,7 +25,7 @@ class ToolCallRecord(TypedDict, total=False):
 
     tool_name: str
     tool_parameters: dict[str, Any]
-    classification: str          # safe | caution | destructive | unknown
+    classification: str  # safe | caution | destructive | unknown
     permitted: bool
     result: dict[str, Any] | None
     error: str | None
@@ -41,17 +41,17 @@ class IncidentContext(TypedDict, total=False):
     id: str
     title: str
     description: str
-    status: str                  # open | in_progress | resolved
-    severity: str | None         # critical | high | medium | low | None
+    status: str  # open | in_progress | resolved
+    severity: str | None  # critical | high | medium | low | None
 
 
 class ChatMessage(TypedDict, total=False):
     """One turn of the co-pilot chat, serialised into state."""
 
     id: str
-    role: str                    # user | assistant
+    role: str  # user | assistant
     content: str
-    created_at: str              # ISO-8601
+    created_at: str  # ISO-8601
     node_context: str | None
 
 
@@ -68,8 +68,8 @@ class IncidentState(TypedDict, total=False):
     skill_definition_path: str
 
     # -- incident context (set by user / observe node) -----------------------
-    incident_description: str     # kept for back-compat with existing nodes
-    incident: IncidentContext     # full record fed into the system prompt
+    incident_description: str  # kept for back-compat with existing nodes
+    incident: IncidentContext  # full record fed into the system prompt
     preferred_mcp_servers: list[str]  # service-ordered allowed MCP server names
 
     # -- memory (Sprint 45) --------------------------------------------------
@@ -83,14 +83,14 @@ class IncidentState(TypedDict, total=False):
     memorized_id: str
 
     # -- node outputs --------------------------------------------------------
-    observations: str              # output of the observe node
-    diagnosis: str                 # output of the diagnose node
-    plan: list[dict[str, Any]]     # proposed actions from the plan node
+    observations: str  # output of the observe node
+    diagnosis: str  # output of the diagnose node
+    plan: list[dict[str, Any]]  # proposed actions from the plan node
     workflow_result: dict[str, Any]  # Skill-defined workflow execution summary
 
     # -- tier gate -----------------------------------------------------------
-    approved_actions: list[dict[str, Any]]   # actions that passed the gate
-    blocked_actions: list[dict[str, Any]]    # actions that were blocked
+    approved_actions: list[dict[str, Any]]  # actions that passed the gate
+    blocked_actions: list[dict[str, Any]]  # actions that were blocked
     approval_requests: list[dict[str, Any]]  # approval records created at Tier 1
 
     # -- Tier 1 interactive redirect loop ------------------------------------
@@ -107,13 +107,13 @@ class IncidentState(TypedDict, total=False):
     tool_calls: Annotated[list[ToolCallRecord], operator.add]
 
     # -- co-pilot chat -------------------------------------------------------
-    message_history: list[ChatMessage]          # full transcript seeded at start
-    pending_user_messages: list[ChatMessage]    # unread user messages for next node
+    message_history: list[ChatMessage]  # full transcript seeded at start
+    pending_user_messages: list[ChatMessage]  # unread user messages for next node
 
     # -- verification & summary ---------------------------------------------
-    verification: str              # output of the verify node
-    summary: str                   # output of the summarize node
+    verification: str  # output of the verify node
+    summary: str  # output of the summarize node
 
     # -- control flow --------------------------------------------------------
-    status: str                    # active | awaiting_approval | completed | failed | timed_out
+    status: str  # active | awaiting_approval | completed | failed | timed_out
     error: str | None

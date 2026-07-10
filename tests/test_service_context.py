@@ -31,7 +31,5 @@ def test_omits_empty_optional_fields():
 
 
 def test_filters_blank_mcp_names():
-    out = format_service_context(
-        name="svc", allowed_mcp_names=["", "  ", "real-mcp"]
-    )
+    out = format_service_context(name="svc", allowed_mcp_names=["", "  ", "real-mcp"])
     assert "- Allowed MCP servers: real-mcp" in out

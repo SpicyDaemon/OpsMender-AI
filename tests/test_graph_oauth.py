@@ -182,9 +182,7 @@ class TestVerifyGraphCredentials:
                 )
             if "/v1.0/organization" in str(request.url):
                 assert request.headers["Authorization"] == "Bearer t"
-                return httpx.Response(
-                    200, json={"value": [{"displayName": "Acme"}]}
-                )
+                return httpx.Response(200, json={"value": [{"displayName": "Acme"}]})
             return httpx.Response(404)
 
         factory = _factory_for(handler)

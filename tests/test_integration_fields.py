@@ -93,9 +93,7 @@ def test_every_catalog_kind_has_a_complete_per_auth_schema():
             assert placeholder
         seen_config: tuple[str, ...] | None = None
         for auth_type in definition.auth_types:
-            credential_fields, config_fields = field_schema(
-                definition.kind, auth_type
-            )
+            credential_fields, config_fields = field_schema(definition.kind, auth_type)
             assert all(field.group == "credentials" for field in credential_fields)
             assert all(field.group == "config" for field in config_fields)
             assert len({field.name for field in credential_fields}) == len(
@@ -118,9 +116,7 @@ def test_schema_field_names_are_read_by_their_adapter_paths():
             continue
         auth_keys, config_keys = _read_keys(SOURCE_FILES[definition.kind])
         for auth_type in definition.auth_types:
-            credential_fields, config_fields = field_schema(
-                definition.kind, auth_type
-            )
+            credential_fields, config_fields = field_schema(definition.kind, auth_type)
             assert {field.name for field in credential_fields} <= auth_keys, (
                 definition.kind,
                 auth_type,

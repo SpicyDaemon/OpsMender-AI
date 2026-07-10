@@ -36,9 +36,7 @@ class TestClaudeDiscovery:
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".claude.json").write_text(
-            json.dumps({"mcpServers": {}})
-        )
+        (tmp_path / ".claude.json").write_text(json.dumps({"mcpServers": {}}))
         found = claude_discover()
         assert (tmp_path / ".claude.json") in found
 

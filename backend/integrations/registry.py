@@ -437,9 +437,7 @@ _CONFIG_FIELDS: dict[str, tuple[IntegrationFieldSpec, ...]] = {
             default="2022-11-28",
         ),
     ),
-    "gitlab": (
-        _config("project", "Default project", placeholder="group/project"),
-    ),
+    "gitlab": (_config("project", "Default project", placeholder="group/project"),),
     "gitea": (
         _config("owner", "Default owner", placeholder="acme"),
         _config("repo", "Default repository", placeholder="service"),
@@ -604,7 +602,9 @@ _CONFIG_FIELDS: dict[str, tuple[IntegrationFieldSpec, ...]] = {
         ),
     ),
     "kubernetes": (
-        _config("namespace", "Default namespace", placeholder="default", default="default"),
+        _config(
+            "namespace", "Default namespace", placeholder="default", default="default"
+        ),
         _config(
             "verify_tls",
             "Verify TLS",

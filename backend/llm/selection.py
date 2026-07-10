@@ -34,9 +34,7 @@ async def choose_model_config_by_identity(
     matches = [
         model
         for model in await ModelConfigRepo.list_all(db, org_id)
-        if model.is_active
-        and model.provider == provider
-        and model.model_id == model_id
+        if model.is_active and model.provider == provider and model.model_id == model_id
     ]
     if not matches:
         return None, False

@@ -89,6 +89,7 @@ class EmailAdapter:
         except Exception:
             # Might be form-encoded
             from urllib.parse import parse_qs
+
             params = parse_qs(raw_body.decode("utf-8"))
             timestamp = params.get("timestamp", [None])[0]
             token = params.get("token", [None])[0]
@@ -103,7 +104,7 @@ class EmailAdapter:
         hmac_digest = hmac.new(
             api_key.encode("utf-8"),
             (str(timestamp) + str(token)).encode("utf-8"),
-            hashlib.sha256
+            hashlib.sha256,
         ).hexdigest()
 
         if not hmac.compare_digest(str(signature), hmac_digest):
@@ -117,13 +118,13 @@ class EmailAdapter:
         sender = payload.get("sender") or payload.get("from")
         text = payload.get("stripped-text") or payload.get("body-plain")
         subject = payload.get("subject", "")
-        
+
         if not sender or not text:
             return None
-            
+
         # Reconstruct message: Subject + Body
         full_text = f"Subject: {subject}\n\n{text}" if subject else text
-            
+
         return InboundMessage(
             chat_id=str(sender),
             platform_user_id=str(sender),
@@ -148,10 +149,10 @@ class EmailAdapter:
         api_key = credentials.get("mailgun_api_key")
         domain = credentials.get("mailgun_domain")
         from_email = credentials.get("from_email") or f"bot@{domain}"
-        
+
         if not api_key or not domain:
             return False, "Mailgun credentials (api_key, domain) not configured"
-            
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"https://api.mailgun.net/v3/{domain}/messages",
@@ -165,6 +166,9 @@ class EmailAdapter:
                 timeout=10.0,
             )
             if resp.status_code != 200:
-                return False, f"Mailgun API error: HTTP {resp.status_code} - {resp.text}"
-                
+                return (
+                    False,
+                    f"Mailgun API error: HTTP {resp.status_code} - {resp.text}",
+                )
+
             return True, None

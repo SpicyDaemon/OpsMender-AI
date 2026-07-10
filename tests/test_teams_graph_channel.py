@@ -49,9 +49,7 @@ class TestTeamsGraphDMChannel:
                         "token_type": "Bearer",
                     },
                 )
-            if "/chats/" in str(request.url) and request.url.path.endswith(
-                "/messages"
-            ):
+            if "/chats/" in str(request.url) and request.url.path.endswith("/messages"):
                 return httpx.Response(201, json={"id": "1"})
             return httpx.Response(404)
 
@@ -88,9 +86,7 @@ class TestTeamsGraphDMChannel:
                         "token_type": "Bearer",
                     },
                 )
-            return httpx.Response(
-                403, json={"error": {"code": "Forbidden"}}
-            )
+            return httpx.Response(403, json={"error": {"code": "Forbidden"}})
 
         ch = TeamsGraphDMChannel(
             tenant_id=TENANT,
@@ -98,9 +94,7 @@ class TestTeamsGraphDMChannel:
             client_secret=SECRET,
             http_client_factory=_factory_for(handler),
         )
-        result = await ch.send(
-            recipient=CHAT_ID, subject="x", body="y"
-        )
+        result = await ch.send(recipient=CHAT_ID, subject="x", body="y")
         assert result.status == "failed"
         assert "Forbidden" in (result.error or "")
 
@@ -120,9 +114,7 @@ class TestTeamsGraphDMChannel:
             client_secret=SECRET,
             http_client_factory=_factory_for(handler),
         )
-        result = await ch.send(
-            recipient=CHAT_ID, subject="x", body="y"
-        )
+        result = await ch.send(recipient=CHAT_ID, subject="x", body="y")
         assert result.status == "failed"
         assert "graph_oauth" in (result.error or "")
         assert "Bad secret" in (result.error or "")

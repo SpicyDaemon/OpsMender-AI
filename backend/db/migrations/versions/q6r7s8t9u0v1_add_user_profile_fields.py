@@ -20,9 +20,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("first_name", sa.String(length=100), nullable=True))
+    op.add_column(
+        "users", sa.Column("first_name", sa.String(length=100), nullable=True)
+    )
     op.add_column("users", sa.Column("last_name", sa.String(length=100), nullable=True))
-    op.add_column("users", sa.Column("avatar_color", sa.String(length=20), nullable=True))
+    op.add_column(
+        "users", sa.Column("avatar_color", sa.String(length=20), nullable=True)
+    )
 
 
 def downgrade() -> None:

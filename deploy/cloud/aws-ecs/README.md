@@ -12,7 +12,7 @@ Per locked decision **D-023**, the OpsMender framework ships zero platform-speci
 | `aws_ecs_task_definition` | Container spec (image, CPU/memory, env vars, secret references, health check, log driver). |
 | `aws_ecs_service` | Keeps `desired_count` tasks running, attached to the target group. |
 | `aws_lb` (Application LB) | Internet-facing (or internal) entry point on `:80` (or `:443` when TLS is configured). |
-| `aws_lb_target_group` | Health-checks `/health` against each Fargate task on `:8000`. |
+| `aws_lb_target_group` | Readiness-checks `/health/ready` against each Fargate task on `:8000`. |
 | `aws_lb_listener` × 1–2 | Plain `:80` listener, plus an HTTPS `:443` listener when `acm_certificate_arn` is set. HTTP → HTTPS redirect lands automatically when TLS is configured. |
 | `aws_security_group` × 2 | One for the ALB (internet ingress on 80/443), one for the tasks (ALB-only ingress on 8000). |
 | `aws_iam_role.execution` | Pulled by Fargate to fetch the image, write logs, and read every referenced secret. |
@@ -48,15 +48,15 @@ terraform plan -out=opsmender.tfplan
 terraform apply opsmender.tfplan
 
 # 4. Wait for the service to stabilize (~2 min — first task pulls the image,
-#    runs Alembic migrations, then passes the /health target-group check).
+#    runs Alembic migrations, then passes the /health/ready target-group check).
 aws ecs wait services-stable \
   --cluster $(terraform output -raw cluster_name) \
   --services $(terraform output -raw service_name)
 
 # 5. Hit the dashboard. The ALB DNS name comes out of Terraform.
 ALB=$(terraform output -raw alb_dns_name)
-curl -sS http://$ALB/health
-# → {"status":"ok"}
+curl -sS http://$ALB/health/ready
+# -> {"status":"ready","database":"ok","migrations":"current"}
 
 open http://$ALB
 # Click Register; the first user becomes admin.
@@ -153,7 +153,7 @@ Terraform removes the cluster, service, ALB, target group, log group, IAM roles,
         │  ┌────────────────────┐                                 │
         │  │  ALB (public SGs)  │  :80 (and :443 when TLS set)    │
         │  └─────────┬──────────┘                                 │
-        │            │ healthcheck /health                        │
+        │            │ readiness /health/ready                    │
         │            ▼                                            │
         │  ┌────────────────────────────────────────────┐         │
         │  │  Fargate tasks (private subnets, NAT egress) │       │

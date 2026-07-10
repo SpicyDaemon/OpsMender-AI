@@ -130,17 +130,23 @@ def test_allow_generic_exposes_explicit_policy():
 
 
 def test_session_tier_resolution_priority_and_fallback():
-    assert resolve_session_tier(
-        requested_tier=0,
-        service_tier=1,
-        skill_default_tier=2,
-        org_default_tier=2,
-    ) == 0
-    assert resolve_session_tier(
-        service_tier=1,
-        skill_default_tier=0,
-        org_default_tier=2,
-    ) == 1
+    assert (
+        resolve_session_tier(
+            requested_tier=0,
+            service_tier=1,
+            skill_default_tier=2,
+            org_default_tier=2,
+        )
+        == 0
+    )
+    assert (
+        resolve_session_tier(
+            service_tier=1,
+            skill_default_tier=0,
+            org_default_tier=2,
+        )
+        == 1
+    )
     assert resolve_session_tier(skill_default_tier=0, org_default_tier=1) == 0
     assert resolve_session_tier(org_default_tier=1) == 1
     assert resolve_session_tier() == 2

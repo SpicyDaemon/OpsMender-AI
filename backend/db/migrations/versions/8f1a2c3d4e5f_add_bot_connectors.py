@@ -32,7 +32,9 @@ def upgrade() -> None:
             nullable=False,
             server_default="not_configured",
         ),
-        sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "is_enabled", sa.Boolean(), nullable=False, server_default=sa.false()
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

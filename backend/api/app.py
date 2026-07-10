@@ -17,7 +17,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from backend.api.health import readiness_status
 from backend.config_loader import AppConfig, check_production_safety
 from backend.logging_config import configure_logging
 from backend.api.deps import set_mcp_pool, set_session_factory
@@ -62,6 +64,7 @@ async def _lifespan(app: FastAPI):
     factory = get_session_factory(engine)
     set_session_factory(factory)
     app.state.database_url = database_url
+    app.state.engine = engine
     app.state.session_factory = factory
     deployment = config.deployment
     run_bootstrap = deployment.mode == "monolith" or deployment.service_role == "api"
@@ -106,10 +109,10 @@ async def _lifespan(app: FastAPI):
 
         await bootstrap_admin(factory, config.people)
 
-    # Bootstrap default model config from env vars (OPSMENDER_MODEL_PROVIDER
-    # + OPSMENDER_MODEL_ID + provider-specific base_url) so an operator can
-    # bring up a working agent loop on a fresh DB without clicking through
-    # /dashboard/models first. No-op if any model_configs row already exists.
+        # Bootstrap default model config from env vars (OPSMENDER_MODEL_PROVIDER
+        # + OPSMENDER_MODEL_ID + provider-specific base_url) so an operator can
+        # bring up a working agent loop on a fresh DB without clicking through
+        # /dashboard/models first. No-op if any model_configs row already exists.
         from backend.llm.bootstrap import bootstrap_model_config
 
         await bootstrap_model_config(factory, config.providers)
@@ -120,9 +123,7 @@ async def _lifespan(app: FastAPI):
     if run_schedulers:
         from backend.services.incident_events import dispatch_incident_created
 
-        async def incident_created_callback(
-            org_id, incident_id, auto_start_tier
-        ):
+        async def incident_created_callback(org_id, incident_id, auto_start_tier):
             await dispatch_incident_created(
                 app,
                 org_id=org_id,
@@ -238,7 +239,9 @@ async def _lifespan(app: FastAPI):
 
         worker_bus = await start_incident_created_subscriber(app, database_url)
 
+    app.state.startup_complete = True
     yield
+    app.state.startup_complete = False
 
     if worker_bus is not None:
         worker_conn, unsubscribe = worker_bus
@@ -264,6 +267,7 @@ async def _lifespan(app: FastAPI):
     for stop in reversed(scheduler_stoppers):
         await stop()
     await engine.dispose()
+    app.state.engine = None
 
 
 def create_app(config: AppConfig | None = None) -> FastAPI:
@@ -280,9 +284,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     # attack surface, so they are disabled by default in production. Operators
     # can opt back in with OPSMENDER_ENABLE_API_DOCS=true; development keeps
     # them on.
-    docs_enabled = config.deployment.environment == "development" or (
-        os.environ.get("OPSMENDER_ENABLE_API_DOCS", "").strip().lower()
-        in {"1", "true", "yes", "on"}
+    docs_enabled = (
+        config.deployment.environment == "development" or config.app.api_docs_enabled
     )
     app = FastAPI(
         title=config.app.name,
@@ -294,6 +297,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         openapi_url="/openapi.json" if docs_enabled else None,
     )
     app.state.config = config
+    app.state.startup_complete = False
+    app.state.engine = None
     app.state.session_factory = None
     app.state.mcp_pool = MCPServerPool(None, env_fallback=config.mcp_servers)
     app.state.mcp_json_syncer = MCPJSONSyncer(None)
@@ -448,10 +453,16 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     for selected_router in selected_routers:
         app.include_router(selected_router)
 
-    # -- Health check -------------------------------------------------------
+    # -- Health checks ------------------------------------------------------
     @app.get("/health", tags=["system"])
-    async def health():
+    @app.get("/health/live", tags=["system"])
+    async def health_live():
         return {"status": "ok"}
+
+    @app.get("/health/ready", tags=["system"])
+    async def health_ready():
+        content, status_code = await readiness_status(app)
+        return JSONResponse(content=content, status_code=status_code)
 
     # -- Frontend (static export) — MUST be registered last so API routes win
     if deployment.mode == "monolith" or deployment.service_role == "api":

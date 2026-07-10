@@ -131,9 +131,7 @@ async def list_integration_kinds(
                         description=capability.description,
                         classification=capability.classification,
                         mutating=capability.mutating,
-                        always_requires_approval=(
-                            capability.always_requires_approval
-                        ),
+                        always_requires_approval=(capability.always_requires_approval),
                     )
                     for capability in (() if adapter is None else adapter.capabilities)
                 ],
@@ -144,8 +142,7 @@ async def list_integration_kinds(
                     ).items()
                 },
                 config_fields=[
-                    _field_response(field)
-                    for field in config_fields(definition.kind)
+                    _field_response(field) for field in config_fields(definition.kind)
                 ],
             )
         )

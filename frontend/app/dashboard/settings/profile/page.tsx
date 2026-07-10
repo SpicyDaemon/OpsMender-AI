@@ -354,7 +354,7 @@ export default function ProfileSettingsPage() {
           <div>
             <h2 className="text-sm font-semibold text-fg-primary">Notification preferences</h2>
             <p className="mt-0.5 text-sm text-fg-secondary">
-              Choose how you're paged and which channels you receive.
+              Choose how you are paged and which channels you receive.
             </p>
           </div>
           <Link

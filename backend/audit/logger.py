@@ -29,6 +29,7 @@ from typing import Any, Dict, Optional
 # Entry type enum
 # ---------------------------------------------------------------------------
 
+
 class AuditEntryType(str, enum.Enum):
     """Discriminator for audit log entries."""
 
@@ -45,6 +46,7 @@ class AuditEntryType(str, enum.Enum):
 # ---------------------------------------------------------------------------
 # AuditEntry dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclasses.dataclass
 class AuditEntry:
@@ -76,6 +78,7 @@ class AuditEntry:
 # ---------------------------------------------------------------------------
 # AuditLogger
 # ---------------------------------------------------------------------------
+
 
 class AuditLogger:
     """Append-only JSONL audit logger.

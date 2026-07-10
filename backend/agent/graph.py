@@ -241,9 +241,7 @@ def build_graph(
         )
 
     if memory_factory is not None and org_id is not None:
-        recall_fn = _build_recall(
-            memory_factory, org_id=org_id, service_id=service_id
-        )
+        recall_fn = _build_recall(memory_factory, org_id=org_id, service_id=service_id)
     else:
         recall_fn = recall
 
@@ -267,14 +265,26 @@ def build_graph(
     if tier == 0 and tier0_time_config is not None:
         secs = tier0_time_config.max_node_seconds
         recall_fn = wrap_node_with_timeout(recall_fn, seconds=secs, node_name="recall")
-        observe_fn = wrap_node_with_timeout(observe_fn, seconds=secs, node_name="observe")
-        diagnose_fn = wrap_node_with_timeout(diagnose_fn, seconds=secs, node_name="diagnose")
+        observe_fn = wrap_node_with_timeout(
+            observe_fn, seconds=secs, node_name="observe"
+        )
+        diagnose_fn = wrap_node_with_timeout(
+            diagnose_fn, seconds=secs, node_name="diagnose"
+        )
         plan_fn = wrap_node_with_timeout(plan_fn, seconds=secs, node_name="plan")
-        tier_gate_fn = wrap_node_with_timeout(tier_gate_fn, seconds=secs, node_name="tier_gate")
-        execute_fn = wrap_node_with_timeout(execute_fn, seconds=secs, node_name="execute")
+        tier_gate_fn = wrap_node_with_timeout(
+            tier_gate_fn, seconds=secs, node_name="tier_gate"
+        )
+        execute_fn = wrap_node_with_timeout(
+            execute_fn, seconds=secs, node_name="execute"
+        )
         verify_fn = wrap_node_with_timeout(verify_fn, seconds=secs, node_name="verify")
-        summarize_fn = wrap_node_with_timeout(summarize_fn, seconds=secs, node_name="summarize")
-        remember_fn = wrap_node_with_timeout(remember_fn, seconds=secs, node_name="remember")
+        summarize_fn = wrap_node_with_timeout(
+            summarize_fn, seconds=secs, node_name="summarize"
+        )
+        remember_fn = wrap_node_with_timeout(
+            remember_fn, seconds=secs, node_name="remember"
+        )
 
     if node_event_publisher is not None:
         recall_fn = _wrap_node_with_events(

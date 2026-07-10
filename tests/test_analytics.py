@@ -13,7 +13,15 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_session_factory
 from backend.config_loader import set_env_path
-from backend.db.models import Base, Incident, IngestLog, IngestToken, Organization, Service, Team
+from backend.db.models import (
+    Base,
+    Incident,
+    IngestLog,
+    IngestToken,
+    Organization,
+    Service,
+    Team,
+)
 from backend.reports.analytics import build_response_report
 
 ORG_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -314,7 +322,10 @@ async def test_analytics_csv_matches_json_metrics(client, app, admin_headers):
     assert noise_csv.status_code == 200
     noise_metrics = _csv_metric_rows(noise_csv.text)
     assert int(noise_metrics["inbound_alerts"]) == noise_json["inbound_alerts"]
-    assert float(noise_metrics["noise_reduction_ratio"]) == noise_json["noise_reduction_ratio"]
+    assert (
+        float(noise_metrics["noise_reduction_ratio"])
+        == noise_json["noise_reduction_ratio"]
+    )
 
     response_json = (
         await client.get(f"/api/v1/analytics/response?{params}", headers=admin_headers)
@@ -325,11 +336,19 @@ async def test_analytics_csv_matches_json_metrics(client, app, admin_headers):
     )
     assert response_csv.status_code == 200
     response_metrics = _csv_metric_rows(response_csv.text)
-    assert int(response_metrics["overall.incident_count"]) == response_json["overall"]["incident_count"]
-    assert float(response_metrics["overall.mtta_seconds"]) == response_json["overall"]["mtta_seconds"]
+    assert (
+        int(response_metrics["overall.incident_count"])
+        == response_json["overall"]["incident_count"]
+    )
+    assert (
+        float(response_metrics["overall.mtta_seconds"])
+        == response_json["overall"]["mtta_seconds"]
+    )
 
 
-async def test_analytics_range_and_role_guards(client, app, admin_headers, viewer_headers):
+async def test_analytics_range_and_role_guards(
+    client, app, admin_headers, viewer_headers
+):
     await _seed_known_data(app)
     invalid = await client.get(
         "/api/v1/analytics/noise?from=2026-07-20T00:00:00Z&to=2026-07-01T00:00:00Z",

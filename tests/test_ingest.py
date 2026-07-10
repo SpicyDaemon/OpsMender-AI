@@ -43,7 +43,6 @@ from backend.ingest.service import generate_token, hash_token
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
 @pytest.fixture
 async def app(tmp_path):
     db_path = tmp_path / "ingest-test.db"
@@ -1026,8 +1025,12 @@ class TestAlertNoiseIntelligence:
 
         assert first.json()["dedup_action"] == "created"
         assert second.json()["dedup_action"] == "created"
-        first_incidents, _ = await _service_incidents_and_pages(app, first_service["id"])
-        second_incidents, _ = await _service_incidents_and_pages(app, second_service["id"])
+        first_incidents, _ = await _service_incidents_and_pages(
+            app, first_service["id"]
+        )
+        second_incidents, _ = await _service_incidents_and_pages(
+            app, second_service["id"]
+        )
         assert len(first_incidents) == 1
         assert len(second_incidents) == 1
         assert first.json()["incident_id"] != second.json()["incident_id"]

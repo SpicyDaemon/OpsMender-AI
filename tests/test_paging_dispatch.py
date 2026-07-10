@@ -276,9 +276,7 @@ class TestDispatchPipeline:
     async def test_routes_to_user_preferred_channels(self, session_factory):
         user = await _make_user(session_factory, username="alice")
         inc = await _make_incident(session_factory, priority="P0")
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
 
         async with session_factory() as db:
             await UserNotificationPrefRepo.upsert(
@@ -321,17 +319,13 @@ class TestDispatchPipeline:
         assert sms.calls and sms.calls[0][0] == "+15551234"
 
         async with session_factory() as db:
-            rows = await IncidentPageRepo.list_for_incident(
-                db, TEST_ORG_ID, inc.id
-            )
+            rows = await IncidentPageRepo.list_for_incident(db, TEST_ORG_ID, inc.id)
             channels_seen = {r.channel for r in rows}
             assert "slack_dm" in channels_seen and "sms" in channels_seen
             # Original "recorded" row preserved as audit anchor.
             assert "recorded" in channels_seen
 
-    async def test_staged_routing_delegates_to_escalation_engine(
-        self, session_factory
-    ):
+    async def test_staged_routing_delegates_to_escalation_engine(self, session_factory):
         """New stage shape routes via the notification-escalation engine:
         only stage 0 fires immediately and a NotificationEscalation row is
         created with the next stage scheduled."""
@@ -339,9 +333,7 @@ class TestDispatchPipeline:
 
         user = await _make_user(session_factory, username="carol")
         inc = await _make_incident(session_factory, priority="P0")
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
         async with session_factory() as db:
             await UserNotificationPrefRepo.upsert(
                 db,
@@ -388,12 +380,8 @@ class TestDispatchPipeline:
 
     async def test_maintenance_window_suppresses_page(self, session_factory):
         user = await _make_user(session_factory, username="bob")
-        inc = await _make_incident(
-            session_factory, priority="P1", response_mode="page"
-        )
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        inc = await _make_incident(session_factory, priority="P1", response_mode="page")
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
         now = datetime.now(timezone.utc)
         async with session_factory() as db:
             await MaintenanceWindowRepo.create(
@@ -439,9 +427,7 @@ class TestDispatchPipeline:
         inc = await _make_incident(
             session_factory, priority="P0", response_mode="escalate_immediate"
         )
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
         now = datetime.now(timezone.utc)
         async with session_factory() as db:
             await MaintenanceWindowRepo.create(
@@ -486,9 +472,7 @@ class TestDispatchPipeline:
     async def test_dedup_skips_second_delivery_in_window(self, session_factory):
         user = await _make_user(session_factory, username="dave")
         inc = await _make_incident(session_factory, priority="P1")
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
         async with session_factory() as db:
             await UserNotificationPrefRepo.upsert(
                 db,
@@ -543,9 +527,7 @@ class TestDispatchPipeline:
         # Set org dedup window to 1 minute; backdate the first send to 2 minutes ago.
         user = await _make_user(session_factory, username="erin")
         inc = await _make_incident(session_factory, priority="P1")
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
         async with session_factory() as db:
             await OrganizationRepo.update(
                 db, TEST_ORG_ID, notification_dedup_window_minutes=1
@@ -591,9 +573,7 @@ class TestDispatchPipeline:
     async def test_quiet_hours_blocks_below_threshold(self, session_factory):
         user = await _make_user(session_factory, username="frank")
         inc = await _make_incident(session_factory, priority="P3")
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
         at = datetime(2026, 5, 15, 23, 30, tzinfo=timezone.utc)
         async with session_factory() as db:
             await UserNotificationPrefRepo.upsert(
@@ -637,9 +617,7 @@ class TestDispatchPipeline:
     async def test_unconfigured_channel_records_skipped(self, session_factory):
         user = await _make_user(session_factory, username="gina")
         inc = await _make_incident(session_factory, priority="P1")
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
         async with session_factory() as db:
             await UserNotificationPrefRepo.upsert(
                 db,
@@ -696,9 +674,7 @@ class TestSlackDMChannel:
         channel = SlackDMChannel(
             bot_token="xoxb-test", http_client_factory=_mock_factory(handler)
         )
-        attempt = await channel.send(
-            recipient="U1", subject="boom", body="oh no"
-        )
+        attempt = await channel.send(recipient="U1", subject="boom", body="oh no")
         assert attempt.status == "sent"
         assert captured["url"] == "https://slack.com/api/chat.postMessage"
         assert captured["auth"] == "Bearer xoxb-test"
@@ -774,9 +750,7 @@ class TestSMSChannel:
 
     async def test_failed_on_400(self):
         def handler(request):
-            return httpx.Response(
-                400, json={"message": "Invalid 'To' Phone Number"}
-            )
+            return httpx.Response(400, json={"message": "Invalid 'To' Phone Number"})
 
         channel = SMSChannel(
             account_sid="ACtest",
@@ -850,6 +824,7 @@ class TestEmailChannel:
         assert attempt.status == "failed"
         assert "boom" in (attempt.error or "")
 
+
 # ---------------------------------------------------------------------------
 # End-to-end: dispatch through a real SlackDMChannel + MockTransport
 # ---------------------------------------------------------------------------
@@ -862,9 +837,7 @@ class TestDispatchEndToEnd:
         inc = await _make_incident(
             session_factory, priority="P0", title="Database is down"
         )
-        await _record_page(
-            session_factory, incident_id=inc.id, user_id=user.id
-        )
+        await _record_page(session_factory, incident_id=inc.id, user_id=user.id)
 
         async with session_factory() as db:
             await UserNotificationPrefRepo.upsert(
@@ -921,8 +894,6 @@ class TestDispatchEndToEnd:
 
         # And the dispatcher recorded a `slack_dm` row alongside the audit anchor.
         async with session_factory() as db:
-            rows = await IncidentPageRepo.list_for_incident(
-                db, TEST_ORG_ID, inc.id
-            )
+            rows = await IncidentPageRepo.list_for_incident(db, TEST_ORG_ID, inc.id)
             statuses = {(r.channel, r.delivery_status) for r in rows}
             assert ("slack_dm", "sent") in statuses

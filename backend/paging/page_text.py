@@ -67,7 +67,9 @@ def format_voice_summary(
     if org_name:
         parts.append(f"{org_name}.")
     severity = _PRIORITY_WORDS.get((incident.priority or "").upper())
-    parts.append(f"{severity.capitalize()} severity incident" if severity else "Incident")
+    parts.append(
+        f"{severity.capitalize()} severity incident" if severity else "Incident"
+    )
     if service_name:
         parts.append(f"on {service_name}")
     title = (incident.title or "untitled").strip().rstrip(".")

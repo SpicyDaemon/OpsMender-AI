@@ -64,9 +64,11 @@ def build_channel_factory(
     smtp_user = src.get("OPSMENDER_SMTP_USER") or None
     smtp_password = src.get("OPSMENDER_SMTP_PASSWORD") or None
     smtp_from = src.get("OPSMENDER_SMTP_FROM") or "opsmender@localhost"
-    smtp_tls = _truthy(src.get("OPSMENDER_SMTP_USE_TLS")) if src.get(
-        "OPSMENDER_SMTP_USE_TLS"
-    ) is not None else True
+    smtp_tls = (
+        _truthy(src.get("OPSMENDER_SMTP_USE_TLS"))
+        if src.get("OPSMENDER_SMTP_USE_TLS") is not None
+        else True
+    )
 
     twilio_sid = src.get("OPSMENDER_TWILIO_ACCOUNT_SID") or None
     twilio_token = src.get("OPSMENDER_TWILIO_AUTH_TOKEN") or None
@@ -74,9 +76,7 @@ def build_channel_factory(
     # Voice Call medium (provider-agnostic; Twilio Programmable Voice today).
     # Falls back to the SMS-capable Twilio number when no dedicated voice number
     # is set. Voice is offered only when a voice-capable provider is configured.
-    twilio_voice_from = (
-        src.get("OPSMENDER_TWILIO_VOICE_FROM_NUMBER") or twilio_from
-    )
+    twilio_voice_from = src.get("OPSMENDER_TWILIO_VOICE_FROM_NUMBER") or twilio_from
     twilio_voice_status_cb = (
         src.get("OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL") or None
     )

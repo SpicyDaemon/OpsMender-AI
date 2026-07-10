@@ -57,13 +57,9 @@ async def test_connector_auth_is_encrypted_at_rest(integration_factory):
 
     async with factory() as db:
         row = await IntegrationConnectorRepo.get_by_id(db, org_id, connector_id)
-        assert IntegrationConnectorRepo.decrypt_auth(row) == {
-            "token": "plain-secret"
-        }
+        assert IntegrationConnectorRepo.decrypt_auth(row) == {"token": "plain-secret"}
         assert (
-            await IntegrationConnectorRepo.get_by_id(
-                db, uuid.uuid4(), connector_id
-            )
+            await IntegrationConnectorRepo.get_by_id(db, uuid.uuid4(), connector_id)
             is None
         )
 
@@ -156,9 +152,7 @@ async def test_internal_tool_runtime_returns_mcp_shape_and_updates_status(
 
     runtime = await IntegrationToolRuntime.create(factory, org_id)
     assert len(runtime.descriptors) == 1
-    result = await runtime.call_tool(
-        runtime, runtime.descriptors[0].name, {}
-    )
+    result = await runtime.call_tool(runtime, runtime.descriptors[0].name, {})
     assert result.isError is False
     payload = json.loads(result.content[0].text)
     assert payload["ok"] is True

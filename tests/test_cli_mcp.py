@@ -95,11 +95,7 @@ class TestReload:
         path = tmp_path / "mcp.json"
         path.write_text(
             json.dumps(
-                {
-                    "mcpServers": {
-                        "newbie": {"type": "stdio", "command": "uptime"}
-                    }
-                }
+                {"mcpServers": {"newbie": {"type": "stdio", "command": "uptime"}}}
             )
         )
         cfg = _make_cfg(tmp_path, seeded_db)

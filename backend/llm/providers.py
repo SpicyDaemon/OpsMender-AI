@@ -187,9 +187,7 @@ class OpenAIProvider:
         # Cap each call and skip retries so a bad key or slow network
         # fails fast instead of stalling on the SDK's default 10 min
         # timeout x 2 retries.
-        models = self._client.with_options(
-            timeout=2.0, max_retries=0
-        ).models.list()
+        models = self._client.with_options(timeout=2.0, max_retries=0).models.list()
         data = getattr(models, "data", models)
         ids: list[str] = []
         for item in data:
@@ -275,9 +273,7 @@ class OpenAICompatibleProvider:
         # /v1/models, fall back to the configured model so manual entry
         # keeps working.
         try:
-            models = self._client.with_options(
-                timeout=2.0, max_retries=0
-            ).models.list()
+            models = self._client.with_options(timeout=2.0, max_retries=0).models.list()
         except Exception:
             return [self.model]
         data = getattr(models, "data", models)
@@ -339,11 +335,7 @@ class BedrockProvider:
             ],
             inferenceConfig={"maxTokens": self.max_tokens},
         )
-        content = (
-            response.get("output", {})
-            .get("message", {})
-            .get("content", [])
-        )
+        content = response.get("output", {}).get("message", {}).get("content", [])
         text_parts = [
             block.get("text", "")
             for block in content
@@ -355,9 +347,7 @@ class BedrockProvider:
         yield self.complete(prompt)
 
     def list_models(self) -> list[str]:
-        response = self._control_client.list_foundation_models(
-            byOutputModality="TEXT"
-        )
+        response = self._control_client.list_foundation_models(byOutputModality="TEXT")
         ids: list[str] = []
         for summary in response.get("modelSummaries", []):
             if not isinstance(summary, dict):
@@ -419,13 +409,17 @@ class VertexAIProvider:
                 model_id = parts[7]
                 return publisher, model_id
             except IndexError as exc:
-                raise ValueError(f"Unsupported Vertex AI model path: {self.model}") from exc
+                raise ValueError(
+                    f"Unsupported Vertex AI model path: {self.model}"
+                ) from exc
         if self.model.startswith("publishers/"):
             parts = self.model.split("/")
             try:
                 return parts[1], parts[3]
             except IndexError as exc:
-                raise ValueError(f"Unsupported Vertex AI model path: {self.model}") from exc
+                raise ValueError(
+                    f"Unsupported Vertex AI model path: {self.model}"
+                ) from exc
         if "/" in self.model:
             publisher, model_id = self.model.split("/", 1)
             return publisher, model_id
@@ -442,9 +436,7 @@ class VertexAIProvider:
         if self.model.startswith("projects/"):
             return self.model
         if self.model.startswith("publishers/"):
-            return (
-                f"projects/{self.project}/locations/{self.location}/{self.model}"
-            )
+            return f"projects/{self.project}/locations/{self.location}/{self.model}"
         publisher, model_id = self._publisher_and_model()
         return (
             "projects/"
@@ -473,11 +465,7 @@ class VertexAIProvider:
         candidates = payload.get("candidates", [])
         if not candidates:
             return ""
-        parts = (
-            candidates[0]
-            .get("content", {})
-            .get("parts", [])
-        )
+        parts = candidates[0].get("content", {}).get("parts", [])
         text_parts = [
             part.get("text", "")
             for part in parts
@@ -520,7 +508,9 @@ class OllamaProvider:
 
     model: str = "llama3.2"
     base_url: str = dataclasses.field(
-        default_factory=lambda: os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        default_factory=lambda: os.environ.get(
+            "OLLAMA_BASE_URL", "http://localhost:11434"
+        )
     )
     max_tokens: int = 4096
 
@@ -543,7 +533,9 @@ class OllamaProvider:
     def stream(self, prompt: str) -> Iterator[str]:
         request = urllib.request.Request(
             f"{self.base_url}/api/generate",
-            data=json.dumps(self._generate_payload(prompt, stream=True)).encode("utf-8"),
+            data=json.dumps(self._generate_payload(prompt, stream=True)).encode(
+                "utf-8"
+            ),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -585,7 +577,9 @@ class OllamaProvider:
     def _post_generate(self, *, prompt: str, stream: bool) -> dict[str, Any]:
         request = urllib.request.Request(
             f"{self.base_url}/api/generate",
-            data=json.dumps(self._generate_payload(prompt, stream=stream)).encode("utf-8"),
+            data=json.dumps(self._generate_payload(prompt, stream=stream)).encode(
+                "utf-8"
+            ),
             headers={"Content-Type": "application/json"},
             method="POST",
         )

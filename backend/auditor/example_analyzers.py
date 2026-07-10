@@ -64,9 +64,7 @@ class KubeScoreAnalyzer(Analyzer):
     async def run(self, ctx: AnalyzerContext) -> list[FindingDraft]:
         tool_name = ctx.params.get("tool_name", "kube_score")
         namespace = ctx.params.get("namespace", "default")
-        call = make_call(
-            ctx, tool_name=tool_name, params={"namespace": namespace}
-        )
+        call = make_call(ctx, tool_name=tool_name, params={"namespace": namespace})
         raw_text = await execute_call(ctx, call)
         return self.parse(raw_text)
 
@@ -87,11 +85,7 @@ class KubeScoreAnalyzer(Analyzer):
             if not isinstance(item, dict):
                 continue
             meta = item.get("object_meta") or {}
-            kind = (
-                item.get("type_meta", {}).get("kind")
-                or item.get("kind")
-                or "Object"
-            )
+            kind = item.get("type_meta", {}).get("kind") or item.get("kind") or "Object"
             resource = f"{kind}/{meta.get('name', '?')}"
             ns = meta.get("namespace")
             if ns:
@@ -106,7 +100,9 @@ class KubeScoreAnalyzer(Analyzer):
                 comments = check.get("comments") or []
                 comment_text = (
                     "; ".join(
-                        f"{c.get('summary', '')}: {c.get('description', '')}".strip(": ")
+                        f"{c.get('summary', '')}: {c.get('description', '')}".strip(
+                            ": "
+                        )
                         for c in comments
                         if isinstance(c, dict)
                     )
@@ -154,9 +150,7 @@ class IstioctlAnalyzeAnalyzer(Analyzer):
     async def run(self, ctx: AnalyzerContext) -> list[FindingDraft]:
         tool_name = ctx.params.get("tool_name", "istioctl_analyze")
         namespace = ctx.params.get("namespace", "default")
-        call = make_call(
-            ctx, tool_name=tool_name, params={"namespace": namespace}
-        )
+        call = make_call(ctx, tool_name=tool_name, params={"namespace": namespace})
         raw_text = await execute_call(ctx, call)
         return self.parse(raw_text, namespace=namespace)
 

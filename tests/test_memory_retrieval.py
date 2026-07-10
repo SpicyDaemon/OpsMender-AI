@@ -105,9 +105,7 @@ async def _seed_service_and_session(
 class TestDeriveHelpers:
     def test_derive_query_strips_stop_words_and_short_tokens(self):
         assert (
-            derive_query(
-                {"title": "The pod is OOMKilled in production"}
-            )
+            derive_query({"title": "The pod is OOMKilled in production"})
             == "pod oomkilled production"
         )
 
@@ -194,9 +192,7 @@ class TestRecallForSession:
 
         # Side effects: log row + last_used_at touched.
         async with factory() as db:
-            logs = await IncidentMemoryRecallLogRepo.list_for_session(
-                db, session.id
-            )
+            logs = await IncidentMemoryRecallLogRepo.list_for_session(db, session.id)
             assert len(logs) == 1
             assert logs[0].memory_id == mem.id
             refreshed = await IncidentMemoryRepo.get_by_id(db, mem.id, ORG_A)
@@ -247,9 +243,7 @@ class TestRecallNode:
     async def test_stub_recall_is_noop(self):
         assert recall_stub({"session_id": str(uuid.uuid4())}) == {}
 
-    async def test_built_recall_returns_context_when_memory_exists(
-        self, factory
-    ):
+    async def test_built_recall_returns_context_when_memory_exists(self, factory):
         service, session, incident = await _seed_service_and_session(factory)
         async with factory() as db:
             await IncidentMemoryRepo.create(
@@ -262,9 +256,7 @@ class TestRecallNode:
             )
             await db.commit()
 
-        node = _build_recall(
-            factory, org_id=ORG_A, service_id=service.id
-        )
+        node = _build_recall(factory, org_id=ORG_A, service_id=service.id)
         out = await node(
             {
                 "session_id": str(session.id),
@@ -285,9 +277,7 @@ class TestRecallNode:
         out = await node({})
         assert out == {}
 
-    async def test_built_recall_returns_empty_when_session_id_invalid(
-        self, factory
-    ):
+    async def test_built_recall_returns_empty_when_session_id_invalid(self, factory):
         node = _build_recall(factory, org_id=ORG_A, service_id=None)
         out = await node({"session_id": "not-a-uuid"})
         assert out == {}
@@ -312,9 +302,7 @@ class TestWorkflowOrder:
         assert DEFAULT_WORKFLOW_NODE_ORDER[0] == "recall"
 
     def test_validate_allows_recall(self):
-        order = validate_workflow_node_order(
-            ["recall", "observe", "summarize"]
-        )
+        order = validate_workflow_node_order(["recall", "observe", "summarize"])
         assert order == ["recall", "observe", "summarize"]
 
     def test_validate_allows_orders_without_recall(self):

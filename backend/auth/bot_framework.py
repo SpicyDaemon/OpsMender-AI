@@ -86,19 +86,13 @@ async def _fetch_jwks(
             try:
                 cfg = cfg_resp.json()
             except ValueError as exc:
-                raise BotFrameworkAuthError(
-                    "openid config not JSON"
-                ) from exc
+                raise BotFrameworkAuthError("openid config not JSON") from exc
             jwks_uri = cfg.get("jwks_uri")
             if not jwks_uri:
-                raise BotFrameworkAuthError(
-                    "openid config missing jwks_uri"
-                )
+                raise BotFrameworkAuthError("openid config missing jwks_uri")
             jwks_resp = await client.get(jwks_uri)
             if jwks_resp.status_code != 200:
-                raise BotFrameworkAuthError(
-                    f"jwks http {jwks_resp.status_code}"
-                )
+                raise BotFrameworkAuthError(f"jwks http {jwks_resp.status_code}")
             try:
                 keys = jwks_resp.json()
             except ValueError as exc:

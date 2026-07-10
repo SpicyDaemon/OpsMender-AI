@@ -43,7 +43,8 @@ from backend.approvals import ApprovalService
 from backend.audit.logger import AuditLogger
 from backend.db.models import Base
 from backend.db.repos import ApprovalRequestRepo, SessionRepo
-from backend.skills.parser import OperationClassification, SkillDefinition
+from backend.skills.parser import SkillDefinition
+from tests.skill_policy_helpers import explicit_operation
 
 
 # ---------------------------------------------------------------------------
@@ -71,9 +72,9 @@ def _skill_def() -> SkillDefinition:
         version="1",
         environment="test",
         operations=[
-            OperationClassification(tool="get_pods", classification="safe"),
-            OperationClassification(tool="scale_deployment", classification="caution"),
-            OperationClassification(tool="delete_pod", classification="destructive"),
+            explicit_operation("get_pods", "safe"),
+            explicit_operation("scale_deployment", "caution"),
+            explicit_operation("delete_pod", "destructive"),
         ],
     )
 
@@ -158,6 +159,7 @@ class TestGraphStructure:
     def test_validate_workflow_node_order_rejects_execute_without_gate(self):
         with pytest.raises(ValueError):
             validate_workflow_node_order(["plan", "execute", "summarize"])
+
 
 # ---------------------------------------------------------------------------
 # Stub node tests (no LLM — backward compatibility)
@@ -248,6 +250,7 @@ class TestObserveWithLLM:
         node = _build_observe(llm)
         node(_base_state())
         assert "SRE" in llm.calls[0] or "Site Reliability" in llm.calls[0]
+
 
 class TestDiagnoseWithLLM:
     def test_sends_observations_in_prompt(self):
@@ -531,7 +534,9 @@ class TestTierGate:
             await db.commit()
             await db.refresh(session)
 
-        service = ApprovalService(factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01)
+        service = ApprovalService(
+            factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01
+        )
         gate = _build_tier_gate(
             tier=1, skill_def=_skill_def(), approval_service=service
         )
@@ -571,8 +576,12 @@ class TestTierGate:
             await db.commit()
             await db.refresh(session)
 
-        service = ApprovalService(factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01)
-        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        service = ApprovalService(
+            factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01
+        )
+        gate = _build_tier_gate(
+            tier=1, skill_def=_skill_def(), approval_service=service
+        )
         original_params = {"pod": "api-7", "namespace": "prod"}
         state = _base_state(
             session_id=str(session.id),
@@ -607,8 +616,12 @@ class TestTierGate:
             await db.commit()
             await db.refresh(session)
 
-        service = ApprovalService(factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01)
-        gate = _build_tier_gate(tier=1, skill_def=_skill_def(), approval_service=service)
+        service = ApprovalService(
+            factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01
+        )
+        gate = _build_tier_gate(
+            tier=1, skill_def=_skill_def(), approval_service=service
+        )
         state = _base_state(
             session_id=str(session.id),
             tier=1,
@@ -640,7 +653,9 @@ class TestTierGate:
             await db.commit()
             await db.refresh(session)
 
-        service = ApprovalService(factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01)
+        service = ApprovalService(
+            factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01
+        )
         gate = _build_tier_gate(
             tier=1, skill_def=_skill_def(), approval_service=service
         )

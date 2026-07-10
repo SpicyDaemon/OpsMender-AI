@@ -269,6 +269,7 @@ def observe(state: IncidentState) -> dict:
 # diagnose
 # ---------------------------------------------------------------------------
 
+
 def _build_diagnose(llm: LLM):
     """Return a diagnose node function closed over the LLM instance."""
 
@@ -324,8 +325,7 @@ def _build_plan(
 
         diagnosis = state.get("diagnosis", "")
         tools_list = "\n".join(
-            f"- {op.tool} ({op.classification})"
-            for op in skill_def.operations
+            f"- {op.tool} ({op.classification})" for op in skill_def.operations
         )
         prompt = PLAN_PROMPT.format(
             diagnosis=diagnosis,
@@ -435,6 +435,7 @@ def _build_workflow_plan(workflow_executor):
 # tier_gate  (HARD PROGRAMMATIC CHECK — not an LLM decision)
 # ---------------------------------------------------------------------------
 
+
 def _tier_block_reason(status: str) -> str:
     if status == "rejected":
         return "Approval rejected by human operator"
@@ -468,24 +469,28 @@ def _build_tier_gate(
                 tool_name = action.get("tool_name", "")
                 enforcement = tier_check(tool_name, tier, skill_def)
                 if enforcement.requires_approval:
-                    blocked.append({
-                        **action,
-                        "block_reason": (
-                            f"{enforcement.classification} action requires an "
-                            "approval service (none configured)"
-                        ),
-                        "classification": enforcement.classification,
-                    })
+                    blocked.append(
+                        {
+                            **action,
+                            "block_reason": (
+                                f"{enforcement.classification} action requires an "
+                                "approval service (none configured)"
+                            ),
+                            "classification": enforcement.classification,
+                        }
+                    )
                     continue
 
                 if enforcement.permitted:
                     approved.append(action)
                 else:
-                    blocked.append({
-                        **action,
-                        "block_reason": enforcement.reason,
-                        "classification": enforcement.classification,
-                    })
+                    blocked.append(
+                        {
+                            **action,
+                            "block_reason": enforcement.reason,
+                            "classification": enforcement.classification,
+                        }
+                    )
 
             return {
                 "approved_actions": approved,
@@ -516,18 +521,24 @@ def _build_tier_gate(
                     justification=action.get("justification"),
                 )
                 req_status = resolution.request.status
-                approval_requests.append({
-                    "request_id": str(resolution.request.id),
-                    "status": req_status,
-                    "action": resolution.request.action,
-                    "expires_at": resolution.request.expires_at.isoformat(),
-                })
+                approval_requests.append(
+                    {
+                        "request_id": str(resolution.request.id),
+                        "status": req_status,
+                        "action": resolution.request.action,
+                        "expires_at": resolution.request.expires_at.isoformat(),
+                    }
+                )
                 if req_status == "approved":
-                    approved.append({
-                        **action,
-                        "approval_request_id": str(resolution.request.id),
-                    })
-                elif req_status == "redirected" and redirect_count < MAX_TIER1_REDIRECTS:
+                    approved.append(
+                        {
+                            **action,
+                            "approval_request_id": str(resolution.request.id),
+                        }
+                    )
+                elif (
+                    req_status == "redirected" and redirect_count < MAX_TIER1_REDIRECTS
+                ):
                     # Operator steered the AI. Abandon the rest of this plan
                     # pass and loop back to the plan node with the guidance in
                     # context — the conditional edge after tier_gate routes on
@@ -557,12 +568,14 @@ def _build_tier_gate(
                             f"Maximum Tier 1 redirects reached "
                             f"({MAX_TIER1_REDIRECTS}); redirect loop stopped."
                         )
-                    blocked.append({
-                        **action,
-                        "block_reason": block_reason,
-                        "classification": enforcement.classification,
-                        "approval_request_id": str(resolution.request.id),
-                    })
+                    blocked.append(
+                        {
+                            **action,
+                            "block_reason": block_reason,
+                            "classification": enforcement.classification,
+                            "approval_request_id": str(resolution.request.id),
+                        }
+                    )
                     if req_status == "expired":
                         status = "timed_out"
                         error = resolution.block_reason
@@ -571,11 +584,13 @@ def _build_tier_gate(
             if enforcement.permitted:
                 approved.append(action)
             else:
-                blocked.append({
-                    **action,
-                    "block_reason": enforcement.reason,
-                    "classification": enforcement.classification,
-                })
+                blocked.append(
+                    {
+                        **action,
+                        "block_reason": enforcement.reason,
+                        "classification": enforcement.classification,
+                    }
+                )
 
         return {
             "approved_actions": approved,
@@ -593,6 +608,7 @@ def _build_tier_gate(
 # ---------------------------------------------------------------------------
 # execute
 # ---------------------------------------------------------------------------
+
 
 def _build_execute(
     mcp_session,
@@ -636,16 +652,18 @@ def _build_execute(
                 tool_caller=tool_caller,
             )
 
-            records.append({
-                "tool_name": tool_name,
-                "tool_parameters": tool_params,
-                "classification": result.enforcement.classification,
-                "permitted": result.permitted,
-                "result": result.result,
-                "error": result.error,
-                "duration_ms": result.duration_ms,
-                "block_reason": None,
-            })
+            records.append(
+                {
+                    "tool_name": tool_name,
+                    "tool_parameters": tool_params,
+                    "classification": result.enforcement.classification,
+                    "permitted": result.permitted,
+                    "result": result.result,
+                    "error": result.error,
+                    "duration_ms": result.duration_ms,
+                    "block_reason": None,
+                }
+            )
 
         return {"tool_calls": records}
 
@@ -667,6 +685,7 @@ def execute(state: IncidentState) -> dict:
 # verify
 # ---------------------------------------------------------------------------
 
+
 def _build_verify(llm: LLM):
     """Return a verify node function closed over the LLM instance."""
 
@@ -674,11 +693,14 @@ def _build_verify(llm: LLM):
         """Verify the results of executed actions."""
         diagnosis = state.get("diagnosis", "")
         tool_calls = state.get("tool_calls", [])
-        results = "\n".join(
-            f"- {tc.get('tool_name', '?')}: "
-            f"{'error=' + tc['error'] if tc.get('error') else 'ok'}"
-            for tc in tool_calls
-        ) or "(no actions executed)"
+        results = (
+            "\n".join(
+                f"- {tc.get('tool_name', '?')}: "
+                f"{'error=' + tc['error'] if tc.get('error') else 'ok'}"
+                for tc in tool_calls
+            )
+            or "(no actions executed)"
+        )
         prompt = VERIFY_PROMPT.format(
             diagnosis=diagnosis,
             tool_call_count=len(tool_calls),
@@ -703,6 +725,7 @@ def verify(state: IncidentState) -> dict:
 # ---------------------------------------------------------------------------
 # summarize
 # ---------------------------------------------------------------------------
+
 
 def _build_summarize(llm: LLM):
     """Return a summarize node function closed over the LLM instance."""
@@ -733,7 +756,7 @@ def summarize(state: IncidentState) -> dict:
     status = state.get("status")
     return {
         "summary": f"[summarize] Incident session complete. "
-                   f"Diagnosis: {diagnosis} | Verification: {verification}",
+        f"Diagnosis: {diagnosis} | Verification: {verification}",
         "status": status if status in {"failed", "timed_out"} else "completed",
     }
 

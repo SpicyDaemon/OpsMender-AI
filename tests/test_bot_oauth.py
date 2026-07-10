@@ -381,7 +381,9 @@ async def slack_connector_id(client, app, auth_headers):
 
 
 class TestStartRoute:
-    async def test_unknown_platform_returns_404(self, client, auth_headers, slack_connector_id):
+    async def test_unknown_platform_returns_404(
+        self, client, auth_headers, slack_connector_id
+    ):
         resp = await client.get(
             f"/bot-connectors/oauth/telegram/start?connector_id={slack_connector_id}",
             headers=auth_headers,
@@ -410,9 +412,7 @@ class TestStartRoute:
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
-        assert body["authorize_url"].startswith(
-            "https://slack.com/oauth/v2/authorize?"
-        )
+        assert body["authorize_url"].startswith("https://slack.com/oauth/v2/authorize?")
         assert "state=" in body["authorize_url"]
         assert "client_id=slack-test-id" in body["authorize_url"]
 
@@ -471,9 +471,7 @@ class TestCallbackRoute:
                 detail="Connected to Slack workspace 'Acme'",
             )
 
-        with patch(
-            "backend.api.routes.bot_oauth.exchange_code", new=_fake_exchange
-        ):
+        with patch("backend.api.routes.bot_oauth.exchange_code", new=_fake_exchange):
             resp = await client.get(
                 f"/bot-connectors/oauth/slack/callback?code=abc&state={state}",
                 follow_redirects=False,

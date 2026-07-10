@@ -64,10 +64,17 @@ async def test_scheduler_fires_boundary_and_emails(factory, monkeypatch):
     async def fake_report(*args, **kwargs):
         return SimpleNamespace()
 
-    monkeypatch.setattr("backend.reports.scheduler.resolve_email_settings", fake_settings)
-    monkeypatch.setattr("backend.reports.scheduler.build_email_channel", lambda settings: FakeChannel())
+    monkeypatch.setattr(
+        "backend.reports.scheduler.resolve_email_settings", fake_settings
+    )
+    monkeypatch.setattr(
+        "backend.reports.scheduler.build_email_channel", lambda settings: FakeChannel()
+    )
     monkeypatch.setattr("backend.reports.scheduler.build_incident_report", fake_report)
-    monkeypatch.setattr("backend.reports.scheduler.render_report", lambda report, format: (b"csv", "text/csv"))
+    monkeypatch.setattr(
+        "backend.reports.scheduler.render_report",
+        lambda report, format: (b"csv", "text/csv"),
+    )
 
     assert await ReportScheduler(factory).tick(now=now) == 1
     assert sent[0]["recipient"] == "ops@example.com"
@@ -101,7 +108,9 @@ async def test_scheduler_records_render_failure_and_advances(factory, monkeypatc
     async def fake_report(*args, **kwargs):
         return SimpleNamespace()
 
-    monkeypatch.setattr("backend.reports.scheduler.resolve_email_settings", fake_settings)
+    monkeypatch.setattr(
+        "backend.reports.scheduler.resolve_email_settings", fake_settings
+    )
     monkeypatch.setattr("backend.reports.scheduler.build_incident_report", fake_report)
     monkeypatch.setattr(
         "backend.reports.scheduler.render_report",

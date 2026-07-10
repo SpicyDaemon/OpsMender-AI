@@ -2,8 +2,9 @@
 
 import pytest
 
-from backend.skills.parser import SkillDefinition, OperationClassification
+from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import check, check_and_explain, EnforcementResult
+from tests.skill_policy_helpers import explicit_operation
 
 
 @pytest.fixture()
@@ -11,7 +12,7 @@ def skill_def():
     """Small skill definition with mixed reversibility for enforcement tests.
 
     ``scale_deployment`` and ``delete_pod`` are explicitly marked reversible
-    and given compensating inverses so the Tier 0 matrix tests exercise
+    and given compensating inverses so the Tier 0 policy tests exercise
     rollback-safe writes. Non-reversible / no-inverse variants are covered in
     ``TestTier0SandboxFloor`` below.
     """
@@ -19,14 +20,14 @@ def skill_def():
         version="1",
         environment="test",
         operations=[
-            OperationClassification(tool="get_pods", classification="safe"),
-            OperationClassification(
+            explicit_operation("get_pods", "safe"),
+            explicit_operation(
                 tool="scale_deployment",
                 classification="caution",
                 reversible=True,
                 compensating_inverse="restore_scale",
             ),
-            OperationClassification(
+            explicit_operation(
                 tool="delete_pod",
                 classification="destructive",
                 reversible=True,
@@ -136,9 +137,7 @@ class TestTier0SandboxFloor:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(
-                    tool="rollout_restart", classification="caution"
-                ),
+                explicit_operation(tool="rollout_restart", classification="caution"),
             ],
         )
         r = check("rollout_restart", 0, sd)
@@ -151,9 +150,7 @@ class TestTier0SandboxFloor:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(
-                    tool="delete_all", classification="destructive"
-                ),
+                explicit_operation(tool="delete_all", classification="destructive"),
             ],
         )
         r = check("delete_all", 0, sd)
@@ -165,7 +162,7 @@ class TestTier0SandboxFloor:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(
+                explicit_operation(
                     tool="cordon_node",
                     classification="caution",
                     reversible=True,
@@ -182,7 +179,7 @@ class TestTier0SandboxFloor:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(
+                explicit_operation(
                     tool="rollout_restart",
                     classification="caution",
                     reversible=True,
@@ -198,9 +195,7 @@ class TestTier0SandboxFloor:
         sd = SkillDefinition(
             version="1",
             environment="test",
-            operations=[
-                OperationClassification(tool="get_pods", classification="safe")
-            ],
+            operations=[explicit_operation("get_pods", "safe")],
         )
         r = check("get_pods", 0, sd)
         assert r.permitted is True
@@ -213,9 +208,7 @@ class TestTier0SandboxFloor:
             version="1",
             environment="test",
             operations=[
-                OperationClassification(
-                    tool="rollout_restart", classification="caution"
-                ),
+                explicit_operation(tool="rollout_restart", classification="caution"),
             ],
         )
         assert check("rollout_restart", 1, sd).permitted is True

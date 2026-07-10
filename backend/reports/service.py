@@ -68,10 +68,15 @@ async def build_incident_report(
     for incident, service_name, team_name in rows:
         if incident.acknowledged_at:
             mtta.append(
-                max(0.0, (incident.acknowledged_at - incident.created_at).total_seconds())
+                max(
+                    0.0,
+                    (incident.acknowledged_at - incident.created_at).total_seconds(),
+                )
             )
         if incident.status == "resolved":
-            mttr.append(max(0.0, (incident.updated_at - incident.created_at).total_seconds()))
+            mttr.append(
+                max(0.0, (incident.updated_at - incident.created_at).total_seconds())
+            )
         incidents.append(
             {
                 "id": str(incident.id),
@@ -86,12 +91,19 @@ async def build_incident_report(
                 "acknowledged_at": _iso(incident.acknowledged_at),
                 "updated_at": _iso(incident.updated_at),
                 "mtta_seconds": (
-                    round((incident.acknowledged_at - incident.created_at).total_seconds(), 2)
+                    round(
+                        (
+                            incident.acknowledged_at - incident.created_at
+                        ).total_seconds(),
+                        2,
+                    )
                     if incident.acknowledged_at
                     else None
                 ),
                 "mttr_seconds": (
-                    round((incident.updated_at - incident.created_at).total_seconds(), 2)
+                    round(
+                        (incident.updated_at - incident.created_at).total_seconds(), 2
+                    )
                     if incident.status == "resolved"
                     else None
                 ),
@@ -188,7 +200,13 @@ def render_pdf(report: IncidentReport) -> bytes:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import inch
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(

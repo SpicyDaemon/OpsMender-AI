@@ -620,9 +620,7 @@ class TestPagingAPI:
         deleted = await client.delete(f"/teams/{team_id}", headers=auth_headers)
         assert deleted.status_code == 204
 
-    async def test_team_slug_must_be_lowercase(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_team_slug_must_be_lowercase(self, client: AsyncClient, auth_headers):
         """v1 — team slugs are lowercase-only; uppercase is rejected server-side
         so the value can never persist."""
         upper = await client.post(
@@ -670,9 +668,7 @@ class TestPagingAPI:
         )
         assert added.status_code == 201, added.text
 
-        listed = await client.get(
-            f"/teams/{team_id}/members", headers=auth_headers
-        )
+        listed = await client.get(f"/teams/{team_id}/members", headers=auth_headers)
         assert listed.status_code == 200
         assert any(m["user_id"] == member_id for m in listed.json()["items"])
 
@@ -680,9 +676,7 @@ class TestPagingAPI:
             f"/teams/{team_id}/members/{member_id}", headers=auth_headers
         )
         assert removed.status_code == 204
-        relisted = await client.get(
-            f"/teams/{team_id}/members", headers=auth_headers
-        )
+        relisted = await client.get(f"/teams/{team_id}/members", headers=auth_headers)
         assert relisted.json()["total"] == 0
 
     async def test_notification_preferences_test_endpoint(
@@ -1022,9 +1016,7 @@ class TestPagingAPI:
         )
         assert disabled.status_code == 400
 
-    async def test_model_selection_skips_disabled_and_falls_back(
-        self, app
-    ):
+    async def test_model_selection_skips_disabled_and_falls_back(self, app):
         async with app.state.session_factory() as db:
             team = await TeamRepo.create(
                 db,
@@ -1913,7 +1905,9 @@ class TestPagingAPI:
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.text
-        resolved = [day["levels"][0]["resolved_user_name"] for day in resp.json()["days"][:4]]
+        resolved = [
+            day["levels"][0]["resolved_user_name"] for day in resp.json()["days"][:4]
+        ]
         assert resolved == ["alice-night", "bob-night", "carol-night", "alice-night"]
         first = resp.json()["days"][0]["levels"][0]
         assert first["coverage_start"] == "18:00"
@@ -2378,9 +2372,7 @@ class TestPagingAPI:
 
 
 class TestNotificationPreferencesAPI:
-    async def test_get_creates_default_pref(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_get_creates_default_pref(self, client: AsyncClient, auth_headers):
         resp = await client.get(
             "/users/me/notification-preferences", headers=auth_headers
         )
@@ -2442,9 +2434,7 @@ class TestNotificationPreferencesAPI:
 
 
 class TestOrgNotificationSettingsAPI:
-    async def test_get_returns_default_window(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_get_returns_default_window(self, client: AsyncClient, auth_headers):
         resp = await client.get(
             f"/organizations/{TEST_ORG_ID}/notification-settings",
             headers=auth_headers,
@@ -2467,9 +2457,7 @@ class TestOrgNotificationSettingsAPI:
         )
         assert again.json()["notification_dedup_window_minutes"] == 25
 
-    async def test_put_rejects_negative(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_put_rejects_negative(self, client: AsyncClient, auth_headers):
         resp = await client.put(
             f"/organizations/{TEST_ORG_ID}/notification-settings",
             json={"notification_dedup_window_minutes": -5},
@@ -2477,9 +2465,7 @@ class TestOrgNotificationSettingsAPI:
         )
         assert resp.status_code == 422
 
-    async def test_get_unknown_org_returns_404(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_get_unknown_org_returns_404(self, client: AsyncClient, auth_headers):
         bogus = uuid.uuid4()
         resp = await client.get(
             f"/organizations/{bogus}/notification-settings",
@@ -2487,9 +2473,7 @@ class TestOrgNotificationSettingsAPI:
         )
         assert resp.status_code == 404
 
-    async def test_non_admin_forbidden(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_non_admin_forbidden(self, client: AsyncClient, auth_headers):
         # Register a viewer-role second user.
         await client.post(
             "/auth/register",
@@ -2504,9 +2488,7 @@ class TestOrgNotificationSettingsAPI:
             "/auth/login",
             json={"username": "viewer", "password": "securepass123"},
         )
-        viewer_headers = {
-            "Authorization": f"Bearer {login.json()['access_token']}"
-        }
+        viewer_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         resp = await client.get(
             f"/organizations/{TEST_ORG_ID}/notification-settings",
             headers=viewer_headers,
@@ -2537,9 +2519,7 @@ class TestMaintenanceWindowScopeFields:
         assert data["description"] == "DB migration window"
         assert data["target_ids"] == [str(scope_id)]
 
-    async def test_global_scope_default(
-        self, client: AsyncClient, auth_headers
-    ):
+    async def test_global_scope_default(self, client: AsyncClient, auth_headers):
         now = datetime.now(timezone.utc)
         resp = await client.post(
             "/maintenance-windows",
@@ -2789,7 +2769,10 @@ class TestRosterMemberTeamScoping:
         # pre-existing invalid data — no team membership.
         async with app.state.session_factory() as db:
             await RosterRepo.add_member(
-                db, TEST_ORG_ID, roster_id=uuid.UUID(roster_id), user_id=uid,
+                db,
+                TEST_ORG_ID,
+                roster_id=uuid.UUID(roster_id),
+                user_id=uid,
                 position_index=0,
             )
             await db.commit()
@@ -2872,7 +2855,9 @@ class TestRosterOverrideTeamScoping(TestRosterMemberTeamScoping):
         assert resp.status_code == 400
         assert resp.json()["detail"] == "User not found"
 
-    async def test_existing_override_list_still_renders(self, client, app, auth_headers):
+    async def test_existing_override_list_still_renders(
+        self, client, app, auth_headers
+    ):
         """Legacy overrides for a now-ineligible user must still list cleanly."""
         team_id = await self._make_team(client, auth_headers, "Data")
         roster_id = await self._make_roster(client, auth_headers, team_id)

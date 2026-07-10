@@ -25,7 +25,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.ingest.adapters.base import AvailabilitySignal, IngestAdapter, ParsedIncident
+from backend.ingest.adapters.base import (
+    AvailabilitySignal,
+    IngestAdapter,
+    ParsedIncident,
+)
 
 
 # ─── Field-name synonyms ordered by preference ─────────────────────────────
@@ -107,10 +111,21 @@ ENVELOPE_KEYS = (
 
 # Keys that indicate the payload carries a health-check / availability result
 _AVAILABILITY_TITLE_HINTS = {
-    "probe_success", "health_check", "healthcheck", "health-check",
-    "synthetic_check", "uptime_check", "uptime-check", "availability_check",
-    "status_check", "statuscheckfailed", "ping", "heartbeat",
-    "synthetic", "http_check", "tcp_check",
+    "probe_success",
+    "health_check",
+    "healthcheck",
+    "health-check",
+    "synthetic_check",
+    "uptime_check",
+    "uptime-check",
+    "availability_check",
+    "status_check",
+    "statuscheckfailed",
+    "ping",
+    "heartbeat",
+    "synthetic",
+    "http_check",
+    "tcp_check",
 }
 
 _AVAILABILITY_CHECK_KEYS = (
@@ -262,9 +277,7 @@ def _find_first(
             for key in keys:
                 if key in inner and inner[key] not in (None, "", [], {}):
                     return f"{envelope}.{key}", inner[key]
-            inner_lower = {
-                k.lower(): k for k in inner.keys() if isinstance(k, str)
-            }
+            inner_lower = {k.lower(): k for k in inner.keys() if isinstance(k, str)}
             for key in keys:
                 actual = inner_lower.get(key.lower())
                 if actual is not None and inner[actual] not in (None, "", [], {}):
@@ -421,12 +434,16 @@ class UniversalAdapter(IngestAdapter):
         if payload.get("check_type") or payload.get("org", {}).get("name"):
             result = payload.get("result") or payload.get("data", {}).get("result")
             if isinstance(result, dict):
-                passed = result.get("passed", result.get("healthy", result.get("status")))
+                passed = result.get(
+                    "passed", result.get("healthy", result.get("status"))
+                )
                 if passed is not None:
                     up = _interpret_up(passed)
                     is_avail_title = True
                     source = "datadog"
-                timing = result.get("timings", {}).get("total") or result.get("duration")
+                timing = result.get("timings", {}).get("total") or result.get(
+                    "duration"
+                )
                 if timing is not None:
                     latency_ms = _to_latency_ms(timing)
 
@@ -441,7 +458,11 @@ class UniversalAdapter(IngestAdapter):
 
         # Determine target name: prefer alertname/check_name/monitor_name, fallback to title
         for key in ("alertname", "check_name", "monitor_name", "target", "host"):
-            if key in payload and isinstance(payload[key], str) and payload[key].strip():
+            if (
+                key in payload
+                and isinstance(payload[key], str)
+                and payload[key].strip()
+            ):
                 target_name = payload[key].strip()
                 break
         if target_name is None:

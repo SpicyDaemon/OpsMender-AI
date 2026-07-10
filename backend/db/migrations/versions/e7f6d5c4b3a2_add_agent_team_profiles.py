@@ -29,8 +29,12 @@ def upgrade() -> None:
             postgresql.JSONB().with_variant(sa.JSON(), "sqlite"),
             nullable=False,
         ),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("is_default", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "is_default", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -64,7 +68,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     with op.batch_alter_table("sessions") as batch_op:
-        batch_op.drop_constraint("fk_sessions_agent_team_profile_id", type_="foreignkey")
+        batch_op.drop_constraint(
+            "fk_sessions_agent_team_profile_id", type_="foreignkey"
+        )
         batch_op.drop_column("agent_team_profile_id")
 
     op.drop_table("agent_team_profiles")

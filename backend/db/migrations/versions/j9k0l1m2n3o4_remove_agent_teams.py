@@ -33,8 +33,12 @@ def downgrade() -> None:
         sa.Column("name", sa.String(length=150), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("roles", sa.JSON(), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("is_default", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "is_default", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -53,7 +57,9 @@ def downgrade() -> None:
     )
 
     with op.batch_alter_table("sessions") as batch_op:
-        batch_op.add_column(sa.Column("agent_team_profile_id", sa.Uuid(), nullable=True))
+        batch_op.add_column(
+            sa.Column("agent_team_profile_id", sa.Uuid(), nullable=True)
+        )
         batch_op.create_foreign_key(
             "fk_sessions_agent_team_profiles",
             "agent_team_profiles",

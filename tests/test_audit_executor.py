@@ -10,7 +10,8 @@ import pytest
 
 from backend.audit.executor import AuditedToolResult, audited_tool_call
 from backend.audit.logger import AuditEntryType, AuditLogger
-from backend.skills.parser import OperationClassification, SkillDefinition
+from backend.skills.parser import SkillDefinition
+from tests.skill_policy_helpers import explicit_operation
 
 
 # ---------------------------------------------------------------------------
@@ -30,9 +31,9 @@ def _skill_def() -> SkillDefinition:
         version="1",
         environment="test",
         operations=[
-            OperationClassification(tool="get_pods", classification="safe"),
-            OperationClassification(tool="scale_deployment", classification="caution"),
-            OperationClassification(tool="delete_pod", classification="destructive"),
+            explicit_operation("get_pods", "safe"),
+            explicit_operation("scale_deployment", "caution"),
+            explicit_operation("delete_pod", "destructive"),
         ],
     )
 
@@ -268,9 +269,7 @@ class TestBlockedToolCall:
         assert blocked.permitted is False
         assert blocked.block_reason is not None
         reason = blocked.block_reason.lower()
-        assert (
-            "destructive" in reason or "deny" in reason or "advisory" in reason
-        )
+        assert "destructive" in reason or "deny" in reason or "advisory" in reason
 
     @pytest.mark.asyncio
     async def test_unknown_tool_is_blocked(

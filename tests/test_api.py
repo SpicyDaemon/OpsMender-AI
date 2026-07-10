@@ -15,6 +15,7 @@ import json
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.api.app import create_app
@@ -53,18 +54,19 @@ from backend.mcp.oauth import (
     TokenResponse,
     sign_state,
 )
+from backend.skills.convert import convert_legacy_skill_content
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-SKILL_MD = """---
+SKILL_MD = convert_legacy_skill_content("""---
 version: "1"
 environment: api-test
 operations:
   - tool: kubectl_get_pods
     classification: safe
 ---
-"""
+""").content
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -103,6 +105,7 @@ async def app(tmp_path):
     set_env_path(tmp_env)
 
     application = create_app()
+    application.state.engine = engine
     application.state.session_factory = factory
 
     # Override the DB dependency to use our in-memory factory
@@ -292,10 +295,92 @@ async def _wait_for_session_status(
 
 
 class TestHealth:
-    async def test_health(self, client: AsyncClient):
+    async def test_health_alias(self, client: AsyncClient):
         resp = await client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
+
+    async def test_live_never_touches_dependencies(self, client: AsyncClient, app):
+        app.state.startup_complete = False
+        app.state.engine = None
+        resp = await client.get("/health/live")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    async def test_ready_with_migrated_database(self, client: AsyncClient, app):
+        from backend.api.health import migration_head
+
+        app.state.startup_complete = True
+        async with app.state.engine.begin() as connection:
+            await connection.execute(
+                text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+            )
+            await connection.execute(
+                text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+                {"revision": migration_head()},
+            )
+
+        resp = await client.get("/health/ready")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "ready",
+            "database": "ok",
+            "migrations": "current",
+        }
+
+    async def test_ready_returns_503_when_database_is_down(
+        self, client: AsyncClient, app
+    ):
+        class BrokenEngine:
+            def connect(self):
+                raise OSError("database offline")
+
+        app.state.startup_complete = True
+        app.state.engine = BrokenEngine()
+
+        resp = await client.get("/health/ready")
+        assert resp.status_code == 503
+        assert resp.json() == {
+            "status": "not_ready",
+            "database": "error",
+            "migrations": "unknown",
+            "reason": "database_unavailable",
+        }
+
+    async def test_ready_returns_503_when_revision_is_behind(
+        self, client: AsyncClient, app
+    ):
+        app.state.startup_complete = True
+        async with app.state.engine.begin() as connection:
+            await connection.execute(
+                text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+            )
+            await connection.execute(
+                text("INSERT INTO alembic_version (version_num) VALUES ('old')")
+            )
+
+        resp = await client.get("/health/ready")
+        assert resp.status_code == 503
+        assert resp.json() == {
+            "status": "not_ready",
+            "database": "ok",
+            "migrations": "behind",
+            "reason": "migration_revision_mismatch",
+        }
+
+    async def test_worker_readiness_requires_database_only(
+        self, client: AsyncClient, app
+    ):
+        app.state.startup_complete = True
+        app.state.service_role = "worker"
+
+        resp = await client.get("/health/ready")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "ready",
+            "database": "ok",
+            "migrations": "skipped",
+        }
 
 
 # ===========================================================================
@@ -304,9 +389,7 @@ class TestHealth:
 
 
 class TestAuth:
-    async def test_register_with_email_only_derives_username(
-        self, client: AsyncClient
-    ):
+    async def test_register_with_email_only_derives_username(self, client: AsyncClient):
         first = await client.post(
             "/auth/register",
             json={"email": "person@example.com", "password": "password123"},
@@ -888,11 +971,14 @@ class TestTicketSync:
             },
             separators=(",", ":"),
         ).encode()
-        signature = "sha256=" + hmac.new(
-            b"ticket-secret",
-            raw,
-            hashlib.sha256,
-        ).hexdigest()
+        signature = (
+            "sha256="
+            + hmac.new(
+                b"ticket-secret",
+                raw,
+                hashlib.sha256,
+            ).hexdigest()
+        )
         response = await client.post(
             f"/webhooks/ticket-sync/{connector_id}",
             content=raw,
@@ -4681,9 +4767,12 @@ class TestIntegrationConnectors:
         assert [field["name"] for field in github["credential_fields"]["pat"]] == [
             "token"
         ]
-        assert {
-            field["name"] for field in github["credential_fields"]["app"]
-        } == {"app_id", "installation_id", "private_key", "installation_token"}
+        assert {field["name"] for field in github["credential_fields"]["app"]} == {
+            "app_id",
+            "installation_id",
+            "private_key",
+            "installation_token",
+        }
         assert {field["name"] for field in github["config_fields"]} == {
             "owner",
             "repo",
@@ -5165,9 +5254,7 @@ class TestBotConnectorsAPI:
         assert data["platform_capabilities"]["message_update"] is True
         connector_id = uuid.UUID(data["id"])
         async with app.state.session_factory() as db:
-            stored = await BotConnectorRepo.get_by_id(
-                db, TEST_ORG_ID, connector_id
-            )
+            stored = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector_id)
             assert stored is not None
             assert stored.credentials["client_email"].startswith("enc:")
             assert stored.credentials["private_key"].startswith("enc:")
@@ -8600,9 +8687,7 @@ class TestVoiceAck:
         token = encode_voice_ack_token(
             org_id=TEST_ORG_ID, incident_id=incident_id, user_id=user_id
         )
-        resp = await client.post(
-            f"/paging/voice/ack/{token}", data={"Digits": "1"}
-        )
+        resp = await client.post(f"/paging/voice/ack/{token}", data={"Digits": "1"})
         assert resp.status_code == 200
         assert "xml" in resp.headers["content-type"]
         assert "acknowledged" in resp.text.lower()
@@ -8610,9 +8695,7 @@ class TestVoiceAck:
             incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
             assert incident.acknowledged_at is not None
 
-    async def test_no_keypress_does_not_acknowledge(
-        self, client, app, auth_headers
-    ):
+    async def test_no_keypress_does_not_acknowledge(self, client, app, auth_headers):
         from backend.api.routes.voice import encode_voice_ack_token
 
         user_id = await self._user_id(app)
@@ -8620,9 +8703,7 @@ class TestVoiceAck:
         token = encode_voice_ack_token(
             org_id=TEST_ORG_ID, incident_id=incident_id, user_id=user_id
         )
-        resp = await client.post(
-            f"/paging/voice/ack/{token}", data={"Digits": "9"}
-        )
+        resp = await client.post(f"/paging/voice/ack/{token}", data={"Digits": "9"})
         assert resp.status_code == 200
         assert "no acknowledgement" in resp.text.lower()
         async with app.state.session_factory() as db:
@@ -8644,9 +8725,7 @@ class TestVoiceAck:
         token = encode_voice_ack_token(
             org_id=TEST_ORG_ID, incident_id=incident_id, user_id=user_id
         )
-        resp = await client.post(
-            f"/paging/voice/ack/{token}", data={"Digits": "2"}
-        )
+        resp = await client.post(f"/paging/voice/ack/{token}", data={"Digits": "2"})
         assert resp.status_code == 200
         # No escalation chain on this incident, so it reports nobody to escalate
         # to — but it took the escalate branch (not the ack/decline copy).
@@ -8666,9 +8745,7 @@ class TestVoiceAck:
             user_id=user_id,
             summary="High severity incident: disk full.",
         )
-        resp = await client.post(
-            f"/paging/voice/ack/{token}", data={"Digits": "*"}
-        )
+        resp = await client.post(f"/paging/voice/ack/{token}", data={"Digits": "*"})
         assert resp.status_code == 200
         text = resp.text.lower()
         assert "<gather" in text
@@ -8684,9 +8761,7 @@ class TestVoiceAck:
         token = encode_voice_ack_token(
             org_id=TEST_ORG_ID, incident_id=incident_id, user_id=user_id
         )
-        resp = await client.post(
-            f"/paging/voice/ack/{token}", data={"Digits": "3"}
-        )
+        resp = await client.post(f"/paging/voice/ack/{token}", data={"Digits": "3"})
         assert resp.status_code == 200
         assert "resolved" in resp.text.lower()
         async with app.state.session_factory() as db:

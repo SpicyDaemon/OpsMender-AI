@@ -69,7 +69,7 @@ class TestOnCallPerf:
         # If this trips, the function has regressed — investigate the hot
         # path (likely sorted/parse_handoff per call) before bumping the bound.
         assert elapsed < 0.5, (
-            f"on_call_at slowed down: 4000 calls took {elapsed*1000:.1f}ms "
+            f"on_call_at slowed down: 4000 calls took {elapsed * 1000:.1f}ms "
             "(budget: 500ms)"
         )
 

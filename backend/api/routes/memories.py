@@ -217,9 +217,7 @@ async def list_memories(
     items = [item for item in items if item.id in visible]
     manageable = await _manageable_memory_ids(db, org_id, user, items)
     return IncidentMemoryListResponse(
-        items=[
-            _to_response(item, can_manage=item.id in manageable) for item in items
-        ],
+        items=[_to_response(item, can_manage=item.id in manageable) for item in items],
         total=len(items),
     )
 
@@ -260,9 +258,7 @@ async def create_memory(
 ):
     await _validate_service(db, org_id, body.service_id)
     if user.role == "operator" and body.service_id is not None:
-        await _require_operator_service_access(
-            db, org_id, user, body.service_id
-        )
+        await _require_operator_service_access(db, org_id, user, body.service_id)
     memory = await IncidentMemoryRepo.create(
         db,
         org_id=org_id,
@@ -299,9 +295,7 @@ async def update_memory(
     await _require_memory_management(db, org_id, user, memory)
     if body.service_id_set:
         await _validate_service(db, org_id, body.service_id)
-        await _require_operator_service_access(
-            db, org_id, user, body.service_id
-        )
+        await _require_operator_service_access(db, org_id, user, body.service_id)
 
     tags: list[str] | None = None
     if body.tags is not None:
@@ -347,9 +341,7 @@ async def delete_memory(
             detail="Memory not found",
         )
     await _require_memory_management(db, org_id, user, memory)
-    deleted = await IncidentMemoryRepo.delete(
-        db, memory_id=memory_id, org_id=org_id
-    )
+    deleted = await IncidentMemoryRepo.delete(db, memory_id=memory_id, org_id=org_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

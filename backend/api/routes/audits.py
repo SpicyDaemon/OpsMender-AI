@@ -68,9 +68,7 @@ def _to_finding_response(finding) -> AuditFindingResponse:
 async def list_audit_analyzers(user: User = Depends(get_current_user)):
     specs = list_analyzers()
     items = [
-        AuditAnalyzerResponse(
-            key=s.key, label=s.label, description=s.description
-        )
+        AuditAnalyzerResponse(key=s.key, label=s.label, description=s.description)
         for s in specs
     ]
     return AuditAnalyzerListResponse(items=items, total=len(items))
@@ -136,9 +134,7 @@ async def list_audit_runs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    items = await AuditRunRepo.list_all(
-        db, org_id, limit=limit, offset=offset
-    )
+    items = await AuditRunRepo.list_all(db, org_id, limit=limit, offset=offset)
     return AuditRunListResponse(
         items=[_to_run_response(item) for item in items],
         total=len(items),

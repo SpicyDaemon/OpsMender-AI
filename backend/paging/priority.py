@@ -95,7 +95,8 @@ async def assign_priority(
     rules: Iterable[PriorityRuleLike],
     *,
     llm_escalation_enabled: bool = False,
-    llm_callback: Callable[[dict, str], Awaitable[tuple[str | None, str | None]]] | None = None,
+    llm_callback: Callable[[dict, str], Awaitable[tuple[str | None, str | None]]]
+    | None = None,
     fallback_priority: str = "P3",
 ) -> PriorityAssignment:
     """Compute priority + response_mode for an incoming incident.

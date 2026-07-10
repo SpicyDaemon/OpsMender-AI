@@ -120,9 +120,9 @@ async def _force_candidate(
         )
     if model is None:
         return None, 0, 0
-    occupancy = (
-        await SessionRepo.active_occupancy_by_model_config(db, org_id)
-    ).get(model.id, 0)
+    occupancy = (await SessionRepo.active_occupancy_by_model_config(db, org_id)).get(
+        model.id, 0
+    )
     return model, occupancy, int(model.max_concurrent_sessions or 0)
 
 
@@ -247,8 +247,8 @@ async def admit_session(
         )
 
     configured = await has_active_model_configs(db, org_id)
-    at_capacity = configured and model is None and (
-        incident is not None or has_saved_match
+    at_capacity = (
+        configured and model is None and (incident is not None or has_saved_match)
     )
 
     warning: str | None = None
@@ -310,9 +310,7 @@ async def admit_session(
         workflow_profile_id=workflow_profile_id,
         model_config_id=None if model is None else model.id,
         requested_model_config_id=requested_config_id,
-        model_provider=(
-            requested_provider if model is None else model.provider
-        ),
+        model_provider=(requested_provider if model is None else model.provider),
         model_id=requested_model_id if model is None else model.model_id,
         force_started=warning is not None,
         force_started_by=actor_user_id if warning else None,
@@ -328,9 +326,7 @@ async def admit_session(
             entry_type="session_force_start",
             result={
                 "actor_user_id": str(actor_user_id),
-                "incident_id": (
-                    str(incident.id) if incident is not None else None
-                ),
+                "incident_id": (str(incident.id) if incident is not None else None),
                 "model_config_id": str(model.id),
                 "occupancy": force_occupancy,
                 "cap": force_cap,
@@ -363,9 +359,7 @@ async def drain_session_queue(app, *, org_id: uuid.UUID | None = None) -> int:
     async with factory() as db:
         queued_ids = [
             item.id
-            for item in await SessionRepo.list_queued_for_drain(
-                db, org_id, limit=200
-            )
+            for item in await SessionRepo.list_queued_for_drain(db, org_id, limit=200)
         ]
 
     started: list[tuple[uuid.UUID, uuid.UUID]] = []
@@ -400,9 +394,7 @@ async def drain_session_queue(app, *, org_id: uuid.UUID | None = None) -> int:
                     body="The session was dropped after waiting too long for capacity.",
                 )
                 await db.commit()
-                notified.append(
-                    (session.org_id, session.id, "session.queue_expired")
-                )
+                notified.append((session.org_id, session.id, "session.queue_expired"))
                 continue
             if (
                 incident is None
@@ -426,9 +418,7 @@ async def drain_session_queue(app, *, org_id: uuid.UUID | None = None) -> int:
                     body="The incident was already acknowledged or closed.",
                 )
                 await db.commit()
-                notified.append(
-                    (session.org_id, session.id, "session.queue_cancelled")
-                )
+                notified.append((session.org_id, session.id, "session.queue_cancelled"))
                 continue
 
             model: ModelConfig | None = None
@@ -543,8 +533,7 @@ async def sweep_approval_holds(app) -> int:
                     expired_count += 1
                     continue
                 if (
-                    remaining
-                    <= app.state.config.sessions.approval_warning_seconds
+                    remaining <= app.state.config.sessions.approval_warning_seconds
                     and request.extension_notified_at is None
                     and await ApprovalRequestRepo.mark_extension_notified(
                         db, org.id, request.id, at=now
@@ -568,9 +557,7 @@ async def sweep_approval_holds(app) -> int:
                             "release its model slot."
                         ),
                         link="/dashboard/approvals",
-                        incident_id=(
-                            None if session is None else session.incident_id
-                        ),
+                        incident_id=(None if session is None else session.incident_id),
                         session_id=request.session_id,
                     )
                     warned += 1

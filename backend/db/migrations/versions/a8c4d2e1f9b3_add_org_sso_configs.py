@@ -5,6 +5,7 @@ Revises: f5a8b3c1d9e2
 Create Date: 2026-05-06 00:30:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -27,10 +28,24 @@ def upgrade() -> None:
         sa.Column("discovery_url", sa.Text(), nullable=False),
         sa.Column("client_id", sa.Text(), nullable=False),
         sa.Column("client_secret_encrypted", sa.Text(), nullable=False),
-        sa.Column("scopes", sa.String(length=255), nullable=False, server_default="openid email profile"),
-        sa.Column("email_claim", sa.String(length=64), nullable=False, server_default="email"),
-        sa.Column("name_claim", sa.String(length=64), nullable=False, server_default="name"),
-        sa.Column("default_role", sa.String(length=20), nullable=False, server_default="viewer"),
+        sa.Column(
+            "scopes",
+            sa.String(length=255),
+            nullable=False,
+            server_default="openid email profile",
+        ),
+        sa.Column(
+            "email_claim", sa.String(length=64), nullable=False, server_default="email"
+        ),
+        sa.Column(
+            "name_claim", sa.String(length=64), nullable=False, server_default="name"
+        ),
+        sa.Column(
+            "default_role",
+            sa.String(length=20),
+            nullable=False,
+            server_default="viewer",
+        ),
         sa.Column("allowed_email_domains", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),

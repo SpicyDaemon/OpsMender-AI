@@ -254,17 +254,13 @@ class IntegrationToolRuntime:
                         self._org_id,
                         connector_id=connector.id,
                         incident_id=uuid.UUID(str(sync_payload["incident_id"])),
-                        external_ticket_id=str(
-                            sync_payload["external_ticket_id"]
-                        ),
+                        external_ticket_id=str(sync_payload["external_ticket_id"]),
                         external_ticket_url=(
                             str(sync_payload["external_ticket_url"])
                             if sync_payload.get("external_ticket_url")
                             else None
                         ),
-                        status_map=dict(
-                            connector.config.get("status_map") or {}
-                        ),
+                        status_map=dict(connector.config.get("status_map") or {}),
                     )
                 except (KeyError, TypeError, ValueError) as exc:
                     result = dataclasses.replace(

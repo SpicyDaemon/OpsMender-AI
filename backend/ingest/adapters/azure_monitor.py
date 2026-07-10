@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.ingest.adapters.base import AvailabilitySignal, IngestAdapter, ParsedIncident
+from backend.ingest.adapters.base import (
+    AvailabilitySignal,
+    IngestAdapter,
+    ParsedIncident,
+)
 
 # Azure Monitor severity: 0=Critical, 1=Error, 2=Warning, 3=Informational, 4=Verbose
 _SEVERITY_MAP = {
@@ -80,4 +84,3 @@ class AzureMonitorAdapter(IngestAdapter):
             status=status,
             availability=availability,
         )
-

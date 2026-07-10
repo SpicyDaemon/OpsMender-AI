@@ -16,9 +16,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.db.models import Base
 from backend.db.repos import MCPServerRepo, SkillRepo
-from backend.skills.parser import SkillDefinition, OperationClassification
+from backend.skills.parser import SkillDefinition
 from backend.skills.template import build_skill_template
 from backend.tiers.enforcement import check, normalize_tier
+from tests.skill_policy_helpers import explicit_operation
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
@@ -26,8 +27,8 @@ _SKILL_DEF = SkillDefinition(
     version="1",
     environment="test",
     operations=[
-        OperationClassification(tool="get_pods", classification="safe"),
-        OperationClassification(tool="delete_pod", classification="destructive"),
+        explicit_operation("get_pods", "safe"),
+        explicit_operation("delete_pod", "destructive"),
     ],
 )
 
@@ -110,7 +111,10 @@ async def _server(factory, name="srv") -> uuid.UUID:
 async def test_unassigned_skill_not_injected(factory):
     async with factory() as db:
         await SkillRepo.create(
-            db, TEST_ORG_ID, name="draft", content_md=build_skill_template(),
+            db,
+            TEST_ORG_ID,
+            name="draft",
+            content_md=build_skill_template(),
             assignment="unassigned",
         )
         await db.commit()
@@ -124,7 +128,10 @@ async def test_global_fallback_applies_when_no_server_skill(factory):
     srv = await _server(factory)
     async with factory() as db:
         await SkillRepo.create(
-            db, TEST_ORG_ID, name="global", content_md=build_skill_template(),
+            db,
+            TEST_ORG_ID,
+            name="global",
+            content_md=build_skill_template(),
             assignment="global",
         )
         await db.commit()
@@ -138,12 +145,19 @@ async def test_server_specific_overrides_global(factory):
     srv = await _server(factory)
     async with factory() as db:
         await SkillRepo.create(
-            db, TEST_ORG_ID, name="global", content_md=build_skill_template(),
+            db,
+            TEST_ORG_ID,
+            name="global",
+            content_md=build_skill_template(),
             assignment="global",
         )
         await SkillRepo.create(
-            db, TEST_ORG_ID, name="specific", content_md=build_skill_template(),
-            mcp_server_id=srv, assignment="server",
+            db,
+            TEST_ORG_ID,
+            name="specific",
+            content_md=build_skill_template(),
+            mcp_server_id=srv,
+            assignment="server",
         )
         await db.commit()
     async with factory() as db:
@@ -156,8 +170,12 @@ async def test_unassigned_create_clears_server_binding(factory):
     srv = await _server(factory)
     async with factory() as db:
         skill = await SkillRepo.create(
-            db, TEST_ORG_ID, name="draft", content_md=build_skill_template(),
-            mcp_server_id=srv, assignment="unassigned",
+            db,
+            TEST_ORG_ID,
+            name="draft",
+            content_md=build_skill_template(),
+            mcp_server_id=srv,
+            assignment="unassigned",
         )
         await db.commit()
         # Unassigned drafts never carry a server binding.

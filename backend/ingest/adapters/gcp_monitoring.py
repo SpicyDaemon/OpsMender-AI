@@ -25,7 +25,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.ingest.adapters.base import AvailabilitySignal, IngestAdapter, ParsedIncident
+from backend.ingest.adapters.base import (
+    AvailabilitySignal,
+    IngestAdapter,
+    ParsedIncident,
+)
 
 _SEVERITY_MAP = {
     "critical": "critical",

@@ -216,7 +216,9 @@ def parse_ai_response(
         reversible_b = _coerce_bool(reversible) if reversible is not None else None
         inverse_raw = ai.get("compensating_inverse")
         inverse = str(inverse_raw).strip() if inverse_raw else None
-        rationale = str(ai.get("rationale", "")).strip()[:_MAX_RATIONALE] or heuristic.rationale
+        rationale = (
+            str(ai.get("rationale", "")).strip()[:_MAX_RATIONALE] or heuristic.rationale
+        )
         needs_review = False
 
         # Hard guardrail: a generic command tool is always denied + destructive,
@@ -246,7 +248,12 @@ def parse_ai_response(
         # Flag incomplete Tier 0 metadata: a tool the model marked reversible but
         # for which it could not name a compensating inverse will NOT clear the
         # Tier 0 floor — surface that for operator review.
-        if not deny and classification in ("caution", "destructive") and reversible_b and not inverse:
+        if (
+            not deny
+            and classification in ("caution", "destructive")
+            and reversible_b
+            and not inverse
+        ):
             needs_review = True
 
         out.append(

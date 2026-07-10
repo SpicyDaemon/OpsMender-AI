@@ -96,9 +96,7 @@ class IntegrationAdapter(abc.ABC):
         parameters: dict[str, Any] | None = None,
     ) -> IntegrationResult:
         try:
-            result = await self.invoke(
-                action, connector, auth, parameters or {}
-            )
+            result = await self.invoke(action, connector, auth, parameters or {})
         except Exception as exc:  # noqa: BLE001
             return IntegrationResult.failure(str(exc))
         if not isinstance(result, IntegrationResult):

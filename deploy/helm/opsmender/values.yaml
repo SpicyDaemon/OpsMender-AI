@@ -59,7 +59,7 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-## Liveness/readiness probes hit the FastAPI /health endpoint.
+## Liveness checks the process; readiness also checks PostgreSQL and migrations.
 probes:
   liveness:
     enabled: true

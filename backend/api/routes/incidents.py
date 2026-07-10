@@ -147,14 +147,9 @@ async def list_incident_integration_links(
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
-    rows = await IncidentIntegrationLinkRepo.list_for_incident(
-        db, org_id, incident_id
-    )
+    rows = await IncidentIntegrationLinkRepo.list_for_incident(db, org_id, incident_id)
     return IncidentIntegrationLinkListResponse(
-        items=[
-            IncidentIntegrationLinkResponse.model_validate(row)
-            for row in rows
-        ],
+        items=[IncidentIntegrationLinkResponse.model_validate(row) for row in rows],
         total=len(rows),
     )
 
@@ -345,7 +340,9 @@ async def _to_incident_response(
             data["team_name"] = team.name if team is not None else None
     # include_deleted=True: historical responder references must render a
     # fallback display (e.g. "deleted_user-<id>") rather than crashing.
-    user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000, include_deleted=True)}
+    user_by_id = {
+        u.id: u for u in await UserRepo.list_all(db, limit=1000, include_deleted=True)
+    }
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
     pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident.id))
     data.update(_resolve_responder_from(assignment, pages, user_by_id))
@@ -363,7 +360,9 @@ async def _to_incident_list_response(
     teams = await TeamRepo.list_all(db, org_id)
     service_by_id = {service.id: service for service in services}
     team_by_id = {team.id: team for team in teams}
-    user_by_id = {u.id: u for u in await UserRepo.list_all(db, limit=1000, include_deleted=True)}
+    user_by_id = {
+        u.id: u for u in await UserRepo.list_all(db, limit=1000, include_deleted=True)
+    }
     # Batch all per-incident lookups into one query each instead of N+1.
     incident_ids = [incident.id for incident in incidents]
     assignment_by_incident = await IncidentAssignmentRepo.get_active_for_incidents(
@@ -392,9 +391,7 @@ async def _to_incident_list_response(
                 user_by_id,
             )
         )
-        active, status = _resolve_ai_session(
-            sessions_by_incident.get(incident.id, [])
-        )
+        active, status = _resolve_ai_session(sessions_by_incident.get(incident.id, []))
         data["ai_session_active"] = active
         data["ai_session_status"] = status
         responses.append(IncidentResponse(**data))
@@ -613,9 +610,7 @@ async def _resolve_auto_start_on_create(
                 incident_id=incident.id,
                 auto_start_tier=tier,
             )
-        _log.info(
-            "incident.auto_start: queued incident=%s tier=%s", incident.id, tier
-        )
+        _log.info("incident.auto_start: queued incident=%s tier=%s", incident.id, tier)
         return ("queued", None, tier)
     except Exception:  # noqa: BLE001 — never block incident creation
         _log.exception("incident.auto_start: resolve_failed incident=%s", incident.id)
@@ -850,7 +845,7 @@ async def get_incident(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
-    )
+        )
     return await _to_incident_response(db, org_id, incident)
 
 
@@ -1117,9 +1112,7 @@ async def create_postmortem_memory_candidates(
         existing_titles.add(title.strip().lower())
         created += 1
         items.append(
-            PostmortemMemoryCandidate(
-                memory_id=memory.id, title=title, created=True
-            )
+            PostmortemMemoryCandidate(memory_id=memory.id, title=title, created=True)
         )
 
     await db.commit()
@@ -1128,9 +1121,7 @@ async def create_postmortem_memory_candidates(
     )
 
 
-async def _comment_to_response(
-    db: AsyncSession, comment
-) -> IncidentCommentResponse:
+async def _comment_to_response(db: AsyncSession, comment) -> IncidentCommentResponse:
     author_label = None
     if comment.author_user_id is not None:
         person = await UserRepo.get_by_id(db, comment.author_user_id)
@@ -1266,7 +1257,9 @@ async def get_incident_timeline(
         )
 
     sessions = list(await SessionRepo.list_by_incident(db, org_id, incident_id))
-    assignments = list(await IncidentAssignmentRepo.list_for_incident(db, org_id, incident_id))
+    assignments = list(
+        await IncidentAssignmentRepo.list_for_incident(db, org_id, incident_id)
+    )
     pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))
     ingest_logs = list(await IngestLogRepo.list_for_incident(db, org_id, incident_id))
     chain_state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
@@ -1279,9 +1272,9 @@ async def get_incident_timeline(
         session_labels[session.id] = f"S{index + 1}"
         session_by_id[session.id] = session
 
-    user_ids = {
-        assignment.assigned_to for assignment in assignments
-    } | {page.user_id for page in pages}
+    user_ids = {assignment.assigned_to for assignment in assignments} | {
+        page.user_id for page in pages
+    }
     user_lookup: dict[uuid.UUID, str] = {}
     for user_id in user_ids:
         person = await UserRepo.get_by_id(db, user_id)
@@ -1358,7 +1351,9 @@ async def get_incident_timeline(
                 )
             )
 
-        audit_entries = list(await AuditEntryRepo.list_by_session(db, org_id, session.id))
+        audit_entries = list(
+            await AuditEntryRepo.list_by_session(db, org_id, session.id)
+        )
         pending_starts: dict[str, deque] = defaultdict(deque)
         for entry in audit_entries:
             if entry.entry_type == "tool_call_start" and entry.tool_name:
@@ -1378,7 +1373,9 @@ async def get_incident_timeline(
                         session_tier=entry.tier,
                         tool_name=entry.tool_name,
                         safety_class=(
-                            skill_def.classify(entry.tool_name) if skill_def else "unknown"
+                            skill_def.classify(entry.tool_name)
+                            if skill_def
+                            else "unknown"
                         ),
                         tier_decision="blocked",
                         status="blocked",
@@ -1411,16 +1408,23 @@ async def get_incident_timeline(
                         session_tier=entry.tier,
                         tool_name=entry.tool_name,
                         safety_class=(
-                            skill_def.classify(entry.tool_name) if skill_def else "unknown"
+                            skill_def.classify(entry.tool_name)
+                            if skill_def
+                            else "unknown"
                         ),
                         tier_decision="permitted",
                         duration_ms=entry.duration_ms,
                         status=(
                             "error"
-                            if entry.result and (entry.result.get("error") or entry.result.get("isError"))
+                            if entry.result
+                            and (
+                                entry.result.get("error") or entry.result.get("isError")
+                            )
                             else "completed"
                         ),
-                        metadata=start_entry.tool_parameters if start_entry is not None else {},
+                        metadata=start_entry.tool_parameters
+                        if start_entry is not None
+                        else {},
                         json_payload=entry.result or {},
                     )
                 )
@@ -1444,7 +1448,8 @@ async def get_incident_timeline(
             items.append(
                 IncidentTimelineItemResponse(
                     id=f"assignment:{assignment.id}:released",
-                    happened_at=_aware(assignment.released_at) or assignment.released_at,
+                    happened_at=_aware(assignment.released_at)
+                    or assignment.released_at,
                     lane="response",
                     event_type="ownership_released",
                     title="Ownership released",
@@ -1601,9 +1606,7 @@ async def get_incident_timeline(
 # ---------------------------------------------------------------------------
 
 
-async def _ensure_can_act_on_incident(
-    db, org_id, user, incident
-) -> None:
+async def _ensure_can_act_on_incident(db, org_id, user, incident) -> None:
     """Allow admins/operators globally OR the active assignee (D-021 #9)."""
 
     if user.role in ("admin", "operator"):
@@ -1802,9 +1805,7 @@ async def bulk_incident_action(
                 if incident.status not in allowed_statuses
             ]
             if invalid:
-                expected = (
-                    "open or in progress" if action == "resolve" else "resolved"
-                )
+                expected = "open or in progress" if action == "resolve" else "resolved"
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=(
@@ -1819,9 +1820,7 @@ async def bulk_incident_action(
                 await cancel_auto_start_for_incident(
                     request.app, incident_id=incident.id
                 )
-                sessions = await SessionRepo.list_by_incident(
-                    db, org_id, incident.id
-                )
+                sessions = await SessionRepo.list_by_incident(db, org_id, incident.id)
                 session_ids.extend(session.id for session in sessions)
             await cancel_session_workflows(request.app, session_ids=session_ids)
             for incident in incidents:
@@ -1829,9 +1828,7 @@ async def bulk_incident_action(
         else:
             next_status = "resolved" if action == "resolve" else "open"
             for incident in incidents:
-                await IncidentRepo.update_status(
-                    db, org_id, incident.id, next_status
-                )
+                await IncidentRepo.update_status(db, org_id, incident.id, next_status)
                 if action == "resolve":
                     await stop_incident_sessions(
                         request.app,
@@ -1854,9 +1851,7 @@ async def bulk_incident_action(
                 )
         if action == "resolve":
             for incident in incidents:
-                await _notify_channels(
-                    db, incident.id, org_id, "incident.resolved"
-                )
+                await _notify_channels(db, incident.id, org_id, "incident.resolved")
         return IncidentBulkActionResponse(
             action=action,
             succeeded=len(incidents),
@@ -1950,9 +1945,7 @@ async def bulk_incident_action(
                         link=f"/dashboard/incidents/{incident_id}",
                         incident_id=incident_id,
                     )
-            items.append(
-                IncidentBulkActionResult(incident_id=incident_id, ok=True)
-            )
+            items.append(IncidentBulkActionResult(incident_id=incident_id, ok=True))
             succeeded += 1
         except HTTPException as exc:
             items.append(
@@ -2058,8 +2051,7 @@ async def combine_incidents(
                 category=CATEGORY_INCIDENT,
                 title=f"Incident combined: {sec.title}",
                 body=(
-                    f"{user.username} combined this incident into "
-                    f"“{primary.title}”."
+                    f"{user.username} combined this incident into “{primary.title}”."
                 ),
                 link=f"/dashboard/incidents/{primary_id}",
                 incident_id=primary_id,
@@ -2122,6 +2114,7 @@ async def list_merged_incidents(
 # ---------------------------------------------------------------------------
 # Escalation chain actions (Sprint 34)
 # ---------------------------------------------------------------------------
+
 
 @router.get(
     "/{incident_id}/chain",
@@ -2250,9 +2243,7 @@ async def take_incident(
             db, org_id, incident_id=incident_id, admin_id=user.id
         )
     elif body.confirm:
-        await _esc.handle_takeover_confirm(
-            db, org_id, incident_id=incident_id
-        )
+        await _esc.handle_takeover_confirm(db, org_id, incident_id=incident_id)
     else:
         await _esc.handle_takeover_request(
             db, org_id, incident_id=incident_id, requester_id=user.id

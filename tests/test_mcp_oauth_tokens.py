@@ -46,6 +46,7 @@ def _fernet_key(monkeypatch):
     monkeypatch.setenv("OPSMENDER_SECRET_KEY", "sprint-42-test-key")
     # Drop any cached Fernet so the new seed is picked up.
     from backend.auth import secrets as _secrets_mod
+
     if hasattr(_secrets_mod, "_fernet_cache"):
         _secrets_mod._fernet_cache = None
 
@@ -289,14 +290,16 @@ class TestSweepAndDelete:
 
         now = datetime.now(timezone.utc)
         await MCPServerOAuthTokenRepo.upsert(
-            db, TEST_ORG_ID,
+            db,
+            TEST_ORG_ID,
             mcp_server_id=s1,
             access_token="at-expiring",
             refresh_token=None,
             expires_at=now + timedelta(minutes=2),  # expires soon
         )
         await MCPServerOAuthTokenRepo.upsert(
-            db, TEST_ORG_ID,
+            db,
+            TEST_ORG_ID,
             mcp_server_id=s2_obj.id,
             access_token="at-fresh",
             refresh_token=None,
@@ -314,7 +317,8 @@ class TestSweepAndDelete:
     async def test_list_expiring_before_excludes_rows_with_null_expiry(self, db):
         server_id = await _make_server(db)
         await MCPServerOAuthTokenRepo.upsert(
-            db, TEST_ORG_ID,
+            db,
+            TEST_ORG_ID,
             mcp_server_id=server_id,
             access_token="at-no-expiry",
             refresh_token="rt-no-expiry",
@@ -331,7 +335,8 @@ class TestSweepAndDelete:
     async def test_delete_removes_row(self, db):
         server_id = await _make_server(db)
         await MCPServerOAuthTokenRepo.upsert(
-            db, TEST_ORG_ID,
+            db,
+            TEST_ORG_ID,
             mcp_server_id=server_id,
             access_token="at",
             refresh_token="rt",
@@ -345,9 +350,7 @@ class TestSweepAndDelete:
         await db.commit()
         assert deleted is True
 
-        gone = await MCPServerOAuthTokenRepo.get_for_server(
-            db, TEST_ORG_ID, server_id
-        )
+        gone = await MCPServerOAuthTokenRepo.get_for_server(db, TEST_ORG_ID, server_id)
         assert gone is None
 
     async def test_delete_returns_false_when_no_row(self, db):
@@ -367,7 +370,8 @@ class TestCascade:
     async def test_token_row_is_deleted_when_mcp_server_is_deleted(self, db):
         server_id = await _make_server(db)
         await MCPServerOAuthTokenRepo.upsert(
-            db, TEST_ORG_ID,
+            db,
+            TEST_ORG_ID,
             mcp_server_id=server_id,
             access_token="at",
             refresh_token="rt",
@@ -387,7 +391,5 @@ class TestCascade:
         # SQLite enforces ON DELETE CASCADE only when foreign keys are
         # enabled (PRAGMA foreign_keys = ON). SQLAlchemy enables them by
         # default for aiosqlite, so the cascade should fire.
-        after = await MCPServerOAuthTokenRepo.get_for_server(
-            db, TEST_ORG_ID, server_id
-        )
+        after = await MCPServerOAuthTokenRepo.get_for_server(db, TEST_ORG_ID, server_id)
         assert after is None

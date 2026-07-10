@@ -2,7 +2,12 @@
 
 import pytest
 
+from backend.skills.convert import convert_legacy_skill_content
 from backend.skills.parser import OperationClassification, load, loads
+
+
+def _explicit(raw: str, *, fmt: str = "md") -> str:
+    return convert_legacy_skill_content(raw, fmt=fmt).content
 
 
 @pytest.fixture()
@@ -10,21 +15,23 @@ def skill_md(tmp_path):
     """Write a SKILL.md with YAML front-matter and return its path."""
     p = tmp_path / "SKILL.md"
     p.write_text(
-        "---\n"
-        "version: '1'\n"
-        "environment: test\n"
-        "operations:\n"
-        "  - tool: get_pods\n"
-        "    classification: safe\n"
-        "  - tool: scale_deployment\n"
-        "    classification: caution\n"
-        "    notes: changes replicas\n"
-        "  - tool: delete_*\n"
-        "    classification: destructive\n"
-        "---\n"
-        "\n"
-        "# Test Skill Definition\n"
-        "Some documentation here.\n"
+        _explicit(
+            "---\n"
+            "version: '1'\n"
+            "environment: test\n"
+            "operations:\n"
+            "  - tool: get_pods\n"
+            "    classification: safe\n"
+            "  - tool: scale_deployment\n"
+            "    classification: caution\n"
+            "    notes: changes replicas\n"
+            "  - tool: delete_*\n"
+            "    classification: destructive\n"
+            "---\n"
+            "\n"
+            "# Test Skill Definition\n"
+            "Some documentation here.\n"
+        )
     )
     return p
 
@@ -34,11 +41,14 @@ def skill_yaml(tmp_path):
     """Write a SKILL.yaml and return its path."""
     p = tmp_path / "SKILL.yaml"
     p.write_text(
-        "version: '2'\n"
-        "environment: staging\n"
-        "operations:\n"
-        "  - tool: list_*\n"
-        "    classification: safe\n"
+        _explicit(
+            "version: '2'\n"
+            "environment: staging\n"
+            "operations:\n"
+            "  - tool: list_*\n"
+            "    classification: safe\n",
+            fmt="yaml",
+        )
     )
     return p
 
@@ -118,7 +128,8 @@ class TestLoad:
 
     def test_workflow_section_parses_ordered_yaml_steps(self):
         sd = loads(
-            """---
+            _explicit(
+                """---
 version: "1"
 environment: test
 operations:
@@ -147,6 +158,7 @@ steps:
     tier_override: approval
 ```
 """
+            )
         )
 
         assert [step.id for step in sd.workflow] == ["find", "restart"]
@@ -190,15 +202,17 @@ class TestClassify:
         """If a tool matches both exact and wildcard, exact wins."""
         p = tmp_path / "SKILL.md"
         p.write_text(
-            "---\n"
-            "version: '1'\n"
-            "environment: test\n"
-            "operations:\n"
-            "  - tool: delete_configmap\n"
-            "    classification: caution\n"
-            "  - tool: delete_*\n"
-            "    classification: destructive\n"
-            "---\n"
+            _explicit(
+                "---\n"
+                "version: '1'\n"
+                "environment: test\n"
+                "operations:\n"
+                "  - tool: delete_configmap\n"
+                "    classification: caution\n"
+                "  - tool: delete_*\n"
+                "    classification: destructive\n"
+                "---\n"
+            )
         )
         sd = load(p)
         assert sd.classify("delete_configmap") == "caution"
@@ -249,17 +263,19 @@ class TestReversibilityAndInverse:
     def test_parser_reads_reversible_and_inverse(self, tmp_path):
         p = tmp_path / "SKILL.md"
         p.write_text(
-            "---\n"
-            "version: '1'\n"
-            "environment: test\n"
-            "operations:\n"
-            "  - tool: cordon_node\n"
-            "    classification: caution\n"
-            "    reversible: true\n"
-            "    compensating_inverse: uncordon_node\n"
-            "  - tool: delete_pod\n"
-            "    classification: destructive\n"
-            "---\n"
+            _explicit(
+                "---\n"
+                "version: '1'\n"
+                "environment: test\n"
+                "operations:\n"
+                "  - tool: cordon_node\n"
+                "    classification: caution\n"
+                "    reversible: true\n"
+                "    compensating_inverse: uncordon_node\n"
+                "  - tool: delete_pod\n"
+                "    classification: destructive\n"
+                "---\n"
+            )
         )
         sd = load(p)
         assert sd.is_reversible("cordon_node") is True
@@ -275,13 +291,15 @@ class TestReversibilityAndInverse:
     def test_is_reversible_follows_wildcard_match(self, tmp_path):
         p = tmp_path / "SKILL.md"
         p.write_text(
-            "---\n"
-            "version: '1'\n"
-            "environment: test\n"
-            "operations:\n"
-            "  - tool: describe_*\n"
-            "    classification: safe\n"
-            "---\n"
+            _explicit(
+                "---\n"
+                "version: '1'\n"
+                "environment: test\n"
+                "operations:\n"
+                "  - tool: describe_*\n"
+                "    classification: safe\n"
+                "---\n"
+            )
         )
         sd = load(p)
         assert sd.is_reversible("describe_pod") is True
@@ -289,14 +307,16 @@ class TestReversibilityAndInverse:
     def test_tier0_violation_requires_inverse_for_side_effecting_op(self, tmp_path):
         p = tmp_path / "SKILL.md"
         p.write_text(
-            "---\n"
-            "version: '1'\n"
-            "environment: test\n"
-            "operations:\n"
-            "  - tool: rollout_restart\n"
-            "    classification: caution\n"
-            "    reversible: true\n"
-            "---\n"
+            _explicit(
+                "---\n"
+                "version: '1'\n"
+                "environment: test\n"
+                "operations:\n"
+                "  - tool: rollout_restart\n"
+                "    classification: caution\n"
+                "    reversible: true\n"
+                "---\n"
+            )
         )
         sd = load(p)
         assert sd.is_reversible("rollout_restart") is True

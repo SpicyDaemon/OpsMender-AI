@@ -33,9 +33,7 @@ def upgrade() -> None:
                 server_default=sa.text("'{}'"),
             )
         )
-    op.alter_column(
-        "services", "integration_action_overrides", server_default=None
-    )
+    op.alter_column("services", "integration_action_overrides", server_default=None)
 
 
 def downgrade() -> None:

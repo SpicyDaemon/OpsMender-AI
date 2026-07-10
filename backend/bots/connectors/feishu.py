@@ -77,7 +77,7 @@ class FeishuAdapter:
         # Feishu sends a token in the payload for verification
         # Note: We also support HMAC verification for higher security in production
         # but the token is the standard baseline.
-        
+
         try:
             payload = httpx.Response(status_code=200, content=raw_body).json()
         except Exception:
@@ -88,11 +88,15 @@ class FeishuAdapter:
 
         credentials = connector.credentials or {}
         expected_token = credentials.get("verification_token")
-        
+
         # Handle Feishu's nested header/token structure
         provided = payload.get("token") or (payload.get("header") or {}).get("token")
 
-        if not expected_token or not provided or not secrets.compare_digest(str(expected_token), provided):
+        if (
+            not expected_token
+            or not provided
+            or not secrets.compare_digest(str(expected_token), provided)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid Feishu verification token",
@@ -108,9 +112,9 @@ class FeishuAdapter:
 
         header = payload.get("header") or {}
         event = payload.get("event") or {}
-        
+
         event_type = header.get("event_type") or payload.get("type")
-        
+
         # We handle im.message.receive_v1
         if event_type != "im.message.receive_v1":
             return None
@@ -122,7 +126,7 @@ class FeishuAdapter:
         chat_id = message.get("chat_id")
         sender = event.get("sender") or {}
         user_id = sender.get("sender_id", {}).get("open_id")
-        
+
         content_raw = message.get("content")
         try:
             content = json.loads(content_raw)
@@ -147,7 +151,9 @@ class FeishuAdapter:
         # Feishu doesn't typically use inline replies in the webhook response for v2 events
         return None
 
-    async def _get_tenant_access_token(self, app_id: str, app_secret: str) -> str | None:
+    async def _get_tenant_access_token(
+        self, app_id: str, app_secret: str
+    ) -> str | None:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
@@ -194,9 +200,9 @@ class FeishuAdapter:
             )
             if resp.status_code != 200:
                 return False, f"Feishu API error: HTTP {resp.status_code} - {resp.text}"
-            
+
             data = resp.json()
             if data.get("code") != 0:
                 return False, f"Feishu API error: {data.get('msg')}"
-            
+
             return True, None

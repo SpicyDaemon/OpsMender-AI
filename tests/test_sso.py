@@ -222,9 +222,7 @@ class TestSSOCRUD:
             json={"domain": "sso.example.com"},
             headers=auth_headers,
         )
-        resp = await client.get(
-            "/tenant/resolve", headers={"Host": "sso.example.com"}
-        )
+        resp = await client.get("/tenant/resolve", headers={"Host": "sso.example.com"})
         assert resp.json()["sso_enabled"] is False
 
         await client.put(
@@ -238,9 +236,7 @@ class TestSSOCRUD:
             headers=auth_headers,
         )
         body = (
-            await client.get(
-                "/tenant/resolve", headers={"Host": "sso.example.com"}
-            )
+            await client.get("/tenant/resolve", headers={"Host": "sso.example.com"})
         ).json()
         assert body["sso_enabled"] is True
         assert body["sso_login_path"] == "/auth/sso/test-org/login"
@@ -253,20 +249,14 @@ class TestSSOCRUD:
 
 class TestSSOLoginFlow:
     async def test_login_disabled_returns_400(self, client):
-        resp = await client.get(
-            "/auth/sso/test-org/login", follow_redirects=False
-        )
+        resp = await client.get("/auth/sso/test-org/login", follow_redirects=False)
         assert resp.status_code == 400
 
     async def test_login_unknown_org_returns_404(self, client):
-        resp = await client.get(
-            "/auth/sso/no-such-org/login", follow_redirects=False
-        )
+        resp = await client.get("/auth/sso/no-such-org/login", follow_redirects=False)
         assert resp.status_code == 404
 
-    async def test_login_redirects_to_idp(
-        self, client, app, auth_headers, monkeypatch
-    ):
+    async def test_login_redirects_to_idp(self, client, app, auth_headers, monkeypatch):
         await client.put(
             f"/organizations/{TEST_ORG_ID}/sso",
             json={
@@ -279,9 +269,7 @@ class TestSSOLoginFlow:
         )
         _patch_idp(monkeypatch)
 
-        resp = await client.get(
-            "/auth/sso/test-org/login", follow_redirects=False
-        )
+        resp = await client.get("/auth/sso/test-org/login", follow_redirects=False)
         assert resp.status_code == 302
         loc = resp.headers["location"]
         assert loc.startswith("https://idp.example.com/oauth2/authorize?")
@@ -317,11 +305,10 @@ class TestSSOLoginFlow:
             }
 
         from backend.api.routes import sso as sso_route_mod
+
         monkeypatch.setattr(sso_route_mod, "exchange_code", fake_exchange)
 
-        login = await client.get(
-            "/auth/sso/test-org/login", follow_redirects=False
-        )
+        login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
         state = parse_qs(urlparse(login.headers["location"]).query)["state"][0]
 
         cb = await client.get(
@@ -361,11 +348,10 @@ class TestSSOLoginFlow:
             return {"email": "eve@evil.com", "nonce": nonce}
 
         from backend.api.routes import sso as sso_route_mod
+
         monkeypatch.setattr(sso_route_mod, "exchange_code", fake_exchange)
 
-        login = await client.get(
-            "/auth/sso/test-org/login", follow_redirects=False
-        )
+        login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
         state = parse_qs(urlparse(login.headers["location"]).query)["state"][0]
 
         cb = await client.get(

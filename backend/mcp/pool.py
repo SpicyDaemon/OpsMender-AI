@@ -179,13 +179,13 @@ class MCPServerPool:
                             await db.commit()
                             return (
                                 MCPServerConfig(
-                                name=cfg.name,
-                                transport=cfg.transport,
-                                command=cfg.command,
-                                args=cfg.args,
-                                env=cfg.env,
-                                url=cfg.url,
-                                token=access_token,
+                                    name=cfg.name,
+                                    transport=cfg.transport,
+                                    command=cfg.command,
+                                    args=cfg.args,
+                                    env=cfg.env,
+                                    url=cfg.url,
+                                    token=access_token,
                                 ),
                                 row.id,
                             )

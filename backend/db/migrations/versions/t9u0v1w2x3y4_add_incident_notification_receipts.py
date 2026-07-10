@@ -34,7 +34,9 @@ def upgrade() -> None:
         sa.Column("can_update", sa.Boolean(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["connector_id"], ["bot_connectors.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["connector_id"], ["bot_connectors.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], ondelete="SET NULL"),
@@ -62,4 +64,3 @@ def downgrade() -> None:
         table_name="incident_notification_receipts",
     )
     op.drop_table("incident_notification_receipts")
-

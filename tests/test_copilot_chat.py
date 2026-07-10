@@ -41,7 +41,6 @@ from backend.llm.factory import create_llm
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
 @pytest.fixture
 async def app(tmp_path):
     db_path = tmp_path / "copilot-chat.db"
@@ -53,6 +52,7 @@ async def app(tmp_path):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         session.add(org)
         await session.commit()

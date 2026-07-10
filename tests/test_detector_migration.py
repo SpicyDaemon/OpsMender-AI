@@ -205,9 +205,7 @@ class TestApplyMigrations:
         assert created == 1
         assert skipped == 0
 
-        schedules = await AuditScheduleRepo.list_for_org(
-            db_session, TEST_ORG_ID
-        )
+        schedules = await AuditScheduleRepo.list_for_org(db_session, TEST_ORG_ID)
         assert len(schedules) == 1
         assert schedules[0].name == "check-pods"
         assert schedules[0].analyzers == ["environment-scan"]
@@ -252,7 +250,5 @@ class TestApplyMigrations:
         assert created == 0
         assert skipped == 1
         # Still only one schedule with that name.
-        schedules = await AuditScheduleRepo.list_for_org(
-            db_session, TEST_ORG_ID
-        )
+        schedules = await AuditScheduleRepo.list_for_org(db_session, TEST_ORG_ID)
         assert len([s for s in schedules if s.name == "check-pods"]) == 1

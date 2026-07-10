@@ -18,7 +18,6 @@ from backend.db.models import Base, User
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
 @pytest.fixture
 async def app_db():
     """Create an in-memory SQLite app + db for testing."""
@@ -86,7 +85,6 @@ async def db(app_db):
 
 
 class TestSLATargetAPI:
-
     @pytest.mark.asyncio
     async def test_create_sla_target(self, client: AsyncClient):
         resp = await client.post(
@@ -232,7 +230,6 @@ class TestSLATargetAPI:
 
 
 class TestSLOAPI:
-
     @pytest.mark.asyncio
     async def test_create_slo(self, client: AsyncClient):
         target_resp = await client.post(
@@ -398,7 +395,6 @@ class TestSLOAPI:
 
 
 class TestMaintenanceWindowAPI:
-
     @pytest.mark.asyncio
     async def test_create_maintenance_window(self, client: AsyncClient):
         now = datetime.now(timezone.utc)
@@ -496,7 +492,6 @@ class TestMaintenanceWindowAPI:
 
 
 class TestUptimeAPI:
-
     @pytest.mark.asyncio
     async def test_uptime_empty(self, client: AsyncClient):
         target_resp = await client.post(
@@ -707,9 +702,7 @@ class TestReliabilityV1:
         assert detail.json()["current_status"] == "up"
 
     @pytest.mark.asyncio
-    async def test_uptime_windows_and_mtbf(
-        self, client: AsyncClient, db: AsyncSession
-    ):
+    async def test_uptime_windows_and_mtbf(self, client: AsyncClient, db: AsyncSession):
         target_resp = await client.post(
             "/sla-targets", json={"name": "windows", "kind": "http"}
         )
@@ -726,9 +719,7 @@ class TestReliabilityV1:
         await db.commit()
 
         for window in ("7d", "30d", "365d"):
-            resp = await client.get(
-                f"/sla-targets/{target_id}/uptime?window={window}"
-            )
+            resp = await client.get(f"/sla-targets/{target_id}/uptime?window={window}")
             assert resp.status_code == 200, window
             data = resp.json()
             assert data["uptime_pct"] == 80.0
@@ -801,9 +792,7 @@ class TestReliabilityV1:
         )
         await db.commit()
 
-        resp = await client.get(
-            f"/sla-targets/{target_id}/response-time?window=15m"
-        )
+        resp = await client.get(f"/sla-targets/{target_id}/response-time?window=15m")
         assert resp.status_code == 200
         data = resp.json()
         assert data["avg_latency_ms"] == 200
@@ -838,9 +827,7 @@ class TestReliabilityV1:
         )
         await db.commit()
 
-        resp = await client.get(
-            f"/sla-targets/{target_id}/response-time?window=365d"
-        )
+        resp = await client.get(f"/sla-targets/{target_id}/response-time?window=365d")
         assert resp.status_code == 200
         data = resp.json()
         assert data["avg_latency_ms"] == 240
@@ -928,7 +915,10 @@ class TestReliabilityV1:
         # Breach the objective: 50% uptime, well under 99%.
         for i in range(10):
             await UptimeSampleRepo.create(
-                db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=(i < 5),
+                db,
+                TEST_ORG_ID,
+                target_id=uuid.UUID(target_id),
+                up=(i < 5),
                 source="poller",
             )
         await db.commit()
@@ -1011,7 +1001,10 @@ class TestSLATargetServiceLink:
 
         for i in range(10):
             await UptimeSampleRepo.create(
-                db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=(i < 2),
+                db,
+                TEST_ORG_ID,
+                target_id=uuid.UUID(target_id),
+                up=(i < 2),
                 source="poller",
             )
         await db.commit()
@@ -1046,7 +1039,10 @@ class TestSLATargetServiceLink:
 
         for _ in range(10):
             await UptimeSampleRepo.create(
-                db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=True,
+                db,
+                TEST_ORG_ID,
+                target_id=uuid.UUID(target_id),
+                up=True,
                 source="poller",
             )
         await db.commit()

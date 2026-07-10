@@ -74,15 +74,11 @@ def _ephemeral(text: str) -> JSONResponse:
     return JSONResponse({"response_type": "ephemeral", "text": text})
 
 
-def _verify_signature(
-    *, signing_secret: str, headers, raw_body: bytes
-) -> bool:
+def _verify_signature(*, signing_secret: str, headers, raw_body: bytes) -> bool:
     timestamp = headers.get("x-slack-request-timestamp") or headers.get(
         "X-Slack-Request-Timestamp"
     )
-    signature = headers.get("x-slack-signature") or headers.get(
-        "X-Slack-Signature"
-    )
+    signature = headers.get("x-slack-signature") or headers.get("X-Slack-Signature")
     if not timestamp or not signature:
         return False
     try:
@@ -91,11 +87,14 @@ def _verify_signature(
     except (TypeError, ValueError):
         return False
     basestring = f"v0:{timestamp}:{raw_body.decode('utf-8', errors='replace')}"
-    expected = "v0=" + hmac.new(
-        signing_secret.encode("utf-8"),
-        basestring.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    expected = (
+        "v0="
+        + hmac.new(
+            signing_secret.encode("utf-8"),
+            basestring.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+    )
     return hmac.compare_digest(expected, signature)
 
 
@@ -197,10 +196,8 @@ async def slack_interactions(
                     display_name=(payload.get("user") or {}).get("name"),
                 ),
                 idempotency_key=idempotency_key,
-                channel_id=str((payload.get("channel") or {}).get("id") or "")
-                or None,
-                message_id=str((payload.get("message") or {}).get("ts") or "")
-                or None,
+                channel_id=str((payload.get("channel") or {}).get("id") or "") or None,
+                message_id=str((payload.get("message") or {}).get("ts") or "") or None,
             ),
             config=request.app.state.config,
         )
@@ -328,8 +325,7 @@ async def _handle_slash(
         )
     if incident_id is None and command != "/status":
         return _ephemeral(
-            f"Usage: `{command} <incident-id>` "
-            "(no active page found for your account)."
+            f"Usage: `{command} <incident-id>` (no active page found for your account)."
         )
 
     if command == "/status" and incident_id is None:
@@ -387,10 +383,7 @@ async def _handle_slash(
         elif result == "noop":
             msg = f"You already own *{incident.title}*."
         else:
-            msg = (
-                f"Take-over for *{incident.title}* requires an admin "
-                "(chain ended)."
-            )
+            msg = f"Take-over for *{incident.title}* requires an admin (chain ended)."
         return _ephemeral(msg)
 
     if command == "/release":
@@ -404,12 +397,8 @@ async def _handle_slash(
         )
 
     if command == "/resolve":
-        await _esc.cancel_chain(
-            db, connector.org_id, incident_id=incident_id
-        )
-        await IncidentRepo.update_status(
-            db, connector.org_id, incident_id, "resolved"
-        )
+        await _esc.cancel_chain(db, connector.org_id, incident_id=incident_id)
+        await IncidentRepo.update_status(db, connector.org_id, incident_id, "resolved")
         return _ephemeral(f"Marked *{incident.title}* resolved.")
 
     if command == "/snooze":
@@ -424,9 +413,7 @@ async def _handle_slash(
             db, connector.org_id, incident_id
         )
         if state is None or state.status not in ("running", "paused"):
-            return _ephemeral(
-                f"No active chain to snooze for *{incident.title}*."
-            )
+            return _ephemeral(f"No active chain to snooze for *{incident.title}*.")
         now = datetime.now(timezone.utc)
         new_due = now + timedelta(seconds=seconds)
         state.next_step_due_at = new_due

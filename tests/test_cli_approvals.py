@@ -17,7 +17,6 @@ from cli.opsmender import _parse_args, main
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
 async def _seed_db(db_url: str):
     engine = create_async_engine(db_url, echo=False)
     async with engine.begin() as conn:

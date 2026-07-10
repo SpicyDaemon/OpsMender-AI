@@ -40,8 +40,7 @@ def _env_settings(env: Mapping[str, str]) -> ResolvedVoiceSettings | None:
         auth_token=auth_token,
         sms_from_number=sms_from_number,
         voice_from_number=(
-            _clean(env.get("OPSMENDER_TWILIO_VOICE_FROM_NUMBER"))
-            or sms_from_number
+            _clean(env.get("OPSMENDER_TWILIO_VOICE_FROM_NUMBER")) or sms_from_number
         ),
         voice_status_callback_url=_clean(
             env.get("OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL")
@@ -87,9 +86,7 @@ async def verify_twilio_credentials(
     owns_client = client is None
     client = client or httpx.AsyncClient(timeout=10.0)
     try:
-        resp = await client.get(
-            url, auth=(settings.account_sid, settings.auth_token)
-        )
+        resp = await client.get(url, auth=(settings.account_sid, settings.auth_token))
     except httpx.HTTPError as exc:
         return False, f"Could not reach Twilio: {exc}"
     finally:

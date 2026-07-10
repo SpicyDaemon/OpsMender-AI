@@ -162,7 +162,11 @@ async def respond_to_user_message(
                 user_message=user_message.content,
             )
 
-            llm = llm_factory() if llm_factory else await _resolve_llm(db, org_id, session)
+            llm = (
+                llm_factory()
+                if llm_factory
+                else await _resolve_llm(db, org_id, session)
+            )
 
         reply_text = await asyncio.to_thread(llm.invoke, prompt)
         reply_text = (reply_text or "").strip() or "[co-pilot returned no content]"

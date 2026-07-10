@@ -26,7 +26,9 @@ def _aware(value: datetime | None, *, fallback: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
-def _range(from_at: datetime | None, to_at: datetime | None) -> tuple[datetime, datetime]:
+def _range(
+    from_at: datetime | None, to_at: datetime | None
+) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc)
     start = _aware(from_at, fallback=now - timedelta(days=30))
     end = _aware(to_at, fallback=now)

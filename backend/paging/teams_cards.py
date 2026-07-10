@@ -210,8 +210,7 @@ def build_graph_chat_message(
         "body": {
             "contentType": "html",
             "content": (
-                f"<p>{fallback}</p>"
-                f"<attachment id=\"{attachment['id']}\"></attachment>"
+                f'<p>{fallback}</p><attachment id="{attachment["id"]}"></attachment>'
             ),
         },
         "attachments": [attachment],

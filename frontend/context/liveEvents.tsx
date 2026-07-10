@@ -193,10 +193,7 @@ export function usePendingApprovalsCount(enabled = true) {
   const [count, setCount] = useState(0);
 
   const refresh = useCallback(async () => {
-    if (!enabled) {
-      setCount(0);
-      return;
-    }
+    if (!enabled) return;
     try {
       const res = await listApprovals({ status: "pending", limit: 1 });
       setCount(res.total);
@@ -206,11 +203,8 @@ export function usePendingApprovalsCount(enabled = true) {
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled) {
-      setCount(0);
-      return;
-    }
-    void refresh();
+    if (!enabled) return;
+    void Promise.resolve().then(refresh);
     const interval = window.setInterval(
       () => void refresh(),
       APPROVAL_COUNT_POLL_MS,
@@ -222,5 +216,5 @@ export function usePendingApprovalsCount(enabled = true) {
     void refresh();
   });
 
-  return count;
+  return enabled ? count : 0;
 }

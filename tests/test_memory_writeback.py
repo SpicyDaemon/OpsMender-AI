@@ -356,8 +356,11 @@ class TestAutoCompaction:
         service = await _seed_service(factory)
         async with factory() as db:
             await IncidentMemoryRepo.create(
-                db, org_id=ORG_A, service_id=service.id,
-                title="t1", summary_md="s",
+                db,
+                org_id=ORG_A,
+                service_id=service.id,
+                title="t1",
+                summary_md="s",
             )
             await db.commit()
         report = await maybe_compact(
@@ -374,15 +377,23 @@ class TestAutoCompaction:
         async with factory() as db:
             for i in range(COMPACTION_THRESHOLD):
                 await IncidentMemoryRepo.create(
-                    db, org_id=ORG_A, service_id=service.id,
-                    title=f"unique-{i}", summary_md="x",
+                    db,
+                    org_id=ORG_A,
+                    service_id=service.id,
+                    title=f"unique-{i}",
+                    summary_md="x",
                 )
             await IncidentMemoryRepo.create(
-                db, org_id=ORG_A, service_id=service.id,
-                title="DUPE", summary_md="older",
+                db,
+                org_id=ORG_A,
+                service_id=service.id,
+                title="DUPE",
+                summary_md="older",
             )
             await IncidentMemoryRepo.create(
-                db, org_id=ORG_A, service_id=service.id,
+                db,
+                org_id=ORG_A,
+                service_id=service.id,
                 title="DUPE",  # same title, will trigger dedup
                 summary_md="newer",
             )
@@ -401,22 +412,29 @@ class TestAutoCompaction:
             assert len(dupes) == 1
             assert dupes[0].summary_md == "newer"
 
-    async def test_global_compaction_does_not_touch_service_memories(
-        self, factory
-    ):
+    async def test_global_compaction_does_not_touch_service_memories(self, factory):
         service = await _seed_service(factory)
         async with factory() as db:
             await IncidentMemoryRepo.create(
-                db, org_id=ORG_A, service_id=None,
-                title="DUPE", summary_md="older global",
+                db,
+                org_id=ORG_A,
+                service_id=None,
+                title="DUPE",
+                summary_md="older global",
             )
             await IncidentMemoryRepo.create(
-                db, org_id=ORG_A, service_id=None,
-                title="DUPE", summary_md="newer global",
+                db,
+                org_id=ORG_A,
+                service_id=None,
+                title="DUPE",
+                summary_md="newer global",
             )
             service_memory = await IncidentMemoryRepo.create(
-                db, org_id=ORG_A, service_id=service.id,
-                title="DUPE", summary_md="service-specific",
+                db,
+                org_id=ORG_A,
+                service_id=service.id,
+                title="DUPE",
+                summary_md="service-specific",
             )
             await db.commit()
             service_memory_id = service_memory.id
@@ -443,8 +461,11 @@ class TestAutoCompaction:
         async with factory() as db:
             for i in range(COMPACTION_THRESHOLD + 1):
                 m = await IncidentMemoryRepo.create(
-                    db, org_id=ORG_A, service_id=service.id,
-                    title=f"unique-{i}", summary_md="s",
+                    db,
+                    org_id=ORG_A,
+                    service_id=service.id,
+                    title=f"unique-{i}",
+                    summary_md="s",
                 )
                 ids.append(m.id)
             await db.commit()
@@ -478,16 +499,18 @@ class TestAutoCompaction:
         async with factory() as db:
             for i in range(COMPACTION_THRESHOLD + 10):
                 m = await IncidentMemoryRepo.create(
-                    db, org_id=ORG_A, service_id=service.id,
-                    title=f"u-{i}", summary_md="s",
+                    db,
+                    org_id=ORG_A,
+                    service_id=service.id,
+                    title=f"u-{i}",
+                    summary_md="s",
                 )
                 ids.append(m.id)
             await db.commit()
 
         # Try to delete MAX_COMPACTION_OPS + 2 — only MAX_COMPACTION_OPS apply.
         delete_ops = [
-            {"action": "delete", "id": str(i)}
-            for i in ids[: MAX_COMPACTION_OPS + 2]
+            {"action": "delete", "id": str(i)} for i in ids[: MAX_COMPACTION_OPS + 2]
         ]
         llm = _ScriptedLLM([json.dumps(delete_ops)])
         report = await maybe_compact(
@@ -512,7 +535,5 @@ class TestWorkflowOrderWithRemember:
         assert order[-1] == "remember"
 
     def test_validator_accepts_legacy_orders_without_remember(self):
-        order = validate_workflow_node_order(
-            ["observe", "diagnose", "summarize"]
-        )
+        order = validate_workflow_node_order(["observe", "diagnose", "summarize"])
         assert "remember" not in order

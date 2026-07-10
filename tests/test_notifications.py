@@ -265,7 +265,10 @@ def test_quiet_hours_wrapping_past_midnight():
 def test_quiet_hours_disabled_or_malformed():
     assert _in_quiet_hours(None, _at("12:00")) is False
     assert _in_quiet_hours({"enabled": False}, _at("12:00")) is False
-    assert _in_quiet_hours({"enabled": True, "start": "x", "end": "y"}, _at("12:00")) is False
+    assert (
+        _in_quiet_hours({"enabled": True, "start": "x", "end": "y"}, _at("12:00"))
+        is False
+    )
     assert _in_quiet_hours({"enabled": True}, _at("12:00")) is False
 
 
@@ -312,9 +315,7 @@ async def test_approval_request_notifies_approvers(factory, monkeypatch):
         await UserRepo.add_to_organization(db, USER_A, ORG, role="operator")
         await UserRepo.add_to_organization(db, USER_B, ORG, role="viewer")
         db.add(Incident(id=inc_id, org_id=ORG, title="DB down", description="x"))
-        db.add(
-            SessionModel(id=sess_id, org_id=ORG, incident_id=inc_id, tier=1)
-        )
+        db.add(SessionModel(id=sess_id, org_id=ORG, incident_id=inc_id, tier=1))
         await db.commit()
 
     from backend.approvals.service import ApprovalService
@@ -336,12 +337,8 @@ async def test_approval_request_notifies_approvers(factory, monkeypatch):
     await asyncio.sleep(0.6)
     async with factory() as db:
         # The operator was notified; the viewer was not.
-        assert (
-            await InAppNotificationRepo.count_for_user(db, ORG, USER_A) == 1
-        )
-        assert (
-            await InAppNotificationRepo.count_for_user(db, ORG, USER_B) == 0
-        )
+        assert await InAppNotificationRepo.count_for_user(db, ORG, USER_A) == 1
+        assert await InAppNotificationRepo.count_for_user(db, ORG, USER_B) == 0
         items = await InAppNotificationRepo.list_for_user(db, ORG, USER_A)
         assert items[0].event_type == "approval.requested"
         assert items[0].category == "approval"

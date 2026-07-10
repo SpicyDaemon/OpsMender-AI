@@ -49,7 +49,9 @@ def _validate_quiet_hours(qh) -> None:
             )
 
 
-@router.get("", response_model=InAppNotificationListResponse, summary="List notifications")
+@router.get(
+    "", response_model=InAppNotificationListResponse, summary="List notifications"
+)
 async def list_notifications(
     unread_only: bool = False,
     limit: int = Query(default=50, ge=1, le=200),

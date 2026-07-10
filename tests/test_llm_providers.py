@@ -324,7 +324,9 @@ def _install_fake_vertex_ai(monkeypatch):
     fake_vertexai = types.SimpleNamespace(init=lambda **kwargs: kwargs)
     monkeypatch.setitem(sys.modules, "google", fake_google)
     monkeypatch.setitem(sys.modules, "google.auth", fake_google_auth)
-    monkeypatch.setitem(sys.modules, "google.auth.transport", fake_google_auth_transport)
+    monkeypatch.setitem(
+        sys.modules, "google.auth.transport", fake_google_auth_transport
+    )
     monkeypatch.setitem(
         sys.modules,
         "google.auth.transport.requests",

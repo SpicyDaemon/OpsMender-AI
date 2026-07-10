@@ -81,7 +81,9 @@ def discover() -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
-def _entry_to_importable(name: str, entry: dict[str, Any], *, source: str) -> ImportableServer:
+def _entry_to_importable(
+    name: str, entry: dict[str, Any], *, source: str
+) -> ImportableServer:
     transport = entry.get("type") or "stdio"
     # Claude treats "streamable-http" as an alias for "http".
     if transport == "streamable-http":
@@ -134,9 +136,7 @@ def parse(path: Path) -> list[ImportableServer]:
         for name, entry in direct.items():
             if not isinstance(entry, dict):
                 continue
-            out.append(
-                _entry_to_importable(name, entry, source=f"claude:{path}")
-            )
+            out.append(_entry_to_importable(name, entry, source=f"claude:{path}"))
 
     # User-scope shape — `projects[<path>].mcpServers`.
     projects = raw.get("projects")

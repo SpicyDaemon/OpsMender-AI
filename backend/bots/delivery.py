@@ -35,4 +35,3 @@ class IncidentActionDescriptor:
     label: str
     token: str
     url: str | None = None
-

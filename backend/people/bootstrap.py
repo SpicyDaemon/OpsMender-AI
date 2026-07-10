@@ -76,8 +76,10 @@ async def bootstrap_admin(
             return
 
         orgs = await OrganizationRepo.list_all(db)
-        org = orgs[0] if orgs else await OrganizationRepo.create(
-            db, name="Main", slug="main"
+        org = (
+            orgs[0]
+            if orgs
+            else await OrganizationRepo.create(db, name="Main", slug="main")
         )
 
         if cfg.bootstrap_configured:

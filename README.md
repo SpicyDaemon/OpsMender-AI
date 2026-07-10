@@ -219,7 +219,19 @@ OPSMENDER_DATABASE_URL=postgresql+asyncpg://opsmender:opsmender@db:5432/opsmende
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-Production mode **refuses to start** with a default/weak JWT secret. Put a TLS-terminating proxy (nginx, Caddy, Cloudflare) in front of port 8000.
+Platform-neutral probes are available on the application port:
+
+- `GET /health/live` reports whether the process is running and never touches
+  PostgreSQL or optional integrations.
+- `GET /health/ready` reports readiness to receive traffic and requires a
+  reachable PostgreSQL database at the current Alembic revision.
+- `GET /health` remains a backward-compatible alias of `/health/live`.
+
+Production mode **refuses to start** with a placeholder JWT secret, a missing or
+non-PostgreSQL database URL, a known weak bootstrap password, or an invalid
+autonomy tier. It warns without blocking when CORS is wildcarded, the public
+base URL is unset, or interactive API docs are enabled. Put a TLS-terminating
+proxy (nginx, Caddy, Cloudflare) in front of port 8000.
 
 ### Standalone binary
 

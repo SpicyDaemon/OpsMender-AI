@@ -28,7 +28,9 @@ export default function ConfigPage() {
   }, []);
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
+    void Promise.resolve()
+      .then(reload)
+      .finally(() => setLoading(false));
   }, [reload]);
 
   if (loading || !config) return <ConfigPageSkeleton />;

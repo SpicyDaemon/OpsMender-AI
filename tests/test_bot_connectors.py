@@ -582,7 +582,12 @@ class TestFormSchema:
 
         adapter = get_adapter("whatsapp")
         names = {f.name for f in adapter.form_schema()}
-        assert {"app_secret", "verify_token", "access_token", "phone_number_id"} <= names
+        assert {
+            "app_secret",
+            "verify_token",
+            "access_token",
+            "phone_number_id",
+        } <= names
 
     def test_discord_schema_uses_customer_facing_channel_copy(self):
         adapter = get_adapter("discord")
@@ -685,9 +690,7 @@ class TestSMTPEmailAdapter:
 
 
 class TestTeamsAdapter:
-    async def test_incident_delivery_posts_verified_adaptive_card(
-        self, monkeypatch
-    ):
+    async def test_incident_delivery_posts_verified_adaptive_card(self, monkeypatch):
         captured = {}
 
         async def fake_token(**kwargs):
@@ -754,9 +757,7 @@ class TestTeamsAdapter:
         )
         assert receipt.ok is True
         assert receipt.external_message_id == "teams-message-1"
-        assert captured["url"].endswith(
-            "/chats/19:chat@thread.v2/messages"
-        )
+        assert captured["url"].endswith("/chats/19:chat@thread.v2/messages")
         actions = captured["json"]["attachments"][0]["content"]["actions"]
         assert {action["title"] for action in actions} == {
             "Acknowledge",
@@ -767,9 +768,7 @@ class TestTeamsAdapter:
 
 
 class TestEventBridgeAdapter:
-    async def test_put_events_uses_versioned_incident_status_schema(
-        self, monkeypatch
-    ):
+    async def test_put_events_uses_versioned_incident_status_schema(self, monkeypatch):
         captured = {}
 
         class FakeEvents:
@@ -926,7 +925,9 @@ class TestSlackAdapter:
             severity="high",
         )
 
-    def _patch_client(self, monkeypatch, *, response_json, status_code=200, captured=None):
+    def _patch_client(
+        self, monkeypatch, *, response_json, status_code=200, captured=None
+    ):
         captured = captured if captured is not None else {}
 
         class FakeResponse:

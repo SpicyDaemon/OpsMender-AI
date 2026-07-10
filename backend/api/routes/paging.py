@@ -151,9 +151,7 @@ async def _validate_allowed_integrations(
         if connector_id in seen:
             continue
         seen.add(connector_id)
-        connector = await IntegrationConnectorRepo.get_by_id(
-            db, org_id, connector_id
-        )
+        connector = await IntegrationConnectorRepo.get_by_id(db, org_id, connector_id)
         if connector is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -424,12 +422,8 @@ async def create_service(
 ):
     if await TeamRepo.get_by_id(db, org_id, body.team_id) is None:
         raise HTTPException(status_code=400, detail="Owning team not found")
-    mcp_server_ids = await _validate_mcp_servers(
-        db, org_id, body.mcp_server_ids
-    )
-    model_config_ids = await _validate_service_models(
-        db, org_id, body.model_config_ids
-    )
+    mcp_server_ids = await _validate_mcp_servers(db, org_id, body.mcp_server_ids)
+    model_config_ids = await _validate_service_models(db, org_id, body.model_config_ids)
     allowed_integration_connector_ids = await _validate_allowed_integrations(
         db, org_id, body.allowed_integration_connector_ids
     )
@@ -484,15 +478,14 @@ async def update_service(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    if body.team_id is not None and await TeamRepo.get_by_id(
-        db, org_id, body.team_id
-    ) is None:
+    if (
+        body.team_id is not None
+        and await TeamRepo.get_by_id(db, org_id, body.team_id) is None
+    ):
         raise HTTPException(status_code=400, detail="Owning team not found")
     mcp_server_ids = None
     if body.mcp_server_ids is not None:
-        mcp_server_ids = await _validate_mcp_servers(
-            db, org_id, body.mcp_server_ids
-        )
+        mcp_server_ids = await _validate_mcp_servers(db, org_id, body.mcp_server_ids)
     model_config_ids = None
     if body.model_config_ids is not None:
         current_service = await ServiceRepo.get_by_id(db, org_id, service_id)
@@ -526,13 +519,9 @@ async def update_service(
         priority=body.priority,
         alert_grouping=body.alert_grouping,
         mcp_server_ids=mcp_server_ids,
-        mcp_server_ids_provided=(
-            "mcp_server_ids" in body.model_fields_set
-        ),
+        mcp_server_ids_provided=("mcp_server_ids" in body.model_fields_set),
         model_config_ids=model_config_ids,
-        model_config_ids_provided=(
-            "model_config_ids" in body.model_fields_set
-        ),
+        model_config_ids_provided=("model_config_ids" in body.model_fields_set),
         allowed_integration_connector_ids=allowed_integration_connector_ids,
         allowed_integration_connector_ids_provided=(
             "allowed_integration_connector_ids" in body.model_fields_set
@@ -939,9 +928,7 @@ async def resolve_on_call(
         when = at or datetime.now()
         return OnCallResolveResponse(roster_id=roster_id, at=when, user_id=None)
     # On-call resolution excludes deactivated/soft-deleted users.
-    members = await RosterRepo.list_members(
-        db, org_id, roster_id, active_only=True
-    )
+    members = await RosterRepo.list_members(db, org_id, roster_id, active_only=True)
     overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
     ctx = OnCallContext(
         members=[
@@ -966,9 +953,7 @@ async def resolve_on_call(
     )
     when = at or datetime.now()
     user_id = on_call_at(ctx, when)
-    return OnCallResolveResponse(
-        roster_id=roster_id, at=when, user_id=user_id
-    )
+    return OnCallResolveResponse(roster_id=roster_id, at=when, user_id=user_id)
 
 
 @router.get(
@@ -1022,9 +1007,7 @@ async def resolve_on_call_range(
             items=[],
         )
     # On-call resolution excludes deactivated/soft-deleted users.
-    members = await RosterRepo.list_members(
-        db, org_id, roster_id, active_only=True
-    )
+    members = await RosterRepo.list_members(db, org_id, roster_id, active_only=True)
     overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
     ctx = OnCallContext(
         members=[
@@ -1049,8 +1032,12 @@ async def resolve_on_call_range(
     )
 
     items: list[OnCallRangeItem] = []
-    cursor = from_at if from_at.tzinfo is not None else from_at.replace(tzinfo=timezone.utc)
-    end_cursor = to_at if to_at.tzinfo is not None else to_at.replace(tzinfo=timezone.utc)
+    cursor = (
+        from_at if from_at.tzinfo is not None else from_at.replace(tzinfo=timezone.utc)
+    )
+    end_cursor = (
+        to_at if to_at.tzinfo is not None else to_at.replace(tzinfo=timezone.utc)
+    )
     step = timedelta(hours=step_hours)
     # For a daily (or coarser) calendar view, resolve each day at a time *inside*
     # the roster's coverage window rather than at the cursor's raw time-of-day.
@@ -1066,11 +1053,7 @@ async def resolve_on_call_range(
         )
         user_id = on_call_at(ctx, sample)
         active = next(
-            (
-                o
-                for o in overrides
-                if _aware(o.starts_at) <= sample < _aware(o.ends_at)
-            ),
+            (o for o in overrides if _aware(o.starts_at) <= sample < _aware(o.ends_at)),
             None,
         )
         items.append(
@@ -1610,9 +1593,7 @@ async def reorder_escalation_steps(
             detail="step_ids must be a permutation of the chain's existing steps",
         )
 
-    items = await EscalationStepRepo.reorder(
-        db, org_id, chain_id, body.step_ids
-    )
+    items = await EscalationStepRepo.reorder(db, org_id, chain_id, body.step_ids)
     await db.commit()
     return EscalationStepListResponse(
         items=[EscalationStepResponse.model_validate(i) for i in items],
@@ -1807,9 +1788,7 @@ async def chain_where_used(
 ):
     if await EscalationChainRepo.get_by_id(db, org_id, chain_id) is None:
         raise HTTPException(status_code=404, detail="Chain not found")
-    links = await ServiceEscalationChainRepo.list_for_chain(
-        db, org_id, chain_id
-    )
+    links = await ServiceEscalationChainRepo.list_for_chain(db, org_id, chain_id)
 
     # Enrich each link with service + team names so the UI doesn't have to
     # round-trip per row.
@@ -1829,9 +1808,7 @@ async def chain_where_used(
                 applies_when=link.applies_when,
             )
         )
-    return ChainWhereUsedResponse(
-        chain_id=chain_id, items=items, total=len(items)
-    )
+    return ChainWhereUsedResponse(chain_id=chain_id, items=items, total=len(items))
 
 
 @router.get(
@@ -1847,14 +1824,9 @@ async def list_service_escalation_chains(
 ):
     if await ServiceRepo.get_by_id(db, org_id, service_id) is None:
         raise HTTPException(status_code=404, detail="Service not found")
-    links = await ServiceEscalationChainRepo.list_for_service(
-        db, org_id, service_id
-    )
+    links = await ServiceEscalationChainRepo.list_for_service(db, org_id, service_id)
     return ServiceEscalationChainListResponse(
-        items=[
-            ServiceEscalationChainResponse.model_validate(link)
-            for link in links
-        ],
+        items=[ServiceEscalationChainResponse.model_validate(link) for link in links],
         total=len(links),
     )
 

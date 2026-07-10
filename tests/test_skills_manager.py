@@ -22,6 +22,7 @@ from backend.api.deps import get_db, set_session_factory
 from backend.config_loader import set_env_path
 from backend.db.models import Base
 from backend.db.repos import MCPServerRepo, SkillRepo
+from backend.skills.convert import CONVERSION_NOTICE, convert_legacy_skill_content
 from backend.skills.importer import auto_import
 from backend.skills.parser import loads as parse_skill_content
 from backend.tiers.enforcement import load_skill_for_mcp_server
@@ -29,8 +30,7 @@ from backend.tiers.enforcement import load_skill_for_mcp_server
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
-SAMPLE_SKILL = """---
+LEGACY_SAMPLE_SKILL = """---
 version: "1"
 environment: sample
 operations:
@@ -44,6 +44,7 @@ operations:
 
 # Sample skill
 """
+SAMPLE_SKILL = convert_legacy_skill_content(LEGACY_SAMPLE_SKILL).content
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +60,7 @@ async def db_factory():
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         session.add(org)
         await session.commit()
@@ -166,7 +168,10 @@ class TestParserLoads:
 
     def test_yaml_mode(self):
         yaml_text = "version: '1'\nenvironment: raw\noperations:\n  - tool: get_pods\n    classification: safe\n"
-        skill = parse_skill_content(yaml_text, fmt="yaml")
+        skill = parse_skill_content(
+            convert_legacy_skill_content(yaml_text, fmt="yaml").content,
+            fmt="yaml",
+        )
         assert skill.environment == "raw"
         assert skill.classify("get_pods") == "safe"
 
@@ -300,12 +305,13 @@ class TestSkillRepo:
 class TestAutoImport:
     async def test_imports_new_files(self, db_factory, tmp_path):
         (tmp_path / "production").mkdir()
-        (tmp_path / "production" / "SKILL.md").write_text(SAMPLE_SKILL)
+        (tmp_path / "production" / "SKILL.md").write_text(LEGACY_SAMPLE_SKILL)
         (tmp_path / "sandbox.md").write_text(SAMPLE_SKILL)
 
         result = await auto_import(db_factory, skills_dir=tmp_path)
 
         assert set(result.imported) == {"production", "sandbox"}
+        assert result.upgraded == ["production"]
         assert result.skipped == []
         assert result.failed == []
 
@@ -366,7 +372,7 @@ class TestSkillsAPI:
             "/skills",
             json={
                 "name": "prod",
-                "content_md": SAMPLE_SKILL,
+                "content_md": LEGACY_SAMPLE_SKILL,
                 "description": "Production",
             },
             headers=auth_headers,
@@ -374,6 +380,8 @@ class TestSkillsAPI:
         assert resp.status_code == 201, resp.text
         assert resp.json()["name"] == "prod"
         assert resp.json()["description"] == "Production"
+        assert resp.json()["content_md"] == SAMPLE_SKILL
+        assert resp.json()["conversion_notice"] == CONVERSION_NOTICE
 
         resp = await client.get("/skills", headers=auth_headers)
         assert resp.status_code == 200
@@ -459,7 +467,7 @@ class TestSkillsAPI:
             f"/skills/{skill_id}",
             json={
                 "name": "v2",
-                "content_md": SAMPLE_SKILL,
+                "content_md": LEGACY_SAMPLE_SKILL,
                 "description": "Renamed",
             },
             headers=auth_headers,
@@ -467,6 +475,8 @@ class TestSkillsAPI:
         assert resp.status_code == 200
         assert resp.json()["name"] == "v2"
         assert resp.json()["description"] == "Renamed"
+        assert resp.json()["content_md"] == SAMPLE_SKILL
+        assert resp.json()["conversion_notice"] == CONVERSION_NOTICE
 
     async def test_delete_skill(self, client: AsyncClient, app, auth_headers):
         async with app.state.session_factory() as db:
@@ -513,7 +523,7 @@ class TestSkillsAPI:
         assert body["content_md"] == SAMPLE_SKILL
 
     async def test_import_skill_upload(self, client: AsyncClient, auth_headers):
-        files = {"file": ("production.md", SAMPLE_SKILL, "text/markdown")}
+        files = {"file": ("production.md", LEGACY_SAMPLE_SKILL, "text/markdown")}
         resp = await client.post(
             "/skills/import",
             files=files,
@@ -523,6 +533,7 @@ class TestSkillsAPI:
         body = resp.json()
         assert body["name"] == "production"
         assert body["content_md"] == SAMPLE_SKILL
+        assert body["conversion_notice"] == CONVERSION_NOTICE
 
     async def test_import_empty_file_rejected(self, client: AsyncClient, auth_headers):
         files = {"file": ("empty.md", "", "text/markdown")}
@@ -634,7 +645,11 @@ class TestMCPSkillStudio:
         tmpl = (await client.get("/skills/template", headers=auth_headers)).json()
         created = await client.post(
             "/skills",
-            json={"name": "global-skill", "content_md": tmpl["content_md"], "assignment": "global"},
+            json={
+                "name": "global-skill",
+                "content_md": tmpl["content_md"],
+                "assignment": "global",
+            },
             headers=auth_headers,
         )
         assert created.status_code == 201
@@ -676,7 +691,12 @@ class TestClassificationSuggest:
             assert s.generic is False and s.deny is False
 
     def test_destructive_verbs(self):
-        for name in ("delete_pod", "destroy_cluster", "drop_table", "terminate_instance"):
+        for name in (
+            "delete_pod",
+            "destroy_cluster",
+            "drop_table",
+            "terminate_instance",
+        ):
             assert suggest_classification(name).classification == "destructive", name
 
     def test_caution_verbs(self):
@@ -707,7 +727,11 @@ class TestSkillGenerator:
             description="generated",
             operations=[
                 {"tool": "get_pods", "classification": "safe"},
-                {"tool": "restart_service", "classification": "caution", "notes": "roll"},
+                {
+                    "tool": "restart_service",
+                    "classification": "caution",
+                    "notes": "roll",
+                },
                 {"tool": "delete_pod", "classification": "destructive"},
                 {"tool": "shell", "deny": True, "notes": "arbitrary"},
             ],
@@ -740,7 +764,11 @@ class TestSkillGenerator:
         md = build_skill_from_tools(
             name="x",
             operations=[
-                {"tool": "scoped_exec", "classification": "caution", "allow_generic": True},
+                {
+                    "tool": "scoped_exec",
+                    "classification": "caution",
+                    "allow_generic": True,
+                },
             ],
         )
         parsed = parse_skill_content(md)
@@ -886,9 +914,23 @@ class TestAiAssistParser:
             "environment": "prod",
             "tools": [
                 {"name": "get_pods", "classification": "safe", "rationale": "read"},
-                {"name": "delete_pod", "classification": "destructive", "rationale": "irreversible"},
-                {"name": "kubectl", "classification": "safe", "deny": False, "rationale": "model wants safe"},
-                {"name": "restart_service", "classification": "caution", "reversible": True, "rationale": "roll"},
+                {
+                    "name": "delete_pod",
+                    "classification": "destructive",
+                    "rationale": "irreversible",
+                },
+                {
+                    "name": "kubectl",
+                    "classification": "safe",
+                    "deny": False,
+                    "rationale": "model wants safe",
+                },
+                {
+                    "name": "restart_service",
+                    "classification": "caution",
+                    "reversible": True,
+                    "rationale": "roll",
+                },
             ],
             "tier0_instructions": "t0",
             "tier1_instructions": "t1",
@@ -950,13 +992,14 @@ class TestAiAssistParser:
         text = "Sure! Here it is:\n" + self._resp() + "\nHope that helps."
         r = parse_ai_response(text, tools=self.TOOLS)
         assert {t.name for t in r.tools} == {
-            "get_pods", "delete_pod", "kubectl", "restart_service"
+            "get_pods",
+            "delete_pod",
+            "kubectl",
+            "restart_service",
         }
 
     def test_build_prompt_lists_tools_and_intent(self):
-        p = build_prompt(
-            intent="be careful", environment="prod", tools=self.TOOLS
-        )
+        p = build_prompt(intent="be careful", environment="prod", tools=self.TOOLS)
         assert "be careful" in p
         assert "get_pods" in p and "kubectl" in p
         assert "JSON" in p
@@ -971,8 +1014,16 @@ class TestAiSuggestRoute:
                 {
                     "environment": "production",
                     "tools": [
-                        {"name": "get_pods", "classification": "safe", "rationale": "read"},
-                        {"name": "shell", "classification": "safe", "rationale": "tries to allow"},
+                        {
+                            "name": "get_pods",
+                            "classification": "safe",
+                            "rationale": "read",
+                        },
+                        {
+                            "name": "shell",
+                            "classification": "safe",
+                            "rationale": "tries to allow",
+                        },
                     ],
                     "tier0_instructions": "auto",
                     "tier1_instructions": "approve",
@@ -980,9 +1031,7 @@ class TestAiSuggestRoute:
                 }
             )
 
-        monkeypatch.setattr(
-            "backend.api.routes.skills._ai_complete", fake_complete
-        )
+        monkeypatch.setattr("backend.api.routes.skills._ai_complete", fake_complete)
 
         resp = await client.post(
             "/skills/ai-suggest",
@@ -1011,9 +1060,7 @@ class TestAiSuggestRoute:
         )
         assert resp.status_code == 400
 
-    async def test_ai_suggest_no_model_returns_503(
-        self, client, auth_headers
-    ):
+    async def test_ai_suggest_no_model_returns_503(self, client, auth_headers):
         # No default model configured in the test org → 503 (degrade to manual).
         resp = await client.post(
             "/skills/ai-suggest",
@@ -1058,7 +1105,10 @@ class TestSkillStudioTier0Metadata:
         assert "compensating_inverse: restart_deployment_previous_state" in md
         parsed = parse_skill_content(md)
         assert parsed.is_reversible("restart_deployment") is True
-        assert parsed.inverse_for("restart_deployment") == "restart_deployment_previous_state"
+        assert (
+            parsed.inverse_for("restart_deployment")
+            == "restart_deployment_previous_state"
+        )
 
     def test_tier0_tool_with_full_metadata_clears_floor(self):
         md = self._skill(
@@ -1088,9 +1138,7 @@ class TestSkillStudioTier0Metadata:
         assert _check_tool("scale_up", 1, parsed).permitted is True
 
     def test_tier0_tool_not_reversible_is_blocked(self):
-        md = self._skill(
-            [{"tool": "delete_pod", "classification": "destructive"}]
-        )
+        md = self._skill([{"tool": "delete_pod", "classification": "destructive"}])
         parsed = parse_skill_content(md)
         assert _check_tool("delete_pod", 0, parsed).permitted is False
 

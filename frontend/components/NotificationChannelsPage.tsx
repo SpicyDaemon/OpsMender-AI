@@ -21,7 +21,9 @@ export function NotificationChannelsPage({ embedded = false }: { embedded?: bool
   }, []);
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
+    void Promise.resolve()
+      .then(reload)
+      .finally(() => setLoading(false));
   }, [reload]);
 
   if (loading) return <ConfigPageSkeleton />;

@@ -141,7 +141,5 @@ async def export_audit_csv(
     return Response(
         content=buf.getvalue(),
         media_type="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=opsmender-audit.csv"
-        },
+        headers={"Content-Disposition": "attachment; filename=opsmender-audit.csv"},
     )

@@ -46,9 +46,7 @@ def upgrade() -> None:
                 raw = []
         lanes = ["respond"] if row.is_enabled and "notifications" in (raw or []) else []
         connection.execute(
-            connectors.update()
-            .where(connectors.c.id == row.id)
-            .values(lanes=lanes)
+            connectors.update().where(connectors.c.id == row.id).values(lanes=lanes)
         )
 
     with op.batch_alter_table("bot_connectors") as batch_op:
@@ -68,12 +66,8 @@ def upgrade() -> None:
         sa.Column("channel_ref", sa.String(length=200), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["incident_id"], ["incidents.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["connector_id"], ["bot_connectors.id"], ondelete="CASCADE"
         ),

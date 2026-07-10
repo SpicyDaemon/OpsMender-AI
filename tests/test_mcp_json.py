@@ -333,9 +333,7 @@ class TestSyncerReconcile:
             await session.commit()
         path = tmp_path / "mcp.json"
         path.write_text(
-            json.dumps(
-                {"mcpServers": {"kube": {"type": "stdio", "command": "NEW"}}}
-            ),
+            json.dumps({"mcpServers": {"kube": {"type": "stdio", "command": "NEW"}}}),
             encoding="utf-8",
         )
         syncer = MCPJSONSyncer(db_factory, path=path, enabled=True)
@@ -380,9 +378,7 @@ class TestSyncerReconcile:
             await session.commit()
         path = tmp_path / "mcp.json"
         path.write_text(
-            json.dumps(
-                {"mcpServers": {"bear": {"type": "http", "url": "https://x"}}}
-            ),
+            json.dumps({"mcpServers": {"bear": {"type": "http", "url": "https://x"}}}),
             encoding="utf-8",
         )
         syncer = MCPJSONSyncer(db_factory, path=path, enabled=True)
@@ -392,9 +388,7 @@ class TestSyncerReconcile:
             assert row.token == "keep-me"
 
     async def test_missing_file_is_noop(self, db_factory, tmp_path):
-        syncer = MCPJSONSyncer(
-            db_factory, path=tmp_path / "absent.json", enabled=True
-        )
+        syncer = MCPJSONSyncer(db_factory, path=tmp_path / "absent.json", enabled=True)
         result = await syncer.reconcile_on_startup(TEST_ORG_ID)
         assert result.created == []
         assert result.updated == []
@@ -439,7 +433,10 @@ class TestReconcilePrune:
         assert result.deleted == ["drop"]
         async with db_factory() as session:
             assert await MCPServerRepo.get_by_name(session, TEST_ORG_ID, "drop") is None
-            assert await MCPServerRepo.get_by_name(session, TEST_ORG_ID, "keep") is not None
+            assert (
+                await MCPServerRepo.get_by_name(session, TEST_ORG_ID, "keep")
+                is not None
+            )
 
 
 class TestReconcileDryRun:

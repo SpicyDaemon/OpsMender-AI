@@ -92,6 +92,7 @@ async def resolve_tenant(
         saml_login_path=f"/auth/saml/{org.slug}/login" if saml_enabled else None,
     )
 
+
 # All routes in this module require the global 'admin' role.
 # (This is separate from the per-organization role).
 admin_dependency = Depends(require_role("admin"))
@@ -115,7 +116,9 @@ async def update_organization(
     org_id: uuid.UUID, req: OrganizationUpdate, db: AsyncSession = Depends(get_db)
 ):
     """Update organization details."""
-    org = await OrganizationRepo.update(db, org_id, name=req.name, slug=req.slug, branding=req.branding)
+    org = await OrganizationRepo.update(
+        db, org_id, name=req.name, slug=req.slug, branding=req.branding
+    )
     if org is None:
         raise HTTPException(status_code=404, detail="Organization not found")
     await db.commit()
@@ -293,7 +296,9 @@ async def test_email_settings(
     )
     return EmailSettingsTestResponse(
         success=attempt.status == "sent",
-        detail="Test email sent." if attempt.status == "sent" else (attempt.error or "Send failed"),
+        detail="Test email sent."
+        if attempt.status == "sent"
+        else (attempt.error or "Send failed"),
     )
 
 
@@ -504,7 +509,9 @@ async def delete_organization_sso(
 ):
     deleted = await OrgSSOConfigRepo.delete(db, org_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail="No SSO config for this organization")
+        raise HTTPException(
+            status_code=404, detail="No SSO config for this organization"
+        )
     await db.commit()
 
 
@@ -577,9 +584,7 @@ async def upsert_organization_saml(
     if bool(req.idp_metadata_url) == bool(req.idp_metadata_xml):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Provide exactly one of idp_metadata_url or idp_metadata_xml."
-            ),
+            detail=("Provide exactly one of idp_metadata_url or idp_metadata_xml."),
         )
 
     row = await OrgSAMLConfigRepo.upsert(

@@ -89,9 +89,7 @@ class EnvironmentScanAnalyzer(Analyzer):
         from backend.llm.factory import create_provider
 
         server_name = ctx.params.get("mcp_server_name")
-        focus_areas = await _load_focus_areas(
-            ctx, server_name=server_name
-        )
+        focus_areas = await _load_focus_areas(ctx, server_name=server_name)
         # Param-supplied focus_areas override SKILL-derived ones so operators
         # can narrow a single run from the UI without editing the skill file.
         if ctx.params.get("focus_areas"):

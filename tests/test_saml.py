@@ -239,7 +239,9 @@ class TestTenantResolveExposesSAML:
             )
             await db.commit()
 
-        resp = await client.get("/tenant/resolve", headers={"Host": "opsmender.acme.com"})
+        resp = await client.get(
+            "/tenant/resolve", headers={"Host": "opsmender.acme.com"}
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["pinned"] is True
@@ -280,7 +282,9 @@ class TestSAMLACS:
                 "name-id",
             )
 
-        monkeypatch.setattr(saml_route_mod, "fetch_idp_metadata", fake_fetch_idp_metadata)
+        monkeypatch.setattr(
+            saml_route_mod, "fetch_idp_metadata", fake_fetch_idp_metadata
+        )
         monkeypatch.setattr(saml_route_mod, "build_settings", fake_build_settings)
         monkeypatch.setattr(saml_route_mod, "process_acs", fake_process_acs)
 

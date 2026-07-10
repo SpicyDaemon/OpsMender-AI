@@ -31,7 +31,9 @@ async def ctx(tmp_path, monkeypatch):
     monkeypatch.setenv("OPSMENDER_DATABASE_URL", url)
     monkeypatch.setenv("OPSMENDER_JWT_SECRET", "test-secret-32-chars-long-enough-ok")
     app = create_app()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
         yield {"client": c, "factory": factory}
     await engine.dispose()
 
@@ -39,10 +41,16 @@ async def ctx(tmp_path, monkeypatch):
 async def _roles(client: AsyncClient):
     await client.post(
         "/auth/register",
-        json={"username": "admin", "email": "admin@test.com", "password": "securepass123"},
+        json={
+            "username": "admin",
+            "email": "admin@test.com",
+            "password": "securepass123",
+        },
     )
     admin = (
-        await client.post("/auth/login", json={"username": "admin", "password": "securepass123"})
+        await client.post(
+            "/auth/login", json={"username": "admin", "password": "securepass123"}
+        )
     ).json()["access_token"]
     h = {"admin": {"Authorization": f"Bearer {admin}"}}
     ids = {}
@@ -51,14 +59,20 @@ async def _roles(client: AsyncClient):
             "/auth/users",
             headers=h["admin"],
             json={
-                "username": role, "email": f"{role}@test.com", "role": role,
-                "password": "temp-pass-123", "require_password_change": False,
-                "first_name": role.title(), "last_name": "User",
+                "username": role,
+                "email": f"{role}@test.com",
+                "role": role,
+                "password": "temp-pass-123",
+                "require_password_change": False,
+                "first_name": role.title(),
+                "last_name": "User",
             },
         )
         ids[role] = created.json()["id"]
         tok = (
-            await client.post("/auth/login", json={"username": role, "password": "temp-pass-123"})
+            await client.post(
+                "/auth/login", json={"username": role, "password": "temp-pass-123"}
+            )
         ).json()["access_token"]
         h[role] = {"Authorization": f"Bearer {tok}"}
     return h, ids
@@ -103,6 +117,7 @@ async def _get(client, headers, incident_id) -> dict:
 
 async def _org_of(factory, incident_id: str):
     from backend.db.models import Incident
+
     async with factory() as db:
         inc = await db.get(Incident, uuid.UUID(incident_id))
         return inc.org_id
@@ -126,8 +141,11 @@ async def test_awaiting_current_escalation_target(ctx):
     org = await _org_of(factory, iid)
     async with factory() as db:
         await IncidentPageRepo.create(
-            db, org, incident_id=uuid.UUID(iid),
-            user_id=uuid.UUID(ids["operator"]), step_index=0,
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            step_index=0,
         )
         await db.commit()
     row = await _get(client, h["admin"], iid)
@@ -144,12 +162,18 @@ async def test_escalated_to_next_target(ctx):
     org = await _org_of(factory, iid)
     async with factory() as db:
         await IncidentPageRepo.create(
-            db, org, incident_id=uuid.UUID(iid),
-            user_id=uuid.UUID(ids["operator"]), step_index=0,
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            step_index=0,
         )
         await IncidentPageRepo.create(
-            db, org, incident_id=uuid.UUID(iid),
-            user_id=uuid.UUID(ids["operator"]), step_index=1,
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            step_index=1,
         )
         await db.commit()
     row = await _get(client, h["admin"], iid)
@@ -165,8 +189,11 @@ async def test_acknowledged_shows_assigned_responder(ctx):
     org = await _org_of(factory, iid)
     async with factory() as db:
         await IncidentAssignmentRepo.assign(
-            db, org, incident_id=uuid.UUID(iid),
-            user_id=uuid.UUID(ids["operator"]), assigned_by="self_ack",
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            assigned_by="self_ack",
         )
         await db.commit()
     row = await _get(client, h["admin"], iid)
@@ -184,8 +211,11 @@ async def test_deleted_responder_falls_back(ctx):
     org = await _org_of(factory, iid)
     async with factory() as db:
         await IncidentAssignmentRepo.assign(
-            db, org, incident_id=uuid.UUID(iid),
-            user_id=uuid.UUID(ids["operator"]), assigned_by="self_ack",
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            assigned_by="self_ack",
         )
         await db.commit()
     # Soft-delete the responder.
@@ -207,8 +237,11 @@ async def test_viewer_reads_responder_but_cannot_act(ctx):
     org = await _org_of(factory, iid)
     async with factory() as db:
         await IncidentAssignmentRepo.assign(
-            db, org, incident_id=uuid.UUID(iid),
-            user_id=uuid.UUID(ids["operator"]), assigned_by="self_ack",
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            assigned_by="self_ack",
         )
         await db.commit()
     # Viewer can read responder state.

@@ -111,9 +111,7 @@ async def test_patch_user_changes_role(env):
 async def test_patch_user_deactivates(env):
     client = env["client"]
     headers, _ = await _admin_token(client)
-    target_id = await _register_extra_user(
-        client, username="someone", email="s@b.com"
-    )
+    target_id = await _register_extra_user(client, username="someone", email="s@b.com")
 
     resp = await client.patch(
         f"/auth/users/{target_id}",
@@ -134,9 +132,7 @@ async def test_patch_user_deactivates(env):
 async def test_patch_user_requires_admin(env):
     client = env["client"]
     headers, _ = await _admin_token(client)
-    target_id = await _register_extra_user(
-        client, username="viewer", email="v@b.com"
-    )
+    target_id = await _register_extra_user(client, username="viewer", email="v@b.com")
     # Operator cannot patch
     op_id = await _register_extra_user(
         client, username="oper", email="o@b.com", role="operator"
@@ -157,12 +153,8 @@ async def test_patch_user_requires_admin(env):
 async def test_patch_user_requires_at_least_one_field(env):
     client = env["client"]
     headers, _ = await _admin_token(client)
-    target_id = await _register_extra_user(
-        client, username="viewer", email="v@b.com"
-    )
-    resp = await client.patch(
-        f"/auth/users/{target_id}", json={}, headers=headers
-    )
+    target_id = await _register_extra_user(client, username="viewer", email="v@b.com")
+    resp = await client.patch(f"/auth/users/{target_id}", json={}, headers=headers)
     assert resp.status_code == 400
 
 
@@ -186,13 +178,9 @@ async def test_patch_user_404_on_missing(env):
 async def test_mint_password_reset_returns_one_time_url(env):
     client = env["client"]
     headers, _ = await _admin_token(client)
-    target_id = await _register_extra_user(
-        client, username="viewer", email="v@b.com"
-    )
+    target_id = await _register_extra_user(client, username="viewer", email="v@b.com")
 
-    resp = await client.post(
-        f"/auth/users/{target_id}/reset-password", headers=headers
-    )
+    resp = await client.post(f"/auth/users/{target_id}/reset-password", headers=headers)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["url"].startswith("http://test/password-reset?token=")
@@ -203,13 +191,9 @@ async def test_mint_password_reset_returns_one_time_url(env):
 async def test_password_reset_round_trip(env):
     client = env["client"]
     headers, _ = await _admin_token(client)
-    target_id = await _register_extra_user(
-        client, username="viewer", email="v@b.com"
-    )
+    target_id = await _register_extra_user(client, username="viewer", email="v@b.com")
 
-    mint = await client.post(
-        f"/auth/users/{target_id}/reset-password", headers=headers
-    )
+    mint = await client.post(f"/auth/users/{target_id}/reset-password", headers=headers)
     raw_token = mint.json()["url"].split("token=", 1)[-1]
 
     # Consume with new password
@@ -260,9 +244,7 @@ async def test_mint_password_reset_requires_admin(env):
         "/auth/login", json={"username": "oper", "password": "securepass123"}
     )
     op_headers = {"Authorization": f"Bearer {op_login.json()['access_token']}"}
-    resp = await client.post(
-        f"/auth/users/{op_id}/reset-password", headers=op_headers
-    )
+    resp = await client.post(f"/auth/users/{op_id}/reset-password", headers=op_headers)
     assert resp.status_code == 403
 
 
@@ -274,31 +256,23 @@ async def test_mint_password_reset_requires_admin(env):
 async def test_soft_delete_blocks_active_user(env):
     client = env["client"]
     headers, _ = await _admin_token(client)
-    target_id = await _register_extra_user(
-        client, username="active", email="a@b.com"
-    )
+    target_id = await _register_extra_user(client, username="active", email="a@b.com")
 
-    resp = await client.post(
-        f"/auth/users/{target_id}/soft-delete", headers=headers
-    )
+    resp = await client.post(f"/auth/users/{target_id}/soft-delete", headers=headers)
     assert resp.status_code == 409  # must be deactivated first
 
 
 async def test_soft_delete_blocks_self(env):
     client = env["client"]
     headers, admin_id = await _admin_token(client)
-    resp = await client.post(
-        f"/auth/users/{admin_id}/soft-delete", headers=headers
-    )
+    resp = await client.post(f"/auth/users/{admin_id}/soft-delete", headers=headers)
     assert resp.status_code == 400
 
 
 async def test_soft_delete_happy_path(env):
     client = env["client"]
     headers, _ = await _admin_token(client)
-    target_id = await _register_extra_user(
-        client, username="goner", email="g@b.com"
-    )
+    target_id = await _register_extra_user(client, username="goner", email="g@b.com")
     # Deactivate first
     await client.patch(
         f"/auth/users/{target_id}",
@@ -315,18 +289,14 @@ async def test_soft_delete_happy_path(env):
     assert body["roster_memberships"] == 0
     assert body["can_delete"] is True
 
-    resp = await client.post(
-        f"/auth/users/{target_id}/soft-delete", headers=headers
-    )
+    resp = await client.post(f"/auth/users/{target_id}/soft-delete", headers=headers)
     assert resp.status_code == 200, resp.text
     assert resp.json()["deleted_at"] is not None
     # Email is scrubbed
     assert "deleted.opsmender.local" in resp.json()["email"]
 
     # Cannot delete twice (404 — deleted users hidden)
-    again = await client.post(
-        f"/auth/users/{target_id}/soft-delete", headers=headers
-    )
+    again = await client.post(f"/auth/users/{target_id}/soft-delete", headers=headers)
     assert again.status_code == 404
 
 
@@ -334,9 +304,7 @@ async def test_soft_delete_blocks_when_on_roster(env):
     client = env["client"]
     factory = env["factory"]
     headers, _ = await _admin_token(client)
-    target_id = await _register_extra_user(
-        client, username="oncall", email="oc@b.com"
-    )
+    target_id = await _register_extra_user(client, username="oncall", email="oc@b.com")
     # Deactivate
     await client.patch(
         f"/auth/users/{target_id}",
@@ -382,9 +350,7 @@ async def test_soft_delete_blocks_when_on_roster(env):
     assert pre.json()["can_delete"] is False
     assert pre.json()["roster_memberships"] == 1
 
-    resp = await client.post(
-        f"/auth/users/{target_id}/soft-delete", headers=headers
-    )
+    resp = await client.post(f"/auth/users/{target_id}/soft-delete", headers=headers)
     assert resp.status_code == 409
     assert "roster" in resp.json()["detail"].lower()
 
@@ -657,15 +623,23 @@ async def test_deactivation_removes_roster_membership_and_unblocks_delete(env):
         db.add(Team(id=team_id, org_id=org_id, name="T2", slug="t2"))
         db.add(
             Roster(
-                id=roster_id, org_id=org_id, team_id=team_id, name="r2",
-                pattern="weekly", anchor_date=_date.today(),
-                handoff_time="09:00", time_zone="UTC",
+                id=roster_id,
+                org_id=org_id,
+                team_id=team_id,
+                name="r2",
+                pattern="weekly",
+                anchor_date=_date.today(),
+                handoff_time="09:00",
+                time_zone="UTC",
             )
         )
         db.add(
             RosterMember(
-                id=uuid.uuid4(), org_id=org_id, roster_id=roster_id,
-                user_id=uuid.UUID(target_id), position_index=0,
+                id=uuid.uuid4(),
+                org_id=org_id,
+                roster_id=roster_id,
+                user_id=uuid.UUID(target_id),
+                position_index=0,
             )
         )
         await db.commit()
@@ -683,8 +657,6 @@ async def test_deactivation_removes_roster_membership_and_unblocks_delete(env):
     assert pre.json()["can_delete"] is True
 
     # Delete now succeeds (no stale roster block).
-    resp = await client.post(
-        f"/auth/users/{target_id}/soft-delete", headers=headers
-    )
+    resp = await client.post(f"/auth/users/{target_id}/soft-delete", headers=headers)
     assert resp.status_code == 200, resp.text
     assert resp.json()["deleted_at"] is not None

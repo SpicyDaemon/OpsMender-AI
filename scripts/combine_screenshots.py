@@ -20,16 +20,16 @@ SRC = ROOT / "screenshots"
 OUT = ROOT / "screenshots"
 
 # Look + feel
-BG = (10, 12, 16)             # near-black to match the dashboard
+BG = (10, 12, 16)  # near-black to match the dashboard
 PANEL_LABEL_BG = (24, 28, 36)
 TITLE_FG = (240, 244, 252)
 LABEL_FG = (200, 210, 230)
 COUNT_FG = (140, 148, 168)
 
 # Layout
-COL_WIDTH = 1200              # each panel scaled to this width (keeps text readable)
+COL_WIDTH = 1200  # each panel scaled to this width (keeps text readable)
 PAD_OUTER = 32
-PAD_INNER = 24                # gap between panels
+PAD_INNER = 24  # gap between panels
 HEADER_H = 90
 LABEL_H = 48
 
@@ -64,7 +64,7 @@ def compose(
     out_name: str,
     title: str,
     subtitle: str,
-    panels: list[tuple[str, str]],          # [(filename, label), ...]
+    panels: list[tuple[str, str]],  # [(filename, label), ...]
     cols: int,
 ) -> None:
     """Build a single composite.
@@ -164,7 +164,10 @@ COMPOSITES: list[dict] = [
             ("10_paging_teams.png", "Teams — /dashboard/paging/teams"),
             ("11_paging_services.png", "Services — /dashboard/paging/services"),
             ("12_paging_rosters.png", "Rosters — /dashboard/paging/rosters"),
-            ("13_paging_priority_rules.png", "Priority Rules — /dashboard/paging/priority-rules"),
+            (
+                "13_paging_priority_rules.png",
+                "Priority Rules — /dashboard/paging/priority-rules",
+            ),
         ],
     },
     {
@@ -173,9 +176,18 @@ COMPOSITES: list[dict] = [
         "subtitle": "Escalation chains, maintenance windows, per-user notifications.",
         "cols": 1,
         "panels": [
-            ("14_paging_escalation_chains.png", "Escalation Chains — /dashboard/paging/escalation-chains"),
-            ("15_paging_maintenance_windows.png", "Maintenance Windows — /dashboard/paging/maintenance-windows"),
-            ("16_paging_my_notifications.png", "My Notifications — /dashboard/paging/my-notifications"),
+            (
+                "14_paging_escalation_chains.png",
+                "Escalation Chains — /dashboard/paging/escalation-chains",
+            ),
+            (
+                "15_paging_maintenance_windows.png",
+                "Maintenance Windows — /dashboard/paging/maintenance-windows",
+            ),
+            (
+                "16_paging_my_notifications.png",
+                "My Notifications — /dashboard/paging/my-notifications",
+            ),
         ],
     },
     {
@@ -196,7 +208,10 @@ COMPOSITES: list[dict] = [
         "subtitle": "Outbound + inbound integrations and the observability surface.",
         "cols": 2,
         "panels": [
-            ("30_integ_bot_connectors.png", "Bot Connectors — /dashboard/bot-connectors"),
+            (
+                "30_integ_bot_connectors.png",
+                "Bot Connectors — /dashboard/bot-connectors",
+            ),
             ("31_integ_webhooks.png", "Webhook Triggers — /dashboard/webhooks"),
             ("32_integ_ingest_tokens.png", "Ingest Tokens — /dashboard/ingest-tokens"),
             ("40_observe_scans.png", "Environment Scans — /dashboard/scans"),
@@ -223,7 +238,10 @@ COMPOSITES: list[dict] = [
         "cols": 1,
         "panels": [
             ("54_admin_organizations.png", "Organizations — /dashboard/organizations"),
-            ("55_admin_config.png", "Config — /dashboard/config (Runtime + Storage & retention)"),
+            (
+                "55_admin_config.png",
+                "Config — /dashboard/config (Runtime + Storage & retention)",
+            ),
         ],
     },
 ]

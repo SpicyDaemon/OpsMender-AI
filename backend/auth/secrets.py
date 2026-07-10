@@ -18,7 +18,9 @@ from cryptography.fernet import Fernet, InvalidToken
 
 
 def _derive_key() -> bytes:
-    seed = os.environ.get("OPSMENDER_SECRET_KEY") or os.environ.get("OPSMENDER_JWT_SECRET")
+    seed = os.environ.get("OPSMENDER_SECRET_KEY") or os.environ.get(
+        "OPSMENDER_JWT_SECRET"
+    )
     if not seed:
         # Fall back to the loaded AppConfig (which reads .env via python-dotenv).
         try:

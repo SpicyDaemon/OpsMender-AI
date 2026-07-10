@@ -119,9 +119,7 @@ async def _resolve_step_targets(
         if roster is None:
             return []
         # Deactivated/soft-deleted users are never paged.
-        members = await RosterRepo.list_members(
-            db, org_id, target_id, active_only=True
-        )
+        members = await RosterRepo.list_members(db, org_id, target_id, active_only=True)
         overrides = await RosterOverrideRepo.list_for_roster(db, org_id, target_id)
         ctx = OnCallContext(
             members=[
@@ -198,9 +196,7 @@ async def _fire_step(
         fired.append(uid)
         if channel_factory is not None:
             if incident is None:
-                incident = await IncidentRepo.get_by_id(
-                    db, org_id, incident_id
-                )
+                incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
             user = await UserRepo.get_by_id(db, uid)
             if incident is not None and user is not None:
                 await dispatch_page(
@@ -290,9 +286,7 @@ async def select_chain_for_incident(
 
     if service_id is None:
         return None
-    links = await ServiceEscalationChainRepo.list_for_service(
-        db, org_id, service_id
-    )
+    links = await ServiceEscalationChainRepo.list_for_service(db, org_id, service_id)
     if not links:
         return None
     if priority is None:
@@ -300,7 +294,9 @@ async def select_chain_for_incident(
     matching = []
     for link in links:
         applies_when = link.applies_when or {}
-        priorities = applies_when.get("priorities") if isinstance(applies_when, dict) else None
+        priorities = (
+            applies_when.get("priorities") if isinstance(applies_when, dict) else None
+        )
         if priorities and priority in {str(p).upper() for p in priorities}:
             matching.append(link)
     if matching:
@@ -323,9 +319,7 @@ async def start_chain(
     """
 
     now = at or _utcnow()
-    existing = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    existing = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if existing is not None:
         return None
 
@@ -399,9 +393,7 @@ async def restart_chain_for_handoff(
     """
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is None:
         return await start_chain(
             db,
@@ -479,9 +471,7 @@ async def tick(
     """
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is None or state.status != "running":
         return None
 
@@ -498,9 +488,7 @@ async def tick(
     if next_due is None or now < next_due:
         return None
 
-    steps = list(
-        await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id)
-    )
+    steps = list(await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id))
     next_idx = state.current_step_index + 1
     next_step = next((s for s in steps if s.step_index == next_idx), None)
     if next_step is None:
@@ -550,15 +538,11 @@ async def escalate_now(
     """Immediately fire the next configured step for an active chain."""
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is None or state.status != "running":
         return None
 
-    steps = list(
-        await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id)
-    )
+    steps = list(await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id))
     next_idx = state.current_step_index + 1
     next_step = next((step for step in steps if step.step_index == next_idx), None)
     if next_step is None:
@@ -610,9 +594,7 @@ async def handle_ack(
     """
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is None:
         # No chain running — still record the ack on any unacked pages.
         await IncidentPageRepo.ack_all_unacked(
@@ -698,9 +680,7 @@ async def handle_takeover_request(
     if active.assigned_to == requester_id:
         return "noop"
 
-    state = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is None:
         # Chain ended — but ownership still exists. Defer to admin force.
         return "requires_admin"
@@ -724,9 +704,7 @@ async def handle_takeover_confirm(
     """
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is None or state.pending_takeover_user_id is None:
         return False
     expires = _aware(state.pending_takeover_expires_at)
@@ -764,9 +742,7 @@ async def handle_force_takeover(
         user_id=admin_id,
         assigned_by="admin_force",
     )
-    state = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is not None:
         state.pending_takeover_user_id = None
         state.pending_takeover_expires_at = None
@@ -784,9 +760,7 @@ async def cancel_chain(
     """Cancel a running chain (e.g., incident resolved before ack)."""
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(
-        db, org_id, incident_id
-    )
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is None or state.status not in ("running", "paused"):
         return False
     state.status = "cancelled"

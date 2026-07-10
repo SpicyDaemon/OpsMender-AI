@@ -82,9 +82,7 @@ def _config_to_response(
     )
 
 
-async def _read_runtime_config(
-    db: AsyncSession, org_id: uuid.UUID
-) -> dict[str, str]:
+async def _read_runtime_config(db: AsyncSession, org_id: uuid.UUID) -> dict[str, str]:
     return await RuntimeConfigRepo.get_many(
         db,
         org_id,

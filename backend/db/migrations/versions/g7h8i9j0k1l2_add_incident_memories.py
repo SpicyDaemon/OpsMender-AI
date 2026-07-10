@@ -42,9 +42,7 @@ def upgrade() -> None:
         sa.Column("title", sa.String(length=200), nullable=False),
         sa.Column("summary_md", sa.Text(), nullable=False),
         sa.Column("tags", sa.JSON(), nullable=False),
-        sa.Column(
-            "helpful_count", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("helpful_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column(
             "unhelpful_count",
             sa.Integer(),
@@ -75,9 +73,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.Column(
-            "last_used_at", sa.DateTime(timezone=True), nullable=True
-        ),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index(
         "ix_incident_memories_org_service",
@@ -126,10 +122,6 @@ def downgrade() -> None:
         table_name="incident_memory_recall_log",
     )
     op.drop_table("incident_memory_recall_log")
-    op.drop_index(
-        "ix_incident_memories_org_hidden", table_name="incident_memories"
-    )
-    op.drop_index(
-        "ix_incident_memories_org_service", table_name="incident_memories"
-    )
+    op.drop_index("ix_incident_memories_org_hidden", table_name="incident_memories")
+    op.drop_index("ix_incident_memories_org_service", table_name="incident_memories")
     op.drop_table("incident_memories")

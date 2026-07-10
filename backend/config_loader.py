@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import os
 import pathlib
 from collections.abc import Mapping
@@ -12,7 +13,9 @@ from typing import Any
 from dotenv import dotenv_values
 
 DEFAULT_ENV_FILE = ".env"
-DEFAULT_LOCAL_POSTGRES_URL = "postgresql+asyncpg://opsmender:opsmender@localhost:5432/opsmender"
+DEFAULT_LOCAL_POSTGRES_URL = (
+    "postgresql+asyncpg://opsmender:opsmender@localhost:5432/opsmender"
+)
 DEFAULT_LOCAL_SQLITE_URL = "sqlite+aiosqlite:///./opsmender-local.db"
 
 # Sprint 43 P0 #4 — default JWT secrets that MUST be replaced before a
@@ -25,6 +28,10 @@ _DEFAULT_JWT_SECRETS: frozenset[str] = frozenset(
         "dev-secret-change-in-production",  # AuthConfig dataclass default
     }
 )
+_WEAK_BOOTSTRAP_PASSWORDS: frozenset[str] = frozenset(
+    {"admin", "admin123", "password", "changeme", "opsmender", "opsmender123"}
+)
+_LOGGER = logging.getLogger(__name__)
 
 
 class InsecureProductionConfigError(RuntimeError):
@@ -90,7 +97,7 @@ def is_development_environment() -> bool:
 
 
 def check_production_safety(config: "AppConfig") -> None:
-    """Refuse to start the API in production with an unset JWT secret.
+    """Reject unsafe production settings and warn about risky omissions.
 
     Activated when the resolved security environment is production.
     ``OPSMENDER_DEPLOYMENT_MODE=development`` remains a legacy alias;
@@ -107,6 +114,45 @@ def check_production_safety(config: "AppConfig") -> None:
             "production — e.g. `openssl rand -hex 32` — or set "
             "OPSMENDER_ENVIRONMENT=development for local dev."
         )
+
+    database_url = (config.db.url or "").strip()
+    if not database_url.startswith("postgresql+asyncpg://"):
+        raise InsecureProductionConfigError(
+            "Production requires PostgreSQL. Set OPSMENDER_DATABASE_URL to a "
+            "postgresql+asyncpg URL."
+        )
+
+    if config.people.bootstrap_configured:
+        password = (config.people.bootstrap_admin_password or "").strip().lower()
+        if password in _WEAK_BOOTSTRAP_PASSWORDS:
+            raise InsecureProductionConfigError(
+                "OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD is a known weak default. "
+                "Set a strong, unique bootstrap password before starting the API "
+                "in production."
+            )
+
+    if config.app.tier not in {0, 1, 2}:
+        raise InsecureProductionConfigError(
+            "OPSMENDER_TIER must be 0, 1, or 2 in production. "
+            f"Received {config.app.tier!r}."
+        )
+
+    if any(origin.strip() == "*" for origin in config.cors.origins):
+        _LOGGER.warning(
+            "Production CORS allows every origin. Set OPSMENDER_CORS_ORIGINS "
+            "to the dashboard origin."
+        )
+    if not (config.people.public_base_url or "").strip():
+        _LOGGER.warning(
+            "OPSMENDER_PUBLIC_BASE_URL is unset; invite, SSO, and callback links "
+            "may use an incorrect host."
+        )
+    if config.app.api_docs_enabled:
+        _LOGGER.warning(
+            "Interactive API docs are enabled in production. Unset "
+            "OPSMENDER_ENABLE_API_DOCS unless the instance is network-restricted."
+        )
+
 
 _ENV_PATH_OVERRIDE: pathlib.Path | None = None
 
@@ -132,7 +178,9 @@ def _normalize_env(file_values: dict[str, str | None]) -> dict[str, str]:
     return merged
 
 
-def _read_env(path: pathlib.Path | str | None = None) -> tuple[pathlib.Path, dict[str, str]]:
+def _read_env(
+    path: pathlib.Path | str | None = None,
+) -> tuple[pathlib.Path, dict[str, str]]:
     env_path, explicit = _resolve_env_path(path)
     if env_path.is_file():
         return env_path, _normalize_env(dotenv_values(env_path))
@@ -184,9 +232,7 @@ def _env_severity(
 ) -> str:
     raw = (_env_str(env, key, default) or default).strip().lower()
     if raw not in {"critical", "high", "medium", "low"}:
-        raise ValueError(
-            f"{key} must be one of critical|high|medium|low, got {raw!r}"
-        )
+        raise ValueError(f"{key} must be one of critical|high|medium|low, got {raw!r}")
     return raw
 
 
@@ -298,6 +344,7 @@ class AppSettings:
     skill_definition_path: str = "./examples/SKILL.md"
     audit_output: str = "./logs/audit.jsonl"
     frontend_static_dir: str = "./frontend/out"
+    api_docs_enabled: bool = False
 
 
 @dataclasses.dataclass
@@ -516,6 +563,7 @@ class AppConfig:
                 "./frontend/out",
             )
             or "./frontend/out",
+            api_docs_enabled=_env_bool(env, "OPSMENDER_ENABLE_API_DOCS", False),
         )
         audit = AuditConfig(
             output=app.audit_output,
@@ -533,9 +581,7 @@ class AppConfig:
             timeout_seconds=_env_int(env, "OPSMENDER_APPROVAL_TIMEOUT_SECONDS", 900)
         )
         sessions = SessionOrchestrationConfig(
-            queue_ttl_seconds=_env_int(
-                env, "OPSMENDER_SESSION_QUEUE_TTL_SECONDS", 900
-            ),
+            queue_ttl_seconds=_env_int(env, "OPSMENDER_SESSION_QUEUE_TTL_SECONDS", 900),
             approval_hold_ttl_seconds=_env_int(
                 env,
                 "OPSMENDER_APPROVAL_HOLD_TTL_SECONDS",
@@ -611,9 +657,13 @@ class AppConfig:
             ),
             bot_oauth=BotOAuthConfig(
                 slack_client_id=_env_str(env, "OPSMENDER_SLACK_OAUTH_CLIENT_ID"),
-                slack_client_secret=_env_str(env, "OPSMENDER_SLACK_OAUTH_CLIENT_SECRET"),
+                slack_client_secret=_env_str(
+                    env, "OPSMENDER_SLACK_OAUTH_CLIENT_SECRET"
+                ),
                 discord_client_id=_env_str(env, "OPSMENDER_DISCORD_OAUTH_CLIENT_ID"),
-                discord_client_secret=_env_str(env, "OPSMENDER_DISCORD_OAUTH_CLIENT_SECRET"),
+                discord_client_secret=_env_str(
+                    env, "OPSMENDER_DISCORD_OAUTH_CLIENT_SECRET"
+                ),
             ),
             cors=CorsConfig(origins=_env_csv(env, "OPSMENDER_CORS_ORIGINS", "*")),
             providers=ProviderConfig(
@@ -621,7 +671,9 @@ class AppConfig:
                 or "ollama",
                 active_model_id=_env_str(env, "OPSMENDER_MODEL_ID", "llama3.2")
                 or "llama3.2",
-                ollama_base_url=_env_str(env, "OLLAMA_BASE_URL", "http://localhost:11434")
+                ollama_base_url=_env_str(
+                    env, "OLLAMA_BASE_URL", "http://localhost:11434"
+                )
                 or "http://localhost:11434",
                 azure_openai_endpoint=_env_str(env, "AZURE_OPENAI_ENDPOINT"),
                 azure_openai_api_version=_env_str(env, "AZURE_OPENAI_API_VERSION"),

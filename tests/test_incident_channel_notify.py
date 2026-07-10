@@ -156,12 +156,14 @@ def test_message_omits_signin_hint_when_actions_supported():
 
 def test_headline_reflects_event_type():
     inc = _StubIncident()
-    assert "acknowledged" in build_incident_message(
-        inc, event_type="incident.acknowledged"
-    ).lower()
-    assert "resolved" in build_incident_message(
-        inc, event_type="incident.resolved"
-    ).lower()
+    assert (
+        "acknowledged"
+        in build_incident_message(inc, event_type="incident.acknowledged").lower()
+    )
+    assert (
+        "resolved"
+        in build_incident_message(inc, event_type="incident.resolved").lower()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +288,10 @@ class TestIncidentEventFanOut:
 
         assert {s["chat_id"] for s in sent} == {"-100A", "-100B"}
         assert all("DB outage" in s["text"] for s in sent)
-        assert all("https://ops.example.com/dashboard/incidents/detail" in s["text"] for s in sent)
+        assert all(
+            "https://ops.example.com/dashboard/incidents/detail" in s["text"]
+            for s in sent
+        )
         assert all("token=" not in s["text"] for s in sent)
         async with factory() as db:
             receipts = await IncidentNotificationReceiptRepo.list_for_incident(
@@ -335,7 +340,9 @@ class TestIncidentEventFanOut:
                 incident=None,
                 native_actions_ready=False,
             ):
-                self.updated.append((chat_id, external_message_id, external_thread_id, text))
+                self.updated.append(
+                    (chat_id, external_message_id, external_thread_id, text)
+                )
                 return UpdateResult(
                     ok=True,
                     receipt=DeliveryReceipt(
@@ -397,7 +404,13 @@ class TestIncidentEventFanOut:
                 self.sent = []
 
             async def send_incident_update(
-                self, connector, *, chat_id, text, incident=None, native_actions_ready=False
+                self,
+                connector,
+                *,
+                chat_id,
+                text,
+                incident=None,
+                native_actions_ready=False,
             ):
                 self.sent.append((chat_id, text))
                 return DeliveryReceipt(
@@ -434,10 +447,16 @@ class TestIncidentEventFanOut:
         incident_id = await _make_incident(factory)
 
         await notifier.deliver_incident_event(
-            factory, org_id=TEST_ORG_ID, incident_id=incident_id, event_type="incident.created"
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.created",
         )
         await notifier.deliver_incident_event(
-            factory, org_id=TEST_ORG_ID, incident_id=incident_id, event_type="incident.resolved"
+            factory,
+            org_id=TEST_ORG_ID,
+            incident_id=incident_id,
+            event_type="incident.resolved",
         )
 
         # Update failed -> a second message was posted (follow-up), not an edit.
@@ -749,12 +768,20 @@ class TestIncidentEventFanOut:
         # Two escalation pages: step 0 -> Alice, step 1 -> Bob (escalated to Bob).
         async with factory() as db:
             alice = await UserRepo.create(
-                db, username="alice", email="a@x.io", password_hash="x",
-                first_name="Alice", last_name="A",
+                db,
+                username="alice",
+                email="a@x.io",
+                password_hash="x",
+                first_name="Alice",
+                last_name="A",
             )
             bob = await UserRepo.create(
-                db, username="bob", email="b@x.io", password_hash="x",
-                first_name="Bob", last_name="B",
+                db,
+                username="bob",
+                email="b@x.io",
+                password_hash="x",
+                first_name="Bob",
+                last_name="B",
             )
             await IncidentPageRepo.create(
                 db, TEST_ORG_ID, incident_id=incident_id, user_id=alice.id, step_index=0

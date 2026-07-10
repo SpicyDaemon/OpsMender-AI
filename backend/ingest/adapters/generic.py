@@ -53,15 +53,9 @@ class GenericAdapter(IngestAdapter):
         description = _resolve_path(
             payload, self._mapping.get("description", "description")
         )
-        severity = _resolve_path(
-            payload, self._mapping.get("severity", "severity")
-        )
-        external_id = _resolve_path(
-            payload, self._mapping.get("external_id", "id")
-        )
-        status_raw = _resolve_path(
-            payload, self._mapping.get("status", "status")
-        )
+        severity = _resolve_path(payload, self._mapping.get("severity", "severity"))
+        external_id = _resolve_path(payload, self._mapping.get("external_id", "id"))
+        status_raw = _resolve_path(payload, self._mapping.get("status", "status"))
 
         if not title:
             # Fall back to common alternative field names

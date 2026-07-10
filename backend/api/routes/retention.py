@@ -157,9 +157,7 @@ async def update_retention(
         )
     await db.commit()
     # Reuse the GET handler's projection logic.
-    return await get_retention_status(
-        request=request, db=db, org_id=org_id, user=user
-    )
+    return await get_retention_status(request=request, db=db, org_id=org_id, user=user)
 
 
 @router.post(

@@ -263,6 +263,7 @@ async def register(
 
     # Multi-tenancy: Ensure at least one organization exists
     from backend.db.repos import OrganizationRepo
+
     orgs = await OrganizationRepo.list_all(db)
     if not orgs:
         # Create default organization if none exists
@@ -278,10 +279,10 @@ async def register(
         role=role,
         primary_org_id=org.id,
     )
-    
+
     # Link user to the organization
     await UserRepo.add_to_organization(db, user_id=user.id, org_id=org.id, role=role)
-    
+
     await db.commit()
     await db.refresh(user)
     return user
@@ -486,7 +487,9 @@ async def change_my_password(
         )
     target = await UserRepo.get_by_id(db, user.id)
     if target is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
     target.password_hash = hash_password(body.new_password)
     target.must_change_password = False
     target.password_changed_at = datetime.now(timezone.utc)
@@ -767,9 +770,7 @@ async def mint_password_reset(
     email_error: str | None = None
     email_org_id = target.primary_org_id or actor.primary_org_id
     settings = (
-        await resolve_email_settings(
-            db, email_org_id, config=request.app.state.config
-        )
+        await resolve_email_settings(db, email_org_id, config=request.app.state.config)
         if email_org_id is not None
         else None
     )
@@ -848,11 +849,7 @@ async def consume_password_reset(
     token_hash = people_tokens.hash_token(token)
     row = await PasswordResetTokenRepo.get_by_hash(db, token_hash)
     now = datetime.now(timezone.utc)
-    if (
-        row is None
-        or row.used_at is not None
-        or _ensure_aware(row.expires_at) < now
-    ):
+    if row is None or row.used_at is not None or _ensure_aware(row.expires_at) < now:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired token.",

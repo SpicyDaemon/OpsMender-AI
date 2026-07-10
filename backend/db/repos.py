@@ -315,9 +315,7 @@ class UserRepo:
         return user
 
     @staticmethod
-    async def count_roster_memberships(
-        db: AsyncSession, user_id: uuid.UUID
-    ) -> int:
+    async def count_roster_memberships(db: AsyncSession, user_id: uuid.UUID) -> int:
         """Sprint 56: gate for soft-delete. The user must be off every
         roster before deletion is allowed."""
 
@@ -328,9 +326,7 @@ class UserRepo:
         return int(result.scalar_one() or 0)
 
     @staticmethod
-    async def soft_delete(
-        db: AsyncSession, user_id: uuid.UUID
-    ) -> User | None:
+    async def soft_delete(db: AsyncSession, user_id: uuid.UUID) -> User | None:
         """Set ``deleted_at`` and scrub sensitive fields.
 
         Per owner direction (Session 135), the row is kept so past
@@ -401,9 +397,7 @@ class ApiTokenRepo:
         return (await db.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
-    async def get_active_by_hash(
-        db: AsyncSession, token_hash: str
-    ) -> ApiToken | None:
+    async def get_active_by_hash(db: AsyncSession, token_hash: str) -> ApiToken | None:
         stmt = select(ApiToken).where(
             ApiToken.token_hash == token_hash,
             ApiToken.revoked_at.is_(None),
@@ -522,9 +516,7 @@ class PasswordResetTokenRepo:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def mark_used(
-        db: AsyncSession, token_id: uuid.UUID
-    ) -> None:
+    async def mark_used(db: AsyncSession, token_id: uuid.UUID) -> None:
         stmt = (
             update(PasswordResetToken)
             .where(PasswordResetToken.id == token_id)
@@ -565,23 +557,17 @@ class OrgInviteRepo:
         return row
 
     @staticmethod
-    async def get_by_hash(
-        db: AsyncSession, token_hash: str
-    ) -> OrgInvite | None:
+    async def get_by_hash(db: AsyncSession, token_hash: str) -> OrgInvite | None:
         stmt = select(OrgInvite).where(OrgInvite.token_hash == token_hash)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_id(
-        db: AsyncSession, invite_id: uuid.UUID
-    ) -> OrgInvite | None:
+    async def get_by_id(db: AsyncSession, invite_id: uuid.UUID) -> OrgInvite | None:
         return await db.get(OrgInvite, invite_id)
 
     @staticmethod
-    async def list_for_org(
-        db: AsyncSession, org_id: uuid.UUID
-    ) -> Sequence[OrgInvite]:
+    async def list_for_org(db: AsyncSession, org_id: uuid.UUID) -> Sequence[OrgInvite]:
         stmt = (
             select(OrgInvite)
             .where(OrgInvite.org_id == org_id)
@@ -609,9 +595,7 @@ class OrgInviteRepo:
         await db.flush()
 
     @staticmethod
-    async def mark_revoked(
-        db: AsyncSession, invite_id: uuid.UUID
-    ) -> None:
+    async def mark_revoked(db: AsyncSession, invite_id: uuid.UUID) -> None:
         stmt = (
             update(OrgInvite)
             .where(OrgInvite.id == invite_id)
@@ -947,10 +931,7 @@ class IncidentRepo:
         if incident is None:
             return None
         seen: set[uuid.UUID] = set()
-        while (
-            incident.merged_into_incident_id is not None
-            and incident.id not in seen
-        ):
+        while incident.merged_into_incident_id is not None and incident.id not in seen:
             seen.add(incident.id)
             primary = await IncidentRepo.get_by_id(
                 db, org_id, incident.merged_into_incident_id
@@ -1169,9 +1150,7 @@ class SessionRepo:
     ) -> Session | None:
         return (
             await db.execute(
-                select(Session)
-                .where(Session.id == session_id)
-                .with_for_update()
+                select(Session).where(Session.id == session_id).with_for_update()
             )
         ).scalar_one_or_none()
 
@@ -2404,9 +2383,7 @@ class MCPServerOAuthTokenRepo:
         """
 
         result = await db.execute(
-            select(MCPServerOAuthToken).where(
-                MCPServerOAuthToken.org_id == org_id
-            )
+            select(MCPServerOAuthToken).where(MCPServerOAuthToken.org_id == org_id)
         )
         return {row.mcp_server_id: row for row in result.scalars().all()}
 
@@ -4333,6 +4310,7 @@ class IncidentTrackPostRepo:
         await db.flush()
         return row
 
+
 class BotActionAuditRepo:
     @staticmethod
     async def create(
@@ -4564,9 +4542,7 @@ class OrganizationRepo:
         if alert_grouping_default is not None:
             values["alert_grouping_default"] = alert_grouping_default
         if slack_incident_channels_enabled is not None:
-            values["slack_incident_channels_enabled"] = (
-                slack_incident_channels_enabled
-            )
+            values["slack_incident_channels_enabled"] = slack_incident_channels_enabled
 
         if not values:
             return await OrganizationRepo.get_by_id(db, org_id)
@@ -4730,25 +4706,33 @@ class ReportScheduleRepo:
         db: AsyncSession, org_id: uuid.UUID
     ) -> Sequence[ReportSchedule]:
         return (
-            await db.execute(
-                select(ReportSchedule)
-                .where(ReportSchedule.org_id == org_id)
-                .order_by(ReportSchedule.created_at.desc())
+            (
+                await db.execute(
+                    select(ReportSchedule)
+                    .where(ReportSchedule.org_id == org_id)
+                    .order_by(ReportSchedule.created_at.desc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     @staticmethod
-    async def list_due(
-        db: AsyncSession, *, now: datetime
-    ) -> Sequence[ReportSchedule]:
+    async def list_due(db: AsyncSession, *, now: datetime) -> Sequence[ReportSchedule]:
         return (
-            await db.execute(
-                select(ReportSchedule).where(
-                    ReportSchedule.enabled.is_(True),
-                    ReportSchedule.next_run_at <= now,
-                ).with_for_update(skip_locked=True)
+            (
+                await db.execute(
+                    select(ReportSchedule)
+                    .where(
+                        ReportSchedule.enabled.is_(True),
+                        ReportSchedule.next_run_at <= now,
+                    )
+                    .with_for_update(skip_locked=True)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     @staticmethod
     async def update(
@@ -4785,9 +4769,7 @@ class IntegrationConnectorRepo:
             return None
         from backend.auth.secrets import encrypt_secret
 
-        return encrypt_secret(
-            json.dumps(auth, sort_keys=True, separators=(",", ":"))
-        )
+        return encrypt_secret(json.dumps(auth, sort_keys=True, separators=(",", ":")))
 
     @staticmethod
     def decrypt_auth(row: IntegrationConnector) -> dict[str, Any]:
@@ -4936,9 +4918,7 @@ class IntegrationConnectorRepo:
         org_id: uuid.UUID,
         connector_id: uuid.UUID,
     ) -> bool:
-        row = await IntegrationConnectorRepo.get_by_id(
-            db, org_id, connector_id
-        )
+        row = await IntegrationConnectorRepo.get_by_id(db, org_id, connector_id)
         if row is None:
             return False
         await db.delete(row)
@@ -4995,13 +4975,17 @@ class TicketSyncStateRepo:
         incident_id: uuid.UUID,
     ) -> Sequence[TicketSyncState]:
         return (
-            await db.execute(
-                select(TicketSyncState).where(
-                    TicketSyncState.org_id == org_id,
-                    TicketSyncState.incident_id == incident_id,
+            (
+                await db.execute(
+                    select(TicketSyncState).where(
+                        TicketSyncState.org_id == org_id,
+                        TicketSyncState.incident_id == incident_id,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     @staticmethod
     async def get_by_external_ticket(
@@ -5063,9 +5047,7 @@ class IncidentIntegrationLinkRepo:
         reference_meta: dict[str, Any] | None = None,
     ) -> IncidentIntegrationLink | None:
         incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
-        connector = await IntegrationConnectorRepo.get_by_id(
-            db, org_id, connector_id
-        )
+        connector = await IntegrationConnectorRepo.get_by_id(db, org_id, connector_id)
         if incident is None or connector is None:
             return None
         row = (
@@ -5105,15 +5087,19 @@ class IncidentIntegrationLinkRepo:
         incident_id: uuid.UUID,
     ) -> Sequence[IncidentIntegrationLink]:
         return (
-            await db.execute(
-                select(IncidentIntegrationLink)
-                .where(
-                    IncidentIntegrationLink.org_id == org_id,
-                    IncidentIntegrationLink.incident_id == incident_id,
+            (
+                await db.execute(
+                    select(IncidentIntegrationLink)
+                    .where(
+                        IncidentIntegrationLink.org_id == org_id,
+                        IncidentIntegrationLink.incident_id == incident_id,
+                    )
+                    .order_by(IncidentIntegrationLink.created_at)
                 )
-                .order_by(IncidentIntegrationLink.created_at)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
 
 class OrganizationDomainRepo:
@@ -5504,9 +5490,7 @@ class AuditScheduleRepo:
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
-    async def list_due(
-        db: AsyncSession, *, now: datetime
-    ) -> Sequence[AuditSchedule]:
+    async def list_due(db: AsyncSession, *, now: datetime) -> Sequence[AuditSchedule]:
         """Return active schedules whose ``next_run_at`` is in the past."""
 
         stmt = (
@@ -5561,9 +5545,7 @@ class AuditScheduleRepo:
         return schedule
 
     @staticmethod
-    async def delete(
-        db: AsyncSession, schedule: AuditSchedule
-    ) -> None:
+    async def delete(db: AsyncSession, schedule: AuditSchedule) -> None:
         await db.delete(schedule)
         await db.flush()
 
@@ -5964,9 +5946,7 @@ class ServiceRepo:
                 allowed_integration_connector_ids or []
             )
         if integration_action_overrides_provided:
-            values["integration_action_overrides"] = (
-                integration_action_overrides or {}
-            )
+            values["integration_action_overrides"] = integration_action_overrides or {}
         if ai_default_tier_provided:
             values["ai_default_tier"] = ai_default_tier
         if external_refs_provided:
@@ -6048,6 +6028,7 @@ class ServiceRepo:
         result = await db.execute(stmt)
         await db.flush()
         return result.rowcount > 0
+
 
 class RosterRepo:
     @staticmethod
@@ -7235,9 +7216,7 @@ class IncidentMemoryRepo:
                 else:
                     # Token-level match: any whole word from the query landing
                     # in title/summary counts as a partial hit.
-                    tokens = [
-                        t for t in normalized_query.split() if len(t) >= 3
-                    ]
+                    tokens = [t for t in normalized_query.split() if len(t) >= 3]
                     if any(t in hay for t in tokens):
                         score += 0.25
 
@@ -7253,9 +7232,7 @@ class IncidentMemoryRepo:
         return scored[:limit]
 
     @staticmethod
-    async def touch_last_used(
-        db: AsyncSession, memory_id: uuid.UUID
-    ) -> None:
+    async def touch_last_used(db: AsyncSession, memory_id: uuid.UUID) -> None:
         await db.execute(
             update(IncidentMemory)
             .where(IncidentMemory.id == memory_id)

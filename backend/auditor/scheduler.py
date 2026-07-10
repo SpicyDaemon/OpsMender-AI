@@ -44,9 +44,7 @@ class AuditScheduler:
     async def start(self) -> None:
         if self._task is not None:
             return
-        self._task = asyncio.create_task(
-            self._loop(), name="opsmender-audit-scheduler"
-        )
+        self._task = asyncio.create_task(self._loop(), name="opsmender-audit-scheduler")
 
     async def stop(self) -> None:
         if self._task is None:
@@ -86,9 +84,7 @@ class AuditScheduler:
                 raise
         return fired
 
-    async def _fire(
-        self, db: AsyncSession, schedule, *, now: datetime
-    ) -> None:
+    async def _fire(self, db: AsyncSession, schedule, *, now: datetime) -> None:
         """Create a queued audit run, execute it, advance the schedule."""
 
         analyzer_params: dict[str, dict] = {}

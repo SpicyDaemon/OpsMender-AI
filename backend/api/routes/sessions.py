@@ -197,9 +197,7 @@ async def create_session(
     # started once an operator has acknowledged the incident (which records an
     # active assignment). Tier 0 sessions auto-start without an ack.
     if incident is not None and resolved_tier in (1, 2):
-        assignment = await IncidentAssignmentRepo.get_active(
-            db, org_id, incident.id
-        )
+        assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
         if assignment is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -502,9 +500,9 @@ async def force_start_queued_session(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="No active model is configured to start this session",
         )
-    occupancy = (
-        await SessionRepo.active_occupancy_by_model_config(db, org_id)
-    ).get(model.id, 0)
+    occupancy = (await SessionRepo.active_occupancy_by_model_config(db, org_id)).get(
+        model.id, 0
+    )
     cap = int(model.max_concurrent_sessions or 0)
     session.status = "active"
     session.model_config_id = model.id
@@ -635,7 +633,9 @@ async def stop_session(
     must be reverted."""
     session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        )
     if session.status not in _STOPPABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -678,9 +678,7 @@ async def stop_session(
         WSMessage(
             type="session_end",
             data={
-                "status": (
-                    "cancelled" if was_queued else "stopped"
-                ),
+                "status": ("cancelled" if was_queued else "stopped"),
                 "summary": f"Session stopped by {user.username}",
                 "stopped_by": str(user.id),
             },
@@ -715,7 +713,9 @@ async def override_session(
     target_tier = normalize_tier(body.tier)
     session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        )
     if session.status not in _RUNNING_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

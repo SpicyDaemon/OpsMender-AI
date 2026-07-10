@@ -28,7 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import _auth_config, create_access_token, hash_password
 from backend.api.deps import get_db
-from backend.auth.oidc import OIDCClientConfig, OIDCError, build_authorize_url, exchange_code
+from backend.auth.oidc import (
+    OIDCClientConfig,
+    OIDCError,
+    build_authorize_url,
+    exchange_code,
+)
 from backend.auth.secrets import decrypt_secret
 from backend.db.models import Organization
 from backend.db.repos import OrganizationRepo, OrgSSOConfigRepo, UserRepo
@@ -68,7 +73,9 @@ def _encode_state(org_id: uuid.UUID, nonce: str) -> str:
 def _decode_state(state: str) -> dict[str, Any]:
     settings = _auth_config()
     try:
-        payload = jwt.decode(state, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            state, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+        )
     except JWTError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid state: {exc}")
     if payload.get("purpose") != "sso_state":
@@ -144,11 +151,15 @@ async def sso_callback(
 
     email = claims.get(sso.email_claim) or claims.get("email")
     if not email:
-        raise HTTPException(status_code=400, detail="IdP did not return an email claim.")
+        raise HTTPException(
+            status_code=400, detail="IdP did not return an email claim."
+        )
     email = str(email).strip().lower()
 
     if sso.allowed_email_domains:
-        allowed = [d.strip().lower() for d in sso.allowed_email_domains.split(",") if d.strip()]
+        allowed = [
+            d.strip().lower() for d in sso.allowed_email_domains.split(",") if d.strip()
+        ]
         if allowed and not any(email.endswith("@" + d) for d in allowed):
             raise HTTPException(
                 status_code=403,
@@ -180,7 +191,9 @@ async def sso_callback(
             primary_org_id=org.id,
         )
     elif user.auth_source != auth_source:
-        user = await UserRepo.update_fields(db, user.id, auth_source=auth_source) or user
+        user = (
+            await UserRepo.update_fields(db, user.id, auth_source=auth_source) or user
+        )
 
     # Ensure user is linked to this org.
     if not await UserRepo.is_member(db, user.id, org.id):

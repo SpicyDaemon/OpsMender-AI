@@ -61,9 +61,7 @@ class EscalationScheduler:
         factory = build_channel_factory()
         async with self._session_factory() as db:
             try:
-                advanced = await tick_all_due(
-                    db, at=now, channel_factory=factory
-                )
+                advanced = await tick_all_due(db, at=now, channel_factory=factory)
                 # Advance staged per-priority notification escalations too.
                 from backend.paging import notification_escalation as _ne
 

@@ -65,8 +65,10 @@ class HomeAssistantAdapter:
         raw_body: bytes,
     ) -> None:
         if connector.platform != self.platform:
-            raise HTTPException(status_code=400, detail="Not a Home Assistant connector")
-            
+            raise HTTPException(
+                status_code=400, detail="Not a Home Assistant connector"
+            )
+
         credentials = connector.credentials or {}
         expected_secret = credentials.get("webhook_secret")
         if not expected_secret:
@@ -85,10 +87,10 @@ class HomeAssistantAdapter:
         chat_id = payload.get("source") or payload.get("entity_id") or "hass-default"
         text = payload.get("action") or payload.get("message")
         user_id = payload.get("user_id")
-        
+
         if not text:
             return None
-            
+
         return InboundMessage(
             chat_id=str(chat_id),
             platform_user_id=str(user_id) if user_id else str(chat_id),
@@ -112,10 +114,13 @@ class HomeAssistantAdapter:
         credentials = connector.credentials or {}
         token = credentials.get("access_token")
         url = credentials.get("service_url")
-        
+
         if not token or not url:
-            return False, "Home Assistant credentials (access_token, service_url) not configured"
-            
+            return (
+                False,
+                "Home Assistant credentials (access_token, service_url) not configured",
+            )
+
         # Deliver via HASS persistent_notification or notify service
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -131,6 +136,9 @@ class HomeAssistantAdapter:
                 timeout=10.0,
             )
             if resp.status_code != 200:
-                return False, f"Home Assistant API error: HTTP {resp.status_code} - {resp.text}"
-                
+                return (
+                    False,
+                    f"Home Assistant API error: HTTP {resp.status_code} - {resp.text}",
+                )
+
             return True, None

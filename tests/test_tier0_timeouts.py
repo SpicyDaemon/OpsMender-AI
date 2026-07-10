@@ -120,7 +120,10 @@ class TestConfigLoaderWiresTier0(object):
         env_file = tmp_path / ".env"
         env_file.write_text("")
         # Clear any env pollution
-        for k in ("OPSMENDER_TIER0_MAX_SESSION_SECONDS", "OPSMENDER_TIER0_MAX_NODE_SECONDS"):
+        for k in (
+            "OPSMENDER_TIER0_MAX_SESSION_SECONDS",
+            "OPSMENDER_TIER0_MAX_NODE_SECONDS",
+        ):
             monkeypatch.delenv(k, raising=False)
         cfg = AppConfig.load(env_file)
         assert cfg.tier0.max_session_seconds == 600
@@ -133,7 +136,10 @@ class TestConfigLoaderWiresTier0(object):
         env_file.write_text(
             "OPSMENDER_TIER0_MAX_SESSION_SECONDS=300\nOPSMENDER_TIER0_MAX_NODE_SECONDS=45\n"
         )
-        for k in ("OPSMENDER_TIER0_MAX_SESSION_SECONDS", "OPSMENDER_TIER0_MAX_NODE_SECONDS"):
+        for k in (
+            "OPSMENDER_TIER0_MAX_SESSION_SECONDS",
+            "OPSMENDER_TIER0_MAX_NODE_SECONDS",
+        ):
             monkeypatch.delenv(k, raising=False)
         cfg = AppConfig.load(env_file)
         assert cfg.tier0.max_session_seconds == 300

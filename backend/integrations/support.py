@@ -171,9 +171,7 @@ class ZendeskAdapter(IntegrationAdapter):
             return response_error("Zendesk", r)
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
-    async def comment_ticket(
-        self, connector, auth, ticket_id, body, public=True
-    ):
+    async def comment_ticket(self, connector, auth, ticket_id, body, public=True):
         base = _zendesk_base(connector)
         tid = required(ticket_id, "ticket_id")
         comment_body = required(body, "body")
@@ -181,7 +179,11 @@ class ZendeskAdapter(IntegrationAdapter):
             r = await client.put(
                 f"{base}/api/v2/tickets/{tid}.json",
                 headers=_zendesk_headers(connector, auth),
-                json={"ticket": {"comment": {"body": comment_body, "public": bool(public)}}},
+                json={
+                    "ticket": {
+                        "comment": {"body": comment_body, "public": bool(public)}
+                    }
+                },
             )
         if r.status_code >= 400:
             return response_error("Zendesk", r)
@@ -289,9 +291,7 @@ class FreshserviceAdapter(IntegrationAdapter):
             return response_error("Freshservice", r)
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
-    async def list_tickets(
-        self, connector, auth, status=None, priority=None, page=1
-    ):
+    async def list_tickets(self, connector, auth, status=None, priority=None, page=1):
         base = _freshservice_base(connector)
         params: dict[str, Any] = {"page": page, "per_page": 25}
         if status:
@@ -346,9 +346,7 @@ class FreshserviceAdapter(IntegrationAdapter):
             return response_error("Freshservice", r)
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
-    async def comment_ticket(
-        self, connector, auth, ticket_id, body, private=True
-    ):
+    async def comment_ticket(self, connector, auth, ticket_id, body, private=True):
         base = _freshservice_base(connector)
         tid = required(ticket_id, "ticket_id")
         async with self._factory() as client:
@@ -458,13 +456,9 @@ class AsanaAdapter(IntegrationAdapter):
             return response_error("Asana", r)
         return IntegrationResult.success(task=r.json().get("data"))
 
-    async def list_tasks(
-        self, connector, auth, project_id=None, completed=False
-    ):
+    async def list_tasks(self, connector, auth, project_id=None, completed=False):
         base = _asana_base(connector)
-        pid = required(
-            project_id or connector.config.get("project_id"), "project_id"
-        )
+        pid = required(project_id or connector.config.get("project_id"), "project_id")
         params = {
             "project": pid,
             "opt_fields": "gid,name,completed,assignee",
@@ -488,7 +482,9 @@ class AsanaAdapter(IntegrationAdapter):
         base = _asana_base(connector)
         task: dict[str, Any] = {"name": required(name, "name")}
         resolved_projects = projects or (
-            [connector.config["project_id"]] if connector.config.get("project_id") else None
+            [connector.config["project_id"]]
+            if connector.config.get("project_id")
+            else None
         )
         if resolved_projects:
             task["projects"] = resolved_projects

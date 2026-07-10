@@ -23,7 +23,6 @@ from backend.sla.downsampler import UptimeDownsampler, _floor_1h, _floor_5m
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-
 @pytest.fixture
 async def factory():
     engine = create_async_engine("sqlite+aiosqlite://", echo=False)
@@ -32,6 +31,7 @@ async def factory():
     fac = async_sessionmaker(engine, expire_on_commit=False)
     async with fac() as session:
         from backend.db.models import Organization
+
         org = Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org")
         session.add(org)
         await session.commit()
@@ -152,9 +152,7 @@ class TestRollTo5m:
         async with factory() as check_db:
             row = (
                 await check_db.execute(
-                    select(UptimeSample5m).where(
-                        UptimeSample5m.target_id == target.id
-                    )
+                    select(UptimeSample5m).where(UptimeSample5m.target_id == target.id)
                 )
             ).scalar_one()
 
@@ -329,9 +327,7 @@ class TestRollTo1h:
         async with factory() as check_db:
             row = (
                 await check_db.execute(
-                    select(UptimeSample1h).where(
-                        UptimeSample1h.target_id == target.id
-                    )
+                    select(UptimeSample1h).where(UptimeSample1h.target_id == target.id)
                 )
             ).scalar_one()
 

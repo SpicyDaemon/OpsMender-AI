@@ -10,6 +10,7 @@ import pytest
 from backend.agent.workflow_executor import WorkflowExecutor
 from backend.approvals.service import ApprovalResolution
 from backend.audit.logger import AuditEntryType, AuditLogger
+from backend.skills.convert import convert_legacy_skill_content
 from backend.skills.parser import loads
 
 
@@ -19,7 +20,8 @@ SESSION_ID = str(uuid.uuid4())
 def _skill(*, first_failure: str = "abort", approval: bool = False):
     override = "\n    tier_override: approval" if approval else ""
     return loads(
-        f"""---
+        convert_legacy_skill_content(
+            f"""---
 version: "1"
 environment: test
 operations:
@@ -46,6 +48,7 @@ steps:
     on_failure: abort
 ```
 """
+        ).content
     )
 
 

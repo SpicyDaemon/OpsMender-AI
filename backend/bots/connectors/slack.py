@@ -93,7 +93,9 @@ class SlackAdapter:
             )
 
         # Slack signature verification: https://api.slack.com/authentication/verifying-requests-from-slack
-        timestamp = headers.get("x-slack-request-timestamp") or headers.get("X-Slack-Request-Timestamp")
+        timestamp = headers.get("x-slack-request-timestamp") or headers.get(
+            "X-Slack-Request-Timestamp"
+        )
         signature = headers.get("x-slack-signature") or headers.get("X-Slack-Signature")
 
         if not timestamp or not signature:
@@ -110,11 +112,14 @@ class SlackAdapter:
             )
 
         sig_basestring = f"v0:{timestamp}:{raw_body.decode('utf-8')}"
-        my_signature = "v0=" + hmac.new(
-            signing_secret.encode("utf-8"),
-            sig_basestring.encode("utf-8"),
-            hashlib.sha256
-        ).hexdigest()
+        my_signature = (
+            "v0="
+            + hmac.new(
+                signing_secret.encode("utf-8"),
+                sig_basestring.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+        )
 
         if not hmac.compare_digest(my_signature, signature):
             raise HTTPException(
@@ -187,11 +192,11 @@ class SlackAdapter:
             )
             if resp.status_code != 200:
                 return False, f"Slack API error: HTTP {resp.status_code}"
-            
+
             data = resp.json()
             if not data.get("ok"):
                 return False, f"Slack API error: {data.get('error')}"
-            
+
             return True, None
 
     async def send_incident_update(
@@ -228,10 +233,14 @@ class SlackAdapter:
                 timeout=10.0,
             )
         if resp.status_code != 200:
-            return DeliveryReceipt(ok=False, error=f"Slack API error: HTTP {resp.status_code}")
+            return DeliveryReceipt(
+                ok=False, error=f"Slack API error: HTTP {resp.status_code}"
+            )
         data = resp.json()
         if not data.get("ok"):
-            return DeliveryReceipt(ok=False, error=f"Slack API error: {data.get('error')}")
+            return DeliveryReceipt(
+                ok=False, error=f"Slack API error: {data.get('error')}"
+            )
         ts = data.get("ts")
         return DeliveryReceipt(
             ok=True,

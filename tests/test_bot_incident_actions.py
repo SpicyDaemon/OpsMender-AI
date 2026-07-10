@@ -79,7 +79,9 @@ def test_incident_action_token_rejects_tampering_and_expiry():
         action="resolve",
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
     )
-    claims = verify_incident_action_token(token, secret=SECRET, expected_action="resolve")
+    claims = verify_incident_action_token(
+        token, secret=SECRET, expected_action="resolve"
+    )
     assert claims.incident_id == incident_id
     assert claims.action == "resolve"
 
@@ -136,7 +138,9 @@ async def test_operator_can_acknowledge_and_viewer_is_rejected(factory):
             actor_user_id=operator.id,
         )
         assert result.status == "acknowledged"
-        assignment = await IncidentAssignmentRepo.get_active(db, TEST_ORG_ID, incident.id)
+        assignment = await IncidentAssignmentRepo.get_active(
+            db, TEST_ORG_ID, incident.id
+        )
         assert assignment is not None
         assert assignment.assigned_to == operator.id
 
@@ -166,7 +170,9 @@ async def test_native_resolve_records_lifecycle_comment(factory):
             actor_user_id=operator.id,
         )
         assert result.status == "resolved"
-        comments = await IncidentCommentRepo.list_for_incident(db, TEST_ORG_ID, incident.id)
+        comments = await IncidentCommentRepo.list_for_incident(
+            db, TEST_ORG_ID, incident.id
+        )
         lifecycle = [c for c in comments if c.source == "lifecycle"]
         assert len(lifecycle) == 1
         assert lifecycle[0].body == "Resolved the incident."
@@ -229,7 +235,9 @@ async def test_external_actor_must_be_linked_and_active(factory):
             status="configured",
             is_enabled=True,
         )
-        inactive = await _user(db, username="inactive", role="operator", is_active=False)
+        inactive = await _user(
+            db, username="inactive", role="operator", is_active=False
+        )
         operator = await _user(db, username="linked", role="operator")
         incident = await IncidentRepo.create(
             db,

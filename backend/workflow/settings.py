@@ -6,7 +6,10 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.agent.graph import DEFAULT_WORKFLOW_NODE_ORDER, validate_workflow_node_order
+from backend.agent.graph import (
+    DEFAULT_WORKFLOW_NODE_ORDER,
+    validate_workflow_node_order,
+)
 from backend.db.models import WorkflowProfile
 from backend.db.repos import WorkflowProfileRepo
 

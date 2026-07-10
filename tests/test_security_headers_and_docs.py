@@ -28,7 +28,8 @@ def make_app(tmp_path, monkeypatch):
         set_env_path(tmp_env)
         monkeypatch.setenv("OPSMENDER_JWT_SECRET", "a-strong-test-secret-value")
         monkeypatch.setenv(
-            "OPSMENDER_DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path/'t.db'}"
+            "OPSMENDER_DATABASE_URL",
+            "postgresql+asyncpg://opsmender:test@db:5432/opsmender",
         )
         monkeypatch.setenv("OPSMENDER_MCP_SERVERS_JSON", json.dumps([]))
         monkeypatch.delenv("OPSMENDER_ENABLE_API_DOCS", raising=False)
@@ -58,7 +59,10 @@ class TestAPIDocsExposure:
             response = await _get(app, path)
             # 404 from the API (or the frontend catch-all when a build is
             # mounted) — anything but the live docs/schema.
-            assert response.status_code != 200 or "openapi" not in response.text[:200].lower(), path
+            assert (
+                response.status_code != 200
+                or "openapi" not in response.text[:200].lower()
+            ), path
 
     async def test_docs_opt_in_in_production(self, make_app):
         app = make_app(
@@ -75,9 +79,7 @@ class TestSecurityHeaders:
         response = await _get(app, "/health")
         assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["X-Frame-Options"] == "DENY"
-        assert (
-            response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
-        )
+        assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
 
     async def test_headers_present_on_404(self, make_app):
         app = make_app(OPSMENDER_ENVIRONMENT="development")

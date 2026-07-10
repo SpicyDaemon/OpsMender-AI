@@ -127,11 +127,14 @@ async def client(app):
 def _slack_sign(body: bytes) -> dict[str, str]:
     ts = str(int(time.time()))
     basestring = f"v0:{ts}:{body.decode('utf-8')}"
-    sig = "v0=" + hmac.new(
-        SIGNING_SECRET.encode("utf-8"),
-        basestring.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    sig = (
+        "v0="
+        + hmac.new(
+            SIGNING_SECRET.encode("utf-8"),
+            basestring.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+    )
     return {
         "X-Slack-Request-Timestamp": ts,
         "X-Slack-Signature": sig,
@@ -173,9 +176,7 @@ async def _seed_paging_topology(app) -> dict:
             db, user_id=operator.id, org_id=TEST_ORG_ID, role="operator"
         )
 
-        team = await TeamRepo.create(
-            db, TEST_ORG_ID, name="SRE", slug="sre"
-        )
+        team = await TeamRepo.create(db, TEST_ORG_ID, name="SRE", slug="sre")
         service = await ServiceRepo.create(
             db,
             TEST_ORG_ID,
@@ -336,9 +337,13 @@ class TestIncidentResponseLoop:
 
         # ---------- Stage 3: operator acks via Slack button ----------
         ack_body = urllib.parse.urlencode(
-            {"payload": json.dumps(_block_actions_payload(
-                action_id=ACTION_ACK, incident_id=incident_id
-            ))}
+            {
+                "payload": json.dumps(
+                    _block_actions_payload(
+                        action_id=ACTION_ACK, incident_id=incident_id
+                    )
+                )
+            }
         ).encode("utf-8")
         slack_ack_resp = await client.post(
             "/bot/slack/interactions",
@@ -381,9 +386,13 @@ class TestIncidentResponseLoop:
 
         # ---------- Stage 5: resolve via Slack button ----------
         resolve_body = urllib.parse.urlencode(
-            {"payload": json.dumps(_block_actions_payload(
-                action_id=ACTION_RESOLVE, incident_id=incident_id
-            ))}
+            {
+                "payload": json.dumps(
+                    _block_actions_payload(
+                        action_id=ACTION_RESOLVE, incident_id=incident_id
+                    )
+                )
+            }
         ).encode("utf-8")
         resolve_resp = await client.post(
             "/bot/slack/interactions",
@@ -405,4 +414,10 @@ class TestIncidentResponseLoop:
         # with status in {cancelled, finished, exhausted}.
         state = final_chain.json()["state"]
         assert state is not None
-        assert state["status"] in ("cancelled", "finished", "exhausted", "acked", "paused")
+        assert state["status"] in (
+            "cancelled",
+            "finished",
+            "exhausted",
+            "acked",
+            "paused",
+        )

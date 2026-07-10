@@ -44,9 +44,7 @@ def upgrade() -> None:
         "incidents",
         sa.Column("response_mode", sa.String(length=30), nullable=True),
     )
-    op.add_column(
-        "incidents", sa.Column("service_id", sa.Uuid(), nullable=True)
-    )
+    op.add_column("incidents", sa.Column("service_id", sa.Uuid(), nullable=True))
     # services table is created below, so the FK is added at the end.
 
     # ---- teams ----------------------------------------------------------
@@ -59,12 +57,8 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("created_by", sa.Uuid(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["created_by"], ["users.id"], ondelete="SET NULL"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("org_id", "slug", name="uq_team_slug"),
     )
@@ -83,15 +77,9 @@ def upgrade() -> None:
             server_default="member",
         ),
         sa.Column("added_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["team_id"], ["teams.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["team_id"], ["teams.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("team_id", "user_id", name="uq_team_member"),
     )
@@ -116,18 +104,12 @@ def upgrade() -> None:
             server_default=sa.true(),
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["team_id"], ["teams.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["team_id"], ["teams.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("org_id", "slug", name="uq_service_slug"),
     )
-    op.create_index(
-        "ix_services_team_id", "services", ["team_id"], unique=False
-    )
+    op.create_index("ix_services_team_id", "services", ["team_id"], unique=False)
 
     # incidents.service_id FK now that services exists.
     op.create_foreign_key(
@@ -156,9 +138,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="weekly",
         ),
-        sa.Column(
-            "pattern_length", sa.Integer(), nullable=False, server_default="7"
-        ),
+        sa.Column("pattern_length", sa.Integer(), nullable=False, server_default="7"),
         sa.Column(
             "handoff_time",
             sa.String(length=8),
@@ -174,17 +154,11 @@ def upgrade() -> None:
             server_default=sa.true(),
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["team_id"], ["teams.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["team_id"], ["teams.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_rosters_team_id", "rosters", ["team_id"], unique=False
-    )
+    op.create_index("ix_rosters_team_id", "rosters", ["team_id"], unique=False)
 
     # ---- roster_members -------------------------------------------------
     op.create_table(
@@ -195,19 +169,11 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("position_index", sa.Integer(), nullable=False),
         sa.Column("added_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["roster_id"], ["rosters.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["roster_id"], ["rosters.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "roster_id", "user_id", name="uq_roster_member_user"
-        ),
+        sa.UniqueConstraint("roster_id", "user_id", name="uq_roster_member_user"),
         sa.UniqueConstraint(
             "roster_id", "position_index", name="uq_roster_member_position"
         ),
@@ -231,18 +197,10 @@ def upgrade() -> None:
         sa.Column("reason", sa.Text(), nullable=True),
         sa.Column("created_by", sa.Uuid(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["roster_id"], ["rosters.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["covering_user_id"], ["users.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["created_by"], ["users.id"], ondelete="SET NULL"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["roster_id"], ["rosters.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["covering_user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -259,22 +217,12 @@ def upgrade() -> None:
         sa.Column("org_id", sa.Uuid(), nullable=False),
         sa.Column("service_id", sa.Uuid(), nullable=False),
         sa.Column("roster_id", sa.Uuid(), nullable=False),
-        sa.Column(
-            "level", sa.Integer(), nullable=False, server_default="1"
-        ),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["service_id"], ["services.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["roster_id"], ["rosters.id"], ondelete="CASCADE"
-        ),
+        sa.Column("level", sa.Integer(), nullable=False, server_default="1"),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["service_id"], ["services.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["roster_id"], ["rosters.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "service_id", "roster_id", name="uq_service_roster"
-        ),
+        sa.UniqueConstraint("service_id", "roster_id", name="uq_service_roster"),
     )
 
     # ---- priority_rules -------------------------------------------------
@@ -283,9 +231,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("org_id", sa.Uuid(), nullable=False),
         sa.Column("name", sa.String(length=200), nullable=False),
-        sa.Column(
-            "rule_index", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("rule_index", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("condition", sa.JSON(), nullable=False),
         sa.Column("priority", sa.String(length=8), nullable=False),
         sa.Column("response_mode", sa.String(length=30), nullable=True),
@@ -296,9 +242,7 @@ def upgrade() -> None:
             server_default=sa.true(),
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -318,12 +262,8 @@ def upgrade() -> None:
         sa.Column("llm_priority", sa.String(length=8), nullable=False),
         sa.Column("llm_reason", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["incident_id"], ["incidents.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -337,15 +277,9 @@ def upgrade() -> None:
         sa.Column("assigned_by", sa.String(length=30), nullable=False),
         sa.Column("assigned_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("released_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["org_id"], ["organizations.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["incident_id"], ["incidents.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["assigned_to"], ["users.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["assigned_to"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -365,33 +299,23 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_incident_assignments_active", table_name="incident_assignments"
-    )
+    op.drop_index("ix_incident_assignments_active", table_name="incident_assignments")
     op.drop_index(
         "ix_incident_assignments_incident_id",
         table_name="incident_assignments",
     )
     op.drop_table("incident_assignments")
     op.drop_table("priority_llm_override_log")
-    op.drop_index(
-        "ix_priority_rules_org_index", table_name="priority_rules"
-    )
+    op.drop_index("ix_priority_rules_org_index", table_name="priority_rules")
     op.drop_table("priority_rules")
     op.drop_table("service_rosters")
-    op.drop_index(
-        "ix_roster_overrides_roster_id", table_name="roster_overrides"
-    )
+    op.drop_index("ix_roster_overrides_roster_id", table_name="roster_overrides")
     op.drop_table("roster_overrides")
-    op.drop_index(
-        "ix_roster_members_roster_id", table_name="roster_members"
-    )
+    op.drop_index("ix_roster_members_roster_id", table_name="roster_members")
     op.drop_table("roster_members")
     op.drop_index("ix_rosters_team_id", table_name="rosters")
     op.drop_table("rosters")
-    op.drop_constraint(
-        "fk_incidents_service_id", "incidents", type_="foreignkey"
-    )
+    op.drop_constraint("fk_incidents_service_id", "incidents", type_="foreignkey")
     op.drop_index("ix_services_team_id", table_name="services")
     op.drop_table("services")
     op.drop_index("ix_team_members_team_id", table_name="team_members")

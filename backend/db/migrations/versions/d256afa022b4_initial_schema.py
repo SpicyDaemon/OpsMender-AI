@@ -5,6 +5,7 @@ Revises:
 Create Date: 2026-04-09 23:40:03.755311
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -13,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'd256afa022b4'
+revision: str = "d256afa022b4"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -110,12 +111,8 @@ def upgrade() -> None:
         sa.Column("block_reason", sa.Text, nullable=True),
         sa.Column("duration_ms", sa.Integer, nullable=True),
     )
-    op.create_index(
-        "ix_audit_entries_session_id", "audit_entries", ["session_id"]
-    )
-    op.create_index(
-        "ix_audit_entries_timestamp", "audit_entries", ["timestamp"]
-    )
+    op.create_index("ix_audit_entries_session_id", "audit_entries", ["session_id"])
+    op.create_index("ix_audit_entries_timestamp", "audit_entries", ["timestamp"])
 
     # -- approval_requests ---------------------------------------------------
     op.create_table(
@@ -156,9 +153,7 @@ def upgrade() -> None:
         sa.Column("api_key_env_var", sa.String(100), nullable=True),
         sa.Column("base_url", sa.String(500), nullable=True),
         sa.Column("max_tokens", sa.Integer, nullable=False, server_default="4096"),
-        sa.Column(
-            "temperature", sa.Float, nullable=False, server_default="0.0"
-        ),
+        sa.Column("temperature", sa.Float, nullable=False, server_default="0.0"),
         sa.Column("is_default", sa.Boolean, nullable=False, server_default="false"),
         sa.Column(
             "created_at",

@@ -130,7 +130,9 @@ async def test_token_role_ceiling_and_viewer_read_only(client, admin_headers):
         client, admin_headers, name="viewer-script", role="viewer"
     )
 
-    assert (await client.get("/incidents", headers=_bearer(operator["token"]))).status_code == 200
+    assert (
+        await client.get("/incidents", headers=_bearer(operator["token"]))
+    ).status_code == 200
     create_user = await client.post(
         "/auth/users",
         headers=_bearer(operator["token"]),
@@ -143,7 +145,9 @@ async def test_token_role_ceiling_and_viewer_read_only(client, admin_headers):
     )
     assert create_user.status_code == 403
 
-    assert (await client.get("/incidents", headers=_bearer(viewer["token"]))).status_code == 200
+    assert (
+        await client.get("/incidents", headers=_bearer(viewer["token"]))
+    ).status_code == 200
     create_incident = await client.post(
         "/incidents",
         headers=_bearer(viewer["token"]),
@@ -158,8 +162,12 @@ async def test_token_role_ceiling_and_viewer_read_only(client, admin_headers):
 
 
 async def test_revoked_token_rejects_immediately(client, admin_headers):
-    token = await _create_token(client, admin_headers, name="revoke-me", role="operator")
-    assert (await client.get("/incidents", headers=_bearer(token["token"]))).status_code == 200
+    token = await _create_token(
+        client, admin_headers, name="revoke-me", role="operator"
+    )
+    assert (
+        await client.get("/incidents", headers=_bearer(token["token"]))
+    ).status_code == 200
 
     revoke = await client.delete(
         f"/api/v1/api-tokens/{token['id']}",
@@ -194,7 +202,9 @@ async def test_secret_never_returns_from_list_or_audit(client, admin_headers):
 async def test_denylist_rejects_admin_token_on_self_service_and_ws(
     client, app, admin_headers
 ):
-    token = await _create_token(client, admin_headers, name="admin-script", role="admin")
+    token = await _create_token(
+        client, admin_headers, name="admin-script", role="admin"
+    )
     headers = _bearer(token["token"])
 
     assert (await client.get("/auth/me", headers=headers)).status_code == 401
@@ -215,19 +225,25 @@ async def test_denylist_rejects_admin_token_on_self_service_and_ws(
 
 
 async def test_last_used_at_updates_once_per_minute(client, admin_headers):
-    token = await _create_token(client, admin_headers, name="usage-clock", role="operator")
+    token = await _create_token(
+        client, admin_headers, name="usage-clock", role="operator"
+    )
     before = await client.get("/api/v1/api-tokens", headers=admin_headers)
     row = next(item for item in before.json()["items"] if item["id"] == token["id"])
     assert row["last_used_at"] is None
 
-    assert (await client.get("/incidents", headers=_bearer(token["token"]))).status_code == 200
+    assert (
+        await client.get("/incidents", headers=_bearer(token["token"]))
+    ).status_code == 200
     after_first = await client.get("/api/v1/api-tokens", headers=admin_headers)
     first_used = next(
         item for item in after_first.json()["items"] if item["id"] == token["id"]
     )["last_used_at"]
     assert first_used is not None
 
-    assert (await client.get("/incidents", headers=_bearer(token["token"]))).status_code == 200
+    assert (
+        await client.get("/incidents", headers=_bearer(token["token"]))
+    ).status_code == 200
     after_second = await client.get("/api/v1/api-tokens", headers=admin_headers)
     second_used = next(
         item for item in after_second.json()["items"] if item["id"] == token["id"]
@@ -236,7 +252,9 @@ async def test_last_used_at_updates_once_per_minute(client, admin_headers):
 
 
 async def test_token_auth_audit_attribution(client, admin_headers):
-    parent = await _create_token(client, admin_headers, name="parent-admin", role="admin")
+    parent = await _create_token(
+        client, admin_headers, name="parent-admin", role="admin"
+    )
     child = await _create_token(
         client,
         _bearer(parent["token"]),

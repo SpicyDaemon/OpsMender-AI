@@ -191,9 +191,7 @@ def history_series(
 
     series: list[dict[str, Any]] = []
     for i, group in enumerate(grouped):
-        ts = datetime.fromtimestamp(
-            since.timestamp() + i * width, tz=timezone.utc
-        )
+        ts = datetime.fromtimestamp(since.timestamp() + i * width, tz=timezone.utc)
         non_suppressed = [s for s in group if not s.suppressed]
         if not non_suppressed:
             series.append({"ts": ts, "up_pct": 100.0, "status": "unknown"})

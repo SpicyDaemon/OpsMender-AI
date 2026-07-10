@@ -75,22 +75,24 @@ class WeixinAdapter:
         # during the handshake (GET) or on every update (POST).
         pass
 
-    def handle_handshake(self, connector: BotConnector, params: Mapping[str, str]) -> str:
+    def handle_handshake(
+        self, connector: BotConnector, params: Mapping[str, str]
+    ) -> str:
         credentials = connector.credentials or {}
         token = credentials.get("token")
-        
+
         signature = params.get("signature")
         timestamp = params.get("timestamp")
         nonce = params.get("nonce")
         echostr = params.get("echostr")
-        
+
         if not all([signature, timestamp, nonce, echostr]):
             raise HTTPException(status_code=400, detail="Missing handshake params")
-            
+
         expected_sig = self._get_signature(token, timestamp, nonce)
         if signature != expected_sig:
             raise HTTPException(status_code=403, detail="Invalid Weixin signature")
-            
+
         return echostr
 
     def parse_inbound(
@@ -101,18 +103,18 @@ class WeixinAdapter:
         xml_content = payload.get("_xml_content")
         if not xml_content:
             return None
-            
+
         root = ET.fromstring(xml_content)
         msg_type = root.findtext("MsgType")
         if msg_type != "text":
             return None
-            
+
         chat_id = root.findtext("FromUserName")
         text = root.findtext("Content")
-        
+
         if not chat_id or not text:
             return None
-            
+
         return InboundMessage(
             chat_id=str(chat_id),
             platform_user_id=str(chat_id),
@@ -123,7 +125,11 @@ class WeixinAdapter:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 "https://api.weixin.qq.com/cgi-bin/token",
-                params={"grant_type": "client_credential", "appid": appid, "secret": appsecret},
+                params={
+                    "grant_type": "client_credential",
+                    "appid": appid,
+                    "secret": appsecret,
+                },
                 timeout=10.0,
             )
             if resp.status_code == 200:
@@ -140,14 +146,14 @@ class WeixinAdapter:
         credentials = connector.credentials or {}
         appid = credentials.get("appid")
         appsecret = credentials.get("appsecret")
-        
+
         if not all([appid, appsecret]):
             return False, "Weixin credentials (appid, appsecret) not configured"
-            
+
         token = await self._get_access_token(str(appid), str(appsecret))
         if not token:
             return False, "Failed to obtain Weixin access token"
-            
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://api.weixin.qq.com/cgi-bin/message/custom/send",
@@ -161,9 +167,9 @@ class WeixinAdapter:
             )
             if resp.status_code != 200:
                 return False, f"Weixin API error: HTTP {resp.status_code}"
-            
+
             data = resp.json()
             if data.get("errcode") != 0:
                 return False, f"Weixin API error: {data.get('errmsg')}"
-                
+
             return True, None

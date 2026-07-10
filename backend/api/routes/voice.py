@@ -134,9 +134,7 @@ async def voice_ack(
         )
         await db.commit()
         if result is None:
-            return _twiml(
-                "There are no further responders to escalate to. Goodbye."
-            )
+            return _twiml("There are no further responders to escalate to. Goodbye.")
         return _twiml("Escalating to the next responder. Goodbye.")
 
     if digit == "3":

@@ -159,20 +159,33 @@ export function CommandPalette() {
   const [incidentSearching, setIncidentSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const incidentRequestId = useRef(0);
-  const items = useMemo(buildItems, []);
+  const items = useMemo(() => buildItems(), []);
   const filtered = useMemo(() => filterItems(items, query), [items, query]);
+
+  const openPalette = useCallback(() => {
+    setQuery("");
+    setHighlight(0);
+    setIncidentResults([]);
+    setIncidentSearching(false);
+    setOpen(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  const updateQuery = (value: string) => {
+    setQuery(value);
+    setHighlight(0);
+    setIncidentResults([]);
+    setIncidentSearching(value.trim().length >= 2);
+  };
 
   useEffect(() => {
     const q = query.trim();
     const requestId = incidentRequestId.current + 1;
     incidentRequestId.current = requestId;
     if (!open || q.length < 2) {
-      setIncidentResults([]);
-      setIncidentSearching(false);
       return;
     }
 
-    setIncidentSearching(true);
     const timer = window.setTimeout(() => {
       listIncidents({ q, limit: 5 })
         .then((res) => {
@@ -203,7 +216,8 @@ export function CommandPalette() {
         // Even when focused in an input, Cmd+K should open the
         // palette — that's the whole point of the shortcut.
         e.preventDefault();
-        setOpen((o) => !o);
+        if (open) setOpen(false);
+        else openPalette();
         return;
       }
       if (!open) return;
@@ -214,17 +228,7 @@ export function CommandPalette() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  // Reset query + highlight + focus the search input on open.
-  useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setHighlight(0);
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
-  }, [open]);
+  }, [open, openPalette]);
 
   const incidentItems = useMemo<CommandItem[]>(
     () =>
@@ -252,11 +256,10 @@ export function CommandPalette() {
     () => [...groups.navigate, ...groups.incident, ...groups.action],
     [groups],
   );
-
-  // Clamp highlight when the rendered selectable set shrinks.
-  useEffect(() => {
-    if (highlight >= orderedItems.length) setHighlight(0);
-  }, [orderedItems.length, highlight]);
+  const effectiveHighlight = Math.min(
+    highlight,
+    Math.max(0, orderedItems.length - 1),
+  );
 
   const execute = useCallback(
     (item: CommandItem) => {
@@ -275,22 +278,20 @@ export function CommandPalette() {
   const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setHighlight((h) => Math.min(h + 1, Math.max(0, orderedItems.length - 1)));
+      setHighlight(
+        Math.min(effectiveHighlight + 1, Math.max(0, orderedItems.length - 1)),
+      );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setHighlight((h) => Math.max(h - 1, 0));
+      setHighlight(Math.max(effectiveHighlight - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const item = orderedItems[highlight];
+      const item = orderedItems[effectiveHighlight];
       if (item) execute(item);
     }
   };
 
   if (!open) return null;
-
-  // Compute per-item flat indices so the keyboard highlight maps to
-  // the same row the user sees.
-  let flatIdx = -1;
 
   return (
     <div
@@ -314,7 +315,7 @@ export function CommandPalette() {
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => updateQuery(e.target.value)}
             onKeyDown={onInputKey}
             placeholder="Search routes, actions, or settings…"
             className="flex-1 bg-transparent text-sm text-fg-primary outline-none placeholder:text-fg-muted"
@@ -338,14 +339,16 @@ export function CommandPalette() {
               {groups.navigate.length > 0 && (
                 <Group title="Navigate">
                   {groups.navigate.map((it) => {
-                    flatIdx += 1;
+                    const flatIndex = orderedItems.findIndex(
+                      (item) => item.id === it.id,
+                    );
                     return (
                       <Row
                         key={it.id}
                         item={it}
-                        active={flatIdx === highlight}
+                        active={flatIndex === effectiveHighlight}
                         onClick={() => execute(it)}
-                        onHover={() => setHighlight(flatIdx)}
+                        onHover={() => setHighlight(flatIndex)}
                       />
                     );
                   })}
@@ -359,14 +362,16 @@ export function CommandPalette() {
                     </li>
                   )}
                   {groups.incident.map((it) => {
-                    flatIdx += 1;
+                    const flatIndex = orderedItems.findIndex(
+                      (item) => item.id === it.id,
+                    );
                     return (
                       <Row
                         key={it.id}
                         item={it}
-                        active={flatIdx === highlight}
+                        active={flatIndex === effectiveHighlight}
                         onClick={() => execute(it)}
-                        onHover={() => setHighlight(flatIdx)}
+                        onHover={() => setHighlight(flatIndex)}
                       />
                     );
                   })}
@@ -375,14 +380,16 @@ export function CommandPalette() {
               {groups.action.length > 0 && (
                 <Group title="Actions">
                   {groups.action.map((it) => {
-                    flatIdx += 1;
+                    const flatIndex = orderedItems.findIndex(
+                      (item) => item.id === it.id,
+                    );
                     return (
                       <Row
                         key={it.id}
                         item={it}
-                        active={flatIdx === highlight}
+                        active={flatIndex === effectiveHighlight}
                         onClick={() => execute(it)}
-                        onHover={() => setHighlight(flatIdx)}
+                        onHover={() => setHighlight(flatIndex)}
                       />
                     );
                   })}

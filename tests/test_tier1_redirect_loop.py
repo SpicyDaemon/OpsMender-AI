@@ -18,7 +18,8 @@ import pytest
 from backend.agent.graph import build_graph
 from backend.agent.llm import StubLLM
 from backend.approvals.service import ApprovalResolution
-from backend.skills.parser import SkillDefinition, OperationClassification
+from backend.skills.parser import SkillDefinition
+from tests.skill_policy_helpers import explicit_operation
 
 
 @dataclass
@@ -66,7 +67,7 @@ def skill_def() -> SkillDefinition:
         version="1",
         environment="test",
         operations=[
-            OperationClassification(tool="restart_service", classification="caution"),
+            explicit_operation("restart_service", "caution"),
         ],
     )
 
@@ -95,7 +96,11 @@ async def test_redirect_loops_back_to_plan_then_approves(skill_def):
         "session_id": str(uuid.uuid4()),
         "tier": 1,
         "incident_description": "service is down",
-        "incident": {"title": "down", "description": "service is down", "status": "open"},
+        "incident": {
+            "title": "down",
+            "description": "service is down",
+            "status": "open",
+        },
         "operator_guidance": [],
         "redirect_requested": False,
         "redirect_count": 0,

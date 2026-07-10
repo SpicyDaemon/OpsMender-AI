@@ -226,7 +226,10 @@ async def start_escalation(
         incident_id=incident.id,
         user_id=user.id,
         priority=incident.priority,
-        stages=[{"channel_id": s.channel_id, "delay_seconds": s.delay_seconds} for s in stages],
+        stages=[
+            {"channel_id": s.channel_id, "delay_seconds": s.delay_seconds}
+            for s in stages
+        ],
     )
     await _fire_stage(
         db,
@@ -304,9 +307,7 @@ async def _advance(
         )
     state.current_stage = next_idx
     if next_idx + 1 < len(stages):
-        state.next_stage_due_at = at + timedelta(
-            seconds=stages[next_idx].delay_seconds
-        )
+        state.next_stage_due_at = at + timedelta(seconds=stages[next_idx].delay_seconds)
     else:
         state.status = "exhausted"
         state.finished_at = at

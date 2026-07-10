@@ -93,7 +93,9 @@ class ApprovalService:
                 justification=justification,
                 expires_at=expires_at,
             )
-            await SessionRepo.set_status(db, self._org_id, session_id, status="awaiting_approval")
+            await SessionRepo.set_status(
+                db, self._org_id, session_id, status="awaiting_approval"
+            )
             # Notify everyone who can act on it (admins + operators) that a
             # Tier 1 action is waiting. Best-effort; never blocks the approval.
             session = await SessionRepo.get_by_id(db, self._org_id, session_id)
@@ -109,16 +111,18 @@ class ApprovalService:
                 category=CATEGORY_APPROVAL,
                 title="Approval needed for an AI action",
                 body=justification or _action_summary(action),
-                link=(
-                    f"/dashboard/incidents/{incident_id}" if incident_id else None
-                ),
+                link=(f"/dashboard/incidents/{incident_id}" if incident_id else None),
                 incident_id=incident_id,
                 session_id=session_id,
             )
             await db.commit()
-            persisted_request = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
+            persisted_request = await ApprovalRequestRepo.get_by_id(
+                db, self._org_id, request.id
+            )
             if persisted_request is None:
-                raise RuntimeError(f"Approval request not found after create: {request.id}")
+                raise RuntimeError(
+                    f"Approval request not found after create: {request.id}"
+                )
             request = persisted_request
         self._notify_session_status(session_id, "awaiting_approval")
 
@@ -132,16 +136,22 @@ class ApprovalService:
 
         while True:
             async with self._session_factory() as db:
-                request = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
+                request = await ApprovalRequestRepo.get_by_id(
+                    db, self._org_id, request.id
+                )
                 if request is None:
                     raise RuntimeError(f"Approval request not found: {request.id}")
 
                 if request.status != "pending":
                     next_status = await self._sync_session_status(db, request)
                     await db.commit()
-                    persisted_request = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
+                    persisted_request = await ApprovalRequestRepo.get_by_id(
+                        db, self._org_id, request.id
+                    )
                     if persisted_request is None:
-                        raise RuntimeError(f"Approval request not found after resolve: {request.id}")
+                        raise RuntimeError(
+                            f"Approval request not found after resolve: {request.id}"
+                        )
                     request = persisted_request
                     self._notify_session_status(session_id, next_status)
                     await self._publish(
@@ -162,15 +172,23 @@ class ApprovalService:
                     )
 
                 if self._now_fn() >= _as_utc(request.expires_at):
-                    await ApprovalRequestRepo.resolve(db, self._org_id, request.id, status="expired")
-                    expired = await ApprovalRequestRepo.get_by_id(db, self._org_id, request.id)
+                    await ApprovalRequestRepo.resolve(
+                        db, self._org_id, request.id, status="expired"
+                    )
+                    expired = await ApprovalRequestRepo.get_by_id(
+                        db, self._org_id, request.id
+                    )
                     if expired is None:
                         raise RuntimeError(f"Approval request not found: {request.id}")
                     next_status = await self._sync_session_status(db, expired)
                     await db.commit()
-                    persisted_expired = await ApprovalRequestRepo.get_by_id(db, self._org_id, expired.id)
+                    persisted_expired = await ApprovalRequestRepo.get_by_id(
+                        db, self._org_id, expired.id
+                    )
                     if persisted_expired is None:
-                        raise RuntimeError(f"Approval request not found after expiry: {expired.id}")
+                        raise RuntimeError(
+                            f"Approval request not found after expiry: {expired.id}"
+                        )
                     expired = persisted_expired
                     self._notify_session_status(session_id, next_status)
                     await self._publish(
@@ -205,7 +223,9 @@ class ApprovalService:
         # approved / rejected / redirected all return the session to "active":
         # the workflow keeps running (execute the approved action, skip the
         # rejected one, or loop back to plan with redirect guidance).
-        await SessionRepo.set_status(db, self._org_id, request.session_id, status="active")
+        await SessionRepo.set_status(
+            db, self._org_id, request.session_id, status="active"
+        )
         return "active"
 
     def _notify_session_status(self, session_id: uuid.UUID, status: str) -> None:

@@ -144,9 +144,7 @@ async def test_resolver_prefers_complete_database_settings(session_factory):
         assert db_settings.source == "database"
 
 
-async def test_voice_settings_api_masks_and_preserves_token(
-    client, app, admin_headers
-):
+async def test_voice_settings_api_masks_and_preserves_token(client, app, admin_headers):
     unavailable = await client.get(
         "/api/v1/paging/channel-availability",
         headers=admin_headers,

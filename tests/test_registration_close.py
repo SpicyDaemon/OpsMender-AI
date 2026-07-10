@@ -77,9 +77,7 @@ async def test_registration_still_open_in_dev_after_first_user(client):
 # ---------------------------------------------------------------------------
 
 
-async def test_registration_closes_in_production_after_first_user(
-    client, monkeypatch
-):
+async def test_registration_closes_in_production_after_first_user(client, monkeypatch):
     monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "production")
 
     # Empty system in prod: first user still allowed (fresh-install path).

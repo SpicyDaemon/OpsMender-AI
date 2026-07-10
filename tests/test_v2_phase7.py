@@ -44,7 +44,12 @@ async def test_set_status_persists_progress(factory):
 
         progress = {"diagnosis": "stale cache", "plan": [{"description": "flush"}]}
         await SessionRepo.set_status(
-            db, ORG_ID, session.id, status="completed", summary="done", progress=progress
+            db,
+            ORG_ID,
+            session.id,
+            status="completed",
+            summary="done",
+            progress=progress,
         )
         await db.commit()
 

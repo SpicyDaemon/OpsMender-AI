@@ -9,7 +9,11 @@ import uuid
 import httpx
 
 from backend.db.models import IntegrationConnector
-from backend.integrations.support import AsanaAdapter, FreshserviceAdapter, ZendeskAdapter
+from backend.integrations.support import (
+    AsanaAdapter,
+    FreshserviceAdapter,
+    ZendeskAdapter,
+)
 
 
 def _connector(
@@ -49,9 +53,13 @@ async def test_zendesk_test_connection_pat():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="basic", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="basic", base_url="https://acme.zendesk.com"
+    )
     auth = {"email": "agent@acme.com", "token": "zd-token"}
-    result = await ZendeskAdapter(http_client_factory=factory).test_connection(connector, auth)
+    result = await ZendeskAdapter(http_client_factory=factory).test_connection(
+        connector, auth
+    )
     assert result.ok
     assert "Agent" in result.data["detail"]
     assert len(seen) == 1
@@ -67,9 +75,13 @@ async def test_zendesk_test_connection_oauth():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="oauth", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="oauth", base_url="https://acme.zendesk.com"
+    )
     auth = {"access_token": "oauth-tok"}
-    result = await ZendeskAdapter(http_client_factory=factory).test_connection(connector, auth)
+    result = await ZendeskAdapter(http_client_factory=factory).test_connection(
+        connector, auth
+    )
     assert result.ok
 
 
@@ -83,9 +95,13 @@ async def test_zendesk_get_ticket():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="basic", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="basic", base_url="https://acme.zendesk.com"
+    )
     auth = {"email": "a@b.com", "token": "tok"}
-    result = await ZendeskAdapter(http_client_factory=factory).get_ticket(connector, auth, ticket_id=42)
+    result = await ZendeskAdapter(http_client_factory=factory).get_ticket(
+        connector, auth, ticket_id=42
+    )
     assert result.ok
     assert result.data["ticket"]["id"] == 42
 
@@ -101,7 +117,9 @@ async def test_zendesk_list_tickets():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="basic", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="basic", base_url="https://acme.zendesk.com"
+    )
     auth = {"email": "a@b.com", "token": "tok"}
     result = await ZendeskAdapter(http_client_factory=factory).list_tickets(
         connector, auth, status="open"
@@ -125,7 +143,9 @@ async def test_zendesk_create_ticket():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="basic", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="basic", base_url="https://acme.zendesk.com"
+    )
     auth = {"email": "a@b.com", "token": "tok"}
     result = await ZendeskAdapter(http_client_factory=factory).create_ticket(
         connector, auth, subject="Outage", description="DB is down", priority="urgent"
@@ -147,7 +167,9 @@ async def test_zendesk_update_ticket():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="basic", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="basic", base_url="https://acme.zendesk.com"
+    )
     auth = {"email": "a@b.com", "token": "tok"}
     result = await ZendeskAdapter(http_client_factory=factory).update_ticket(
         connector, auth, ticket_id=10, fields={"status": "solved"}
@@ -167,7 +189,9 @@ async def test_zendesk_comment_ticket():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="basic", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="basic", base_url="https://acme.zendesk.com"
+    )
     auth = {"email": "a@b.com", "token": "tok"}
     result = await ZendeskAdapter(http_client_factory=factory).comment_ticket(
         connector, auth, ticket_id=5, body="Noted", public=True
@@ -192,10 +216,13 @@ async def test_zendesk_link_ticket_to_incident():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="basic", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="basic", base_url="https://acme.zendesk.com"
+    )
     auth = {"email": "a@b.com", "token": "tok"}
     result = await ZendeskAdapter(http_client_factory=factory).link_ticket_to_incident(
-        connector, auth,
+        connector,
+        auth,
         ticket_id=7,
         incident_id="INC-123",
         incident_url="https://ops.example.com/incidents/123",
@@ -212,9 +239,13 @@ async def test_zendesk_http_error_surfaces():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("zendesk", auth_type="basic", base_url="https://acme.zendesk.com")
+    connector = _connector(
+        "zendesk", auth_type="basic", base_url="https://acme.zendesk.com"
+    )
     auth = {"email": "a@b.com", "token": "bad"}
-    result = await ZendeskAdapter(http_client_factory=factory).test_connection(connector, auth)
+    result = await ZendeskAdapter(http_client_factory=factory).test_connection(
+        connector, auth
+    )
     assert not result.ok
     assert "401" in result.error
 
@@ -222,9 +253,7 @@ async def test_zendesk_http_error_surfaces():
 async def test_zendesk_missing_base_url_raises():
     connector = _connector("zendesk", auth_type="basic", base_url=None)
     auth = {"email": "a@b.com", "token": "tok"}
-    result = await ZendeskAdapter().safe_invoke(
-        "test_connection", connector, auth
-    )
+    result = await ZendeskAdapter().safe_invoke("test_connection", connector, auth)
     assert not result.ok
     assert "base_url" in result.error
 
@@ -237,16 +266,22 @@ async def test_freshservice_test_connection():
         cred = base64.b64encode(b"fs-key:X").decode()
         assert request.headers["authorization"] == f"Basic {cred}"
         assert "/api/v2/agents/me" in request.url.path
-        return httpx.Response(200, json={"agent": {"first_name": "Jane", "last_name": "Ops"}})
+        return httpx.Response(
+            200, json={"agent": {"first_name": "Jane", "last_name": "Ops"}}
+        )
 
     transport = httpx.MockTransport(handler)
 
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("freshservice", auth_type="api_key", base_url="https://acme.freshservice.com")
+    connector = _connector(
+        "freshservice", auth_type="api_key", base_url="https://acme.freshservice.com"
+    )
     auth = {"api_key": "fs-key"}
-    result = await FreshserviceAdapter(http_client_factory=factory).test_connection(connector, auth)
+    result = await FreshserviceAdapter(http_client_factory=factory).test_connection(
+        connector, auth
+    )
     assert result.ok
     assert "Jane" in result.data["detail"]
 
@@ -254,16 +289,22 @@ async def test_freshservice_test_connection():
 async def test_freshservice_get_ticket():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert "/api/v2/tickets/55" in request.url.path
-        return httpx.Response(200, json={"ticket": {"id": 55, "subject": "Server slow"}})
+        return httpx.Response(
+            200, json={"ticket": {"id": 55, "subject": "Server slow"}}
+        )
 
     transport = httpx.MockTransport(handler)
 
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("freshservice", auth_type="api_key", base_url="https://acme.freshservice.com")
+    connector = _connector(
+        "freshservice", auth_type="api_key", base_url="https://acme.freshservice.com"
+    )
     auth = {"api_key": "fs-key"}
-    result = await FreshserviceAdapter(http_client_factory=factory).get_ticket(connector, auth, ticket_id=55)
+    result = await FreshserviceAdapter(http_client_factory=factory).get_ticket(
+        connector, auth, ticket_id=55
+    )
     assert result.ok
     assert result.data["ticket"]["id"] == 55
 
@@ -278,7 +319,9 @@ async def test_freshservice_list_tickets():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("freshservice", auth_type="api_key", base_url="https://acme.freshservice.com")
+    connector = _connector(
+        "freshservice", auth_type="api_key", base_url="https://acme.freshservice.com"
+    )
     auth = {"api_key": "fs-key"}
     result = await FreshserviceAdapter(http_client_factory=factory).list_tickets(
         connector, auth, priority="high"
@@ -300,10 +343,13 @@ async def test_freshservice_create_ticket():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("freshservice", auth_type="api_key", base_url="https://acme.freshservice.com")
+    connector = _connector(
+        "freshservice", auth_type="api_key", base_url="https://acme.freshservice.com"
+    )
     auth = {"api_key": "fs-key"}
     result = await FreshserviceAdapter(http_client_factory=factory).create_ticket(
-        connector, auth,
+        connector,
+        auth,
         subject="DB down",
         description="Production DB is unresponsive",
         email="reporter@acme.com",
@@ -325,7 +371,9 @@ async def test_freshservice_update_ticket():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("freshservice", auth_type="api_key", base_url="https://acme.freshservice.com")
+    connector = _connector(
+        "freshservice", auth_type="api_key", base_url="https://acme.freshservice.com"
+    )
     auth = {"api_key": "fs-key"}
     result = await FreshserviceAdapter(http_client_factory=factory).update_ticket(
         connector, auth, ticket_id=10, fields={"status": 4}
@@ -345,7 +393,9 @@ async def test_freshservice_comment_ticket():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("freshservice", auth_type="api_key", base_url="https://acme.freshservice.com")
+    connector = _connector(
+        "freshservice", auth_type="api_key", base_url="https://acme.freshservice.com"
+    )
     auth = {"api_key": "fs-key"}
     result = await FreshserviceAdapter(http_client_factory=factory).comment_ticket(
         connector, auth, ticket_id=10, body="Root cause identified"
@@ -366,10 +416,15 @@ async def test_freshservice_link_ticket_to_incident():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("freshservice", auth_type="api_key", base_url="https://acme.freshservice.com")
+    connector = _connector(
+        "freshservice", auth_type="api_key", base_url="https://acme.freshservice.com"
+    )
     auth = {"api_key": "fs-key"}
-    result = await FreshserviceAdapter(http_client_factory=factory).link_ticket_to_incident(
-        connector, auth,
+    result = await FreshserviceAdapter(
+        http_client_factory=factory
+    ).link_ticket_to_incident(
+        connector,
+        auth,
         ticket_id=10,
         incident_id="INC-456",
         incident_url="https://ops.example.com/i/456",
@@ -386,9 +441,13 @@ async def test_freshservice_http_error():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("freshservice", auth_type="api_key", base_url="https://acme.freshservice.com")
+    connector = _connector(
+        "freshservice", auth_type="api_key", base_url="https://acme.freshservice.com"
+    )
     auth = {"api_key": "bad"}
-    result = await FreshserviceAdapter(http_client_factory=factory).test_connection(connector, auth)
+    result = await FreshserviceAdapter(http_client_factory=factory).test_connection(
+        connector, auth
+    )
     assert not result.ok
     assert "403" in result.error
 
@@ -409,7 +468,9 @@ async def test_asana_test_connection():
 
     connector = _connector("asana", auth_type="pat")
     auth = {"token": "asana-pat"}
-    result = await AsanaAdapter(http_client_factory=factory).test_connection(connector, auth)
+    result = await AsanaAdapter(http_client_factory=factory).test_connection(
+        connector, auth
+    )
     assert result.ok
     assert "Dev User" in result.data["detail"]
 
@@ -426,14 +487,18 @@ async def test_asana_test_connection_oauth():
 
     connector = _connector("asana", auth_type="oauth")
     auth = {"access_token": "oauth-tok"}
-    result = await AsanaAdapter(http_client_factory=factory).test_connection(connector, auth)
+    result = await AsanaAdapter(http_client_factory=factory).test_connection(
+        connector, auth
+    )
     assert result.ok
 
 
 async def test_asana_get_task():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert "/api/1.0/tasks/123" in request.url.path
-        return httpx.Response(200, json={"data": {"gid": "123", "name": "Fix login bug"}})
+        return httpx.Response(
+            200, json={"data": {"gid": "123", "name": "Fix login bug"}}
+        )
 
     transport = httpx.MockTransport(handler)
 
@@ -442,7 +507,9 @@ async def test_asana_get_task():
 
     connector = _connector("asana", auth_type="pat")
     auth = {"token": "tok"}
-    result = await AsanaAdapter(http_client_factory=factory).get_task(connector, auth, task_id="123")
+    result = await AsanaAdapter(http_client_factory=factory).get_task(
+        connector, auth, task_id="123"
+    )
     assert result.ok
     assert result.data["task"]["name"] == "Fix login bug"
 
@@ -476,7 +543,9 @@ async def test_asana_list_tasks_uses_connector_config():
     def factory():
         return httpx.AsyncClient(transport=transport, timeout=5)
 
-    connector = _connector("asana", auth_type="pat", config={"project_id": "default-proj"})
+    connector = _connector(
+        "asana", auth_type="pat", config={"project_id": "default-proj"}
+    )
     auth = {"token": "tok"}
     result = await AsanaAdapter(http_client_factory=factory).list_tasks(connector, auth)
     assert result.ok
@@ -488,7 +557,9 @@ async def test_asana_create_task():
         body = json.loads(request.content)
         assert body["data"]["name"] == "Investigate outage"
         assert "proj-1" in body["data"]["projects"]
-        return httpx.Response(201, json={"data": {"gid": "999", "name": "Investigate outage"}})
+        return httpx.Response(
+            201, json={"data": {"gid": "999", "name": "Investigate outage"}}
+        )
 
     transport = httpx.MockTransport(handler)
 
@@ -498,7 +569,11 @@ async def test_asana_create_task():
     connector = _connector("asana", auth_type="pat")
     auth = {"token": "tok"}
     result = await AsanaAdapter(http_client_factory=factory).create_task(
-        connector, auth, name="Investigate outage", projects=["proj-1"], notes="See incident"
+        connector,
+        auth,
+        name="Investigate outage",
+        projects=["proj-1"],
+        notes="See incident",
     )
     assert result.ok
     assert result.data["task"]["gid"] == "999"
@@ -559,7 +634,8 @@ async def test_asana_link_task_to_incident():
     connector = _connector("asana", auth_type="pat")
     auth = {"token": "tok"}
     result = await AsanaAdapter(http_client_factory=factory).link_task_to_incident(
-        connector, auth,
+        connector,
+        auth,
         task_id="777",
         incident_id="INC-789",
         incident_url="https://ops.example.com/i/789",
@@ -578,7 +654,9 @@ async def test_asana_http_error():
 
     connector = _connector("asana", auth_type="pat")
     auth = {"token": "bad"}
-    result = await AsanaAdapter(http_client_factory=factory).test_connection(connector, auth)
+    result = await AsanaAdapter(http_client_factory=factory).test_connection(
+        connector, auth
+    )
     assert not result.ok
     assert "401" in result.error
 

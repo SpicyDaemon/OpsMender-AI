@@ -10,8 +10,14 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 vi.mock("@/context/auth", () => ({
   useAuth: () => ({ user: { id: "u", username: "admin", role: "admin" } }),
 }));
+const toastSpies = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
 vi.mock("@/components/ui/Toast", () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
+  useToast: () => toastSpies,
 }));
 
 const apiMocks = vi.hoisted(() => ({
@@ -82,6 +88,25 @@ describe("MCP Skills page", () => {
   it("shows an Unassigned badge for a draft skill", async () => {
     await renderPage();
     expect(screen.getAllByText(/unassigned/i).length).toBeGreaterThan(0);
+  });
+
+  it("surfaces the compatibility conversion notice after saving", async () => {
+    apiMocks.createSkill.mockResolvedValue({
+      ...SKILL,
+      conversion_notice: "Converted to explicit tier policies. Review before use.",
+    });
+    await renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /^new skill$/i }));
+    fireEvent.change(await screen.findByLabelText("Name"), {
+      target: { value: "converted-skill" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /create skill/i }));
+
+    await waitFor(() =>
+      expect(toastSpies.info).toHaveBeenCalledWith(
+        "Converted to explicit tier policies. Review before use.",
+      ),
+    );
   });
 
   it("Download action is present for every skill (incl. unassigned)", async () => {

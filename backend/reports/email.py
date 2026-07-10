@@ -31,9 +31,7 @@ async def resolve_email_settings(
     row = await OrgEmailSettingsRepo.get_for_org(db, org_id)
     if row is not None:
         password = (
-            decrypt_secret(row.password_encrypted)
-            if row.password_encrypted
-            else None
+            decrypt_secret(row.password_encrypted) if row.password_encrypted else None
         )
         return ResolvedEmailSettings(
             host=row.host,

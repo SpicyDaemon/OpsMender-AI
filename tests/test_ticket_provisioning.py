@@ -130,9 +130,7 @@ async def _make_incident(factory, org_id, team_id, *, allowed, overrides=None):
 
 async def test_opens_and_links_a_ticket_for_allowlisted_connector(env):
     factory, org_id, team_id, connector_id, fake = env
-    incident_id = await _make_incident(
-        factory, org_id, team_id, allowed=[connector_id]
-    )
+    incident_id = await _make_incident(factory, org_id, team_id, allowed=[connector_id])
 
     created = await provision_incident_tickets(
         factory, org_id=org_id, incident_id=incident_id
@@ -153,9 +151,7 @@ async def test_opens_and_links_a_ticket_for_allowlisted_connector(env):
 
 async def test_is_idempotent_no_duplicate_tickets(env):
     factory, org_id, team_id, connector_id, fake = env
-    incident_id = await _make_incident(
-        factory, org_id, team_id, allowed=[connector_id]
-    )
+    incident_id = await _make_incident(factory, org_id, team_id, allowed=[connector_id])
     assert (
         await provision_incident_tickets(
             factory, org_id=org_id, incident_id=incident_id
@@ -203,12 +199,8 @@ async def test_per_service_override_disables_auto_ticketing(env):
 
 async def test_acknowledged_transitions_the_ticket(env):
     factory, org_id, team_id, connector_id, fake = env
-    incident_id = await _make_incident(
-        factory, org_id, team_id, allowed=[connector_id]
-    )
-    await provision_incident_tickets(
-        factory, org_id=org_id, incident_id=incident_id
-    )
+    incident_id = await _make_incident(factory, org_id, team_id, allowed=[connector_id])
+    await provision_incident_tickets(factory, org_id=org_id, incident_id=incident_id)
     fake.synced.clear()  # drop the initial "open" sync from provisioning
 
     await sync_incident_status(
@@ -224,12 +216,8 @@ async def test_acknowledged_transitions_the_ticket(env):
 
 async def test_no_backward_move_guardrail(env):
     factory, org_id, team_id, connector_id, fake = env
-    incident_id = await _make_incident(
-        factory, org_id, team_id, allowed=[connector_id]
-    )
-    await provision_incident_tickets(
-        factory, org_id=org_id, incident_id=incident_id
-    )
+    incident_id = await _make_incident(factory, org_id, team_id, allowed=[connector_id])
+    await provision_incident_tickets(factory, org_id=org_id, incident_id=incident_id)
     # Drive it forward to resolved, then attempt a backward move to open.
     await sync_incident_status(
         factory, org_id=org_id, incident_id=incident_id, new_status="resolved"

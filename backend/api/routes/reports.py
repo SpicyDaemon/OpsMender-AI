@@ -110,7 +110,9 @@ async def create_report_schedule(
         return row
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Report schedule name already exists") from exc
+        raise HTTPException(
+            status_code=409, detail="Report schedule name already exists"
+        ) from exc
 
 
 @router.put(

@@ -56,7 +56,7 @@ class BlueBubblesAdapter:
     ) -> None:
         if connector.platform != self.platform:
             raise HTTPException(status_code=400, detail="Not a BlueBubbles connector")
-            
+
         # BlueBubbles webhooks are usually protected by a shared password in the payload
         pass
 
@@ -69,15 +69,15 @@ class BlueBubblesAdapter:
         event_type = payload.get("type")
         if event_type != "new-message":
             return None
-            
+
         data = payload.get("data") or {}
         text = data.get("text")
         handle = data.get("handle") or {}
         address = handle.get("address")
-        
+
         if not text or not address:
             return None
-            
+
         # Skip messages from self if necessary, but BlueBubbles usually only sends received messages to webhooks
         return InboundMessage(
             chat_id=str(address),
@@ -102,22 +102,28 @@ class BlueBubblesAdapter:
         credentials = connector.credentials or {}
         url = credentials.get("server_url")
         password = credentials.get("password")
-        
+
         if not url or not password:
-            return False, "BlueBubbles credentials (server_url, password) not configured"
-            
+            return (
+                False,
+                "BlueBubbles credentials (server_url, password) not configured",
+            )
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{url.rstrip('/')}/api/v1/message/text",
                 params={"password": password},
                 json={
-                    "chatGuid": f"iMessage;-;{chat_id}", # Simplified chatGuid
+                    "chatGuid": f"iMessage;-;{chat_id}",  # Simplified chatGuid
                     "message": text,
-                    "method": "apple-script", # or 'private-api'
+                    "method": "apple-script",  # or 'private-api'
                 },
                 timeout=15.0,
             )
             if resp.status_code != 200:
-                return False, f"BlueBubbles API error: HTTP {resp.status_code} - {resp.text}"
-                
+                return (
+                    False,
+                    f"BlueBubbles API error: HTTP {resp.status_code} - {resp.text}",
+                )
+
             return True, None

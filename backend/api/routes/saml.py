@@ -127,7 +127,9 @@ def _request_data(request: Request, post: dict[str, Any] | None = None) -> _Requ
 
 
 @router.get("/{slug}/metadata", response_class=Response)
-async def saml_metadata(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
+async def saml_metadata(
+    slug: str, request: Request, db: AsyncSession = Depends(get_db)
+):
     """Return the SP metadata XML for the IdP admin to upload."""
     sp = _sp_keypair_or_503()
     org, org_cfg, _row = await _resolve_active_saml(db, slug)
@@ -254,7 +256,9 @@ async def saml_acs(slug: str, request: Request, db: AsyncSession = Depends(get_d
             primary_org_id=org.id,
         )
     elif user.auth_source != auth_source:
-        user = await UserRepo.update_fields(db, user.id, auth_source=auth_source) or user
+        user = (
+            await UserRepo.update_fields(db, user.id, auth_source=auth_source) or user
+        )
 
     if not await UserRepo.is_member(db, user.id, org.id):
         await UserRepo.add_to_organization(

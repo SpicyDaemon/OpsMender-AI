@@ -11,13 +11,25 @@ Expected YAML structure::
     operations:
       - tool: get_pods
         classification: safe
+        tiers:
+          T0: {enabled: true, mode: autonomous}
+          T1: {enabled: true, mode: autonomous}
+          T2: {enabled: true, mode: advisory}
       - tool: cordon_node
         classification: caution
         reversible: true
         compensating_inverse: uncordon_node
+        tiers:
+          T0: {enabled: true, mode: autonomous, require_reversible: true}
+          T1: {enabled: true, mode: approval}
+          T2: {enabled: false, mode: blocked}
       - tool: "delete_*"
         classification: destructive
         notes: "Deletes resources — requires Tier 1 approval"
+        tiers:
+          T0: {enabled: false, mode: blocked}
+          T1: {enabled: true, mode: approval}
+          T2: {enabled: false, mode: blocked}
 """
 
 from __future__ import annotations
@@ -75,9 +87,8 @@ class OperationClassification:
     # generic-tool guardrail (operator explicitly accepted the risk); normal
     # tier/classification rules then apply. No effect on non-generic tools.
     allow_generic: bool = False
-    # ``None`` means this is a legacy operation and the global classification
-    # matrix remains authoritative. A mapping (including an empty one) means the
-    # skill explicitly owns per-tier behavior; omitted tiers fail closed.
+    # ``None`` represents an underspecified programmatic definition. Parsed
+    # executable operations always carry complete T0/T1/T2 policies.
     tiers: Optional[dict[int, OperationTierPolicy]] = None
 
     def __post_init__(self) -> None:
@@ -203,16 +214,10 @@ class SkillDefinition:
         op = self._match(tool_name)
         return op.compensating_inverse if op is not None else None
 
-    def tier_policy(
-        self, tool_name: str, tier: int
-    ) -> Optional[OperationTierPolicy]:
+    def tier_policy(self, tool_name: str, tier: int) -> Optional[OperationTierPolicy]:
         """Return explicit policy for a declared operation/tier, if present."""
         op = self._match(tool_name)
         return op.policy_for_tier(tier) if op is not None else None
-
-    def has_explicit_tiers(self, tool_name: str) -> bool:
-        op = self._match(tool_name)
-        return bool(op is not None and op.tiers is not None)
 
     def tier0_violation_reason(self, tool_name: str) -> Optional[str]:
         """Return the Tier 0 safety-floor violation reason, if any.
@@ -238,10 +243,7 @@ class SkillDefinition:
         if not op.effective_reversible:
             return "not marked reversible in skill definition"
         if op.requires_compensating_inverse and not op.compensating_inverse:
-            return (
-                "side-effecting Tier 0 operations must declare "
-                "compensating_inverse"
-            )
+            return "side-effecting Tier 0 operations must declare compensating_inverse"
         return None
 
     def is_tier0_safe(self, tool_name: str) -> bool:
@@ -291,6 +293,23 @@ def _parse_bool(raw: object, *, field: str) -> bool:
     return raw
 
 
+def _validate_tier_policy(*, tool: str, tier: int, policy: OperationTierPolicy) -> None:
+    if tier == 2 and policy.mode not in {"advisory", "blocked"}:
+        raise ValueError(
+            f"Operation '{tool}' T2 mode must be advisory or blocked, "
+            f"got '{policy.mode}'"
+        )
+    if not policy.enabled and policy.mode not in {"blocked", "advisory"}:
+        raise ValueError(
+            f"Operation '{tool}' T{tier}: enabled false requires blocked or "
+            "advisory mode"
+        )
+    if policy.enabled and policy.mode == "blocked":
+        raise ValueError(
+            f"Operation '{tool}' T{tier}: enabled true cannot use blocked mode"
+        )
+
+
 def _extract_workflow_section(text: str) -> object | None:
     """Parse YAML from a markdown ``## Workflow`` section.
 
@@ -301,7 +320,7 @@ def _extract_workflow_section(text: str) -> object | None:
     match = re.search(r"(?im)^##[ \t]+Workflow[ \t]*$", text)
     if match is None:
         return None
-    remainder = text[match.end():]
+    remainder = text[match.end() :]
     next_heading = re.search(r"(?m)^##[ \t]+", remainder)
     section = remainder[: next_heading.start()] if next_heading else remainder
     section = section.strip()
@@ -386,8 +405,16 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
         if raw_workflow is None:
             raw_workflow = data.get("workflow")
 
+    raw_operations = data.get("operations", [])
+    if not isinstance(raw_operations, list):
+        raise ValueError("Skill operations must be a list")
+
     operations: list[OperationClassification] = []
-    for entry in data.get("operations", []):
+    for index, entry in enumerate(raw_operations):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Operation {index + 1} must be a mapping")
+        tool = str(entry.get("tool", "")).strip()
+        deny = bool(entry.get("deny", False))
         reversible_raw = entry.get("reversible")
         reversible: Optional[bool]
         if reversible_raw is None:
@@ -395,24 +422,27 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
         else:
             reversible = bool(reversible_raw)
         tiers: Optional[dict[int, OperationTierPolicy]] = None
-        if "tiers" in entry:
+        if not deny:
+            if "tiers" not in entry:
+                raise ValueError(
+                    f"Operation '{tool}': tiers are required for non-deny operations"
+                )
             tiers = {}
             raw_tiers = entry.get("tiers") or {}
             if not isinstance(raw_tiers, dict):
-                raise ValueError(
-                    f"Operation '{entry.get('tool', '')}': tiers must be a mapping"
-                )
+                raise ValueError(f"Operation '{tool}': tiers must be a mapping")
             for raw_tier, raw_policy in raw_tiers.items():
-                tier = _parse_tier(raw_tier, field="operation tier")
+                tier = _parse_tier(raw_tier, field=f"Operation '{tool}' tier")
+                if tier in tiers:
+                    raise ValueError(f"Operation '{tool}': duplicate T{tier} policy")
                 if not isinstance(raw_policy, dict):
                     raise ValueError(
-                        f"Operation '{entry.get('tool', '')}': T{tier} policy "
-                        "must be a mapping"
+                        f"Operation '{tool}': T{tier} policy must be a mapping"
                     )
-                tiers[tier] = OperationTierPolicy(
+                policy = OperationTierPolicy(
                     enabled=_parse_bool(
                         raw_policy.get("enabled", False),
-                        field=f"Operation '{entry.get('tool', '')}' T{tier} enabled",
+                        field=f"Operation '{tool}' T{tier} enabled",
                     ),
                     mode=str(raw_policy.get("mode", "blocked")).strip().lower(),
                     require_reversible=(
@@ -420,21 +450,24 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
                         if "require_reversible" not in raw_policy
                         else _parse_bool(
                             raw_policy.get("require_reversible"),
-                            field=(
-                                f"Operation '{entry.get('tool', '')}' T{tier} "
-                                "require_reversible"
-                            ),
+                            field=(f"Operation '{tool}' T{tier} require_reversible"),
                         )
                     ),
                 )
+                _validate_tier_policy(tool=tool, tier=tier, policy=policy)
+                tiers[tier] = policy
+            missing = sorted({0, 1, 2} - set(tiers))
+            if missing:
+                labels = ", ".join(f"T{tier}" for tier in missing)
+                raise ValueError(f"Operation '{tool}': missing tier policies: {labels}")
         operations.append(
             OperationClassification(
-                tool=entry.get("tool", ""),
+                tool=tool,
                 classification=entry.get("classification", "unknown"),
                 notes=entry.get("notes"),
                 reversible=reversible,
                 compensating_inverse=entry.get("compensating_inverse"),
-                deny=bool(entry.get("deny", False)),
+                deny=deny,
                 allow_generic=bool(entry.get("allow_generic", False)),
                 tiers=tiers,
             )

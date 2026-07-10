@@ -182,7 +182,9 @@ class TestPagingChainAge:
 
 
 class TestRunAllChecks:
-    async def test_orchestrator_returns_results_in_order(self, tmp_path, factory, monkeypatch):
+    async def test_orchestrator_returns_results_in_order(
+        self, tmp_path, factory, monkeypatch
+    ):
         monkeypatch.delenv("OPSMENDER_DEPLOYMENT_MODE", raising=False)
         (tmp_path / "index.html").write_text("ok")
         cfg = _config(

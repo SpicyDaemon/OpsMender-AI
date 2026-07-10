@@ -275,7 +275,7 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/projects/{quote(project, safe='')}/issues/" f"{int(issue_iid)}/notes",
+            f"/projects/{quote(project, safe='')}/issues/{int(issue_iid)}/notes",
             json_body={"body": _required(body, "body")},
         )
         if failure:

@@ -83,14 +83,6 @@ class Organization(Base):
     slack_incident_channels_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
-    status_page_enabled: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
-    status_page_visibility: Mapped[str] = mapped_column(
-        String(10), default="private", nullable=False
-    )
-    status_page_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    status_page_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     mfa_required: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
@@ -1541,115 +1533,6 @@ class MaintenanceWindow(Base):
                 ids.append(value)
         return ids
 
-
-# ---------------------------------------------------------------------------
-# Status Page (Core Gaps 2026-07 Phase 1)
-# ---------------------------------------------------------------------------
-
-
-class StatusPageComponent(Base):
-    """Service exposed on the single workspace Status Page."""
-
-    __tablename__ = "status_page_components"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    service_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("services.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    display_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
-    )
-
-    service: Mapped[Service] = relationship()
-
-    __table_args__ = (
-        UniqueConstraint(
-            "org_id",
-            "service_id",
-            name="uq_status_page_component_service",
-        ),
-    )
-
-
-class StatusPageUpdate(Base):
-    """Operator-published incident update visible on the Status Page."""
-
-    __tablename__ = "status_page_updates"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    incident_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("incidents.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    state: Mapped[str] = mapped_column(String(20), nullable=False)
-    body: Mapped[str] = mapped_column(Text, nullable=False)
-    author_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    published_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
-    )
-
-    incident: Mapped[Incident] = relationship()
-    author: Mapped[User | None] = relationship()
-
-    __table_args__ = (
-        Index(
-            "ix_status_page_updates_org_published",
-            "org_id",
-            "published_at",
-        ),
-    )
-
-
-class StatusPageSubscriber(Base):
-    """Email subscriber with double opt-in and unsubscribe token hashes."""
-
-    __tablename__ = "status_page_subscribers"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
-    confirm_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    confirmed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    unsubscribe_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "org_id",
-            "email",
-            name="uq_status_page_subscriber_email",
-        ),
-    )
 
 
 class UserNotificationPref(Base):

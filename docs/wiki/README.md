@@ -33,5 +33,4 @@ If you are a developer looking for architecture details or codebase references, 
 * [Postmortems](postmortem-guide.md) — Per-incident postmortem editor on the Incident Command Strip, the seven canonical sections (Summary · Impact · Timeline · Root cause · Resolution · Lessons learned · Memory candidates), Edit/Preview toggle, role permissions, REST surface, and how memory candidates feed back into the AI memory curation flow.
 * [Reliability](reliability-guide.md) — HTTP/HTTPS target checks, uptime/outage views, recent response time, 365-day response-time history, and latency retention behavior.
 * [Reports & Analytics](reports-guide.md) — Incident exports, scheduled reports, Noise analytics, Response analytics, CSV exports, and metric definitions.
-* [Status Page](status-page.md) — Single workspace Status Page at `/status`, component derivation, subscriber confirmation, and incident update publishing.
 * [Troubleshooting](troubleshooting.md) — Solutions for common login, connectivity, and configuration issues.

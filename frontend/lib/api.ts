@@ -259,14 +259,6 @@ import type {
   IncidentResponse,
   IncidentTimelineResponse,
   IncidentUpdate,
-  PublicStatusResponse,
-  StatusPageComponentListResponse,
-  StatusPageSettingsResponse,
-  StatusPageSettingsUpdate,
-  StatusPageSubscriberListResponse,
-  StatusPageUpdateCreate,
-  StatusPageUpdateListResponse,
-  StatusPageUpdateResponse,
 } from "./types";
 
 export async function listIncidents(params?: {
@@ -379,70 +371,6 @@ export async function getIncidentTimeline(
   id: string,
 ): Promise<IncidentTimelineResponse> {
   return api.get<IncidentTimelineResponse>(`/incidents/${id}/timeline`);
-}
-
-export async function getStatusPageSettings(): Promise<StatusPageSettingsResponse> {
-  return api.get<StatusPageSettingsResponse>("/api/v1/status-page/settings");
-}
-
-export async function updateStatusPageSettings(
-  body: StatusPageSettingsUpdate,
-): Promise<StatusPageSettingsResponse> {
-  return api.patch<StatusPageSettingsResponse>(
-    "/api/v1/status-page/settings",
-    body,
-  );
-}
-
-export async function listStatusPageComponents(): Promise<StatusPageComponentListResponse> {
-  return api.get<StatusPageComponentListResponse>("/api/v1/status-page/components");
-}
-
-export async function replaceStatusPageComponents(
-  serviceIds: string[],
-): Promise<StatusPageComponentListResponse> {
-  return api.put<StatusPageComponentListResponse>(
-    "/api/v1/status-page/components",
-    {
-      components: serviceIds.map((serviceId) => ({ service_id: serviceId })),
-    },
-  );
-}
-
-export async function listStatusPageSubscribers(): Promise<StatusPageSubscriberListResponse> {
-  return api.get<StatusPageSubscriberListResponse>(
-    "/api/v1/status-page/subscribers",
-  );
-}
-
-export async function deleteStatusPageSubscriber(id: string): Promise<void> {
-  return api.del<void>(`/api/v1/status-page/subscribers/${id}`);
-}
-
-export async function listIncidentStatusUpdates(
-  id: string,
-): Promise<StatusPageUpdateListResponse> {
-  return api.get<StatusPageUpdateListResponse>(
-    `/api/v1/incidents/${id}/status-updates`,
-  );
-}
-
-export async function createIncidentStatusUpdate(
-  id: string,
-  body: StatusPageUpdateCreate,
-): Promise<StatusPageUpdateResponse> {
-  return api.post<StatusPageUpdateResponse>(
-    `/api/v1/incidents/${id}/status-updates`,
-    body,
-  );
-}
-
-export async function getPublicStatusPage(): Promise<PublicStatusResponse> {
-  return api.get<PublicStatusResponse>("/api/v1/status");
-}
-
-export async function subscribeToPublicStatusPage(email: string): Promise<void> {
-  await api.post<{ ok: boolean }>("/api/v1/status/subscribe", { email });
 }
 
 export async function getIncidentPostmortem(

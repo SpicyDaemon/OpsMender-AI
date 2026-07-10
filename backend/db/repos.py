@@ -52,9 +52,6 @@ from backend.db.models import (
     RosterOverride,
     Service,
     ServiceRoster,
-    StatusPageComponent,
-    StatusPageSubscriber,
-    StatusPageUpdate,
     Team,
     TeamMember,
     TicketSyncState,
@@ -4550,10 +4547,6 @@ class OrganizationRepo:
         notification_dedup_window_minutes: int | None = None,
         alert_grouping_default: bool | None = None,
         slack_incident_channels_enabled: bool | None = None,
-        status_page_enabled: bool | None = None,
-        status_page_visibility: str | None = None,
-        status_page_title: Any = _UNSET,
-        status_page_description: Any = _UNSET,
     ) -> Organization | None:
         values: dict[str, Any] = {}
         if name is not None:
@@ -4574,14 +4567,6 @@ class OrganizationRepo:
             values["slack_incident_channels_enabled"] = (
                 slack_incident_channels_enabled
             )
-        if status_page_enabled is not None:
-            values["status_page_enabled"] = status_page_enabled
-        if status_page_visibility is not None:
-            values["status_page_visibility"] = status_page_visibility
-        if status_page_title is not _UNSET:
-            values["status_page_title"] = status_page_title
-        if status_page_description is not _UNSET:
-            values["status_page_description"] = status_page_description
 
         if not values:
             return await OrganizationRepo.get_by_id(db, org_id)
@@ -6063,206 +6048,6 @@ class ServiceRepo:
         result = await db.execute(stmt)
         await db.flush()
         return result.rowcount > 0
-
-class StatusPageComponentRepo:
-    @staticmethod
-    async def list_for_org(
-        db: AsyncSession, org_id: uuid.UUID
-    ) -> Sequence[StatusPageComponent]:
-        stmt = (
-            select(StatusPageComponent)
-            .where(StatusPageComponent.org_id == org_id)
-            .order_by(StatusPageComponent.sort_order, StatusPageComponent.created_at)
-        )
-        return (await db.execute(stmt)).scalars().all()
-
-    @staticmethod
-    async def get_by_service(
-        db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
-    ) -> StatusPageComponent | None:
-        stmt = select(StatusPageComponent).where(
-            StatusPageComponent.org_id == org_id,
-            StatusPageComponent.service_id == service_id,
-        )
-        return (await db.execute(stmt)).scalar_one_or_none()
-
-    @staticmethod
-    async def replace_for_org(
-        db: AsyncSession,
-        org_id: uuid.UUID,
-        components: list[dict[str, Any]],
-    ) -> Sequence[StatusPageComponent]:
-        await db.execute(
-            delete(StatusPageComponent).where(StatusPageComponent.org_id == org_id)
-        )
-        for idx, item in enumerate(components):
-            db.add(
-                StatusPageComponent(
-                    org_id=org_id,
-                    service_id=item["service_id"],
-                    display_name=item.get("display_name") or None,
-                    sort_order=idx,
-                )
-            )
-        await db.flush()
-        return await StatusPageComponentRepo.list_for_org(db, org_id)
-
-
-class StatusPageUpdateRepo:
-    @staticmethod
-    async def create(
-        db: AsyncSession,
-        org_id: uuid.UUID,
-        *,
-        incident_id: uuid.UUID,
-        state: str,
-        body: str,
-        author_user_id: uuid.UUID | None,
-    ) -> StatusPageUpdate:
-        row = StatusPageUpdate(
-            org_id=org_id,
-            incident_id=incident_id,
-            state=state,
-            body=body,
-            author_user_id=author_user_id,
-        )
-        db.add(row)
-        await db.flush()
-        return row
-
-    @staticmethod
-    async def list_for_incident(
-        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
-    ) -> Sequence[StatusPageUpdate]:
-        stmt = (
-            select(StatusPageUpdate)
-            .where(
-                StatusPageUpdate.org_id == org_id,
-                StatusPageUpdate.incident_id == incident_id,
-            )
-            .order_by(StatusPageUpdate.published_at.desc())
-        )
-        return (await db.execute(stmt)).scalars().all()
-
-    @staticmethod
-    async def list_for_incidents(
-        db: AsyncSession, org_id: uuid.UUID, incident_ids: Sequence[uuid.UUID]
-    ) -> Sequence[StatusPageUpdate]:
-        if not incident_ids:
-            return []
-        stmt = (
-            select(StatusPageUpdate)
-            .where(
-                StatusPageUpdate.org_id == org_id,
-                StatusPageUpdate.incident_id.in_(incident_ids),
-            )
-            .order_by(StatusPageUpdate.published_at.desc())
-        )
-        return (await db.execute(stmt)).scalars().all()
-
-
-class StatusPageSubscriberRepo:
-    @staticmethod
-    async def list_for_org(
-        db: AsyncSession, org_id: uuid.UUID
-    ) -> Sequence[StatusPageSubscriber]:
-        stmt = (
-            select(StatusPageSubscriber)
-            .where(StatusPageSubscriber.org_id == org_id)
-            .order_by(StatusPageSubscriber.created_at.desc())
-        )
-        return (await db.execute(stmt)).scalars().all()
-
-    @staticmethod
-    async def list_confirmed(
-        db: AsyncSession, org_id: uuid.UUID
-    ) -> Sequence[StatusPageSubscriber]:
-        stmt = (
-            select(StatusPageSubscriber)
-            .where(
-                StatusPageSubscriber.org_id == org_id,
-                StatusPageSubscriber.confirmed_at.is_not(None),
-            )
-            .order_by(StatusPageSubscriber.created_at.desc())
-        )
-        return (await db.execute(stmt)).scalars().all()
-
-    @staticmethod
-    async def get_by_id(
-        db: AsyncSession, org_id: uuid.UUID, subscriber_id: uuid.UUID
-    ) -> StatusPageSubscriber | None:
-        stmt = select(StatusPageSubscriber).where(
-            StatusPageSubscriber.org_id == org_id,
-            StatusPageSubscriber.id == subscriber_id,
-        )
-        return (await db.execute(stmt)).scalar_one_or_none()
-
-    @staticmethod
-    async def get_by_email(
-        db: AsyncSession, org_id: uuid.UUID, email: str
-    ) -> StatusPageSubscriber | None:
-        stmt = select(StatusPageSubscriber).where(
-            StatusPageSubscriber.org_id == org_id,
-            StatusPageSubscriber.email == email.lower(),
-        )
-        return (await db.execute(stmt)).scalar_one_or_none()
-
-    @staticmethod
-    async def get_by_confirm_hash(
-        db: AsyncSession, token_hash: str
-    ) -> StatusPageSubscriber | None:
-        stmt = select(StatusPageSubscriber).where(
-            StatusPageSubscriber.confirm_token_hash == token_hash
-        )
-        return (await db.execute(stmt)).scalar_one_or_none()
-
-    @staticmethod
-    async def get_by_unsubscribe_hash(
-        db: AsyncSession, token_hash: str
-    ) -> StatusPageSubscriber | None:
-        stmt = select(StatusPageSubscriber).where(
-            StatusPageSubscriber.unsubscribe_token_hash == token_hash
-        )
-        return (await db.execute(stmt)).scalar_one_or_none()
-
-    @staticmethod
-    async def create(
-        db: AsyncSession,
-        org_id: uuid.UUID,
-        *,
-        email: str,
-        confirm_token_hash: str,
-        unsubscribe_token_hash: str,
-    ) -> StatusPageSubscriber:
-        row = StatusPageSubscriber(
-            org_id=org_id,
-            email=email.lower(),
-            confirm_token_hash=confirm_token_hash,
-            unsubscribe_token_hash=unsubscribe_token_hash,
-        )
-        db.add(row)
-        await db.flush()
-        return row
-
-    @staticmethod
-    async def mark_confirmed(
-        db: AsyncSession, subscriber: StatusPageSubscriber, *, now: datetime
-    ) -> StatusPageSubscriber:
-        subscriber.confirmed_at = now
-        await db.flush()
-        return subscriber
-
-    @staticmethod
-    async def delete(
-        db: AsyncSession, org_id: uuid.UUID, subscriber_id: uuid.UUID
-    ) -> bool:
-        row = await StatusPageSubscriberRepo.get_by_id(db, org_id, subscriber_id)
-        if row is None:
-            return False
-        await db.delete(row)
-        await db.flush()
-        return True
-
 
 class RosterRepo:
     @staticmethod

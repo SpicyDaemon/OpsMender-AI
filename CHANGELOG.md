@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Workspace Status Page.** Removed the public/private Status Page feature
+  entirely — the `/status` page, the Settings section, the per-incident status
+  update publishing, the `status_page_*` tables and Organization columns, and
+  the related API. Stakeholder communication is served by scheduled reports; the
+  separate Atlassian Statuspage *integration* connector is unaffected. Migration
+  `n1o2p3q4r5s6` drops the tables and columns (downgrade recreates them).
 - **Simplification sprint — Phase 1 Agent Teams.** Removed Agent Teams from
   the API, database model, Settings, session start flow, and AI workflow
   runner; sessions now use the single-agent path by design.

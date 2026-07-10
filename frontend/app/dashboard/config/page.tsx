@@ -16,7 +16,6 @@ import { ApiTokensSection } from "@/components/config/ApiTokensSection";
 import { EmailSettingsSection } from "@/components/EmailSettingsSection";
 import { VoiceSettingsSection } from "@/components/VoiceSettingsSection";
 import { OrganizationSettingsSection } from "@/components/OrganizationSettingsSection";
-import { StatusPageSettingsSection } from "@/components/StatusPageSettingsSection";
 
 export default function ConfigPage() {
   const { user } = useAuth();
@@ -99,8 +98,6 @@ export default function ConfigPage() {
       {canEdit && <VoiceSettingsSection />}
 
       {canEdit && <ApiTokensSection />}
-
-      {canEdit && <StatusPageSettingsSection canEdit={canEdit} />}
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-primary">

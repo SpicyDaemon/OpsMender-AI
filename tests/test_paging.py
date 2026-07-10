@@ -845,6 +845,28 @@ class TestPagingAPI:
                 )
                 == 1
             )
+            # Strict-MCP consistency: emptying the service's MCP allowlist means
+            # no server is allowed, so no skill-derived tier applies — resolution
+            # falls through to the org default (2) rather than borrowing the
+            # skill policy of an unrelated server. Restore the allowlist afterward
+            # so the remaining assertions see the original two-server context.
+            svc_row = await ServiceRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(data["id"])
+            )
+            original_mcp_ids = list(svc_row.mcp_server_ids or [])
+            svc_row.mcp_server_ids = []
+            await db.flush()
+            assert (
+                await resolve_session_tier_for_incident(
+                    db,
+                    TEST_ORG_ID,
+                    app.state.config,
+                    incident=incident,
+                )
+                == 2
+            )
+            svc_row.mcp_server_ids = original_mcp_ids
+            await db.flush()
             await db.commit()
 
         allowed_ids = await _allowed_mcp_ids_for_incident(

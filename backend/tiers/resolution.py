@@ -9,7 +9,7 @@ from yaml import YAMLError
 
 from backend.config_loader import AppConfig
 from backend.db.models import Incident, Service
-from backend.db.repos import MCPServerRepo, RuntimeConfigRepo, ServiceRepo, SkillRepo
+from backend.db.repos import RuntimeConfigRepo, ServiceRepo, SkillRepo
 from backend.skills.parser import loads
 from backend.tiers.enforcement import normalize_tier
 
@@ -57,10 +57,12 @@ async def resolve_session_tier_for_incident(
     if incident is not None and incident.service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
 
+    # Under the strict per-service MCP allowlist, a service's tier may only be
+    # influenced by a server that service actually allows. When the service has
+    # no MCP allowlist (or there is no service), no skill-derived tier applies —
+    # resolution falls through to the org default rather than borrowing an
+    # unrelated server's skill policy.
     server_id = _service_mcp_server_id(service)
-    if server_id is None:
-        servers = await MCPServerRepo.list_all(db, org_id, active_only=True)
-        server_id = servers[0].id if servers else None
     skill = await SkillRepo.get_for_mcp_server(
         db,
         org_id,

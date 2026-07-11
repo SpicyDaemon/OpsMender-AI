@@ -30,6 +30,7 @@ import {
   connectSessionStream,
   getIncident,
   getSession,
+  listAudit,
   listModelConfigs,
   listApprovals,
   listMCPServers,
@@ -64,6 +65,11 @@ import { ToolCallCard } from "@/components/sessions/ToolCallCard";
 import { titleCaseIdentifier, workflowNodeLabel } from "@/lib/displayNames";
 import { formatRelative, formatTime } from "@/lib/formatDate";
 import { useAuth } from "@/context/auth";
+import {
+  auditEntryToSessionEvent,
+  type SessionEventKind,
+  type SessionLogEvent,
+} from "@/lib/sessionAuditEvents";
 
 // ---------------------------------------------------------------------------
 // Session status helpers
@@ -232,17 +238,8 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 // Event log types
 // ---------------------------------------------------------------------------
 
-type EventKind = "node" | "tool" | "approval" | "error" | "end" | "llm" | "tier_gate";
-
-interface LogEvent {
-  id: number;
-  kind: EventKind;
-  label: string;
-  detail?: string;
-  ts: Date;
-  durationMs?: number;
-  raw?: Record<string, unknown>;
-}
+type EventKind = SessionEventKind;
+type LogEvent = SessionLogEvent;
 
 function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
   // Chat messages are handled separately — skip from the event log.
@@ -526,8 +523,20 @@ function SessionPageContent() {
             // ignore — incident may have been deleted
           }
         }
-        const history = await listSessionMessages(id);
-        if (!cancelled) setMessages(history.items);
+        const [history, auditHistory] = await Promise.all([
+          listSessionMessages(id),
+          listAudit({ session_id: id, limit: 500 }).catch(() => ({
+            items: [],
+            total: 0,
+          })),
+        ]);
+        if (!cancelled) {
+          setMessages(history.items);
+          const persistedEvents = [...auditHistory.items]
+            .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+            .map((entry) => auditEntryToSessionEvent(entry, idGen()));
+          setEvents((current) => [...persistedEvents, ...current]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -536,7 +545,7 @@ function SessionPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, idGen]);
 
   // WebSocket
   useEffect(() => {
@@ -1125,7 +1134,7 @@ function SessionPageContent() {
           stack as full-width blocks with their own bounded height (below), in
           normal page flow — the grid only fills remaining height at lg+, where
           the panels scroll internally instead of the page. */}
-      <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[3fr_2fr]">
+      <div className="grid min-h-[32rem] grid-cols-1 gap-4 lg:min-h-[36rem] lg:grid-cols-[3fr_2fr]">
         {/* Event stream */}
         <div className="flex flex-col rounded-xl border border-border-subtle bg-bg-panel shadow-sm max-h-[70vh] lg:max-h-none lg:min-h-0">
           <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">

@@ -43,8 +43,8 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 
 | Tier 0 · Autonomous | Tier 1 · Approval Required | Tier 2 · Advisory (default) |
 | --- | --- | --- |
-| ![Workspace settings with the AI autonomy tier set to Tier 0 Autonomous and the destructive-action warning](site/public/screenshots/tier-0.png) | ![Workspace settings with the AI autonomy tier set to Tier 1 Approval Required](site/public/screenshots/tier-1.png) | ![Workspace settings with the AI autonomy tier set to Tier 2 Advisory Only](site/public/screenshots/tier-2.png) |
-| Executes remediation autonomously within skill policy, with a reversibility floor and rollback. | Reads run automatically; every write pauses for operator approval. | Read-only analysis and recommendations — nothing executes. |
+| ![Tier 0 session after autonomously restarting a deployment and verifying recovery](site/public/screenshots/tier-0.png) | ![Tier 1 approval inbox with a proposed rollout restart awaiting an operator](site/public/screenshots/tier-1.png) | ![Tier 2 session completing read-only database analysis with recommendations](site/public/screenshots/tier-2.png) |
+| **Executed autonomously:** restarted the unhealthy deployment, verified recovery, and recorded its compensating inverse. | **Paused for approval:** completed diagnosis, proposed a reversible write, and ran nothing until an operator decides. | **Advised only:** ran read-only diagnostics and delivered a change-window plan without altering infrastructure. |
 
 ## Features
 

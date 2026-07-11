@@ -15,3 +15,10 @@ describe("session detail model picker", () => {
     expect(sessionDetailSource).toContain(" · default");
   });
 });
+
+describe("session detail activity layout", () => {
+  it("keeps the event and chat work area visible when context panels grow", () => {
+    expect(sessionDetailSource).toContain("min-h-[32rem]");
+    expect(sessionDetailSource).toContain("lg:min-h-[36rem]");
+  });
+});

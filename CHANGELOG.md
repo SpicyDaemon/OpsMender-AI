@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Deterministic autonomy demonstrations.** The demo seed now includes
+  self-contained Tier 0 autonomous remediation, Tier 1 approval-gated, and
+  Tier 2 advisory-only sessions with persisted workflow and audit events; the
+  README screenshots show each policy producing a distinct outcome without a
+  live model or network dependency.
+
 - **Release verification gate.** Added reusable pull-request and release-tag
   verification for backend lint/tests, empty-Postgres migrations, frontend
   lint/typecheck/tests/build, and a container health smoke test. Backend tests
@@ -92,6 +98,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that default workflow configuration.
 
 ### Fixed
+
+- **Role-aware dashboard loading.** Viewer and operator dashboard routes no
+  longer issue requests their roles cannot make, while workspace branding is
+  readable by every member and protected mutations remain admin-only.
+
+- **Session audit history and approval layout.** Completed and paused sessions
+  hydrate their event streams from persisted audit entries, the desktop work
+  area retains usable height as context grows, and approval actions fit within
+  the table at supported desktop widths.
 
 - **Integration and notification-channel brand icons.** Restored the ServiceNow
   mark in the integration catalog; added recognizable Microsoft Teams,

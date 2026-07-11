@@ -478,7 +478,16 @@ export default function ApprovalsPage() {
           </div>
 
           <div className="hidden overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-sm sm:block">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col className="w-[28%]" />
+              <col className="w-[13%]" />
+              <col className="w-[10%]" />
+              <col className="w-[9%]" />
+              <col className="w-[14%]" />
+              <col className="w-[8%]" />
+              <col className="w-[18%]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-border-subtle bg-bg-elevated text-left text-xs font-medium text-fg-secondary uppercase tracking-wide">
                 <th className="px-4 py-3">Action</th>
@@ -502,7 +511,7 @@ export default function ApprovalsPage() {
                         : "hover:bg-bg-elevated"
                     }`}
                   >
-                    <td className="px-4 py-3">
+                    <td className="overflow-hidden px-4 py-3">
                       <button
                         onClick={() => setSelected(a)}
                         className="text-left"
@@ -520,13 +529,13 @@ export default function ApprovalsPage() {
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="overflow-hidden px-3 py-3">
                       <Link
                         href={`/dashboard/sessions/detail?id=${a.session_id}`}
-                        className="text-xs text-fg-secondary hover:text-accent-text transition-colors"
+                        className="block text-xs text-fg-secondary transition-colors hover:text-accent-text"
                       >
-                        Open session
-                        <span className="ml-1 font-mono text-fg-muted">
+                        <span className="block">Open session</span>
+                        <span className="block truncate font-mono text-fg-muted">
                           {a.session_id.slice(0, 8)}
                         </span>
                       </Link>
@@ -552,13 +561,6 @@ export default function ApprovalsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        <Link
-                          href={`/dashboard/sessions/detail?id=${a.session_id}`}
-                          className="inline-flex items-center gap-1 rounded-md border border-border-default bg-bg-surface px-2.5 py-1 text-xs font-medium text-fg-primary hover:bg-bg-elevated transition-colors"
-                          title="Open the session that requested this approval"
-                        >
-                          Open session →
-                        </Link>
                         {isPending && (
                           <>
                             <Button

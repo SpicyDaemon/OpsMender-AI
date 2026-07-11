@@ -400,7 +400,12 @@ async def main():
                         {"tool": "get_pods", "classification": "safe"},
                         {"tool": "describe_deployment", "classification": "safe"},
                         {"tool": "get_events", "classification": "safe"},
-                        {"tool": "restart_deployment", "classification": "caution"},
+                        {
+                            "tool": "kubectl_rollout_restart",
+                            "classification": "caution",
+                            "reversible": True,
+                            "compensating_inverse": "kubectl_rollout_undo",
+                        },
                         {"tool": "scale_deployment", "classification": "caution"},
                         {"tool": "delete_pod", "classification": "destructive"},
                         {
@@ -555,38 +560,364 @@ async def main():
             )
 
         # ---- Incidents + sessions + audit ----
-        incidents_seed = [
-            # (title, status, severity, service, source, created_offset_min)
+        demo_scenarios = [
+            {
+                "external_id": "demo-tier-0",
+                "title": "Checkout API 503 rate recovered after safe rollout",
+                "status": "resolved",
+                "severity": "critical",
+                "service": "checkout-api",
+                "source": "alertmanager:checkout-5xx",
+                "offset": 42,
+                "tier": 0,
+                "session_status": "completed",
+                "summary": (
+                    "Autonomously restarted the unhealthy checkout-api rollout, "
+                    "verified all replicas ready, and restored the error rate to baseline."
+                ),
+                "progress": {
+                    "observations": ["Two replicas failed readiness checks."],
+                    "diagnosis": "A stale connection pool followed the prior rollout.",
+                    "plan": "Restart the deployment, then verify readiness and errors.",
+                    "workflow_result": "Service recovered; rollback remains available.",
+                },
+            },
+            {
+                "external_id": "demo-tier-1",
+                "title": "Auth service saturation requires rollout approval",
+                "status": "in_progress",
+                "severity": "critical",
+                "service": "auth-service",
+                "source": "alertmanager:auth-saturation",
+                "offset": 18,
+                "tier": 1,
+                "session_status": "awaiting_approval",
+                "summary": (
+                    "Diagnosis complete. A reversible rollout restart is ready and "
+                    "waiting for operator approval."
+                ),
+                "progress": {
+                    "observations": ["Connection pool utilization is pinned at 99%."],
+                    "diagnosis": "One deployment generation is retaining stale sessions.",
+                    "plan": "Request approval for a rolling restart; verify saturation.",
+                },
+            },
+            {
+                "external_id": "demo-tier-2",
+                "title": "Payments database CPU elevated during reconciliation",
+                "status": "in_progress",
+                "severity": "high",
+                "service": "payments-db",
+                "source": "cloudwatch:rds-cpu",
+                "offset": 9,
+                "tier": 2,
+                "session_status": "completed",
+                "summary": (
+                    "Advised only: pause the reconciliation worker, review the top "
+                    "query plan, and add the proposed composite index during a change window."
+                ),
+                "progress": {
+                    "observations": [
+                        "Reconciliation query consumes 78% of database CPU."
+                    ],
+                    "diagnosis": "A missing composite index forces repeated full scans.",
+                    "plan": "Recommend a worker pause and index review; execute no writes.",
+                    "workflow_result": "Recommendations delivered without changing state.",
+                },
+            },
+        ]
+
+        scenario_sessions: dict[int, SessionModel] = {}
+        for scenario in demo_scenarios:
+            offset = int(scenario["offset"])
+            incident = Incident(
+                org_id=oid,
+                title=str(scenario["title"]),
+                description=(
+                    f"Deterministic Tier {scenario['tier']} launch scenario with a "
+                    "persisted workflow and audit trail."
+                ),
+                status=str(scenario["status"]),
+                severity=str(scenario["severity"]),
+                priority="P0" if scenario["severity"] == "critical" else "P1",
+                response_mode="page"
+                if scenario["severity"] == "critical"
+                else "notify",
+                service_id=services[str(scenario["service"])].id,
+                external_source=str(scenario["source"]),
+                external_id=str(scenario["external_id"]),
+                created_at=now - timedelta(minutes=offset),
+                updated_at=now - timedelta(minutes=max(0, offset - 3)),
+                acknowledged_at=now - timedelta(minutes=max(0, offset - 2)),
+            )
+            db.add(incident)
+            await db.flush()
+
+            tier = int(scenario["tier"])
+            session = SessionModel(
+                org_id=oid,
+                incident_id=incident.id,
+                tier=tier,
+                model_provider="anthropic",
+                model_id="claude-sonnet-4-6",
+                status=str(scenario["session_status"]),
+                summary=str(scenario["summary"]),
+                progress=scenario["progress"],
+                started_at=now - timedelta(minutes=max(0, offset - 1)),
+                ended_at=(
+                    now - timedelta(minutes=max(0, offset - 7))
+                    if scenario["session_status"] == "completed"
+                    else None
+                ),
+            )
+            db.add(session)
+            await db.flush()
+            scenario_sessions[tier] = session
+
+        def add_scenario_events(
+            session: SessionModel,
+            tier: int,
+            start: datetime,
+            events: list[dict],
+        ) -> None:
+            for index, event in enumerate(events):
+                db.add(
+                    AuditEntry(
+                        org_id=oid,
+                        session_id=session.id,
+                        timestamp=start + timedelta(seconds=index * 11),
+                        tier=tier,
+                        entry_type=event["entry_type"],
+                        tool_name=event.get("tool_name"),
+                        tool_parameters=event.get("tool_parameters"),
+                        result=event.get("result"),
+                        permitted=event.get("permitted", True),
+                        block_reason=event.get("block_reason"),
+                        duration_ms=event.get("duration_ms"),
+                    )
+                )
+
+        def node(name: str, message: str) -> dict:
+            return {
+                "entry_type": "node_transition",
+                "result": {"node": name, "message": message},
+            }
+
+        read_pods = {
+            "entry_type": "tool_call_end",
+            "tool_name": "kubectl_get_pods",
+            "tool_parameters": {
+                "namespace": "payments",
+                "selector": "app=checkout-api",
+            },
+            "result": {
+                "ok": True,
+                "summary": "2 of 5 replicas failed readiness checks",
+                "classification": "safe",
+            },
+            "duration_ms": 184,
+        }
+
+        add_scenario_events(
+            scenario_sessions[0],
+            0,
+            now - timedelta(minutes=40),
+            [
+                {
+                    "entry_type": "session_start",
+                    "result": {"message": "Tier 0 session started"},
+                },
+                node("observe", "Collected deployment health and recent events"),
+                read_pods,
+                {
+                    "entry_type": "tool_call_end",
+                    "tool_name": "kubectl_describe_deployment",
+                    "tool_parameters": {
+                        "namespace": "payments",
+                        "name": "checkout-api",
+                    },
+                    "result": {
+                        "ok": True,
+                        "summary": "Unhealthy replicas share rollout revision 184",
+                        "classification": "safe",
+                    },
+                    "duration_ms": 229,
+                },
+                node("diagnose", "Identified a stale connection pool in revision 184"),
+                node("plan", "Use a reversible rolling restart and verify readiness"),
+                node(
+                    "tier_gate", "Tier 0 policy allowed the reversible caution action"
+                ),
+                node("execute", "Executing the approved autonomous remediation plan"),
+                {
+                    "entry_type": "tool_call_end",
+                    "tool_name": "kubectl_rollout_restart",
+                    "tool_parameters": {
+                        "namespace": "payments",
+                        "deployment": "checkout-api",
+                    },
+                    "result": {
+                        "ok": True,
+                        "message": "Rolling restart completed; 5 of 5 replicas are ready",
+                        "classification": "caution",
+                        "decision": "autonomous",
+                        "compensating_inverse": "kubectl_rollout_undo",
+                    },
+                    "duration_ms": 824,
+                },
+                node(
+                    "verify",
+                    "Readiness is healthy and the 503 rate returned to baseline",
+                ),
+                node(
+                    "summarize", "Recorded the remediation, evidence, and rollback path"
+                ),
+                {
+                    "entry_type": "session_end",
+                    "result": {
+                        "message": "Incident resolved autonomously with rollback available"
+                    },
+                },
+            ],
+        )
+
+        add_scenario_events(
+            scenario_sessions[1],
+            1,
+            now - timedelta(minutes=16),
+            [
+                {
+                    "entry_type": "session_start",
+                    "result": {"message": "Tier 1 session started"},
+                },
+                node("observe", "Collected saturation, pod health, and rollout state"),
+                {
+                    **read_pods,
+                    "tool_parameters": {
+                        "namespace": "platform",
+                        "selector": "app=auth-service",
+                    },
+                    "result": {
+                        "ok": True,
+                        "summary": "Connection saturation isolated to rollout revision 77",
+                        "classification": "safe",
+                    },
+                },
+                node(
+                    "diagnose", "Confirmed stale sessions in one deployment generation"
+                ),
+                node("plan", "Propose a reversible rolling restart"),
+                node(
+                    "tier_gate",
+                    "Tier 1 policy requires operator approval for the write",
+                ),
+                {
+                    "entry_type": "tool_call_blocked",
+                    "tool_name": "kubectl_rollout_restart",
+                    "tool_parameters": {
+                        "namespace": "platform",
+                        "deployment": "auth-service",
+                    },
+                    "result": {
+                        "ok": False,
+                        "requires_approval": True,
+                        "message": "Routed to operator approval; no write executed",
+                        "classification": "caution",
+                    },
+                    "permitted": False,
+                    "block_reason": "Tier 1 requires operator approval before write execution.",
+                    "duration_ms": 12,
+                },
+                {
+                    "entry_type": "approval_requested",
+                    "result": {
+                        "message": "Waiting for operator approval to restart auth-service"
+                    },
+                },
+            ],
+        )
+        db.add(
+            ApprovalRequest(
+                org_id=oid,
+                session_id=scenario_sessions[1].id,
+                action={
+                    "tool": "kubectl_rollout_restart",
+                    "args": {"namespace": "platform", "deployment": "auth-service"},
+                    "classification": "caution",
+                    "reversible": True,
+                    "compensating_inverse": "kubectl_rollout_undo",
+                },
+                justification=(
+                    "A rolling restart clears the saturated connection pool and is "
+                    "reversible. Tier 1 requires your approval before execution."
+                ),
+                status="pending",
+                requested_at=now - timedelta(minutes=14),
+                expires_at=now + timedelta(minutes=16),
+            )
+        )
+
+        add_scenario_events(
+            scenario_sessions[2],
+            2,
+            now - timedelta(minutes=7),
+            [
+                {
+                    "entry_type": "session_start",
+                    "result": {"message": "Tier 2 session started"},
+                },
+                node("observe", "Collected CPU, active sessions, and query statistics"),
+                {
+                    "entry_type": "tool_call_end",
+                    "tool_name": "postgres_select_query",
+                    "tool_parameters": {
+                        "query": "SELECT queryid, calls, total_exec_time FROM pg_stat_statements LIMIT 5"
+                    },
+                    "result": {
+                        "ok": True,
+                        "summary": "Reconciliation query accounts for 78% of CPU time",
+                        "classification": "safe",
+                    },
+                    "duration_ms": 143,
+                },
+                {
+                    "entry_type": "tool_call_end",
+                    "tool_name": "postgres_explain_query",
+                    "tool_parameters": {
+                        "query": "SELECT id FROM payments WHERE state = $1 ORDER BY updated_at"
+                    },
+                    "result": {
+                        "ok": True,
+                        "summary": "Sequential scan confirms the missing composite index",
+                        "classification": "safe",
+                    },
+                    "duration_ms": 96,
+                },
+                node(
+                    "diagnose", "Missing index makes reconciliation scan the full table"
+                ),
+                node("plan", "Prepare recommendations without executing changes"),
+                node(
+                    "tier_gate", "Tier 2 policy limited the session to read-only advice"
+                ),
+                node("summarize", "Delivered a change-window plan and query evidence"),
+                {
+                    "entry_type": "session_end",
+                    "result": {
+                        "message": "Advisory report completed; no writes executed"
+                    },
+                },
+            ],
+        )
+
+        for title, status_, sev, service_slug, source, external_id, offset in [
             (
-                "Checkout API returning 503 (cluster restart)",
-                "in_progress",
-                "critical",
-                "checkout-api",
-                "alertmanager:checkout-5xx",
-                12,
-            ),
-            (
-                "api-gateway elevated 5xx rate (>2%)",
-                "open",
-                "high",
-                "api-gateway",
-                "alertmanager:gateway-5xx",
-                4,
-            ),
-            (
-                "payments-db CPU at 92% sustained",
-                "in_progress",
-                "high",
-                "payments-db",
-                "cloudwatch:rds-cpu",
-                28,
-            ),
-            (
-                "Slow query alert — payments-db",
+                "Slow query alert - payments database",
                 "resolved",
                 "medium",
                 "payments-db",
                 "alertmanager:slow-query",
+                "demo-history-slow-query",
                 720,
             ),
             (
@@ -595,105 +926,33 @@ async def main():
                 "medium",
                 "ingest-pipeline",
                 None,
+                "demo-history-ingest",
                 1440,
             ),
-            ("Sandbox cluster Terraform drift", "closed", "low", None, None, 4320),
-        ]
-        for title, status_, sev, sslug, ext_src, offset in incidents_seed:
-            inc = Incident(
-                org_id=oid,
-                title=title,
-                description=f"Auto-seeded demo incident. Severity {sev}.",
-                status=status_,
-                severity=sev,
-                service_id=services[sslug].id if sslug else None,
-                external_source=ext_src,
-                external_id=f"demo-{sslug}-{int(offset)}" if ext_src else None,
-                created_at=now - timedelta(minutes=offset),
-                updated_at=now - timedelta(minutes=max(0, offset - 5)),
-            )
-            db.add(inc)
-            await db.flush()
-
-            # Create a session for in-progress + high-priority demo incidents.
-            if status_ in ("in_progress", "open") and sev in ("critical", "high"):
-                approval_demo = sev == "critical"
-                session_tier = 1 if approval_demo else 2
-                sess = SessionModel(
+            (
+                "Sandbox cluster configuration drift",
+                "resolved",
+                "low",
+                None,
+                None,
+                "demo-history-drift",
+                4320,
+            ),
+        ]:
+            db.add(
+                Incident(
                     org_id=oid,
-                    incident_id=inc.id,
-                    tier=session_tier,
-                    model_provider="anthropic",
-                    model_id="claude-sonnet-4-6",
-                    status="awaiting_approval" if approval_demo else "active",
-                    started_at=now - timedelta(minutes=offset - 2),
+                    title=title,
+                    description=f"Historical demo incident. Severity {sev}.",
+                    status=status_,
+                    severity=sev,
+                    service_id=services[service_slug].id if service_slug else None,
+                    external_source=source,
+                    external_id=external_id,
+                    created_at=now - timedelta(minutes=offset),
+                    updated_at=now - timedelta(minutes=max(0, offset - 30)),
                 )
-                db.add(sess)
-                await db.flush()
-
-                # Audit entries
-                for ai, (tname, tparams, perm) in enumerate(
-                    [
-                        ("kubectl_get_pods", {"namespace": "payments"}, True),
-                        ("kubectl_describe_deployment", {"name": "checkout-api"}, True),
-                        (
-                            "kubectl_logs",
-                            {"pod": "checkout-api-7d8f9-x2pq", "tail": 200},
-                            True,
-                        ),
-                        (
-                            "kubectl_delete_pod",
-                            {"pod": "checkout-api-7d8f9-x2pq"},
-                            False,
-                        ),
-                    ]
-                ):
-                    routed_to_approval = approval_demo and not perm
-                    db.add(
-                        AuditEntry(
-                            org_id=oid,
-                            session_id=sess.id,
-                            timestamp=now
-                            - timedelta(minutes=offset - 2, seconds=-ai * 12),
-                            tier=session_tier,
-                            entry_type="tool_call",
-                            tool_name=tname,
-                            tool_parameters=tparams,
-                            result=(
-                                {"ok": True, "lines": 42}
-                                if perm
-                                else {
-                                    "ok": False,
-                                    "requires_approval": True,
-                                    "message": "Routed to operator approval (Tier 1)",
-                                }
-                                if routed_to_approval
-                                else None
-                            ),
-                            permitted=perm or routed_to_approval,
-                            block_reason=None
-                            if perm or routed_to_approval
-                            else "Operation 'delete pod' classified destructive - Tier 2 cannot execute.",
-                            duration_ms=124 + ai * 8,
-                        )
-                    )
-
-                # Pending approval on the critical incident
-                if sev == "critical":
-                    db.add(
-                        ApprovalRequest(
-                            org_id=oid,
-                            session_id=sess.id,
-                            action={
-                                "tool": "kubectl_rollout_restart",
-                                "args": {"deployment": "auth-service"},
-                            },
-                            justification="Auth-service pool exhaustion appears to be the root cause; rolling restart is the standard fix.",
-                            status="pending",
-                            requested_at=now - timedelta(minutes=1),
-                            expires_at=now + timedelta(minutes=14),
-                        )
-                    )
+            )
 
         # ---- Org invites ----
         db.add(

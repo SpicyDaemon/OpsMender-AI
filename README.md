@@ -244,6 +244,19 @@ proxy (nginx, Caddy, Cloudflare) in front of port 8000.
 
 Download the Linux/Windows binary (with `.sha256`) from [**Releases**](https://github.com/SpicyDaemon/OpsMender-AI/releases), or build it with `bash scripts/build_binary.sh`. It bundles the Python runtime, the static frontend, migrations, and skills (Node.js is **not** bundled — install `node`/`npx` if your MCP servers need it).
 
+For a quick local evaluation, run the binary with no database configuration:
+
+```bash
+./opsmender serve
+```
+
+This creates `./opsmender.db` with SQLite, starts the dashboard on
+**http://localhost:8000**, and uses the development-only `admin` / `admin123`
+login on a new database. SQLite is for local evaluation only. **PostgreSQL is
+required for production.**
+
+For production, configure PostgreSQL and the required security settings:
+
 ```bash
 OPSMENDER_DEPLOYMENT_MODE=monolith \
 OPSMENDER_ENVIRONMENT=production \

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy import create_engine
 
+from backend.db.bootstrap import patch_sqlite_schema
 from backend.db.models import Base
-from scripts.dev_server import _patch_sqlite_dev_schema
 
 
 def _column_names(conn, table_name: str) -> set[str]:
@@ -46,7 +46,7 @@ class TestPatchSqliteDevSchema:
                 """
             )
 
-            _patch_sqlite_dev_schema(conn, Base.metadata)
+            patch_sqlite_schema(conn, Base.metadata)
 
             columns = _column_names(conn, "sessions")
 
@@ -76,7 +76,7 @@ class TestPatchSqliteDevSchema:
                 """
             )
 
-            _patch_sqlite_dev_schema(conn, Base.metadata)
+            patch_sqlite_schema(conn, Base.metadata)
             columns = _column_names(conn, "mcp_servers")
 
         assert "last_successful_call_at" in columns

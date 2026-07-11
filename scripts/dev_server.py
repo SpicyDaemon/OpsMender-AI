@@ -24,73 +24,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 os.environ.setdefault("OPSMENDER_DEPLOYMENT_MODE", "development")
 
 
-def _sqlite_literal(value):
-    if isinstance(value, bool):
-        return "1" if value else "0"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, str):
-        return "'" + value.replace("'", "''") + "'"
-    return None
-
-
-def _patch_sqlite_dev_schema(sync_conn, metadata) -> None:
-    """Best-effort additive patching for stale local SQLite schemas.
-
-    ``create_all()`` creates missing tables but does not add newly introduced
-    columns to tables that already exist. Local dev databases can therefore
-    drift behind the current ORM after sprint-to-sprint schema growth.
-    For SQLite dev only, we add missing nullable/default-backed columns in
-    place so older local DBs keep working without a manual reset.
-    """
-
-    from sqlalchemy import inspect
-
-    inspector = inspect(sync_conn)
-    existing_tables = set(inspector.get_table_names())
-
-    for table in metadata.sorted_tables:
-        if table.name not in existing_tables:
-            continue
-
-        existing_columns = {
-            column["name"] for column in inspector.get_columns(table.name)
-        }
-        for column in table.columns:
-            if column.name in existing_columns or column.primary_key:
-                continue
-
-            default_sql = None
-            if column.default is not None and getattr(
-                column.default, "is_scalar", False
-            ):
-                default_sql = _sqlite_literal(column.default.arg)
-
-            if not column.nullable and default_sql is None:
-                print(
-                    f"[dev] Skipping non-null column patch for {table.name}.{column.name} "
-                    "(no scalar default available)."
-                )
-                continue
-
-            type_sql = column.type.compile(dialect=sync_conn.dialect)
-            statement = (
-                f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {type_sql}'
-            )
-            if default_sql is not None:
-                statement = f"{statement} DEFAULT {default_sql}"
-            if not column.nullable and default_sql is not None:
-                statement = f"{statement} NOT NULL"
-
-            sync_conn.exec_driver_sql(statement)
-            existing_columns.add(column.name)
-            print(f"[dev] Patched SQLite schema: added {table.name}.{column.name}")
-
-
 async def bootstrap():
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from backend.config_loader import AppConfig
-    from backend.db.models import Base
+    from backend.db.bootstrap import initialize_sqlite_schema
     from backend.db.engine import resolve_database_url
     from backend.db.repos import OrganizationRepo, UserRepo
 
@@ -98,13 +35,17 @@ async def bootstrap():
     db_url = resolve_database_url(config.db)
     engine = create_async_engine(db_url, echo=False)
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        if db_url.startswith("sqlite"):
-            await conn.run_sync(
-                lambda sync_conn: _patch_sqlite_dev_schema(sync_conn, Base.metadata)
-            )
-        print("[dev] Tables created (or already exist).")
+    if db_url.startswith("sqlite"):
+        await initialize_sqlite_schema(
+            engine,
+            reporter=lambda message: print(f"[dev] {message}"),
+        )
+    else:
+        from backend.db.models import Base
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    print("[dev] Tables created (or already exist).")
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
 

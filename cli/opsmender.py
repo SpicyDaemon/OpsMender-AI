@@ -74,8 +74,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     serve_parser.add_argument(
         "--skip-migrations",
+        "--no-migrate",
+        dest="skip_migrations",
         action="store_true",
-        help="Don't run `alembic upgrade head` before starting the server",
+        help="Don't initialize or migrate the database before starting the server",
     )
 
     # -- run ----------------------------------------------------------------
@@ -1497,35 +1499,75 @@ def _print_result(result: dict) -> None:
 def _run_serve(args: argparse.Namespace) -> int:
     """Start uvicorn against ``backend.api.app:create_app``.
 
-    Runs Alembic migrations first unless ``--skip-migrations`` is set. In a
-    frozen binary ``backend.resource.bootstrap_bundled_env`` has already
-    pointed the config at the embedded static-export and skill files.
+    PostgreSQL keeps the Alembic upgrade path. SQLite evaluation databases use
+    the ORM schema and are stamped at the bundled migration head. In a frozen
+    binary ``backend.resource.bootstrap_bundled_env`` has already pointed the
+    config at the embedded static-export and skill files.
     """
     import uvicorn
     from alembic import command
     from alembic.config import Config as AlembicConfig
 
+    from backend.config_loader import AppConfig, set_env_path
+    from backend.db.bootstrap import initialize_sqlite_schema
+    from backend.db.engine import get_engine, resolve_database_url
     from backend.resource import is_frozen, resource_path
+
+    if args.config:
+        set_env_path(args.config)
+    try:
+        database_url = resolve_database_url(AppConfig.load().db)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Database configuration failed: {exc}", file=sys.stderr)
+        return 1
+
+    # Lock the app factory and Alembic environment to the same resolved URL.
+    os.environ["OPSMENDER_DATABASE_URL"] = database_url
+    sqlite_evaluation = database_url.startswith("sqlite")
+    if sqlite_evaluation:
+        os.environ["OPSMENDER_ENVIRONMENT"] = "development"
+        print(
+            "SQLite is for local evaluation only — configure "
+            "OPSMENDER_DATABASE_URL with PostgreSQL for production."
+        )
 
     if not args.skip_migrations:
         alembic_ini = resource_path("alembic.ini")
-        if alembic_ini.is_file():
-            cfg = AlembicConfig(str(alembic_ini))
-            # When frozen, migrations/ is packaged next to alembic.ini.
-            cfg.set_main_option(
+        if not alembic_ini.is_file():
+            print(
+                f"Warning: alembic.ini not found at {alembic_ini}; "
+                "skipping database initialization",
+                file=sys.stderr,
+            )
+        else:
+            alembic_cfg = AlembicConfig(str(alembic_ini))
+            # This command is embedded in the running CLI process. Alembic must
+            # not replace application or test logging handlers while stamping.
+            alembic_cfg.attributes["configure_logger"] = False
+            alembic_cfg.set_main_option(
                 "script_location",
                 str(resource_path("backend/db/migrations")),
             )
             try:
-                command.upgrade(cfg, "head")
+                if sqlite_evaluation:
+
+                    async def initialize_sqlite() -> None:
+                        engine = get_engine(database_url)
+                        try:
+                            await initialize_sqlite_schema(engine)
+                        finally:
+                            await engine.dispose()
+
+                    asyncio.run(initialize_sqlite())
+                    command.stamp(alembic_cfg, "head")
+                else:
+                    command.upgrade(alembic_cfg, "head")
             except Exception as exc:  # noqa: BLE001
-                print(f"Alembic upgrade failed: {exc}", file=sys.stderr)
+                action = (
+                    "SQLite initialization" if sqlite_evaluation else "Alembic upgrade"
+                )
+                print(f"{action} failed: {exc}", file=sys.stderr)
                 return 1
-        else:
-            print(
-                f"Warning: alembic.ini not found at {alembic_ini}; skipping migrations",
-                file=sys.stderr,
-            )
 
     # Reload only makes sense when running from source.
     reload = bool(args.reload) and not is_frozen()

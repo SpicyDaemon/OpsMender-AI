@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   README screenshots show each policy producing a distinct outcome without a
   live model or network dependency.
 
+- **Standalone SQLite evaluation.** `opsmender serve` now initializes a local
+  SQLite schema from ORM metadata, stamps it at the bundled Alembic head, and
+  starts in development mode for a zero-PostgreSQL product trial. The
+  PostgreSQL production migration path and migration-skip flag remain intact.
+
 - **Release verification gate.** Added reusable pull-request and release-tag
   verification for backend lint/tests, empty-Postgres migrations, frontend
   lint/typecheck/tests/build, and a container health smoke test. Backend tests

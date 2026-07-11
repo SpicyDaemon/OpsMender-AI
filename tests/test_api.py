@@ -3884,10 +3884,17 @@ class TestSessions:
         )
         assert ok.status_code == 201
 
-    async def test_stop_running_session(self, client: AsyncClient, auth_headers):
+    async def test_stop_running_session(self, client: AsyncClient, app, auth_headers):
         # No-incident session is created "active" without a background workflow.
         created = await client.post("/sessions", json={"tier": 2}, headers=auth_headers)
         sid = created.json()["id"]
+
+        # The create route also schedules a chat-notification read. Let that
+        # registered task close its transaction before mutating state in the
+        # single-connection in-memory SQLite test harness.
+        pending = list(app.state.background_tasks)
+        if pending:
+            await asyncio.gather(*pending)
 
         resp = await client.post(f"/sessions/{sid}/stop", headers=auth_headers)
         assert resp.status_code == 200

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Track scheduled session chat notifications in the application background-task
+  registry so shutdown can drain them cleanly and session-state tests do not
+  race an unmanaged SQLite read transaction.
+
 ## [1.0.0] - 2026-07-10
 
 ### Added

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
+import asyncio
 import uuid
+
+import pytest
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -54,6 +56,32 @@ async def _make_connector(
 
 
 class TestSessionChatEventFanOut:
+    async def test_scheduled_event_is_tracked_until_completion(self, monkeypatch):
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fake_deliver(*args, **kwargs):
+            started.set()
+            await release.wait()
+
+        monkeypatch.setattr(notifier, "deliver_session_chat_event", fake_deliver)
+        registry: set[asyncio.Task] = set()
+
+        task = notifier.schedule_session_chat_event(
+            object(),
+            org_id=TEST_ORG_ID,
+            event_type="session.created",
+            session_id=uuid.uuid4(),
+            task_registry=registry,
+        )
+        await started.wait()
+        assert task in registry
+
+        release.set()
+        await task
+        await asyncio.sleep(0)
+        assert task not in registry
+
     async def test_delivers_to_notifications_capable_connector(
         self, factory, monkeypatch
     ):

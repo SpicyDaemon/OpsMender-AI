@@ -645,7 +645,7 @@ def schedule_session_chat_event(
     actor_user_id: uuid.UUID | None = None,
     base_url: str | None = None,
 ) -> asyncio.Task:
-    return asyncio.create_task(
+    task = asyncio.create_task(
         deliver_session_chat_event(
             factory,
             org_id=org_id,
@@ -655,6 +655,10 @@ def schedule_session_chat_event(
             base_url=base_url,
         )
     )
+    if task_registry is not None:
+        task_registry.add(task)
+        task.add_done_callback(task_registry.discard)
+    return task
 
 
 INCIDENT_CHAT_EVENTS = {

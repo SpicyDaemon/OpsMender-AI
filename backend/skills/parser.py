@@ -169,6 +169,14 @@ class SkillDefinition:
     focus_areas: List[str] = dataclasses.field(default_factory=list)
     # Optional ordered remediation workflow parsed from ``## Workflow``.
     workflow: List[WorkflowStep] = dataclasses.field(default_factory=list)
+    # Operator-authored Markdown guidance from each tier's
+    # ``### Custom Instructions`` section. This guides model reasoning only;
+    # structured operation policy remains the execution authority.
+    custom_instructions: dict[int, str] = dataclasses.field(default_factory=dict)
+
+    def instructions_for_tier(self, tier: int) -> str:
+        """Return the free-form guidance for the active autonomy tier."""
+        return self.custom_instructions.get(tier, "")
 
     def _match(self, tool_name: str) -> Optional[OperationClassification]:
         """Return the first matching OperationClassification or None."""
@@ -336,6 +344,56 @@ def _extract_workflow_section(text: str) -> object | None:
     return yaml.safe_load(section)
 
 
+def _extract_custom_instructions(text: str) -> dict[int, str]:
+    """Extract per-tier free-form Markdown from a SKILL.md document.
+
+    Instructions belong to the nearest ``## Tier N`` section and begin below
+    its ``### Custom Instructions`` heading. Content continues to the next
+    level-two section, so nested Markdown headings remain available to the
+    model. Markdown is preserved apart from surrounding whitespace.
+    """
+    tier_headings = list(
+        re.finditer(r"(?im)^##[ \t]+Tier[ \t]*([012])\b[^\r\n]*$", text)
+    )
+    instructions: dict[int, str] = {}
+    for tier_heading in tier_headings:
+        tier = int(tier_heading.group(1))
+        next_section = re.search(r"(?m)^##[ \t]+", text[tier_heading.end() :])
+        section_end = (
+            tier_heading.end() + next_section.start() if next_section else len(text)
+        )
+        section = text[tier_heading.end() : section_end]
+        custom_heading = re.search(
+            r"(?im)^###[ \t]+Custom[ \t]+Instructions[ \t]*$", section
+        )
+        if custom_heading is None:
+            continue
+        content = section[custom_heading.end() :]
+        # Generated templates separate tier sections with a horizontal rule.
+        content = re.sub(r"(?:\r?\n)*[ \t]*---[ \t]*$", "", content.rstrip())
+        content = content.strip()
+        if content:
+            if tier in instructions:
+                raise ValueError(f"Tier {tier} has duplicate Custom Instructions")
+            instructions[tier] = content
+    return instructions
+
+
+def _parse_yaml_custom_instructions(raw: object) -> dict[int, str]:
+    """Parse the equivalent per-tier mapping for raw YAML skill files."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("custom_instructions must be a tier-to-text mapping")
+    instructions: dict[int, str] = {}
+    for raw_tier, value in raw.items():
+        tier = _parse_tier(raw_tier, field="custom_instructions tier")
+        content = str(value).strip()
+        if content:
+            instructions[tier] = content
+    return instructions
+
+
 def _normalize_tier_override(raw: object, *, step_id: str) -> Optional[str]:
     if raw is None:
         return None
@@ -396,6 +454,9 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
         if not isinstance(data, dict):
             raise ValueError("Skill definition YAML must be a mapping")
         raw_workflow = data.get("workflow")
+        custom_instructions = _parse_yaml_custom_instructions(
+            data.get("custom_instructions")
+        )
     else:
         front_matter = _extract_yaml_front_matter(raw)
         data = yaml.safe_load(front_matter) or {}
@@ -404,6 +465,7 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
         raw_workflow = _extract_workflow_section(raw)
         if raw_workflow is None:
             raw_workflow = data.get("workflow")
+        custom_instructions = _extract_custom_instructions(raw)
 
     raw_operations = data.get("operations", [])
     if not isinstance(raw_operations, list):
@@ -492,6 +554,7 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
         ),
         focus_areas=focus_areas,
         workflow=_parse_workflow(raw_workflow),
+        custom_instructions=custom_instructions,
     )
 
 

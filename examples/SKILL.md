@@ -142,6 +142,30 @@ explicit policies above combine with the selected tier at the backend tier gate:
 Copy this file and modify it for your environment. Add or remove tools to
 match the MCP server you're using. Wildcard patterns (`*`, `?`) are supported.
 
+## Tier 0 — Autonomous
+
+### Custom Instructions
+
+- Inspect current health and recent events before proposing remediation.
+- Prefer the smallest reversible action that addresses the confirmed cause.
+- Verify recovery after every write and stop if health degrades.
+
+## Tier 1 — Approval Required
+
+### Custom Instructions
+
+- Gather read-only evidence before requesting an action.
+- State the exact target, expected impact, and rollback before asking approval.
+- Treat ambiguous operator guidance as a request to clarify, not authorization.
+
+## Tier 2 — Advisory Only
+
+### Custom Instructions
+
+- Separate confirmed evidence from hypotheses.
+- Provide an ordered runbook without executing write operations.
+- Call out missing evidence and the safest next diagnostic step.
+
 ## Related examples
 
 - [`SKILL.app-incident.md`](SKILL.app-incident.md) — application-layer

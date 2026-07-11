@@ -192,8 +192,8 @@ def build_graph(
 
     # -- select node implementations ----------------------------------------
     if llm is not None:
-        observe_fn = _build_observe(llm)
-        diagnose_fn = _build_diagnose(llm)
+        observe_fn = _build_observe(llm, skill_def, tier)
+        diagnose_fn = _build_diagnose(llm, skill_def, tier)
         if plan_tool_names is not None:
             plan_fn = _build_plan_with_tool_names(
                 llm,
@@ -204,8 +204,8 @@ def build_graph(
             )
         else:
             plan_fn = _build_plan(llm, tier, skill_def)
-        verify_fn = _build_verify(llm)
-        summarize_fn = _build_summarize(llm)
+        verify_fn = _build_verify(llm, skill_def, tier)
+        summarize_fn = _build_summarize(llm, skill_def, tier)
     else:
         observe_fn = observe
         diagnose_fn = diagnose

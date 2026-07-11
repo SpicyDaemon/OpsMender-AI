@@ -79,6 +79,16 @@ def _skill_def() -> SkillDefinition:
     )
 
 
+def _skill_def_with_instructions() -> SkillDefinition:
+    skill = _skill_def()
+    skill.custom_instructions = {
+        0: "AUTONOMOUS-GUIDANCE",
+        1: "APPROVAL-GUIDANCE",
+        2: "ADVISORY-GUIDANCE",
+    }
+    return skill
+
+
 def _base_state(**overrides) -> IncidentState:
     """Return a minimal IncidentState dict for testing."""
     state: IncidentState = {
@@ -302,6 +312,51 @@ class TestPlanWithLLM:
         node = _build_plan(llm, tier=2, skill_def=_skill_def())
         node(_base_state(diagnosis="test"))
         assert "tier: 2" in llm.calls[0].lower() or "tier 2" in llm.calls[0].lower()
+
+    def test_prompt_includes_only_active_tier_custom_instructions(self):
+        llm = StubLLM(response="[]")
+        node = _build_plan(llm, tier=1, skill_def=_skill_def_with_instructions())
+        node(_base_state(diagnosis="test"))
+        prompt = llm.calls[0]
+        assert "APPROVAL-GUIDANCE" in prompt
+        assert "AUTONOMOUS-GUIDANCE" not in prompt
+        assert "ADVISORY-GUIDANCE" not in prompt
+        assert "cannot grant access" in prompt
+
+
+class TestCustomInstructionsAcrossWorkflow:
+    @pytest.mark.parametrize(
+        ("build_node", "state"),
+        [
+            (_build_observe, _base_state()),
+            (_build_diagnose, _base_state(observations="test")),
+            (
+                _build_verify,
+                _base_state(diagnosis="test", tool_calls=[]),
+            ),
+            (
+                _build_summarize,
+                _base_state(
+                    diagnosis="test",
+                    verification="test",
+                    tool_calls=[],
+                    blocked_actions=[],
+                ),
+            ),
+        ],
+    )
+    def test_active_tier_guidance_reaches_model_stage(self, build_node, state):
+        llm = StubLLM(response="[]")
+        node = build_node(llm, _skill_def_with_instructions(), 2)
+        node(state)
+        assert "ADVISORY-GUIDANCE" in llm.calls[0]
+        assert "APPROVAL-GUIDANCE" not in llm.calls[0]
+
+    def test_no_custom_instructions_does_not_add_empty_prompt_block(self):
+        llm = StubLLM(response="[]")
+        node = _build_observe(llm, _skill_def(), 2)
+        node(_base_state())
+        assert "MCP SKILL INSTRUCTIONS" not in llm.calls[0]
 
 
 class TestVerifyWithLLM:
@@ -781,6 +836,27 @@ class TestFullGraphWithLLM:
         assert result["status"] == "completed"
         # LLM was called for: observe, diagnose, plan, verify, summarize = 5
         assert len(llm.calls) == 5
+
+    def test_active_tier_custom_instructions_reach_every_llm_stage(self):
+        llm = StubLLM(response="[]")
+        graph = build_graph(
+            tier=2,
+            skill_def=_skill_def_with_instructions(),
+            llm=llm,
+        )
+        result = graph.invoke(
+            {
+                "session_id": "e2e-skill-instructions",
+                "tier": 2,
+                "incident_description": "pods crashing",
+            }
+        )
+
+        assert result["status"] == "completed"
+        assert len(llm.calls) == 5
+        assert all("ADVISORY-GUIDANCE" in prompt for prompt in llm.calls)
+        assert all("AUTONOMOUS-GUIDANCE" not in prompt for prompt in llm.calls)
+        assert all("APPROVAL-GUIDANCE" not in prompt for prompt in llm.calls)
 
     def test_invoke_with_planned_actions(self):
         """LLM returns a plan with actions → tier gate splits them."""

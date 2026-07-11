@@ -77,6 +77,30 @@ Template sections:
 - **Environment Rules (optional)** — per-environment expectations when one MCP
   server spans multiple environments.
 
+### Free-form custom instructions
+
+Text written under a tier's **Custom Instructions** heading is active runtime
+guidance. OpsMender preserves its Markdown and supplies **only the selected
+session tier's instructions** to the model during observation, diagnosis,
+planning, verification, and summarization. This is useful for local operating
+conventions such as investigation order, naming rules, evidence requirements,
+rollback expectations, and report format.
+
+```markdown
+## Tier 1 — Approval Required
+
+### Custom Instructions
+
+- Check for an existing incident ticket before creating one.
+- Show the exact target, impact, and rollback before requesting approval.
+- Prefix new ticket titles with `[OpsMender]`.
+```
+
+Custom instructions guide model reasoning; they are **not permissions**. They
+cannot make an unavailable tool available, change the active tier, override a
+deny entry, bypass approval, or relax the backend's structured operation policy.
+Unassigned draft skills still never enter a session.
+
 All skills (including Unassigned drafts) are **downloadable** as Markdown from
 the row action.
 

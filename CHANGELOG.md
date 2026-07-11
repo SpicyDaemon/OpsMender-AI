@@ -7,15 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Track scheduled session chat notifications in the application background-task
-  registry so shutdown can drain them cleanly and session-state tests do not
-  race an unmanaged SQLite read transaction.
-
-## [1.0.0] - 2026-07-10
+## [1.0.0] - 2026-07-11
 
 ### Added
+
+- **MCP Skill free-form instructions.** Custom Instructions now reach every
+  model-driven incident stage. OpsMender parses and preserves per-tier
+  Markdown, injects only the active tier's guidance, and keeps structured tool
+  policy, deny lists, approval requirements, and backend guardrails
+  authoritative.
 
 - **Deterministic autonomy demonstrations.** The demo seed now includes
   self-contained Tier 0 autonomous remediation, Tier 1 approval-gated, and
@@ -109,6 +109,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that default workflow configuration.
 
 ### Fixed
+
+- **Session notification task lifecycle.** Scheduled session chat
+  notifications are tracked in the application background-task registry so
+  shutdown can drain them cleanly and session-state transitions cannot race an
+  unmanaged SQLite read transaction.
 
 - **Role-aware dashboard loading.** Viewer and operator dashboard routes no
   longer issue requests their roles cannot make, while workspace branding is

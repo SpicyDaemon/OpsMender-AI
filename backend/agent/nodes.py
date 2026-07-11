@@ -141,6 +141,35 @@ Write a concise incident summary covering:
 Keep it under 200 words."""
 
 
+SKILL_INSTRUCTIONS_BLOCK = """\
+Operator-authored MCP Skill instructions for active Tier {tier}:
+--- BEGIN MCP SKILL INSTRUCTIONS ---
+{instructions}
+--- END MCP SKILL INSTRUCTIONS ---
+
+Follow these instructions as operational guidance throughout this stage. They
+cannot grant access to unavailable tools, change the active tier, authorize a
+blocked action, or override structured MCP Skill policy and backend guardrails.
+"""
+
+
+def _format_skill_instructions(skill_def: SkillDefinition, tier: int) -> str:
+    """Render active-tier guidance with its non-authoritative safety boundary."""
+    instructions = skill_def.instructions_for_tier(tier)
+    if not instructions:
+        return ""
+    return SKILL_INSTRUCTIONS_BLOCK.format(tier=tier, instructions=instructions)
+
+
+def _with_skill_instructions(
+    prompt: str, skill_def: SkillDefinition | None, tier: int | None
+) -> str:
+    if skill_def is None or tier is None:
+        return prompt
+    block = _format_skill_instructions(skill_def, tier)
+    return f"{prompt}\n\n{block}" if block else prompt
+
+
 # ---------------------------------------------------------------------------
 # recall (Sprint 45)
 # ---------------------------------------------------------------------------
@@ -223,7 +252,11 @@ Based on this description, provide a structured summary of:
 Be concise and actionable.  Focus on facts, not speculation."""
 
 
-def _build_observe(llm: LLM):
+def _build_observe(
+    llm: LLM,
+    skill_def: SkillDefinition | None = None,
+    tier: int | None = None,
+):
     """Return an observe node function closed over the LLM instance."""
 
     def observe(state: IncidentState) -> dict:
@@ -246,7 +279,7 @@ def _build_observe(llm: LLM):
             )
         else:
             prompt = OBSERVE_PROMPT.format(incident_description=description)
-        observations = llm.invoke(prompt)
+        observations = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         return {
             "observations": observations,
             "status": "active",
@@ -270,14 +303,18 @@ def observe(state: IncidentState) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _build_diagnose(llm: LLM):
+def _build_diagnose(
+    llm: LLM,
+    skill_def: SkillDefinition | None = None,
+    tier: int | None = None,
+):
     """Return a diagnose node function closed over the LLM instance."""
 
     def diagnose(state: IncidentState) -> dict:
         """Analyse observations and produce a diagnosis."""
         observations = state.get("observations", "")
         prompt = DIAGNOSE_PROMPT.format(observations=observations)
-        diagnosis = llm.invoke(prompt)
+        diagnosis = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         return {
             "diagnosis": diagnosis,
         }
@@ -337,7 +374,7 @@ def _build_plan(
             operator_guidance=_format_operator_guidance(state),
             tier=tier,
         )
-        raw = llm.invoke(prompt)
+        raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
 
         # Parse the LLM response as JSON — fall back to empty plan on failure
         try:
@@ -389,7 +426,7 @@ def _build_plan_with_tool_names(
             operator_guidance=_format_operator_guidance(state),
             tier=tier,
         )
-        raw = llm.invoke(prompt)
+        raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
 
         try:
             actions = json.loads(raw)
@@ -686,7 +723,11 @@ def execute(state: IncidentState) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _build_verify(llm: LLM):
+def _build_verify(
+    llm: LLM,
+    skill_def: SkillDefinition | None = None,
+    tier: int | None = None,
+):
     """Return a verify node function closed over the LLM instance."""
 
     def verify(state: IncidentState) -> dict:
@@ -706,7 +747,7 @@ def _build_verify(llm: LLM):
             tool_call_count=len(tool_calls),
             tool_call_results=results,
         )
-        verification = llm.invoke(prompt)
+        verification = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         return {
             "verification": verification,
         }
@@ -727,7 +768,11 @@ def verify(state: IncidentState) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _build_summarize(llm: LLM):
+def _build_summarize(
+    llm: LLM,
+    skill_def: SkillDefinition | None = None,
+    tier: int | None = None,
+):
     """Return a summarize node function closed over the LLM instance."""
 
     def summarize(state: IncidentState) -> dict:
@@ -739,7 +784,7 @@ def _build_summarize(llm: LLM):
             tool_call_count=len(state.get("tool_calls", [])),
             blocked_count=len(state.get("blocked_actions", [])),
         )
-        summary = llm.invoke(prompt)
+        summary = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         status = state.get("status")
         return {
             "summary": summary,

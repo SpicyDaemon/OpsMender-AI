@@ -448,7 +448,57 @@ async def test_noninteractive_platform_cannot_enter_native_action_path(factory):
             db, TEST_ORG_ID, connector.id, "telegram-action-404"
         )
         assert invocation is None
-        audits = await BotActionAuditRepo.list_by_connector(
-            db, TEST_ORG_ID, connector.id
+        # Refused before admission, so no invocation row exists — but the
+        # refusal itself must still be auditable. A signature-verified callback
+        # arriving on a platform that cannot host verified actions is exactly
+        # the case an operator needs to see.
+        audits = list(
+            await BotActionAuditRepo.list_by_connector(db, TEST_ORG_ID, connector.id)
         )
-        assert list(audits) == []
+        assert [entry.status for entry in audits] == ["native_action_refused"]
+        assert audits[0].detail == "unsupported_callback_platform"
+        assert audits[0].incident_id == incident.id
+        assert audits[0].external_user_id == "TG-missing"
+        assert audits[0].idempotency_key == "telegram-action-404"
+
+
+@pytest.mark.asyncio
+async def test_disabled_connector_refusal_is_audited(factory):
+    """Every pre-admission guard audits, not just the platform check."""
+    async with factory() as db:
+        connector = await BotConnectorRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="slack-disabled",
+            platform="slack",
+            credentials={"signing_secret": "secret"},
+            allowed_capabilities=["notifications"],
+            status="healthy",
+            is_enabled=False,
+        )
+        connector.native_actions_enabled = True
+        connector.callback_status = "verified"
+        incident = await IncidentRepo.create(
+            db,
+            TEST_ORG_ID,
+            title="Disabled connector callback",
+            description="must be refused and audited",
+            severity="high",
+        )
+        request = VerifiedNativeAction(
+            connector=connector,
+            claims=_claims(incident.id, action="acknowledge"),
+            external_actor=ExternalActorIdentity(platform_user_id="U-disabled"),
+            idempotency_key="slack-disabled-1",
+            callback_received_at=datetime.now(timezone.utc),
+            chat_id="C-1",
+        )
+
+        with pytest.raises(IncidentActionError, match="connector_disabled"):
+            await execute_verified_native_action(db, request=request)
+
+        audits = list(
+            await BotActionAuditRepo.list_by_connector(db, TEST_ORG_ID, connector.id)
+        )
+        assert [entry.status for entry in audits] == ["native_action_refused"]
+        assert audits[0].detail == "connector_disabled"

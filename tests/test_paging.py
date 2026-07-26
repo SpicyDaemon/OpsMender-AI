@@ -920,6 +920,21 @@ class TestPagingAPI:
         assert _skill.operations == []
         assert _skill.default_tier == 2
 
+        # A service that declares MCP servers which no longer resolve (deleted
+        # or deactivated) has no MCP tools either, so it must not inherit an
+        # unrelated global/example skill's operations or default tier.
+        selected_stale, _skill, allowed_stale = await _resolve_mcp_context(
+            app.state.session_factory,
+            TEST_ORG_ID,
+            _Pool(),
+            app.state.config,
+            mcp_server_ids=[uuid.uuid4()],
+        )
+        assert selected_stale is None
+        assert allowed_stale == []
+        assert _skill.operations == []
+        assert _skill.default_tier == 2
+
         no_service_ids = await _allowed_mcp_ids_for_incident(
             app.state.session_factory,
             TEST_ORG_ID,

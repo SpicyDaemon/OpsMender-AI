@@ -422,20 +422,45 @@ async def execute_verified_native_action(
     external_user_id = (request.external_actor.platform_user_id or "").strip()
     idempotency_key = request.idempotency_key.strip()
 
+    async def _refuse(code: str) -> None:
+        """Audit a pre-admission refusal, then raise it.
+
+        These guards run before an invocation row exists, so this audit entry is
+        the only record that a signature-verified callback was turned away here.
+        A forged or misconfigured callback must not vanish silently — a channel
+        on a platform that cannot host verified actions is exactly the case
+        worth seeing in the audit trail. Recorded under the connector's own org
+        so an org-mismatched claim cannot write into the claimed org.
+        """
+        await BotActionAuditRepo.create(
+            db,
+            connector.org_id,
+            connector_id=connector.id,
+            platform=connector.platform,
+            chat_id=request.chat_id,
+            command=claims.action,
+            status="native_action_refused",
+            detail=code,
+            incident_id=claims.incident_id,
+            external_user_id=external_user_id or None,
+            idempotency_key=idempotency_key or None,
+        )
+        raise IncidentActionError(code)
+
     if connector.org_id != claims.org_id:
-        raise IncidentActionError("connector_org_mismatch")
+        await _refuse("connector_org_mismatch")
     if not supports_interactive_actions(connector.platform):
-        raise IncidentActionError("unsupported_callback_platform")
+        await _refuse("unsupported_callback_platform")
     if not connector.is_enabled:
-        raise IncidentActionError("connector_disabled")
+        await _refuse("connector_disabled")
     if not connector.native_actions_enabled:
-        raise IncidentActionError("native_actions_disabled")
+        await _refuse("native_actions_disabled")
     if connector.callback_status != "verified":
-        raise IncidentActionError("callback_not_verified")
+        await _refuse("callback_not_verified")
     if not external_user_id:
-        raise IncidentActionError("external_user_required")
+        await _refuse("external_user_required")
     if not idempotency_key:
-        raise IncidentActionError("idempotency_key_required")
+        await _refuse("idempotency_key_required")
 
     invocation, reserved = await NativeActionInvocationRepo.reserve(
         db,

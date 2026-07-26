@@ -427,10 +427,14 @@ async def _resolve_mcp_context(
 
     selected_server = server_by_name[allowed_names[0]] if allowed_names else None
 
-    # An explicit empty service allowlist is different from having no service
-    # context. It must not borrow a global/example skill: connector tools bring
-    # their own capability-derived policy, and unknown operations remain denied.
-    if mcp_server_ids == []:
+    # A service-scoped allowlist that yields no usable server is different from
+    # having no service context at all. It must not borrow a global/example
+    # skill: connector tools bring their own capability-derived policy, and
+    # unknown operations remain denied. This covers both an explicitly empty
+    # allowlist and one whose servers are all inactive or deleted — in the
+    # latter case the session has no MCP tools either, so inheriting an
+    # unrelated skill's default tier and operations would be equally wrong.
+    if mcp_server_ids is not None and not allowed_names:
         return (
             selected_server,
             SkillDefinition(
@@ -750,7 +754,11 @@ async def _run_session_workflow_inner(
         )
         skill_def = merge_integration_skill(skill_def, integration_runtime.descriptors)
         audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
-        if mcp_server_ids == [] and not integration_runtime.descriptors:
+        if (
+            mcp_server_ids is not None
+            and not allowed_mcp_server_names
+            and not integration_runtime.descriptors
+        ):
             status_message = await _record_advisory_only_status(
                 factory, org_id, session_id
             )

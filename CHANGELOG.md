@@ -34,6 +34,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configuration, and the Notification Channels UI now use the shared platform
   capability model instead of repeating a Slack/Teams allowlist. Startup fails
   if an interactive platform lacks a registered verifier or mounted route.
+- **A service whose MCP servers no longer resolve is treated as MCP-less.**
+  Previously only an explicitly empty allowlist skipped the global/example
+  skill fallback; a service pointing at deleted or deactivated servers still
+  inherited an unrelated skill's operations and default tier despite having no
+  MCP tools. Both cases now start from an empty, Tier 2 policy and rely on
+  their integration tools' own capability-derived classification.
+
+### Security
+
+- **Pre-admission native-action refusals are audited.** Guard failures in
+  `execute_verified_native_action` — org mismatch, non-interactive platform,
+  disabled connector, disabled or unverified callbacks, missing actor or
+  idempotency key — are recorded as `native_action_refused` audit entries with
+  the refusal reason. These refusals happen before an invocation row exists, so
+  they previously left no trace at all; a signature-verified callback arriving
+  on a channel that cannot host verified actions is now visible to operators.
 
 ## [1.0.0] - 2026-07-11
 

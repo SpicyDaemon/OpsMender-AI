@@ -68,7 +68,9 @@ describe("v1 paging IA", () => {
       "Sessions for this service can use these models.",
     );
     expect(pagingShellSource).toContain("Strict allowlist");
-    expect(pagingShellSource).toContain("no MCP access");
+    expect(pagingShellSource).toContain("native integrations cover the");
+    expect(pagingShellSource).toContain("advisory-only");
+    expect(pagingShellSource).toContain("Allowed integrations");
     expect(pagingShellSource).not.toContain("Incident auto-start policy");
     expect(pagingShellSource).toContain("service webhook");
     expect(pagingShellSource).not.toContain(["Source", "account"].join(" "));

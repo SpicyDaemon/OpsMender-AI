@@ -21,6 +21,7 @@ function checklist(
   return {
     model_configured: false,
     mcp_server_added: false,
+    integration_connected: false,
     skill_defined: false,
     ingest_token_created: false,
     paging_service_added: false,
@@ -91,6 +92,19 @@ describe("SetupChecklist", () => {
 
     await waitFor(() => expect(apiMocks.getSetupChecklist).toHaveBeenCalled());
     expect(screen.queryByRole("heading", { name: /Set up OpsMender/ })).toBeNull();
+  });
+
+  it("treats an active integration as infrastructure coverage", async () => {
+    apiMocks.getSetupChecklist.mockResolvedValue(
+      checklist({ integration_connected: true }),
+    );
+
+    render(<SetupChecklist />);
+
+    expect(await screen.findByText("1 of 5 steps complete")).toBeTruthy();
+    expect(screen.getByText("Connect your infrastructure").className).toContain(
+      "line-through",
+    );
   });
 
   it("refetches when the tab regains focus", async () => {

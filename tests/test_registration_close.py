@@ -78,7 +78,7 @@ async def test_registration_still_open_in_dev_after_first_user(client):
 
 
 async def test_registration_closes_in_production_after_first_user(client, monkeypatch):
-    monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "production")
+    monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "production")
 
     # Empty system in prod: first user still allowed (fresh-install path).
     resp = await client.get("/auth/registration-open")
@@ -96,7 +96,7 @@ async def test_registration_open_endpoint_does_not_require_auth(client, monkeypa
     """The login page needs to call this anonymously to decide whether to
     render the register link."""
 
-    monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "production")
+    monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "production")
     resp = await client.get("/auth/registration-open")
     assert resp.status_code == 200
     # No Authorization header was sent and we still got a valid body.

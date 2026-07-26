@@ -74,7 +74,7 @@ def test_smtp_send_swallows_smtp_exception():
 
 async def test_bootstrap_noop_when_env_unset_in_production(factory, monkeypatch):
     # Production mode + no bootstrap env vars → no default admin is seeded.
-    monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "production")
+    monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "production")
     cfg = PeopleConfig()  # bootstrap_admin_email = None
     await bootstrap_admin(factory, cfg)
     async with factory() as db:
@@ -84,7 +84,7 @@ async def test_bootstrap_noop_when_env_unset_in_production(factory, monkeypatch)
 async def test_bootstrap_dev_default_admin_when_env_unset(factory, monkeypatch):
     # Development mode + no bootstrap env vars → seed admin / admin123 so the
     # documented `docker compose up` dev flow logs in out of the box.
-    monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "development")
+    monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "development")
     cfg = PeopleConfig()  # bootstrap not configured
     await bootstrap_admin(factory, cfg)
     async with factory() as db:

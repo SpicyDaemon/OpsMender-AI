@@ -860,6 +860,7 @@ class SetupChecklistResponse(BaseModel):
 
     model_configured: bool
     mcp_server_added: bool
+    integration_connected: bool
     skill_defined: bool
     ingest_token_created: bool
     paging_service_added: bool

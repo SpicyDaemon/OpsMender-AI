@@ -28,6 +28,7 @@ from backend.tiers.enforcement import normalize_tier
 from backend.db.models import User
 from backend.db.repos import (
     IngestTokenRepo,
+    IntegrationConnectorRepo,
     MCPServerRepo,
     ModelConfigRepo,
     OrganizationRepo,
@@ -155,12 +156,16 @@ async def get_setup_checklist(
 
     models = await ModelConfigRepo.list_all(db, org_id)
     mcp_servers = await MCPServerRepo.list_all(db, org_id)
+    integrations = await IntegrationConnectorRepo.list_for_org(
+        db, org_id, enabled_only=True
+    )
     skills = await SkillRepo.list_all(db, org_id)
     ingest_tokens = await IngestTokenRepo.list_all(db, org_id)
     services = await ServiceRepo.list_all(db, org_id)
 
     model_configured = len(models) > 0
     mcp_server_added = len(mcp_servers) > 0
+    integration_connected = len(integrations) > 0
     skill_defined = len(skills) > 0
     ingest_token_created = len(ingest_tokens) > 0
     paging_service_added = len(services) > 0
@@ -168,7 +173,7 @@ async def get_setup_checklist(
     all_complete = all(
         [
             model_configured,
-            mcp_server_added,
+            mcp_server_added or integration_connected,
             skill_defined,
             ingest_token_created,
             paging_service_added,
@@ -178,6 +183,7 @@ async def get_setup_checklist(
     return SetupChecklistResponse(
         model_configured=model_configured,
         mcp_server_added=mcp_server_added,
+        integration_connected=integration_connected,
         skill_defined=skill_defined,
         ingest_token_created=ingest_token_created,
         paging_service_added=paging_service_added,

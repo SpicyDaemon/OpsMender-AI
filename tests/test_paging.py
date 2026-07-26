@@ -917,6 +917,8 @@ class TestPagingAPI:
         )
         assert selected_empty is None
         assert allowed_empty == []
+        assert _skill.operations == []
+        assert _skill.default_tier == 2
 
         no_service_ids = await _allowed_mcp_ids_for_incident(
             app.state.session_factory,
@@ -930,8 +932,10 @@ class TestPagingAPI:
             app.state.config,
             mcp_server_ids=no_service_ids,
         )
+        assert no_service_ids is None
         assert selected_no_service is None
         assert allowed_no_service == []
+        assert _skill.operations
 
     async def test_service_models_validate_order_and_limits(
         self, client: AsyncClient, app, auth_headers

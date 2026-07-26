@@ -4605,6 +4605,7 @@ class TestSetupChecklist:
         assert data == {
             "model_configured": False,
             "mcp_server_added": False,
+            "integration_connected": False,
             "skill_defined": False,
             "ingest_token_created": False,
             "paging_service_added": False,
@@ -4631,6 +4632,30 @@ class TestSetupChecklist:
         data = resp.json()
         assert data["mcp_server_added"] is True
         assert data["all_complete"] is False
+
+    async def test_active_integration_satisfies_tool_reach(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        from backend.db.repos import IntegrationConnectorRepo
+
+        async with app.state.session_factory() as db:
+            await IntegrationConnectorRepo.create(
+                db,
+                TEST_ORG_ID,
+                kind="github",
+                name="Native tool source",
+                base_url="https://example.test",
+                auth_type="none",
+                auth=None,
+                config={},
+                is_enabled=True,
+            )
+            await db.commit()
+        resp = await client.get("/config/setup-checklist", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["mcp_server_added"] is False
+        assert data["integration_connected"] is True
 
     async def test_viewer_can_read(self, client: AsyncClient, viewer_headers):
         resp = await client.get("/config/setup-checklist", headers=viewer_headers)

@@ -149,6 +149,34 @@ async def check_mcp_servers(factory: async_sessionmaker | None) -> list[CheckRes
         return [CheckResult("MCP servers", "fail", f"Pool query failed: {exc}")]
 
     if not servers:
+        integrations = []
+        if factory is not None:
+            try:
+                from backend.db.models import IntegrationConnector
+
+                async with factory() as db:
+                    integrations = list(
+                        (
+                            await db.execute(
+                                select(IntegrationConnector).where(
+                                    IntegrationConnector.is_enabled.is_(True)
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+            except Exception:  # noqa: BLE001
+                integrations = []
+        if integrations:
+            return [
+                CheckResult(
+                    "Infrastructure tools",
+                    "ok",
+                    f"No active MCP servers configured; {len(integrations)} active "
+                    "integration connector(s) provide tool reach.",
+                )
+            ]
         return [
             CheckResult(
                 "MCP servers",

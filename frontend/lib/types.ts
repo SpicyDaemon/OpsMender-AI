@@ -584,6 +584,7 @@ export interface ConfigUpdate {
 export interface SetupChecklistResponse {
   model_configured: boolean;
   mcp_server_added: boolean;
+  integration_connected: boolean;
   skill_defined: boolean;
   ingest_token_created: boolean;
   paging_service_added: boolean;

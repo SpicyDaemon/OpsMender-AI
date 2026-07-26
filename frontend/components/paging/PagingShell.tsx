@@ -1128,6 +1128,30 @@ function ServicesPanel({
       sortable: true,
     },
     {
+      id: "toolset",
+      label: "Toolset",
+      accessor: (r) =>
+        r.service.mcp_server_ids.length > 0
+          ? "MCP"
+          : r.service.allowed_integration_connector_ids.length > 0
+            ? "Integrations"
+            : "Advisory only",
+      cell: (r) => {
+        if (r.service.mcp_server_ids.length > 0) {
+          return <span className="text-xs text-fg-secondary">MCP covered</span>;
+        }
+        if (r.service.allowed_integration_connector_ids.length > 0) {
+          return (
+            <span className="text-xs text-fg-secondary">
+              Integrations are covering this service&apos;s toolset
+            </span>
+          );
+        }
+        return <span className="text-xs text-fg-muted">Advisory only</span>;
+      },
+      sortable: true,
+    },
+    {
       id: "priority",
       label: "Priority",
       accessor: (r) => r.service.priority,
@@ -1475,7 +1499,8 @@ function ServicesPanel({
             />
             <p className="mt-1 text-xs text-fg-muted">
               Strict allowlist — sessions for this service can only use these
-              MCP servers. Leave empty to give this service&apos;s sessions no MCP access.
+              MCP servers. Leave empty when native integrations cover the
+              toolset, or to run advisory-only.
             </p>
           </div>
           <div>

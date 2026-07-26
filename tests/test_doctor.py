@@ -42,23 +42,23 @@ def _config(
 
 class TestJwtSecretCheck:
     def test_strong_secret_passes(self, monkeypatch):
-        monkeypatch.delenv("OPSMENDER_DEPLOYMENT_MODE", raising=False)
+        monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "production")
         r = doctor.check_jwt_secret(_config(secret="x" * 64))
         assert r.status == "ok"
 
     def test_placeholder_in_prod_fails(self, monkeypatch):
-        monkeypatch.delenv("OPSMENDER_DEPLOYMENT_MODE", raising=False)
+        monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "production")
         r = doctor.check_jwt_secret(_config(secret="change-me-in-production"))
         assert r.status == "fail"
         assert "placeholder" in r.detail
 
     def test_placeholder_in_dev_warns(self, monkeypatch):
-        monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "development")
+        monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "development")
         r = doctor.check_jwt_secret(_config(secret="change-me-in-production"))
         assert r.status == "warn"
 
     def test_short_secret_in_prod_warns(self, monkeypatch):
-        monkeypatch.delenv("OPSMENDER_DEPLOYMENT_MODE", raising=False)
+        monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "production")
         r = doctor.check_jwt_secret(_config(secret="abc"))
         assert r.status == "warn"
 
@@ -147,6 +147,40 @@ class TestDatabaseCheck:
     async def test_reachable_factory_passes(self, factory):
         r = await doctor.check_database(factory)
         assert r.status == "ok"
+
+
+class TestMCPServerCheck:
+    async def test_active_integration_turns_missing_mcp_into_information(
+        self, factory, monkeypatch
+    ):
+        import uuid
+
+        from backend.db.models import Organization
+        from backend.db.repos import IntegrationConnectorRepo
+
+        org_id = uuid.uuid4()
+        monkeypatch.setenv("OPSMENDER_SECRET_KEY", "doctor-test-secret")
+        async with factory() as db:
+            db.add(Organization(id=org_id, name="Doctor", slug="doctor"))
+            await db.flush()
+            await IntegrationConnectorRepo.create(
+                db,
+                org_id,
+                kind="github",
+                name="Native tools",
+                base_url="https://example.test",
+                auth_type="none",
+                auth=None,
+                config={},
+                is_enabled=True,
+            )
+            await db.commit()
+
+        results = await doctor.check_mcp_servers(factory)
+        assert len(results) == 1
+        assert results[0].status == "ok"
+        assert results[0].name == "Infrastructure tools"
+        assert "1 active integration connector" in results[0].detail
 
 
 class TestPagingChainAge:

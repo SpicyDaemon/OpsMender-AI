@@ -11,7 +11,11 @@ export default {
     await h.step("open roster calendar", async () => {
       await h.goto("/dashboard/paging/rosters");
       const calBtn = h.page.getByRole("button", { name: /calendar/i }).first();
-      if (!(await calBtn.count())) {
+      const appeared = await calBtn
+        .waitFor({ state: "attached", timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!appeared) {
         throw Harness.skip("no roster with a Calendar action present");
       }
       // Reveal the hover-only row action, then click (force as a fallback).

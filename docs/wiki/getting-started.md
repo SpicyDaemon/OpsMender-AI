@@ -54,8 +54,16 @@ OpsMender's primary superpower is its AI-assisted incident response sessions.
 4. The AI will introduce itself and may automatically begin investigating based on the incident description. You can guide the AI by sending messages in the chat:
    - *"Check the recent logs for the API Gateway."*
    - *"Do we have any active maintenance windows?"*
-5. The AI will use its connected MCP (Model Context Protocol) tools to query metrics, logs, and perform actions.
+5. The AI uses the tools assigned to the incident's Service. Those tools may
+   come from MCP (Model Context Protocol) servers, native integration
+   connectors, or both. If the Service has neither source, the session still
+   starts in advisory-only mode and explains that no executable tools are
+   available.
 
 Congratulations! You've successfully deployed OpsMender and started your first AI-assisted incident response session.
 
-Next, check out the [Administrator Guide](admin-guide.md) to configure LLM providers and set up integrations.
+Next, check out the [Administrator Guide](admin-guide.md) to configure LLM
+providers and connect infrastructure through
+[MCP servers and Skills](mcp-skills.md), [native integrations](integrations-guide.md),
+or both. The setup checklist marks infrastructure complete when either source
+has an active connection.

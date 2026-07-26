@@ -27,6 +27,25 @@ infrastructure connectors at **Admin → Integrations**.
 
 The **Custom HTTP** kind is the reference adapter in the foundation.
 
+### Using integrations without an MCP server
+
+MCP is optional when a Service's active native integration connectors already
+provide the tools the incident needs. A Service with an empty MCP allowlist can
+start an AI session and use those integration tools directly.
+
+The safety model does not change:
+
+- every connector capability has a conservative built-in tier policy;
+- a Skill bound to that connector can make the policy more restrictive or add
+  workflow instructions, but cannot widen it past the capability baseline;
+- mutating capabilities are never autonomous merely because authored Markdown
+  says they are;
+- malformed or unclassified policies fail closed, and every decision is
+  audited.
+
+In **MCP Skill Studio**, choose the connector under **Integration connectors**
+to discover its capabilities, generate a draft, or bind an existing Skill.
+
 ### GitHub
 
 - Hosted base URL: leave blank (`https://api.github.com`).
@@ -457,7 +476,14 @@ https://<your-opsmender-url>/bot-connectors/<connector-id>/discord/webhook
 
 OpsMender verifies every inbound interaction using Ed25519 signatures (`X-Signature-Ed25519`) against your `public_key`.
 
-Identity mapping (RBAC): Use the Discord User ID (e.g., `123456789012345678`) as the platform user ID.
+Enable **verified Discord actions** on the Notification Channel to render
+Acknowledge, Resolve, Escalate, and Start AI Session buttons. OpsMender returns
+an immediate ephemeral acknowledgement, then completes the signed interaction.
+Repeated delivery of the same interaction ID is deduplicated.
+
+Identity mapping (RBAC): Use the Discord User ID (e.g.,
+`123456789012345678`) as the platform user ID and link it to an active
+OpsMender Admin or Operator. Unlinked users and Viewer-role users are refused.
 
 ### Google Chat
 
@@ -727,4 +753,6 @@ If you are deploying OpsMender in a production environment, use the provided Doc
 
 - The repository includes a `docker-compose.yml` that orchestrates the backend (`fastapi`), frontend (`nextjs`), and the PostgreSQL database.
 - **Environment Variables:** Ensure you map `DATABASE_URL` and your encryption keys (`OPSMENDER_SECRET_KEY`) securely.
-- **Networking:** The MCP servers can be run as sidecar containers or standalone services, provided the OpsMender backend container has network access to them.
+- **Networking:** MCP servers can run as sidecar containers or standalone
+  services, provided the OpsMender backend can reach them. They are optional
+  for Services whose native integration connectors cover the required toolset.

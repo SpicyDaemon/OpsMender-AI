@@ -41,7 +41,7 @@ cd frontend && npm run build
 <!-- Confirm you haven't crossed any of these. If you have, please flag it explicitly in the summary. -->
 
 - [ ] Did not weaken or bypass the programmatic tier gate
-- [ ] Did not add a provider-specific native integration for infrastructure access (MCP-only)
+- [ ] Infrastructure access uses an MCP server or the tier-governed integration connector runtime; neither bypasses the programmatic tier gate
 - [ ] Did not remove or reduce audit logging for a tool call, approval, or state transition
 - [ ] Did not introduce autonomous parallel execution branches in the workflow
 

@@ -39,27 +39,33 @@ incident session. It is **separate** from:
 
 ---
 
-## Assignment: Unassigned · Global fallback · Specific MCP server
+## Assignment: Unassigned · Global fallback · Specific tool source
 
 Every MCP Skill has an **assignment**:
 
 - **Specific MCP server** — applies to that server. **Takes precedence** over the
   global fallback.
+- **Specific integration connector** — applies to that connector's native
+  capabilities. The authored policy is intersected with the connector's
+  built-in capability policy; the more restrictive decision wins.
 - **Global fallback** — applies to every MCP server that has **no** specific
-  skill.
+  skill. It does not widen native connector capability policy.
 - **Unassigned** — a **saved draft**. Editable and downloadable, but **never**
   injected into AI sessions and **not** used as the global fallback. Promote it
-  later by changing its assignment to Global or a specific server.
+  later by changing its assignment to Global or a specific tool source.
 
-Resolution order for a session: *server-specific → global fallback → none*.
-Unassigned skills are skipped entirely.
+Resolution order for MCP tools is *server-specific → global fallback → none*.
+Integration tools use their connector-bound Skill plus the immutable capability
+baseline. Unassigned skills are skipped entirely.
 
 ---
 
 ## New from Template (MCP Skill Studio)
 
-**New from Template** creates a structured 3-tier skill policy you can edit,
-save, and download. It produces both:
+**New skill** starts from a data-driven template library: Blank, Kubernetes,
+Cloud infrastructure, CI/CD & source control, or Ticketing & communications.
+Each creates a structured 3-tier policy you can edit, save, and download. It
+produces both:
 
 - **Structured Markdown** with YAML front-matter `operations` (so the backend
   tier gate can classify and enforce tools), and
@@ -329,13 +335,14 @@ and **Environment Scans (the auditor) run read-only** — an analyzer may invoke
 only tools the applicable skill classifies `safe`, never writes/remediation,
 generic command tools, or deny-listed tools.
 
-## Generate from MCP (MCP Skill Generator)
+## Generate from tools (Skill Studio)
 
-**Generate from MCP** (Skill Studio, v1.1 Phase F) builds a skill draft from a
-real MCP server's tools:
+**Generate from tools** builds a skill draft from a real MCP server or native
+integration connector:
 
-1. **Pick a server** and click **Discover tools** — OpsMender connects to the
-   saved MCP server and lists the tools it exposes.
+1. **Pick a tool source** and click **Discover tools** — OpsMender connects to
+   the saved MCP server or loads the integration connector's capability
+   descriptors.
 2. **Review the suggestions.** Each tool gets a heuristic starting
    classification from its name: read verbs (`get`/`list`/`describe`…) → `safe`;
    destructive verbs (`delete`/`destroy`/`drop`…) → `destructive`; reversible
@@ -361,6 +368,12 @@ real MCP server's tools:
 6. **Generate draft** — OpsMender deterministically builds a structured 3-tier
    skill (YAML `operations` front-matter + prose) and opens it in the editor.
 7. **Review, edit, then save** (Unassigned by default) or **download**.
+
+The editor validates through the same backend parser used at runtime. Errors
+include line numbers where possible and block save. The operation table shows
+the parsed policy, bound-source coverage, and the invariant that unclassified
+tools are denied at every tier. Generated changes include a before/after policy
+diff; risk reclassification or permission widening is called out for review.
 
 > **Tier 0 autonomous actions require explicit safety metadata** —
 > reversibility and a compensating inverse / rollback. Skill Studio helps you

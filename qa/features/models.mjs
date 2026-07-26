@@ -43,15 +43,22 @@ export default {
         throw Harness.skip("QA_TEST_MODEL_CONNECTION disabled");
       }
       const testBtn = h.page.getByRole("button", { name: /^test$/i }).first();
-      if (!(await testBtn.count())) {
+      const appeared = await testBtn
+        .waitFor({ state: "visible", timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!appeared) {
         throw Harness.skip("no saved model config to test");
       }
       await testBtn.click();
       // A success or failure notice both confirm the round-trip ran; a hard
       // failure to even respond is what we care about here.
-      await h.expectText(/connection ok|connection test|ok\.|failed|error/i, {
+      await h.expectText(
+        /connection ok|connection test|ok\.|success|responded|failed|error/i,
+        {
         timeout: 30000,
-      });
+        },
+      );
     });
   },
 };

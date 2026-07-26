@@ -13,12 +13,13 @@ export default {
       let signOut = h.page.locator('button[title="Sign out"]').first();
       if (!(await signOut.count())) {
         // Fallback: open the top-bar user menu (the user chip), then the item.
-        const chip = h.page.locator("header button, [data-testid='user-menu']").first();
-        if (await chip.count()) await chip.click().catch(() => {});
+        const chip = h.page
+          .getByRole("button", { name: /account menu/i })
+          .first();
+        await chip.waitFor({ state: "visible", timeout: config.defaultTimeout });
+        await chip.click();
         signOut = h.page.getByRole("button", { name: /sign out/i }).first();
-        if (!(await signOut.count())) {
-          signOut = h.page.getByText(/sign out/i).first();
-        }
+        await signOut.waitFor({ state: "visible", timeout: config.defaultTimeout });
       }
       await Promise.all([
         h.page

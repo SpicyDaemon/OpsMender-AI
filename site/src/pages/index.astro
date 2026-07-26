@@ -117,12 +117,15 @@ const v1Features = [
   'Postmortem draft, save, download',
   'Admin / Operator / Viewer RBAC',
   'Self-hosted Docker deployment',
+  'MCP-optional sessions with tier-governed native integration tools',
+  'Expanded Skill Studio — source discovery, templates, validation, and policy diffs',
+  'Verified Discord incident actions with Ed25519 callbacks, RBAC, deduplication, and audit',
 ];
 
-const v11Features = [
-  'MCP-optional operation — run on native integration connectors alone when they already cover the needed tools; no MCP server required',
-  'MCP Skill Studio improvements — easier authoring, better templates',
-  'Richer notification integrations — interactive actions with verified callbacks',
+const nextFeatures = [
+  'Adaptive login driven by GET /tenant/resolve for enforced SSO and SAML',
+  'Migrate python-jose to PyJWT and remove the legacy ecdsa dependency',
+  'Decompose complexity hotspots in incident timelines, bulk actions, and chat dispatch',
 ];
 ---
 
@@ -200,7 +203,7 @@ const v11Features = [
 
       <!-- Stats strip -->
       <div class="mt-16 flex flex-wrap items-center justify-center gap-x-8 gap-y-4 border-t border-white/5 pt-10 text-sm text-ops-muted">
-        <span class="flex items-center gap-1.5"><span class="font-semibold text-slate-300">v1.0</span> generally available</span>
+        <span class="flex items-center gap-1.5"><span class="font-semibold text-slate-300">v1.1.0</span> release</span>
         <span class="h-3 w-px bg-ops-border hidden sm:block"></span>
         <span class="flex items-center gap-1.5"><span class="font-semibold text-slate-300">1 600+</span> tests</span>
         <span class="h-3 w-px bg-ops-border hidden sm:block"></span>
@@ -334,19 +337,20 @@ const v11Features = [
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div class="grid items-center gap-12 lg:grid-cols-2">
         <div>
-          <span class="mb-3 inline-block rounded-full border border-ops-border bg-ops-surface px-3 py-1 text-xs font-medium text-ops-cyan">MCP Skills</span>
-          <h2 class="mb-4 text-2xl font-bold text-slate-50 sm:text-3xl">Policy-driven tool control</h2>
+          <span class="mb-3 inline-block rounded-full border border-ops-border bg-ops-surface px-3 py-1 text-xs font-medium text-ops-cyan">Bring your own tools</span>
+          <h2 class="mb-4 text-2xl font-bold text-slate-50 sm:text-3xl">MCP or native integrations</h2>
           <p class="mb-6 text-ops-subtle leading-relaxed">
-            MCP Skills define how OpsMender uses tools exposed by MCP servers. Teams write structured YAML
-            policies that classify every tool call — the backend tier gate enforces the result.
+            Connect MCP servers, encrypted native integrations, or both. Skill Studio discovers either source,
+            validates structured policy, and keeps the backend tier gate authoritative.
           </p>
           <ul class="space-y-3">
             {[
-              ['Server-specific skills', 'Assign a dedicated skill to each MCP server. Server-specific skills take precedence over the global fallback.'],
-              ['Global fallback', 'One skill covers all servers that have no specific assignment. Conservative default-deny when no skill resolves.'],
+              ['MCP-optional services', 'When native integrations cover the toolset, sessions need no MCP server. With no tools, sessions stay explicitly advisory-only.'],
+              ['Source-bound skills', 'Assign policy to an MCP server or native integration connector. Connector policy can become stricter, never weaker than its capability baseline.'],
+              ['Starter templates', 'Begin with Kubernetes, cloud infrastructure, CI/CD, source control, ticketing, communications, or a blank policy.'],
+              ['Validation and policy diffs', 'Line-aware backend validation blocks malformed policy; operation diffs call out risk or permission widening.'],
               ['Unassigned drafts', 'Save and download work-in-progress skills without injecting them into live sessions.'],
-              ['Downloadable Markdown', 'Every skill exports as structured Markdown — version-control your policies like code.'],
-              ['Deny lists and allow_generic', 'deny: true always wins. opt scoped wrappers out of the generic-command guardrail with allow_generic: true.'],
+              ['Fail closed', 'Unclassified or malformed operations are denied. Deny lists, approvals, and the generic-command guardrail still win.'],
             ].map(([title, desc]) => (
               <li class="flex items-start gap-3">
                 <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ops-blue/15 text-ops-blue">
@@ -452,10 +456,10 @@ operations:
       </div>
 
       <div class="grid gap-6 sm:grid-cols-2">
-        <!-- v1 -->
+        <!-- Shipped -->
         <div class="rounded-xl border border-green-500/20 bg-green-500/5 p-6">
           <div class="mb-5 flex items-center gap-2.5">
-            <span class="rounded-full border border-green-500/30 bg-green-500/15 px-2.5 py-0.5 font-mono text-xs font-bold text-green-400">v1.0</span>
+            <span class="rounded-full border border-green-500/30 bg-green-500/15 px-2.5 py-0.5 font-mono text-xs font-bold text-green-400">v1.1.0</span>
             <span class="text-sm font-semibold text-slate-200">Generally available</span>
             <span class="ml-auto h-2 w-2 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]"></span>
           </div>
@@ -469,15 +473,15 @@ operations:
           </ul>
         </div>
 
-        <!-- v1.1 -->
+        <!-- Next -->
         <div class="rounded-xl border border-ops-blue/20 bg-ops-blue/5 p-6">
           <div class="mb-5 flex items-center gap-2.5">
-            <span class="rounded-full border border-ops-blue/30 bg-ops-blue/15 px-2.5 py-0.5 font-mono text-xs font-bold text-ops-blue">v1.1</span>
+            <span class="rounded-full border border-ops-blue/30 bg-ops-blue/15 px-2.5 py-0.5 font-mono text-xs font-bold text-ops-blue">Next</span>
             <span class="text-sm font-semibold text-slate-200">Coming next</span>
             <span class="ml-auto h-2 w-2 rounded-full bg-ops-blue/60 shadow-[0_0_6px_rgba(59,130,246,0.4)]"></span>
           </div>
           <ul class="space-y-3">
-            {v11Features.map((f) => (
+            {nextFeatures.map((f) => (
               <li class="flex items-start gap-2 text-sm text-ops-subtle">
                 <svg class="mt-0.5 h-4 w-4 shrink-0 text-ops-blue/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v4l3 3"/></svg>
                 {f}

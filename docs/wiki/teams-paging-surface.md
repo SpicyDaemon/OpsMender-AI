@@ -47,8 +47,9 @@ Action data shape (sent on the `Action.Submit`):
 ```
 
 The stable action strings are `opsmender:ack`, `opsmender:resolve`,
-`opsmender:escalate`, and `opsmender:start_ai_session`. Slack and Teams
-normalize them through the same callback executor.
+`opsmender:escalate`, and `opsmender:start_ai_session`. Slack, Teams, and
+Discord normalize them through the same callback executor after their
+platform-specific signature verification succeeds.
 
 ---
 

@@ -1034,13 +1034,18 @@ export interface WorkflowSettingsUpdate {
 // Skills
 // ---------------------------------------------------------------------------
 
-export type SkillAssignment = "unassigned" | "global" | "server";
+export type SkillAssignment =
+  | "unassigned"
+  | "global"
+  | "server"
+  | "integration";
 
 export interface SkillResponse {
   id: string;
   name: string;
   description: string | null;
   mcp_server_id: string | null;
+  integration_connector_id: string | null;
   assignment: SkillAssignment;
   content_md: string;
   focus_areas: string[];
@@ -1059,6 +1064,7 @@ export interface SkillCreate {
   content_md: string;
   description?: string | null;
   mcp_server_id?: string | null;
+  integration_connector_id?: string | null;
   assignment?: SkillAssignment;
 }
 
@@ -1067,18 +1073,29 @@ export interface SkillUpdate {
   content_md: string;
   description?: string | null;
   mcp_server_id?: string | null;
+  integration_connector_id?: string | null;
   assignment?: SkillAssignment;
 }
 
 export interface SkillTemplateResponse {
   name: string;
   content_md: string;
+  template: string;
+  templates: SkillTemplateOption[];
 }
 
 export interface SkillCloneRequest {
   name: string;
   mcp_server_id?: string | null;
+  integration_connector_id?: string | null;
   description?: string | null;
+  assignment?: SkillAssignment;
+}
+
+export interface SkillTemplateOption {
+  id: string;
+  label: string;
+  description: string;
 }
 
 export type SkillClassification = "safe" | "caution" | "destructive";
@@ -1094,8 +1111,10 @@ export interface SkillDiscoveredTool {
 }
 
 export interface SkillDiscoverResponse {
-  mcp_server_id: string;
-  mcp_server_name: string;
+  mcp_server_id?: string | null;
+  mcp_server_name?: string | null;
+  integration_connector_id?: string | null;
+  integration_connector_name?: string | null;
   tools: SkillDiscoveredTool[];
 }
 
@@ -1116,11 +1135,30 @@ export interface SkillGenerateRequest {
   tier0_instructions?: string;
   tier1_instructions?: string;
   tier2_instructions?: string;
+  integration_connector_id?: string | null;
 }
 
 export interface SkillGenerateResponse {
   name: string;
   content_md: string;
+}
+
+export interface SkillValidationIssue {
+  severity: "error" | "warning";
+  message: string;
+  line: number | null;
+}
+
+export interface SkillOperationSummary {
+  tool: string;
+  classification: SkillClassification;
+  tiers: Record<"T0" | "T1" | "T2", string>;
+}
+
+export interface SkillValidateResponse {
+  valid: boolean;
+  issues: SkillValidationIssue[];
+  operations: SkillOperationSummary[];
 }
 
 export interface SkillAISuggestRequest {

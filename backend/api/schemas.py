@@ -1027,7 +1027,7 @@ class MCPServerTestResponse(BaseModel):
     tool_names: list[str] = Field(default_factory=list)
 
 
-_ASSIGNMENT_PATTERN = "^(unassigned|global|server)$"
+_ASSIGNMENT_PATTERN = "^(unassigned|global|server|integration)$"
 
 
 class SkillResponse(BaseModel):
@@ -1035,6 +1035,7 @@ class SkillResponse(BaseModel):
     name: str
     description: Optional[str]
     mcp_server_id: Optional[uuid.UUID]
+    integration_connector_id: Optional[uuid.UUID]
     assignment: str = "global"
     content_md: str
     focus_areas: list[str] = Field(default_factory=list)
@@ -1055,6 +1056,7 @@ class SkillCreate(BaseModel):
     content_md: str = Field(..., min_length=1)
     description: Optional[str] = None
     mcp_server_id: Optional[uuid.UUID] = None
+    integration_connector_id: Optional[uuid.UUID] = None
     assignment: Optional[str] = Field(default=None, pattern=_ASSIGNMENT_PATTERN)
 
 
@@ -1063,14 +1065,22 @@ class SkillUpdate(BaseModel):
     content_md: str = Field(..., min_length=1)
     description: Optional[str] = None
     mcp_server_id: Optional[uuid.UUID] = None
+    integration_connector_id: Optional[uuid.UUID] = None
     assignment: Optional[str] = Field(default=None, pattern=_ASSIGNMENT_PATTERN)
 
 
 class SkillCloneRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     mcp_server_id: Optional[uuid.UUID] = None
+    integration_connector_id: Optional[uuid.UUID] = None
     description: Optional[str] = None
     assignment: Optional[str] = Field(default=None, pattern=_ASSIGNMENT_PATTERN)
+
+
+class SkillTemplateOption(BaseModel):
+    id: str
+    label: str
+    description: str
 
 
 class SkillTemplateResponse(BaseModel):
@@ -1078,12 +1088,15 @@ class SkillTemplateResponse(BaseModel):
 
     name: str
     content_md: str
+    template: str = "blank"
+    templates: list[SkillTemplateOption] = Field(default_factory=list)
 
 
 class SkillDiscoverRequest(BaseModel):
-    """Discover an MCP server's tools for the Skill Studio generator."""
+    """Discover an MCP server or integration connector tool source."""
 
-    mcp_server_id: uuid.UUID
+    mcp_server_id: Optional[uuid.UUID] = None
+    integration_connector_id: Optional[uuid.UUID] = None
 
 
 class SkillDiscoveredTool(BaseModel):
@@ -1099,8 +1112,10 @@ class SkillDiscoveredTool(BaseModel):
 
 
 class SkillDiscoverResponse(BaseModel):
-    mcp_server_id: uuid.UUID
-    mcp_server_name: str
+    mcp_server_id: Optional[uuid.UUID] = None
+    mcp_server_name: Optional[str] = None
+    integration_connector_id: Optional[uuid.UUID] = None
+    integration_connector_name: Optional[str] = None
     tools: list[SkillDiscoveredTool] = Field(default_factory=list)
 
 
@@ -1129,6 +1144,7 @@ class SkillGenerateRequest(BaseModel):
     tier0_instructions: str = ""
     tier1_instructions: str = ""
     tier2_instructions: str = ""
+    integration_connector_id: Optional[uuid.UUID] = None
 
 
 class SkillGenerateResponse(BaseModel):
@@ -1136,6 +1152,28 @@ class SkillGenerateResponse(BaseModel):
 
     name: str
     content_md: str
+
+
+class SkillValidateRequest(BaseModel):
+    content_md: str
+
+
+class SkillValidationIssue(BaseModel):
+    severity: str
+    message: str
+    line: Optional[int] = None
+
+
+class SkillOperationSummary(BaseModel):
+    tool: str
+    classification: str
+    tiers: dict[str, str] = Field(default_factory=dict)
+
+
+class SkillValidateResponse(BaseModel):
+    valid: bool
+    issues: list[SkillValidationIssue] = Field(default_factory=list)
+    operations: list[SkillOperationSummary] = Field(default_factory=list)
 
 
 class SkillAISuggestToolInput(BaseModel):

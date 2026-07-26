@@ -17,7 +17,11 @@ from backend.integrations.tools import (
     IntegrationToolRuntime,
     merge_integration_skill,
 )
-from backend.skills.parser import SkillDefinition
+from backend.skills.parser import (
+    OperationClassification,
+    OperationTierPolicy,
+    SkillDefinition,
+)
 from backend.tiers.enforcement import check
 
 
@@ -121,6 +125,42 @@ def test_zero_mcp_mutating_integration_policy_is_explicit_and_fail_closed():
     tier_two = check(descriptor.name, 2, skill)
     assert tier_two.permitted is False
     assert tier_two.decision == "advisory"
+
+
+def test_authored_connector_policy_cannot_widen_capability_baseline():
+    connector_id = uuid.uuid4()
+    tool_name = f"integration__github__create_issue__{connector_id.hex}"
+    authored = OperationClassification(
+        tool=tool_name,
+        classification="safe",
+        reversible=True,
+        tiers={
+            tier: OperationTierPolicy(enabled=True, mode="autonomous")
+            for tier in (0, 1, 2)
+        },
+    )
+    descriptor = IntegrationToolDescriptor(
+        name=tool_name,
+        description="Create an issue.",
+        connector_id=connector_id,
+        capability=IntegrationCapability(
+            action="create_issue",
+            description="Create an issue.",
+            classification="caution",
+            mutating=True,
+        ),
+        authored_operation=authored,
+    )
+
+    skill = merge_integration_skill(
+        SkillDefinition(version="1", environment="test", operations=[]),
+        [descriptor],
+    )
+
+    assert skill.classify(tool_name) == "caution"
+    assert check(tool_name, 0, skill).decision == "deny"
+    assert check(tool_name, 1, skill).decision == "approval"
+    assert check(tool_name, 2, skill).decision == "advisory"
 
 
 async def test_internal_tool_runtime_returns_mcp_shape_and_updates_status(

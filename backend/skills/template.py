@@ -15,6 +15,7 @@ one ``content_md`` blob, which is editable and downloadable.
 
 from __future__ import annotations
 
+import pathlib
 from typing import Any, Sequence
 
 import yaml
@@ -237,7 +238,7 @@ and may perform read-only observation. Tier 2 is the **default** for new session
 {deny_rows}"""
 
 
-def build_skill_template(
+def _build_blank_template(
     *,
     name: str = DEFAULT_TEMPLATE_NAME,
     environment: str = "your-environment",
@@ -485,7 +486,55 @@ Development:
 - Tier 2: advisory only
 ```
 
-If you instead run **separate MCP servers per environment** (e.g.
+    If you instead run **separate MCP servers per environment** (e.g.
 `aws-prod-mcp`, `aws-staging-mcp`, `aws-dev-mcp`), create a separate MCP Skill
 for each server and tune its tiers per environment.
 """
+
+
+_STARTER_TEMPLATES_PATH = pathlib.Path(__file__).with_name("starter_templates.yaml")
+
+
+def _starter_templates() -> list[dict[str, Any]]:
+    raw = yaml.safe_load(_STARTER_TEMPLATES_PATH.read_text(encoding="utf-8")) or []
+    if not isinstance(raw, list):
+        raise ValueError("starter_templates.yaml must contain a list")
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def list_skill_templates() -> list[dict[str, str]]:
+    """Return operator-facing metadata for the data-driven starter library."""
+    return [
+        {
+            "id": str(item["id"]),
+            "label": str(item["label"]),
+            "description": str(item["description"]),
+        }
+        for item in _starter_templates()
+    ]
+
+
+def build_skill_template(
+    *,
+    template: str = "blank",
+    name: str | None = None,
+    environment: str = "your-environment",
+    description: str = "",
+) -> str:
+    """Build one starter by id; adding a starter only changes the YAML data file."""
+    starters = {str(item.get("id")): item for item in _starter_templates()}
+    selected = starters.get(template)
+    if selected is None:
+        raise ValueError(f"Unknown skill starter template: {template}")
+    if template == "blank":
+        return _build_blank_template(
+            name=name or DEFAULT_TEMPLATE_NAME,
+            environment=environment,
+            description=description,
+        )
+    return build_skill_from_tools(
+        name=name or str(selected["label"]),
+        environment=environment,
+        description=description or str(selected["description"]),
+        operations=list(selected.get("operations") or []),
+    )

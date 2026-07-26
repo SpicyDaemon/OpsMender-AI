@@ -21,7 +21,7 @@ from backend.api.app import create_app
 from backend.api.deps import get_db, set_session_factory
 from backend.config_loader import set_env_path
 from backend.db.models import Base
-from backend.db.repos import MCPServerRepo, SkillRepo
+from backend.db.repos import IntegrationConnectorRepo, MCPServerRepo, SkillRepo
 from backend.skills.convert import CONVERSION_NOTICE, convert_legacy_skill_content
 from backend.skills.importer import auto_import
 from backend.skills.parser import loads as parse_skill_content
@@ -267,6 +267,36 @@ class TestSkillRepo:
 
     async def test_get_for_mcp_server_none_when_empty(self, db: AsyncSession):
         assert await SkillRepo.get_for_mcp_server(db, TEST_ORG_ID, None) is None
+
+    async def test_get_for_integration_connector(self, db: AsyncSession):
+        connector = await IntegrationConnectorRepo.create(
+            db,
+            TEST_ORG_ID,
+            kind="github",
+            name="Repository",
+            base_url="https://example.test",
+            auth_type="none",
+            auth=None,
+            config={},
+            is_enabled=True,
+        )
+        skill = await SkillRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="repository-policy",
+            content_md=SAMPLE_SKILL,
+            integration_connector_id=connector.id,
+            assignment="integration",
+        )
+        await db.flush()
+
+        match = await SkillRepo.get_for_integration_connector(
+            db, TEST_ORG_ID, connector.id
+        )
+        assert match is not None
+        assert match.id == skill.id
+        assert match.mcp_server_id is None
+        assert match.integration_connector_id == connector.id
 
     async def test_update(self, db: AsyncSession):
         skill = await SkillRepo.create(
@@ -655,6 +685,28 @@ class TestMCPSkillStudio:
         assert created.status_code == 201
         assert created.json()["assignment"] == "global"
 
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "blank",
+            "kubernetes",
+            "cloud-infrastructure",
+            "cicd-source-control",
+            "ticketing-comms",
+        ],
+    )
+    async def test_starter_library_templates_parse(
+        self, template, client, auth_headers
+    ):
+        resp = await client.get(
+            f"/skills/template?template={template}", headers=auth_headers
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["template"] == template
+        assert len(body["templates"]) == 5
+        assert parse_skill_content(body["content_md"]).default_tier == 2
+
 
 class TestSessionTierDefault:
     async def test_session_defaults_to_tier_2_when_omitted(self, client, auth_headers):
@@ -890,6 +942,103 @@ class TestSkillStudioRoutes:
             headers=viewer_headers,
         )
         assert g.status_code == 403
+
+    async def test_integration_discover_generate_and_save_stays_restrictive(
+        self, client, app, auth_headers, monkeypatch
+    ):
+        monkeypatch.setenv("OPSMENDER_SECRET_KEY", "skill-studio-secret")
+        async with app.state.session_factory() as db:
+            connector = await IntegrationConnectorRepo.create(
+                db,
+                TEST_ORG_ID,
+                kind="github",
+                name="Source connector",
+                base_url="https://example.test",
+                auth_type="none",
+                auth=None,
+                config={},
+                is_enabled=True,
+            )
+            await db.commit()
+            connector_id = connector.id
+
+        discovered = await client.post(
+            "/skills/discover",
+            json={"integration_connector_id": str(connector_id)},
+            headers=auth_headers,
+        )
+        assert discovered.status_code == 200, discovered.text
+        body = discovered.json()
+        assert body["integration_connector_name"] == "Source connector"
+        create_issue = next(
+            tool for tool in body["tools"] if "__create_issue__" in tool["name"]
+        )
+
+        generated = await client.post(
+            "/skills/generate",
+            json={
+                "name": "Source policy",
+                "integration_connector_id": str(connector_id),
+                "operations": [
+                    {
+                        "tool": create_issue["name"],
+                        "classification": "safe",
+                        "reversible": True,
+                    }
+                ],
+            },
+            headers=auth_headers,
+        )
+        assert generated.status_code == 200, generated.text
+        parsed = parse_skill_content(generated.json()["content_md"])
+        assert parsed.classify(create_issue["name"]) == "caution"
+        assert parsed.tier_policy(create_issue["name"], 0).mode == "blocked"
+        assert parsed.tier_policy(create_issue["name"], 1).mode == "approval"
+
+        saved = await client.post(
+            "/skills",
+            json={
+                "name": "Source policy",
+                "content_md": generated.json()["content_md"],
+                "assignment": "integration",
+                "integration_connector_id": str(connector_id),
+            },
+            headers=auth_headers,
+        )
+        assert saved.status_code == 201, saved.text
+        assert saved.json()["assignment"] == "integration"
+        assert saved.json()["integration_connector_id"] == str(connector_id)
+        assert saved.json()["mcp_server_id"] is None
+
+    async def test_validation_returns_lines_operations_and_warnings(
+        self, client, auth_headers
+    ):
+        invalid = await client.post(
+            "/skills/validate",
+            json={
+                "content_md": (
+                    "---\nversion: '1'\noperations:\n"
+                    "  - tool: restart_service\n"
+                    "    classification: caution\n---\n"
+                )
+            },
+            headers=auth_headers,
+        )
+        assert invalid.status_code == 200
+        issue = invalid.json()["issues"][0]
+        assert invalid.json()["valid"] is False
+        assert issue["line"] == 4
+        assert "tiers are required" in issue["message"]
+
+        empty = await client.post(
+            "/skills/validate",
+            json={"content_md": "---\nversion: '1'\noperations: []\n---\n"},
+            headers=auth_headers,
+        )
+        assert empty.status_code == 200
+        assert empty.json()["valid"] is True
+        assert empty.json()["issues"][0]["severity"] == "warning"
+        assert "denied at every tier" in empty.json()["issues"][0]["message"]
 
 
 # ---------------------------------------------------------------------------

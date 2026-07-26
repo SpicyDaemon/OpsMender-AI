@@ -1,0 +1,84 @@
+- id: blank
+  label: Blank
+  description: Generic three-tier starter with illustrative operations.
+  operations: []
+
+- id: kubernetes
+  label: Kubernetes / container ops
+  description: Inspect workloads safely; gate restarts; deny destructive deletion and scale-to-zero by default.
+  operations:
+    - tool: get_workloads
+      classification: safe
+      notes: Read-only workload inspection.
+    - tool: list_pods
+      classification: safe
+      notes: Read-only pod inventory.
+    - tool: restart_workload
+      classification: caution
+      notes: Service-affecting restart; require approval.
+    - tool: delete_workload
+      classification: destructive
+      notes: Destructive resource deletion.
+    - tool: scale_to_zero
+      classification: destructive
+      notes: Removes all serving capacity.
+
+- id: cloud-infrastructure
+  label: Cloud infrastructure
+  description: Read inventory safely; gate metadata changes; block termination from autonomous execution.
+  operations:
+    - tool: describe_resources
+      classification: safe
+      notes: Read-only resource inspection.
+    - tool: list_resources
+      classification: safe
+      notes: Read-only inventory.
+    - tool: tag_resource
+      classification: caution
+      notes: Mutates resource metadata.
+    - tool: annotate_resource
+      classification: caution
+      notes: Mutates resource metadata.
+    - tool: terminate_resource
+      classification: destructive
+      notes: Irreversible resource termination.
+
+- id: cicd-source-control
+  label: CI/CD & source control
+  description: Read pipelines and repositories safely; gate re-runs; treat history rewrites and branch deletion as destructive.
+  operations:
+    - tool: read_pipeline
+      classification: safe
+      notes: Read-only pipeline inspection.
+    - tool: read_repository
+      classification: safe
+      notes: Read-only repository inspection.
+    - tool: rerun_pipeline
+      classification: caution
+      notes: Starts a new pipeline execution.
+    - tool: force_push
+      classification: destructive
+      notes: Rewrites shared history.
+    - tool: delete_branch
+      classification: destructive
+      notes: Deletes source-control history.
+
+- id: ticketing-comms
+  label: Ticketing & comms
+  description: Read and comment safely; gate workflow transitions; treat close and delete operations as destructive.
+  operations:
+    - tool: read_item
+      classification: safe
+      notes: Read-only ticket or conversation lookup.
+    - tool: add_comment
+      classification: safe
+      notes: Adds operator-visible context.
+    - tool: transition_item
+      classification: caution
+      notes: Changes workflow state.
+    - tool: close_item
+      classification: destructive
+      notes: Ends the active workflow.
+    - tool: delete_item
+      classification: destructive
+      notes: Removes the record.

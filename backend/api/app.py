@@ -453,6 +453,13 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     for selected_router in selected_routers:
         app.include_router(selected_router)
 
+    if deployment.mode == "monolith" or deployment.service_role == "dispatcher":
+        from backend.bots.capabilities import assert_interactive_action_contract
+
+        assert_interactive_action_contract(
+            {getattr(route, "path", "") for route in app.routes}
+        )
+
     # -- Health checks ------------------------------------------------------
     @app.get("/health", tags=["system"])
     @app.get("/health/live", tags=["system"])

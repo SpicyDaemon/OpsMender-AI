@@ -411,7 +411,7 @@ async def test_native_action_requires_enabled_verified_callback(factory):
         assert invocation is None
 
 
-async def test_unmapped_verified_callback_is_rejected_and_recorded(factory):
+async def test_noninteractive_platform_cannot_enter_native_action_path(factory):
     async with factory() as db:
         connector = await BotConnectorRepo.create(
             db,
@@ -441,19 +441,14 @@ async def test_unmapped_verified_callback_is_rejected_and_recorded(factory):
             chat_id="-1001",
         )
 
-        with pytest.raises(IncidentActionError, match="actor_not_linked"):
+        with pytest.raises(IncidentActionError, match="unsupported_callback_platform"):
             await execute_verified_native_action(db, request=request)
 
         invocation = await NativeActionInvocationRepo.get_by_key(
             db, TEST_ORG_ID, connector.id, "telegram-action-404"
         )
-        assert invocation is not None
-        assert invocation.status == "rejected"
-        assert invocation.error_code == "actor_not_linked"
+        assert invocation is None
         audits = await BotActionAuditRepo.list_by_connector(
             db, TEST_ORG_ID, connector.id
         )
-        assert {row.status for row in audits} == {
-            "callback_verified",
-            "native_action_rejected",
-        }
+        assert list(audits) == []

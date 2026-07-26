@@ -2804,7 +2804,7 @@ function buildBotConnectorPayload(
     team_ids: form.team_scope === "teams" ? form.team_ids : [],
     status: form.status,
     is_enabled: form.is_enabled,
-    native_actions_enabled: ["slack", "teams"].includes(form.platform)
+    native_actions_enabled: schema?.capabilities?.interactive_actions
       ? form.native_actions_enabled
       : false,
   };
@@ -2909,6 +2909,20 @@ function connectorPlatformCapabilities(
       ["configured", "verified"].includes(connector.callback_status ?? ""),
     ),
   };
+}
+
+function nativeActionVerifierCopy(platform: BotConnectorPlatform): string {
+  if (platform === "slack") return "Slack signs";
+  if (platform === "teams") return "Microsoft Bot Framework verifies";
+  if (platform === "discord") return "Discord verifies with Ed25519";
+  return "the platform verifies";
+}
+
+function nativeActionWaitingCopy(platform: BotConnectorPlatform): string {
+  if (platform === "slack") return "Waiting for a signing secret";
+  if (platform === "teams") return "Waiting for a Bot Framework app ID";
+  if (platform === "discord") return "Waiting for an application public key";
+  return "Waiting for callback verification credentials";
 }
 
 function DynamicFieldInput({
@@ -3210,7 +3224,7 @@ function BotConnectorModal({
           : defaultValues(nextSchema, "config"),
         credentialValues: defaultValues(nextSchema, "credentials"),
         native_actions_enabled:
-          ["slack", "teams"].includes(next) && sameAsInitial
+          nextSchema?.capabilities?.interactive_actions && sameAsInitial
             ? Boolean(initialConnector?.native_actions_enabled)
             : false,
         lanes: [
@@ -3365,7 +3379,7 @@ function BotConnectorModal({
           </div>
         </div>
 
-        {["slack", "teams"].includes(form.platform) && (
+        {schema?.capabilities?.interactive_actions && (
           <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-3">
             <label className="flex items-start gap-2 text-sm text-fg-primary">
               <input
@@ -3378,15 +3392,12 @@ function BotConnectorModal({
               />
               <span>
                 <span className="font-medium">
-                  Enable verified{" "}
-                  {form.platform === "slack" ? "Slack" : "Teams"} actions
+                  Enable verified {schema.label ?? PLATFORM_LABELS[form.platform]}{" "}
+                  actions
                 </span>
                 <span className="mt-1 block text-xs text-fg-muted">
                   Allows Acknowledge, Resolve, Escalate, and Start AI Session
-                  only after{" "}
-                  {form.platform === "slack"
-                    ? "Slack signs"
-                    : "Microsoft Bot Framework verifies"}{" "}
+                  only after {nativeActionVerifierCopy(form.platform)}{" "}
                   a callback and the external user is linked to an active Admin
                   or Operator account.
                 </span>
@@ -3400,9 +3411,7 @@ function BotConnectorModal({
                     ? "Verified by a signed callback"
                     : initialConnector.callback_status === "configured"
                       ? "Configured; first signed action will verify it"
-                      : form.platform === "slack"
-                        ? "Waiting for a signing secret"
-                        : "Waiting for a Bot Framework app ID"}
+                      : nativeActionWaitingCopy(form.platform)}
                 </span>
               </p>
             )}
@@ -4316,18 +4325,19 @@ export function BotConnectorSection({
                             .join(", ")}
                         </p>
                       )}
-                      {["slack", "teams"].includes(connector.platform) &&
+                      {connector.platform_capabilities?.interactive_actions &&
                         connector.native_actions_enabled && (
                           <p className="mt-1.5 text-xs text-fg-muted">
-                            {connector.platform === "slack" ? "Slack" : "Teams"}{" "}
+                            {connector.platform_label ??
+                              PLATFORM_LABELS[connector.platform]}{" "}
                             callbacks:{" "}
                             {connector.callback_status === "verified"
                               ? "verified"
                               : connector.callback_status === "configured"
                                 ? "configured"
-                                : connector.platform === "slack"
-                                  ? "waiting for a signing secret"
-                                  : "waiting for a Bot Framework app ID"}
+                                : nativeActionWaitingCopy(
+                                    connector.platform,
+                                  ).toLowerCase()}
                           </p>
                         )}
                     </td>

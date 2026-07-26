@@ -894,6 +894,7 @@ export interface PlatformCapabilities {
   shared_channel: boolean;
   ai_session_link: boolean;
   message_update: boolean;
+  interaction_route: string | null;
   delivery_only: boolean;
 }
 

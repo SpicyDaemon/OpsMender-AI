@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config_loader import AppConfig
+from backend.bots.action_ids import ACTION_ID_MAP
 from backend.bots.actions import (
     ExternalActorIdentity,
     IncidentActionError,
@@ -21,13 +22,6 @@ from backend.db.models import BotConnector
 from backend.db.repos import BotConnectorRepo
 from backend.paging.channel_factory import build_channel_factory
 
-
-ACTION_ID_MAP = {
-    "opsmender:ack": "acknowledge",
-    "opsmender:resolve": "resolve",
-    "opsmender:escalate": "escalate",
-    "opsmender:start_ai_session": "start_ai_session",
-}
 
 ERROR_MESSAGES = {
     "native_actions_disabled": "Native actions are disabled for this channel.",

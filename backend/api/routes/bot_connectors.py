@@ -26,7 +26,11 @@ from backend.api.schemas import (
     BotUserLinkResponse,
 )
 import backend.bots  # noqa: F401 — triggers adapter registry side-effect
-from backend.bots.capabilities import display_name, get_platform_capabilities
+from backend.bots.capabilities import (
+    display_name,
+    get_platform_capabilities,
+    supports_interactive_actions,
+)
 from backend.bots.connectors import FieldSpec, get_adapter, list_platforms
 from backend.auth.secrets import encrypt_secret
 from backend.db.models import BotConnector, User
@@ -151,7 +155,9 @@ def _callback_status(
 ) -> str:
     """Describe callback readiness without claiming a callback ran."""
 
-    enabled = body.platform in {"slack", "teams"} and body.native_actions_enabled
+    enabled = (
+        supports_interactive_actions(body.platform) and body.native_actions_enabled
+    )
     verifier = _callback_verifier(
         body.platform,
         config=body.config,
@@ -188,6 +194,8 @@ def _callback_verifier(
             or (credentials or {}).get("bot_app_id")
             or ""
         ).strip()
+    if platform == "discord":
+        return str((credentials or {}).get("public_key") or "").strip()
     return ""
 
 
@@ -589,7 +597,7 @@ async def create_bot_connector(
             is_enabled=body.is_enabled,
             native_actions_enabled=(
                 body.native_actions_enabled
-                if body.platform in {"slack", "teams"}
+                if supports_interactive_actions(body.platform)
                 else False
             ),
         )
@@ -648,7 +656,7 @@ async def update_bot_connector(
             is_enabled=body.is_enabled,
             native_actions_enabled=(
                 body.native_actions_enabled
-                if body.platform in {"slack", "teams"}
+                if supports_interactive_actions(body.platform)
                 else False
             ),
         )

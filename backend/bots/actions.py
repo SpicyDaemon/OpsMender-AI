@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.config_loader import AppConfig
+from backend.bots.capabilities import supports_interactive_actions
 from backend.db.models import BotConnector, User, UserOrganization
 from backend.db.repos import (
     BotActionAuditRepo,
@@ -423,7 +424,7 @@ async def execute_verified_native_action(
 
     if connector.org_id != claims.org_id:
         raise IncidentActionError("connector_org_mismatch")
-    if connector.platform not in {"slack", "teams", "discord", "telegram"}:
+    if not supports_interactive_actions(connector.platform):
         raise IncidentActionError("unsupported_callback_platform")
     if not connector.is_enabled:
         raise IncidentActionError("connector_disabled")

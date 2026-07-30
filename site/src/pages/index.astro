@@ -5,148 +5,161 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 const GITHUB_URL = 'https://github.com/SpicyDaemon/OpsMender-AI';
 const DOCS_URL   = `${GITHUB_URL}#readme`;
+const CHANGELOG_URL = `${GITHUB_URL}/blob/main/CHANGELOG.md`;
+
+const whatsNew = [
+  {
+    label: 'Tools',
+    title: 'Sessions without MCP',
+    desc:  'A service covered by native integrations no longer needs an MCP server to run a session. Integration tools go through the same tier gate, approvals, and audit log as everything else. If nothing provides tools at all, the session says so and stays advisory.',
+  },
+  {
+    label: 'Authoring',
+    title: 'Skill Studio for either source',
+    desc:  'Bind a skill to an MCP server or to a native connector. Start from a template, pull in the available tools, validate before saving, and see which permissions a change would widen. Policy you write can tighten a connector but never loosen it.',
+  },
+  {
+    label: 'Response',
+    title: 'Discord incident actions',
+    desc:  'Acknowledge, resolve, escalate, or start an AI session straight from a Discord message. Every click is signature-verified before it is parsed, checked against the linked account’s role, deduplicated on replay, and recorded in the audit log.',
+  },
+];
 
 const features = [
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>`,
     title: 'Incident lifecycle tracking',
-    desc:  'Create, acknowledge, escalate, and resolve incidents. Full timeline and responder history on every event.',
+    desc:  'Create, acknowledge, escalate, and resolve incidents. Every event keeps a full timeline and responder history.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h5.25m5.25-.75 4.5 4.5m0 0-4.5 4.5m4.5-4.5H11.25"/></svg>`,
     title: 'Escalation chains and rosters',
-    desc:  'Define multi-level on-call escalation chains, roster rotations, and coverage windows with an at-a-glance calendar.',
+    desc:  'Build multi-level escalation chains, roster rotations, and coverage windows, with a calendar that shows who is on call.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>`,
-    title: 'Maintenance windows with approval',
-    desc:  'Request, approve, and schedule maintenance windows. Operators propose; admins approve. Matching alerts are suppressed.',
+    title: 'Maintenance windows',
+    desc:  'Operators request a window, admins approve it, and matching alerts stay quiet for the duration.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/></svg>`,
     title: 'Notification channels',
-    desc:  'Workspace-wide and team-scoped channels. Slack, Teams, Discord, Email, SMS, and more. Authenticated incident links in every post.',
+    desc:  'Workspace-wide or team-scoped delivery to Slack, Teams, Discord, email, SMS, and more. Every post carries an authenticated link.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z"/></svg>`,
-    title: 'AI-assisted incident sessions',
-    desc:  'Start an AI session from any incident. The agent observes, diagnoses, plans, and acts within your configured safety tier.',
+    title: 'AI-assisted sessions',
+    desc:  'Start a session from any incident. The agent observes, works out what is wrong, plans, and acts inside the tier you picked.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>`,
-    title: 'MCP Skills and safety gates',
-    desc:  'Structured skill policies classify every MCP tool call. The backend tier gate enforces what can actually run — not model reasoning.',
+    title: 'Skills and safety gates',
+    desc:  'Skill policy classifies every tool call. The backend tier gate decides what actually runs, and model reasoning does not get a vote.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/></svg>`,
     title: 'Reliability checks',
-    desc:  'HTTP/HTTPS uptime monitoring with SLA and SLO tracking. Configurable targets, uptime history, and status display.',
+    desc:  'HTTP and HTTPS uptime monitoring with SLA and SLO tracking, configurable targets, and uptime history.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/></svg>`,
-    title: 'Postmortem draft, save, and download',
-    desc:  'Generate a structured postmortem draft from incident details and session data. Edit, save, and download as Markdown.',
+    title: 'Postmortem drafts',
+    desc:  'Turn incident details and session history into a structured draft. Edit it, save it, and download it as Markdown.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"/></svg>`,
-    title: 'Admin, Operator, and Viewer roles',
-    desc:  'RBAC built in. Admins manage configuration; Operators run sessions and respond; Viewers see dashboards without write access.',
+    title: 'Roles that mean something',
+    desc:  'Admins manage configuration. Operators run sessions and respond. Viewers read dashboards and cannot write.',
   },
   {
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path stroke-linecap="round" stroke-linejoin="round" d="M17.5 14v3m0 3v.01M14 17.5h3m3 0h.01"/></svg>`,
-    title: 'Self-hosted Docker deployment',
-    desc:  'One compose file gets you running. Backend + frontend in a single container; Postgres bundled. Production mode enforces strong secrets.',
+    title: 'Integrations you own',
+    desc:  'Twenty-six connector kinds with per-service allowlists, encrypted credentials, and two-way ticket sync for Jira and ServiceNow.',
+  },
+  {
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75"/></svg>`,
+    title: 'Self-hosted from day one',
+    desc:  'One compose file. Backend and frontend in a single container, Postgres alongside it, and no data leaving your network.',
   },
 ];
 
 const screenshots = [
-  { file: 'incidents-admin.png',    caption: 'Incident command center',         role: 'Admin',    alt: 'Incident list with status, priority, and responder columns' },
-  { file: 'incidents-operator.png', caption: 'Same board, operator scope',       role: 'Operator', alt: 'Operator view with a scoped sidebar and role-gated actions' },
-  { file: 'incident-detail.png',    caption: 'Incident detail & AI timeline',    role: 'Admin',    alt: 'Incident detail with AI session, timeline, and alert evidence' },
-  { file: 'ai-session.png',         caption: 'AI session — Tier 0 Autonomous',   role: 'Admin',    alt: 'AI session that autonomously restarted a deployment, verified recovery, and recorded a rollback path under Tier 0' },
-  { file: 'mcp-skills.png',         caption: 'MCP Skill Studio',                 role: 'Admin',    alt: 'MCP Skills list — policies that gate what the AI may run' },
-  { file: 'people-rbac.png',        caption: 'People & role-based access',       role: 'Admin',    alt: 'User management with admin, operator, and viewer roles' },
+  { file: 'incidents-admin.png',    caption: 'Incident command center',      role: 'Admin',    alt: 'Incident list with status, priority, and responder columns' },
+  { file: 'incidents-operator.png', caption: 'The same board, operator scope', role: 'Operator', alt: 'Operator view with a scoped sidebar and role-gated actions' },
+  { file: 'incident-detail.png',    caption: 'Incident detail and AI timeline', role: 'Admin',  alt: 'Incident detail with AI session, timeline, and alert evidence' },
+  { file: 'ai-session.png',         caption: 'An AI session at Tier 0',      role: 'Admin',    alt: 'AI session that restarted a deployment, verified recovery, and recorded a rollback path under Tier 0' },
+  { file: 'mcp-skills.png',         caption: 'Skill Studio',                 role: 'Admin',    alt: 'Skill list showing the policies that gate what the AI may run' },
+  { file: 'people-rbac.png',        caption: 'People and access',            role: 'Admin',    alt: 'User management with admin, operator, and viewer roles' },
 ];
 
 const tiers = [
   {
     num:   0,
     name:  'Autonomous',
-    color: 'border-red-500/40 bg-red-500/5',
+    ring:  'border-red-500/40 bg-red-500/[0.06]',
+    accent: 'from-red-500/60 to-red-500/0',
     badge: 'bg-red-500/15 text-red-400 border-red-500/30',
-    desc:  'The agent may execute remediation automatically — restarts, rollbacks, failovers — within skill policy, deny lists, and the reversible-ops floor. Sandbox and non-prod only. Hard time limits enforced.',
-    tag:   'Non-prod / sandbox only',
+    desc:  'The agent can carry out repairs on its own, including restarts, rollbacks, and failovers, as long as skill policy allows it and the operation can be undone. Built for sandbox and non-production, with hard time limits.',
+    tag:   'Sandbox and non-production only',
     tagCls: 'text-red-400',
-    allowed:    ['Safe + caution operations (autonomous)', 'Reversible remediation within skill policy', 'Rollbacks via compensating inverses'],
-    blocked:    ['Deny-listed or unknown tools', 'Irreversible ops beyond the safety floor', 'Generic command-execution tools (shell, kubectl, etc.)'],
+    allowed: ['Safe and caution operations run unattended', 'Reversible repair inside skill policy', 'Rollback through a compensating inverse'],
+    blocked: ['Deny-listed or unrecognised tools', 'Anything irreversible past the safety floor', 'Shell, kubectl, and other general-purpose runners'],
   },
   {
     num:   1,
-    name:  'Approval Required',
-    color: 'border-amber-500/40 bg-amber-500/5',
+    name:  'Approval required',
+    ring:  'border-amber-500/40 bg-amber-500/[0.06]',
+    accent: 'from-amber-500/60 to-amber-500/0',
     badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-    desc:  'The agent investigates and proposes. Safe actions run immediately. Destructive and generic-command actions pause for explicit operator approval. Deny-listed actions are always blocked.',
-    tag:   'Recommended for high-stakes environments',
+    desc:  'The agent investigates and proposes. Safe reads happen straight away. Anything destructive, or any general-purpose command, waits for an operator to approve it. Deny-listed calls never run.',
+    tag:   'The right default for production',
     tagCls: 'text-amber-400',
-    allowed:    ['Safe operations (autonomous)', 'Destructive + generic actions (after approval)', 'Full investigation and planning'],
-    blocked:    ['Deny-listed or unknown actions', 'Anything without an approval decision'],
+    allowed: ['Safe operations run unattended', 'Destructive work runs once approved', 'Full investigation and planning'],
+    blocked: ['Deny-listed or unrecognised actions', 'Anything still waiting on a decision'],
   },
   {
     num:   2,
-    name:  'Advisory Only',
-    color: 'border-blue-500/40 bg-blue-500/5',
+    name:  'Advisory only',
+    ring:  'border-blue-500/40 bg-blue-500/[0.06]',
+    accent: 'from-blue-500/60 to-blue-500/0',
     badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-    desc:  'The agent provides analysis, runbooks, and recommendations. Read-only observation runs before the gate. No write or remediation actions execute. The human performs every action manually.',
-    tag:   'Default for new installs',
+    desc:  'The agent reads, explains, and recommends. Observation happens before the gate. Nothing is written and nothing is repaired. A person carries out every action.',
+    tag:   'Where new installs start',
     tagCls: 'text-blue-400',
-    allowed:    ['Read-only observation', 'Diagnosis, planning, and recommendations', 'Postmortem generation'],
-    blocked:    ['Any write or remediation action', 'All tool execution beyond reads'],
+    allowed: ['Read-only observation', 'Diagnosis, planning, and recommendations', 'Postmortem drafting'],
+    blocked: ['Any write or repair action', 'Tool execution beyond reads'],
   },
 ];
 
-const v1Features = [
-  'Incidents — full lifecycle',
-  'Teams, rosters, escalation chains',
-  'Escalation chain calendar',
-  'Maintenance windows with approval',
-  'Notification channels (Slack, Teams, Email, SMS, …)',
-  'AI-assisted incident sessions',
-  'MCP Skills with backend enforcement',
-  'AI Autonomy Tiers (0 / 1 / 2)',
-  'Reliability HTTP/HTTPS checks',
-  'Postmortem draft, save, download',
-  'Admin / Operator / Viewer RBAC',
-  'Self-hosted Docker deployment',
-  'MCP-optional sessions with tier-governed native integration tools',
-  'Expanded Skill Studio — source discovery, templates, validation, and policy diffs',
-  'Verified Discord incident actions with Ed25519 callbacks, RBAC, deduplication, and audit',
-];
-
-const nextFeatures = [
-  'Adaptive login driven by GET /tenant/resolve for enforced SSO and SAML',
-  'Migrate python-jose to PyJWT and remove the legacy ecdsa dependency',
-  'Decompose complexity hotspots in incident timelines, bulk actions, and chat dispatch',
+const toolPoints = [
+  ['Services without MCP', 'When native integrations already cover what a service needs, no MCP server is required. If nothing covers it, the session stays advisory and tells you why.'],
+  ['Skills bound to a source', 'Point a skill at an MCP server or at a native connector. Connector policy can only get stricter than the capability baseline it starts from.'],
+  ['Templates to start from', 'Kubernetes, cloud infrastructure, CI/CD, source control, ticketing, communications, or an empty file.'],
+  ['Validation and diffs', 'Malformed policy is rejected with the line that broke it. Saving shows you which operations changed and where permissions widened.'],
+  ['Drafts that stay put', 'Save and download a work in progress without it reaching a live session.'],
+  ['Closed by default', 'Anything unclassified or malformed is denied. Deny lists, approvals, and the general-purpose command guard always win.'],
 ];
 ---
 
 <Layout>
-  <!-- ═══════════════════════════════════════════════ NAV -->
-  <nav class="sticky top-0 z-50 border-b border-white/5 bg-ops-bg/90 backdrop-blur-md">
+  <!-- NAV -->
+  <nav class="sticky top-0 z-50 border-b border-white/5 bg-ops-bg/85 backdrop-blur-md">
     <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-      <div class="flex items-center gap-2.5">
+      <a href="#top" class="flex items-center gap-2.5 rounded focus-ring">
         <span class="text-lg font-bold tracking-tight text-slate-50">Ops<span class="text-ops-blue">Mender</span></span>
         <span class="hidden rounded-full border border-ops-border bg-ops-surface px-2 py-0.5 font-mono text-[10px] text-ops-subtle sm:inline">self-hosted</span>
-      </div>
-      <div class="flex items-center gap-3">
-        <a href="#features"  class="hidden text-sm text-ops-subtle hover:text-slate-200 transition-colors sm:inline">Features</a>
-        <a href="#ai-tiers"  class="hidden text-sm text-ops-subtle hover:text-slate-200 transition-colors sm:inline">AI Tiers</a>
-        <a href="#deploy"    class="hidden text-sm text-ops-subtle hover:text-slate-200 transition-colors sm:inline">Deploy</a>
-        <a href="#roadmap"   class="hidden text-sm text-ops-subtle hover:text-slate-200 transition-colors sm:inline">Roadmap</a>
+      </a>
+      <div class="flex items-center gap-1 sm:gap-2">
+        <a href="#whats-new" class="nav-link hidden md:inline">New in 1.1</a>
+        <a href="#features"  class="nav-link hidden sm:inline">Features</a>
+        <a href="#ai-tiers"  class="nav-link hidden sm:inline">AI tiers</a>
+        <a href="#tools"     class="nav-link hidden lg:inline">Tools</a>
+        <a href="#deploy"    class="nav-link hidden sm:inline">Deploy</a>
         <a
           href={GITHUB_URL}
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-1.5 rounded-md border border-ops-border bg-ops-surface px-3 py-1.5 text-sm font-medium text-slate-200 transition-colors hover:border-ops-blue/50 hover:bg-ops-card hover:text-white"
+          class="ml-1 flex items-center gap-1.5 rounded-md border border-ops-border bg-ops-surface px-3 py-1.5 text-sm font-medium text-slate-200 transition-colors hover:border-ops-blue/50 hover:bg-ops-card hover:text-white focus-ring"
         >
           <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" class="shrink-0"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"/></svg>
           GitHub
@@ -155,29 +168,27 @@ const nextFeatures = [
     </div>
   </nav>
 
-  <!-- ═══════════════════════════════════════════════ HERO -->
-  <section class="relative overflow-hidden bg-hero-gradient pb-24 pt-20 sm:pb-32 sm:pt-28">
-    <!-- Decorative orbs -->
+  <!-- HERO -->
+  <section id="top" class="relative overflow-hidden bg-hero-gradient pb-24 pt-20 sm:pb-32 sm:pt-28">
     <div class="pointer-events-none absolute inset-0" aria-hidden="true">
-      <div class="absolute left-1/2 top-0 -translate-x-1/2 h-[600px] w-[900px] rounded-full bg-ops-blue/10 blur-[120px] opacity-40"></div>
-      <div class="absolute right-0 top-1/3 h-[400px] w-[500px] rounded-full bg-ops-indigo/8 blur-[100px] opacity-30"></div>
+      <div class="absolute left-1/2 top-0 h-[600px] w-[900px] -translate-x-1/2 rounded-full bg-ops-blue/10 opacity-40 blur-[120px]"></div>
+      <div class="absolute right-0 top-1/3 h-[400px] w-[500px] rounded-full bg-ops-indigo/[0.08] opacity-30 blur-[100px]"></div>
     </div>
 
     <div class="relative mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
-      <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-ops-blue/25 bg-ops-blue/8 px-3.5 py-1.5">
-        <span class="h-1.5 w-1.5 rounded-full bg-ops-cyan animate-pulse"></span>
-        <span class="text-xs font-medium text-ops-cyan">Open source · Self-hosted · AI-assisted</span>
+      <div class="mb-6 inline-flex items-center gap-2 rounded-full border border-ops-blue/25 bg-ops-blue/[0.08] px-3.5 py-1.5">
+        <span class="soft-pulse h-1.5 w-1.5 rounded-full bg-ops-cyan"></span>
+        <span class="text-xs font-medium text-ops-cyan">Open source and self-hosted</span>
       </div>
 
-      <h1 class="mb-6 text-4xl font-extrabold leading-tight tracking-tight text-slate-50 sm:text-5xl lg:text-6xl">
-        Self-hosted incident response<br class="hidden sm:block" />
-        <span class="bg-gradient-to-r from-ops-blue to-ops-cyan bg-clip-text text-transparent">for modern engineering teams</span>
+      <h1 class="mb-6 text-4xl font-extrabold leading-[1.1] tracking-tight text-slate-50 sm:text-5xl lg:text-[3.75rem]">
+        Incident response that stays<br class="hidden sm:block" />
+        <span class="bg-gradient-to-r from-ops-blue to-ops-cyan bg-clip-text text-transparent">on your own infrastructure</span>
       </h1>
 
       <p class="mx-auto mb-10 max-w-2xl text-base leading-relaxed text-ops-subtle sm:text-lg">
-        OpsMender helps teams manage incidents, escalation chains, maintenance windows,
-        AI-assisted sessions, MCP Skills, and reliability checks — from one
-        self-hosted platform.
+        Track incidents, page the right people, and let an AI agent help work out what broke.
+        You decide how much it is allowed to do, and none of it leaves hardware you control.
       </p>
 
       <div class="flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -185,7 +196,7 @@ const nextFeatures = [
           href={GITHUB_URL}
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-2 rounded-lg bg-ops-blue px-6 py-3 text-sm font-semibold text-white shadow-glow-blue transition-all hover:bg-blue-400 hover:shadow-glow-blue hover:scale-[1.02] active:scale-[0.99]"
+          class="inline-flex items-center gap-2 rounded-lg bg-ops-blue px-6 py-3 text-sm font-semibold text-white shadow-glow-blue transition-all hover:scale-[1.02] hover:bg-blue-400 active:scale-[0.99] focus-ring"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"/></svg>
           View on GitHub
@@ -194,45 +205,46 @@ const nextFeatures = [
           href={DOCS_URL}
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-2 rounded-lg border border-ops-border bg-ops-surface px-6 py-3 text-sm font-semibold text-slate-300 transition-all hover:border-ops-blue/40 hover:bg-ops-card hover:text-white"
+          class="inline-flex items-center gap-2 rounded-lg border border-ops-border bg-ops-surface px-6 py-3 text-sm font-semibold text-slate-300 transition-all hover:border-ops-blue/40 hover:bg-ops-card hover:text-white focus-ring"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/></svg>
           Read the docs
         </a>
       </div>
 
-      <!-- Stats strip -->
-      <div class="mt-16 flex flex-wrap items-center justify-center gap-x-8 gap-y-4 border-t border-white/5 pt-10 text-sm text-ops-muted">
-        <span class="flex items-center gap-1.5"><span class="font-semibold text-slate-300">v1.1.0</span> release</span>
-        <span class="h-3 w-px bg-ops-border hidden sm:block"></span>
-        <span class="flex items-center gap-1.5"><span class="font-semibold text-slate-300">1 600+</span> tests</span>
-        <span class="h-3 w-px bg-ops-border hidden sm:block"></span>
-        <span class="flex items-center gap-1.5"><span class="font-semibold text-slate-300">MIT</span> licensed</span>
-        <span class="h-3 w-px bg-ops-border hidden sm:block"></span>
-        <span class="flex items-center gap-1.5"><span class="font-semibold text-slate-300">Docker</span> one-command deploy</span>
-      </div>
+      <dl class="mx-auto mt-16 grid max-w-2xl grid-cols-2 gap-x-6 gap-y-6 border-t border-white/5 pt-10 sm:grid-cols-4">
+        {[
+          ['v1.1.0', 'current release'],
+          ['2 400+', 'automated tests'],
+          ['MIT', 'licensed'],
+          ['26', 'integration kinds'],
+        ].map(([value, label]) => (
+          <div class="text-center">
+            <dt class="text-lg font-semibold text-slate-200">{value}</dt>
+            <dd class="mt-0.5 text-xs text-ops-muted">{label}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════ SCREENSHOTS -->
-  <section id="screenshots" class="py-20 sm:py-28">
+  <!-- SCREENSHOTS -->
+  <section id="screenshots" class="scroll-mt-20 py-20 sm:py-28">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="mb-12 text-center">
-        <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">Everything in one place</h2>
-        <p class="mt-3 text-ops-subtle">Real screens from the dashboard — incident intake, AI sessions, skill policy, and role-based access. Click any shot to open it full size.</p>
+      <div class="mx-auto mb-12 max-w-2xl text-center">
+        <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">A look at the dashboard</h2>
+        <p class="mt-3 text-ops-subtle">These are real screens rather than mockups. Click any of them to open the full-size image.</p>
       </div>
 
-      <!-- Screenshot gallery: horizontal scroll on small, 2-col grid on large -->
       <div class="flex gap-5 overflow-x-auto pb-4 lg:grid lg:grid-cols-2 lg:gap-6 lg:overflow-visible lg:pb-0">
         {screenshots.map((s, i) => (
           <a
             href={`${base}/screenshots/${s.file}`}
             target="_blank"
             rel="noopener"
-            class="group flex-shrink-0 w-[88vw] sm:w-[64vw] lg:w-auto"
+            class="group w-[88vw] flex-shrink-0 rounded-xl sm:w-[64vw] lg:w-auto focus-ring"
           >
             <div class="relative overflow-hidden rounded-xl border border-ops-border bg-ops-card shadow-card transition-all duration-300 group-hover:border-ops-blue/40 group-hover:shadow-glow-sm">
-              <!-- Frame chrome -->
               <div class="flex items-center gap-1.5 border-b border-ops-border bg-ops-surface px-3 py-2">
                 <span class="h-2.5 w-2.5 rounded-full bg-red-500/60"></span>
                 <span class="h-2.5 w-2.5 rounded-full bg-amber-400/60"></span>
@@ -258,18 +270,49 @@ const nextFeatures = [
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════ FEATURES -->
-  <section id="features" class="border-t border-ops-border py-20 sm:py-28">
+  <!-- WHAT'S NEW IN 1.1 -->
+  <section id="whats-new" class="scroll-mt-20 border-t border-ops-border py-20 sm:py-28">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="mb-14 text-center">
+      <div class="mx-auto mb-14 max-w-2xl text-center">
+        <span class="mb-3 inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-400">
+          <span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
+          Version 1.1.0
+        </span>
+        <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">What changed in the latest release</h2>
+        <p class="mt-3 text-ops-subtle">
+          Three things worth knowing about, plus the usual round of fixes.
+          The <a href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer" class="text-ops-blue underline-offset-2 hover:underline focus-ring">changelog</a> has the rest.
+        </p>
+      </div>
+
+      <div class="grid gap-5 lg:grid-cols-3">
+        {whatsNew.map((n, i) => (
+          <article class="relative overflow-hidden rounded-xl border border-ops-border bg-card-shine bg-ops-card p-6 shadow-card transition-all hover:border-ops-blue/30 hover:shadow-glow-sm">
+            <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-ops-blue/50 to-transparent"></div>
+            <div class="mb-4 flex items-center gap-2.5">
+              <span class="font-mono text-2xl font-bold text-ops-border">0{i + 1}</span>
+              <span class="rounded-full border border-ops-border bg-ops-surface px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ops-cyan">{n.label}</span>
+            </div>
+            <h3 class="mb-2 text-base font-semibold text-slate-100">{n.title}</h3>
+            <p class="text-sm leading-relaxed text-ops-subtle">{n.desc}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features" class="scroll-mt-20 border-t border-ops-border py-20 sm:py-28">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="mx-auto mb-14 max-w-2xl text-center">
         <span class="mb-3 inline-block rounded-full border border-ops-border bg-ops-surface px-3 py-1 text-xs font-medium text-ops-cyan">Core platform</span>
-        <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">Every layer of the on-call stack</h2>
-        <p class="mt-3 text-ops-subtle">From alert intake to postmortem — without SaaS lock-in or black-box AI.</p>
+        <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">What comes in the box</h2>
+        <p class="mt-3 text-ops-subtle">Alert intake through to the postmortem, with no subscription and no part of the system you cannot read.</p>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {features.map((f) => (
-          <div class="group rounded-xl border border-ops-border bg-card-shine bg-ops-card p-5 shadow-card transition-all hover:border-ops-blue/30 hover:bg-ops-card hover:shadow-glow-sm">
+          <div class="group rounded-xl border border-ops-border bg-card-shine bg-ops-card p-5 shadow-card transition-all hover:-translate-y-0.5 hover:border-ops-blue/30 hover:shadow-glow-sm">
             <div class="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ops-border bg-ops-surface text-ops-blue transition-colors group-hover:border-ops-blue/40 group-hover:bg-ops-blue/10">
               <Fragment set:html={f.icon} />
             </div>
@@ -281,25 +324,24 @@ const nextFeatures = [
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════ AI TIERS -->
-  <section id="ai-tiers" class="border-t border-ops-border py-20 sm:py-28">
+  <!-- AI TIERS -->
+  <section id="ai-tiers" class="scroll-mt-20 border-t border-ops-border py-20 sm:py-28">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="mb-14 text-center">
-        <span class="mb-3 inline-block rounded-full border border-ops-border bg-ops-surface px-3 py-1 text-xs font-medium text-ops-cyan">AI Autonomy</span>
-        <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">You control how much the AI does</h2>
-        <p class="mt-3 max-w-xl mx-auto text-ops-subtle">
-          Three tiers, set per session. The backend gate enforces the selected tier programmatically — the agent cannot reason around it.
+      <div class="mx-auto mb-14 max-w-2xl text-center">
+        <span class="mb-3 inline-block rounded-full border border-ops-border bg-ops-surface px-3 py-1 text-xs font-medium text-ops-cyan">Autonomy</span>
+        <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">You decide how much the AI does</h2>
+        <p class="mt-3 text-ops-subtle">
+          Pick a tier per session. Enforcement lives in the backend, so the agent cannot talk its way past it.
         </p>
       </div>
 
       <div class="grid gap-5 lg:grid-cols-3">
         {tiers.map((t) => (
-          <div class={`relative rounded-xl border ${t.color} p-6 shadow-card`}>
-            <div class="mb-4 flex items-center justify-between">
-              <div class="flex items-center gap-2.5">
-                <span class={`rounded-lg border px-2.5 py-1 font-mono text-sm font-bold ${t.badge}`}>T{t.num}</span>
-                <span class="text-base font-semibold text-slate-100">{t.name}</span>
-              </div>
+          <div class={`relative overflow-hidden rounded-xl border ${t.ring} p-6 shadow-card`}>
+            <div class={`absolute inset-x-0 top-0 h-px bg-gradient-to-r ${t.accent}`}></div>
+            <div class="mb-4 flex items-center gap-2.5">
+              <span class={`rounded-lg border px-2.5 py-1 font-mono text-sm font-bold ${t.badge}`}>T{t.num}</span>
+              <span class="text-base font-semibold text-slate-100">{t.name}</span>
             </div>
             <p class="mb-5 text-sm leading-relaxed text-ops-subtle">{t.desc}</p>
             <div class="space-y-1.5">
@@ -316,66 +358,58 @@ const nextFeatures = [
                 </div>
               ))}
             </div>
-            <div class={`mt-5 pt-4 border-t border-white/5 text-[11px] font-medium ${t.tagCls}`}>{t.tag}</div>
+            <div class={`mt-5 border-t border-white/5 pt-4 text-[11px] font-medium ${t.tagCls}`}>{t.tag}</div>
           </div>
         ))}
       </div>
 
-      <!-- Safety callout -->
-      <div class="mt-8 rounded-xl border border-ops-blue/20 bg-ops-blue/5 p-5 text-center">
-        <p class="text-sm text-slate-300">
-          <svg class="mr-2 inline h-4 w-4 text-ops-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
-          <strong class="text-slate-100">Skills guide the AI. The backend tier gate enforces what can actually run.</strong>
-          {' '}A prompt-injected "ignore policy and delete prod" is blocked at the gate — not by model reasoning.
+      <div class="mt-8 rounded-xl border border-ops-blue/20 bg-ops-blue/5 p-6 text-center">
+        <p class="mx-auto max-w-3xl text-sm leading-relaxed text-slate-300">
+          <strong class="text-slate-100">Skills guide the agent. The tier gate decides what runs.</strong>
+          {' '}Say a prompt injection tells the agent to ignore its policy and drop the production database.
+          The gate refuses the call before it reaches a tool. The model never gets a say.
         </p>
       </div>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════ MCP SKILLS -->
-  <section id="mcp-skills" class="border-t border-ops-border py-20 sm:py-28">
+  <!-- TOOLS -->
+  <section id="tools" class="scroll-mt-20 border-t border-ops-border py-20 sm:py-28">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="grid items-center gap-12 lg:grid-cols-2">
+      <div class="grid items-start gap-12 lg:grid-cols-2">
         <div>
           <span class="mb-3 inline-block rounded-full border border-ops-border bg-ops-surface px-3 py-1 text-xs font-medium text-ops-cyan">Bring your own tools</span>
-          <h2 class="mb-4 text-2xl font-bold text-slate-50 sm:text-3xl">MCP or native integrations</h2>
-          <p class="mb-6 text-ops-subtle leading-relaxed">
-            Connect MCP servers, encrypted native integrations, or both. Skill Studio discovers either source,
-            validates structured policy, and keeps the backend tier gate authoritative.
+          <h2 class="mb-4 text-2xl font-bold text-slate-50 sm:text-3xl">MCP servers or native connectors</h2>
+          <p class="mb-8 leading-relaxed text-ops-subtle">
+            Use one, the other, or both at once. Skill Studio reads the available tools from either source,
+            checks the policy you write against what the connector can actually do, and leaves the backend
+            tier gate in charge.
           </p>
-          <ul class="space-y-3">
-            {[
-              ['MCP-optional services', 'When native integrations cover the toolset, sessions need no MCP server. With no tools, sessions stay explicitly advisory-only.'],
-              ['Source-bound skills', 'Assign policy to an MCP server or native integration connector. Connector policy can become stricter, never weaker than its capability baseline.'],
-              ['Starter templates', 'Begin with Kubernetes, cloud infrastructure, CI/CD, source control, ticketing, communications, or a blank policy.'],
-              ['Validation and policy diffs', 'Line-aware backend validation blocks malformed policy; operation diffs call out risk or permission widening.'],
-              ['Unassigned drafts', 'Save and download work-in-progress skills without injecting them into live sessions.'],
-              ['Fail closed', 'Unclassified or malformed operations are denied. Deny lists, approvals, and the generic-command guardrail still win.'],
-            ].map(([title, desc]) => (
+          <ul class="space-y-5">
+            {toolPoints.map(([title, desc]) => (
               <li class="flex items-start gap-3">
-                <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ops-blue/15 text-ops-blue">
+                <span class="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ops-blue/15 text-ops-blue">
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5.5 4 8 8.5 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </span>
                 <div>
-                  <span class="text-sm font-medium text-slate-200">{title}</span>
-                  <span class="ml-1 text-sm text-ops-subtle"> — {desc}</span>
+                  <p class="text-sm font-semibold text-slate-200">{title}</p>
+                  <p class="mt-1 text-sm leading-relaxed text-ops-subtle">{desc}</p>
                 </div>
               </li>
             ))}
           </ul>
         </div>
 
-        <!-- YAML code block -->
-        <div class="rounded-xl border border-ops-border bg-ops-surface shadow-card overflow-hidden">
+        <div class="overflow-hidden rounded-xl border border-ops-border bg-ops-surface shadow-card lg:sticky lg:top-24">
           <div class="flex items-center justify-between border-b border-ops-border px-4 py-2.5">
             <span class="font-mono text-xs text-ops-subtle">SKILL.k8s-production.md</span>
-            <span class="rounded border border-ops-border px-1.5 py-0.5 font-mono text-[9px] text-ops-muted">yaml front-matter</span>
+            <span class="rounded border border-ops-border px-1.5 py-0.5 font-mono text-[9px] text-ops-muted">yaml front matter</span>
           </div>
           <pre class="overflow-x-auto p-5 text-xs leading-relaxed"><code class="text-slate-300">{`---
 version: "1"
 environment: kubernetes-production
 operations:
-  # ── Safe (read-only) ──────────────────────────
+  # Safe, read only
   - tool: get_pods
     classification: safe
   - tool: get_pod_logs
@@ -383,7 +417,7 @@ operations:
   - tool: describe_*
     classification: safe
 
-  # ── Caution (reversible writes) ───────────────
+  # Caution, writes you can undo
   - tool: scale_deployment
     classification: caution
     reversible: true
@@ -392,13 +426,13 @@ operations:
     reversible: true
     compensating_inverse: uncordon_node
 
-  # ── Destructive (approval required at Tier 1) ─
+  # Destructive, approval needed at Tier 1
   - tool: delete_pod
     classification: destructive
   - tool: delete_namespace
     classification: destructive
 
-  # ── Always blocked ────────────────────────────
+  # Never, at any tier
   - tool: shell
     deny: true
   - tool: exec_*
@@ -409,108 +443,59 @@ operations:
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════ DEPLOY -->
-  <section id="deploy" class="border-t border-ops-border py-20 sm:py-28">
+  <!-- DEPLOY -->
+  <section id="deploy" class="scroll-mt-20 border-t border-ops-border py-20 sm:py-28">
     <div class="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
       <span class="mb-3 inline-block rounded-full border border-ops-border bg-ops-surface px-3 py-1 text-xs font-medium text-ops-cyan">Self-hosted</span>
-      <h2 class="mb-4 text-2xl font-bold text-slate-50 sm:text-3xl">Up in minutes, not days</h2>
+      <h2 class="mb-4 text-2xl font-bold text-slate-50 sm:text-3xl">Running in a few minutes</h2>
       <p class="mb-10 text-ops-subtle">
-        One compose file. Backend + frontend in a single container. Postgres bundled.
-        Production mode enforces strong secrets at startup.
+        One compose file. Backend and frontend in a single container, with Postgres alongside it.
       </p>
 
-      <div class="overflow-hidden rounded-xl border border-ops-border bg-ops-surface shadow-card text-left">
+      <div class="overflow-hidden rounded-xl border border-ops-border bg-ops-surface text-left shadow-card">
         <div class="flex items-center gap-2 border-b border-ops-border px-4 py-2.5">
           <span class="h-2.5 w-2.5 rounded-full bg-red-500/60"></span>
           <span class="h-2.5 w-2.5 rounded-full bg-amber-400/60"></span>
           <span class="h-2.5 w-2.5 rounded-full bg-green-500/60"></span>
           <span class="ml-2 font-mono text-xs text-ops-muted">Terminal</span>
         </div>
-        <pre class="overflow-x-auto p-6 font-mono text-sm leading-8"><code><span class="text-ops-muted"># 1. Clone the repo</span>
+        <pre class="overflow-x-auto p-6 font-mono text-sm leading-8"><code><span class="text-ops-muted"># Clone it</span>
 <span class="text-ops-cyan">$</span><span class="text-slate-200"> git clone https://github.com/SpicyDaemon/OpsMender-AI</span>
 <span class="text-ops-cyan">$</span><span class="text-slate-200"> cd OpsMender-AI</span>
 
-<span class="text-ops-muted"># 2. Copy and edit the example config</span>
+<span class="text-ops-muted"># Copy the example config, then set your model provider and API key</span>
 <span class="text-ops-cyan">$</span><span class="text-slate-200"> cp .env.example .env</span>
-<span class="text-ops-muted">#    Set OPSMENDER_MODEL_PROVIDER + API key, then:</span>
 
-<span class="text-ops-muted"># 3. Start</span>
+<span class="text-ops-muted"># Start it</span>
 <span class="text-ops-cyan">$</span><span class="text-slate-200"> docker compose -f docker/docker-compose.yml up</span>
 
-<span class="text-ops-muted"># Open http://localhost:8000  (dev login: admin / admin123)</span></code></pre>
+<span class="text-ops-muted"># Then open http://localhost:8000 and sign in as the admin from your .env</span></code></pre>
       </div>
 
       <p class="mt-6 text-sm text-ops-muted">
-        Production mode requires a strong JWT secret and bootstrap admin credentials — weak defaults are rejected at startup.
-        <a href={DOCS_URL} class="ml-1 text-ops-blue hover:underline" target="_blank" rel="noopener noreferrer">Full setup docs →</a>
+        Production mode wants a real JWT secret and real bootstrap credentials. Weak defaults are rejected at startup.
+        <a href={DOCS_URL} class="ml-1 text-ops-blue hover:underline focus-ring" target="_blank" rel="noopener noreferrer">Setup docs</a>
       </p>
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════ ROADMAP -->
-  <section id="roadmap" class="border-t border-ops-border py-20 sm:py-28">
-    <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-      <div class="mb-12 text-center">
-        <span class="mb-3 inline-block rounded-full border border-ops-border bg-ops-surface px-3 py-1 text-xs font-medium text-ops-cyan">Roadmap</span>
-        <h2 class="text-2xl font-bold text-slate-50 sm:text-3xl">Where we are and where we're going</h2>
-      </div>
-
-      <div class="grid gap-6 sm:grid-cols-2">
-        <!-- Shipped -->
-        <div class="rounded-xl border border-green-500/20 bg-green-500/5 p-6">
-          <div class="mb-5 flex items-center gap-2.5">
-            <span class="rounded-full border border-green-500/30 bg-green-500/15 px-2.5 py-0.5 font-mono text-xs font-bold text-green-400">v1.1.0</span>
-            <span class="text-sm font-semibold text-slate-200">Generally available</span>
-            <span class="ml-auto h-2 w-2 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]"></span>
-          </div>
-          <ul class="space-y-2">
-            {v1Features.map((f) => (
-              <li class="flex items-start gap-2 text-sm text-slate-300">
-                <svg class="mt-0.5 h-4 w-4 shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <!-- Next -->
-        <div class="rounded-xl border border-ops-blue/20 bg-ops-blue/5 p-6">
-          <div class="mb-5 flex items-center gap-2.5">
-            <span class="rounded-full border border-ops-blue/30 bg-ops-blue/15 px-2.5 py-0.5 font-mono text-xs font-bold text-ops-blue">Next</span>
-            <span class="text-sm font-semibold text-slate-200">Coming next</span>
-            <span class="ml-auto h-2 w-2 rounded-full bg-ops-blue/60 shadow-[0_0_6px_rgba(59,130,246,0.4)]"></span>
-          </div>
-          <ul class="space-y-3">
-            {nextFeatures.map((f) => (
-              <li class="flex items-start gap-2 text-sm text-ops-subtle">
-                <svg class="mt-0.5 h-4 w-4 shrink-0 text-ops-blue/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v4l3 3"/></svg>
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════════════════════════════════════ FOOTER -->
+  <!-- FOOTER -->
   <footer class="border-t border-ops-border">
     <div class="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <div class="flex flex-col items-center justify-between gap-6 sm:flex-row">
-        <div class="flex items-center gap-2">
+        <div class="flex flex-col items-center gap-1 sm:items-start">
           <span class="text-base font-bold tracking-tight text-slate-200">Ops<span class="text-ops-blue">Mender</span></span>
-          <span class="text-ops-muted text-sm">— open-source, self-hosted incident response</span>
+          <span class="text-sm text-ops-muted">Open source, self-hosted incident response.</span>
         </div>
         <nav class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-ops-subtle">
-          <a href={GITHUB_URL}           target="_blank" rel="noopener noreferrer" class="hover:text-slate-200 transition-colors">GitHub</a>
-          <a href={DOCS_URL}             target="_blank" rel="noopener noreferrer" class="hover:text-slate-200 transition-colors">Docs</a>
-          <a href={`${GITHUB_URL}/blob/main/CHANGELOG.md`} target="_blank" rel="noopener noreferrer" class="hover:text-slate-200 transition-colors">Changelog</a>
-          <a href={`${GITHUB_URL}/blob/main/docs/ROADMAP.md`} target="_blank" rel="noopener noreferrer" class="hover:text-slate-200 transition-colors">Roadmap</a>
-          <a href={`${GITHUB_URL}/blob/main/LICENSE`}    target="_blank" rel="noopener noreferrer" class="hover:text-slate-200 transition-colors">License</a>
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="transition-colors hover:text-slate-200 focus-ring">GitHub</a>
+          <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" class="transition-colors hover:text-slate-200 focus-ring">Docs</a>
+          <a href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer" class="transition-colors hover:text-slate-200 focus-ring">Changelog</a>
+          <a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer" class="transition-colors hover:text-slate-200 focus-ring">License</a>
         </nav>
       </div>
-      <p class="mt-6 text-center text-xs text-ops-muted">
-        Built for engineering teams that want AI-assisted incident response without giving up control.
+      <p class="mt-8 text-center text-xs text-ops-muted">
+        Built for teams that want help with incidents without handing over the keys.
       </p>
     </div>
   </footer>

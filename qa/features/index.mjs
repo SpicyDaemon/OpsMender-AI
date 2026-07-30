@@ -13,6 +13,7 @@ import incidents from "./incidents.mjs";
 import reliability from "./reliability.mjs";
 import models from "./models.mjs";
 import skills from "./skills.mjs";
+import mcpOptional from "./mcp_optional.mjs";
 import logout from "./logout.mjs";
 
 export const features = [
@@ -27,5 +28,6 @@ export const features = [
   reliability,
   models,
   skills,
+  mcpOptional,
   logout,
 ];

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Callable, Mapping
 
 from fastapi import HTTPException, status
@@ -9,9 +10,80 @@ import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
 
+from backend.bots.action_ids import ACTION_ID_MAP
 from backend.bots.delivery import DeliveryReceipt, UpdateResult
 from backend.db.models import BotConnector
 from .base import FieldSpec, InboundMessage
+
+
+_INCIDENT_FOOTER_PREFIX = "OpsMender incident "
+_BUTTONS = (
+    ("Acknowledge", "opsmender:ack", 1),
+    ("Resolve", "opsmender:resolve", 4),
+    ("Escalate", "opsmender:escalate", 2),
+    ("Start AI Session", "opsmender:start_ai_session", 3),
+)
+
+
+def build_discord_incident_payload(
+    text: str,
+    *,
+    incident=None,
+    native_actions_ready: bool = False,
+) -> dict[str, Any]:
+    """Render a Discord message and its verified native action controls."""
+
+    payload: dict[str, Any] = {"content": text[:2000]}
+    if incident is None or not native_actions_ready:
+        return payload
+
+    payload["embeds"] = [
+        {
+            "footer": {
+                "text": f"{_INCIDENT_FOOTER_PREFIX}{incident.id}",
+            }
+        }
+    ]
+    payload["components"] = []
+    if incident.status != "resolved":
+        payload["components"] = [
+            {
+                "type": 1,
+                "components": [
+                    {
+                        "type": 2,
+                        "style": style,
+                        "label": label,
+                        "custom_id": action_id,
+                    }
+                    for label, action_id, style in _BUTTONS
+                ],
+            }
+        ]
+    return payload
+
+
+def parse_incident_id_from_component(payload: dict[str, Any]) -> uuid.UUID | None:
+    """Read the incident marker from the bot-authored message embed."""
+
+    data = payload.get("data")
+    if not isinstance(data, dict) or data.get("custom_id") not in ACTION_ID_MAP:
+        return None
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        return None
+    for embed in message.get("embeds") or []:
+        if not isinstance(embed, dict):
+            continue
+        footer = embed.get("footer")
+        text = footer.get("text") if isinstance(footer, dict) else None
+        if not isinstance(text, str) or not text.startswith(_INCIDENT_FOOTER_PREFIX):
+            continue
+        try:
+            return uuid.UUID(text.removeprefix(_INCIDENT_FOOTER_PREFIX).strip())
+        except ValueError:
+            return None
+    return None
 
 
 class DiscordAdapter:
@@ -216,7 +288,11 @@ class DiscordAdapter:
                         "Authorization": f"Bot {bot_token}",
                         "Content-Type": "application/json",
                     },
-                    json={"content": text[:2000]},
+                    json=build_discord_incident_payload(
+                        text,
+                        incident=incident,
+                        native_actions_ready=native_actions_ready,
+                    ),
                 )
         except httpx.HTTPError as exc:
             return DeliveryReceipt(ok=False, error=f"Discord network error: {exc}")
@@ -261,7 +337,11 @@ class DiscordAdapter:
                         "Authorization": f"Bot {bot_token}",
                         "Content-Type": "application/json",
                     },
-                    json={"content": text[:2000]},
+                    json=build_discord_incident_payload(
+                        text,
+                        incident=incident,
+                        native_actions_ready=native_actions_ready,
+                    ),
                 )
         except httpx.HTTPError as exc:
             return UpdateResult(
@@ -288,3 +368,31 @@ class DiscordAdapter:
                 can_update=True,
             ),
         )
+
+    async def update_interaction_response(
+        self,
+        *,
+        application_id: str,
+        interaction_token: str,
+        text: str,
+    ) -> tuple[bool, str | None]:
+        """Replace Discord's deferred ephemeral response with the result."""
+
+        if not application_id or not interaction_token:
+            return False, "Discord interaction response credentials are missing"
+        try:
+            async with self._factory() as client:
+                response = await client.patch(
+                    "https://discord.com/api/v10/webhooks/"
+                    f"{application_id}/{interaction_token}/messages/@original",
+                    json={"content": text[:2000]},
+                )
+        except httpx.HTTPError as exc:
+            return False, f"Discord interaction follow-up network error: {exc}"
+        if response.status_code not in {200, 204}:
+            return (
+                False,
+                "Discord interaction follow-up error: "
+                f"HTTP {response.status_code} - {response.text}",
+            )
+        return True, None

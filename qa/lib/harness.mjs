@@ -156,7 +156,10 @@ export class Harness {
   // ---- UI helpers --------------------------------------------------------
 
   async goto(route) {
-    await this.page.goto(route, { waitUntil: "networkidle" });
+    // Dashboard pages keep live-event connections open once a session starts,
+    // so networkidle is not a valid readiness signal for the full walkthrough.
+    // Feature assertions wait for their own visible content after navigation.
+    await this.page.goto(route, { waitUntil: "load" });
   }
 
   // Click a button by accessible name (string or RegExp).

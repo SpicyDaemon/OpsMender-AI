@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 
 from fastapi import (
@@ -19,6 +20,7 @@ from fastapi import (
 from fastapi import Form
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from yaml import MarkedYAMLError
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
@@ -34,13 +36,23 @@ from backend.api.schemas import (
     SkillGenerateRequest,
     SkillGenerateResponse,
     SkillListResponse,
+    SkillOperationSummary,
     SkillResponse,
     SkillTemplateResponse,
     SkillUpdate,
+    SkillValidateRequest,
+    SkillValidateResponse,
+    SkillValidationIssue,
 )
 from backend.config_loader import MCPServerConfig
 from backend.db.models import Skill, User
-from backend.db.repos import MCPServerRepo, ModelConfigRepo, SkillRepo
+from backend.db.repos import (
+    IntegrationConnectorRepo,
+    MCPServerRepo,
+    ModelConfigRepo,
+    SkillRepo,
+)
+from backend.integrations.tools import IntegrationToolRuntime
 from backend.mcp.client import connect, list_tools
 from backend.skills.ai_assist import build_prompt, parse_ai_response
 from backend.skills.convert import SkillConversion, convert_legacy_skill_content
@@ -50,6 +62,7 @@ from backend.skills.template import (
     DEFAULT_TEMPLATE_NAME,
     build_skill_from_tools,
     build_skill_template,
+    list_skill_templates,
 )
 
 log = logging.getLogger(__name__)
@@ -109,6 +122,7 @@ def _to_response(
         name=skill.name,
         description=skill.description,
         mcp_server_id=skill.mcp_server_id,
+        integration_connector_id=skill.integration_connector_id,
         assignment=getattr(skill, "assignment", "global") or "global",
         content_md=skill.content_md,
         focus_areas=_extract_focus_areas(skill.content_md),
@@ -143,6 +157,128 @@ async def _validate_mcp_server(
         )
 
 
+async def _validate_integration_connector(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    integration_connector_id: uuid.UUID | None,
+) -> None:
+    if integration_connector_id is None:
+        return
+    connector = await IntegrationConnectorRepo.get_by_id(
+        db, org_id, integration_connector_id
+    )
+    if connector is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Integration connector {integration_connector_id} not found",
+        )
+
+
+def _validate_source_binding(
+    *,
+    assignment: str | None,
+    mcp_server_id: uuid.UUID | None,
+    integration_connector_id: uuid.UUID | None,
+) -> None:
+    if mcp_server_id is not None and integration_connector_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A skill can bind to one tool source only",
+        )
+    if assignment == "server" and mcp_server_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A server-assigned skill requires mcp_server_id",
+        )
+    if assignment == "integration" and integration_connector_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An integration-assigned skill requires integration_connector_id",
+        )
+
+
+_CLASSIFICATION_RANK = {"safe": 0, "caution": 1, "destructive": 2}
+
+
+def _more_restrictive_classification(left: str, right: str) -> str:
+    return max(
+        (left, right),
+        key=lambda value: _CLASSIFICATION_RANK.get(value, 2),
+    )
+
+
+def _validation_line(content_md: str, message: str) -> int | None:
+    match = re.search(r"Operation '([^']*)'", message)
+    if not match:
+        return None
+    tool = match.group(1)
+    for index, line in enumerate(content_md.splitlines(), start=1):
+        if re.match(rf"\s*-\s*tool:\s*['\"]?{re.escape(tool)}['\"]?\s*$", line):
+            return index
+    return None
+
+
+def _validate_skill_content(content_md: str) -> SkillValidateResponse:
+    issues: list[SkillValidationIssue] = []
+    try:
+        parsed = parse_skill(content_md)
+    except Exception as exc:  # noqa: BLE001
+        line = None
+        if isinstance(exc, MarkedYAMLError) and exc.problem_mark is not None:
+            line = exc.problem_mark.line + 1
+        if line is None:
+            line = _validation_line(content_md, str(exc))
+        issues.append(
+            SkillValidationIssue(severity="error", message=str(exc), line=line)
+        )
+        return SkillValidateResponse(valid=False, issues=issues)
+
+    seen: set[str] = set()
+    for operation in parsed.operations:
+        if operation.tool in seen:
+            issues.append(
+                SkillValidationIssue(
+                    severity="warning",
+                    message=(
+                        f"Operation '{operation.tool}' is declared more than once; "
+                        "the first exact match wins."
+                    ),
+                    line=_validation_line(content_md, f"Operation '{operation.tool}'"),
+                )
+            )
+        seen.add(operation.tool)
+    if not parsed.operations:
+        issues.append(
+            SkillValidationIssue(
+                severity="warning",
+                message=(
+                    "No operations are classified; unclassified tools are denied "
+                    "at every tier."
+                ),
+            )
+        )
+    operations = [
+        SkillOperationSummary(
+            tool=operation.tool,
+            classification=operation.classification,
+            tiers={
+                f"T{tier}": (
+                    "denied"
+                    if operation.deny
+                    else (
+                        operation.policy_for_tier(tier).mode
+                        if operation.policy_for_tier(tier) is not None
+                        else "blocked"
+                    )
+                )
+                for tier in (0, 1, 2)
+            },
+        )
+        for operation in parsed.operations
+    ]
+    return SkillValidateResponse(valid=True, issues=issues, operations=operations)
+
+
 @router.get(
     "",
     response_model=SkillListResponse,
@@ -150,12 +286,22 @@ async def _validate_mcp_server(
 )
 async def list_skills(
     mcp_server_id: uuid.UUID | None = None,
+    integration_connector_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
+    if mcp_server_id is not None and integration_connector_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filter by one tool source at a time",
+        )
     if mcp_server_id is not None:
         items = await SkillRepo.list_for_mcp_server(db, org_id, mcp_server_id)
+    elif integration_connector_id is not None:
+        items = await SkillRepo.list_for_integration_connector(
+            db, org_id, integration_connector_id
+        )
     else:
         items = await SkillRepo.list_all(db, org_id)
     return SkillListResponse(
@@ -170,6 +316,7 @@ async def list_skills(
     summary="Get a fresh 3-tier MCP Skill template (New from Template)",
 )
 async def get_skill_template(
+    template: str = "blank",
     user: User = Depends(require_role("admin")),
 ):
     """Return a structured 3-tier skill policy template (Tier 0 / 1 / 2).
@@ -177,9 +324,18 @@ async def get_skill_template(
     The caller loads it into the MCP Skill Studio editor, edits, and saves it
     (as Unassigned by default). Not persisted by this call.
     """
+    templates = list_skill_templates()
+    selected = next((item for item in templates if item["id"] == template), None)
+    if selected is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown skill starter template: {template}",
+        )
     return SkillTemplateResponse(
-        name=DEFAULT_TEMPLATE_NAME,
-        content_md=build_skill_template(),
+        name=(DEFAULT_TEMPLATE_NAME if template == "blank" else str(selected["label"])),
+        content_md=build_skill_template(template=template),
+        template=template,
+        templates=templates,
     )
 
 
@@ -190,6 +346,7 @@ async def get_skill_template(
 )
 async def discover_skill_tools(
     body: SkillDiscoverRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
@@ -200,6 +357,57 @@ async def discover_skill_tools(
     Suggestions are heuristic and conservative — the operator reviews/overrides
     them, and the backend tier gate remains the execution authority.
     """
+    if (body.mcp_server_id is None) == (body.integration_connector_id is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select exactly one MCP server or integration connector",
+        )
+    if body.integration_connector_id is not None:
+        connector = await IntegrationConnectorRepo.get_by_id(
+            db, org_id, body.integration_connector_id
+        )
+        if connector is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Integration connector not found",
+            )
+        runtime = await IntegrationToolRuntime.create(
+            request.app.state.session_factory,
+            org_id,
+            allowed_connector_ids={connector.id},
+        )
+        discovered = []
+        for descriptor in runtime.descriptors:
+            suggestion = suggest_classification(descriptor.name)
+            classification = _more_restrictive_classification(
+                suggestion.classification,
+                (
+                    "caution"
+                    if descriptor.capability.always_requires_approval
+                    and descriptor.capability.classification == "safe"
+                    else descriptor.capability.classification
+                ),
+            )
+            discovered.append(
+                SkillDiscoveredTool(
+                    name=descriptor.name,
+                    description=descriptor.description,
+                    suggested_classification=classification,
+                    generic=suggestion.generic,
+                    suggested_deny=suggestion.deny,
+                    needs_review=suggestion.needs_review,
+                    rationale=(
+                        f"{suggestion.rationale} Connector capability baseline: "
+                        f"{classification}."
+                    ),
+                )
+            )
+        return SkillDiscoverResponse(
+            integration_connector_id=connector.id,
+            integration_connector_name=connector.name,
+            tools=discovered,
+        )
+
     server = await MCPServerRepo.get_by_id(db, org_id, body.mcp_server_id)
     if server is None:
         raise HTTPException(
@@ -254,6 +462,9 @@ async def discover_skill_tools(
 )
 async def generate_skill(
     body: SkillGenerateRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
     """Deterministically build a 3-tier MCP Skill Markdown from the operator's
@@ -263,11 +474,39 @@ async def generate_skill(
     edit, then save (Unassigned by default) or download. The generated YAML
     front-matter is validated by the same parser the tier gate uses.
     """
+    operations = [op.model_dump() for op in body.operations]
+    if body.integration_connector_id is not None:
+        await _validate_integration_connector(db, org_id, body.integration_connector_id)
+        runtime = await IntegrationToolRuntime.create(
+            request.app.state.session_factory,
+            org_id,
+            allowed_connector_ids={body.integration_connector_id},
+        )
+        descriptors = {
+            descriptor.name: descriptor for descriptor in runtime.descriptors
+        }
+        restricted: list[dict] = []
+        for operation in operations:
+            descriptor = descriptors.get(str(operation.get("tool", "")))
+            if descriptor is not None:
+                capability = descriptor.capability
+                baseline = capability.classification
+                if capability.mutating or capability.always_requires_approval:
+                    baseline = _more_restrictive_classification(baseline, "caution")
+                    operation["reversible"] = False
+                    operation["compensating_inverse"] = None
+                operation["classification"] = _more_restrictive_classification(
+                    str(operation.get("classification", "caution")),
+                    baseline,
+                )
+            restricted.append(operation)
+        operations = restricted
+
     content_md = build_skill_from_tools(
         name=body.name,
         environment=body.environment,
         description=body.description or "",
-        operations=[op.model_dump() for op in body.operations],
+        operations=operations,
         tier0_instructions=body.tier0_instructions,
         tier1_instructions=body.tier1_instructions,
         tier2_instructions=body.tier2_instructions,
@@ -324,6 +563,18 @@ async def ai_suggest_skill(
         tier2_instructions=result.tier2_instructions,
         environment=result.environment,
     )
+
+
+@router.post(
+    "/validate",
+    response_model=SkillValidateResponse,
+    summary="Validate Skill content and return line-anchored issues",
+)
+async def validate_skill(
+    body: SkillValidateRequest,
+    user: User = Depends(require_role("admin")),
+):
+    return _validate_skill_content(body.content_md)
 
 
 @router.get(
@@ -388,7 +639,13 @@ async def create_skill(
     user: User = Depends(require_role("admin")),
 ):
     conversion = await _validate_content(body.content_md)
+    _validate_source_binding(
+        assignment=body.assignment,
+        mcp_server_id=body.mcp_server_id,
+        integration_connector_id=body.integration_connector_id,
+    )
     await _validate_mcp_server(db, org_id, body.mcp_server_id)
+    await _validate_integration_connector(db, org_id, body.integration_connector_id)
     try:
         skill = await SkillRepo.create(
             db,
@@ -397,6 +654,7 @@ async def create_skill(
             content_md=conversion.content,
             description=body.description,
             mcp_server_id=body.mcp_server_id,
+            integration_connector_id=body.integration_connector_id,
             assignment=body.assignment,
         )
         await db.commit()
@@ -430,7 +688,13 @@ async def update_skill(
         )
 
     conversion = await _validate_content(body.content_md)
+    _validate_source_binding(
+        assignment=body.assignment,
+        mcp_server_id=body.mcp_server_id,
+        integration_connector_id=body.integration_connector_id,
+    )
     await _validate_mcp_server(db, org_id, body.mcp_server_id)
+    await _validate_integration_connector(db, org_id, body.integration_connector_id)
     try:
         updated = await SkillRepo.update(
             db,
@@ -440,6 +704,7 @@ async def update_skill(
             content_md=conversion.content,
             description=body.description,
             mcp_server_id=body.mcp_server_id,
+            integration_connector_id=body.integration_connector_id,
             assignment=body.assignment,
         )
         await db.commit()
@@ -500,6 +765,12 @@ async def clone_skill(
         )
 
     await _validate_mcp_server(db, org_id, body.mcp_server_id)
+    _validate_source_binding(
+        assignment=body.assignment,
+        mcp_server_id=body.mcp_server_id,
+        integration_connector_id=body.integration_connector_id,
+    )
+    await _validate_integration_connector(db, org_id, body.integration_connector_id)
     description = body.description or f"Cloned from {source.name}"
     try:
         clone = await SkillRepo.create(
@@ -509,6 +780,7 @@ async def clone_skill(
             content_md=source.content_md,
             description=description,
             mcp_server_id=body.mcp_server_id,
+            integration_connector_id=body.integration_connector_id,
             assignment=body.assignment,
         )
         await db.commit()
@@ -533,6 +805,7 @@ async def import_skill(
     name: str | None = Form(default=None),
     description: str | None = Form(default=None),
     mcp_server_id: uuid.UUID | None = Form(default=None),
+    integration_connector_id: uuid.UUID | None = Form(default=None),
     assignment: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
@@ -553,7 +826,13 @@ async def import_skill(
         )
 
     conversion = await _validate_content(content_md)
+    _validate_source_binding(
+        assignment=assignment,
+        mcp_server_id=mcp_server_id,
+        integration_connector_id=integration_connector_id,
+    )
     await _validate_mcp_server(db, org_id, mcp_server_id)
+    await _validate_integration_connector(db, org_id, integration_connector_id)
 
     if not name:
         filename = file.filename or "imported-skill.md"
@@ -568,6 +847,7 @@ async def import_skill(
             content_md=conversion.content,
             description=description or f"Imported from {file.filename or 'upload'}",
             mcp_server_id=mcp_server_id,
+            integration_connector_id=integration_connector_id,
             assignment=assignment,
         )
         await db.commit()

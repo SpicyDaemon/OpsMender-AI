@@ -12,6 +12,7 @@ from mcp.types import CallToolResult, TextContent
 from backend.db.repos import (
     IncidentIntegrationLinkRepo,
     IntegrationConnectorRepo,
+    SkillRepo,
     TicketSyncStateRepo,
 )
 from backend.integrations.base import IntegrationCapability
@@ -29,6 +30,7 @@ class IntegrationToolDescriptor:
     description: str
     connector_id: uuid.UUID
     capability: IntegrationCapability
+    authored_operation: OperationClassification | None = None
 
 
 def _tool_name(kind: str, action: str, connector_id: uuid.UUID) -> str:
@@ -68,22 +70,97 @@ def _operation_for(
     )
 
 
+_CLASSIFICATION_RANK = {"safe": 0, "caution": 1, "destructive": 2}
+_MODE_RANK = {"blocked": 0, "advisory": 0, "approval": 1, "autonomous": 2}
+
+
+def _restrict_operation(
+    capability_policy: OperationClassification,
+    authored_policy: OperationClassification | None,
+) -> OperationClassification:
+    """Intersect authored policy with the connector capability baseline."""
+    if authored_policy is None:
+        return capability_policy
+    classification = max(
+        (capability_policy.classification, authored_policy.classification),
+        key=lambda value: _CLASSIFICATION_RANK.get(value, 2),
+    )
+    if capability_policy.deny or authored_policy.deny:
+        return OperationClassification(
+            tool=capability_policy.tool,
+            classification=classification,
+            notes=authored_policy.notes or capability_policy.notes,
+            deny=True,
+        )
+
+    tiers: dict[int, OperationTierPolicy] = {}
+    for tier in (0, 1, 2):
+        baseline = capability_policy.policy_for_tier(tier)
+        authored = authored_policy.policy_for_tier(tier)
+        if baseline is None or authored is None:
+            tiers[tier] = OperationTierPolicy(enabled=False, mode="blocked")
+            continue
+        mode = min(
+            (baseline.mode, authored.mode),
+            key=lambda value: _MODE_RANK.get(value, 0),
+        )
+        if _MODE_RANK.get(mode, 0) == 0:
+            mode = (
+                "blocked" if "blocked" in {baseline.mode, authored.mode} else "advisory"
+            )
+        require_reversible = (
+            True
+            if True in {baseline.require_reversible, authored.require_reversible}
+            else (
+                False
+                if baseline.require_reversible is False
+                and authored.require_reversible is False
+                else None
+            )
+        )
+        tiers[tier] = OperationTierPolicy(
+            enabled=baseline.enabled and authored.enabled,
+            mode=mode,
+            require_reversible=require_reversible,
+        )
+    return OperationClassification(
+        tool=capability_policy.tool,
+        classification=classification,
+        notes=authored_policy.notes or capability_policy.notes,
+        reversible=(
+            capability_policy.effective_reversible
+            and authored_policy.effective_reversible
+        ),
+        compensating_inverse=authored_policy.compensating_inverse,
+        allow_generic=authored_policy.allow_generic,
+        tiers=tiers,
+    )
+
+
 def merge_integration_skill(
     base: SkillDefinition,
     descriptors: list[IntegrationToolDescriptor],
 ) -> SkillDefinition:
-    names = {operation.tool for operation in base.operations}
-    integration_operations = [
-        _operation_for(descriptor)
-        for descriptor in descriptors
-        if descriptor.name not in names
+    descriptor_names = {descriptor.name for descriptor in descriptors}
+    base_operations = [
+        operation
+        for operation in base.operations
+        if operation.tool not in descriptor_names
     ]
+    integration_operations = []
+    for descriptor in descriptors:
+        operation = _operation_for(descriptor)
+        operation = _restrict_operation(operation, base.operation_for(descriptor.name))
+        operation = _restrict_operation(operation, descriptor.authored_operation)
+        integration_operations.append(operation)
     return SkillDefinition(
         version=base.version,
         environment=base.environment,
-        operations=[*base.operations, *integration_operations],
+        operations=[*base_operations, *integration_operations],
         default_tier=base.default_tier,
         focus_areas=list(base.focus_areas),
+        workflow=list(base.workflow),
+        custom_instructions=dict(base.custom_instructions),
     )
 
 
@@ -122,6 +199,12 @@ class IntegrationToolRuntime:
             connectors = await IntegrationConnectorRepo.list_for_org(
                 db, org_id, enabled_only=True
             )
+            authored_skills = {
+                connector.id: await SkillRepo.get_for_integration_connector(
+                    db, org_id, connector.id
+                )
+                for connector in connectors
+            }
         if allowed_connector_ids is not None:
             connectors = [
                 connector
@@ -133,18 +216,42 @@ class IntegrationToolRuntime:
             adapter = get_adapter(connector.kind)
             if adapter is None:
                 continue
+            authored_definition = None
+            authored_failed = False
+            authored_skill = authored_skills.get(connector.id)
+            if authored_skill is not None:
+                try:
+                    from backend.skills.parser import loads
+
+                    authored_definition = loads(authored_skill.content_md)
+                except Exception:  # noqa: BLE001 - malformed policy fails closed
+                    authored_failed = True
             for capability in adapter.capabilities:
+                name = _tool_name(connector.kind, capability.action, connector.id)
+                authored_operation = (
+                    OperationClassification(
+                        tool=name,
+                        classification="destructive",
+                        deny=True,
+                        notes="Malformed connector skill; denied fail-closed.",
+                    )
+                    if authored_failed
+                    else (
+                        None
+                        if authored_definition is None
+                        else authored_definition.operation_for(name)
+                    )
+                )
                 descriptors.append(
                     IntegrationToolDescriptor(
-                        name=_tool_name(
-                            connector.kind, capability.action, connector.id
-                        ),
+                        name=name,
                         description=(
                             f"{capability.description} Connector: "
                             f"{connector.name} ({connector.kind})."
                         ),
                         connector_id=connector.id,
                         capability=capability,
+                        authored_operation=authored_operation,
                     )
                 )
         return cls(factory, org_id=org_id, descriptors=descriptors)

@@ -1,7 +1,7 @@
 """Service context for the AI agent prompt (v1.2 Phase 5).
 
 When an incident belongs to a Service, the agent benefits from knowing what that
-service is, how important it is, and which MCP servers are allowed for it.
+service is, how important it is, and which tool sources are allowed for it.
 This module builds a small, plain-text block that the session runner appends to
 the incident description so the very first ``observe`` pass is grounded in the
 service it is actually working on.
@@ -19,6 +19,7 @@ def format_service_context(
     priority: str | None = None,
     description: str | None = None,
     allowed_mcp_names: list[str] | None = None,
+    integration_kinds: list[str] | None = None,
 ) -> str:
     """Return a ``## Service context`` block, or ``""`` when there is no service.
 
@@ -35,4 +36,13 @@ def format_service_context(
     names = [n.strip() for n in (allowed_mcp_names or []) if n and n.strip()]
     if names:
         lines.append("- Allowed MCP servers: " + ", ".join(names))
+    kinds = sorted(
+        {kind.strip() for kind in (integration_kinds or []) if kind and kind.strip()}
+    )
+    if kinds:
+        lines.append(
+            "- Integration-provided tools: "
+            + ", ".join(kinds)
+            + " (no MCP server required)"
+        )
     return "\n".join(lines)

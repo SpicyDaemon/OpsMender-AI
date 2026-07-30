@@ -269,7 +269,7 @@ async def _deliver_via_adapter(
         return DeliveryReceipt(ok=False, error="adapter_not_found")
 
     if hasattr(adapter, "send_incident_update") and command_label.startswith("notify:"):
-        if connector.platform in {"slack", "teams"}:
+        if supports_interactive_actions(connector.platform):
             kwargs = {
                 "chat_id": chat_id,
                 "text": text,
@@ -784,11 +784,10 @@ async def deliver_incident_event(
         if not is_track and not _has_lane(connector, "respond"):
             continue
         native_actions_ready = bool(
-            not is_track
-            and connector.platform in {"slack", "teams"}
+            supports_interactive_actions(connector.platform)
             and connector.native_actions_enabled
             and connector.callback_status in {"configured", "verified"}
-            and supports_interactive_actions(connector.platform)
+            and not is_track
         )
         text = build_incident_message(
             incident,

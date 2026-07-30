@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-26
+
+### Added
+
+- **MCP-optional incident sessions.** Services with no MCP server can start and
+  use active native integration tools under the same tier gate, approval,
+  audit, and fail-closed policy. If neither source provides tools, the session
+  remains available in explicit advisory-only mode.
+- **Expanded Skill Studio.** Skills can bind to MCP servers or native
+  integration connectors, start from a data-driven template library, discover
+  either source's tools, validate Markdown through the backend parser, show
+  operation-level policy diffs, and flag permission widening before save.
+- **Verified Discord incident actions.** Discord Respond channels can render
+  Acknowledge, Resolve, Escalate, and Start AI Session buttons. Component
+  callbacks are Ed25519-verified before parsing, mapped through linked
+  Admin/Operator identities, deduplicated, and audited.
+
+### Changed
+
+- **Infrastructure setup is source-neutral.** The setup checklist and service
+  toolset display now treat an active native integration as valid
+  infrastructure coverage and clearly distinguish MCP-covered,
+  integration-covered, and advisory-only services.
+- **Native action readiness is capability-driven.** Backend delivery, connector
+  configuration, and the Notification Channels UI now use the shared platform
+  capability model instead of repeating a Slack/Teams allowlist. Startup fails
+  if an interactive platform lacks a registered verifier or mounted route.
+- **A service whose MCP servers no longer resolve is treated as MCP-less.**
+  Previously only an explicitly empty allowlist skipped the global/example
+  skill fallback; a service pointing at deleted or deactivated servers still
+  inherited an unrelated skill's operations and default tier despite having no
+  MCP tools. Both cases now start from an empty, Tier 2 policy and rely on
+  their integration tools' own capability-derived classification.
+
+### Security
+
+- **Pre-admission native-action refusals are audited.** Guard failures in
+  `execute_verified_native_action` — org mismatch, non-interactive platform,
+  disabled connector, disabled or unverified callbacks, missing actor or
+  idempotency key — are recorded as `native_action_refused` audit entries with
+  the refusal reason. These refusals happen before an invocation row exists, so
+  they previously left no trace at all; a signature-verified callback arriving
+  on a channel that cannot host verified actions is now visible to operators.
+
 ## [1.0.0] - 2026-07-11
 
 ### Added
@@ -2000,5 +2044,6 @@ Archived draft release notes from the earlier Sprints 1–23 milestone planning.
 - Single multi-stage production Dockerfile (`docker/Dockerfile`) with health checks and a logs volume mount.
 - Node.js LTS bundled inside the Docker image for `npx`-based MCP servers. `OPSMENDER_NODE_PATH` override supported for binary installs.
 
-[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/SpicyDaemon/OpsMender-AI/releases/tag/v1.0.0

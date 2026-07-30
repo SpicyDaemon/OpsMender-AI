@@ -33,3 +33,16 @@ def test_omits_empty_optional_fields():
 def test_filters_blank_mcp_names():
     out = format_service_context(name="svc", allowed_mcp_names=["", "  ", "real-mcp"])
     assert "- Allowed MCP servers: real-mcp" in out
+
+
+def test_lists_integration_tool_sources_without_mcp():
+    out = format_service_context(
+        name="svc",
+        allowed_mcp_names=[],
+        integration_kinds=["github", "kubernetes", "github"],
+    )
+    assert "- Allowed MCP servers:" not in out
+    assert (
+        "- Integration-provided tools: github, kubernetes (no MCP server required)"
+        in out
+    )

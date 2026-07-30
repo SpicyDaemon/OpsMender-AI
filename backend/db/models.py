@@ -830,9 +830,15 @@ class Skill(Base):
     mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("mcp_servers.id", ondelete="SET NULL"), nullable=True
     )
-    # Assignment: "server" (bound to mcp_server_id) | "global" (fallback for all
-    # servers without a specific skill) | "unassigned" (a saved draft — editable
-    # and downloadable, but NEVER injected into AI sessions or used as fallback).
+    integration_connector_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("integration_connectors.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Assignment: "server" (bound to mcp_server_id) | "integration" (bound to
+    # integration_connector_id) | "global" (MCP fallback) | "unassigned"
+    # (saved draft, never injected into sessions).
     assignment: Mapped[str] = mapped_column(
         String(20), default="global", nullable=False
     )

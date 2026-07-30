@@ -26,7 +26,8 @@ workflow actually works against a running instance.
 | Incidents | page loads · create (fire-test) · open detail · acknowledge · resolve |
 | Reliability | page loads · create HTTP SLA target |
 | AI models | page loads · *(optional)* create config · test connection |
-| Skills | page loads |
+| Skills | page loads · starter templates + backend validation · MCP/integration generator sources |
+| MCP-optional acceptance | zero-MCP service · integration tool discovery · Tier 1/Tier 2 session start · checklist · screenshot |
 | Authentication | sign out · session cleared |
 
 Each step uses **soft assertions**: a failure is recorded with a full-page
@@ -54,7 +55,7 @@ are marked **skipped**, not failed.
 ```bash
 cd qa
 QA_BASE_URL=http://localhost:8000 \
-QA_USERNAME=admin QA_PASSWORD=admin123 \
+QA_USERNAME=admin@localhost QA_PASSWORD=admin123 \
 node run-qa.mjs
 ```
 
@@ -81,7 +82,7 @@ All configuration is via environment variables (or a gitignored
 | Env var | Default | Meaning |
 |---|---|---|
 | `QA_BASE_URL` | `http://localhost:8000` | App + API origin. |
-| `QA_USERNAME` / `QA_PASSWORD` | `admin` / `admin123` | Login credentials. |
+| `QA_USERNAME` / `QA_PASSWORD` | `admin@localhost` / `admin123` | Login credentials. |
 | `QA_HEADLESS` | `true` | Set `false` to watch the browser. |
 | `QA_SLOWMO` | `0` | Milliseconds to slow each action (with `QA_HEADLESS=false`). |
 | `QA_TIMEOUT` | `20000` | Default per-action timeout (ms). |

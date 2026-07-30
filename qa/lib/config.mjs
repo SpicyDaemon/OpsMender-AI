@@ -55,7 +55,7 @@ export const config = {
   baseUrl: str("QA_BASE_URL", "baseUrl", "http://localhost:8000").replace(/\/$/, ""),
 
   // Admin (or operator) credentials used for the UI login.
-  username: str("QA_USERNAME", "username", "admin"),
+  username: str("QA_USERNAME", "username", "admin@localhost"),
   password: str("QA_PASSWORD", "password", "admin123"),
 
   // Browser behaviour.

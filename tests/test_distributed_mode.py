@@ -70,6 +70,7 @@ def test_distributed_dispatcher_registers_inbound_routes_only(tmp_path, monkeypa
     assert "/api/v1/intake/{service_token}" in paths
     assert "/bot/slack/interactions" in paths
     assert "/bot/teams/activity" in paths
+    assert "/bot-connectors/{connector_id}/discord/webhook" in paths
     assert "/auth/login" not in paths
     assert "/ingest-tokens" not in paths
 

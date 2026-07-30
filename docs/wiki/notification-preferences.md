@@ -3,7 +3,9 @@
 When an incident reaches OpsMender's paging engine, it has to know **how** to reach operators and **when**. The Notifications surface lives under **Paging & On-call** at `/dashboard/paging/notifications` and has three tabs:
 
 - **My Routing** — your personal priority-based routing and quiet hours.
-- **Routing Summary** — a read-only view of how incidents are routed (derived from services → escalation chains → rosters → channels). Editable team-level routing defaults are planned for v1.1.
+- **Routing Summary** — a read-only view of how incidents are routed (derived
+  from services → escalation chains → rosters → channels). Editable team-level
+  routing defaults remain a future candidate.
 - **Notification Channels** — the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, custom). Configure these once; operators route to them.
 
 Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
@@ -14,18 +16,19 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > - **Inform reports** — viewers/stakeholders receive on-demand or scheduled
 >   CSV/PDF reports from the separate Reports page; never paging.
 
-> **How chat notifications work during the v1.1 rollout.** Every Notification
+> **How verified chat actions work.** Every Notification
 > Channel sends a formatted message with an authenticated OpsMender link.
-> Slack and Teams channels can additionally opt into native **Acknowledge,
+> Slack, Teams, and Discord channels can additionally opt into native **Acknowledge,
 > Resolve, Escalate, and Start AI Session** buttons after their platform
 > verifier is configured. Slack uses signing-secret HMAC verification; Teams
-> uses Microsoft Bot Framework JWT verification. Each click is mapped to an
+> uses Microsoft Bot Framework JWT verification; Discord uses Ed25519
+> interaction signatures. Each click is mapped to an
 > active OpsMender user, checked for Admin/Operator RBAC, deduplicated, and
 > audited. Other chat platforms still use the link fallback, and message
-> edit-in-place remains deferred (native interactive chat buttons require
-> platform-verified callbacks + RBAC; the authenticated-link fallback is the
-> universal path until then).
-> The foundation is intentionally dormant — tokens alone never mutate incidents, and OpsMender
+> edit-in-place is advertised only where an adapter has a verified update path.
+> Native buttons require platform-verified callbacks + RBAC; the
+> authenticated-link fallback remains universal.
+> Tokens alone never mutate incidents, and OpsMender
 > never posts a public, unauthenticated action URL. The capability chips on the
 > Notification Channels table reflect this honestly: a platform only shows
 > **Interactive actions** or **Message updates** once a verified adapter exists.
@@ -58,7 +61,10 @@ Per stage you pick a **channel** and (for non-final stages) a **wait** before th
 
 If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
 
-**Chat-capable vs delivery-only:** Slack and Teams support verified incident actions. Discord, Telegram, Mattermost, Matrix, and WhatsApp currently use authenticated-link fallback. Mailgun Email, SMTP Email, and SMS are delivery-only.
+**Chat-capable vs delivery-only:** Slack, Teams, and Discord support verified
+incident actions. Telegram, Mattermost, Matrix, and WhatsApp use the
+authenticated-link fallback. Mailgun Email, SMTP Email, and SMS are
+delivery-only.
 
 Click **Test notification** (top-right) to send a one-off test to your routed channels. Channels without credentials or a destination are reported as skipped rather than failing.
 
@@ -132,9 +138,10 @@ configured. Every channel has one or both delivery lanes:
 
 - **Respond** — fast operator-facing delivery and verified actions where the
   platform supports them.
-- **Track** — one-way shared lifecycle status for Slack, Microsoft Teams, or
-  AWS EventBridge. Slack updates one post in place; Teams posts follow-ups;
-  EventBridge emits a structured event.
+- **Track** — one-way shared lifecycle status for Slack, Microsoft Teams,
+  Discord, Google Chat, or AWS EventBridge. Slack, Discord, and Google Chat
+  update one post in place; Teams posts follow-ups; EventBridge emits a
+  structured event.
 
 Each channel has a friendly name and provider details that live here only.
 
@@ -156,15 +163,16 @@ no provider receives a public action URL.
 
 > The full long-term model spans Personal Operator Routing vs. Team Channels vs. Viewer Notifications, interactive incident cards, and the end-to-end incident communication flow.
 
-The staged-routing architecture is intentionally channel-agnostic so the following can be layered on without changing routing:
+The staged-routing architecture is intentionally channel-agnostic so the
+following can be layered on without changing routing:
 
-- Extend verified native actions to Discord and Telegram.
-- Add message update-in-place with follow-up fallback using stored provider message IDs.
+- Add verified native actions only for platforms that can authenticate every
+  callback and map the actor to OpsMender RBAC.
 - Pressing an action will post an incident comment automatically:
   - Acknowledge → "Incident acknowledged by &lt;user&gt;"
   - Resolve → "Incident resolved by &lt;user&gt;"
   - Escalate → "Incident escalated by &lt;user&gt;"
   - Start Session → "Session started. Session ID: &lt;id&gt;"
 
-Slack and Teams actions are implemented. The remaining platform and message-update items
-are later v1.1 phases.
+Slack, Teams, and Discord actions are implemented. Every other platform keeps
+the authenticated-link fallback until it meets the same verification bar.

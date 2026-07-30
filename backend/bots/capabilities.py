@@ -23,10 +23,10 @@ Capability flags
     (Acknowledge / Resolve / Escalate / Start AI Session) whose callbacks are
     authenticated (signed token or platform signature verification).
 
-    IMPORTANT — honesty guardrail: this is enabled only for Slack and Teams.
-    Each channel must opt in and configure its platform verifier before buttons
-    render; every click is cryptographically verified before execution. Every
-    other platform remains false.
+    IMPORTANT — honesty guardrail: this is enabled only for platforms with a
+    registered verifier and mounted interaction route. Each channel must opt in
+    before buttons render; every click is cryptographically verified before
+    execution.
 ``direct_message``
     The platform can deliver a 1:1 direct message (relevant to Personal
     Routing, not Notification Channels, but modelled here for completeness).
@@ -47,6 +47,7 @@ a useful incident message (title/severity/status + authenticated link).
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 
@@ -64,6 +65,7 @@ class PlatformCapabilities:
     shared_channel: bool = False
     ai_session_link: bool = True
     message_update: bool = False
+    interaction_route: str | None = None
     # Can this provider place an outbound **phone call** (PSTN voice)? True only
     # for telephony providers (e.g. Twilio); chat bots cannot place calls. Gates
     # whether Voice Call is offered as a personal-routing delivery medium.
@@ -87,6 +89,7 @@ class PlatformCapabilities:
             "shared_channel": self.shared_channel,
             "ai_session_link": self.ai_session_link,
             "message_update": self.message_update,
+            "interaction_route": self.interaction_route,
             "voice_call": self.voice_call,
             "delivery_only": self.delivery_only,
         }
@@ -101,6 +104,7 @@ def _cap(
     direct_message: bool = False,
     shared_channel: bool = False,
     message_update: bool = False,
+    interaction_route: str | None = None,
     voice_call: bool = False,
 ) -> PlatformCapabilities:
     return PlatformCapabilities(
@@ -111,6 +115,7 @@ def _cap(
         direct_message=direct_message,
         shared_channel=shared_channel,
         message_update=message_update,
+        interaction_route=interaction_route,
         voice_call=voice_call,
     )
 
@@ -124,6 +129,7 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         "Slack",
         incident_card=True,
         interactive_actions=True,
+        interaction_route="/bot/slack/interactions",
         direct_message=True,
         shared_channel=True,
         # Slack chat.update edits a previously-posted message in place using the
@@ -136,6 +142,7 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         "Microsoft Teams",
         incident_card=True,
         interactive_actions=True,
+        interaction_route="/bot/teams/activity",
         direct_message=True,
         shared_channel=True,
         # NOT message_update: Microsoft Graph app-only auth cannot edit the
@@ -147,6 +154,8 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         "discord",
         "Discord",
         incident_card=True,
+        interactive_actions=True,
+        interaction_route="/bot-connectors/{connector_id}/discord/webhook",
         shared_channel=True,
         # Discord returns a durable message id and supports editing bot-authored
         # channel messages through the message resource.
@@ -229,6 +238,36 @@ def supports_incident_card(platform: str) -> bool:
 def supports_interactive_actions(platform: str) -> bool:
     caps = PLATFORM_CAPABILITIES.get(platform)
     return bool(caps and caps.interactive_actions)
+
+
+def assert_interactive_action_contract(route_paths: Collection[str]) -> None:
+    """Fail startup when an advertised native-action path is incomplete.
+
+    A platform may opt into ``interactive_actions`` only when its adapter
+    provides a webhook verifier and its declared interaction route is mounted
+    in the current dispatcher-capable application.
+    """
+
+    from backend.bots.connectors import get_adapter
+
+    errors: list[str] = []
+    for platform, caps in PLATFORM_CAPABILITIES.items():
+        if not caps.interactive_actions:
+            continue
+        adapter = get_adapter(platform)
+        verifier = (
+            getattr(type(adapter), "verify_webhook", None)
+            if adapter is not None
+            else None
+        )
+        if adapter is None or not callable(verifier):
+            errors.append(f"{platform}: registered adapter verifier missing")
+        if not caps.interaction_route or caps.interaction_route not in route_paths:
+            errors.append(f"{platform}: mounted interaction route missing")
+    if errors:
+        raise RuntimeError(
+            "Invalid interactive-action capability contract: " + "; ".join(errors)
+        )
 
 
 def supports_message_update(platform: str) -> bool:

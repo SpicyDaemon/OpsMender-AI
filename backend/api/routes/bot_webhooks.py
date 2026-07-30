@@ -10,19 +10,61 @@ itself is platform-agnostic and lives in
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import backend.bots  # noqa: F401
 from backend.api.deps import get_db
+from backend.bots.actions import ExternalActorIdentity, IncidentActionError
 from backend.bots.connectors import get_adapter
+from backend.bots.connectors.discord import parse_incident_id_from_component
 from backend.bots.dispatcher import dispatch_inbound
+from backend.bots.native_callbacks import (
+    NormalizedNativeCallback,
+    callback_error_message,
+    callback_result_message,
+    dispatch_native_session_result,
+    execute_normalized_callback,
+)
 from backend.db.models import BotConnector
+from backend.db.repos import IncidentRepo
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-webhooks"])
+logger = logging.getLogger(__name__)
+
+
+async def _dispatch_verified_payload(
+    *,
+    connector: BotConnector,
+    adapter,
+    payload: dict[str, Any],
+    db: AsyncSession,
+) -> dict[str, Any]:
+    message = adapter.parse_inbound(payload)
+    if message is None:
+        return {"ok": True}
+
+    result = await dispatch_inbound(db, connector=connector, message=message)
+    if result.reply_text is None:
+        return {"ok": True}
+
+    inline = adapter.inline_reply(message.chat_id, result.reply_text)
+    if inline is not None:
+        return inline
+
+    asyncio.create_task(
+        adapter.send_message(
+            connector,
+            chat_id=message.chat_id,
+            text=result.reply_text,
+        )
+    )
+    return {"ok": True}
 
 
 async def _process_webhook(
@@ -52,27 +94,79 @@ async def _process_webhook(
     raw_body = await request.body()
     adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
 
-    message = adapter.parse_inbound(payload)
-    if message is None:
-        return {"ok": True}
-
-    result = await dispatch_inbound(db, connector=connector, message=message)
-    if result.reply_text is None:
-        return {"ok": True}
-
-    inline = adapter.inline_reply(message.chat_id, result.reply_text)
-    if inline is not None:
-        return inline
-
-    # Platform doesn't support inline replies — schedule outbound delivery.
-    asyncio.create_task(
-        adapter.send_message(
-            connector,
-            chat_id=message.chat_id,
-            text=result.reply_text,
-        )
+    return await _dispatch_verified_payload(
+        connector=connector,
+        adapter=adapter,
+        payload=payload,
+        db=db,
     )
-    return {"ok": True}
+
+
+async def _complete_discord_component(
+    app,
+    *,
+    connector_id: uuid.UUID,
+    callback: NormalizedNativeCallback,
+    application_id: str,
+    interaction_token: str,
+) -> None:
+    """Execute after Discord has received the deferred ephemeral response."""
+
+    followup_text = "Action could not be completed."
+    factory = getattr(app.state, "session_factory", None)
+    if factory is None:
+        logger.error("Discord component callback has no database session factory")
+        return
+
+    async with factory() as db:
+        connector = await db.get(BotConnector, connector_id)
+        if connector is None:
+            followup_text = "That notification channel no longer exists."
+        else:
+            try:
+                result = await execute_normalized_callback(
+                    db,
+                    connector=connector,
+                    callback=callback,
+                    config=app.state.config,
+                )
+            except IncidentActionError as exc:
+                followup_text = callback_error_message(exc).replace(
+                    "Your external account",
+                    "Your Discord account",
+                )
+            else:
+                await dispatch_native_session_result(
+                    app,
+                    db,
+                    org_id=connector.org_id,
+                    result=result,
+                )
+                incident = await IncidentRepo.get_by_id(
+                    db,
+                    connector.org_id,
+                    callback.incident_id,
+                )
+                title = (
+                    incident.title
+                    if incident is not None
+                    else str(callback.incident_id)
+                )
+                followup_text = callback_result_message(result, title)
+            await db.commit()
+
+    adapter = get_adapter("discord")
+    update_response = getattr(adapter, "update_interaction_response", None)
+    if not callable(update_response):
+        logger.error("Discord adapter cannot complete a deferred interaction")
+        return
+    ok, error = await update_response(
+        application_id=application_id,
+        interaction_token=interaction_token,
+        text=followup_text,
+    )
+    if not ok:
+        logger.warning("Discord interaction follow-up failed: %s", error)
 
 
 @router.post(
@@ -212,29 +306,92 @@ async def slack_webhook(
 )
 async def discord_webhook(
     connector_id: uuid.UUID,
-    payload: dict[str, Any],
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    # Handle Discord PING challenge immediately
+    # Discord requires verification over the exact raw body. Do not parse the
+    # interaction until its Ed25519 signature has passed.
+    raw_body = await request.body()
+    connector = await db.get(BotConnector, connector_id)
+    if connector is None:
+        raise HTTPException(status_code=404, detail="Connector not found")
+    adapter = get_adapter("discord")
+    if adapter is None:
+        raise HTTPException(status_code=400, detail="Discord adapter not found")
+    adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
+    try:
+        payload = json.loads(raw_body)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid Discord payload")
+
     if payload.get("type") == 1:
-        connector = await db.get(BotConnector, connector_id)
-        if connector is None:
-            raise HTTPException(status_code=404, detail="Connector not found")
-
-        adapter = get_adapter("discord")
-        if adapter:
-            raw_body = await request.body()
-            adapter.verify_webhook(
-                connector, headers=request.headers, raw_body=raw_body
-            )
-
         return {"type": 1}
 
-    return await _process_webhook(
-        connector_id=connector_id,
-        platform="discord",
-        request=request,
+    if payload.get("type") == 3:
+        incident_id = parse_incident_id_from_component(payload)
+        data = payload.get("data") or {}
+        action_id = data.get("custom_id") if isinstance(data, dict) else None
+        member = payload.get("member")
+        actor = member.get("user") if isinstance(member, dict) else None
+        if not isinstance(actor, dict):
+            actor = payload.get("user")
+        if not isinstance(actor, dict):
+            actor = {}
+        actor_id = actor.get("id") if isinstance(actor, dict) else None
+        interaction_id = payload.get("id")
+        application_id = payload.get("application_id")
+        interaction_token = payload.get("token")
+        if not all(
+            (
+                incident_id,
+                action_id,
+                actor_id,
+                interaction_id,
+                application_id,
+                interaction_token,
+            )
+        ):
+            return {
+                "type": 4,
+                "data": {
+                    "content": "Could not identify that incident action.",
+                    "flags": 64,
+                },
+            }
+        message = payload.get("message")
+        if not isinstance(message, dict):
+            message = {}
+        background_tasks.add_task(
+            _complete_discord_component,
+            request.app,
+            connector_id=connector_id,
+            callback=NormalizedNativeCallback(
+                incident_id=incident_id,
+                action_id=str(action_id),
+                external_actor=ExternalActorIdentity(
+                    platform_user_id=str(actor_id),
+                    username=actor.get("username"),
+                    display_name=actor.get("global_name")
+                    or actor.get("display_name")
+                    or actor.get("username"),
+                ),
+                idempotency_key=str(interaction_id),
+                channel_id=str(payload.get("channel_id") or "") or None,
+                message_id=str(message.get("id") or "") or None,
+            ),
+            application_id=str(application_id),
+            interaction_token=str(interaction_token),
+        )
+        # Type 5 acknowledges before the three-second deadline. Flag 64 keeps
+        # both the deferred placeholder and its completed result ephemeral.
+        return {"type": 5, "data": {"flags": 64}}
+
+    return await _dispatch_verified_payload(
+        connector=connector,
+        adapter=adapter,
         payload=payload,
         db=db,
     )

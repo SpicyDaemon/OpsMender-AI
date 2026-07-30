@@ -2425,20 +2425,25 @@ class MCPServerOAuthTokenRepo:
 class SkillRepo:
     @staticmethod
     def _resolve_assignment(
-        assignment: str | None, mcp_server_id: uuid.UUID | None
-    ) -> tuple[str, uuid.UUID | None]:
-        """Normalize (assignment, mcp_server_id) into a consistent pair.
+        assignment: str | None,
+        mcp_server_id: uuid.UUID | None,
+        integration_connector_id: uuid.UUID | None = None,
+    ) -> tuple[str, uuid.UUID | None, uuid.UUID | None]:
+        """Normalize assignment and its mutually exclusive source binding.
 
-        A server-bound skill keeps its mcp_server_id; global/unassigned skills
-        never carry one. When assignment is omitted, infer it from
-        mcp_server_id (set -> server, else global) for backward compatibility.
+        When assignment is omitted, infer it from a supplied binding for
+        backward compatibility. Global/unassigned skills carry no source id.
         """
         if assignment is None:
-            assignment = "server" if mcp_server_id is not None else "global"
+            if integration_connector_id is not None:
+                assignment = "integration"
+            else:
+                assignment = "server" if mcp_server_id is not None else "global"
         if assignment == "server":
-            return "server", mcp_server_id
-        # global / unassigned never bind to a server.
-        return assignment, None
+            return "server", mcp_server_id, None
+        if assignment == "integration":
+            return "integration", None, integration_connector_id
+        return assignment, None, None
 
     @staticmethod
     async def create(
@@ -2449,16 +2454,20 @@ class SkillRepo:
         content_md: str,
         description: str | None = None,
         mcp_server_id: uuid.UUID | None = None,
+        integration_connector_id: uuid.UUID | None = None,
         assignment: str | None = None,
     ) -> Skill:
-        assignment, mcp_server_id = SkillRepo._resolve_assignment(
-            assignment, mcp_server_id
+        assignment, mcp_server_id, integration_connector_id = (
+            SkillRepo._resolve_assignment(
+                assignment, mcp_server_id, integration_connector_id
+            )
         )
         skill = Skill(
             org_id=org_id,
             name=name,
             description=description,
             mcp_server_id=mcp_server_id,
+            integration_connector_id=integration_connector_id,
             assignment=assignment,
             content_md=content_md,
         )
@@ -2522,6 +2531,36 @@ class SkillRepo:
         return result.scalars().all()
 
     @staticmethod
+    async def list_for_integration_connector(
+        db: AsyncSession, org_id: uuid.UUID, integration_connector_id: uuid.UUID
+    ) -> Sequence[Skill]:
+        stmt = (
+            select(Skill)
+            .where(
+                Skill.org_id == org_id,
+                Skill.integration_connector_id == integration_connector_id,
+            )
+            .order_by(Skill.name)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def get_for_integration_connector(
+        db: AsyncSession, org_id: uuid.UUID, integration_connector_id: uuid.UUID
+    ) -> Skill | None:
+        stmt = (
+            select(Skill)
+            .where(
+                Skill.org_id == org_id,
+                Skill.integration_connector_id == integration_connector_id,
+                Skill.assignment == "integration",
+            )
+            .order_by(Skill.created_at)
+            .limit(1)
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
     async def get_for_mcp_server(
         db: AsyncSession, org_id: uuid.UUID, mcp_server_id: uuid.UUID | None
     ) -> Skill | None:
@@ -2567,10 +2606,13 @@ class SkillRepo:
         content_md: str,
         description: str | None = None,
         mcp_server_id: uuid.UUID | None = None,
+        integration_connector_id: uuid.UUID | None = None,
         assignment: str | None = None,
     ) -> Skill | None:
-        assignment, mcp_server_id = SkillRepo._resolve_assignment(
-            assignment, mcp_server_id
+        assignment, mcp_server_id, integration_connector_id = (
+            SkillRepo._resolve_assignment(
+                assignment, mcp_server_id, integration_connector_id
+            )
         )
         stmt = (
             update(Skill)
@@ -2581,6 +2623,7 @@ class SkillRepo:
                 content_md=content_md,
                 description=description,
                 mcp_server_id=mcp_server_id,
+                integration_connector_id=integration_connector_id,
                 assignment=assignment,
                 updated_at=datetime.now(timezone.utc),
             )

@@ -427,6 +427,25 @@ async def _resolve_mcp_context(
 
     selected_server = server_by_name[allowed_names[0]] if allowed_names else None
 
+    # A service-scoped allowlist that yields no usable server is different from
+    # having no service context at all. It must not borrow a global/example
+    # skill: connector tools bring their own capability-derived policy, and
+    # unknown operations remain denied. This covers both an explicitly empty
+    # allowlist and one whose servers are all inactive or deleted — in the
+    # latter case the session has no MCP tools either, so inheriting an
+    # unrelated skill's default tier and operations would be equally wrong.
+    if mcp_server_ids is not None and not allowed_names:
+        return (
+            selected_server,
+            SkillDefinition(
+                version="1",
+                environment="service-integrations",
+                operations=[],
+                default_tier=2,
+            ),
+            allowed_names,
+        )
+
     async with factory() as db:
         server_id = None
         if selected_server is not None:
@@ -483,12 +502,14 @@ async def _allowed_mcp_ids_for_incident(
     factory,
     org_id: uuid.UUID,
     incident,
-) -> list[uuid.UUID]:
+) -> list[uuid.UUID] | None:
     if incident is None or getattr(incident, "service_id", None) is None:
-        return []
+        return None
     async with factory() as db:
         service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
-        raw_ids = getattr(service, "mcp_server_ids", None) if service else None
+    if service is None:
+        return None
+    raw_ids = getattr(service, "mcp_server_ids", None)
     ids: list[uuid.UUID] = []
     for raw in raw_ids or []:
         try:
@@ -531,6 +552,7 @@ async def _service_context_for_incident(
     org_id: uuid.UUID,
     incident,
     allowed_mcp_names: list[str],
+    integration_kinds: list[str],
 ) -> str:
     """Build the agent's ``## Service context`` block for the incident's service."""
     if incident is None or getattr(incident, "service_id", None) is None:
@@ -544,7 +566,40 @@ async def _service_context_for_incident(
         priority=getattr(service, "priority", None),
         description=getattr(service, "description", None),
         allowed_mcp_names=allowed_mcp_names,
+        integration_kinds=integration_kinds,
     )
+
+
+async def _record_advisory_only_status(
+    factory,
+    org_id: uuid.UUID,
+    session_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Persist a non-error transcript line for a service with no tool sources."""
+    content = (
+        "No MCP servers and no integration tools are available for this service "
+        "— running advisory-only."
+    )
+    async with factory() as db:
+        message = await SessionMessageRepo.create(
+            db,
+            org_id,
+            session_id=session_id,
+            role="assistant",
+            content=content,
+            consumed_by_workflow=True,
+            node_context="tool_availability",
+        )
+        await db.commit()
+        await db.refresh(message)
+    return {
+        "id": str(message.id),
+        "session_id": str(session_id),
+        "role": "assistant",
+        "content": content,
+        "created_at": message.created_at.isoformat(),
+        "node_context": message.node_context,
+    }
 
 
 def _progress_snapshot(result: dict[str, Any]) -> dict[str, Any] | None:
@@ -699,6 +754,18 @@ async def _run_session_workflow_inner(
         )
         skill_def = merge_integration_skill(skill_def, integration_runtime.descriptors)
         audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
+        if (
+            mcp_server_ids is not None
+            and not allowed_mcp_server_names
+            and not integration_runtime.descriptors
+        ):
+            status_message = await _record_advisory_only_status(
+                factory, org_id, session_id
+            )
+            await publish(
+                session_id,
+                WSMessage(type="chat_message_assistant", data=status_message),
+            )
 
         def notify_session_status(sid: uuid.UUID, status: str) -> None:
             schedule_session_chat_event(
@@ -727,7 +794,18 @@ async def _run_session_workflow_inner(
         # v1.2 Phase 5 — ground the agent in the incident's service (name,
         # priority, description, allowed MCP servers) from the first observe.
         service_context = await _service_context_for_incident(
-            factory, org_id, incident, allowed_mcp_server_names
+            factory,
+            org_id,
+            incident,
+            allowed_mcp_server_names,
+            sorted(
+                {
+                    descriptor.name.split("__", 3)[1]
+                    for descriptor in integration_runtime.descriptors
+                    if descriptor.name.startswith("integration__")
+                    and len(descriptor.name.split("__", 3)) >= 3
+                }
+            ),
         )
         if service_context:
             incident_description = (

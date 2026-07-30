@@ -18,7 +18,12 @@ export default {
 
     await h.step("create service", async () => {
       const newBtn = h.page.getByRole("button", { name: /new service/i });
-      if (!(await newBtn.count())) {
+      const appeared = await newBtn
+        .first()
+        .waitFor({ state: "visible", timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!appeared) {
         throw new Error("New service button not found (need admin role?)");
       }
       if (await newBtn.first().isDisabled()) {

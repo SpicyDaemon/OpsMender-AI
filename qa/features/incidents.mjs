@@ -53,7 +53,11 @@ export default {
     await h.step("open incident detail", async () => {
       await h.goto("/dashboard/incidents");
       const link = h.page.locator('a[href*="/dashboard/incidents/detail?id="]').first();
-      if (!(await link.count())) throw Harness.skip("no incident rows to open");
+      const appeared = await link
+        .waitFor({ state: "attached", timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!appeared) throw Harness.skip("no incident rows to open");
       const href = await link.getAttribute("href");
       await h.goto(href);
       await h.expectText(/incident|severity|status/i);
@@ -61,14 +65,22 @@ export default {
 
     await h.step("acknowledge incident", async () => {
       const ack = h.page.getByRole("button", { name: /^acknowledge$/i }).first();
-      if (!(await ack.count())) throw Harness.skip("no Acknowledge action (already acked?)");
+      const appeared = await ack
+        .waitFor({ state: "visible", timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!appeared) throw Harness.skip("no Acknowledge action (already acked?)");
       await ack.click();
       await h.page.waitForTimeout(800);
     });
 
     await h.step("resolve incident", async () => {
       const resolve = h.page.getByRole("button", { name: /^resolve$/i }).first();
-      if (!(await resolve.count())) throw Harness.skip("no Resolve action available");
+      const appeared = await resolve
+        .waitFor({ state: "visible", timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!appeared) throw Harness.skip("no Resolve action available");
       await resolve.click();
       // Some flows pop a confirm dialog.
       const confirm = h.page.getByRole("button", { name: /^(resolve|confirm)$/i }).last();

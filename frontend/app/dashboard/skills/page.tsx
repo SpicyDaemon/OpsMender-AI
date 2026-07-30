@@ -20,16 +20,22 @@ import {
   generateSkill,
   getSkillTemplate,
   importSkill,
+  listIntegrationConnectors,
   listMCPServers,
   listSkills,
   updateSkill,
+  validateSkill,
 } from "@/lib/api";
 import type {
+  IntegrationConnectorResponse,
   MCPServerResponse,
   SkillAssignment,
   SkillClassification,
   SkillDiscoveredTool,
+  SkillOperationSummary,
   SkillResponse,
+  SkillTemplateOption,
+  SkillValidateResponse,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
@@ -48,6 +54,7 @@ import { formatDateTime } from "@/lib/formatDate";
 
 const GLOBAL_SERVER = "__global";
 const UNASSIGNED_FILTER = "__unassigned";
+const INTEGRATION_PREFIX = "integration:";
 
 const TEMPLATE_SKILL = `---
 version: "1"
@@ -102,33 +109,113 @@ type FormState = {
 function resolveAssignment(value: string): {
   assignment: SkillAssignment;
   mcp_server_id: string | null;
+  integration_connector_id: string | null;
 } {
-  if (value === "unassigned") return { assignment: "unassigned", mcp_server_id: null };
-  if (value === "global") return { assignment: "global", mcp_server_id: null };
-  return { assignment: "server", mcp_server_id: value };
+  if (value === "unassigned") {
+    return {
+      assignment: "unassigned",
+      mcp_server_id: null,
+      integration_connector_id: null,
+    };
+  }
+  if (value === "global") {
+    return {
+      assignment: "global",
+      mcp_server_id: null,
+      integration_connector_id: null,
+    };
+  }
+  if (value.startsWith(INTEGRATION_PREFIX)) {
+    return {
+      assignment: "integration",
+      mcp_server_id: null,
+      integration_connector_id: value.slice(INTEGRATION_PREFIX.length),
+    };
+  }
+  return {
+    assignment: "server",
+    mcp_server_id: value,
+    integration_connector_id: null,
+  };
 }
 
 function assignmentFormValue(skill: SkillResponse | null): string {
   if (!skill) return "unassigned"; // new skills start as drafts
   if (skill.assignment === "server" && skill.mcp_server_id) return skill.mcp_server_id;
+  if (skill.assignment === "integration" && skill.integration_connector_id) {
+    return `${INTEGRATION_PREFIX}${skill.integration_connector_id}`;
+  }
   if (skill.assignment === "global") return "global";
   return "unassigned";
 }
 
-function toFormState(skill: SkillResponse | null, content?: string): FormState {
+function toFormState(
+  skill: SkillResponse | null,
+  content?: string,
+  initialAssignment?: string,
+): FormState {
   return {
     name: skill?.name ?? "",
     description: skill?.description ?? "",
-    assignment: assignmentFormValue(skill),
+    assignment: initialAssignment ?? assignmentFormValue(skill),
     content: content ?? skill?.content_md ?? TEMPLATE_SKILL,
   };
+}
+
+const CLASSIFICATION_RANK: Record<string, number> = {
+  safe: 0,
+  caution: 1,
+  destructive: 2,
+};
+const MODE_RANK: Record<string, number> = {
+  blocked: 0,
+  denied: 0,
+  advisory: 0,
+  approval: 1,
+  autonomous: 2,
+};
+
+function operationEscalated(
+  before: SkillOperationSummary | undefined,
+  after: SkillOperationSummary,
+) {
+  if (!before) {
+    return Object.values(after.tiers).some((mode) => (MODE_RANK[mode] ?? 0) > 0);
+  }
+  if (
+    (CLASSIFICATION_RANK[after.classification] ?? 2) >
+    (CLASSIFICATION_RANK[before.classification] ?? 2)
+  ) {
+    return true;
+  }
+  return (["T0", "T1", "T2"] as const).some(
+    (tier) =>
+      (MODE_RANK[after.tiers[tier]] ?? 0) >
+      (MODE_RANK[before.tiers[tier]] ?? 0),
+  );
+}
+
+function operationSummary(operation: SkillOperationSummary | undefined) {
+  if (!operation) return "not classified";
+  return `${operation.classification} · T0 ${operation.tiers.T0} · T1 ${operation.tiers.T1} · T2 ${operation.tiers.T2}`;
+}
+
+function toolMatchesPolicy(tool: string, pattern: string) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(
+    `^${escaped.replaceAll("*", ".*").replaceAll("?", ".")}$`,
+  );
+  return regex.test(tool);
 }
 
 function SkillModal({
   open,
   skill,
   servers,
+  connectors,
+  templates,
   initialContent,
+  initialAssignment,
   onClose,
   onSaved,
   onNotice,
@@ -136,24 +223,95 @@ function SkillModal({
   open: boolean;
   skill: SkillResponse | null;
   servers: MCPServerResponse[];
+  connectors: IntegrationConnectorResponse[];
+  templates: SkillTemplateOption[];
   /** Prefill content (e.g. from "New from Template") when creating a new skill. */
   initialContent?: string;
+  initialAssignment?: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
   onNotice: (message: string) => void;
 }) {
-  const [form, setForm] = useState<FormState>(toFormState(skill, initialContent));
+  const [form, setForm] = useState<FormState>(
+    toFormState(skill, initialContent, initialAssignment),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [validation, setValidation] = useState<SkillValidateResponse | null>(null);
+  const [baseline, setBaseline] = useState<SkillValidateResponse | null>(null);
+  const [validating, setValidating] = useState(false);
+  const [sourceTools, setSourceTools] = useState<string[]>([]);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [templateId, setTemplateId] = useState("blank");
 
   useEffect(() => {
     if (open) {
-      setForm(toFormState(skill, initialContent));
+      setForm(toFormState(skill, initialContent, initialAssignment));
       setError("");
+      setValidation(null);
+      setSourceTools([]);
+      setTemplateId("blank");
+      if (skill) {
+        void validateSkill(skill.content_md)
+          .then(setBaseline)
+          .catch(() => setBaseline(null));
+      } else {
+        setBaseline(null);
+      }
     }
-  }, [open, skill, initialContent]);
+  }, [open, skill, initialContent, initialAssignment]);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (!open || !form.content.trim()) {
+      setValidation(null);
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      setValidating(true);
+      void validateSkill(form.content)
+        .then(setValidation)
+        .catch((err) =>
+          setValidation({
+            valid: false,
+            issues: [
+              {
+                severity: "error",
+                message:
+                  err instanceof Error ? err.message : "Validation unavailable",
+                line: null,
+              },
+            ],
+            operations: [],
+          }),
+        )
+        .finally(() => setValidating(false));
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [form.content, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const resolved = resolveAssignment(form.assignment);
+    if (
+      resolved.assignment !== "server" &&
+      resolved.assignment !== "integration"
+    ) {
+      setSourceTools([]);
+      return;
+    }
+    setCoverageLoading(true);
+    const request =
+      resolved.assignment === "integration"
+        ? {
+            integration_connector_id:
+              resolved.integration_connector_id ?? undefined,
+          }
+        : resolved.mcp_server_id ?? "";
+    void discoverSkillTools(request)
+      .then((result) => setSourceTools(result.tools.map((tool) => tool.name)))
+      .catch(() => setSourceTools([]))
+      .finally(() => setCoverageLoading(false));
+  }, [form.assignment, open]);
 
   async function handleSubmit() {
     if (!form.name.trim()) {
@@ -168,12 +326,20 @@ function SkillModal({
     setSaving(true);
     setError("");
     try {
-      const { assignment, mcp_server_id } = resolveAssignment(form.assignment);
+      const currentValidation = await validateSkill(form.content);
+      setValidation(currentValidation);
+      if (!currentValidation.valid) {
+        setError("Fix the validation errors before saving.");
+        return;
+      }
+      const { assignment, mcp_server_id, integration_connector_id } =
+        resolveAssignment(form.assignment);
       const payload = {
         name: form.name.trim(),
         content_md: form.content,
         description: form.description.trim() || null,
         mcp_server_id,
+        integration_connector_id,
         assignment,
       };
       const saved = skill
@@ -189,6 +355,58 @@ function SkillModal({
     }
   }
 
+  async function handleTemplateChange(nextTemplate: string) {
+    setTemplateId(nextTemplate);
+    setError("");
+    try {
+      const selected = await getSkillTemplate(nextTemplate);
+      setForm((current) => ({
+        ...current,
+        name: selected.name,
+        content: selected.content_md,
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Template load failed");
+    }
+  }
+
+  const operationDiff = useMemo(() => {
+    if (!skill || !baseline?.valid || !validation?.valid) return [];
+    const beforeByTool = new Map(
+      baseline.operations.map((operation) => [operation.tool, operation]),
+    );
+    const afterByTool = new Map(
+      validation.operations.map((operation) => [operation.tool, operation]),
+    );
+    const tools = new Set([...beforeByTool.keys(), ...afterByTool.keys()]);
+    return [...tools]
+      .map((tool) => {
+        const before = beforeByTool.get(tool);
+        const after = afterByTool.get(tool);
+        return {
+          tool,
+          before,
+          after,
+          changed: operationSummary(before) !== operationSummary(after),
+          escalated: after ? operationEscalated(before, after) : false,
+        };
+      })
+      .filter((entry) => entry.changed);
+  }, [baseline, skill, validation]);
+
+  const unclassifiedTools = useMemo(
+    () =>
+      sourceTools.filter(
+        (tool) =>
+          !validation?.operations.some((operation) =>
+            toolMatchesPolicy(tool, operation.tool),
+          ),
+      ),
+    [sourceTools, validation],
+  );
+
+  if (!open) return null;
+
   return (
     <Modal
       open={open}
@@ -197,6 +415,26 @@ function SkillModal({
       maxWidth="max-w-3xl"
     >
       <div className="space-y-4">
+        {!skill && templates.length > 0 && (
+          <div>
+            <Label htmlFor="skill-template">Starter template</Label>
+            <Select
+              id="skill-template"
+              value={templateId}
+              onChange={(event) => void handleTemplateChange(event.target.value)}
+            >
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.label}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-fg-muted">
+              {templates.find((template) => template.id === templateId)
+                ?.description ?? "Choose a starting policy."}
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="skill-name">Name</Label>
@@ -218,16 +456,28 @@ function SkillModal({
             >
               <option value="unassigned">Unassigned (draft — not used by sessions)</option>
               <option value="global">Global (fallback for all servers)</option>
+              <optgroup label="MCP servers">
               {servers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
               ))}
+              </optgroup>
+              <optgroup label="Integration connectors">
+                {connectors.map((connector) => (
+                  <option
+                    key={connector.id}
+                    value={`${INTEGRATION_PREFIX}${connector.id}`}
+                  >
+                    {connector.name} ({connector.kind})
+                  </option>
+                ))}
+              </optgroup>
             </Select>
             <p className="mt-1 text-xs text-fg-muted">
               Unassigned skills are saved drafts: editable and downloadable, but
-              never injected into AI sessions. A specific server takes
-              precedence over the Global fallback.
+              never injected into AI sessions. Bind to an MCP server or native
+              integration to govern that source&apos;s tools.
             </p>
           </div>
         </div>
@@ -248,14 +498,75 @@ function SkillModal({
             id="skill-content"
             value={form.content}
             onChange={(e) => setForm({ ...form, content: e.target.value })}
+            onBlur={() => {
+              setValidating(true);
+              void validateSkill(form.content)
+                .then(setValidation)
+                .catch((err) =>
+                  setValidation({
+                    valid: false,
+                    issues: [
+                      {
+                        severity: "error",
+                        message:
+                          err instanceof Error
+                            ? err.message
+                            : "Validation unavailable",
+                        line: null,
+                      },
+                    ],
+                    operations: [],
+                  }),
+                )
+                .finally(() => setValidating(false));
+            }}
             rows={18}
             className="font-mono text-xs"
           />
           <p className="mt-1 text-xs text-fg-secondary">
             YAML front-matter between <code>---</code> fences defines
-            operations. Use exact MCP tool/action identifiers where possible.
-            Content is validated before saving.
+            operations. Use exact tool/action identifiers where possible.
+            {validating ? " Validating…" : " Content is validated before saving."}
           </p>
+          {validation && validation.issues.length > 0 && (
+            <ul className="mt-2 space-y-1" aria-label="Skill validation issues">
+              {validation.issues.map((issue, index) => (
+                <li
+                  key={`${issue.severity}-${issue.line ?? "top"}-${index}`}
+                  className={`rounded border px-2 py-1 text-xs ${
+                    issue.severity === "error"
+                      ? "border-status-critical-border bg-status-critical-bg text-status-critical"
+                      : "border-status-medium-border bg-status-medium-bg text-status-medium"
+                  }`}
+                >
+                  {issue.line ? `Line ${issue.line}: ` : ""}
+                  {issue.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {(form.assignment !== "unassigned" &&
+            form.assignment !== "global") && (
+            <div className="mt-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-xs text-fg-secondary">
+              {coverageLoading ? (
+                "Checking bound tool coverage…"
+              ) : sourceTools.length === 0 ? (
+                "No tools were discovered from the bound source."
+              ) : unclassifiedTools.length === 0 ? (
+                `All ${sourceTools.length} discovered tools are classified.`
+              ) : (
+                <>
+                  <strong>{unclassifiedTools.length}</strong> of {sourceTools.length}{" "}
+                  discovered tools are unclassified:{" "}
+                  <span className="font-mono">
+                    {unclassifiedTools.slice(0, 6).join(", ")}
+                    {unclassifiedTools.length > 6 ? "…" : ""}
+                  </span>
+                  . Unclassified tools are denied at every tier.
+                </>
+              )}
+            </div>
+          )}
           <p className="mt-2 rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-2 text-xs text-status-critical">
             Skills guide the AI; the backend tier gate enforces what actually
             runs. Generic command tools (shell, bash, kubectl, aws_cli, gcloud,
@@ -265,12 +576,60 @@ function SkillModal({
           </p>
         </div>
 
+        {skill && validation?.valid && (
+          <div className="rounded-md border border-border-subtle bg-bg-elevated p-3">
+            <p className="text-sm font-medium text-fg-primary">
+              Permission changes before save
+            </p>
+            {operationDiff.length === 0 ? (
+              <p className="mt-1 text-xs text-fg-muted">
+                No parsed operation permissions changed.
+              </p>
+            ) : (
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="text-fg-muted">
+                    <tr>
+                      <th className="py-1 pr-3">Tool</th>
+                      <th className="py-1 pr-3">Before</th>
+                      <th className="py-1">After</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {operationDiff.map((entry) => (
+                      <tr
+                        key={entry.tool}
+                        className="border-t border-border-subtle align-top"
+                      >
+                        <td className="py-1.5 pr-3 font-mono">{entry.tool}</td>
+                        <td className="py-1.5 pr-3 text-fg-secondary">
+                          {operationSummary(entry.before)}
+                        </td>
+                        <td className="py-1.5 text-fg-secondary">
+                          {operationSummary(entry.after)}
+                          {entry.escalated && (
+                            <Badge variant="in_progress">escalation</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         <FormError message={error} />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} loading={saving}>
+          <Button
+            onClick={handleSubmit}
+            loading={saving}
+            disabled={validating || validation?.valid === false}
+          >
             {skill ? "Save changes" : "Create skill"}
           </Button>
         </div>
@@ -425,15 +784,17 @@ function tier0Incomplete(tools: EditableTool[]): string[] {
 function GenerateModal({
   open,
   servers,
+  connectors,
   onClose,
   onGenerated,
 }: {
   open: boolean;
   servers: MCPServerResponse[];
+  connectors: IntegrationConnectorResponse[];
   onClose: () => void;
-  onGenerated: (name: string, contentMd: string) => void;
+  onGenerated: (name: string, contentMd: string, assignment: string) => void;
 }) {
-  const [mcpServerId, setMcpServerId] = useState("");
+  const [toolSource, setToolSource] = useState("");
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState(false);
   const [tools, setTools] = useState<EditableTool[]>([]);
@@ -452,7 +813,7 @@ function GenerateModal({
 
   useEffect(() => {
     if (open) {
-      setMcpServerId("");
+      setToolSource("");
       setDiscovering(false);
       setDiscovered(false);
       setTools([]);
@@ -472,22 +833,31 @@ function GenerateModal({
   if (!open) return null;
 
   async function handleDiscover() {
-    if (!mcpServerId) {
-      setError("Select an MCP server to discover its tools.");
+    if (!toolSource) {
+      setError("Select a tool source to discover its tools.");
       return;
     }
     setDiscovering(true);
     setError("");
     try {
-      const res = await discoverSkillTools(mcpServerId);
+      const integrationId = toolSource.startsWith(INTEGRATION_PREFIX)
+        ? toolSource.slice(INTEGRATION_PREFIX.length)
+        : null;
+      const res = await discoverSkillTools(
+        integrationId
+          ? { integration_connector_id: integrationId }
+          : toolSource,
+      );
       setRawTools(res.tools);
       setTools(res.tools.map(fromDiscovered));
       setFilter("");
       setDiscovered(true);
-      const serverName = servers.find((s) => s.id === mcpServerId)?.name;
-      if (serverName) setName(`${serverName} skill`);
+      const sourceName = integrationId
+        ? connectors.find((connector) => connector.id === integrationId)?.name
+        : servers.find((server) => server.id === toolSource)?.name;
+      if (sourceName) setName(`${sourceName} skill`);
       if (res.tools.length === 0) {
-        toast.info("The MCP server exposed no tools.");
+        toast.info("The selected tool source exposed no tools.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tool discovery failed");
@@ -616,8 +986,11 @@ function GenerateModal({
         tier0_instructions: t0,
         tier1_instructions: t1,
         tier2_instructions: t2,
+        integration_connector_id: toolSource.startsWith(INTEGRATION_PREFIX)
+          ? toolSource.slice(INTEGRATION_PREFIX.length)
+          : null,
       });
-      onGenerated(res.name, res.content_md);
+      onGenerated(res.name, res.content_md, toolSource);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {
@@ -629,12 +1002,13 @@ function GenerateModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Generate skill from MCP server"
+      title="Generate skill from tool source"
       maxWidth="max-w-4xl"
     >
       <div className="space-y-4">
         <p className="text-sm text-fg-secondary">
-          Discover an MCP server&apos;s tools, review the suggested
+          Discover an MCP server&apos;s or integration connector&apos;s tools,
+          review the suggested
           classifications, then generate a draft you can edit before saving.
           Suggestions are heuristic — the backend tier gate enforces what can
           actually run.
@@ -642,25 +1016,37 @@ function GenerateModal({
 
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[16rem] flex-1">
-            <Label htmlFor="gen-mcp">MCP server</Label>
+            <Label htmlFor="gen-mcp">Tool source</Label>
             <Select
               id="gen-mcp"
-              value={mcpServerId}
-              onChange={(e) => setMcpServerId(e.target.value)}
+              value={toolSource}
+              onChange={(e) => setToolSource(e.target.value)}
             >
-              <option value="">Select a server…</option>
-              {servers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
+              <option value="">Select a source…</option>
+              <optgroup label="MCP servers">
+                {servers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Integration connectors">
+                {connectors.map((connector) => (
+                  <option
+                    key={connector.id}
+                    value={`${INTEGRATION_PREFIX}${connector.id}`}
+                  >
+                    {connector.name} ({connector.kind})
+                  </option>
+                ))}
+              </optgroup>
             </Select>
           </div>
           <Button
             variant="secondary"
             onClick={handleDiscover}
             loading={discovering}
-            disabled={!mcpServerId}
+            disabled={!toolSource}
           >
             <Sparkles size={14} /> Discover tools
           </Button>
@@ -1046,6 +1432,7 @@ export default function SkillsPage() {
   const canEdit = user?.role === "admin";
   const [skills, setSkills] = useState<SkillResponse[]>([]);
   const [servers, setServers] = useState<MCPServerResponse[]>([]);
+  const [connectors, setConnectors] = useState<IntegrationConnectorResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<SkillResponse | null>(null);
   const [showEdit, setShowEdit] = useState(false);
@@ -1054,16 +1441,22 @@ export default function SkillsPage() {
   const [showImport, setShowImport] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
   const [templateContent, setTemplateContent] = useState<string | undefined>(undefined);
+  const [templateOptions, setTemplateOptions] = useState<SkillTemplateOption[]>([]);
+  const [initialAssignment, setInitialAssignment] = useState<string | undefined>(
+    undefined,
+  );
   const toast = useToast();
 
   const load = useCallback(async () => {
     try {
-      const [skillList, serverList] = await Promise.all([
+      const [skillList, serverList, connectorList] = await Promise.all([
         listSkills(),
         listMCPServers(),
+        listIntegrationConnectors(),
       ]);
       setSkills(skillList.items);
       setServers(serverList.items);
+      setConnectors(connectorList.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load skills");
     }
@@ -1081,6 +1474,12 @@ export default function SkillsPage() {
     return map;
   }, [servers]);
 
+  const connectorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const connector of connectors) map.set(connector.id, connector.name);
+    return map;
+  }, [connectors]);
+
   const serverFilterOptions = useMemo(
     () => [
       { value: UNASSIGNED_FILTER, label: "Unassigned" },
@@ -1089,8 +1488,12 @@ export default function SkillsPage() {
         value: server.id,
         label: server.name,
       })),
+      ...connectors.map((connector) => ({
+        value: `${INTEGRATION_PREFIX}${connector.id}`,
+        label: `${connector.name} (${connector.kind})`,
+      })),
     ],
-    [servers],
+    [connectors, servers],
   );
 
   async function handleDelete(skill: SkillResponse) {
@@ -1109,17 +1512,25 @@ export default function SkillsPage() {
       const tmpl = await getSkillTemplate();
       setEditing(null);
       setTemplateContent(tmpl.content_md);
+      setTemplateOptions(tmpl.templates ?? []);
+      setInitialAssignment(undefined);
       setShowEdit(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load template");
     }
   }
 
-  function handleGenerated(_name: string, contentMd: string) {
+  function handleGenerated(
+    _name: string,
+    contentMd: string,
+    assignment: string,
+  ) {
     // Hand the generated draft to the editor for review/edit before saving.
     setShowGenerate(false);
     setEditing(null);
     setTemplateContent(contentMd);
+    setTemplateOptions([]);
+    setInitialAssignment(assignment);
     setShowEdit(true);
   }
 
@@ -1137,6 +1548,9 @@ export default function SkillsPage() {
   }
   function openEdit(skill: SkillResponse) {
     setEditing(skill);
+    setTemplateContent(undefined);
+    setTemplateOptions([]);
+    setInitialAssignment(undefined);
     setShowEdit(true);
   }
   function openClone(skill: SkillResponse) {
@@ -1160,6 +1574,12 @@ export default function SkillsPage() {
                 <Badge variant="in_progress">
                   {serverNameById.get(skill.mcp_server_id) ?? "server"}
                 </Badge>
+              ) : skill.assignment === "integration" &&
+                skill.integration_connector_id ? (
+                <Badge variant="info">
+                  {connectorNameById.get(skill.integration_connector_id) ??
+                    "integration"}
+                </Badge>
               ) : skill.assignment === "unassigned" ? (
                 <Badge variant="closed">unassigned</Badge>
               ) : (
@@ -1182,6 +1602,10 @@ export default function SkillsPage() {
         accessor: (skill) =>
           skill.assignment === "server" && skill.mcp_server_id
             ? serverNameById.get(skill.mcp_server_id) ?? skill.mcp_server_id
+            : skill.assignment === "integration" &&
+                skill.integration_connector_id
+              ? connectorNameById.get(skill.integration_connector_id) ??
+                skill.integration_connector_id
             : skill.assignment === "unassigned"
               ? "Unassigned"
               : "Global",
@@ -1189,6 +1613,10 @@ export default function SkillsPage() {
           <span className="text-sm text-fg-secondary">
             {skill.assignment === "server" && skill.mcp_server_id
               ? serverNameById.get(skill.mcp_server_id) ?? skill.mcp_server_id
+              : skill.assignment === "integration" &&
+                  skill.integration_connector_id
+                ? connectorNameById.get(skill.integration_connector_id) ??
+                  skill.integration_connector_id
               : skill.assignment === "unassigned"
                 ? "Unassigned (draft)"
                 : "Global fallback"}
@@ -1200,6 +1628,9 @@ export default function SkillsPage() {
           valueOf: (skill) =>
             skill.assignment === "server" && skill.mcp_server_id
               ? skill.mcp_server_id
+              : skill.assignment === "integration" &&
+                  skill.integration_connector_id
+                ? `${INTEGRATION_PREFIX}${skill.integration_connector_id}`
               : skill.assignment === "unassigned"
                 ? UNASSIGNED_FILTER
                 : GLOBAL_SERVER,
@@ -1247,7 +1678,7 @@ export default function SkillsPage() {
         hiddenByDefault: true,
       },
     ],
-    [serverFilterOptions, serverNameById],
+    [connectorNameById, serverFilterOptions, serverNameById],
   );
 
   if (loading) {
@@ -1272,7 +1703,7 @@ export default function SkillsPage() {
                 <FileUp size={14} /> Import .md
               </Button>
               <Button variant="secondary" onClick={() => setShowGenerate(true)}>
-                <Wand2 size={14} /> Generate from MCP
+                <Wand2 size={14} /> Generate from tools
               </Button>
               <Button onClick={handleNewFromTemplate}>
                 <Sparkles size={14} /> New skill
@@ -1356,7 +1787,10 @@ export default function SkillsPage() {
         open={showEdit}
         skill={editing}
         servers={servers}
+        connectors={connectors}
+        templates={templateOptions}
         initialContent={templateContent}
+        initialAssignment={initialAssignment}
         onClose={() => setShowEdit(false)}
         onSaved={load}
         onNotice={toast.info}
@@ -1378,6 +1812,7 @@ export default function SkillsPage() {
       <GenerateModal
         open={showGenerate}
         servers={servers}
+        connectors={connectors}
         onClose={() => setShowGenerate(false)}
         onGenerated={handleGenerated}
       />

@@ -21,7 +21,9 @@ use your Skill classifications; native integration capabilities carry explicit
 tier policies. The **tier gate is enforced in code** — the agent cannot reason
 its way past it.
 
-Install it, invite your on-call operators, connect a model and your MCP servers, point your monitoring at it, and every paged incident walks the same loop:
+Install it, invite your on-call operators, connect a model and the MCP servers
+or native integrations your services use, point your monitoring at it, and
+every paged incident walks the same loop:
 
 > **alert → AI → acknowledge → fix → resolve** — with a full audit trail and an authored postmortem at the end.
 
@@ -53,10 +55,15 @@ Install it, invite your on-call operators, connect a model and your MCP servers,
 - **MCP-first + native integrations** — operator-provided MCP servers remain the
   general execution path; encrypted connectors add capability-scoped tools for
   source control, tickets, docs, observability, and infrastructure.
-- **Org-owned skills** — one `SKILL.md` gives every discovered MCP tool an explicit per-tier (T0/T1/T2) policy plus active-tier free-form operating instructions; the safe / caution / destructive class sets the default and drives the Tier 0 reversibility floor.
+- **Org-owned skills** — bind `SKILL.md` policy to an MCP server or native
+  integration connector so every discovered operation has explicit T0/T1/T2
+  behavior plus active-tier operating instructions. Unknown operations fail
+  closed.
 - **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
 - **Similar alert grouping** — optional per-service grouping folds similar alerts into the open incident instead of paging again; automatic flapping detection suppresses repeat pages during fire/clear storms (**P0 always pages**).
-- **On-call paging** — Slack / Teams / Email / SMS / Voice Call with Acknowledge / Resolve / Escalate actions and per-incident channels; the voice IVR keypad does 1 acknowledge / 2 escalate / 3 resolve.
+- **On-call paging** — verified Slack, Teams, and Discord incident actions,
+  plus Email / SMS / Voice Call delivery and per-incident channels; the voice
+  IVR keypad does 1 acknowledge / 2 escalate / 3 resolve.
 - **Shared incident tracking** — update-in-place Slack, Discord, and Google
   Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
   events.
@@ -310,11 +317,16 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 
 1. **Models** (`/dashboard/models`) — add a model, optionally cap concurrent
    incident sessions (`0` = unlimited), set a default, and run **Test connection**.
-2. **MCP servers** (`/dashboard/mcp-servers`) — add and test connectivity.
-3. **Skills** (`/dashboard/skills`) — import/create a `SKILL.md` (start from `examples/`).
+2. **Infrastructure tools** — connect an MCP server
+   (`/dashboard/mcp-servers`) and/or an encrypted native integration
+   (`/dashboard/integrations`). A service may use either source.
+3. **Skills** (`/dashboard/skills`) — create or import a `SKILL.md`, bind it to
+   an MCP server or native integration, and review its per-tier operation
+   policy.
 4. **Services / Teams / Rosters / Escalation** (`/dashboard/paging/*`) — define routing and on-call.
 5. **On Call Schedule** (`/dashboard/on-call-schedule`) — see who's on call per level, replace coverage, and view shifts in any time zone.
-6. **Notification channels** (`/dashboard/paging/notifications`) — Slack / Teams / Email / SMS / Voice Call.
+6. **Notification channels** (`/dashboard/paging/notifications`) — Slack /
+   Teams / Discord / Email / SMS / Voice Call.
 7. **Voice & SMS calling** (`/dashboard/config`) — optional phone/SMS delivery settings; env variables can bootstrap, saved Settings values win.
 8. **People** (`/dashboard/people`) — invite operators (Admin / Operator / Viewer).
 9. **Tier** (`/dashboard/config`) — default is `2` (advisory); raise to `1`/`0` when ready.

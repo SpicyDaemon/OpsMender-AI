@@ -25,7 +25,20 @@ const platformSchemas = vi.hoisted(() => [
     platform: "discord",
     label: "Discord",
     oauth_enabled: false,
-    capabilities: null,
+    capabilities: {
+      platform: "discord",
+      display_name: "Discord",
+      delivery: true,
+      incident_card: true,
+      incident_updates: true,
+      interactive_actions: true,
+      direct_message: false,
+      shared_channel: true,
+      ai_session_link: true,
+      message_update: true,
+      interaction_route: "/bot-connectors/{connector_id}/discord/webhook",
+      delivery_only: false,
+    },
     fields: [
       {
         name: "public_key",
@@ -267,6 +280,7 @@ function caps(overrides: Partial<PlatformCapabilities>): PlatformCapabilities {
     shared_channel: false,
     ai_session_link: true,
     message_update: false,
+    interaction_route: null,
     delivery_only: true,
     ...overrides,
   };
@@ -513,6 +527,10 @@ describe("Notification Channels capability rendering", () => {
 
     pickPlatform("discord");
     expect(await screen.findByLabelText(/Discord Channel ID/i)).toBeTruthy();
+    expect(
+      screen.getByText(/Enable verified Discord actions/i),
+    ).toBeTruthy();
+    expect(screen.getByText(/Discord verifies with Ed25519/i)).toBeTruthy();
     expect(screen.getByLabelText(/Track/) as HTMLInputElement).toBeTruthy();
     expect(
       screen.getByText(

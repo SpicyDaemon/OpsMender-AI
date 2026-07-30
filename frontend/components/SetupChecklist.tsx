@@ -8,7 +8,10 @@ import { useLiveEvents } from "@/context/liveEvents";
 import type { SetupChecklistResponse } from "@/lib/types";
 
 type Row = {
-  key: keyof Omit<SetupChecklistResponse, "all_complete">;
+  key: Exclude<
+    keyof SetupChecklistResponse,
+    "all_complete" | "integration_connected"
+  >;
   label: string;
   href: string;
   hint: string;
@@ -23,9 +26,9 @@ const ROWS: Row[] = [
   },
   {
     key: "mcp_server_added",
-    label: "Add an MCP server",
+    label: "Connect your infrastructure",
     href: "/dashboard/mcp-servers",
-    hint: "MCP servers are how OpsMender reaches your infrastructure.",
+    hint: "Use an MCP server or a native integration.",
   },
   {
     key: "skill_defined",
@@ -105,7 +108,11 @@ export function SetupChecklist() {
     return null;
   }
 
-  const completedCount = ROWS.filter((row) => state[row.key]).length;
+  const rowComplete = (row: Row) =>
+    row.key === "mcp_server_added"
+      ? state.mcp_server_added || state.integration_connected
+      : state[row.key];
+  const completedCount = ROWS.filter(rowComplete).length;
   const progress = Math.round((completedCount / ROWS.length) * 100);
 
   const handleDismiss = () => {
@@ -162,12 +169,11 @@ export function SetupChecklist() {
       </div>
       <ul className="mt-3 flex flex-col gap-1.5">
         {ROWS.map((row) => {
-          const done = state[row.key];
+          const done = rowComplete(row);
           return (
             <li key={row.key}>
-              <Link
-                href={row.href}
-                className={`flex items-center gap-3 rounded px-2 py-1.5 text-sm transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+              <div
+                className={`flex items-center gap-3 rounded px-2 py-1.5 text-sm ${
                   done ? "text-fg-muted" : "text-fg-primary"
                 }`}
               >
@@ -185,12 +191,37 @@ export function SetupChecklist() {
                     <span className="h-2 w-2 rounded-full bg-current opacity-45" />
                   )}
                 </span>
-                <span className={done ? "line-through" : ""}>{row.label}</span>
+                <Link
+                  href={row.href}
+                  className={`rounded transition-colors hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+                    done ? "line-through" : ""
+                  }`}
+                >
+                  {row.label}
+                </Link>
                 <span className="ml-auto flex items-center gap-1 text-xs text-fg-muted">
                   <span className="hidden sm:inline">{row.hint}</span>
-                  <ChevronRight size={14} aria-hidden />
+                  {row.key === "mcp_server_added" ? (
+                    <>
+                      <Link
+                        href="/dashboard/mcp-servers"
+                        className="rounded underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                      >
+                        MCP
+                      </Link>
+                      <span aria-hidden>/</span>
+                      <Link
+                        href="/dashboard/integrations"
+                        className="rounded underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                      >
+                        Integrations
+                      </Link>
+                    </>
+                  ) : (
+                    <ChevronRight size={14} aria-hidden />
+                  )}
                 </span>
-              </Link>
+              </div>
             </li>
           );
         })}

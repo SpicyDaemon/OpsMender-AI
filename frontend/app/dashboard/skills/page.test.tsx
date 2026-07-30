@@ -23,6 +23,7 @@ vi.mock("@/components/ui/Toast", () => ({
 const apiMocks = vi.hoisted(() => ({
   listSkills: vi.fn(),
   listMCPServers: vi.fn(),
+  listIntegrationConnectors: vi.fn(),
   getSkillTemplate: vi.fn(),
   createSkill: vi.fn(),
   updateSkill: vi.fn(),
@@ -32,6 +33,7 @@ const apiMocks = vi.hoisted(() => ({
   discoverSkillTools: vi.fn(),
   generateSkill: vi.fn(),
   aiSuggestSkill: vi.fn(),
+  validateSkill: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -42,6 +44,7 @@ const SKILL = {
   name: "prod-skill",
   description: "Prod policy",
   mcp_server_id: null,
+  integration_connector_id: null,
   assignment: "unassigned" as const,
   content_md: "# Tier 2 — Advisory Only\nNo actions allowed.",
   focus_areas: [],
@@ -52,11 +55,30 @@ const SKILL = {
 beforeEach(() => {
   vi.clearAllMocks();
   apiMocks.listMCPServers.mockResolvedValue({ items: [], total: 0 });
+  apiMocks.listIntegrationConnectors.mockResolvedValue({ items: [], total: 0 });
   apiMocks.listSkills.mockResolvedValue({ items: [SKILL], total: 1 });
+  apiMocks.validateSkill.mockResolvedValue({
+    valid: true,
+    issues: [],
+    operations: [],
+  });
   apiMocks.getSkillTemplate.mockResolvedValue({
     name: "New MCP Skill (from template)",
     content_md:
       "default_tier: T2\nrequire_reversible: false\nallow_generic: true\n# template\n## Tier 0 — Autonomous\n## Tier 1 — Approval Required\n## Tier 2 — Advisory Only\n",
+    template: "blank",
+    templates: [
+      {
+        id: "blank",
+        label: "Blank",
+        description: "Generic starter.",
+      },
+      {
+        id: "kubernetes",
+        label: "Kubernetes / container ops",
+        description: "Container operations.",
+      },
+    ],
   });
 });
 
@@ -123,7 +145,7 @@ describe("MCP Skills page", () => {
     // High-risk generic-tool warning + the skills-guide / backend-enforces line.
     expect(screen.getByText(/Generic command tools/i)).toBeTruthy();
     expect(screen.getAllByText(/backend tier gate enforces/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/exact MCP tool\/action identifiers/i)).toBeTruthy();
+    expect(screen.getByText(/exact tool\/action identifiers/i)).toBeTruthy();
   });
 
   it("Skill Studio: discover MCP tools, generate a draft, and open the editor", async () => {
@@ -174,10 +196,10 @@ describe("MCP Skills page", () => {
     });
 
     await renderPage();
-    fireEvent.click(screen.getAllByRole("button", { name: /generate from mcp/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /generate from tools/i })[0]);
 
     // Pick the server and discover its tools.
-    const select = await screen.findByLabelText("MCP server");
+    const select = await screen.findByLabelText("Tool source");
     await screen.findByRole("option", { name: /k8s-prod/i });
     fireEvent.change(select, { target: { value: "srv-1" } });
     fireEvent.click(await screen.findByRole("button", { name: /discover tools/i }));
@@ -253,8 +275,8 @@ describe("MCP Skills page", () => {
     });
 
     await renderPage();
-    fireEvent.click(screen.getAllByRole("button", { name: /generate from mcp/i })[0]);
-    const aiSelect = await screen.findByLabelText("MCP server");
+    fireEvent.click(screen.getAllByRole("button", { name: /generate from tools/i })[0]);
+    const aiSelect = await screen.findByLabelText("Tool source");
     await screen.findByRole("option", { name: /k8s-prod/i });
     fireEvent.change(aiSelect, { target: { value: "srv-1" } });
     fireEvent.click(await screen.findByRole("button", { name: /discover tools/i }));
@@ -297,8 +319,8 @@ describe("MCP Skills page", () => {
       tools: [tool],
     });
     await renderPage();
-    fireEvent.click(screen.getAllByRole("button", { name: /generate from mcp/i })[0]);
-    const select = await screen.findByLabelText("MCP server");
+    fireEvent.click(screen.getAllByRole("button", { name: /generate from tools/i })[0]);
+    const select = await screen.findByLabelText("Tool source");
     // Wait for the server list to populate before selecting, otherwise the
     // change sets a value with no matching <option> and discovery never fires.
     await screen.findByRole("option", { name: /k8s-prod/i });
@@ -472,5 +494,139 @@ describe("MCP Skills page", () => {
     expect(
       screen.getByText(/never injected into AI sessions/i),
     ).toBeTruthy();
+  });
+
+  it("loads a selected starter from the data-driven template library", async () => {
+    apiMocks.getSkillTemplate
+      .mockResolvedValueOnce({
+        name: "New MCP Skill (from template)",
+        content_md: "BLANK-STARTER",
+        template: "blank",
+        templates: [
+          { id: "blank", label: "Blank", description: "Generic starter." },
+          {
+            id: "kubernetes",
+            label: "Kubernetes / container ops",
+            description: "Container operations.",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        name: "Kubernetes / container ops",
+        content_md: "KUBERNETES-STARTER",
+        template: "kubernetes",
+        templates: [],
+      });
+    await renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /^new skill$/i }));
+    const template = await screen.findByLabelText("Starter template");
+    fireEvent.change(template, { target: { value: "kubernetes" } });
+    await waitFor(() =>
+      expect(apiMocks.getSkillTemplate).toHaveBeenCalledWith("kubernetes"),
+    );
+    expect(await screen.findByDisplayValue("KUBERNETES-STARTER")).toBeTruthy();
+  });
+
+  it("shows line-anchored parser errors and blocks invalid saves", async () => {
+    apiMocks.validateSkill.mockImplementation(async (content: string) =>
+      content.includes("INVALID")
+        ? {
+            valid: false,
+            issues: [
+              {
+                severity: "error",
+                message: "Operation policy is invalid",
+                line: 4,
+              },
+            ],
+            operations: [],
+          }
+        : { valid: true, issues: [], operations: [] },
+    );
+    await renderPage();
+    fireEvent.click((await screen.findAllByRole("button", { name: /^edit$/i }))[0]);
+    fireEvent.change(await screen.findByLabelText("Skill content (SKILL.md)"), {
+      target: { value: "INVALID" },
+    });
+    expect(await screen.findByText(/Line 4: Operation policy is invalid/)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: /save changes/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("marks permission escalations in the before/after diff", async () => {
+    apiMocks.validateSkill.mockImplementation(async (content: string) => ({
+      valid: true,
+      issues: [],
+      operations: [
+        {
+          tool: "restart_service",
+          classification: content.includes("ESCALATED")
+            ? "destructive"
+            : "safe",
+          tiers: {
+            T0: content.includes("ESCALATED") ? "autonomous" : "blocked",
+            T1: "approval",
+            T2: "advisory",
+          },
+        },
+      ],
+    }));
+    await renderPage();
+    fireEvent.click((await screen.findAllByRole("button", { name: /^edit$/i }))[0]);
+    fireEvent.change(await screen.findByLabelText("Skill content (SKILL.md)"), {
+      target: { value: "ESCALATED" },
+    });
+    expect(await screen.findByText("Permission changes before save")).toBeTruthy();
+    expect(await screen.findByText("escalation")).toBeTruthy();
+  });
+
+  it("shows fail-closed coverage for an integration-bound skill", async () => {
+    apiMocks.listIntegrationConnectors.mockResolvedValue({
+      items: [
+        {
+          id: "connector-1",
+          name: "Repository",
+          kind: "github",
+          is_enabled: true,
+        },
+      ],
+      total: 1,
+    });
+    apiMocks.listSkills.mockResolvedValue({
+      items: [
+        {
+          ...SKILL,
+          assignment: "integration",
+          integration_connector_id: "connector-1",
+        },
+      ],
+      total: 1,
+    });
+    apiMocks.discoverSkillTools.mockResolvedValue({
+      integration_connector_id: "connector-1",
+      integration_connector_name: "Repository",
+      tools: [
+        {
+          name: "integration__github__create_issue__connector1",
+          description: "Create issue",
+          suggested_classification: "caution",
+          generic: false,
+          suggested_deny: false,
+          needs_review: false,
+          rationale: "connector baseline",
+        },
+      ],
+    });
+
+    await renderPage();
+    fireEvent.click((await screen.findAllByRole("button", { name: /^edit$/i }))[0]);
+    expect(
+      await screen.findByText(/Unclassified tools are denied at every tier/),
+    ).toBeTruthy();
+    expect(apiMocks.discoverSkillTools).toHaveBeenCalledWith({
+      integration_connector_id: "connector-1",
+    });
   });
 });

@@ -189,6 +189,10 @@ class SkillDefinition:
                     return op
         return None
 
+    def operation_for(self, tool_name: str) -> Optional[OperationClassification]:
+        """Return the effective exact/glob policy entry for a tool."""
+        return self._match(tool_name)
+
     def classify(self, tool_name: str) -> str:
         """Return the classification for *tool_name*.
 

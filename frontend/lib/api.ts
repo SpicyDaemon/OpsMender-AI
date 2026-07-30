@@ -952,6 +952,7 @@ export async function updateWorkflowSettings(
 // ---------------------------------------------------------------------------
 
 import type {
+  SkillAssignment,
   SkillCloneRequest,
   SkillCreate,
   SkillListResponse,
@@ -963,27 +964,39 @@ import type {
   SkillResponse,
   SkillTemplateResponse,
   SkillUpdate,
+  SkillValidateResponse,
 } from "./types";
 
 export async function listSkills(params?: {
   mcp_server_id?: string;
+  integration_connector_id?: string;
 }): Promise<SkillListResponse> {
   const qs = new URLSearchParams();
   if (params?.mcp_server_id) qs.set("mcp_server_id", params.mcp_server_id);
+  if (params?.integration_connector_id) {
+    qs.set("integration_connector_id", params.integration_connector_id);
+  }
   const q = qs.toString();
   return api.get<SkillListResponse>(`/skills${q ? `?${q}` : ""}`);
 }
 
-export async function getSkillTemplate(): Promise<SkillTemplateResponse> {
-  return api.get<SkillTemplateResponse>("/skills/template");
+export async function getSkillTemplate(
+  template = "blank",
+): Promise<SkillTemplateResponse> {
+  return api.get<SkillTemplateResponse>(
+    `/skills/template?template=${encodeURIComponent(template)}`,
+  );
 }
 
 export async function discoverSkillTools(
-  mcpServerId: string,
+  source:
+    | string
+    | { mcp_server_id?: string; integration_connector_id?: string },
 ): Promise<SkillDiscoverResponse> {
-  return api.post<SkillDiscoverResponse>("/skills/discover", {
-    mcp_server_id: mcpServerId,
-  });
+  return api.post<SkillDiscoverResponse>(
+    "/skills/discover",
+    typeof source === "string" ? { mcp_server_id: source } : source,
+  );
 }
 
 export async function generateSkill(
@@ -996,6 +1009,14 @@ export async function aiSuggestSkill(
   body: SkillAISuggestRequest,
 ): Promise<SkillAISuggestResponse> {
   return api.post<SkillAISuggestResponse>("/skills/ai-suggest", body);
+}
+
+export async function validateSkill(
+  contentMd: string,
+): Promise<SkillValidateResponse> {
+  return api.post<SkillValidateResponse>("/skills/validate", {
+    content_md: contentMd,
+  });
 }
 
 export async function getSkill(id: string): Promise<SkillResponse> {
@@ -1029,12 +1050,18 @@ export async function importSkill(params: {
   name?: string;
   description?: string;
   mcp_server_id?: string;
+  integration_connector_id?: string;
+  assignment?: SkillAssignment;
 }): Promise<SkillResponse> {
   const form = new FormData();
   form.append("file", params.file);
   if (params.name) form.append("name", params.name);
   if (params.description) form.append("description", params.description);
   if (params.mcp_server_id) form.append("mcp_server_id", params.mcp_server_id);
+  if (params.integration_connector_id) {
+    form.append("integration_connector_id", params.integration_connector_id);
+  }
+  if (params.assignment) form.append("assignment", params.assignment);
 
   const token = getToken();
   const headers: Record<string, string> = {};

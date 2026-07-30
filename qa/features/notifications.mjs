@@ -27,7 +27,9 @@ export default {
       if (await chTab.count()) await chTab.click().catch(() => {});
 
       // Wait for the tab to re-render before probing for the button.
-      const addBtn = h.page.getByRole("button", { name: /add channel/i }).first();
+      const addBtn = h.page
+        .getByRole("button", { name: /(add|new) channel/i })
+        .first();
       const appeared = await addBtn
         .waitFor({ state: "visible", timeout: 5000 })
         .then(() => true)

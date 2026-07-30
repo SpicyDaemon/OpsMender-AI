@@ -48,11 +48,12 @@ def test_rich_chat_platforms_support_incident_cards():
         assert caps.delivery_only is False
 
 
-def test_slack_and_teams_advertise_interactive_actions_in_phase_c():
+def test_only_verified_callback_platforms_advertise_interactive_actions():
     for platform, caps in PLATFORM_CAPABILITIES.items():
-        expected = platform in {"slack", "teams"}
+        expected = platform in {"slack", "teams", "discord"}
         assert caps.interactive_actions is expected, platform
         assert supports_interactive_actions(platform) is expected, platform
+        assert bool(caps.interaction_route) is expected, platform
 
 
 def test_supported_platforms_advertise_message_updates():

@@ -4605,6 +4605,7 @@ class TestSetupChecklist:
         assert data == {
             "model_configured": False,
             "mcp_server_added": False,
+            "integration_connected": False,
             "skill_defined": False,
             "ingest_token_created": False,
             "paging_service_added": False,
@@ -4631,6 +4632,30 @@ class TestSetupChecklist:
         data = resp.json()
         assert data["mcp_server_added"] is True
         assert data["all_complete"] is False
+
+    async def test_active_integration_satisfies_tool_reach(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        from backend.db.repos import IntegrationConnectorRepo
+
+        async with app.state.session_factory() as db:
+            await IntegrationConnectorRepo.create(
+                db,
+                TEST_ORG_ID,
+                kind="github",
+                name="Native tool source",
+                base_url="https://example.test",
+                auth_type="none",
+                auth=None,
+                config={},
+                is_enabled=True,
+            )
+            await db.commit()
+        resp = await client.get("/config/setup-checklist", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["mcp_server_added"] is False
+        assert data["integration_connected"] is True
 
     async def test_viewer_can_read(self, client: AsyncClient, viewer_headers):
         resp = await client.get("/config/setup-checklist", headers=viewer_headers)
@@ -5467,6 +5492,43 @@ class TestBotConnectorsAPI:
         )
         assert missing_app.status_code == 201
         assert missing_app.json()["callback_status"] == "not_configured"
+
+    async def test_discord_native_actions_require_public_key_readiness(
+        self, client: AsyncClient, auth_headers
+    ):
+        configured = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "discord-native-ready",
+                "platform": "discord",
+                "credentials": {
+                    "public_key": "ab" * 32,
+                    "bot_token": "discord-token",
+                },
+                "allowed_capabilities": ["notifications"],
+                "is_enabled": True,
+                "native_actions_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert configured.status_code == 201
+        assert configured.json()["native_actions_enabled"] is True
+        assert configured.json()["callback_status"] == "configured"
+
+        missing_key = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "discord-native-missing-key",
+                "platform": "discord",
+                "credentials": {"bot_token": "discord-token"},
+                "allowed_capabilities": ["notifications"],
+                "is_enabled": True,
+                "native_actions_enabled": True,
+            },
+            headers=auth_headers,
+        )
+        assert missing_key.status_code == 201
+        assert missing_key.json()["callback_status"] == "not_configured"
 
     async def test_bot_connector_duplicate_name_conflict(
         self, client: AsyncClient, auth_headers

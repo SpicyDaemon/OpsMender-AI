@@ -5,29 +5,33 @@
 [![Node 24+](https://img.shields.io/badge/node-24%2B-339933.svg)](https://nodejs.org/)
 [![Release](https://img.shields.io/github/v/release/SpicyDaemon/OpsMender-AI?include_prereleases&sort=semver)](https://github.com/SpicyDaemon/OpsMender-AI/releases)
 
-> Open-source, self-hosted **AI incident manager / AI SRE / AI on-call** for production infrastructure — **tier-gated, MCP-first, human-in-the-loop**.
+> Incident response you run on your own servers. Track incidents, page the right people, and let an AI agent investigate and fix things within limits you set in code.
 
-📚 **[Wiki](docs/wiki/README.md)** · 🤝 **[Contributing](CONTRIBUTING.md)**
+📚 **[Wiki](docs/wiki/README.md)** · 🌐 **[Website](https://spicydaemon.github.io/OpsMender-AI/)** · 🤝 **[Contributing](CONTRIBUTING.md)**
 
 ---
 
 ## What it is
 
-OpsMender connects AI agents to **your** infrastructure through
-**[Model Context Protocol](https://modelcontextprotocol.io) (MCP) servers** you
-provide and encrypted native integration connectors, then enforces a
-**three-tier autonomy model** so the agent only does what you allow. MCP tools
-use your Skill classifications; native integration capabilities carry explicit
-tier policies. The **tier gate is enforced in code** — the agent cannot reason
-its way past it.
+OpsMender is an open source incident response platform for engineering teams.
+You install it on your own infrastructure, invite your on call operators,
+connect a model, and point your monitoring at it.
 
-Install it, invite your on-call operators, connect a model and the MCP servers
-or native integrations your services use, point your monitoring at it, and
-every paged incident walks the same loop:
+When an incident comes in, OpsMender pages the right people through escalation
+chains and rosters. An operator can start an AI session on the incident. The
+agent reaches your systems through [MCP](https://modelcontextprotocol.io)
+servers you provide or through native integration connectors, and it can only
+do what a skill file and a three tier autonomy policy allow.
 
-> **alert → AI → acknowledge → fix → resolve** — with a full audit trail and an authored postmortem at the end.
+The tier gate lives in the backend. It checks every tool call before it runs.
+The model cannot reason its way past it, and anything the skill does not name
+is denied.
 
-**Simple by default, enterprise-ready underneath:** start as a single-workspace tool with email + admin invites; OIDC SSO, SAML, custom domains, and branding are available for that one workspace when you need them.
+Every incident follows the same loop: alert, investigate, acknowledge, fix,
+resolve. A full audit trail and a postmortem draft come out the other end.
+
+Start simple: one workspace, email and password, admin invites. OIDC, SAML,
+and TOTP are there when you need them.
 
 ## Screenshots
 
